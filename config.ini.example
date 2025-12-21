@@ -675,3 +675,122 @@ debug = false
 # true: Start web viewer automatically when bot starts
 # false: Start web viewer manually (recommended)
 auto_start = false
+
+[PacketCapture]
+# Enable packet capture service
+# true: Capture packets and publish to MQTT/file
+# false: Packet capture service disabled
+enabled = false
+
+# Output file for packet data (optional)
+# Leave empty to disable file output
+# Packets will be written as JSON lines
+output_file = 
+
+# Verbose output (show JSON packet data in logs)
+# true: Show packet data in logs
+# false: Minimal logging
+verbose = false
+
+# Debug output (show detailed debugging info)
+# true: Show all debugging information
+# false: Standard logging
+debug = false
+
+# Owner information (for packet analyzer registration)
+# Owner public key (64-character hex string)
+owner_public_key = 
+
+# Owner email address
+owner_email = 
+
+# Private key file path for auth token generation (fallback if device signing unavailable)
+# Optional - on-device signing is preferred
+# Supports 64-byte orlp format (128 hex chars) or 32-byte seed (64 hex chars)
+# Required only if device doesn't support on-device signing or auth_token_method = python
+# Note: If not provided and auth_token_method = python, the service will attempt to fetch
+# the private key from the device automatically
+private_key_path = 
+
+# Auth token signing method
+# device: Try on-device signing first, fallback to Python signing (default, recommended)
+# python: Use Python signing only (requires private_key_path or device key export capability)
+auth_token_method = device
+
+# Location Code (IATA code for your location)
+# Used in topic templates and auth tokens
+# Example: SEA, LAX, JFK, etc.
+# Default: LOC (if not set)
+iata = LOC
+
+# MQTT configuration
+# Enable MQTT publishing
+mqtt_enabled = true
+
+# MQTT Broker Configuration
+# You can configure multiple MQTT brokers by using mqtt1_*, mqtt2_*, mqtt3_*, etc.
+# Each broker can have independent settings for transport, TLS, authentication, and topics.
+#
+# Broker-specific options (replace N with broker number: 1, 2, 3, etc.):
+# mqttN_enabled = true/false          # Enable/disable this broker
+# mqttN_server = hostname             # MQTT broker hostname or IP
+# mqttN_port = 1883                   # MQTT broker port (1883 for TCP, 443 for WSS)
+# mqttN_transport = tcp/websockets    # Transport type (tcp or websockets)
+# mqttN_use_tls = true/false          # Enable TLS/SSL (required for WSS)
+# mqttN_websocket_path = /mqtt        # WebSocket path (for websockets transport)
+# mqttN_username =                     # MQTT username (optional, auto-generated for auth tokens)
+# mqttN_password =                     # MQTT password (optional, auto-generated for auth tokens)
+# mqttN_use_auth_token = true/false   # Use JWT auth token instead of username/password
+# mqttN_token_audience =              # JWT audience (usually the broker hostname)
+# mqttN_topic_status =                # Status topic template (uses placeholders below)
+# mqttN_topic_packets =               # Packets topic template (uses placeholders below)
+# mqttN_topic_prefix =                # Legacy topic prefix (fallback if topic_status/topic_packets not set)
+# mqttN_client_id =                   # MQTT client ID (optional, auto-generated from bot name)
+#
+# Topic template placeholders:
+# {IATA} - Uppercase IATA code (e.g., SEA)
+# {iata} - Lowercase IATA code (e.g., sea)
+# {PUBLIC_KEY} - Uppercase device public key (64 hex chars)
+# {public_key} - Lowercase device public key (64 hex chars)
+
+# MQTT Broker 1 - Let's Mesh Analyzer (US)
+mqtt1_enabled = true
+mqtt1_server = mqtt-us-v1.letsmesh.net
+mqtt1_port = 443
+mqtt1_transport = websockets
+mqtt1_use_tls = true
+mqtt1_use_auth_token = true
+mqtt1_token_audience = mqtt-us-v1.letsmesh.net
+mqtt1_topic_status = meshcore/{IATA}/{PUBLIC_KEY}/status
+mqtt1_topic_packets = meshcore/{IATA}/{PUBLIC_KEY}/packets
+mqtt1_websocket_path = /mqtt
+mqtt1_client_id = 
+
+# MQTT Broker 2 - Let's Mesh Analyzer (EU)
+mqtt2_enabled = true
+mqtt2_server = mqtt-eu-v1.letsmesh.net
+mqtt2_port = 443
+mqtt2_transport = websockets
+mqtt2_use_tls = true
+mqtt2_use_auth_token = true
+mqtt2_token_audience = mqtt-eu-v1.letsmesh.net
+mqtt2_topic_status = meshcore/{IATA}/{PUBLIC_KEY}/status
+mqtt2_topic_packets = meshcore/{IATA}/{PUBLIC_KEY}/packets
+mqtt2_websocket_path = /mqtt
+mqtt2_client_id = 
+
+# Stats and status publishing
+# Enable stats in status messages
+stats_in_status_enabled = true
+
+# Stats refresh interval (seconds)
+stats_refresh_interval = 300
+
+# JWT renewal interval (seconds, 0 = disabled)
+jwt_renewal_interval = 3600
+
+# Health check interval (seconds, 0 = disabled)
+health_check_interval = 30
+
+# Health check grace period (consecutive failures before warning)
+health_check_grace_period = 2

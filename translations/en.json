@@ -410,9 +410,9 @@
       "category_count": "{category} ({count} channels)"
     },
     "dice": {
-      "description": "Roll dice (usage: dice [sides] or dice [count]d[sides])",
-      "help": "Roll dice. Use 'dice' for d6, 'dice d20' for d20, 'dice 2d6' for 2d6, etc.",
-      "invalid_dice_type": "Invalid dice type. Available: {available}",
+      "description": "Roll dice (usage: dice [sides] or dice [count]d[sides] or dice d10 d6 for mixed dice or dice decade for decade die)",
+      "help": "Roll dice. Use 'dice' for d6, 'dice d20' for d20, 'dice 2d6' for 2d6, 'dice d10 d6' for mixed dice, 'dice decade' for decade die (00-90), etc.",
+      "invalid_dice_type": "Invalid dice type.",
       "single_die": "🎲 d{sides}: {result}",
       "multiple_dice": "🎲 {count}d{sides}: [{results}] = {total}"
     },

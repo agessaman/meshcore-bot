@@ -155,6 +155,17 @@ class MeshCoreBot:
             self.logger.error(f"Failed to initialize repeater manager: {e}")
             raise
         
+        # Initialize packet capture service (if enabled)
+        self.packet_capture_service = None
+        if self.config.getboolean('PacketCapture', 'enabled', fallback=False):
+            try:
+                from .service_plugins.packet_capture_service import PacketCaptureService
+                self.packet_capture_service = PacketCaptureService(self)
+                self.logger.info("Packet capture service initialized")
+            except Exception as e:
+                self.logger.warning(f"Failed to initialize packet capture service: {e}")
+                self.packet_capture_service = None
+        
         # Reload translated keywords for all commands now that translator is available
         # This ensures keywords are loaded even if translator wasn't ready during command init
         if hasattr(self, 'command_manager') and hasattr(self, 'translator'):
@@ -839,6 +850,11 @@ use_zulu_time = false
         # Send startup advert if enabled
         await self.send_startup_advert()
         
+        # Start packet capture service
+        if self.packet_capture_service:
+            await self.packet_capture_service.start()
+            self.logger.info("Packet capture service started")
+        
         # Keep running
         self.logger.info("Bot is running. Press Ctrl+C to stop.")
         try:
@@ -882,6 +898,14 @@ use_zulu_time = false
         # Stop feed manager
         if self.feed_manager:
             await self.feed_manager.stop()
+        
+        # Stop packet capture service
+        if self.packet_capture_service:
+            await self.packet_capture_service.stop()
+            try:
+                self.logger.info("Packet capture service stopped")
+            except (AttributeError, TypeError):
+                print("Packet capture service stopped")
         
         # Stop web viewer with proper shutdown sequence
         if self.web_viewer_integration:
