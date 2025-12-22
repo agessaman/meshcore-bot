@@ -809,7 +809,7 @@ health_check_grace_period = 2
 # Enable map uploader service
 # Uploads node adverts (repeaters, room servers, sensors) to map.meshcore.dev
 # CHAT adverts are skipped (only non-CHAT adverts are uploaded)
-# Adverts without GPS coordinates or with 0,0 coordinates are skipped
+# Adverts without GPS coordinates or with any coordinate exactly 0.0 are skipped
 # Uses your device's radio parameters (freq, cr, sf, bw) for all uploads
 # true: Enable map uploader service
 # false: Map uploader disabled (default)

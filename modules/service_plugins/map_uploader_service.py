@@ -450,10 +450,10 @@ class MapUploaderService(BaseServicePlugin):
                         self.logger.debug(f"Ignoring: timestamp too new to reupload for {pub_key[:16]}...")
                     return
             
-            # Skip adverts without coordinates or with 0,0 coordinates (invalid)
+            # Skip adverts without coordinates or with any coordinate exactly 0.0 (invalid)
             lat = advert.get('lat')
             lon = advert.get('lon')
-            if lat is None or lon is None or (lat == 0.0 and lon == 0.0):
+            if lat is None or lon is None or lat == 0.0 or lon == 0.0:
                 if self.verbose:
                     self.logger.debug(f"Ignoring: advert missing or invalid coordinates (lat={lat}, lon={lon}) for {pub_key[:16]}...")
                 return
