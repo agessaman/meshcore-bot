@@ -8,6 +8,8 @@ import re
 import hashlib
 import socket
 import asyncio
+import urllib.request
+import urllib.error
 from typing import Optional, Tuple, Dict
 
 
@@ -971,8 +973,8 @@ def check_internet_connectivity(host: str = "8.8.8.8", port: int = 53, timeout: 
     """
     Check if internet connectivity is available by attempting to connect to a reliable host.
     
-    This is a lightweight check that attempts to connect to a well-known DNS server.
-    It's faster than making a full HTTP request and doesn't require DNS resolution.
+    First tries a lightweight DNS port check (faster, doesn't require DNS resolution).
+    If that fails (e.g., DNS port is blocked), falls back to an HTTP request check.
     
     Args:
         host: Host to connect to (default: 8.8.8.8, Google's public DNS)
@@ -982,23 +984,42 @@ def check_internet_connectivity(host: str = "8.8.8.8", port: int = 53, timeout: 
     Returns:
         True if connection successful, False otherwise
     """
+    # First try: DNS port check (fastest, works if DNS port is open)
     try:
         socket.setdefaulttimeout(timeout)
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect((host, port))
         sock.close()
+        socket.setdefaulttimeout(None)  # Reset to default
         return True
     except (socket.error, OSError, socket.timeout):
-        return False
-    finally:
         socket.setdefaulttimeout(None)  # Reset to default
+        # DNS check failed, try HTTP fallback
+        pass
+    
+    # Fallback: HTTP request check (works even if DNS port is blocked)
+    try:
+        # Use a reliable HTTP endpoint that's likely to be accessible
+        # Using IP address to avoid DNS resolution issues
+        http_url = "http://1.1.1.1"  # Cloudflare DNS
+        urllib.request.urlopen(http_url, timeout=timeout).close()
+        return True
+    except (urllib.error.URLError, OSError, socket.timeout):
+        # If IP-based check fails, try a hostname-based check
+        try:
+            http_url = "http://www.google.com"
+            urllib.request.urlopen(http_url, timeout=timeout).close()
+            return True
+        except (urllib.error.URLError, OSError, socket.timeout):
+            return False
 
 
 async def check_internet_connectivity_async(host: str = "8.8.8.8", port: int = 53, timeout: float = 3.0) -> bool:
     """
     Async version of check_internet_connectivity.
     
-    Checks if internet connectivity is available by attempting to connect to a reliable host.
+    First tries a lightweight DNS port check (faster, doesn't require DNS resolution).
+    If that fails (e.g., DNS port is blocked), falls back to an HTTP request check.
     
     Args:
         host: Host to connect to (default: 8.8.8.8, Google's public DNS)
@@ -1008,17 +1029,50 @@ async def check_internet_connectivity_async(host: str = "8.8.8.8", port: int = 5
     Returns:
         True if connection successful, False otherwise
     """
+    # First try: DNS port check (fastest, works if DNS port is open)
     try:
-        # Use asyncio.open_connection for proper async socket handling
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(host, port),
+            timeout=timeout
+        )
+        writer.close()
+        await writer.wait_closed()
+        return True
+    except (asyncio.TimeoutError, OSError, socket.error, ConnectionError):
+        # DNS check failed, try HTTP fallback
+        pass
+    except Exception:
+        # Unexpected error, try HTTP fallback
+        pass
+    
+    # Fallback: HTTP request check (works even if DNS port is blocked)
+    # Run urllib in executor to avoid blocking
+    loop = asyncio.get_event_loop()
+    try:
+        # Use a reliable HTTP endpoint that's likely to be accessible
+        # Using IP address to avoid DNS resolution issues
+        http_url = "http://1.1.1.1"  # Cloudflare DNS
+        await asyncio.wait_for(
+            loop.run_in_executor(
+                None,
+                lambda: urllib.request.urlopen(http_url, timeout=timeout).close()
+            ),
+            timeout=timeout
+        )
+        return True
+    except (asyncio.TimeoutError, urllib.error.URLError, OSError, socket.timeout):
+        # If IP-based check fails, try a hostname-based check
         try:
-            reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(host, port),
+            http_url = "http://www.google.com"
+            await asyncio.wait_for(
+                loop.run_in_executor(
+                    None,
+                    lambda: urllib.request.urlopen(http_url, timeout=timeout).close()
+                ),
                 timeout=timeout
             )
-            writer.close()
-            await writer.wait_closed()
             return True
-        except (asyncio.TimeoutError, OSError, socket.error, ConnectionError):
+        except (asyncio.TimeoutError, urllib.error.URLError, OSError, socket.timeout):
             return False
     except Exception:
         return False
