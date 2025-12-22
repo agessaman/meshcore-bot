@@ -347,6 +347,8 @@ prefix_free_days = 7
 max_prefix_range = 200
 
 [Weather]
+# NOTE: Unit settings are used by both the wx and gwx commands and Weather_Service plugin
+
 # Default state for city name disambiguation
 # When users type "wx seattle", it will search for "seattle, WA, USA"
 # Use 2-letter state abbreviation (e.g., WA, CA, NY, TX)
@@ -676,6 +678,14 @@ debug = false
 # false: Start web viewer manually (recommended)
 auto_start = false
 
+####################################################################################################
+#                                                                                                  #
+#                                       Service Plugins Config                                     #
+#                                                                                                  #
+#          Settings for non-interactive bot services and plugins (weather, alerts, etc.)           #
+#                                                                                                  #
+####################################################################################################
+
 [PacketCapture]
 # Enable packet capture service
 # true: Capture packets and publish to MQTT/file
@@ -794,3 +804,53 @@ health_check_interval = 30
 
 # Health check grace period (consecutive failures before warning)
 health_check_grace_period = 2
+
+[Weather_Service]
+# Enable weather service
+# true: Enable scheduled weather forecasts and alert monitoring
+# false: Weather service disabled
+enabled = false
+
+# Daily weather forecast time
+# Format: HH:MM (24-hour format, e.g., "6:00" for 6 AM)
+# Or use "sunrise" or "sunset" for dynamic times based on your location
+# Bot will send daily weather forecast at this time
+weather_alarm = 6:00
+
+# NOTE: Temperature, wind speed, and precipitation units are inherited from [Weather] section
+# See [Weather] section below for temperature_unit, wind_speed_unit, and precipitation_unit settings
+
+# Bot position for weather forecasts and alerts
+# Latitude in decimal degrees
+my_position_lat = 
+
+# Longitude in decimal degrees
+my_position_lon = 
+
+# Channel for daily weather forecasts
+# Weather forecasts will be sent to this channel
+weather_channel = #weather
+
+# Channel for weather alerts
+# Weather alerts will be sent to this channel
+alerts_channel = #weather
+
+# Weather alert polling interval (milliseconds)
+# How often to check for new weather alerts
+# Default: 600000 (10 minutes)
+poll_weather_alerts_interval = 600000
+
+# Thunder/storm data collection interval (milliseconds)
+# How often to aggregate thunder data for evaluation
+# Default: 600000 (10 minutes)
+# Note: Storm detection area must be configured for this to work
+blitz_collection_interval = 600000
+
+# Storm detection area (optional)
+# Only report storms detected within this area
+# Leave empty to disable area filtering
+# Format: decimal degrees
+# blitz_area_min_lat = 47.51
+# blitz_area_min_lon = 15.54
+# blitz_area_max_lat = 48.76
+# blitz_area_max_lon = 18.62

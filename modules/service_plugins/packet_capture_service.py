@@ -46,6 +46,9 @@ from .base_service import BaseServicePlugin
 class PacketCaptureService(BaseServicePlugin):
     """Packet capture service using bot's meshcore connection"""
     
+    config_section = 'PacketCapture'  # Explicit config section
+    description = "Captures packets from MeshCore network and publishes to MQTT"
+    
     def __init__(self, bot):
         """Initialize packet capture service"""
         super().__init__(bot)

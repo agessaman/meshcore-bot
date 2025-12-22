@@ -37,6 +37,7 @@ from .solar_conditions import set_config
 from .web_viewer.integration import WebViewerIntegration
 from .feed_manager import FeedManager
 from .security_utils import validate_safe_path
+from .service_plugin_loader import ServicePluginLoader
 
 
 class MeshCoreBot:
@@ -155,16 +156,26 @@ class MeshCoreBot:
             self.logger.error(f"Failed to initialize repeater manager: {e}")
             raise
         
-        # Initialize packet capture service (if enabled)
+        # Initialize service plugin loader and load all services
+        self.logger.info("Initializing service plugin loader")
+        try:
+            self.service_loader = ServicePluginLoader(self)
+            self.services = self.service_loader.load_all_services()
+            self.logger.info(f"Service plugin loader initialized with {len(self.services)} service(s)")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize service plugin loader: {e}")
+            self.service_loader = None
+            self.services = {}
+        
+        # Backward compatibility: expose packet_capture_service for existing code
+        # This allows code that references self.packet_capture_service to continue working
+        # Try to find by service name first, then by class name
         self.packet_capture_service = None
-        if self.config.getboolean('PacketCapture', 'enabled', fallback=False):
-            try:
-                from .service_plugins.packet_capture_service import PacketCaptureService
-                self.packet_capture_service = PacketCaptureService(self)
-                self.logger.info("Packet capture service initialized")
-            except Exception as e:
-                self.logger.warning(f"Failed to initialize packet capture service: {e}")
-                self.packet_capture_service = None
+        for service_name, service_instance in self.services.items():
+            if (service_name == 'packetcapture' or 
+                service_instance.__class__.__name__ == 'PacketCaptureService'):
+                self.packet_capture_service = service_instance
+                break
         
         # Reload translated keywords for all commands now that translator is available
         # This ensures keywords are loaded even if translator wasn't ready during command init
@@ -850,10 +861,13 @@ use_zulu_time = false
         # Send startup advert if enabled
         await self.send_startup_advert()
         
-        # Start packet capture service
-        if self.packet_capture_service:
-            await self.packet_capture_service.start()
-            self.logger.info("Packet capture service started")
+        # Start all loaded services
+        for service_name, service_instance in self.services.items():
+            try:
+                await service_instance.start()
+                self.logger.info(f"Service '{service_name}' started")
+            except Exception as e:
+                self.logger.error(f"Failed to start service '{service_name}': {e}")
         
         # Keep running
         self.logger.info("Bot is running. Press Ctrl+C to stop.")
@@ -899,13 +913,13 @@ use_zulu_time = false
         if self.feed_manager:
             await self.feed_manager.stop()
         
-        # Stop packet capture service
-        if self.packet_capture_service:
-            await self.packet_capture_service.stop()
+        # Stop all loaded services
+        for service_name, service_instance in self.services.items():
             try:
-                self.logger.info("Packet capture service stopped")
-            except (AttributeError, TypeError):
-                print("Packet capture service stopped")
+                await service_instance.stop()
+                self.logger.info(f"Service '{service_name}' stopped")
+            except Exception as e:
+                self.logger.error(f"Failed to stop service '{service_name}': {e}")
         
         # Stop web viewer with proper shutdown sequence
         if self.web_viewer_integration:
