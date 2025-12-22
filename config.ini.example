@@ -805,6 +805,40 @@ health_check_interval = 30
 # Health check grace period (consecutive failures before warning)
 health_check_grace_period = 2
 
+[MapUploader]
+# Enable map uploader service
+# Uploads node adverts (repeaters, room servers, sensors) to map.meshcore.dev
+# CHAT adverts are skipped (only non-CHAT adverts are uploaded)
+# Adverts without GPS coordinates or with 0,0 coordinates are skipped
+# Uses your device's radio parameters (freq, cr, sf, bw) for all uploads
+# true: Enable map uploader service
+# false: Map uploader disabled (default)
+enabled = false
+
+# API endpoint URL
+# The map.meshcore.dev API endpoint for uploading node adverts
+# Default: https://map.meshcore.dev/api/v1/uploader/node
+api_url = https://map.meshcore.dev/api/v1/uploader/node
+
+# Private key file path (optional)
+# Path to file containing device private key for signing uploads
+# If not provided, the service will attempt to fetch the private key from the device
+# Supports 64-byte orlp format (128 hex chars) or 32-byte seed (64 hex chars)
+# Required only if device doesn't support private key export
+private_key_path = 
+
+# Minimum time between re-uploads of same node (seconds)
+# Prevents uploading the same node too frequently to avoid API spam
+# Only nodes with timestamps newer than last upload + this interval will be uploaded
+# Default: 3600 (1 hour)
+min_reupload_interval = 3600
+
+# Verbose logging
+# Enable detailed debug logging including upload data and signature details
+# true: Show detailed debug information (useful for troubleshooting)
+# false: Standard logging (default)
+verbose = false
+
 [Weather_Service]
 # Enable weather service
 # true: Enable scheduled weather forecasts and alert monitoring
