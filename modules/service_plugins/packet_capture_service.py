@@ -536,8 +536,11 @@ class PacketCaptureService(BaseServicePlugin):
         # 4. Try to get from bot's recent_rf_data cache (if message_handler has processed it)
         # Note: The bot stores full raw_hex (with framing bytes) for packet_prefix, but we use stripped raw_hex
         # So we need to use the full raw_hex from payload for prefix matching
+        # Optimized: Use indexed rf_data_by_pubkey for O(1) lookup instead of linear search
         if packet_hash == '0000000000000000' and hasattr(self.bot, 'message_handler'):
             try:
+                message_handler = self.bot.message_handler
+                
                 # Get full raw_hex from payload for prefix matching (bot uses full raw_hex for packet_prefix)
                 full_raw_hex = payload.get('raw_hex', '')
                 if full_raw_hex:
@@ -547,9 +550,23 @@ class PacketCaptureService(BaseServicePlugin):
                     clean_raw_hex_for_lookup = raw_hex.replace('0x', '')
                     packet_prefix = clean_raw_hex_for_lookup[:32] if len(clean_raw_hex_for_lookup) >= 32 else clean_raw_hex_for_lookup
                 
-                # Check recent_rf_data for matching packet
-                if hasattr(self.bot.message_handler, 'recent_rf_data'):
-                    for rf_data in self.bot.message_handler.recent_rf_data:
+                # Use indexed lookup (O(1)) instead of linear search (O(n))
+                if hasattr(message_handler, 'rf_data_by_pubkey') and packet_prefix:
+                    rf_data_list = message_handler.rf_data_by_pubkey.get(packet_prefix, [])
+                    # Check most recent entries first (last in list, since they're appended in order)
+                    for rf_data in reversed(rf_data_list):
+                        if 'packet_hash' in rf_data:
+                            packet_hash = rf_data['packet_hash']
+                            break
+                        elif 'routing_info' in rf_data:
+                            routing_info = rf_data.get('routing_info', {})
+                            if isinstance(routing_info, dict) and 'packet_hash' in routing_info:
+                                packet_hash = routing_info['packet_hash']
+                                break
+                
+                # Fallback to linear search only if indexed lookup not available (backward compatibility)
+                if packet_hash == '0000000000000000' and hasattr(message_handler, 'recent_rf_data'):
+                    for rf_data in message_handler.recent_rf_data:
                         # Match by packet_prefix (bot uses full raw_hex for this)
                         if rf_data.get('packet_prefix') == packet_prefix:
                             if 'packet_hash' in rf_data:
@@ -1253,11 +1270,13 @@ class PacketCaptureService(BaseServicePlugin):
                 else:
                     return {"model": "unknown", "version": "unknown"}
             
-            # Return cached info if available and device is not connected
-            if self.cached_firmware_info and (not self.meshcore or not self.meshcore.is_connected):
-                self.logger.debug("Using cached firmware info")
+            # Always use cached info if available - firmware info doesn't change during runtime
+            if self.cached_firmware_info:
+                if self.debug:
+                    self.logger.debug("Using cached firmware info")
                 return self.cached_firmware_info
             
+            # Only query if we don't have cached info
             if not self.meshcore or not self.meshcore.is_connected:
                 return {"model": "unknown", "version": "unknown"}
             

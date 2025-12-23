@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import hashlib
+import time
 from typing import Optional, Dict, Any
 
 # Import meshcore
@@ -123,6 +124,8 @@ class MapUploaderService(BaseServicePlugin):
         self.connected = False
         
         # Track seen adverts: {pubkey: last_timestamp}
+        # This prevents duplicate uploads and replay attacks
+        # We'll periodically clean old entries to prevent unbounded growth
         self.seen_adverts: Dict[str, int] = {}
         
         # Device keys and info
@@ -138,6 +141,10 @@ class MapUploaderService(BaseServicePlugin):
         
         # Exit flag
         self.should_exit = False
+        
+        # Cleanup tracking
+        self._last_cleanup_time = 0
+        self._cleanup_interval = 3600  # Clean up every hour
         
         self.logger.info("Map uploader service initialized")
     
@@ -238,6 +245,15 @@ class MapUploaderService(BaseServicePlugin):
         if self.http_session:
             await self.http_session.close()
             self.http_session = None
+        
+        # Clear seen_adverts to free memory
+        self.seen_adverts.clear()
+        
+        # Close file handlers
+        for handler in self.logger.handlers[:]:
+            if isinstance(handler, logging.FileHandler):
+                handler.close()
+                self.logger.removeHandler(handler)
         
         self.logger.info("Map uploader service stopped")
     
@@ -357,6 +373,53 @@ class MapUploaderService(BaseServicePlugin):
         # Note: meshcore library handles subscription cleanup automatically
         self.event_subscriptions = []
     
+    async def _cleanup_old_seen_adverts(self, current_timestamp: int):
+        """Clean up old entries from seen_adverts to prevent unbounded memory growth"""
+        current_time = time.time()
+        
+        # Only cleanup periodically (not on every packet)
+        if current_time - self._last_cleanup_time < self._cleanup_interval:
+            return
+        
+        self._last_cleanup_time = current_time
+        
+        # Remove entries older than min_reupload_interval * 2
+        # This keeps recent entries but removes very old ones
+        cutoff_timestamp = current_timestamp - (self.min_reupload_interval * 2)
+        
+        # Count entries before cleanup
+        initial_count = len(self.seen_adverts)
+        
+        # Remove old entries
+        keys_to_remove = [
+            pubkey for pubkey, last_ts in self.seen_adverts.items()
+            if last_ts < cutoff_timestamp
+        ]
+        
+        for pubkey in keys_to_remove:
+            del self.seen_adverts[pubkey]
+        
+        removed_count = len(keys_to_remove)
+        
+        if removed_count > 0:
+            self.logger.debug(
+                f"Cleaned up {removed_count} old seen_adverts entries "
+                f"({initial_count} -> {len(self.seen_adverts)})"
+            )
+        
+        # Safety limit: if dictionary still grows too large, use more aggressive cleanup
+        if len(self.seen_adverts) > 10000:
+            # Keep only the most recent 5000 entries
+            sorted_entries = sorted(
+                self.seen_adverts.items(),
+                key=lambda x: x[1],
+                reverse=True
+            )
+            self.seen_adverts = dict(sorted_entries[:5000])
+            self.logger.warning(
+                f"seen_adverts grew too large, trimmed to 5000 most recent entries"
+            )
+    
     async def _handle_rx_log_data(self, event, metadata=None):
         """Handle RX log data events"""
         try:
@@ -463,6 +526,9 @@ class MapUploaderService(BaseServicePlugin):
             
             # Update seen adverts
             self.seen_adverts[pub_key] = timestamp
+            
+            # Periodically clean up old entries to prevent unbounded memory growth
+            await self._cleanup_old_seen_adverts(timestamp)
             
         except Exception as e:
             self.logger.error(f"Error processing packet: {e}", exc_info=True)

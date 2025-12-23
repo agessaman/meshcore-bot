@@ -560,18 +560,51 @@ class WxCommand(BaseCommand):
             
             # If current is Tonight and we haven't found Tomorrow yet, look for next day's periods
             if is_current_tonight and not tomorrow_period:
-                # Look for periods after Tonight (next day)
-                for i, period in enumerate(forecast):
-                    if i > 0:  # Skip current period
-                        period_name = period.get('name', '').lower()
-                        # Look for tomorrow, next day, or day names
-                        if any(word in period_name for word in ['tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
-                            tomorrow_period = (i, period)
-                            break
+                # If today_period is a day name (not "Today"), look for the next period after it
+                if today_period:
+                    period_name_lower = today_period[1].get('name', '').lower()
+                    day_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+                    if any(day in period_name_lower for day in day_names) and 'today' not in period_name_lower:
+                        # today_period is actually tomorrow's daytime period - look for the night period after it
+                        today_period_index = today_period[0]
+                        # Look for the next period after today_period (should be the night period for that day)
+                        for i, period in enumerate(forecast):
+                            if i > today_period_index:  # Look for periods after today_period
+                                period_name = period.get('name', '').lower()
+                                # Look for the night period for the same day, or the next day
+                                if any(word in period_name for word in ['night', 'tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
+                                    tomorrow_period = (i, period)
+                                    break
+                        # If we didn't find a night period, use today_period as tomorrow_period
+                        if not tomorrow_period:
+                            tomorrow_period = today_period
+                    else:
+                        # Look for periods after Tonight (next day)
+                        for i, period in enumerate(forecast):
+                            if i > 0:  # Skip current period
+                                period_name = period.get('name', '').lower()
+                                # Skip if this period is already set as today_period (avoid duplicates)
+                                if today_period and today_period[0] == i:
+                                    continue
+                                # Look for tomorrow, next day, or day names
+                                if any(word in period_name for word in ['tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
+                                    tomorrow_period = (i, period)
+                                    break
+                else:
+                    # Look for periods after Tonight (next day)
+                    for i, period in enumerate(forecast):
+                        if i > 0:  # Skip current period
+                            period_name = period.get('name', '').lower()
+                            # Look for tomorrow, next day, or day names
+                            if any(word in period_name for word in ['tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
+                                tomorrow_period = (i, period)
+                                break
             
             # If current is a night period, prioritize adding Today (the upcoming daytime)
+            # When today_period is a day name (like "Tuesday"), we still add it as tomorrow's daytime period
             if is_current_night and today_period:
                 period = today_period[1]
+                # Always add today_period - it represents tomorrow's daytime when current is Tonight
                 period_name = self.abbreviate_noaa(period.get('name', 'Today'))
                 period_temp = period.get('temperature', '')
                 period_short = period.get('shortForecast', '')
@@ -756,10 +789,17 @@ class WxCommand(BaseCommand):
                         period_str = self._add_period_details(period_str, period_detailed, current_weather_len, max_chars)
                     
                     # Only add if we have space (using display width, prioritize current period)
-                    # Be more conservative - only add if current period is reasonable length
+                    # Be more aggressive about adding tomorrow_period when current is Tonight and we have space
                     max_chars = 128 if (is_current_tonight or is_current_night) else 130
-                    if current_weather_len < 110 and self._count_display_width(weather + period_str) <= max_chars:
-                        weather += period_str
+                    # If current is Tonight and we have plenty of space, be more lenient with the length check
+                    if is_current_tonight or is_current_night:
+                        # Allow adding tomorrow_period if we're under 120 chars (more lenient than 110)
+                        if current_weather_len < 120 and self._count_display_width(weather + period_str) <= max_chars:
+                            weather += period_str
+                    else:
+                        # For non-night periods, use the stricter check
+                        if current_weather_len < 110 and self._count_display_width(weather + period_str) <= max_chars:
+                            weather += period_str
             
             return weather, weather_json
             
@@ -2949,6 +2989,8 @@ class WxCommand(BaseCommand):
         # Weather condition emojis
         if any(word in condition_lower for word in ['sunny', 'clear']):
             return "☀️"
+        elif any(word in condition_lower for word in ['heavy rain', 'heavy showers', 'excessive rain']):
+            return "🌧️"  # Cloud with rain - more rain, less sun
         elif any(word in condition_lower for word in ['cloudy', 'overcast']):
             return "☁️"
         elif any(word in condition_lower for word in ['partly cloudy', 'mostly cloudy']):
