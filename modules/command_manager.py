@@ -135,6 +135,7 @@ class CommandManager:
                 path=message.path or "Unknown",
                 timestamp=time_str,
                 snr=message.snr or "Unknown",
+                elapsed=message.elapsed or "Unknown",
                 rssi=message.rssi or "Unknown"
             )
         except (KeyError, ValueError):
