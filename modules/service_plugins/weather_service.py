@@ -637,9 +637,22 @@ class WeatherService(BaseServicePlugin):
                 
                 client.on_message = on_message
                 
-                # Connect and subscribe
-                client.connect(broker_host, broker_port, 60)
-                client.subscribe(topic)
+                # Connect and subscribe (non-blocking to avoid blocking event loop)
+                loop = asyncio.get_event_loop()
+                try:
+                    await loop.run_in_executor(None, client.connect, broker_host, broker_port, 60)
+                except Exception as connect_error:
+                    # Connection failed, but don't block - will retry on next cycle
+                    self.logger.debug(f"Initial connect() call failed (non-blocking): {connect_error}")
+                    raise  # Re-raise to trigger retry logic
+                
+                # Subscribe is non-blocking, but wrap it anyway for consistency
+                try:
+                    client.subscribe(topic)
+                except Exception as subscribe_error:
+                    self.logger.debug(f"Subscribe() call failed: {subscribe_error}")
+                    raise
+                
                 client.loop_start()
                 
                 self.logger.info(f"Connected to Blitzortung MQTT, subscribed to {topic}")

@@ -1030,10 +1030,22 @@ class PacketCaptureService(BaseServicePlugin):
                         ws_path = broker_config.get('websocket_path', '/mqtt')
                         self.logger.debug(f"Connecting to MQTT broker {host}:{port} via WebSockets (path: {ws_path}, TLS: {broker_config.get('use_tls', False)})")
                         # For WebSockets, connect without path parameter (path set via ws_set_options)
-                        client.connect(host, port, keepalive=60)
+                        # Run connect in executor to avoid blocking the event loop
+                        loop = asyncio.get_event_loop()
+                        try:
+                            await loop.run_in_executor(None, client.connect, host, port, 60)
+                        except Exception as connect_error:
+                            # Connection failed, but don't block - let loop_start handle retries
+                            self.logger.debug(f"Initial connect() call failed (non-blocking): {connect_error}")
                     else:
                         self.logger.debug(f"Connecting to MQTT broker {host}:{port} via TCP (TLS: {broker_config.get('use_tls', False)})")
-                        client.connect(host, port, keepalive=60)
+                        # Run connect in executor to avoid blocking the event loop
+                        loop = asyncio.get_event_loop()
+                        try:
+                            await loop.run_in_executor(None, client.connect, host, port, 60)
+                        except Exception as connect_error:
+                            # Connection failed, but don't block - let loop_start handle retries
+                            self.logger.debug(f"Initial connect() call failed (non-blocking): {connect_error}")
                     
                     # Start network loop (non-blocking)
                     client.loop_start()
@@ -1634,10 +1646,15 @@ class PacketCaptureService(BaseServicePlugin):
                                     except Exception as e:
                                         self.logger.debug(f"Error renewing auth token for {broker_host}: {e}")
                             
-                            # Attempt reconnection
+                            # Attempt reconnection (non-blocking to avoid blocking event loop)
                             host = config['host']
                             port = config['port']
-                            client.reconnect()
+                            loop = asyncio.get_event_loop()
+                            try:
+                                await loop.run_in_executor(None, client.reconnect)
+                            except Exception as reconnect_error:
+                                # Reconnection failed, but don't block - will retry on next cycle
+                                self.logger.debug(f"Reconnect() call failed (non-blocking): {reconnect_error}")
                             
                             # Give it a moment to connect
                             await asyncio.sleep(2)
