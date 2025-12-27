@@ -100,6 +100,9 @@ class WeatherService(BaseServicePlugin):
         # Check if using sunrise/sunset
         self.use_sunrise_sunset = self.weather_alarm_time.lower() in ['sunrise', 'sunset']
         
+        # Cache for location name (to avoid repeated reverse geocoding)
+        self._cached_location_name: Optional[str] = None
+        
         self.logger.info(f"Weather service initialized: position=({self.my_position_lat}, {self.my_position_lon}), alarm={self.weather_alarm_time}")
     
     def _create_retry_session(self) -> requests.Session:
@@ -381,8 +384,38 @@ class WeatherService(BaseServicePlugin):
             # Temperature unit symbol
             temp_symbol = "°F" if self.temperature_unit == 'fahrenheit' else "°C"
             
-            # Format location (use coordinates if no better name available)
-            location_name = f"{self.my_position_lat:.2f},{self.my_position_lon:.2f}"
+            # Get location name (cached to avoid repeated API calls)
+            if self._cached_location_name is None:
+                try:
+                    from ..utils import rate_limited_nominatim_reverse, format_location_for_display
+                    coordinates_str = f"{self.my_position_lat}, {self.my_position_lon}"
+                    location = await rate_limited_nominatim_reverse(self.bot, coordinates_str, timeout=5)
+                    
+                    if location and hasattr(location, 'raw'):
+                        address = location.raw.get('address', {})
+                        city = (address.get('city') or 
+                               address.get('town') or 
+                               address.get('village') or 
+                               address.get('municipality') or
+                               address.get('suburb') or
+                               None)
+                        state = (address.get('state') or 
+                                address.get('province') or 
+                                address.get('region') or
+                                None)
+                        country = address.get('country')
+                        location_name = format_location_for_display(city, state, country)
+                        if not location_name:
+                            location_name = f"{self.my_position_lat:.2f},{self.my_position_lon:.2f}"
+                    else:
+                        location_name = f"{self.my_position_lat:.2f},{self.my_position_lon:.2f}"
+                    self._cached_location_name = location_name
+                except Exception as e:
+                    self.logger.debug(f"Error reverse geocoding location: {e}")
+                    location_name = f"{self.my_position_lat:.2f},{self.my_position_lon:.2f}"
+                    self._cached_location_name = location_name
+            else:
+                location_name = self._cached_location_name
             
             # Format current forecast
             forecast_text = f"{location_name}: {weather_emoji}{weather_desc} {temp}{temp_symbol}"
@@ -812,7 +845,7 @@ class WeatherService(BaseServicePlugin):
         try:
             # Use reverse geocoding if available in utils
             from ..utils import rate_limited_nominatim_reverse_sync
-            location = rate_limited_nominatim_reverse_sync(self.bot, lat, lon, timeout=5)
+            location = rate_limited_nominatim_reverse_sync(self.bot, f"{lat}, {lon}", timeout=5)
             if location:
                 # Extract city/town name
                 if isinstance(location, dict):
