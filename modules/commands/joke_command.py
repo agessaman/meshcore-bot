@@ -77,6 +77,10 @@ class JokeCommand(BaseCommand):
     
     def can_execute(self, message: MeshMessage) -> bool:
         """Override cooldown check to be per-user instead of per-command-instance"""
+        # Check channel access (standardized channel override)
+        if not self.is_channel_allowed(message):
+            return False
+        
         # Check if joke command is enabled
         if not self.joke_enabled:
             return False

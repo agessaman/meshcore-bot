@@ -12,6 +12,7 @@ import pytz
 import sqlite3
 import json
 from typing import Dict, Tuple
+from pathlib import Path
 
 
 class MessageScheduler:
@@ -359,4 +360,6 @@ class MessageScheduler:
                         self.logger.error(f"Error updating operation status: {update_error}")
         
         except Exception as e:
+            db_path = getattr(self.bot.db_manager, 'db_path', 'unknown')
             self.logger.error(f"Error in _process_channel_operations: {e}")
+            self.logger.error(f"Database path: {db_path} (exists: {Path(db_path).exists() if isinstance(db_path, str) else False})")

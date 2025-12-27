@@ -1070,6 +1070,7 @@ class WeatherService(BaseServicePlugin):
         expires = alert.get('expires', '')
         office = alert.get('office', '')
         link_url = alert.get('link', '')
+        area_desc = alert.get('area_desc', '')
         
         # Get severity emoji
         severity_emoji = {
@@ -1116,6 +1117,33 @@ class WeatherService(BaseServicePlugin):
                     result += f"{event_short} {event_type_abbrev}"
             else:
                 result += event_type_abbrev
+            
+            # Add location (area description) if available - compact format
+            if area_desc:
+                # Extract first location from area_desc (often contains multiple locations)
+                # Format: "Seattle, WA" or "King County; Snohomish County" etc.
+                locations = [loc.strip() for loc in area_desc.split(';')]
+                first_location = locations[0]
+                
+                # Try to extract just city/area name if it's long
+                # e.g., "Seattle, WA" -> "Seattle" or "King County" -> "King"
+                if ',' in first_location:
+                    # Has state/country - take just the city part
+                    location_parts = first_location.split(',')
+                    location_short = location_parts[0].strip()
+                else:
+                    # No comma, might be "King County" -> take first word
+                    location_words = first_location.split()
+                    if len(location_words) > 1 and location_words[-1].lower() in ['county', 'parish', 'borough']:
+                        location_short = location_words[0]
+                    else:
+                        location_short = first_location
+                
+                # Limit location length to keep message compact
+                if len(location_short) > 20:
+                    location_short = location_short[:20]
+                
+                result += f" {location_short}"
             
             # Add expiration time if available
             if expires:
@@ -1354,10 +1382,17 @@ class WeatherService(BaseServicePlugin):
             return ""
         
         try:
-            # Use is.gd URL shortener API (URL-encode the target URL)
+            # Use is.gd URL shortener API
+            # Run the synchronous request in a thread pool to avoid blocking
+            loop = asyncio.get_event_loop()
             encoded_url = quote(url, safe='')
             shortener_url = f"https://is.gd/create.php?format=simple&url={encoded_url}"
-            response = self.api_session.get(shortener_url, timeout=5)
+            
+            # Run the synchronous request in executor to avoid blocking
+            response = await loop.run_in_executor(
+                None,
+                lambda: self.api_session.get(shortener_url, timeout=5)
+            )
             
             if response.ok:
                 short_url = response.text.strip()
@@ -1366,8 +1401,21 @@ class WeatherService(BaseServicePlugin):
                 if short_url.startswith('http'):
                     return short_url
                 else:
-                    # Error message from is.gd
+                    # Error message from is.gd - log it
                     self.logger.debug(f"is.gd returned error: {short_url}")
+                    # Try alternative: use v.gd (is.gd's alternative)
+                    try:
+                        alt_url = f"https://v.gd/create.php?format=simple&url={encoded_url}"
+                        alt_response = await loop.run_in_executor(
+                            None,
+                            lambda: self.api_session.get(alt_url, timeout=5)
+                        )
+                        if alt_response.ok:
+                            alt_short = alt_response.text.strip()
+                            if alt_short.startswith('http'):
+                                return alt_short
+                    except Exception:
+                        pass
                     return ""
             else:
                 self.logger.debug(f"Error shortening URL: HTTP {response.status_code}")

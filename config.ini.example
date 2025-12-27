@@ -198,6 +198,22 @@ dadjoke_enabled = true
 # true: Split long jokes into multiple messages
 long_jokes = false
 
+[Joke_Command]
+# Channels where joke command is allowed
+# IMPORTANT: Leave commented out (or omit entirely) to use global monitor_channels (default behavior)
+# If uncommented with empty value (channels = ), command will be DM-only
+# Comma-separated list to restrict to specific channels (only joke command works there)
+# Example: channels = #jokes,#fun (only joke command works in these channels)
+# channels = general,#bot,#jokes
+
+[DadJoke_Command]
+# Channels where dadjoke command is allowed
+# IMPORTANT: Leave commented out (or omit entirely) to use global monitor_channels (default behavior)
+# If uncommented with empty value (channels = ), command will be DM-only
+# Comma-separated list to restrict to specific channels (only dadjoke command works there)
+# Example: channels = #jokes,#fun (only dadjoke command works in these channels)
+# channels = general,#bot,#jokes
+
 [Keywords]
 # Keyword-response pairs (keyword = response format)
 # Available fields: {sender}, {connection_info}, {snr}, {timestamp}, {path}, {path_distance}, {firstlast_distance}

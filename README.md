@@ -143,74 +143,19 @@ colored_output = true             # Enable colored console output
 python meshcore_bot.py
 ```
 
-
 ### Available Commands
 
-The bot responds to these commands:
+For a comprehensive list of all available commands with examples and detailed explanations, see [COMMANDS.md](COMMANDS.md).
 
-**Basic Commands:**
-- `test` or `t` - Test message response (can include optional phrase: `test <phrase>`)
-- `ping` - Ping/pong response
-- `help` - Show available commands (use `help <command>` for command details)
-- `hello` - Greeting response (also responds to: hi, hey, howdy, greetings, etc.)
-- `cmd` - List available commands in compact format
-
-**Information Commands:**
-- `channels` - List hashtag channels (use `channels` for general, `channels list` for all categories, `channels <category>` for specific categories, `channels #channel` for specific channel info)
-- `wx <zipcode>` - Weather information for US zip code (also: `weather`, `wxa`, `wxalert`)
-- `gwx <location>` - Global weather for any location worldwide (also: `globalweather`, `gwxa`)
-- `aqi <location>` - Air quality index (usage: `aqi seattle`, `aqi greenwood`, `aqi vancouver canada`, `aqi 47.6,-122.3`, or `aqi help`)
-- `sun` - Sunrise/sunset times
-- `moon` - Moon phase and times
-- `solar` - Solar conditions and HF band status
-- `solarforecast` or `sf` - Solar panel production forecast (usage: `sf <location|repeater_name|coordinates|zipcode> [panel_size] [azimuth, 0=south] [angle]`)
-- `hfcond` - HF band conditions
-- `satpass <NORAD>` - Satellite pass information (default: radio passes, all passes above horizon)
-- `satpass <NORAD> visual` - Visual passes only (must be visually observable)
-- `satpass <shortcut>` - Use shortcuts like `iss`, `hst`, `hubble`, `goes18`, `tiangong`
-
-**Emergency Commands:**
-- `alert <city|zipcode|street city|lat,lon|county> [all]` - Get active emergency incidents (e.g., `alert seattle`, `alert 98101`, `alert seattle all`)
-
-**Gaming Commands:**
-- `dice` - Roll dice (d6 by default, or specify like `dice d20`, `dice 2d6`)
-- `roll` - Roll random number (1-100 by default, or specify like `roll 50`)
-
-**Entertainment Commands:**
-- `joke` - Get a random joke (use `joke [category]` for specific category)
-- `dadjoke` - Get a dad joke from icanhazdadjoke.com
-- `hacker` - Responds to Linux commands (`sudo`, `ps aux`, `grep`, `ls -l`, etc.) with supervillain mainframe errors
-
-**Sports Commands:**
-- `sports` - Get scores for default teams
-- `sports <team>` - Get scores for specific team
-- `sports <league>` - Get scores for league (nfl, mlb, nba, etc.)
-
-**MeshCore Utility Commands:**
-- `path` or `decode` or `route` - Decode message routing path
-- `prefix <XX>` - Look up repeaters by two-character prefix (e.g., `prefix 1A`)
-  - `prefix refresh` - Refresh prefix cache
-  - `prefix free` or `prefix available` - Show available prefixes
-  - `prefix <XX> all` - Include all repeaters (not just active)
-- `stats` - Show bot usage statistics for past 24 hours
-  - `stats messages` - Message statistics
-  - `stats channels` - Channel statistics
-  - `stats paths` - Path statistics
-- `multitest` or `mt` - Listens for 6 seconds and collects all unique paths from incoming messages
-
-**Management Commands (DM only):**
-- `repeater` or `repeaters` or `rp` - Manage repeater contacts (DM only, requires ACL permissions)
-  - `repeater scan` - Scan and catalog new repeaters
-  - `repeater list` - List repeater contacts (use `--all` to show purged ones)
-  - `repeater purge <days>` - Purge repeaters older than specified days
-  - `repeater purge <name>` - Purge specific repeater by name
-  - `repeater purge all` - Purge all repeaters
-  - `repeater restore <name>` - Restore a previously purged repeater
-  - `repeater stats` - Show repeater management statistics
-  - `repeater status` - Show contact list status and limits
-  - `repeater manage` - Auto-manage contact list (use `--dry-run` to preview)
-  - See `help repeater` for full list of subcommands
-- `advert` - Send network flood advert (DM only, 1hr cooldown)
+Quick reference:
+- **Basic:** `test`, `ping`, `help`, `hello`, `cmd`
+- **Information:** `wx`, `gwx`, `aqi`, `sun`, `moon`, `solar`, `solarforecast`, `hfcond`, `satpass`, `channels`
+- **Emergency:** `alert`
+- **Gaming:** `dice`, `roll`
+- **Entertainment:** `joke`, `dadjoke`, `hacker`
+- **Sports:** `sports`
+- **MeshCore Utility:** `path`, `prefix`, `stats`, `multitest`
+- **Management (DM only):** `repeater`, `advert`, `feed`
 
 ## Message Response Templates
 

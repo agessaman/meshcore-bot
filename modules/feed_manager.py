@@ -13,6 +13,7 @@ import html
 import re
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, Tuple
+from pathlib import Path
 import sqlite3
 import feedparser
 from urllib.parse import urlparse
@@ -1248,5 +1249,7 @@ class FeedManager:
                     # Don't mark as sent, will retry later
         
         except Exception as e:
+            db_path = getattr(self, 'db_path', 'unknown')
             self.logger.error(f"Error processing message queue: {e}")
+            self.logger.error(f"Database path: {db_path} (exists: {Path(db_path).exists() if isinstance(db_path, str) else False})")
 

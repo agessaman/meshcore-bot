@@ -136,6 +136,26 @@ class BaseCommand(ABC):
         """Get help text for this command"""
         return self.description or "No help available for this command."
     
+    def _derive_config_section_name(self) -> str:
+        """
+        Derive config section name from command name.
+        
+        Handles camelCase names like "dadjoke" -> "DadJoke_Command"
+        Regular names like "sports" -> "Sports_Command"
+        """
+        # Special handling for camelCase names
+        camel_case_map = {
+            'dadjoke': 'DadJoke',
+        }
+        
+        if self.name in camel_case_map:
+            base_name = camel_case_map[self.name]
+        else:
+            # Use title() for regular names
+            base_name = self.name.title().replace('_', '_')
+        
+        return f"{base_name}_Command"
+    
     def _load_allowed_channels(self) -> Optional[List[str]]:
         """
         Load allowed channels from config.
@@ -150,7 +170,8 @@ class BaseCommand(ABC):
         """
         # Derive section name from command name
         # Convert "sports" -> "Sports_Command", "greeter" -> "Greeter_Command", etc.
-        section_name = f"{self.name.title().replace('_', '_')}_Command"
+        # Handle camelCase names like "dadjoke" -> "DadJoke_Command"
+        section_name = self._derive_config_section_name()
         
         # Try to get channels config
         channels_str = self.get_config_value(section_name, 'channels', fallback=None, value_type='str')
