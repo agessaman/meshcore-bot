@@ -100,9 +100,16 @@ def validate_safe_path(file_path: str, base_dir: str = '.', allow_absolute: bool
         ValueError: If path is unsafe or attempts traversal
     """
     try:
-        # Resolve absolute paths
+        # Resolve base directory to absolute path
         base = Path(base_dir).resolve()
-        target = Path(file_path).resolve()
+        
+        # Resolve target path relative to base_dir (not current working directory)
+        # If file_path is absolute, use it directly; otherwise join with base_dir
+        if Path(file_path).is_absolute():
+            target = Path(file_path).resolve()
+        else:
+            # Join with base_dir first, then resolve to handle relative paths correctly
+            target = (base / file_path).resolve()
         
         # If absolute paths are not allowed, ensure target is within base
         if not allow_absolute:
