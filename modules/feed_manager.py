@@ -11,6 +11,7 @@ import time
 import hashlib
 import html
 import re
+import os
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, Tuple
 from pathlib import Path
@@ -272,7 +273,7 @@ class FeedManager:
             
             # Query database for all processed item IDs for this feed
             try:
-                with sqlite3.connect(self.db_path) as conn:
+                with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                     cursor = conn.cursor()
                     cursor.execute('''
                         SELECT DISTINCT item_id FROM feed_activity
@@ -431,7 +432,7 @@ class FeedManager:
             
             # Query database for all processed item IDs for this feed
             try:
-                with sqlite3.connect(self.db_path) as conn:
+                with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                     cursor = conn.cursor()
                     cursor.execute('''
                         SELECT DISTINCT item_id FROM feed_activity
@@ -1181,7 +1182,8 @@ class FeedManager:
         """Process queued feed messages and send them at configured intervals"""
         try:
             # Get all unsent messages, ordered by priority and queue time
-            with sqlite3.connect(self.db_path) as conn:
+            db_path = str(self.db_path)  # Ensure string, not Path object
+            with sqlite3.connect(db_path, timeout=30.0) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
                 cursor.execute('''
@@ -1225,7 +1227,7 @@ class FeedManager:
                     
                     if success:
                         # Mark as sent
-                        with sqlite3.connect(self.db_path) as conn:
+                        with sqlite3.connect(db_path, timeout=30.0) as conn:
                             cursor = conn.cursor()
                             cursor.execute('''
                                 UPDATE feed_message_queue
@@ -1250,6 +1252,15 @@ class FeedManager:
         
         except Exception as e:
             db_path = getattr(self, 'db_path', 'unknown')
+            db_path_str = str(db_path) if db_path != 'unknown' else 'unknown'
             self.logger.error(f"Error processing message queue: {e}")
-            self.logger.error(f"Database path: {db_path} (exists: {Path(db_path).exists() if isinstance(db_path, str) else False})")
+            if db_path_str != 'unknown':
+                path_obj = Path(db_path_str)
+                self.logger.error(f"Database path: {db_path_str} (exists: {path_obj.exists()}, readable: {os.access(db_path_str, os.R_OK) if path_obj.exists() else False}, writable: {os.access(db_path_str, os.W_OK) if path_obj.exists() else False})")
+                # Check parent directory permissions
+                if path_obj.exists():
+                    parent = path_obj.parent
+                    self.logger.error(f"Parent directory: {parent} (exists: {parent.exists()}, writable: {os.access(str(parent), os.W_OK) if parent.exists() else False})")
+            else:
+                self.logger.error(f"Database path: {db_path_str}")
 

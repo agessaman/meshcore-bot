@@ -11,6 +11,7 @@ import datetime
 import pytz
 import sqlite3
 import json
+import os
 from typing import Dict, Tuple
 from pathlib import Path
 
@@ -260,10 +261,10 @@ class MessageScheduler:
     async def _process_channel_operations(self):
         """Process pending channel operations from the web viewer"""
         try:
-            db_path = self.bot.db_manager.db_path
+            db_path = str(self.bot.db_manager.db_path)  # Ensure string, not Path object
             
             # Get pending operations
-            with sqlite3.connect(db_path) as conn:
+            with sqlite3.connect(db_path, timeout=30.0) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
                 
@@ -322,7 +323,7 @@ class MessageScheduler:
                             error_msg = "Failed to remove channel"
                     
                     # Update operation status
-                    with sqlite3.connect(db_path) as conn:
+                    with sqlite3.connect(db_path, timeout=30.0) as conn:
                         cursor = conn.cursor()
                         if success:
                             cursor.execute('''
@@ -346,7 +347,7 @@ class MessageScheduler:
                     self.logger.error(f"Error processing channel operation {op_id}: {e}")
                     # Mark as failed
                     try:
-                        with sqlite3.connect(db_path) as conn:
+                        with sqlite3.connect(db_path, timeout=30.0) as conn:
                             cursor = conn.cursor()
                             cursor.execute('''
                                 UPDATE channel_operations
@@ -361,5 +362,14 @@ class MessageScheduler:
         
         except Exception as e:
             db_path = getattr(self.bot.db_manager, 'db_path', 'unknown')
+            db_path_str = str(db_path) if db_path != 'unknown' else 'unknown'
             self.logger.error(f"Error in _process_channel_operations: {e}")
-            self.logger.error(f"Database path: {db_path} (exists: {Path(db_path).exists() if isinstance(db_path, str) else False})")
+            if db_path_str != 'unknown':
+                path_obj = Path(db_path_str)
+                self.logger.error(f"Database path: {db_path_str} (exists: {path_obj.exists()}, readable: {os.access(db_path_str, os.R_OK) if path_obj.exists() else False}, writable: {os.access(db_path_str, os.W_OK) if path_obj.exists() else False})")
+                # Check parent directory permissions
+                if path_obj.exists():
+                    parent = path_obj.parent
+                    self.logger.error(f"Parent directory: {parent} (exists: {parent.exists()}, writable: {os.access(str(parent), os.W_OK) if parent.exists() else False})")
+            else:
+                self.logger.error(f"Database path: {db_path_str}")

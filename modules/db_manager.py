@@ -38,7 +38,7 @@ class DBManager:
     def _init_database(self):
         """Initialize the SQLite database with required tables"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
                 
                 # Create geocoding_cache table for weather command optimization
@@ -215,7 +215,7 @@ class DBManager:
     def get_cached_geocoding(self, query: str) -> Tuple[Optional[float], Optional[float]]:
         """Get cached geocoding result for a query"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     SELECT latitude, longitude FROM geocoding_cache 
@@ -236,7 +236,7 @@ class DBManager:
             if not isinstance(cache_hours, int) or cache_hours < 1 or cache_hours > 87600:  # Max 10 years
                 raise ValueError(f"cache_hours must be an integer between 1 and 87600, got: {cache_hours}")
             
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
                 # Use parameter binding instead of string formatting
                 cursor.execute('''
@@ -252,7 +252,7 @@ class DBManager:
     def get_cached_value(self, cache_key: str, cache_type: str) -> Optional[str]:
         """Get cached value for a key and type"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     SELECT cache_value FROM generic_cache 
@@ -273,7 +273,7 @@ class DBManager:
             if not isinstance(cache_hours, int) or cache_hours < 1 or cache_hours > 87600:  # Max 10 years
                 raise ValueError(f"cache_hours must be an integer between 1 and 87600, got: {cache_hours}")
             
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
                 # Use parameter binding instead of string formatting
                 cursor.execute('''
@@ -308,7 +308,7 @@ class DBManager:
     def cleanup_expired_cache(self):
         """Remove expired cache entries from all cache tables"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
                 
                 # Clean up geocoding cache
@@ -331,7 +331,7 @@ class DBManager:
     def cleanup_geocoding_cache(self):
         """Remove expired geocoding cache entries"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
                 cursor.execute("DELETE FROM geocoding_cache WHERE expires_at < datetime('now')")
                 deleted_count = cursor.rowcount
@@ -344,7 +344,7 @@ class DBManager:
     def get_database_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
                 
                 stats = {}
@@ -380,7 +380,7 @@ class DBManager:
     def vacuum_database(self):
         """Optimize database by reclaiming unused space"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 conn.execute("VACUUM")
                 self.logger.info("Database vacuum completed")
         except Exception as e:
@@ -398,7 +398,7 @@ class DBManager:
             if not re.match(r'^[a-z_][a-z0-9_]*$', table_name):
                 raise ValueError(f"Invalid table name format: {table_name}")
             
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
                 # Table names cannot be parameterized, but we've validated against whitelist
                 cursor.execute(f'CREATE TABLE IF NOT EXISTS {table_name} ({schema})')
@@ -422,7 +422,7 @@ class DBManager:
             # Extra safety: log critical action
             self.logger.warning(f"CRITICAL: Dropping table '{table_name}'")
             
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
                 # Table names cannot be parameterized, but we've validated against whitelist
                 cursor.execute(f'DROP TABLE IF EXISTS {table_name}')
@@ -435,7 +435,7 @@ class DBManager:
     def execute_query(self, query: str, params: Tuple = ()) -> List[Dict]:
         """Execute a custom query and return results as list of dictionaries"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
                 cursor.execute(query, params)
@@ -448,7 +448,7 @@ class DBManager:
     def execute_update(self, query: str, params: Tuple = ()) -> int:
         """Execute an update/insert/delete query and return number of affected rows"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
                 cursor.execute(query, params)
                 conn.commit()
@@ -461,7 +461,7 @@ class DBManager:
     def set_metadata(self, key: str, value: str):
         """Set a metadata value for the bot"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     INSERT OR REPLACE INTO bot_metadata (key, value, updated_at)
@@ -474,7 +474,7 @@ class DBManager:
     def get_metadata(self, key: str) -> Optional[str]:
         """Get a metadata value for the bot"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
                 cursor.execute('SELECT value FROM bot_metadata WHERE key = ?', (key,))
                 result = cursor.fetchone()
