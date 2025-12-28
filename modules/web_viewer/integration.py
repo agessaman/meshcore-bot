@@ -11,6 +11,7 @@ import sys
 import os
 import re
 from pathlib import Path
+from ..security_utils import validate_safe_path
 
 class BotIntegration:
     """Simple bot integration for web viewer compatibility"""
@@ -35,6 +36,14 @@ class BotIntegration:
             
             # Get database path from config
             db_path = self.bot.config.get('Database', 'path', fallback='bot_data.db')
+            
+            # Validate and resolve database path relative to bot root
+            try:
+                base_dir = str(self.bot.bot_root) if hasattr(self.bot, 'bot_root') else '.'
+                db_path = str(validate_safe_path(db_path, base_dir=base_dir, allow_absolute=False))
+            except ValueError as e:
+                self.bot.logger.warning(f"Invalid database path: {e}, using default: bot_data.db")
+                db_path = 'bot_data.db'
             
             # Connect to database and create table if it doesn't exist
             conn = sqlite3.connect(db_path)
@@ -99,6 +108,13 @@ class BotIntegration:
             
             # Store in database for web viewer to read
             db_path = self.bot.config.get('Database', 'path', fallback='bot_data.db')
+            # Validate and resolve database path relative to bot root
+            try:
+                base_dir = str(self.bot.bot_root) if hasattr(self.bot, 'bot_root') else '.'
+                db_path = str(validate_safe_path(db_path, base_dir=base_dir, allow_absolute=False))
+            except ValueError:
+                # If validation fails, use default (already set above)
+                pass
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
             
@@ -149,6 +165,13 @@ class BotIntegration:
             
             # Store in database for web viewer to read
             db_path = self.bot.config.get('Database', 'path', fallback='bot_data.db')
+            # Validate and resolve database path relative to bot root
+            try:
+                base_dir = str(self.bot.bot_root) if hasattr(self.bot, 'bot_root') else '.'
+                db_path = str(validate_safe_path(db_path, base_dir=base_dir, allow_absolute=False))
+            except ValueError:
+                # If validation fails, use default (already set above)
+                pass
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
             
@@ -176,6 +199,13 @@ class BotIntegration:
             
             # Store in database for web viewer to read
             db_path = self.bot.config.get('Database', 'path', fallback='bot_data.db')
+            # Validate and resolve database path relative to bot root
+            try:
+                base_dir = str(self.bot.bot_root) if hasattr(self.bot, 'bot_root') else '.'
+                db_path = str(validate_safe_path(db_path, base_dir=base_dir, allow_absolute=False))
+            except ValueError:
+                # If validation fails, use default (already set above)
+                pass
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
             
