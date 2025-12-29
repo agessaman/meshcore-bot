@@ -28,10 +28,12 @@ git clone <repository-url>
 cd meshcore-bot
 ```
 
-2. Install dependencies:
+2. Install the package in development mode:
 ```bash
-pip install -r requirements.txt
+pip install -e .
 ```
+
+This installs the bot and all dependencies, creating the `meshcore-bot` and `meshcore-viewer` entry points.
 
 3. Copy and configure the bot:
 ```bash
@@ -41,7 +43,12 @@ cp config.ini.example config.ini
 
 4. Run the bot:
 ```bash
-python3 meshcore_bot.py
+meshcore-bot
+```
+
+Or specify a custom config file:
+```bash
+meshcore-bot --config /path/to/config.ini
 ```
 
 ### Production Installation (Systemd Service)
@@ -68,6 +75,45 @@ sudo systemctl status meshcore-bot
 ```
 
 See [SERVICE-INSTALLATION.md](SERVICE-INSTALLATION.md) for detailed service installation instructions.
+
+### NixOS Installation
+For NixOS users, a flake-based installation is available:
+
+1. Add to your `flake.nix`:
+```nix
+{
+  inputs.meshcore-bot.url = "github:agessaman/meshcore-bot";
+}
+```
+
+2. Import the module in your NixOS configuration:
+```nix
+{
+  imports = [ inputs.meshcore-bot.nixosModules.meshcore-bot ];
+  
+  services.meshcore-bot = {
+    enable = true;
+    settings = {
+      Connection = {
+        connection_type = "serial";
+        serial_port = "/dev/ttyUSB0";
+      };
+      Bot = {
+        bot_name = "MyMeshBot";
+        enabled = true;
+      };
+      # ... additional settings
+    };
+  };
+}
+```
+
+The NixOS module automatically handles:
+- User/group creation (meshcore-bot:meshcore-bot)
+- Serial port access (dialout group)
+- Directory management (/var/lib/meshcore-bot, /var/log/meshcore-bot)
+- Systemd service configuration
+- Security hardening
 
 ## Configuration
 
@@ -140,7 +186,29 @@ colored_output = true             # Enable colored console output
 ### Running the Bot
 
 ```bash
-python meshcore_bot.py
+meshcore-bot
+```
+
+Or with a custom config file:
+```bash
+meshcore-bot --config /path/to/config.ini
+```
+
+### Web Viewer
+
+If enabled in config, the web viewer provides a visual interface for monitoring bot activity:
+
+```bash
+meshcore-viewer --host 127.0.0.1 --port 8080
+```
+
+The web viewer can also be configured to auto-start with the bot:
+```ini
+[Web_Viewer]
+enabled = true
+auto_start = true
+host = 127.0.0.1
+port = 8080
 ```
 
 

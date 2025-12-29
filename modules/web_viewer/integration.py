@@ -389,13 +389,10 @@ class WebViewerIntegration:
     def _run_viewer(self):
         """Run the web viewer in a separate process"""
         try:
-            # Get the path to the web viewer script
-            viewer_script = Path(__file__).parent / "app.py"
-            
-            # Build command
+            # Use the meshcore-viewer entry point instead of calling Python directly
+            # This ensures the wrapper script sets up the correct PYTHONPATH
             cmd = [
-                sys.executable,
-                str(viewer_script),
+                "meshcore-viewer",
                 "--host", self.host,
                 "--port", str(self.port)
             ]

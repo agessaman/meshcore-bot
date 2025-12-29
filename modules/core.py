@@ -57,13 +57,16 @@ class MeshCoreBot:
         # Bot start time for uptime tracking
         self.start_time = time.time()
         
+        # Load security settings
+        self.allow_absolute_paths = self.config.getboolean('Security', 'allow_absolute_paths', fallback=False)
+        
         # Initialize database manager first (needed by plugins)
         db_path = self.config.get('Bot', 'db_path', fallback='meshcore_bot.db')
         
         # Validate database path for security (prevent path traversal)
         # Use explicit bot root directory (where config.ini is located)
         try:
-            db_path = str(validate_safe_path(db_path, base_dir=str(self.bot_root), allow_absolute=False))
+            db_path = str(validate_safe_path(db_path, base_dir=str(self.bot_root), allow_absolute=self.allow_absolute_paths))
         except ValueError as e:
             self.logger.error(f"Invalid database path: {e}")
             self.logger.error("Using default: meshcore_bot.db")
@@ -363,6 +366,13 @@ banned_users =
 1200 = general:Midday status check - all systems operational.
 1800 = general:Evening update - bot status: Good
 
+[Security]
+# Allow absolute paths for database and log files
+# false: Only relative paths allowed (default, more secure)
+# true: Allow absolute paths (required for system-wide installations)
+# This setting affects path validation for db_path and log_file
+allow_absolute_paths = false
+
 [Logging]
 # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
 # DEBUG: Most verbose, shows all details
@@ -568,8 +578,10 @@ use_zulu_time = false
         
         # Validate log file path for security (prevent path traversal)
         # Use explicit bot root directory (where config.ini is located)
+        # Allow absolute paths if configured in Security section
+        allow_absolute = self.config.getboolean('Security', 'allow_absolute_paths', fallback=False)
         try:
-            log_file = str(validate_safe_path(log_file, base_dir=str(self.bot_root), allow_absolute=False))
+            log_file = str(validate_safe_path(log_file, base_dir=str(self.bot_root), allow_absolute=allow_absolute))
         except ValueError as e:
             self.logger.warning(f"Invalid log file path: {e}")
             self.logger.warning("Using default: meshcore_bot.log")
