@@ -181,7 +181,7 @@ class BotDataViewer:
         conn = None
         try:
             # Get database path from config
-            db_path = self.config.get('Database', 'path', fallback='bot_data.db')
+            db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
             
             # Validate and resolve database path relative to bot root
             try:
@@ -398,7 +398,7 @@ class BotDataViewer:
                 cutoff_time = time.time() - (60 * 60)  # 60 minutes ago
                 
                 # Get database path
-                db_path = self.config.get('Database', 'path', fallback='bot_data.db')
+                db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
                 
                 # Validate and resolve database path relative to bot root
                 try:
@@ -1430,7 +1430,7 @@ class BotDataViewer:
                     import json
                     
                     # Get database path
-                    db_path = self.config.get('Database', 'path', fallback='bot_data.db')
+                    db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
                     
                     # Validate and resolve database path relative to bot root
                     try:
@@ -1549,7 +1549,7 @@ class BotDataViewer:
             cutoff_time = time.time() - (days_to_keep * 24 * 60 * 60)
             
             # Get database path
-            db_path = self.config.get('Database', 'path', fallback='bot_data.db')
+            db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
             
             # Validate and resolve database path relative to bot root
             try:
@@ -2036,7 +2036,7 @@ class BotDataViewer:
             
             # Get database file size
             import os
-            db_path = self.config.get('Database', 'path', fallback='bot_data.db')
+            db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
             # Validate and resolve database path relative to bot root
             try:
                 db_path = str(validate_safe_path(db_path, base_dir=str(self.bot_root), allow_absolute=False))
@@ -2098,7 +2098,7 @@ class BotDataViewer:
             
             # Get initial database size
             import os
-            db_path = self.config.get('Database', 'path', fallback='bot_data.db')
+            db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
             # Validate and resolve database path relative to bot root
             try:
                 db_path = str(validate_safe_path(db_path, base_dir=str(self.bot_root), allow_absolute=False))

@@ -35,7 +35,7 @@ class BotIntegration:
             import sqlite3
             
             # Get database path from config
-            db_path = self.bot.config.get('Database', 'path', fallback='bot_data.db')
+            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
             
             # Validate and resolve database path relative to bot root
             try:
@@ -107,7 +107,7 @@ class BotIntegration:
             serializable_data = self._make_json_serializable(packet_data)
             
             # Store in database for web viewer to read
-            db_path = self.bot.config.get('Database', 'path', fallback='bot_data.db')
+            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
             # Validate and resolve database path relative to bot root
             try:
                 base_dir = str(self.bot.bot_root) if hasattr(self.bot, 'bot_root') else '.'
@@ -164,7 +164,7 @@ class BotIntegration:
             serializable_data = self._make_json_serializable(command_data)
             
             # Store in database for web viewer to read
-            db_path = self.bot.config.get('Database', 'path', fallback='bot_data.db')
+            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
             # Validate and resolve database path relative to bot root
             try:
                 base_dir = str(self.bot.bot_root) if hasattr(self.bot, 'bot_root') else '.'
@@ -198,7 +198,7 @@ class BotIntegration:
             serializable_data = self._make_json_serializable(routing_data)
             
             # Store in database for web viewer to read
-            db_path = self.bot.config.get('Database', 'path', fallback='bot_data.db')
+            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
             # Validate and resolve database path relative to bot root
             try:
                 base_dir = str(self.bot.bot_root) if hasattr(self.bot, 'bot_root') else '.'
@@ -229,7 +229,7 @@ class BotIntegration:
             
             cutoff_time = time.time() - (days_to_keep * 24 * 60 * 60)
             
-            db_path = self.bot.config.get('Database', 'path', fallback='bot_data.db')
+            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
             # Validate and resolve database path relative to bot root
             try:
                 base_dir = str(self.bot.bot_root) if hasattr(self.bot, 'bot_root') else '.'

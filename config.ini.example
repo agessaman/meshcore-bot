@@ -108,6 +108,10 @@ startup_advert = false
 # false: Manual mode - no automatic actions, use !repeater commands to manage contacts (default)
 auto_manage_contacts = false
 
+# Database path for main bot database
+# Default: meshcore_bot.db
+db_path = meshcore_bot.db
+
 [Localization]
 # Language code for bot responses (en, es, es-MX, es-ES, fr, de, ja, etc.)
 # Default: en (English)
@@ -735,6 +739,10 @@ debug = false
 # true: Start web viewer automatically when bot starts
 # false: Start web viewer manually (recommended)
 auto_start = false
+
+# Database path for web viewer data
+# Default: bot_data.db
+db_path = bot_data.db
 
 ####################################################################################################
 #                                                                                                  #
