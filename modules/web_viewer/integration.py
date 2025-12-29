@@ -46,7 +46,7 @@ class BotIntegration:
                 db_path = 'bot_data.db'
             
             # Connect to database and create table if it doesn't exist
-            conn = sqlite3.connect(db_path)
+            conn = sqlite3.connect(str(db_path), timeout=30.0)
             cursor = conn.cursor()
             
             # Create packet_stream table with schema matching the INSERT statements
@@ -115,7 +115,7 @@ class BotIntegration:
             except ValueError:
                 # If validation fails, use default (already set above)
                 pass
-            conn = sqlite3.connect(db_path)
+            conn = sqlite3.connect(str(db_path), timeout=30.0)
             cursor = conn.cursor()
             
             # Insert packet data
@@ -172,7 +172,7 @@ class BotIntegration:
             except ValueError:
                 # If validation fails, use default (already set above)
                 pass
-            conn = sqlite3.connect(db_path)
+            conn = sqlite3.connect(str(db_path), timeout=30.0)
             cursor = conn.cursor()
             
             # Insert command data
@@ -206,7 +206,7 @@ class BotIntegration:
             except ValueError:
                 # If validation fails, use default (already set above)
                 pass
-            conn = sqlite3.connect(db_path)
+            conn = sqlite3.connect(str(db_path), timeout=30.0)
             cursor = conn.cursor()
             
             # Insert routing data
@@ -230,7 +230,14 @@ class BotIntegration:
             cutoff_time = time.time() - (days_to_keep * 24 * 60 * 60)
             
             db_path = self.bot.config.get('Database', 'path', fallback='bot_data.db')
-            conn = sqlite3.connect(db_path)
+            # Validate and resolve database path relative to bot root
+            try:
+                base_dir = str(self.bot.bot_root) if hasattr(self.bot, 'bot_root') else '.'
+                db_path = str(validate_safe_path(db_path, base_dir=base_dir, allow_absolute=False))
+            except ValueError:
+                # If validation fails, use default (already set above)
+                pass
+            conn = sqlite3.connect(str(db_path), timeout=30.0)
             cursor = conn.cursor()
             
             # Clean up old packet stream data

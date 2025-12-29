@@ -33,6 +33,10 @@ class BotDataViewer:
         # Setup comprehensive logging
         self._setup_logging()
         
+        # Set bot root directory (project root) for path validation
+        # This is the directory containing the modules folder
+        self.bot_root = Path(os.path.join(os.path.dirname(__file__), '..', '..')).resolve()
+        
         self.app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), 'templates'))
         self.app.config['SECRET_KEY'] = 'meshcore_bot_viewer_secret'
         

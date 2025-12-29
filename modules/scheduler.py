@@ -163,7 +163,7 @@ class MessageScheduler:
             # Get recent activity from message_stats if available
             if info['recent_activity_24h'] == 0:
                 try:
-                    with sqlite3.connect(self.bot.db_manager.db_path) as conn:
+                    with sqlite3.connect(self.bot.db_manager.db_path, timeout=30.0) as conn:
                         cursor = conn.cursor()
                         # Check if message_stats table exists
                         cursor.execute('''
@@ -187,7 +187,7 @@ class MessageScheduler:
             # Query devices first heard in the last 7 days, grouped by role
             # Also calculate devices active in last 30 days (last_heard)
             try:
-                with sqlite3.connect(self.bot.db_manager.db_path) as conn:
+                with sqlite3.connect(self.bot.db_manager.db_path, timeout=30.0) as conn:
                     cursor = conn.cursor()
                     # Check if complete_contact_tracking table exists
                     cursor.execute('''
