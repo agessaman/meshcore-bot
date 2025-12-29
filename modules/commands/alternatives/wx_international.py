@@ -8,7 +8,7 @@ import re
 import requests
 from datetime import datetime, timedelta
 from geopy.geocoders import Nominatim
-from ...utils import rate_limited_nominatim_geocode_sync, rate_limited_nominatim_reverse_sync, get_nominatim_geocoder
+from ...utils import rate_limited_nominatim_geocode_sync, rate_limited_nominatim_reverse_sync, get_nominatim_geocoder, geocode_city_sync
 from ..base_command import BaseCommand
 from ...models import MeshMessage
 
@@ -232,51 +232,40 @@ class GlobalWxCommand(BaseCommand):
             return self.translate('commands.gwx.error', error=str(e))
     
     def geocode_location(self, location: str) -> tuple:
-        """Convert location string to lat/lon with address details"""
+        """Convert location string to lat/lon with address details
+        
+        Uses geocode_city_sync for proper default state/country handling,
+        which prioritizes locations in the configured default state/country.
+        """
         try:
-            # Check cache first
-            cache_key = location.lower().strip()
-            cached_lat, cached_lon = self.db_manager.get_cached_geocoding(cache_key)
-            
-            if cached_lat is not None and cached_lon is not None:
-                self.logger.debug(f"Using cached geocoding for {location}")
-                # Get address details with reverse geocoding
-                try:
-                    reverse_location = rate_limited_nominatim_reverse_sync(
-                        self.bot, f"{cached_lat}, {cached_lon}", timeout=10
-                    )
-                    if reverse_location:
-                        address_info = reverse_location.raw.get('address', {})
-                        # Store the full geocode result for display name
-                        return cached_lat, cached_lon, address_info, reverse_location
-                except Exception:
-                    pass
-                return cached_lat, cached_lon, {}, None
-            
-            # Try geocoding with different strategies
-            geocode_result = None
-            
-            # Strategy 1: Try as-is
-            geocode_result = rate_limited_nominatim_geocode_sync(
-                self.bot, location, timeout=10
+            # Use the shared geocode_city_sync function which properly handles
+            # default state and country for city disambiguation
+            # This ensures "olympia" matches Olympia, WA (not Greece) when default_state=WA
+            lat, lon, address_info = geocode_city_sync(
+                self.bot, location,
+                default_state=self.default_state,
+                default_country=self.default_country,
+                include_address_info=True,
+                timeout=10
             )
             
-            # Strategy 2: If no result and no country specified, try with default country
-            if not geocode_result and ',' not in location:
-                geocode_result = rate_limited_nominatim_geocode_sync(
-                    self.bot, f"{location}, {self.default_country}", timeout=10
-                )
-            
-            if not geocode_result:
+            if lat is None or lon is None:
                 return None, None, None, None
             
-            lat, lon = geocode_result.latitude, geocode_result.longitude
-            address_info = geocode_result.raw.get('address', {})
+            # Get full geocode result for display name formatting
+            # Try reverse geocoding to get the full result object
+            geocode_result = None
+            try:
+                reverse_location = rate_limited_nominatim_reverse_sync(
+                    self.bot, f"{lat}, {lon}", timeout=10
+                )
+                if reverse_location:
+                    geocode_result = reverse_location
+            except Exception:
+                # If reverse geocoding fails, we still have lat/lon and address_info
+                pass
             
-            # Cache the result
-            self.db_manager.cache_geocoding(cache_key, lat, lon)
-            
-            return lat, lon, address_info, geocode_result
+            return lat, lon, address_info or {}, geocode_result
             
         except Exception as e:
             self.logger.error(f"Error geocoding location {location}: {e}")
