@@ -17,6 +17,14 @@ import maidenhead as mh
 from .base_command import BaseCommand
 from ..models import MeshMessage
 
+# Import for delegation when using Open-Meteo provider
+try:
+    from .alternatives.wx_international import GlobalWxCommand
+    WX_INTERNATIONAL_AVAILABLE = True
+except ImportError:
+    WX_INTERNATIONAL_AVAILABLE = False
+    GlobalWxCommand = None
+
 
 class WxCommand(BaseCommand):
     """Handles weather commands with zipcode support"""
@@ -36,28 +44,44 @@ class WxCommand(BaseCommand):
     
     def __init__(self, bot):
         super().__init__(bot)
-        self.url_timeout = 8  # seconds (reduced from 10 for faster failure detection)
-        self.forecast_duration = 3  # days
-        self.num_wx_alerts = 2  # number of alerts to show
-        self.use_metric = False  # Use imperial units by default
-        self.zulu_time = False  # Use local time by default
         
-        # Per-user cooldown tracking
+        # Always initialize user_cooldowns to prevent AttributeError
+        # (even when delegating, some methods might still reference it)
         self.user_cooldowns = {}  # user_id -> last_execution_time
         
-        # Get default state from config for city disambiguation
-        self.default_state = self.bot.config.get('Weather', 'default_state', fallback='WA')
+        # Check weather provider setting - delegate to international command if using Open-Meteo
+        weather_provider = bot.config.get('Weather', 'weather_provider', fallback='noaa').lower()
+        if weather_provider == 'openmeteo' and WX_INTERNATIONAL_AVAILABLE:
+            # Delegate to international weather command
+            self.delegate_command = GlobalWxCommand(bot)
+            # Update keywords to match wx command for compatibility
+            self.delegate_command.keywords = ['wx', 'weather', 'wxa', 'wxalert']
+            self.delegate_command.description = "Get weather information for any location (usage: wx Tokyo)"
+            self.logger.info("Weather provider set to 'openmeteo', delegating wx command to wx_international")
+        else:
+            self.delegate_command = None
         
-        # Initialize geocoder (will use rate-limited helpers for actual calls)
-        # Keep geolocator for backwards compatibility, but prefer rate-limited helpers
-        self.geolocator = get_nominatim_geocoder()
-        
-        # Get database manager for geocoding cache
-        self.db_manager = bot.db_manager
-        
-        # Create a retry-enabled session for NOAA API calls
-        # This makes the API more resilient to timeouts and transient errors
-        self.noaa_session = self._create_retry_session()
+        # Only initialize NOAA-specific attributes if not delegating
+        if self.delegate_command is None:
+            self.url_timeout = 8  # seconds (reduced from 10 for faster failure detection)
+            self.forecast_duration = 3  # days
+            self.num_wx_alerts = 2  # number of alerts to show
+            self.use_metric = False  # Use imperial units by default
+            self.zulu_time = False  # Use local time by default
+            
+            # Get default state from config for city disambiguation
+            self.default_state = self.bot.config.get('Weather', 'default_state', fallback='WA')
+            
+            # Initialize geocoder (will use rate-limited helpers for actual calls)
+            # Keep geolocator for backwards compatibility, but prefer rate-limited helpers
+            self.geolocator = get_nominatim_geocoder()
+            
+            # Get database manager for geocoding cache
+            self.db_manager = bot.db_manager
+            
+            # Create a retry-enabled session for NOAA API calls
+            # This makes the API more resilient to timeouts and transient errors
+            self.noaa_session = self._create_retry_session()
     
     def _create_retry_session(self) -> requests.Session:
         """Create a requests session with retry logic for NOAA API calls"""
@@ -88,10 +112,16 @@ class WxCommand(BaseCommand):
         return session
     
     def get_help_text(self) -> str:
+        """Get help text, delegating to international command if using Open-Meteo"""
+        if self.delegate_command:
+            return self.delegate_command.get_help_text()
         return self.translate('commands.wx.description')
     
     def matches_keyword(self, message: MeshMessage) -> bool:
         """Check if message starts with a weather keyword"""
+        if self.delegate_command:
+            return self.delegate_command.matches_keyword(message)
+        
         content = message.content.strip()
         if content.startswith('!'):
             content = content[1:].strip()
@@ -103,6 +133,9 @@ class WxCommand(BaseCommand):
     
     def can_execute(self, message: MeshMessage) -> bool:
         """Override cooldown check to be per-user instead of per-command-instance"""
+        if self.delegate_command:
+            return self.delegate_command.can_execute(message)
+        
         # Check if command requires DM and message is not DM
         if self.requires_dm and not message.is_dm:
             return False
@@ -122,6 +155,9 @@ class WxCommand(BaseCommand):
     
     def get_remaining_cooldown(self, user_id: str) -> int:
         """Get remaining cooldown time for a specific user"""
+        if self.delegate_command:
+            return self.delegate_command.get_remaining_cooldown(user_id)
+        
         if self.cooldown_seconds <= 0:
             return 0
         
@@ -142,6 +178,10 @@ class WxCommand(BaseCommand):
     
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the weather command"""
+        # Delegate to international command if using Open-Meteo provider
+        if self.delegate_command:
+            return await self.delegate_command.execute(message)
+        
         content = message.content.strip()
         
         # Parse the command to extract location and forecast type

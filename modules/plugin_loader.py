@@ -164,13 +164,16 @@ class PluginLoader:
                     alt_metadata = alt_instance.get_metadata()
                     alt_plugin_name = alt_metadata['name']
                     
-                    # If the alternative plugin has a different name, log a warning
+                    # If the alternative plugin has a different name, use the override name
+                    # This allows wx_international (name="gwx") to be used as "wx" when configured
                     if alt_plugin_name != plugin_name:
-                        self.logger.warning(
-                            f"Alternative plugin {alternative_file} has name '{alt_plugin_name}' "
-                            f"but is configured to override '{plugin_name}'. Using '{alt_plugin_name}'."
+                        self.logger.info(
+                            f"Alternative plugin {alternative_file} (name='{alt_plugin_name}') "
+                            f"is being used to override '{plugin_name}'. Registering as '{plugin_name}'."
                         )
-                        plugin_name = alt_plugin_name
+                        # Update the instance's name and metadata to match the override name
+                        alt_instance.name = plugin_name
+                        alt_metadata['name'] = plugin_name
                     
                     # Replace the default plugin with the alternative
                     if plugin_name in loaded_plugins:
@@ -196,6 +199,23 @@ class PluginLoader:
             if alt_instance:
                 alt_metadata = alt_instance.get_metadata()
                 alt_plugin_name = alt_metadata['name']
+                
+                # Special case: If wx_international is available and wx command is missing,
+                # automatically use it as wx (fallback behavior)
+                if alt_file == 'wx_international' and 'wx' not in loaded_plugins:
+                    self.logger.info(
+                        f"Default 'wx' command not found, using 'wx_international' as fallback for 'wx' command"
+                    )
+                    # Update the instance to use 'wx' name and keywords
+                    alt_instance.name = 'wx'
+                    alt_metadata['name'] = 'wx'
+                    # Update keywords to match wx command
+                    alt_instance.keywords = ['wx', 'weather', 'wxa', 'wxalert']
+                    alt_metadata['keywords'] = ['wx', 'weather', 'wxa', 'wxalert']
+                    alt_metadata['description'] = "Get weather information for any location (usage: wx Tokyo)"
+                    loaded_plugins['wx'] = alt_instance
+                    self.plugin_metadata['wx'] = alt_metadata
+                    continue
                 
                 # If an alternative plugin has the same name as a default plugin,
                 # it will replace it (unless already overridden by config)
