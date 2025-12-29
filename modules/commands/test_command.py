@@ -554,6 +554,7 @@ class TestCommand(BaseCommand):
         try:
             connection_info = self.build_enhanced_connection_info(message)
             timestamp = self.format_timestamp(message)
+            elapsed = self.format_elapsed(message)
             
             # Calculate distance placeholders
             path_distance = self._calculate_path_distance(message)
@@ -569,6 +570,7 @@ class TestCommand(BaseCommand):
                 connection_info=connection_info,
                 path=message.path or self.translate('common.unknown_path'),
                 timestamp=timestamp,
+                elapsed=elapsed,
                 snr=message.snr or self.translate('common.unknown'),
                 path_distance=path_distance or "",
                 firstlast_distance=firstlast_distance or ""

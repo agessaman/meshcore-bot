@@ -277,6 +277,17 @@ class MessageHandler:
             # but still strip control characters for security
             message_content = payload.get('text', '')
             message_content = sanitize_input(message_content, max_length=None, strip_controls=True)
+
+            # Format timestamp
+            if timestamp and timestamp != 'unknown':
+                try:
+                    from datetime import datetime,UTC
+                    dt = datetime.fromtimestamp(message.timestamp)
+                    elapsed_str = round((datetime.now(UTC).timestamp()-message.timestamp)*1000)
+                except:
+                    elapsed_str = "Unknown"
+                else:
+                    elapsed_str = "Unknown"
             
             # Convert to our message format
             message = MeshMessage(
@@ -287,6 +298,7 @@ class MessageHandler:
                 timestamp=timestamp,
                 snr=snr,
                 rssi=rssi,
+                elapsed=elapsed_str,
                 hops=path_len if path_len != 255 else 0,
                 path=path_info
             )
