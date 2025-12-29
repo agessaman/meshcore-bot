@@ -8,12 +8,41 @@ import re
 import ipaddress
 import socket
 import platform
+import os
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 import logging
 
 logger = logging.getLogger('MeshCoreBot.Security')
+
+
+def _is_nix_environment() -> bool:
+    """
+    Detect if running in a Nix environment
+    
+    Returns:
+        True if running in Nix build or NixOS
+    """
+    # Check for Nix store path (most reliable indicator)
+    if 'NIX_STORE' in os.environ:
+        return True
+    
+    # Check if we're in a Nix store path
+    try:
+        current_path = Path.cwd().resolve()
+        # Nix store paths typically look like /nix/store/<hash>-<name>
+        if '/nix/store/' in str(current_path):
+            return True
+    except Exception:
+        pass
+    
+    # Check for Nix-related environment variables
+    nix_env_vars = ['NIX_PATH', 'NIX_REMOTE', 'IN_NIX_SHELL']
+    if any(var in os.environ for var in nix_env_vars):
+        return True
+    
+    return False
 
 
 def validate_external_url(url: str, allow_localhost: bool = False, timeout: float = 2.0) -> bool:
@@ -86,11 +115,20 @@ def validate_external_url(url: str, allow_localhost: bool = False, timeout: floa
 
 def validate_safe_path(file_path: str, base_dir: str = '.', allow_absolute: bool = False) -> Path:
     """
-    Validate that path is safe and within base directory (path traversal protection)
+    Validate that path is safe with configurable restrictions
+    
+    When allow_absolute=False (default):
+    - Paths must be within base_dir (prevents path traversal)
+    - Blocks dangerous system directories
+    
+    When allow_absolute=True:
+    - Allows paths outside base_dir (for user-configured database/log locations)
+    - Still blocks dangerous system directories
+    - In Nix environments, dangerous directory checks are relaxed (Nix provides isolation)
     
     Args:
         file_path: Path to validate
-        base_dir: Base directory that path must be within (default: current dir)
+        base_dir: Base directory that path must be within (when allow_absolute=False)
         allow_absolute: Whether to allow absolute paths outside base_dir
     
     Returns:
@@ -121,41 +159,48 @@ def validate_safe_path(file_path: str, base_dir: str = '.', allow_absolute: bool
                     f"Path traversal detected: {file_path} is not within {base_dir}"
                 )
         
-        # Reject certain dangerous system paths (OS-specific)
-        system = platform.system()
-        if system == 'Windows':
-            dangerous_prefixes = [
-                'C:\\Windows\\System32',
-                'C:\\Windows\\SysWOW64',
-                'C:\\Program Files',
-                'C:\\ProgramData',
-                'C:\\Windows\\System',
-            ]
-            # Check against both forward and backslash paths
-            target_str = str(target).lower()
-            dangerous = any(target_str.startswith(prefix.lower()) for prefix in dangerous_prefixes)
-        elif system == 'Darwin':  # macOS
-            dangerous_prefixes = [
-                '/System',
-                '/Library',
-                '/private',
-                '/usr/bin',
-                '/usr/sbin',
-                '/sbin',
-                '/bin',
-            ]
-            target_str = str(target)
-            dangerous = any(target_str.startswith(prefix) for prefix in dangerous_prefixes)
-        else:  # Linux and other Unix-like systems
-            dangerous_prefixes = ['/etc', '/sys', '/proc', '/dev', '/bin', '/sbin', '/boot']
-            target_str = str(target)
-            dangerous = any(target_str.startswith(prefix) for prefix in dangerous_prefixes)
+        # Check for dangerous system paths (OS-specific)
+        # In Nix environments, skip this check as Nix provides strong isolation
+        is_nix = _is_nix_environment()
         
-        if dangerous:
-            raise ValueError(f"Access to system directory denied: {file_path}")
+        if not is_nix:
+            system = platform.system()
+            if system == 'Windows':
+                dangerous_prefixes = [
+                    'C:\\Windows\\System32',
+                    'C:\\Windows\\SysWOW64',
+                    'C:\\Program Files',
+                    'C:\\ProgramData',
+                    'C:\\Windows\\System',
+                ]
+                # Check against both forward and backslash paths
+                target_str = str(target).lower()
+                dangerous = any(target_str.startswith(prefix.lower()) for prefix in dangerous_prefixes)
+            elif system == 'Darwin':  # macOS
+                dangerous_prefixes = [
+                    '/System',
+                    '/Library',
+                    '/private',
+                    '/usr/bin',
+                    '/usr/sbin',
+                    '/sbin',
+                    '/bin',
+                ]
+                target_str = str(target)
+                dangerous = any(target_str.startswith(prefix) for prefix in dangerous_prefixes)
+            else:  # Linux and other Unix-like systems
+                dangerous_prefixes = ['/etc', '/sys', '/proc', '/dev', '/bin', '/sbin', '/boot']
+                target_str = str(target)
+                dangerous = any(target_str.startswith(prefix) for prefix in dangerous_prefixes)
+            
+            if dangerous:
+                raise ValueError(f"Access to system directory denied: {file_path}")
         
         return target
         
+    except ValueError:
+        # Re-raise ValueError as-is (these are our validation errors)
+        raise
     except Exception as e:
         raise ValueError(f"Invalid or unsafe file path: {file_path} - {e}")
 

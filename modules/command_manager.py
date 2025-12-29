@@ -15,7 +15,7 @@ from meshcore import EventType
 from .models import MeshMessage
 from .plugin_loader import PluginLoader
 from .commands.base_command import BaseCommand
-from .utils import check_internet_connectivity_async
+from .utils import check_internet_connectivity_async, format_keyword_response_with_placeholders
 
 
 class CommandManager:
@@ -80,67 +80,15 @@ class CommandManager:
         channels = self.bot.config.get('Channels', 'monitor_channels', fallback='')
         return [channel.strip() for channel in channels.split(',') if channel.strip()]
     
-    def build_enhanced_connection_info(self, message: MeshMessage) -> str:
-        """Build enhanced connection info with SNR, RSSI, and parsed route information"""
-        # Extract just the hops and path info without the route type
-        routing_info = message.path or "Unknown routing"
-        
-        # Clean up the routing info to remove the "via ROUTE_TYPE_*" part
-        if "via ROUTE_TYPE_" in routing_info:
-            # Extract just the hops and path part
-            parts = routing_info.split(" via ROUTE_TYPE_")
-            if len(parts) > 0:
-                routing_info = parts[0]
-        
-        # Add SNR and RSSI
-        snr_info = f"SNR: {message.snr or 'Unknown'} dB"
-        rssi_info = f"RSSI: {message.rssi or 'Unknown'} dBm"
-        
-        # Build enhanced connection info
-        connection_info = f"{routing_info} | {snr_info} | {rssi_info}"
-        
-        return connection_info
-    
     def format_keyword_response(self, response_format: str, message: MeshMessage) -> str:
         """Format a keyword response string with message data"""
-        try:
-            connection_info = self.build_enhanced_connection_info(message)
-            
-            # Format timestamp - use bot's local time instead of message timestamp
-            # to avoid issues when sender's clock is wrong
-            try:
-                # Get configured timezone or use system timezone
-                timezone_str = self.bot.config.get('Bot', 'timezone', fallback='')
-                
-                if timezone_str:
-                    try:
-                        # Use configured timezone
-                        tz = pytz.timezone(timezone_str)
-                        dt = datetime.now(tz)
-                    except pytz.exceptions.UnknownTimeZoneError:
-                        # Fallback to system timezone if configured timezone is invalid
-                        dt = datetime.now()
-                else:
-                    # Use system timezone
-                    dt = datetime.now()
-                
-                time_str = dt.strftime("%H:%M:%S")
-            except:
-                time_str = "Unknown"
-            
-            # Format the response with available message data
-            return response_format.format(
-                sender=message.sender_id or "Unknown",
-                connection_info=connection_info,
-                path=message.path or "Unknown",
-                timestamp=time_str,
-                snr=message.snr or "Unknown",
-                elapsed=message.elapsed or "Unknown",
-                rssi=message.rssi or "Unknown"
-            )
-        except (KeyError, ValueError):
-            # If formatting fails (no placeholders), return as-is
-            return response_format
+        # Use shared formatting function from utils
+        return format_keyword_response_with_placeholders(
+            response_format,
+            message,
+            self.bot,
+            mesh_info=None  # Keywords don't use mesh info placeholders
+        )
     
     def check_keywords(self, message: MeshMessage) -> List[tuple]:
         """Check message content for keywords and return matching responses"""
@@ -205,8 +153,11 @@ class CommandManager:
             # Skip if we already have a plugin handling this keyword
             if any(keyword.lower() in [k.lower() for k in cmd.keywords] for cmd in self.commands.values()):
                 continue
-                
-            if keyword.lower() in content_lower:
+            
+            keyword_lower = keyword.lower()
+            
+            # Check for exact match first
+            if keyword_lower == content_lower:
                 try:
                     # Format the response with available message data
                     response = self.format_keyword_response(response_format, message)
@@ -215,6 +166,19 @@ class CommandManager:
                     # Fallback to simple response if formatting fails
                     self.logger.warning(f"Error formatting response for '{keyword}': {e}")
                     matches.append((keyword, response_format))
+            # Check if the message starts with the keyword (followed by space or end of string)
+            # This ensures the keyword is the first word in the message
+            elif content_lower.startswith(keyword_lower):
+                # Check if it's followed by a space or is the end of the message
+                if len(content_lower) == len(keyword_lower) or content_lower[len(keyword_lower)] == ' ':
+                    try:
+                        # Format the response with available message data
+                        response = self.format_keyword_response(response_format, message)
+                        matches.append((keyword, response))
+                    except Exception as e:
+                        # Fallback to simple response if formatting fails
+                        self.logger.warning(f"Error formatting response for '{keyword}': {e}")
+                        matches.append((keyword, response_format))
         
         return matches
     

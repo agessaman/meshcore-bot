@@ -10,7 +10,8 @@ import socket
 import asyncio
 import urllib.request
 import urllib.error
-from typing import Optional, Tuple, Dict
+from pathlib import Path
+from typing import Optional, Tuple, Dict, Union, List, Any
 
 
 def abbreviate_location(location: str, max_length: int = 20) -> str:
@@ -969,6 +970,35 @@ def geocode_city_sync(bot, city: str, default_state: str = None,
         return None, None, None
 
 
+def resolve_path(file_path: Union[str, Path], base_dir: Union[str, Path] = '.') -> str:
+    """
+    Resolve a file path relative to a base directory.
+    
+    If the path is absolute, it is resolved and returned as-is.
+    If the path is relative, it is resolved relative to the base directory.
+    
+    Args:
+        file_path: Path to resolve (can be string or Path object)
+        base_dir: Base directory for resolving relative paths (default: current directory)
+    
+    Returns:
+        Resolved absolute path as a string
+    
+    Examples:
+        >>> resolve_path('data.db', '/opt/bot')
+        '/opt/bot/data.db'
+        >>> resolve_path('/var/lib/bot/data.db', '/opt/bot')
+        '/var/lib/bot/data.db'
+    """
+    file_path = Path(file_path) if not isinstance(file_path, Path) else file_path
+    base_dir = Path(base_dir) if not isinstance(base_dir, Path) else base_dir
+    
+    if file_path.is_absolute():
+        return str(file_path.resolve())
+    else:
+        return str((base_dir.resolve() / file_path).resolve())
+
+
 def check_internet_connectivity(host: str = "8.8.8.8", port: int = 53, timeout: float = 3.0) -> bool:
     """
     Check if internet connectivity is available by attempting to connect to a reliable host.
@@ -1076,3 +1106,330 @@ async def check_internet_connectivity_async(host: str = "8.8.8.8", port: int = 5
             return False
     except Exception:
         return False
+
+
+def parse_path_string(path_str: str) -> List[str]:
+    """
+    Parse a path string to extract node IDs.
+    
+    Handles various formats:
+    - "11,98,a4,49,cd,5f,01" (comma-separated)
+    - "11 98 a4 49 cd 5f 01" (space-separated)
+    - "1198a449cd5f01" (continuous hex)
+    - "01,5f (2 hops)" (with hop count suffix)
+    
+    Args:
+        path_str: Path string in various formats
+        
+    Returns:
+        List of 2-character uppercase hex node IDs
+    """
+    if not path_str:
+        return []
+    
+    # Remove hop count suffix if present (e.g., " (2 hops)")
+    path_str = re.sub(r'\s*\([^)]*hops?[^)]*\)', '', path_str, flags=re.IGNORECASE)
+    path_str = path_str.strip()
+    
+    # Replace common separators with spaces
+    path_str = path_str.replace(',', ' ').replace(':', ' ')
+    
+    # Extract hex values using regex (2-character hex pairs)
+    hex_pattern = r'[0-9a-fA-F]{2}'
+    hex_matches = re.findall(hex_pattern, path_str)
+    
+    # Convert to uppercase for consistency
+    return [match.upper() for match in hex_matches]
+
+
+def calculate_path_distances(bot, path_str: str) -> Tuple[str, str]:
+    """
+    Calculate path distance metrics from a path string.
+    
+    Args:
+        bot: Bot instance (must have db_manager)
+        path_str: Path string (e.g., "11,98,a4,49,cd,5f,01" or "01,5f (2 hops)" or "Direct")
+        
+    Returns:
+        Tuple of (path_distance_str, firstlast_distance_str)
+        - path_distance_str: Total distance with segment info (e.g., "123.4km (3 segs, 1 no-loc)" or "directly (0 hops)" or "locally (1 hop)")
+        - firstlast_distance_str: Distance between first and last repeater (e.g., "45.6km" or empty)
+    """
+    if not path_str:
+        return "directly (0 hops)", "N/A (direct)"
+    
+    # Check if it's a direct connection
+    path_lower = path_str.lower()
+    if "direct" in path_lower or "0 hops" in path_lower or path_str.strip() == "":
+        return "directly (0 hops)", "N/A (direct)"
+    
+    if not hasattr(bot, 'db_manager'):
+        return "unknown distance", "unknown"
+    
+    try:
+        # Parse node IDs from path string
+        node_ids = parse_path_string(path_str)
+        
+        if len(node_ids) == 0:
+            # No nodes parsed - likely direct connection
+            return "directly (0 hops)", "N/A (direct)"
+        elif len(node_ids) == 1:
+            # Single node - local/one hop (no first/last distance since only one node)
+            return "locally (1 hop)", "N/A (1 hop)"
+        elif len(node_ids) < 2:
+            # Edge case - less than 2 nodes
+            return "locally (1 hop)", "N/A (1 hop)"
+        
+        # Look up locations for each node ID
+        node_locations = []
+        for node_id in node_ids:
+            location = _get_node_location_from_db(bot, node_id)
+            node_locations.append(location)
+        
+        # Calculate total path distance (sum of all segments)
+        total_distance = 0.0
+        segments_with_location = 0
+        segments_without_location = 0
+        
+        for i in range(len(node_locations) - 1):
+            loc1 = node_locations[i]
+            loc2 = node_locations[i + 1]
+            
+            if loc1 and loc2:
+                # Both nodes have locations
+                segment_distance = calculate_distance(
+                    loc1[0], loc1[1],
+                    loc2[0], loc2[1]
+                )
+                total_distance += segment_distance
+                segments_with_location += 1
+            else:
+                # At least one node missing location
+                segments_without_location += 1
+        
+        # Format path_distance string
+        if total_distance > 0:
+            path_distance_str = f"{total_distance:.1f}km"
+            if segments_with_location > 0 or segments_without_location > 0:
+                seg_info = []
+                if segments_with_location > 0:
+                    seg_info.append(f"{segments_with_location} segs")
+                if segments_without_location > 0:
+                    seg_info.append(f"{segments_without_location} no-loc")
+                if seg_info:
+                    path_distance_str += f" ({', '.join(seg_info)})"
+        else:
+            # No distance calculated (all segments missing locations)
+            if segments_without_location > 0:
+                # We have segments but no location data
+                hop_count = len(node_ids)
+                path_distance_str = f"unknown distance ({hop_count} hops, no locations)"
+            else:
+                # Fallback - shouldn't happen but provide meaningful text
+                hop_count = len(node_ids)
+                path_distance_str = f"unknown distance ({hop_count} hops)"
+        
+        # Calculate first-to-last distance
+        firstlast_distance_str = ""
+        first_location = node_locations[0]
+        last_location = node_locations[-1]
+        
+        if first_location and last_location:
+            firstlast_distance = calculate_distance(
+                first_location[0], first_location[1],
+                last_location[0], last_location[1]
+            )
+            firstlast_distance_str = f"{firstlast_distance:.1f}km"
+        elif len(node_ids) >= 2:
+            # We have 2+ nodes but missing location data
+            firstlast_distance_str = "unknown (no locations)"
+        
+        return path_distance_str, firstlast_distance_str
+        
+    except Exception as e:
+        # Log error but don't fail - return empty strings
+        if hasattr(bot, 'logger'):
+            bot.logger.debug(f"Error calculating path distances: {e}")
+        return "", ""
+
+
+def _get_node_location_from_db(bot, node_id: str) -> Optional[Tuple[float, float]]:
+    """
+    Get location for a node ID from the database.
+    
+    Args:
+        bot: Bot instance (must have db_manager)
+        node_id: 2-character hex node ID (e.g., "01", "5f")
+        
+    Returns:
+        Tuple of (latitude, longitude) or None if not found
+    """
+    if not hasattr(bot, 'db_manager'):
+        return None
+    
+    try:
+        # Look up node by public key prefix (first 2 characters)
+        query = '''
+            SELECT latitude, longitude 
+            FROM complete_contact_tracking 
+            WHERE public_key LIKE ? 
+            AND latitude IS NOT NULL AND longitude IS NOT NULL
+            AND latitude != 0 AND longitude != 0
+            AND role IN ('repeater', 'roomserver')
+            ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
+            LIMIT 1
+        '''
+        
+        prefix_pattern = f"{node_id}%"
+        results = bot.db_manager.execute_query(query, (prefix_pattern,))
+        
+        if results:
+            row = results[0]
+            lat = row.get('latitude')
+            lon = row.get('longitude')
+            if lat is not None and lon is not None:
+                return (float(lat), float(lon))
+        
+        return None
+    except Exception as e:
+        if hasattr(bot, 'logger'):
+            bot.logger.debug(f"Error getting node location for {node_id}: {e}")
+        return None
+
+
+def format_keyword_response_with_placeholders(
+    response_format: str,
+    message,
+    bot,
+    mesh_info: Optional[Dict[str, Any]] = None
+) -> str:
+    """
+    Format a keyword response string with all available placeholders.
+    
+    Supports both message-based placeholders and mesh-info-based placeholders.
+    This is a shared function used by both Keywords and Scheduled_Messages.
+    
+    Args:
+        response_format: Response format string with placeholders
+        message: MeshMessage instance (can be None for scheduled messages)
+        bot: Bot instance (must have config, db_manager)
+        mesh_info: Optional mesh network info dict (for scheduled message placeholders)
+        
+    Returns:
+        Formatted response string
+    """
+    try:
+        replacements = {}
+        
+        # Message-based placeholders (require message object)
+        if message:
+            # Basic message fields
+            replacements['sender'] = message.sender_id or "Unknown"
+            replacements['path'] = message.path or "Unknown"
+            replacements['snr'] = message.snr or "Unknown"
+            replacements['rssi'] = message.rssi or "Unknown"
+            replacements['elapsed'] = message.elapsed or "Unknown"
+            
+            # Build connection_info
+            routing_info = message.path or "Unknown routing"
+            if "via ROUTE_TYPE_" in routing_info:
+                parts = routing_info.split(" via ROUTE_TYPE_")
+                if len(parts) > 0:
+                    routing_info = parts[0]
+            
+            snr_info = f"SNR: {message.snr or 'Unknown'} dB"
+            rssi_info = f"RSSI: {message.rssi or 'Unknown'} dBm"
+            connection_info = f"{routing_info} | {snr_info} | {rssi_info}"
+            replacements['connection_info'] = connection_info
+            
+            # Calculate path distances
+            path_distance, firstlast_distance = calculate_path_distances(bot, message.path or "")
+            replacements['path_distance'] = path_distance
+            replacements['firstlast_distance'] = firstlast_distance
+            
+            # Format timestamp
+            try:
+                timezone_str = bot.config.get('Bot', 'timezone', fallback='')
+                if timezone_str:
+                    try:
+                        import pytz
+                        from datetime import datetime
+                        tz = pytz.timezone(timezone_str)
+                        dt = datetime.now(tz)
+                    except Exception:
+                        from datetime import datetime
+                        dt = datetime.now()
+                else:
+                    from datetime import datetime
+                    dt = datetime.now()
+                
+                time_str = dt.strftime("%H:%M:%S")
+            except Exception:
+                time_str = "Unknown"
+            
+            replacements['timestamp'] = time_str
+        else:
+            # No message - use defaults for message-based placeholders
+            replacements['sender'] = "Unknown"
+            replacements['path'] = "Unknown"
+            replacements['snr'] = "Unknown"
+            replacements['rssi'] = "Unknown"
+            replacements['elapsed'] = "Unknown"
+            replacements['connection_info'] = "Unknown"
+            replacements['path_distance'] = ""
+            replacements['firstlast_distance'] = ""
+            replacements['timestamp'] = "Unknown"
+        
+        # Mesh-info-based placeholders (from scheduled messages)
+        if mesh_info:
+            replacements.update({
+                'total_contacts': mesh_info.get('total_contacts', 0),
+                'total_repeaters': mesh_info.get('total_repeaters', 0),
+                'total_companions': mesh_info.get('total_companions', 0),
+                'total_roomservers': mesh_info.get('total_roomservers', 0),
+                'total_sensors': mesh_info.get('total_sensors', 0),
+                'recent_activity_24h': mesh_info.get('recent_activity_24h', 0),
+                'new_companions_7d': mesh_info.get('new_companions_7d', 0),
+                'new_repeaters_7d': mesh_info.get('new_repeaters_7d', 0),
+                'new_roomservers_7d': mesh_info.get('new_roomservers_7d', 0),
+                'new_sensors_7d': mesh_info.get('new_sensors_7d', 0),
+                'total_contacts_30d': mesh_info.get('total_contacts_30d', 0),
+                'total_repeaters_30d': mesh_info.get('total_repeaters_30d', 0),
+                'total_companions_30d': mesh_info.get('total_companions_30d', 0),
+                'total_roomservers_30d': mesh_info.get('total_roomservers_30d', 0),
+                'total_sensors_30d': mesh_info.get('total_sensors_30d', 0),
+                # Legacy placeholders
+                'repeaters': mesh_info.get('total_repeaters', 0),
+                'companions': mesh_info.get('total_companions', 0),
+            })
+        else:
+            # No mesh_info - use defaults
+            mesh_defaults = {
+                'total_contacts': 0,
+                'total_repeaters': 0,
+                'total_companions': 0,
+                'total_roomservers': 0,
+                'total_sensors': 0,
+                'recent_activity_24h': 0,
+                'new_companions_7d': 0,
+                'new_repeaters_7d': 0,
+                'new_roomservers_7d': 0,
+                'new_sensors_7d': 0,
+                'total_contacts_30d': 0,
+                'total_repeaters_30d': 0,
+                'total_companions_30d': 0,
+                'total_roomservers_30d': 0,
+                'total_sensors_30d': 0,
+                'repeaters': 0,
+                'companions': 0,
+            }
+            replacements.update(mesh_defaults)
+        
+        # Format the response with all replacements
+        return response_format.format(**replacements)
+        
+    except (KeyError, ValueError) as e:
+        # If formatting fails, return as-is (might not have all placeholders)
+        if hasattr(bot, 'logger'):
+            bot.logger.debug(f"Error formatting response with placeholders: {e}")
+        return response_format

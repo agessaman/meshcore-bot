@@ -14,6 +14,7 @@ import json
 import os
 from typing import Dict, Tuple, Any
 from pathlib import Path
+from .utils import format_keyword_response_with_placeholders
 
 
 class MessageScheduler:
@@ -274,27 +275,13 @@ class MessageScheduler:
         if self._has_mesh_info_placeholders(message):
             try:
                 mesh_info = await self._get_mesh_info()
-                # Replace placeholders in the message
+                # Use shared formatting function (message=None for scheduled messages)
                 try:
-                    message = message.format(
-                        total_contacts=mesh_info.get('total_contacts', 0),
-                        total_repeaters=mesh_info.get('total_repeaters', 0),
-                        total_companions=mesh_info.get('total_companions', 0),
-                        total_roomservers=mesh_info.get('total_roomservers', 0),
-                        total_sensors=mesh_info.get('total_sensors', 0),
-                        recent_activity_24h=mesh_info.get('recent_activity_24h', 0),
-                        new_companions_7d=mesh_info.get('new_companions_7d', 0),
-                        new_repeaters_7d=mesh_info.get('new_repeaters_7d', 0),
-                        new_roomservers_7d=mesh_info.get('new_roomservers_7d', 0),
-                        new_sensors_7d=mesh_info.get('new_sensors_7d', 0),
-                        total_contacts_30d=mesh_info.get('total_contacts_30d', 0),
-                        total_repeaters_30d=mesh_info.get('total_repeaters_30d', 0),
-                        total_companions_30d=mesh_info.get('total_companions_30d', 0),
-                        total_roomservers_30d=mesh_info.get('total_roomservers_30d', 0),
-                        total_sensors_30d=mesh_info.get('total_sensors_30d', 0),
-                        # Legacy placeholders for backward compatibility
-                        repeaters=mesh_info.get('total_repeaters', 0),
-                        companions=mesh_info.get('total_companions', 0)
+                    message = format_keyword_response_with_placeholders(
+                        message,
+                        message=None,  # No message object for scheduled messages
+                        bot=self.bot,
+                        mesh_info=mesh_info
                     )
                     self.logger.debug(f"Replaced mesh info placeholders in scheduled message")
                 except (KeyError, ValueError) as e:

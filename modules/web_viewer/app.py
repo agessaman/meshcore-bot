@@ -24,7 +24,7 @@ sys.path.insert(0, project_root)
 
 from modules.db_manager import DBManager
 from modules.repeater_manager import RepeaterManager
-from modules.security_utils import validate_safe_path
+from modules.utils import resolve_path
 
 class BotDataViewer:
     """Complete web interface using Flask-SocketIO 5.x best practices"""
@@ -183,12 +183,8 @@ class BotDataViewer:
             # Get database path from config
             db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
             
-            # Validate and resolve database path relative to bot root
-            try:
-                db_path = str(validate_safe_path(db_path, base_dir=str(self.bot_root), allow_absolute=False))
-            except ValueError as e:
-                self.logger.warning(f"Invalid database path: {e}, using default: bot_data.db")
-                db_path = 'bot_data.db'
+            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
+            db_path = resolve_path(db_path, self.bot_root)
             
             # Connect to database and create table if it doesn't exist
             conn = sqlite3.connect(db_path, timeout=30)
@@ -400,12 +396,8 @@ class BotDataViewer:
                 # Get database path
                 db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
                 
-                # Validate and resolve database path relative to bot root
-                try:
-                    db_path = str(validate_safe_path(db_path, base_dir=str(self.bot_root), allow_absolute=False))
-                except ValueError:
-                    # If validation fails, use default (already set above)
-                    pass
+                # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
+                db_path = resolve_path(db_path, self.bot_root)
                 
                 conn = sqlite3.connect(db_path, timeout=30)
                 cursor = conn.cursor()
@@ -1432,12 +1424,8 @@ class BotDataViewer:
                     # Get database path
                     db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
                     
-                    # Validate and resolve database path relative to bot root
-                    try:
-                        db_path = str(validate_safe_path(db_path, base_dir=str(self.bot_root), allow_absolute=False))
-                    except ValueError:
-                        # If validation fails, use default (already set above)
-                        pass
+                    # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
+                    db_path = resolve_path(db_path, self.bot_root)
                     
                     # Connect to database with timeout to prevent hanging
                     conn = sqlite3.connect(db_path, timeout=30)
@@ -1551,12 +1539,8 @@ class BotDataViewer:
             # Get database path
             db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
             
-            # Validate and resolve database path relative to bot root
-            try:
-                db_path = str(validate_safe_path(db_path, base_dir=str(self.bot_root), allow_absolute=False))
-            except ValueError:
-                # If validation fails, use default (already set above)
-                pass
+            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
+            db_path = resolve_path(db_path, self.bot_root)
             
             # Use timeout to prevent hanging
             conn = sqlite3.connect(db_path, timeout=30)
@@ -2037,12 +2021,8 @@ class BotDataViewer:
             # Get database file size
             import os
             db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
-            # Validate and resolve database path relative to bot root
-            try:
-                db_path = str(validate_safe_path(db_path, base_dir=str(self.bot_root), allow_absolute=False))
-            except ValueError:
-                # If validation fails, use default (already set above)
-                pass
+            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
+            db_path = resolve_path(db_path, self.bot_root)
             try:
                 db_size_bytes = os.path.getsize(db_path)
                 if db_size_bytes < 1024:
@@ -2099,12 +2079,8 @@ class BotDataViewer:
             # Get initial database size
             import os
             db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
-            # Validate and resolve database path relative to bot root
-            try:
-                db_path = str(validate_safe_path(db_path, base_dir=str(self.bot_root), allow_absolute=False))
-            except ValueError:
-                # If validation fails, use default (already set above)
-                pass
+            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
+            db_path = resolve_path(db_path, self.bot_root)
             initial_size = os.path.getsize(db_path)
             
             # Perform VACUUM to reclaim unused space

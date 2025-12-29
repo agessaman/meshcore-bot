@@ -43,6 +43,9 @@ from .packet_capture_utils import (
 # Import base service
 from .base_service import BaseServicePlugin
 
+# Import utilities
+from ..utils import resolve_path
+
 
 class MapUploaderService(BaseServicePlugin):
     """Map uploader service - uploads node adverts to map.meshcore.dev"""
@@ -103,12 +106,8 @@ class MapUploaderService(BaseServicePlugin):
         # Also add file handler to write to the same log file as the bot
         log_file = bot.config.get('Logging', 'log_file', fallback='meshcore_bot.log')
         if log_file:
-            try:
-                from ..security_utils import validate_safe_path
-                log_file = str(validate_safe_path(log_file, base_dir=str(bot.bot_root), allow_absolute=False))
-            except (ValueError, ImportError):
-                # If validation fails, use default
-                log_file = 'meshcore_bot.log'
+            # Resolve log file path (relative paths resolved from bot root, absolute paths used as-is)
+            log_file = resolve_path(log_file, bot.bot_root)
             
             file_handler = logging.FileHandler(log_file)
             file_handler.setFormatter(bot_formatter)
