@@ -22,10 +22,173 @@ Team IDs should be periodically verified, especially after:
 import re
 import json
 import requests
+import time
 from datetime import datetime, timezone
 from typing import List, Dict, Optional, Tuple
 from .base_command import BaseCommand
 from ..models import MeshMessage
+
+
+class TheSportsDBClient:
+    """Client for TheSportsDB API with rate limiting
+    
+    Free tier: 30 requests per minute (1 request every 2 seconds)
+    """
+    
+    BASE_URL = "https://www.thesportsdb.com/api/v1/json"
+    FREE_API_KEY = "123"  # Free public API key
+    
+    def __init__(self, logger=None):
+        self.logger = logger
+        self.last_request_time = 0
+        self.min_request_interval = 2.1  # Slightly more than 2 seconds for safety
+    
+    def _rate_limit(self):
+        """Enforce rate limiting"""
+        current_time = time.time()
+        time_since_last = current_time - self.last_request_time
+        if time_since_last < self.min_request_interval:
+            sleep_time = self.min_request_interval - time_since_last
+            time.sleep(sleep_time)
+        self.last_request_time = time.time()
+    
+    def search_team(self, team_name: str) -> Optional[Dict]:
+        """Search for a team by name"""
+        self._rate_limit()
+        url = f"{self.BASE_URL}/{self.FREE_API_KEY}/searchteams.php"
+        params = {'t': team_name}
+        
+        try:
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            teams = data.get('teams', [])
+            if teams:
+                return teams[0]  # Return first match
+            return None
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"TheSportsDB search_team error: {e}")
+            return None
+    
+    def get_team_events_last(self, team_id: str, limit: int = 5) -> List[Dict]:
+        """Get last N events for a team"""
+        self._rate_limit()
+        url = f"{self.BASE_URL}/{self.FREE_API_KEY}/eventslast.php"
+        params = {'id': team_id}
+        
+        try:
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            events = data.get('results', [])
+            return events[:limit]
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"TheSportsDB get_team_events_last error: {e}")
+            return []
+    
+    def get_team_events_next(self, team_id: str, limit: int = 5) -> List[Dict]:
+        """Get next N events for a team"""
+        self._rate_limit()
+        url = f"{self.BASE_URL}/{self.FREE_API_KEY}/eventsnext.php"
+        params = {'id': team_id}
+        
+        try:
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            events = data.get('events', [])
+            return events[:limit]
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"TheSportsDB get_team_events_next error: {e}")
+            return []
+    
+    def get_league_teams(self, league_id: str) -> List[Dict]:
+        """Get all teams in a league"""
+        self._rate_limit()
+        url = f"{self.BASE_URL}/{self.FREE_API_KEY}/lookup_all_teams.php"
+        params = {'id': league_id}
+        
+        try:
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            teams = data.get('teams', [])
+            return teams
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"TheSportsDB get_league_teams error: {e}")
+            return []
+    
+    def get_league_events_next(self, league_id: str, limit: int = 10) -> List[Dict]:
+        """Get next N events for a league"""
+        self._rate_limit()
+        url = f"{self.BASE_URL}/{self.FREE_API_KEY}/eventsnextleague.php"
+        params = {'id': league_id}
+        
+        try:
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            events = data.get('events', [])
+            return events[:limit]
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"TheSportsDB get_league_events_next error: {e}")
+            return []
+    
+    def get_league_events_past(self, league_id: str, limit: int = 10) -> List[Dict]:
+        """Get past N events for a league"""
+        self._rate_limit()
+        url = f"{self.BASE_URL}/{self.FREE_API_KEY}/eventspastleague.php"
+        params = {'id': league_id}
+        
+        try:
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            events = data.get('results', [])  # Note: past events use 'results' key
+            return events[:limit]
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"TheSportsDB get_league_events_past error: {e}")
+            return []
+    
+    def get_events_by_day(self, date_str: str, league_id: str = None) -> List[Dict]:
+        """Get events for a specific day
+        
+        Args:
+            date_str: Date in YYYY-MM-DD format
+            league_id: Optional league ID to filter by
+        """
+        self._rate_limit()
+        url = f"{self.BASE_URL}/{self.FREE_API_KEY}/eventsday.php"
+        params = {'d': date_str}
+        if league_id:
+            params['l'] = league_id
+        
+        try:
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            events = data.get('events', [])
+            # Handle case where API returns None instead of empty list
+            if events is None:
+                return []
+            return events if isinstance(events, list) else []
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"TheSportsDB get_events_by_day error: {e}")
+            return []
 
 
 class SportsCommand(BaseCommand):
@@ -41,6 +204,9 @@ class SportsCommand(BaseCommand):
     
     # ESPN API base URL
     ESPN_BASE_URL = "http://site.api.espn.com/apis/site/v2/sports"
+    
+    # TheSportsDB client for leagues not supported by ESPN
+    thesportsdb_client: Optional[TheSportsDBClient] = None
     
     # Sport emojis for easy identification
     SPORT_EMOJIS = {
@@ -198,6 +364,40 @@ class SportsCommand(BaseCommand):
         'vikings': {'sport': 'football', 'league': 'nfl', 'team_id': '16'},
         'minnesota': {'sport': 'football', 'league': 'nfl', 'team_id': '16'},
         'min': {'sport': 'football', 'league': 'nfl', 'team_id': '16'},
+        
+        # CFL Teams (Canadian Football League)
+        'bc lions': {'sport': 'football', 'league': 'cfl', 'team_id': '79'},
+        'lions': {'sport': 'football', 'league': 'cfl', 'team_id': '79'},
+        'bcl': {'sport': 'football', 'league': 'cfl', 'team_id': '79'},
+        'calgary stampeders': {'sport': 'football', 'league': 'cfl', 'team_id': '80'},
+        'stampeders': {'sport': 'football', 'league': 'cfl', 'team_id': '80'},
+        'csp': {'sport': 'football', 'league': 'cfl', 'team_id': '80'},
+        'edmonton elks': {'sport': 'football', 'league': 'cfl', 'team_id': '81'},
+        'elks': {'sport': 'football', 'league': 'cfl', 'team_id': '81'},
+        'ees': {'sport': 'football', 'league': 'cfl', 'team_id': '81'},
+        'hamilton tiger-cats': {'sport': 'football', 'league': 'cfl', 'team_id': '82'},
+        'tiger-cats': {'sport': 'football', 'league': 'cfl', 'team_id': '82'},
+        'tigercats': {'sport': 'football', 'league': 'cfl', 'team_id': '82'},
+        'htc': {'sport': 'football', 'league': 'cfl', 'team_id': '82'},
+        'montreal alouettes': {'sport': 'football', 'league': 'cfl', 'team_id': '83'},
+        'alouettes': {'sport': 'football', 'league': 'cfl', 'team_id': '83'},
+        'mta': {'sport': 'football', 'league': 'cfl', 'team_id': '83'},
+        'ottawa redblacks': {'sport': 'football', 'league': 'cfl', 'team_id': '87'},
+        'redblacks': {'sport': 'football', 'league': 'cfl', 'team_id': '87'},
+        'red blacks': {'sport': 'football', 'league': 'cfl', 'team_id': '87'},
+        'orb': {'sport': 'football', 'league': 'cfl', 'team_id': '87'},
+        'saskatchewan roughriders': {'sport': 'football', 'league': 'cfl', 'team_id': '84'},
+        'roughriders': {'sport': 'football', 'league': 'cfl', 'team_id': '84'},
+        'riders': {'sport': 'football', 'league': 'cfl', 'team_id': '84'},
+        'srr': {'sport': 'football', 'league': 'cfl', 'team_id': '84'},
+        'toronto argonauts': {'sport': 'football', 'league': 'cfl', 'team_id': '85'},
+        'argonauts': {'sport': 'football', 'league': 'cfl', 'team_id': '85'},
+        'argos': {'sport': 'football', 'league': 'cfl', 'team_id': '85'},
+        'tat': {'sport': 'football', 'league': 'cfl', 'team_id': '85'},
+        'winnipeg blue bombers': {'sport': 'football', 'league': 'cfl', 'team_id': '86'},
+        'blue bombers': {'sport': 'football', 'league': 'cfl', 'team_id': '86'},
+        'bombers': {'sport': 'football', 'league': 'cfl', 'team_id': '86'},
+        'wbb': {'sport': 'football', 'league': 'cfl', 'team_id': '86'},
         
         # MLB Teams
         'mariners': {'sport': 'baseball', 'league': 'mlb', 'team_id': '12'},
@@ -439,6 +639,30 @@ class SportsCommand(BaseCommand):
         # 'ottawa pwhl': {'sport': 'hockey', 'league': 'pwhl', 'team_id': 'VERIFY_TEAM_ID'},
         # 'toronto pwhl': {'sport': 'hockey', 'league': 'pwhl', 'team_id': 'VERIFY_TEAM_ID'},
         
+        # WHL Teams (Western Hockey League) - using TheSportsDB API
+        'thunderbirds': {'sport': 'hockey', 'league': 'whl', 'team_id': '144380', 'api_source': 'thesportsdb'},
+        'seattle thunderbirds': {'sport': 'hockey', 'league': 'whl', 'team_id': '144380', 'api_source': 'thesportsdb'},
+        't-birds': {'sport': 'hockey', 'league': 'whl', 'team_id': '144380', 'api_source': 'thesportsdb'},
+        'winterhawks': {'sport': 'hockey', 'league': 'whl', 'team_id': '144379', 'api_source': 'thesportsdb'},
+        'portland winterhawks': {'sport': 'hockey', 'league': 'whl', 'team_id': '144379', 'api_source': 'thesportsdb'},
+        'silvertips': {'sport': 'hockey', 'league': 'whl', 'team_id': '144378', 'api_source': 'thesportsdb'},
+        'everett silvertips': {'sport': 'hockey', 'league': 'whl', 'team_id': '144378', 'api_source': 'thesportsdb'},
+        'everett': {'sport': 'hockey', 'league': 'whl', 'team_id': '144378', 'api_source': 'thesportsdb'},
+        'chiefs': {'sport': 'hockey', 'league': 'whl', 'team_id': '144381', 'api_source': 'thesportsdb'},
+        'spokane chiefs': {'sport': 'hockey', 'league': 'whl', 'team_id': '144381', 'api_source': 'thesportsdb'},
+        'spokane': {'sport': 'hockey', 'league': 'whl', 'team_id': '144381', 'api_source': 'thesportsdb'},
+        'vancouver giants': {'sport': 'hockey', 'league': 'whl', 'team_id': '144376', 'api_source': 'thesportsdb'},
+        'giants': {'sport': 'hockey', 'league': 'whl', 'team_id': '144376', 'api_source': 'thesportsdb'},
+        'blazers': {'sport': 'hockey', 'league': 'whl', 'team_id': '144373', 'api_source': 'thesportsdb'},
+        'kamloops blazers': {'sport': 'hockey', 'league': 'whl', 'team_id': '144373', 'api_source': 'thesportsdb'},
+        'kamloops': {'sport': 'hockey', 'league': 'whl', 'team_id': '144373', 'api_source': 'thesportsdb'},
+        'cougars': {'sport': 'hockey', 'league': 'whl', 'team_id': '144375', 'api_source': 'thesportsdb'},
+        'prince george cougars': {'sport': 'hockey', 'league': 'whl', 'team_id': '144375', 'api_source': 'thesportsdb'},
+        'prince george': {'sport': 'hockey', 'league': 'whl', 'team_id': '144375', 'api_source': 'thesportsdb'},
+        'rockets': {'sport': 'hockey', 'league': 'whl', 'team_id': '144374', 'api_source': 'thesportsdb'},
+        'kelowna rockets': {'sport': 'hockey', 'league': 'whl', 'team_id': '144374', 'api_source': 'thesportsdb'},
+        'kelowna': {'sport': 'hockey', 'league': 'whl', 'team_id': '144374', 'api_source': 'thesportsdb'},
+        
         # MLS Teams
         'sounders': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '9726'},
         'seattle sounders': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '9726'},
@@ -546,6 +770,9 @@ class SportsCommand(BaseCommand):
         
         # Per-user cooldown tracking
         self.user_cooldowns = {}  # user_id -> last_execution_time
+        
+        # Initialize TheSportsDB client
+        self.thesportsdb_client = TheSportsDBClient(logger=self.logger)
         
         # Load default teams from config
         self.default_teams = self.load_default_teams()
@@ -799,6 +1026,10 @@ class SportsCommand(BaseCommand):
             'nfl': {'sport': 'football', 'league': 'nfl'},
             'football': {'sport': 'football', 'league': 'nfl'},
             
+            # CFL
+            'cfl': {'sport': 'football', 'league': 'cfl'},
+            'canadian football': {'sport': 'football', 'league': 'cfl'},
+            
             # MLB
             'mlb': {'sport': 'baseball', 'league': 'mlb'},
             'baseball': {'sport': 'baseball', 'league': 'mlb'},
@@ -819,6 +1050,10 @@ class SportsCommand(BaseCommand):
             # PWHL
             'pwhl': {'sport': 'hockey', 'league': 'pwhl'},
             'womens hockey': {'sport': 'hockey', 'league': 'pwhl'},
+            
+            # WHL (Western Hockey League) - using TheSportsDB
+            'whl': {'sport': 'hockey', 'league': 'whl', 'api_source': 'thesportsdb', 'league_id': '5160'},
+            'western hockey league': {'sport': 'hockey', 'league': 'whl', 'api_source': 'thesportsdb', 'league_id': '5160'},
             
             # MLS
             'mls': {'sport': 'soccer', 'league': 'usa.1'},
@@ -982,6 +1217,11 @@ class SportsCommand(BaseCommand):
     
     async def get_league_scores(self, league_info: Dict[str, str]) -> str:
         """Get upcoming games for a league"""
+        # Check if this league uses TheSportsDB
+        if league_info.get('api_source') == 'thesportsdb':
+            return await self.get_league_scores_thesportsdb(league_info)
+        
+        # Default to ESPN API
         try:
             # Construct API URL
             url = f"{self.ESPN_BASE_URL}/{league_info['sport']}/{league_info['league']}/scoreboard"
@@ -1030,6 +1270,249 @@ class SportsCommand(BaseCommand):
         except Exception as e:
             self.logger.error(f"Error fetching league scores: {e}")
             return self.translate('commands.sports.error_fetching_league', sport=league_info['sport'])
+    
+    async def get_league_scores_thesportsdb(self, league_info: Dict[str, str]) -> str:
+        """Get upcoming games for a league from TheSportsDB
+        
+        Fetches both upcoming and recent past events to provide a fuller response.
+        """
+        if not self.thesportsdb_client:
+            self.logger.error("TheSportsDB client not initialized")
+            return self.translate('commands.sports.error_fetching_league', sport=league_info.get('sport', 'unknown'))
+        
+        league_id = league_info.get('league_id')
+        if not league_id:
+            league_name = league_info.get('league', 'unknown').upper()
+            return f"League ID not configured for {league_name}. Please query specific teams instead."
+        
+        try:
+            # Fetch events from multiple sources to get more results
+            import asyncio
+            from datetime import timedelta
+            loop = asyncio.get_event_loop()
+            
+            # Get today's date and next few days
+            today = datetime.now().date()
+            date_strings = [today.strftime('%Y-%m-%d')]
+            for i in range(1, 7):  # Next 6 days
+                date_strings.append((today + timedelta(days=i)).strftime('%Y-%m-%d'))
+            
+            # Fetch events from multiple sources in parallel
+            next_events_task = loop.run_in_executor(
+                None,
+                lambda: self.thesportsdb_client.get_league_events_next(league_id, limit=15)
+            )
+            past_events_task = loop.run_in_executor(
+                None,
+                lambda: self.thesportsdb_client.get_league_events_past(league_id, limit=5)
+            )
+            
+            # Fetch events for today and next few days
+            def make_day_fetcher(date_str):
+                return lambda: self.thesportsdb_client.get_events_by_day(date_str, league_id)
+            
+            day_events_tasks = [
+                loop.run_in_executor(None, make_day_fetcher(d))
+                for d in date_strings
+            ]
+            
+            # Wait for all requests
+            results = await asyncio.gather(next_events_task, past_events_task, *day_events_tasks)
+            next_events = results[0]
+            past_events = results[1]
+            day_events_list = results[2:]  # List of lists from each day
+            
+            # Combine all day events into a single list
+            all_day_events = []
+            for day_events in day_events_list:
+                all_day_events.extend(day_events)
+            
+            # Parse events - combine all sources and deduplicate by event ID
+            now = datetime.now(timezone.utc).timestamp()
+            eight_days_ago = now - (8 * 24 * 60 * 60)
+            six_weeks_from_now = now + (6 * 7 * 24 * 60 * 60)
+            
+            # Combine all events and deduplicate by event ID
+            all_events = []
+            seen_event_ids = set()
+            
+            # Add past events
+            for event in past_events:
+                event_id = str(event.get('idEvent', ''))
+                if event_id and event_id not in seen_event_ids:
+                    all_events.append(event)
+                    seen_event_ids.add(event_id)
+            
+            # Add next events
+            for event in next_events:
+                event_id = str(event.get('idEvent', ''))
+                if event_id and event_id not in seen_event_ids:
+                    all_events.append(event)
+                    seen_event_ids.add(event_id)
+            
+            # Add day events
+            for event in all_day_events:
+                event_id = str(event.get('idEvent', ''))
+                if event_id and event_id not in seen_event_ids:
+                    all_events.append(event)
+                    seen_event_ids.add(event_id)
+            
+            # Parse all events
+            game_data = []
+            for event in all_events:
+                game_info = self.parse_thesportsdb_league_event(event, league_info['sport'], league_info['league'])
+                if game_info:
+                    event_ts = game_info.get('event_timestamp')
+                    status = game_info.get('status', '')
+                    
+                    # Include:
+                    # - Past games from last 8 days
+                    # - Upcoming games within next 6 weeks
+                    # - Live games (any status that's not NS/AP/FT/F)
+                    if status not in ['NS', 'AP', 'FT', 'F', '']:
+                        # Live or in-progress game
+                        game_data.append(game_info)
+                    elif event_ts:
+                        if event_ts >= eight_days_ago and event_ts <= six_weeks_from_now:
+                            game_data.append(game_info)
+                    else:
+                        # No timestamp but valid status - include it
+                        game_data.append(game_info)
+            
+            if not game_data:
+                return self.translate('commands.sports.no_games_league', sport=league_info.get('sport', 'unknown'))
+            
+            # Sort by game time (earliest first, but prioritize live games)
+            game_data.sort(key=lambda x: x['timestamp'])
+            
+            # Format responses with sport emojis, building up to 130 characters
+            sport_emoji = self.SPORT_EMOJIS.get(league_info['sport'], '🏆')
+            responses = []
+            current_length = 0
+            max_length = 130
+            
+            for game in game_data:
+                game_str = f"{sport_emoji} {game['formatted']}"
+                
+                # Check if adding this game would exceed limit
+                if responses:
+                    test_length = current_length + len("\n") + len(game_str)
+                else:
+                    test_length = len(game_str)
+                
+                if test_length <= max_length:
+                    responses.append(game_str)
+                    current_length = test_length
+                else:
+                    # Can't fit more games - stop before exceeding limit
+                    break
+            
+            if not responses:
+                # If even the first game doesn't fit, return it anyway (truncated)
+                return f"{sport_emoji} {game_data[0]['formatted'][:120]}"
+            
+            return "\n".join(responses)
+            
+        except Exception as e:
+            self.logger.error(f"Error fetching league scores from TheSportsDB: {e}")
+            return self.translate('commands.sports.error_fetching_league', sport=league_info.get('sport', 'unknown'))
+    
+    def parse_thesportsdb_league_event(self, event: Dict, sport: str, league: str) -> Optional[Dict]:
+        """Parse a TheSportsDB league event and return structured data with timestamp for sorting
+        
+        Similar to parse_thesportsdb_event but doesn't require a specific team_id.
+        """
+        try:
+            # Extract team info
+            home_team = event.get('strHomeTeam', '')
+            away_team = event.get('strAwayTeam', '')
+            home_score = event.get('intHomeScore', '')
+            away_score = event.get('intAwayScore', '')
+            status = event.get('strStatus', '')
+            timestamp_str = event.get('strTimestamp', '')
+            date_str = event.get('dateEvent', '')
+            time_str = event.get('strTime', '')
+            
+            # Get team abbreviations
+            home_abbr = self._get_team_abbreviation_from_name(home_team)
+            away_abbr = self._get_team_abbreviation_from_name(away_team)
+            
+            # Get timestamp for sorting
+            timestamp = 0
+            event_timestamp = None
+            if timestamp_str:
+                try:
+                    # Parse ISO format timestamp
+                    dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                    event_timestamp = dt.timestamp()
+                    timestamp = event_timestamp
+                except:
+                    # Try parsing date and time separately
+                    if date_str and time_str:
+                        try:
+                            dt_str = f"{date_str} {time_str}"
+                            dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+                            # Assume UTC if no timezone info
+                            dt = dt.replace(tzinfo=timezone.utc)
+                            event_timestamp = dt.timestamp()
+                            timestamp = event_timestamp
+                        except:
+                            pass
+            
+            # Format based on status
+            if status in ['FT', 'F']:  # Full Time / Final
+                # Completed game
+                date_suffix = ""
+                if date_str:
+                    try:
+                        dt = datetime.strptime(date_str, "%Y-%m-%d")
+                        today = datetime.now().date()
+                        game_date = dt.date()
+                        if game_date != today:
+                            date_suffix = f", {self.format_clean_date(dt)}"
+                    except:
+                        pass
+                
+                formatted = f"{away_abbr} {away_score}-{home_score} @{home_abbr} (F{date_suffix})"
+                timestamp = 9999999998  # Final games second to last
+                
+            elif status in ['NS', 'AP', '']:  # Not Started / Approved / Empty
+                # Scheduled game
+                if timestamp_str or (date_str and time_str):
+                    try:
+                        if timestamp_str:
+                            dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                        else:
+                            dt_str = f"{date_str} {time_str}"
+                            dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        
+                        local_dt = dt.astimezone()
+                        time_str_formatted = self.format_clean_date_time(local_dt)
+                        
+                        formatted = f"{away_abbr} @ {home_abbr} ({time_str_formatted})"
+                    except:
+                        formatted = f"{away_abbr} @ {home_abbr} (TBD)"
+                        timestamp = 9999999999  # Put TBD games last
+                else:
+                    formatted = f"{away_abbr} @ {home_abbr} (TBD)"
+                    timestamp = 9999999999  # Put TBD games last
+            else:
+                # Other status (live game, postponed, etc.)
+                formatted = f"{away_abbr} {away_score or '0'}-{home_score or '0'} @{home_abbr} ({status})"
+                timestamp = -1 if status not in ['NS', 'AP'] else 9999999997
+            
+            return {
+                'timestamp': timestamp,
+                'event_timestamp': event_timestamp,
+                'formatted': formatted,
+                'sport': sport,
+                'status': status
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error parsing TheSportsDB league event: {e}")
+            return None
     
     def parse_league_game_event(self, event: Dict, sport: str, league: str) -> Optional[Dict]:
         """Parse a league game event and return structured data with timestamp for sorting"""
@@ -1238,8 +1721,18 @@ class SportsCommand(BaseCommand):
     async def get_team_scores(self, team_name: str) -> str:
         """Get scores for a specific team or league"""
         # Check if this is a schedule query (team_name ends with " schedule")
-        if team_name.endswith(' schedule'):
+        is_schedule_query = team_name.endswith(' schedule')
+        if is_schedule_query:
             team_name_clean = team_name[:-9].strip()  # Remove " schedule"
+            
+            # First check if it's a league query
+            league_info = self.get_league_info(team_name_clean)
+            if league_info:
+                # For league schedule queries, we can return upcoming games
+                # (which is essentially the schedule)
+                return await self.get_league_scores(league_info)
+            
+            # Otherwise, treat as team query
             team_info = self.TEAM_MAPPINGS.get(team_name_clean)
             if not team_info:
                 return self.translate('commands.sports.team_not_found', team=team_name_clean)
@@ -1332,7 +1825,14 @@ class SportsCommand(BaseCommand):
         - Live games first
         - Last completed game (if within last 8 days)
         - Next scheduled game (if known)
+        
+        Supports both ESPN API and TheSportsDB API based on team_info['api_source'].
         """
+        # Check if this team uses TheSportsDB
+        if team_info.get('api_source') == 'thesportsdb':
+            return await self.fetch_team_games_thesportsdb(team_info)
+        
+        # Default to ESPN API
         try:
             # Use team schedule endpoint - returns both past and upcoming games
             url = f"{self.ESPN_BASE_URL}/{team_info['sport']}/{team_info['league']}/teams/{team_info['team_id']}/schedule"
@@ -1444,6 +1944,300 @@ class SportsCommand(BaseCommand):
             self.logger.error(f"Error fetching team games: {e}")
             return []
     
+    async def fetch_team_games_thesportsdb(self, team_info: Dict[str, str]) -> List[Dict]:
+        """Fetch team games from TheSportsDB API
+        
+        Returns games sorted by relevance:
+        - Last completed game (if within last 8 days)
+        - Next scheduled game (if known)
+        """
+        if not self.thesportsdb_client:
+            self.logger.error("TheSportsDB client not initialized")
+            return []
+        
+        try:
+            team_id = team_info['team_id']
+            
+            # Fetch last events and next events
+            # Run in executor to avoid blocking
+            import asyncio
+            loop = asyncio.get_event_loop()
+            
+            last_events_task = loop.run_in_executor(
+                None,
+                lambda: self.thesportsdb_client.get_team_events_last(team_id, limit=5)
+            )
+            next_events_task = loop.run_in_executor(
+                None,
+                lambda: self.thesportsdb_client.get_team_events_next(team_id, limit=5)
+            )
+            
+            last_events, next_events = await asyncio.gather(last_events_task, next_events_task)
+            
+            # Parse events
+            all_games = []
+            
+            # Parse last events (completed games)
+            for event in last_events:
+                game_data = self.parse_thesportsdb_event(event, team_id, team_info['sport'], team_info['league'])
+                if game_data:
+                    all_games.append(game_data)
+            
+            # Parse next events (upcoming games)
+            for event in next_events:
+                game_data = self.parse_thesportsdb_event(event, team_id, team_info['sport'], team_info['league'])
+                if game_data:
+                    all_games.append(game_data)
+            
+            if not all_games:
+                return []
+            
+            # Get current time for comparison
+            now = datetime.now(timezone.utc).timestamp()
+            eight_days_ago = now - (8 * 24 * 60 * 60)
+            six_weeks_from_now = now + (6 * 7 * 24 * 60 * 60)
+            
+            # Separate into categories
+            upcoming_games = []
+            past_games = []
+            
+            for game in all_games:
+                game_event_ts = game.get('event_timestamp')
+                effective_ts = game_event_ts if game_event_ts is not None else game['timestamp']
+                
+                if effective_ts is None:
+                    # No timestamp, check status
+                    if game.get('status') == 'FT' or game.get('status') == 'F':
+                        past_games.append((now, game))
+                    else:
+                        upcoming_games.append((six_weeks_from_now, game))
+                elif effective_ts > now:
+                    # Future game - only include if within next 6 weeks
+                    if effective_ts <= six_weeks_from_now:
+                        upcoming_games.append((effective_ts, game))
+                else:
+                    # Past game - only include if within last 8 days
+                    if effective_ts >= eight_days_ago:
+                        past_games.append((effective_ts, game))
+            
+            # Sort upcoming games by soonest first, past games by most recent first
+            upcoming_games.sort(key=lambda x: x[0] if x[0] is not None else float('inf'))
+            past_games.sort(key=lambda x: x[0] if x[0] is not None else -float('inf'), reverse=True)
+            
+            # Build result:
+            # 1. Last completed game (if within last 8 days)
+            # 2. Next scheduled game (if known and within 6 weeks)
+            result = []
+            
+            if past_games:
+                result.append(past_games[0][1])  # Most recent past game
+            
+            if upcoming_games:
+                result.append(upcoming_games[0][1])  # Next upcoming game
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Error fetching team games from TheSportsDB: {e}")
+            return []
+    
+    def parse_thesportsdb_event(self, event: Dict, team_id: str, sport: str, league: str) -> Optional[Dict]:
+        """Parse a TheSportsDB event and return structured data with timestamp for sorting"""
+        try:
+            # Extract team info
+            home_team = event.get('strHomeTeam', '')
+            away_team = event.get('strAwayTeam', '')
+            home_score = event.get('intHomeScore', '')
+            away_score = event.get('intAwayScore', '')
+            status = event.get('strStatus', '')
+            timestamp_str = event.get('strTimestamp', '')
+            date_str = event.get('dateEvent', '')
+            time_str = event.get('strTime', '')
+            
+            # Determine if our team is home or away
+            our_team_id = str(team_id)
+            event_home_id = str(event.get('idHomeTeam', ''))
+            event_away_id = str(event.get('idAwayTeam', ''))
+            
+            is_home = (event_home_id == our_team_id)
+            
+            # Get team abbreviations (use short names if available, otherwise use team names)
+            # For now, use a simplified version of team names
+            home_abbr = self._get_team_abbreviation_from_name(home_team)
+            away_abbr = self._get_team_abbreviation_from_name(away_team)
+            
+            # Get timestamp for sorting
+            timestamp = 0
+            event_timestamp = None
+            if timestamp_str:
+                try:
+                    # Parse ISO format timestamp
+                    dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                    event_timestamp = dt.timestamp()
+                    timestamp = event_timestamp
+                except:
+                    # Try parsing date and time separately
+                    if date_str and time_str:
+                        try:
+                            dt_str = f"{date_str} {time_str}"
+                            dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+                            # Assume UTC if no timezone info
+                            dt = dt.replace(tzinfo=timezone.utc)
+                            event_timestamp = dt.timestamp()
+                            timestamp = event_timestamp
+                        except:
+                            pass
+            
+            # Format based on status
+            if status in ['FT', 'F']:  # Full Time / Final
+                # Completed game
+                date_suffix = ""
+                if date_str:
+                    try:
+                        dt = datetime.strptime(date_str, "%Y-%m-%d")
+                        today = datetime.now().date()
+                        game_date = dt.date()
+                        if game_date != today:
+                            date_suffix = f", {self.format_clean_date(dt)}"
+                    except:
+                        pass
+                
+                if is_home:
+                    formatted = f"{away_abbr} {away_score}-{home_score} @{home_abbr} (F{date_suffix})"
+                else:
+                    formatted = f"{home_abbr} {home_score}-{away_score} @{away_abbr} (F{date_suffix})"
+                
+                timestamp = 9999999998  # Final games second to last
+                
+            elif status in ['NS', 'AP', '']:  # Not Started / Approved / Empty
+                # Scheduled game
+                if timestamp_str or (date_str and time_str):
+                    try:
+                        if timestamp_str:
+                            dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                        else:
+                            dt_str = f"{date_str} {time_str}"
+                            dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        
+                        local_dt = dt.astimezone()
+                        time_str_formatted = self.format_clean_date_time(local_dt)
+                        
+                        if is_home:
+                            formatted = f"{away_abbr} @ {home_abbr} ({time_str_formatted})"
+                        else:
+                            formatted = f"{home_abbr} @ {away_abbr} ({time_str_formatted})"
+                    except:
+                        if is_home:
+                            formatted = f"{away_abbr} @ {home_abbr} (TBD)"
+                        else:
+                            formatted = f"{home_abbr} @ {away_abbr} (TBD)"
+                        timestamp = 9999999999  # Put TBD games last
+                else:
+                    if is_home:
+                        formatted = f"{away_abbr} @ {home_abbr} (TBD)"
+                    else:
+                        formatted = f"{home_abbr} @ {away_abbr} (TBD)"
+                    timestamp = 9999999999  # Put TBD games last
+            else:
+                # Other status (live game, postponed, etc.)
+                if is_home:
+                    formatted = f"{away_abbr} {away_score or '0'}-{home_score or '0'} @{home_abbr} ({status})"
+                else:
+                    formatted = f"{home_abbr} {home_score or '0'}-{away_score or '0'} @{away_abbr} ({status})"
+                timestamp = -1 if status not in ['NS', 'AP'] else 9999999997
+            
+            return {
+                'timestamp': timestamp,
+                'event_timestamp': event_timestamp,
+                'formatted': formatted,
+                'sport': sport,
+                'status': status
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error parsing TheSportsDB event: {e}")
+            return None
+    
+    def _get_team_abbreviation_from_name(self, team_name: str) -> str:
+        """Extract a short abbreviation from a team name
+        
+        Uses common city abbreviations for WHL teams.
+        """
+        if not team_name:
+            return 'UNK'
+        
+        # WHL team abbreviation mappings
+        whl_abbreviations = {
+            'seattle thunderbirds': 'SEA',
+            'portland winterhawks': 'POR',
+            'everett silvertips': 'EVE',
+            'spokane chiefs': 'SPO',
+            'vancouver giants': 'VAN',
+            'kamloops blazers': 'KAM',
+            'prince george cougars': 'PG',
+            'kelowna rockets': 'KEL',
+            'tri-city americans': 'TC',
+            'wenatchee wild': 'WEN',
+            'victoria royals': 'VIC',
+            'edmonton oil kings': 'EDM',
+            'calgary hitmen': 'CGY',
+            'red deer rebels': 'RD',
+            'medicine hat tigers': 'MH',
+            'lethbridge hurricanes': 'LET',
+            'swift current broncos': 'SC',
+            'moose jaw warriors': 'MJ',
+            'regina pats': 'REG',
+            'saskatoon blades': 'SAS',
+            'prince albert raiders': 'PA',
+            'brandon wheat kings': 'BDN',
+            'winnipeg ice': 'WPG',
+        }
+        
+        team_lower = team_name.lower()
+        if team_lower in whl_abbreviations:
+            return whl_abbreviations[team_lower]
+        
+        # Try to extract from city name (first word)
+        words = team_name.split()
+        if len(words) >= 2:
+            city = words[0]
+            # Use common city abbreviations
+            city_abbr = {
+                'seattle': 'SEA',
+                'portland': 'POR',
+                'everett': 'EVE',
+                'spokane': 'SPO',
+                'vancouver': 'VAN',
+                'kamloops': 'KAM',
+                'prince': 'PG',  # Prince George
+                'kelowna': 'KEL',
+                'tri-city': 'TC',
+                'wenatchee': 'WEN',
+                'victoria': 'VIC',
+                'edmonton': 'EDM',
+                'calgary': 'CGY',
+                'red': 'RD',  # Red Deer
+                'medicine': 'MH',  # Medicine Hat
+                'lethbridge': 'LET',
+                'swift': 'SC',  # Swift Current
+                'moose': 'MJ',  # Moose Jaw
+                'regina': 'REG',
+                'saskatoon': 'SAS',
+                'winnipeg': 'WPG',
+                'brandon': 'BDN',
+            }
+            city_lower = city.lower()
+            if city_lower in city_abbr:
+                return city_abbr[city_lower]
+            
+            # Fallback: use first 3 letters of city
+            if len(city) >= 3:
+                return city[:3].upper()
+        
+        # Final fallback: use first 3 letters of team name
+        return team_name[:3].upper() if len(team_name) >= 3 else team_name.upper()
+    
     async def fetch_live_event_data(self, event_id: str, sport: str, league: str) -> Optional[Dict]:
         """Fetch live event data from the scoreboard endpoint for real-time scores
         
@@ -1487,7 +2281,14 @@ class SportsCommand(BaseCommand):
         
         Returns as many upcoming games as available from the schedule endpoint.
         Used for 'sports <teamname> schedule' command.
+        
+        Supports both ESPN API and TheSportsDB API based on team_info['api_source'].
         """
+        # Check if this team uses TheSportsDB
+        if team_info.get('api_source') == 'thesportsdb':
+            return await self.fetch_team_schedule_thesportsdb(team_info)
+        
+        # Default to ESPN API
         try:
             # Use team schedule endpoint - returns both past and upcoming games
             url = f"{self.ESPN_BASE_URL}/{team_info['sport']}/{team_info['league']}/teams/{team_info['team_id']}/schedule"
@@ -1537,6 +2338,47 @@ class SportsCommand(BaseCommand):
             
         except Exception as e:
             self.logger.error(f"Error fetching team schedule: {e}")
+            return []
+    
+    async def fetch_team_schedule_thesportsdb(self, team_info: Dict[str, str]) -> List[Dict]:
+        """Fetch upcoming scheduled games for a team from TheSportsDB"""
+        if not self.thesportsdb_client:
+            self.logger.error("TheSportsDB client not initialized")
+            return []
+        
+        try:
+            team_id = team_info['team_id']
+            
+            # Fetch next events
+            import asyncio
+            loop = asyncio.get_event_loop()
+            
+            next_events = await loop.run_in_executor(
+                None,
+                lambda: self.thesportsdb_client.get_team_events_next(team_id, limit=10)
+            )
+            
+            # Parse events
+            upcoming_games = []
+            now = datetime.now(timezone.utc).timestamp()
+            
+            for event in next_events:
+                game_data = self.parse_thesportsdb_event(event, team_id, team_info['sport'], team_info['league'])
+                if game_data:
+                    game_event_ts = game_data.get('event_timestamp')
+                    effective_ts = game_event_ts if game_event_ts is not None else game_data['timestamp']
+                    
+                    # Only include future games
+                    if effective_ts is None or effective_ts > now:
+                        upcoming_games.append((effective_ts or float('inf'), game_data))
+            
+            # Sort by soonest first
+            upcoming_games.sort(key=lambda x: x[0] if x[0] is not None else float('inf'))
+            
+            return [g for _, g in upcoming_games]
+            
+        except Exception as e:
+            self.logger.error(f"Error fetching team schedule from TheSportsDB: {e}")
             return []
     
     async def fetch_team_schedule_formatted(self, team_info: Dict[str, str]) -> Optional[str]:
