@@ -12,7 +12,7 @@ import pytz
 import sqlite3
 import json
 import os
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Any
 from pathlib import Path
 
 
@@ -112,8 +112,196 @@ class MessageScheduler:
         # Run the async function in the event loop
         loop.run_until_complete(self._send_scheduled_message_async(channel, message))
     
+    async def _get_mesh_info(self) -> Dict[str, Any]:
+        """Get mesh network information for scheduled messages"""
+        info = {
+            'total_contacts': 0,
+            'total_repeaters': 0,
+            'total_companions': 0,
+            'total_roomservers': 0,
+            'total_sensors': 0,
+            'recent_activity_24h': 0,
+            'new_companions_7d': 0,
+            'new_repeaters_7d': 0,
+            'new_roomservers_7d': 0,
+            'new_sensors_7d': 0,
+            'total_contacts_30d': 0,
+            'total_repeaters_30d': 0,
+            'total_companions_30d': 0,
+            'total_roomservers_30d': 0,
+            'total_sensors_30d': 0
+        }
+        
+        try:
+            # Get contact statistics from repeater manager if available
+            if hasattr(self.bot, 'repeater_manager'):
+                try:
+                    stats = await self.bot.repeater_manager.get_contact_statistics()
+                    if stats:
+                        info['total_contacts'] = stats.get('total_heard', 0)
+                        by_role = stats.get('by_role', {})
+                        info['total_repeaters'] = by_role.get('repeater', 0)
+                        info['total_companions'] = by_role.get('companion', 0)
+                        info['total_roomservers'] = by_role.get('roomserver', 0)
+                        info['total_sensors'] = by_role.get('sensor', 0)
+                        info['recent_activity_24h'] = stats.get('recent_activity', 0)
+                except Exception as e:
+                    self.logger.debug(f"Error getting stats from repeater_manager: {e}")
+            
+            # Fallback to device contacts if repeater manager stats not available
+            if info['total_contacts'] == 0 and hasattr(self.bot, 'meshcore') and hasattr(self.bot.meshcore, 'contacts'):
+                info['total_contacts'] = len(self.bot.meshcore.contacts)
+                
+                # Count repeaters and companions
+                if hasattr(self.bot, 'repeater_manager'):
+                    for contact_data in self.bot.meshcore.contacts.values():
+                        if self.bot.repeater_manager._is_repeater_device(contact_data):
+                            info['total_repeaters'] += 1
+                        else:
+                            info['total_companions'] += 1
+            
+            # Get recent activity from message_stats if available
+            if info['recent_activity_24h'] == 0:
+                try:
+                    with sqlite3.connect(self.bot.db_manager.db_path) as conn:
+                        cursor = conn.cursor()
+                        # Check if message_stats table exists
+                        cursor.execute('''
+                            SELECT name FROM sqlite_master 
+                            WHERE type='table' AND name='message_stats'
+                        ''')
+                        if cursor.fetchone():
+                            cutoff_time = int(time.time()) - (24 * 60 * 60)
+                            cursor.execute('''
+                                SELECT COUNT(DISTINCT sender_id)
+                                FROM message_stats
+                                WHERE timestamp >= ? AND is_dm = 0
+                            ''', (cutoff_time,))
+                            result = cursor.fetchone()
+                            if result:
+                                info['recent_activity_24h'] = result[0]
+                except Exception:
+                    pass
+            
+            # Calculate new devices in last 7 days (matching web viewer logic)
+            # Query devices first heard in the last 7 days, grouped by role
+            # Also calculate devices active in last 30 days (last_heard)
+            try:
+                with sqlite3.connect(self.bot.db_manager.db_path) as conn:
+                    cursor = conn.cursor()
+                    # Check if complete_contact_tracking table exists
+                    cursor.execute('''
+                        SELECT name FROM sqlite_master 
+                        WHERE type='table' AND name='complete_contact_tracking'
+                    ''')
+                    if cursor.fetchone():
+                        # Get new devices by role (first_heard in last 7 days)
+                        # Use role field for matching (more reliable than device_type)
+                        cursor.execute('''
+                            SELECT role, COUNT(DISTINCT public_key) as count
+                            FROM complete_contact_tracking
+                            WHERE first_heard >= datetime('now', '-7 days')
+                            AND role IS NOT NULL AND role != ''
+                            GROUP BY role
+                        ''')
+                        for row in cursor.fetchall():
+                            role = (row[0] or '').lower()
+                            count = row[1] or 0
+                            
+                            if role == 'companion':
+                                info['new_companions_7d'] = count
+                            elif role == 'repeater':
+                                info['new_repeaters_7d'] = count
+                            elif role == 'roomserver':
+                                info['new_roomservers_7d'] = count
+                            elif role == 'sensor':
+                                info['new_sensors_7d'] = count
+                        
+                        # Get total contacts active in last 30 days (last_heard)
+                        cursor.execute('''
+                            SELECT COUNT(DISTINCT public_key) as count
+                            FROM complete_contact_tracking
+                            WHERE last_heard >= datetime('now', '-30 days')
+                        ''')
+                        result = cursor.fetchone()
+                        if result:
+                            info['total_contacts_30d'] = result[0] or 0
+                        
+                        # Get devices active in last 30 days by role (last_heard)
+                        cursor.execute('''
+                            SELECT role, COUNT(DISTINCT public_key) as count
+                            FROM complete_contact_tracking
+                            WHERE last_heard >= datetime('now', '-30 days')
+                            AND role IS NOT NULL AND role != ''
+                            GROUP BY role
+                        ''')
+                        for row in cursor.fetchall():
+                            role = (row[0] or '').lower()
+                            count = row[1] or 0
+                            
+                            if role == 'companion':
+                                info['total_companions_30d'] = count
+                            elif role == 'repeater':
+                                info['total_repeaters_30d'] = count
+                            elif role == 'roomserver':
+                                info['total_roomservers_30d'] = count
+                            elif role == 'sensor':
+                                info['total_sensors_30d'] = count
+            except Exception as e:
+                self.logger.debug(f"Error getting new device counts or 30-day activity: {e}")
+                    
+        except Exception as e:
+            self.logger.debug(f"Error getting mesh info: {e}")
+        
+        return info
+    
+    def _has_mesh_info_placeholders(self, message: str) -> bool:
+        """Check if message contains mesh info placeholders"""
+        placeholders = [
+            '{total_contacts}', '{total_repeaters}', '{total_companions}', 
+            '{total_roomservers}', '{total_sensors}', '{recent_activity_24h}',
+            '{new_companions_7d}', '{new_repeaters_7d}', '{new_roomservers_7d}', '{new_sensors_7d}',
+            '{total_contacts_30d}', '{total_repeaters_30d}', '{total_companions_30d}',
+            '{total_roomservers_30d}', '{total_sensors_30d}',
+            # Legacy placeholders for backward compatibility
+            '{repeaters}', '{companions}'
+        ]
+        return any(placeholder in message for placeholder in placeholders)
+    
     async def _send_scheduled_message_async(self, channel: str, message: str):
         """Send a scheduled message (async implementation)"""
+        # Check if message contains mesh info placeholders
+        if self._has_mesh_info_placeholders(message):
+            try:
+                mesh_info = await self._get_mesh_info()
+                # Replace placeholders in the message
+                try:
+                    message = message.format(
+                        total_contacts=mesh_info.get('total_contacts', 0),
+                        total_repeaters=mesh_info.get('total_repeaters', 0),
+                        total_companions=mesh_info.get('total_companions', 0),
+                        total_roomservers=mesh_info.get('total_roomservers', 0),
+                        total_sensors=mesh_info.get('total_sensors', 0),
+                        recent_activity_24h=mesh_info.get('recent_activity_24h', 0),
+                        new_companions_7d=mesh_info.get('new_companions_7d', 0),
+                        new_repeaters_7d=mesh_info.get('new_repeaters_7d', 0),
+                        new_roomservers_7d=mesh_info.get('new_roomservers_7d', 0),
+                        new_sensors_7d=mesh_info.get('new_sensors_7d', 0),
+                        total_contacts_30d=mesh_info.get('total_contacts_30d', 0),
+                        total_repeaters_30d=mesh_info.get('total_repeaters_30d', 0),
+                        total_companions_30d=mesh_info.get('total_companions_30d', 0),
+                        total_roomservers_30d=mesh_info.get('total_roomservers_30d', 0),
+                        total_sensors_30d=mesh_info.get('total_sensors_30d', 0),
+                        # Legacy placeholders for backward compatibility
+                        repeaters=mesh_info.get('total_repeaters', 0),
+                        companions=mesh_info.get('total_companions', 0)
+                    )
+                    self.logger.debug(f"Replaced mesh info placeholders in scheduled message")
+                except (KeyError, ValueError) as e:
+                    self.logger.warning(f"Error replacing placeholders in scheduled message: {e}. Sending message as-is.")
+            except Exception as e:
+                self.logger.warning(f"Error fetching mesh info for scheduled message: {e}. Sending message as-is.")
+        
         await self.bot.command_manager.send_channel_message(channel, message)
     
     def start(self):
@@ -126,6 +314,8 @@ class MessageScheduler:
         self.logger.info("Scheduler thread started")
         last_log_time = 0
         last_feed_poll_time = 0
+        last_job_count = 0
+        last_job_log_time = 0
         
         while self.bot.connected:
             current_time = self.get_current_time()
@@ -135,10 +325,15 @@ class MessageScheduler:
                 self.logger.info(f"Scheduler running - Current time: {current_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
                 last_log_time = time.time()
             
-            # Check for pending scheduled messages
+            # Check for pending scheduled messages (only log when count changes, max once per 30 seconds)
             pending_jobs = schedule.get_jobs()
-            if pending_jobs:
-                self.logger.debug(f"Found {len(pending_jobs)} scheduled jobs")
+            current_job_count = len(pending_jobs) if pending_jobs else 0
+            current_time_sec = time.time()
+            if current_job_count != last_job_count and (current_time_sec - last_job_log_time) >= 30:
+                if current_job_count > 0:
+                    self.logger.debug(f"Found {current_job_count} scheduled jobs")
+                last_job_count = current_job_count
+                last_job_log_time = current_time_sec
             
             # Check for interval-based advertising
             self.check_interval_advertising()

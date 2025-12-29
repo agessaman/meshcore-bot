@@ -252,9 +252,44 @@ banned_users =
 # Time format: HHMM (24-hour, no colon)
 # Bot will send these messages at the specified times daily
 # Example: 0800 = general:Good morning! Weather update coming soon.
-0800 = general:Good morning! Bot is online and ready.
-1200 = general:Midday status check - all systems operational.
-1800 = general:Evening update - bot status: Good
+# 
+# Available placeholders for mesh network information:
+# 
+# Total counts (ever heard):
+# {total_contacts} - Total number of contacts ever heard
+# {total_repeaters} - Total number of repeater devices ever heard
+# {total_companions} - Total number of companion devices ever heard
+# {total_roomservers} - Total number of roomserver devices ever heard
+# {total_sensors} - Total number of sensor devices ever heard
+# 
+# Recent activity:
+# {recent_activity_24h} - Number of unique users active in last 24 hours
+# 
+# Active in last 30 days (last_heard):
+# {total_contacts_30d} - Total contacts active (last_heard) in last 30 days
+# {total_repeaters_30d} - Total repeaters active (last_heard) in last 30 days
+# {total_companions_30d} - Total companions active (last_heard) in last 30 days
+# {total_roomservers_30d} - Total roomservers active (last_heard) in last 30 days
+# {total_sensors_30d} - Total sensors active (last_heard) in last 30 days
+# 
+# New devices (first heard in last 7 days):
+# {new_companions_7d} - New companion devices first heard in last 7 days
+# {new_repeaters_7d} - New repeater devices first heard in last 7 days
+# {new_roomservers_7d} - New roomserver devices first heard in last 7 days
+# {new_sensors_7d} - New sensor devices first heard in last 7 days
+# 
+# Legacy placeholders (for backward compatibility):
+# {repeaters} - Same as {total_repeaters}
+# {companions} - Same as {total_companions}
+# 
+# Example with placeholders:
+# 0800 = Public:Good morning! Network: {total_contacts} total ({total_repeaters} repeaters, {total_companions} companions). {new_repeaters_7d} new repeaters, {new_companions_7d} new companions in last 7d. {recent_activity_24h} active in 24h.
+# Example with 30-day active devices and new devices in 7d:
+# 0900 = Public:{total_contacts_30d} active in last 30d: ({total_repeaters_30d} repeaters, {total_companions_30d} companions). {new_repeaters_7d} new repeaters, {new_companions_7d} new companions in last 7d. {recent_activity_24h} users active in last 24h.
+
+#0800 = Public:Good morning! Bot is online and ready.
+#1200 = Public:Midday status check - all systems operational.
+#1800 = Public:Evening update - bot status: Good
 
 [Logging]
 # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
