@@ -198,7 +198,7 @@
     },
     "path": {
       "description": "Decode hex path data to show which repeaters were involved in message routing",
-      "help": "Path: path [hex] - Decode path to show repeaters. Use !path alone for recent message path, or path [7e,01] for specific path.",
+      "help": "Path: path [hex] - Decode path to show repeaters. Use path alone for current message path, or path [7e,01] for specific path.",
       "no_valid_hex": "❌ No valid hex values found in path data. Use format like: 11,98,a4,49,cd,5f,01",
       "no_path": "❌ No path information available in current message",
       "error": "Error processing path: {error}",
