@@ -36,4 +36,13 @@ class Magic8Command(BaseCommand):
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the magic8 command"""
         answer = magic8()
-        return await self.send_response(message, answer)
+        
+        # Format response with sender mention for channel messages, without for DMs
+        if message.is_dm:
+            response = f"🎱 {answer}"
+        else:
+            sender = message.sender_id or "Unknown"
+            response = f"🎱 @[{sender}] {answer}"
+        
+        return await self.send_response(message, response)
+        
