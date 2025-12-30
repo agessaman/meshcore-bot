@@ -703,6 +703,38 @@ alert_enabled = false
 # Example: Combined region (all counties/agencies)
 # agency.region_all = 
 
+[Announcements_Command]
+# Enable or disable the announcements command
+# true: Announcements command is available
+# false: Announcements command is disabled (default)
+enabled = false
+
+# Announcements Access Control List (ACL)
+# Only users with public keys listed here can send announcements
+# This ACL automatically inherits all members from the Admin_ACL
+# Format: comma-separated list of 64-character hex public keys (without spaces)
+# Example: f5d2b56d19b24412756933e917d4632e088cdd5daeadc9002feca73bf5d2b56d
+# Leave empty to only use Admin_ACL members
+announcements_acl = 
+
+# Default channel for announcements when no channel is specified
+# Announcements will be sent to this channel if no channel is provided
+default_announcement_channel = Public
+
+# Announcement cooldown in minutes
+# Prevents the same announcement from being sent too frequently
+# Default: 60 minutes
+announcement_cooldown = 60
+
+# Announcement triggers
+# Format: announce.<trigger_name> = <announcement_text>
+# Users can send: announce <trigger_name> [channel]
+# If channel is not specified, uses default_announcement_channel
+# Example triggers:
+announce.default = This is the default announcement.
+announce.bots = This is an announcement with the list of bots.
+announce.other = This is a different announcement on another topic.
+
 [Web_Viewer]
 # Enable or disable the web data viewer
 # SECURITY NOTE: Web viewer has NO AUTHENTICATION built-in
