@@ -422,13 +422,22 @@ class CommandManager:
                 return f"Help {command_name}: {help_text}"
         
         # If still not found, return unknown command message with helpful suggestion
-        available_commands = []
-        for cmd_name, cmd_instance in self.commands.items():
-            available_commands.append(cmd_name)
-            if hasattr(cmd_instance, 'keywords'):
-                available_commands.extend(cmd_instance.keywords)
+        # Use the help command's method to get popular commands (only primary names, no aliases)
+        available_str = ""
+        if 'help' in self.commands:
+            help_command = self.commands['help']
+            if hasattr(help_command, 'get_available_commands_list'):
+                available_str = help_command.get_available_commands_list()
         
-        available_str = ', '.join(sorted(set(available_commands)))
+        # Fallback if help command doesn't have the method
+        if not available_str:
+            # Only show primary command names, not keywords
+            primary_names = sorted([
+                cmd.name if hasattr(cmd, 'name') else name
+                for name, cmd in self.commands.items()
+            ])
+            available_str = ', '.join(primary_names)
+        
         if hasattr(self.bot, 'translator'):
             return self.bot.translator.translate('commands.help.unknown', command=command_name, available=available_str)
         return f"Unknown: {command_name}. Available: {available_str}. Try 'help' for command list."
