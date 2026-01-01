@@ -30,6 +30,9 @@ class BaseCommand(ABC):
         self.logger = bot.logger
         self._last_execution_time = 0
         
+        # Per-user cooldown tracking (for commands that need per-user rate limiting)
+        self._user_cooldowns: Dict[str, float] = {}
+        
         # Load allowed channels from config (standardized channel override)
         self.allowed_channels = self._load_allowed_channels()
     
@@ -105,14 +108,26 @@ class BaseCommand(ABC):
         for sec in sections_to_try:
             if self.bot.config.has_section(sec):
                 try:
-                    if value_type == 'bool':
+                    if not self.bot.config.has_option(sec, key):
+                        continue
+                    
+                    raw_value = self.bot.config.get(sec, key)
+                    
+                    # Type conversion
+                    if value_type == 'str':
+                        value = raw_value
+                    elif value_type == 'bool':
                         value = self.bot.config.getboolean(sec, key, fallback=fallback)
                     elif value_type == 'int':
                         value = self.bot.config.getint(sec, key, fallback=fallback)
                     elif value_type == 'float':
                         value = self.bot.config.getfloat(sec, key, fallback=fallback)
+                    elif value_type == 'list':
+                        # Parse comma-separated list
+                        value = [item.strip() for item in raw_value.split(',') if item.strip()]
                     else:
-                        value = self.bot.config.get(sec, key, fallback=fallback)
+                        self.logger.warning(f"Unknown value_type '{value_type}' for {sec}.{key}, returning as string")
+                        value = raw_value
                     
                     # If we got a value (not fallback), return it
                     if value != fallback or self.bot.config.has_option(sec, key):
@@ -121,6 +136,9 @@ class BaseCommand(ABC):
                             self.logger.info(f"Config migration: Using old section '[{old_section}]' for '{key}'. "
                                            f"Please update to '[{new_section}]' in config.ini")
                         return value
+                except (ValueError, TypeError) as e:
+                    self.logger.debug(f"Config conversion error for {sec}.{key}: {e}")
+                    continue
                 except Exception as e:
                     self.logger.debug(f"Error reading config {sec}.{key}: {e}")
                     continue
@@ -220,11 +238,10 @@ class BaseCommand(ABC):
         if self.requires_dm and not message.is_dm:
             return False
         
-        # Check cooldown
+        # Check cooldown (per-user if message has sender_id, otherwise global)
         if self.cooldown_seconds > 0:
-            import time
-            current_time = time.time()
-            if (current_time - self._last_execution_time) < self.cooldown_seconds:
+            can_execute, _ = self.check_cooldown(message.sender_id if message.sender_id else None)
+            if not can_execute:
                 return False
         
         # Check admin ACL if this command requires admin access
@@ -305,20 +322,84 @@ class BaseCommand(ABC):
         # Minimum of 130 characters to ensure some functionality
         return max(130, max_length)
     
-    def _record_execution(self):
-        """Record the execution time for cooldown tracking"""
-        import time
-        self._last_execution_time = time.time()
-    
-    def get_remaining_cooldown(self) -> int:
-        """Get remaining cooldown time in seconds"""
+    def check_cooldown(self, user_id: Optional[str] = None) -> Tuple[bool, float]:
+        """
+        Check if user is on cooldown.
+        
+        Args:
+            user_id: User ID to check cooldown for. If None, checks global cooldown.
+        
+        Returns:
+            Tuple of (can_execute: bool, remaining_seconds: float)
+        """
         if self.cooldown_seconds <= 0:
-            return 0
+            return True, 0.0
         
         import time
+        
+        if user_id:
+            # Per-user cooldown
+            last_exec = self._user_cooldowns.get(user_id, 0)
+            elapsed = time.time() - last_exec
+            remaining = self.cooldown_seconds - elapsed
+            
+            if remaining > 0:
+                return False, remaining
+            return True, 0.0
+        else:
+            # Global cooldown (backward compatibility)
+            elapsed = time.time() - self._last_execution_time
+            remaining = self.cooldown_seconds - elapsed
+            
+            if remaining > 0:
+                return False, remaining
+            return True, 0.0
+    
+    def record_execution(self, user_id: Optional[str] = None) -> None:
+        """
+        Record command execution for cooldown tracking.
+        
+        Args:
+            user_id: User ID to record execution for. If None, records global execution.
+        """
+        import time
         current_time = time.time()
-        elapsed = current_time - self._last_execution_time
-        remaining = self.cooldown_seconds - elapsed
+        
+        if user_id:
+            # Per-user cooldown
+            self._user_cooldowns[user_id] = current_time
+            
+            # Clean up old entries periodically to prevent memory growth
+            if len(self._user_cooldowns) > 1000:
+                cutoff = current_time - (self.cooldown_seconds * 2)
+                self._user_cooldowns = {
+                    k: v for k, v in self._user_cooldowns.items() 
+                    if v > cutoff
+                }
+        else:
+            # Global cooldown (backward compatibility)
+            self._last_execution_time = current_time
+    
+    def _record_execution(self, user_id: Optional[str] = None):
+        """
+        Record the execution time for cooldown tracking (backward compatibility).
+        
+        Args:
+            user_id: User ID to record execution for. If None, records global execution.
+        """
+        self.record_execution(user_id)
+    
+    def get_remaining_cooldown(self, user_id: Optional[str] = None) -> int:
+        """
+        Get remaining cooldown time in seconds.
+        
+        Args:
+            user_id: User ID to check cooldown for. If None, checks global cooldown.
+        
+        Returns:
+            Remaining cooldown time in seconds (as integer)
+        """
+        _, remaining = self.check_cooldown(user_id)
         return max(0, int(remaining))
     
     def _load_translated_keywords(self):

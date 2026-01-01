@@ -43,9 +43,6 @@ class SolarforecastCommand(BaseCommand):
         super().__init__(bot)
         self.url_timeout = 15  # seconds
         
-        # Per-user cooldown tracking
-        self.user_cooldowns = {}
-        
         # Forecast cache: {cache_key: {'data': dict, 'timestamp': float}}
         self.forecast_cache = {}
         
@@ -72,28 +69,6 @@ class SolarforecastCommand(BaseCommand):
         # Fallback: return original if no translation found
         return day_abbr
     
-    def can_execute(self, message: MeshMessage) -> bool:
-        """Override cooldown check to be per-user"""
-        if self.requires_dm and not message.is_dm:
-            return False
-        
-        if self.cooldown_seconds > 0:
-            import time
-            current_time = time.time()
-            user_id = message.sender_id
-            
-            if user_id in self.user_cooldowns:
-                last_execution = self.user_cooldowns[user_id]
-                if (current_time - last_execution) < self.cooldown_seconds:
-                    return False
-        
-        return True
-    
-    def _record_execution(self, user_id: str):
-        """Record the execution time for a specific user"""
-        import time
-        self.user_cooldowns[user_id] = time.time()
-    
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the solar forecast command"""
         content = message.content.strip()
@@ -105,7 +80,8 @@ class SolarforecastCommand(BaseCommand):
             return True
         
         try:
-            self._record_execution(message.sender_id)
+            # Record execution for this user (handles cooldown)
+            self.record_execution(message.sender_id)
             
             # Parse arguments - location might be multiple words (e.g., "Hillcrest Repeater v2")
             # Try to find where location ends and numeric parameters begin

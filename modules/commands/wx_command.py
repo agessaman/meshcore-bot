@@ -45,10 +45,6 @@ class WxCommand(BaseCommand):
     def __init__(self, bot):
         super().__init__(bot)
         
-        # Always initialize user_cooldowns to prevent AttributeError
-        # (even when delegating, some methods might still reference it)
-        self.user_cooldowns = {}  # user_id -> last_execution_time
-        
         # Check weather provider setting - delegate to international command if using Open-Meteo
         weather_provider = bot.config.get('Weather', 'weather_provider', fallback='noaa').lower()
         if weather_provider == 'openmeteo' and WX_INTERNATIONAL_AVAILABLE:
@@ -132,49 +128,20 @@ class WxCommand(BaseCommand):
         return False
     
     def can_execute(self, message: MeshMessage) -> bool:
-        """Override cooldown check to be per-user instead of per-command-instance"""
+        """Override to delegate or use base class cooldown"""
         if self.delegate_command:
             return self.delegate_command.can_execute(message)
         
-        # Check if command requires DM and message is not DM
-        if self.requires_dm and not message.is_dm:
-            return False
-        
-        # Check per-user cooldown
-        if self.cooldown_seconds > 0:
-            import time
-            current_time = time.time()
-            user_id = message.sender_id
-            
-            if user_id in self.user_cooldowns:
-                last_execution = self.user_cooldowns[user_id]
-                if (current_time - last_execution) < self.cooldown_seconds:
-                    return False
-        
-        return True
+        # Use base class for cooldown and other checks
+        return super().can_execute(message)
     
     def get_remaining_cooldown(self, user_id: str) -> int:
         """Get remaining cooldown time for a specific user"""
         if self.delegate_command:
             return self.delegate_command.get_remaining_cooldown(user_id)
         
-        if self.cooldown_seconds <= 0:
-            return 0
-        
-        import time
-        current_time = time.time()
-        if user_id in self.user_cooldowns:
-            last_execution = self.user_cooldowns[user_id]
-            elapsed = current_time - last_execution
-            remaining = self.cooldown_seconds - elapsed
-            return max(0, int(remaining))
-        
-        return 0
-    
-    def _record_execution(self, user_id: str):
-        """Record the execution time for a specific user"""
-        import time
-        self.user_cooldowns[user_id] = time.time()
+        # Use base class method
+        return super().get_remaining_cooldown(user_id)
     
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the weather command"""
@@ -242,7 +209,7 @@ class WxCommand(BaseCommand):
         
         try:
             # Record execution for this user
-            self._record_execution(message.sender_id)
+            self.record_execution(message.sender_id)
             
             # Special handling for "alerts" command
             if show_full_alerts:

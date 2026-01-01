@@ -19,9 +19,6 @@ class CatfactCommand(BaseCommand):
     category = "hidden"  # Hidden category so it won't appear in help
     cooldown_seconds = 3  # 3 second cooldown per user
     
-    # Per-user cooldown tracking
-    user_cooldowns = {}  # user_id -> last_execution_time
-    
     def __init__(self, bot):
         super().__init__(bot)
         
@@ -108,50 +105,11 @@ class CatfactCommand(BaseCommand):
         # Return empty string so it doesn't appear in help
         return ""
     
-    def can_execute(self, message: MeshMessage) -> bool:
-        """Override cooldown check to be per-user instead of per-command-instance"""
-        # Check if command requires DM and message is not DM
-        if self.requires_dm and not message.is_dm:
-            return False
-        
-        # Check per-user cooldown
-        if self.cooldown_seconds > 0:
-            import time
-            current_time = time.time()
-            user_id = message.sender_id
-            
-            if user_id in self.user_cooldowns:
-                last_execution = self.user_cooldowns[user_id]
-                if (current_time - last_execution) < self.cooldown_seconds:
-                    return False
-        
-        return True
-    
-    def get_remaining_cooldown(self, user_id: str) -> int:
-        """Get remaining cooldown time for a specific user"""
-        if self.cooldown_seconds <= 0:
-            return 0
-        
-        import time
-        current_time = time.time()
-        if user_id in self.user_cooldowns:
-            last_execution = self.user_cooldowns[user_id]
-            elapsed = current_time - last_execution
-            remaining = self.cooldown_seconds - elapsed
-            return max(0, int(remaining))
-        
-        return 0
-    
-    def _record_execution(self, user_id: str):
-        """Record the execution time for a specific user"""
-        import time
-        self.user_cooldowns[user_id] = time.time()
-    
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the cat fact command"""
         try:
             # Record execution for this user
-            self._record_execution(message.sender_id)
+            self.record_execution(message.sender_id)
             
             # Get cat facts from translations or fallback
             cat_facts = self.get_cat_facts()

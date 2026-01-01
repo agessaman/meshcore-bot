@@ -31,9 +31,6 @@ class DadJokeCommand(BaseCommand):
     def __init__(self, bot):
         super().__init__(bot)
         
-        # Per-user cooldown tracking
-        self.user_cooldowns = {}  # user_id -> last_execution_time
-        
         # Load configuration
         self.dadjoke_enabled = bot.config.getboolean('Jokes', 'dadjoke_enabled', fallback=True)
         self.long_jokes = bot.config.getboolean('Jokes', 'long_jokes', fallback=False)
@@ -54,58 +51,22 @@ class DadJokeCommand(BaseCommand):
         return False
     
     def can_execute(self, message: MeshMessage) -> bool:
-        """Override cooldown check to be per-user instead of per-command-instance"""
-        # Check channel access (standardized channel override)
-        if not self.is_channel_allowed(message):
+        """Override to add custom check (dadjoke_enabled) while using base class cooldown"""
+        # Use base class for channel access, DM requirements, and cooldown
+        if not super().can_execute(message):
             return False
         
         # Check if dadjoke command is enabled
         if not self.dadjoke_enabled:
             return False
         
-        # Check if command requires DM and message is not DM
-        if self.requires_dm and not message.is_dm:
-            return False
-        
-        # Check per-user cooldown
-        if self.cooldown_seconds > 0:
-            import time
-            current_time = time.time()
-            user_id = message.sender_id
-            
-            if user_id in self.user_cooldowns:
-                last_execution = self.user_cooldowns[user_id]
-                if (current_time - last_execution) < self.cooldown_seconds:
-                    return False
-        
         return True
-    
-    def get_remaining_cooldown(self, user_id: str) -> int:
-        """Get remaining cooldown time for a specific user"""
-        if self.cooldown_seconds <= 0:
-            return 0
-        
-        import time
-        current_time = time.time()
-        if user_id in self.user_cooldowns:
-            last_execution = self.user_cooldowns[user_id]
-            elapsed = current_time - last_execution
-            if elapsed < self.cooldown_seconds:
-                remaining = self.cooldown_seconds - elapsed
-                return max(0, int(remaining))
-        
-        return 0
-    
-    def _record_execution(self, user_id: str):
-        """Record the execution time for a specific user"""
-        import time
-        self.user_cooldowns[user_id] = time.time()
     
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the dad joke command"""
         try:
             # Record execution for this user
-            self._record_execution(message.sender_id)
+            self.record_execution(message.sender_id)
             
             # Get dad joke from API with length handling
             joke_data = await self.get_dad_joke_with_length_handling()

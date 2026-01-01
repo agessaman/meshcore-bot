@@ -799,9 +799,6 @@ class SportsCommand(BaseCommand):
         super().__init__(bot)
         self.url_timeout = 10  # seconds
         
-        # Per-user cooldown tracking
-        self.user_cooldowns = {}  # user_id -> last_execution_time
-        
         # Initialize TheSportsDB client
         self.thesportsdb_client = TheSportsDBClient(logger=self.logger)
         
@@ -950,25 +947,9 @@ class SportsCommand(BaseCommand):
         if not sports_enabled:
             return False
         
-        # Channel access is now handled by BaseCommand.is_channel_allowed()
-        # Call parent can_execute() which includes channel checking
-        if not super().can_execute(message):
-            return False
-        
-        # Check per-user cooldown (don't set it here, just check)
-        if self.cooldown_seconds > 0:
-            import time
-            current_time = time.time()
-            user_id = message.sender_id or "unknown"
-            
-            if user_id in self.user_cooldowns:
-                time_since_last = current_time - self.user_cooldowns[user_id]
-                if time_since_last < self.cooldown_seconds:
-                    remaining = self.cooldown_seconds - time_since_last
-                    self.logger.info(f"Sports command cooldown active for user {user_id}, {remaining:.1f}s remaining")
-                    return False
-        
-        return True
+        # Channel access and cooldown are now handled by BaseCommand.can_execute()
+        # Call parent can_execute() which includes channel checking and cooldown
+        return super().can_execute(message)
     
     def get_help_text(self) -> str:
         return self.translate('commands.sports.help')
@@ -976,12 +957,8 @@ class SportsCommand(BaseCommand):
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the sports command"""
         try:
-            # Set cooldown for this user
-            if self.cooldown_seconds > 0:
-                import time
-                current_time = time.time()
-                user_id = message.sender_id or "unknown"
-                self.user_cooldowns[user_id] = current_time
+            # Record execution for this user (handles cooldown)
+            self.record_execution(message.sender_id)
             
             # Parse the command
             content = message.content.strip()

@@ -31,9 +31,6 @@ class GlobalWxCommand(BaseCommand):
         super().__init__(bot)
         self.url_timeout = 10  # seconds
         
-        # Per-user cooldown tracking
-        self.user_cooldowns = {}  # user_id -> last_execution_time
-        
         # Get default state and country from config for city disambiguation
         self.default_state = self.bot.config.get('Weather', 'default_state', fallback='WA')
         self.default_country = self.bot.config.get('Weather', 'default_country', fallback='US')
@@ -74,43 +71,6 @@ class GlobalWxCommand(BaseCommand):
                 return True
         return False
     
-    def can_execute(self, message: MeshMessage) -> bool:
-        """Override cooldown check to be per-user instead of per-command-instance"""
-        if self.requires_dm and not message.is_dm:
-            return False
-        
-        # Check per-user cooldown
-        if self.cooldown_seconds > 0:
-            import time
-            current_time = time.time()
-            user_id = message.sender_id
-            
-            if user_id in self.user_cooldowns:
-                last_execution = self.user_cooldowns[user_id]
-                if (current_time - last_execution) < self.cooldown_seconds:
-                    return False
-        
-        return True
-    
-    def get_remaining_cooldown(self, user_id: str) -> int:
-        """Get remaining cooldown time for a specific user"""
-        if self.cooldown_seconds <= 0:
-            return 0
-        
-        import time
-        current_time = time.time()
-        if user_id in self.user_cooldowns:
-            last_execution = self.user_cooldowns[user_id]
-            elapsed = current_time - last_execution
-            remaining = self.cooldown_seconds - elapsed
-            return max(0, int(remaining))
-        
-        return 0
-    
-    def _record_execution(self, user_id: str):
-        """Record the execution time for a specific user"""
-        import time
-        self.user_cooldowns[user_id] = time.time()
     
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the weather command"""
@@ -154,7 +114,7 @@ class GlobalWxCommand(BaseCommand):
         
         try:
             # Record execution for this user
-            self._record_execution(message.sender_id)
+            self.record_execution(message.sender_id)
             
             # Get weather data for the location
             weather_data = await self.get_weather_for_location(location, forecast_type, num_days)

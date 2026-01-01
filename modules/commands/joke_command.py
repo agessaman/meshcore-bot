@@ -43,9 +43,6 @@ class JokeCommand(BaseCommand):
     def __init__(self, bot):
         super().__init__(bot)
         
-        # Per-user cooldown tracking
-        self.user_cooldowns = {}  # user_id -> last_execution_time
-        
         # Load configuration
         self.joke_enabled = bot.config.getboolean('Jokes', 'joke_enabled', fallback=True)
         self.seasonal_jokes = bot.config.getboolean('Jokes', 'seasonal_jokes', fallback=True)
@@ -76,9 +73,9 @@ class JokeCommand(BaseCommand):
         return False
     
     def can_execute(self, message: MeshMessage) -> bool:
-        """Override cooldown check to be per-user instead of per-command-instance"""
-        # Check channel access (standardized channel override)
-        if not self.is_channel_allowed(message):
+        """Override to add custom checks (joke_enabled, dark joke) while using base class cooldown"""
+        # Use base class for channel access, DM requirements, and cooldown
+        if not super().can_execute(message):
             return False
         
         # Check if joke command is enabled
@@ -89,37 +86,7 @@ class JokeCommand(BaseCommand):
         if self.is_dark_joke_request(message) and not message.is_dm:
             return False
         
-        # Check if command requires DM and message is not DM
-        if self.requires_dm and not message.is_dm:
-            return False
-        
-        # Check per-user cooldown
-        if self.cooldown_seconds > 0:
-            import time
-            current_time = time.time()
-            user_id = message.sender_id
-            
-            if user_id in self.user_cooldowns:
-                last_execution = self.user_cooldowns[user_id]
-                if (current_time - last_execution) < self.cooldown_seconds:
-                    return False
-        
         return True
-    
-    def get_remaining_cooldown(self, user_id: str) -> int:
-        """Get remaining cooldown time for a specific user"""
-        if self.cooldown_seconds <= 0:
-            return 0
-        
-        import time
-        current_time = time.time()
-        if user_id in self.user_cooldowns:
-            last_execution = self.user_cooldowns[user_id]
-            elapsed = current_time - last_execution
-            remaining = self.cooldown_seconds - elapsed
-            return max(0, int(remaining))
-        
-        return 0
     
     def is_dark_joke_request(self, message: MeshMessage) -> bool:
         """Check if the message is requesting a dark joke"""
@@ -134,11 +101,6 @@ class JokeCommand(BaseCommand):
             return category_input == 'dark'
         
         return False
-    
-    def _record_execution(self, user_id: str):
-        """Record the execution time for a specific user"""
-        import time
-        self.user_cooldowns[user_id] = time.time()
     
     def get_seasonal_default(self) -> str:
         """Get the seasonal default category based on current month"""
@@ -182,7 +144,7 @@ class JokeCommand(BaseCommand):
         
         try:
             # Record execution for this user
-            self._record_execution(message.sender_id)
+            self.record_execution(message.sender_id)
             
             # Get joke from API with length handling
             joke_data = await self.get_joke_with_length_handling(category)
