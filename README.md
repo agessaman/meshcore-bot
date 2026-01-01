@@ -69,6 +69,54 @@ sudo systemctl status meshcore-bot
 
 See [SERVICE-INSTALLATION.md](SERVICE-INSTALLATION.md) for detailed service installation instructions.
 
+### Docker Installation
+
+Run the bot in a Docker container for easy deployment on home servers, NAS systems, or cloud environments.
+
+**Quick Start:**
+```bash
+# 1. Copy and configure
+cp config.ini.example config.ini
+nano config.ini  # Edit your settings
+
+# 2. Create data directories
+mkdir -p data logs
+
+# 3. Build and run
+docker-compose build
+docker-compose up -d
+
+# 4. View logs
+docker-compose logs -f
+```
+
+**Serial Device (Linux/NAS):**
+```bash
+# Uncomment devices section in docker-compose.yml, then:
+SERIAL_DEVICE=/dev/ttyUSB0 docker-compose up -d
+```
+
+**TCP Connection:**
+```bash
+MESHCORE_CONNECTION_TYPE=tcp \
+MESHCORE_TCP_HOST=192.168.1.100 \
+docker-compose up -d
+```
+
+**Environment Variables:**
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MESHCORE_CONNECTION_TYPE` | serial, tcp, or ble | serial |
+| `MESHCORE_SERIAL_PORT` | Serial device path | /dev/ttyUSB0 |
+| `MESHCORE_TCP_HOST` | TCP hostname/IP | - |
+| `MESHCORE_TCP_PORT` | TCP port | 5000 |
+| `MESHCORE_WEB_PORT` | Web viewer port | 8080 |
+| `TZ` | Timezone | UTC |
+
+**Web Viewer:** Access at http://localhost:8080
+
+See [DOCKER.md](DOCKER.md) for complete Docker documentation including NAS deployment, BLE setup, and troubleshooting.
+
 ## Configuration
 
 The bot uses `config.ini` for all settings. Key configuration sections:

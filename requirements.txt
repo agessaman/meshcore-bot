@@ -19,3 +19,4 @@ flask>=2.3.0
 flask-socketio>=5.3.0
 meshcore-cli
 feedparser>=6.0.10
+cryptography>=41.0.0
