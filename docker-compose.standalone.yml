@@ -1,0 +1,145 @@
+# ============================================
+# MeshCore Bot - Standalone Docker Compose
+# ============================================
+# For use with Portainer, Synology, QNAP, or any Docker environment
+#
+# USAGE:
+#   1. Copy this file to your Docker host
+#   2. Create a 'config.ini' file (copy from config.ini.example)
+#   3. Deploy via Portainer Stack or: docker-compose -f docker-compose.standalone.yml up -d
+#
+# IMAGE OPTIONS:
+#   - Build locally: docker build -t meshcore-bot:latest .
+#   - Or use a published image (update 'image' field below)
+#
+# VOLUME PATHS:
+#   Update the volume paths under 'volumes' to match your system
+# ============================================
+
+version: "3.8"
+
+services:
+  meshcore-bot:
+    # Option 1: Use locally built image
+    image: meshcore-bot:latest
+
+    # Option 2: Use published image (uncomment and update)
+    # image: ghcr.io/agessaman/meshcore-bot:latest
+
+    container_name: meshcore-bot
+    restart: unless-stopped
+
+    # ============================================
+    # ENVIRONMENT CONFIGURATION
+    # These override settings in config.ini
+    # ============================================
+    environment:
+      # Timezone (use tz database names: America/New_York, Europe/London, etc.)
+      - TZ=UTC
+
+      # ----------------------------------------
+      # CONNECTION SETTINGS (Required)
+      # ----------------------------------------
+      # Connection type: serial, tcp, or ble
+      - MESHCORE_CONNECTION_TYPE=serial
+
+      # Serial port (for serial connection)
+      - MESHCORE_SERIAL_PORT=/dev/ttyUSB0
+
+      # TCP settings (for tcp connection)
+      # - MESHCORE_TCP_HOST=192.168.1.100
+      # - MESHCORE_TCP_PORT=5000
+
+      # BLE device name (for ble connection)
+      # - MESHCORE_BLE_DEVICE=MeshCore
+
+      # Connection timeout in seconds
+      - MESHCORE_TIMEOUT=30
+
+      # ----------------------------------------
+      # BOT SETTINGS (Optional)
+      # ----------------------------------------
+      # Bot name for identification
+      # - MESHCORE_BOT_NAME=MeshCoreBot
+
+      # Bot location (for weather, solar calculations)
+      # - MESHCORE_LATITUDE=40.7128
+      # - MESHCORE_LONGITUDE=-74.0060
+
+      # ----------------------------------------
+      # WEB VIEWER SETTINGS
+      # ----------------------------------------
+      - MESHCORE_WEB_ENABLED=true
+      - MESHCORE_WEB_HOST=0.0.0.0
+      - MESHCORE_WEB_PORT=8080
+      - MESHCORE_WEB_AUTOSTART=true
+
+      # ----------------------------------------
+      # API KEYS (Optional - for extended features)
+      # ----------------------------------------
+      # Satellite pass data (https://www.n2yo.com/login/)
+      # - N2YO_API_KEY=your_api_key
+
+      # Air quality data (https://docs.airnowapi.org/)
+      # - AIRNOW_API_KEY=your_api_key
+
+      # Solar forecast (https://forecast.solar/)
+      # - FORECAST_SOLAR_API_KEY=your_api_key
+
+    # ============================================
+    # VOLUME MOUNTS
+    # Update paths to match your system
+    # ============================================
+    volumes:
+      # Configuration file (required)
+      # Create from config.ini.example before first run
+      - /path/to/your/config.ini:/app/config.ini:rw
+
+      # Persistent data directory (database, cache)
+      - /path/to/your/data:/app/data
+
+      # Log files (optional)
+      - /path/to/your/logs:/app/logs
+
+    # ============================================
+    # NETWORK SETTINGS
+    # ============================================
+    ports:
+      # Web viewer port (host:container)
+      - "8080:8080"
+
+    # ============================================
+    # DEVICE MAPPING (for Serial/USB connection)
+    # Uncomment and adjust for your device
+    # ============================================
+    # devices:
+    #   - /dev/ttyUSB0:/dev/ttyUSB0
+    #   # Common alternatives:
+    #   # - /dev/ttyACM0:/dev/ttyUSB0
+    #   # - /dev/serial/by-id/usb-xyz:/dev/ttyUSB0
+
+    # ============================================
+    # PRIVILEGED MODE (for BLE connection)
+    # Required for Bluetooth access
+    # ============================================
+    # privileged: true
+    # network_mode: host  # Also required for BLE
+
+    # ============================================
+    # HEALTH CHECK
+    # ============================================
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/')\" || exit 1"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 30s
+
+    # ============================================
+    # LOGGING
+    # ============================================
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

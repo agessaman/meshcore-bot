@@ -1,0 +1,94 @@
+# ============================================
+# MeshCore Bot Docker Compose Configuration
+# ============================================
+# Quick Start:
+#   1. cp config.ini.example config.ini
+#   2. Edit config.ini with your settings
+#   3. docker-compose up -d
+#
+# For different connection types, set MESHCORE_CONNECTION_TYPE:
+#   Serial: MESHCORE_CONNECTION_TYPE=serial (default)
+#   TCP:    MESHCORE_CONNECTION_TYPE=tcp MESHCORE_TCP_HOST=192.168.1.100
+#   BLE:    MESHCORE_CONNECTION_TYPE=ble (requires privileged mode)
+# ============================================
+
+services:
+  meshcore-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: meshcore-bot:latest
+    container_name: meshcore-bot
+    restart: unless-stopped
+
+    # Environment variables for configuration
+    # These override values in config.ini
+    environment:
+      # Timezone (use standard tz database names)
+      - TZ=${TZ:-UTC}
+
+      # Connection settings
+      - MESHCORE_CONNECTION_TYPE=${MESHCORE_CONNECTION_TYPE:-serial}
+      - MESHCORE_SERIAL_PORT=${MESHCORE_SERIAL_PORT:-/dev/ttyUSB0}
+      - MESHCORE_TCP_HOST=${MESHCORE_TCP_HOST:-}
+      - MESHCORE_TCP_PORT=${MESHCORE_TCP_PORT:-5000}
+      - MESHCORE_BLE_DEVICE=${MESHCORE_BLE_DEVICE:-}
+      - MESHCORE_TIMEOUT=${MESHCORE_TIMEOUT:-30}
+
+      # Bot settings
+      - MESHCORE_BOT_NAME=${MESHCORE_BOT_NAME:-}
+      - MESHCORE_LATITUDE=${MESHCORE_LATITUDE:-}
+      - MESHCORE_LONGITUDE=${MESHCORE_LONGITUDE:-}
+
+      # Web viewer settings
+      - MESHCORE_WEB_ENABLED=${MESHCORE_WEB_ENABLED:-true}
+      - MESHCORE_WEB_HOST=0.0.0.0
+      - MESHCORE_WEB_PORT=${MESHCORE_WEB_PORT:-8080}
+      - MESHCORE_WEB_AUTOSTART=${MESHCORE_WEB_AUTOSTART:-true}
+
+      # API keys (optional)
+      - N2YO_API_KEY=${N2YO_API_KEY:-}
+      - AIRNOW_API_KEY=${AIRNOW_API_KEY:-}
+      - FORECAST_SOLAR_API_KEY=${FORECAST_SOLAR_API_KEY:-}
+
+    # Volume mounts for persistent data
+    volumes:
+      # Configuration file - mount your config.ini here
+      - ./config.ini:/app/config.ini:rw
+      # Persistent data (database)
+      - ./data:/app/data
+      # Log files
+      - ./logs:/app/logs
+
+    # Web viewer port
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+
+    # Serial device mapping (for USB connection on Linux)
+    # NOTE: Docker on macOS cannot passthrough serial devices directly.
+    # For macOS development, use TCP connection instead.
+    # For Linux/NAS deployment, uncomment the devices section below.
+    # devices:
+    #   - "${SERIAL_DEVICE:-/dev/ttyUSB0}:/dev/ttyUSB0"
+
+    # Alternative: Use privileged mode for broader device access
+    # Required for BLE connections
+    # privileged: true
+
+    # For BLE connections, you also need host networking
+    # network_mode: host
+
+    # Health check
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/')\" || exit 1"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 30s
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

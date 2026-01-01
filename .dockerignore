@@ -1,0 +1,63 @@
+# Git
+.git
+.gitignore
+
+# Python cache
+__pycache__
+*.py[cod]
+*$py.class
+.cache
+.cache.*
+.cache.sqlite
+
+# Virtual environments
+.venv
+venv
+env
+ENV
+
+# IDE files
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs and databases (will be mounted as volumes)
+*.log
+*.db
+*.db-wal
+*.db-shm
+
+# Config (will be mounted as volume)
+config.ini
+
+# Documentation (not needed in container)
+docs/
+*.md
+!README.md
+
+# Service installation scripts (not needed in container)
+*.service
+*.plist
+install-service.sh
+uninstall-service.sh
+restart_viewer.sh
+
+# Test files
+test_*.py
+*_test.py
+tests/
+test_scripts/
+
+# Development artifacts
+docs/local/
+bot_start_time.txt
+mctomqtt.py
+bot_cli.py
+
+# Docker files (no need to copy into context)
+docker-compose*.yml
