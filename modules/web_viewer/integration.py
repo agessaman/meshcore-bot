@@ -351,7 +351,19 @@ class WebViewerIntegration:
                     self.viewer_process = None
             else:
                 self.logger.info("Web viewer already stopped")
-            
+
+            # Close log file handles
+            if hasattr(self, '_stdout_log') and self._stdout_log:
+                try:
+                    self._stdout_log.close()
+                except:
+                    pass
+            if hasattr(self, '_stderr_log') and self._stderr_log:
+                try:
+                    self._stderr_log.close()
+                except:
+                    pass
+
             # Additional cleanup: kill any remaining processes on the port
             try:
                 import subprocess
@@ -404,11 +416,15 @@ class WebViewerIntegration:
                 cmd.append("--debug")
             
             # Start the viewer process
+            # Redirect to log files to prevent PIPE buffer from filling up and blocking
+            # (PIPE buffers are ~64KB and cause hangs after a few minutes)
+            os.makedirs('logs', exist_ok=True)
+            self._stdout_log = open('logs/web_viewer_stdout.log', 'a')
+            self._stderr_log = open('logs/web_viewer_stderr.log', 'a')
             self.viewer_process = subprocess.Popen(
                 cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
+                stdout=self._stdout_log,
+                stderr=self._stderr_log
             )
             
             # Give it a moment to start up
@@ -416,12 +432,8 @@ class WebViewerIntegration:
             
             # Check if it started successfully
             if self.viewer_process and self.viewer_process.poll() is not None:
-                stdout, stderr = self.viewer_process.communicate()
                 self.logger.error(f"Web viewer failed to start. Return code: {self.viewer_process.returncode}")
-                if stderr:
-                    self.logger.error(f"Web viewer startup error: {stderr}")
-                if stdout:
-                    self.logger.error(f"Web viewer startup output: {stdout}")
+                self.logger.error("Check logs/web_viewer_modern.log for details")
                 self.viewer_process = None
                 return
             
@@ -433,12 +445,8 @@ class WebViewerIntegration:
                 time.sleep(1)
             
             if self.viewer_process and self.viewer_process.returncode != 0:
-                stdout, stderr = self.viewer_process.communicate()
                 self.logger.error(f"Web viewer process exited with code {self.viewer_process.returncode}")
-                if stderr:
-                    self.logger.error(f"Web viewer stderr: {stderr}")
-                if stdout:
-                    self.logger.error(f"Web viewer stdout: {stdout}")
+                self.logger.error("Check logs/web_viewer_modern.log for details")
             elif self.viewer_process and self.viewer_process.returncode == 0:
                 self.logger.info("Web viewer process exited normally")
                     
