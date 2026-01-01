@@ -27,6 +27,7 @@ class PluginLoader:
         self.plugin_metadata: Dict[str, Dict[str, Any]] = {}
         self.keyword_mappings: Dict[str, str] = {}  # keyword -> plugin_name
         self.plugin_overrides: Dict[str, str] = {}  # plugin_name -> alternative_file_name
+        self._failed_plugins: Dict[str, str] = {}  # plugin_name -> error_message
         self._load_plugin_overrides()
         
     def _load_plugin_overrides(self):
@@ -41,7 +42,9 @@ class PluginLoader:
                     self.plugin_overrides[command_name.strip()] = alternative_file.strip()
                     self.logger.info(f"Plugin override configured: {command_name} -> {alternative_file}")
         except Exception as e:
-            self.logger.warning(f"Error loading plugin overrides: {e}")
+            self.logger.error(f"Error loading plugin overrides: {e}")
+            # Track this as a configuration error
+            self._failed_plugins['plugin_overrides_config'] = str(e)
     
     def discover_plugins(self) -> List[str]:
         """Discover all Python files in the commands directory that could be plugins"""
@@ -82,6 +85,42 @@ class PluginLoader:
             self.logger.info(f"Discovered {len(plugin_files)} alternative plugin files: {plugin_files}")
         return plugin_files
     
+    def _validate_plugin(self, plugin_class: Type[BaseCommand]) -> List[str]:
+        """
+        Validate a plugin class has required attributes.
+        
+        Args:
+            plugin_class: The plugin class to validate
+        
+        Returns:
+            List of validation errors (empty if valid)
+        """
+        errors = []
+        
+        required_attrs = ['name', 'keywords', 'description', 'execute']
+        for attr in required_attrs:
+            if not hasattr(plugin_class, attr):
+                errors.append(f"Missing required attribute: {attr}")
+        
+        if hasattr(plugin_class, 'name'):
+            # Check if name is a class attribute (not just instance attribute)
+            name_value = getattr(plugin_class, 'name', None)
+            if not name_value:
+                errors.append("Plugin 'name' attribute is empty")
+        
+        if hasattr(plugin_class, 'keywords'):
+            keywords = getattr(plugin_class, 'keywords', None)
+            if not isinstance(keywords, list):
+                errors.append("Plugin 'keywords' must be a list")
+            elif not keywords:
+                errors.append("Plugin 'keywords' list is empty")
+        
+        if hasattr(plugin_class, 'execute'):
+            if not inspect.iscoroutinefunction(plugin_class.execute):
+                errors.append("Plugin 'execute' method must be async")
+        
+        return errors
+    
     def load_plugin(self, plugin_name: str, from_alternatives: bool = False) -> Optional[BaseCommand]:
         """Load a single plugin by name
         
@@ -113,7 +152,17 @@ class PluginLoader:
                     break
             
             if not command_class:
-                self.logger.warning(f"No valid command class found in {plugin_name}")
+                error_msg = f"No valid command class found in {plugin_name}"
+                self.logger.warning(error_msg)
+                self._failed_plugins[plugin_name] = error_msg
+                return None
+            
+            # Validate plugin class before instantiation
+            validation_errors = self._validate_plugin(command_class)
+            if validation_errors:
+                error_msg = f"Plugin validation failed: {', '.join(validation_errors)}"
+                self.logger.error(f"Failed to load plugin '{plugin_name}': {error_msg}")
+                self._failed_plugins[plugin_name] = error_msg
                 return None
             
             # Instantiate the command
@@ -131,7 +180,9 @@ class PluginLoader:
             return plugin_instance
             
         except Exception as e:
-            self.logger.error(f"Failed to load plugin {plugin_name}: {e}")
+            error_msg = str(e)
+            self.logger.error(f"Failed to load plugin '{plugin_name}': {error_msg}")
+            self._failed_plugins[plugin_name] = error_msg
             return None
     
     def load_all_plugins(self) -> Dict[str, BaseCommand]:
@@ -237,7 +288,14 @@ class PluginLoader:
             self._build_keyword_mappings(plugin_name, metadata)
         
         self.loaded_plugins = loaded_plugins
+        
+        # Report loading summary
         self.logger.info(f"Loaded {len(loaded_plugins)} plugins: {list(loaded_plugins.keys())}")
+        if self._failed_plugins:
+            self.logger.warning(f"Failed to load {len(self._failed_plugins)} plugin(s): {list(self._failed_plugins.keys())}")
+            for plugin_name, error_msg in self._failed_plugins.items():
+                self.logger.warning(f"  - {plugin_name}: {error_msg}")
+        
         return loaded_plugins
     
     def _build_keyword_mappings(self, plugin_name: str, metadata: Dict[str, Any]):
@@ -270,6 +328,10 @@ class PluginLoader:
         if plugin_name:
             return self.plugin_metadata.get(plugin_name, {})
         return self.plugin_metadata.copy()
+    
+    def get_failed_plugins(self) -> Dict[str, str]:
+        """Return dict of plugins that failed to load with their error messages"""
+        return self._failed_plugins.copy()
     
     def get_plugins_by_category(self, category: str) -> Dict[str, BaseCommand]:
         """Get all plugins in a specific category"""

@@ -7,6 +7,7 @@ Handles all bot commands, keyword matching, and response generation
 import re
 import time
 import asyncio
+from dataclasses import dataclass
 from typing import List, Dict, Tuple, Optional, Any
 from datetime import datetime
 import pytz
@@ -16,6 +17,22 @@ from .models import MeshMessage
 from .plugin_loader import PluginLoader
 from .commands.base_command import BaseCommand
 from .utils import check_internet_connectivity_async, format_keyword_response_with_placeholders
+
+
+@dataclass
+class InternetStatusCache:
+    """Thread-safe cache for internet connectivity status"""
+    has_internet: bool
+    timestamp: float
+    lock: Optional[asyncio.Lock] = None
+    
+    def __post_init__(self):
+        if self.lock is None:
+            self.lock = asyncio.Lock()
+    
+    def is_valid(self, cache_duration: float) -> bool:
+        """Check if cache entry is still valid"""
+        return time.time() - self.timestamp < cache_duration
 
 
 class CommandManager:
@@ -36,8 +53,8 @@ class CommandManager:
         self.commands = self.plugin_loader.load_all_plugins()
         
         # Cache for internet connectivity status to avoid checking on every command
-        # Format: {'has_internet': bool, 'timestamp': float}
-        self._internet_status_cache = None
+        # Thread-safe cache with asyncio.Lock
+        self._internet_cache = InternetStatusCache(has_internet=True, timestamp=0)
         self._internet_cache_duration = 30  # Cache for 30 seconds
         
         self.logger.info(f"CommandManager initialized with {len(self.commands)} plugins")
@@ -47,6 +64,88 @@ class CommandManager:
         if self.bot.tx_delay_ms > 0:
             self.logger.debug(f"Applying {self.bot.tx_delay_ms}ms transmission delay")
             await asyncio.sleep(self.bot.tx_delay_ms / 1000.0)
+    
+    async def _check_rate_limits(self) -> Tuple[bool, str]:
+        """
+        Check all rate limits before sending.
+        
+        Returns:
+            Tuple of (can_send: bool, reason: str)
+        """
+        # Check user rate limiter
+        if not self.bot.rate_limiter.can_send():
+            wait_time = self.bot.rate_limiter.time_until_next()
+            # Only log warning if there's a meaningful wait time (> 0.1 seconds)
+            # This avoids misleading "Wait 0.0 seconds" messages from timing edge cases
+            if wait_time > 0.1:
+                return False, f"Rate limited. Wait {wait_time:.1f} seconds"
+            return False, ""  # Still rate limited, just don't log for very short waits
+        
+        # Wait for bot TX rate limiter
+        await self.bot.bot_tx_rate_limiter.wait_for_tx()
+        
+        # Apply transmission delay
+        await self._apply_tx_delay()
+        
+        return True, ""
+    
+    def _handle_send_result(self, result, operation_name: str, target: str, used_retry_method: bool = False) -> bool:
+        """
+        Handle result from message send operations.
+        
+        Args:
+            result: Result from meshcore send operation
+            operation_name: "DM" or "Channel message"
+            target: Recipient name or channel name
+            used_retry_method: True if send_msg_with_retry was used (affects logging)
+        
+        Returns:
+            bool: True if send succeeded, False otherwise
+        """
+        if not result:
+            if used_retry_method:
+                self.logger.error(f"❌ {operation_name} to {target} failed - no ACK received after retries")
+            else:
+                self.logger.error(f"❌ {operation_name} to {target} failed - no result returned")
+            return False
+        
+        if hasattr(result, 'type'):
+            if result.type == EventType.ERROR:
+                error_payload = result.payload if hasattr(result, 'payload') else {}
+                self.logger.error(f"❌ {operation_name} failed to {target}: {error_payload if error_payload else 'Unknown error'}")
+                return False
+            
+            if result.type in (EventType.MSG_SENT, EventType.OK):
+                if used_retry_method and operation_name == "DM":
+                    self.logger.info(f"✅ {operation_name} sent and ACK received from {target}")
+                else:
+                    self.logger.info(f"✅ {operation_name} sent to {target}")
+                self.bot.rate_limiter.record_send()
+                self.bot.bot_tx_rate_limiter.record_tx()
+                return True
+            
+            # Handle unexpected event types
+            event_name = getattr(result.type, 'name', str(result.type))
+            
+            # Special handling for channel messages with timeout/no_event_received
+            if operation_name == "Channel message":
+                error_payload = result.payload if hasattr(result, 'payload') else {}
+                if isinstance(error_payload, dict) and error_payload.get('reason') == 'no_event_received':
+                    # Message likely sent but confirmation timed out - treat as success with warning
+                    self.logger.warning(f"Channel message sent to {target} but confirmation event not received (message may have been sent)")
+                    self.bot.rate_limiter.record_send()
+                    self.bot.bot_tx_rate_limiter.record_tx()
+                    return True
+            
+            # Unknown event type - log warning
+            self.logger.warning(f"{operation_name} to {target}: unexpected event type {event_name}")
+            return False
+        
+        # Assume success if result exists but has no type attribute
+        self.logger.info(f"✅ {operation_name} sent to {target} (result: {result})")
+        self.bot.rate_limiter.record_send()
+        self.bot.bot_tx_rate_limiter.record_tx()
+        return True
     
     def load_keywords(self) -> Dict[str, str]:
         """Load keywords from config"""
@@ -208,20 +307,12 @@ class CommandManager:
         if not self.bot.connected or not self.bot.meshcore:
             return False
         
-        # Check user rate limiter (prevents spam from users)
-        if not self.bot.rate_limiter.can_send():
-            wait_time = self.bot.rate_limiter.time_until_next()
-            # Only log warning if there's a meaningful wait time (> 0.1 seconds)
-            # This avoids misleading "Wait 0.0 seconds" messages from timing edge cases
-            if wait_time > 0.1:
-                self.logger.warning(f"Rate limited. Wait {wait_time:.1f} seconds")
+        # Check all rate limits
+        can_send, reason = await self._check_rate_limits()
+        if not can_send:
+            if reason:
+                self.logger.warning(reason)
             return False
-        
-        # Wait for bot TX rate limiter (prevents network overload)
-        await self.bot.bot_tx_rate_limiter.wait_for_tx()
-        
-        # Apply transmission delay to prevent message collisions
-        await self._apply_tx_delay()
         
         try:
             # Find the contact by name (since recipient_id is the contact name)
@@ -265,35 +356,12 @@ class CommandManager:
                 self.logger.debug("send_msg_with_retry not available, using send_msg")
                 result = await self.bot.meshcore.commands.send_msg(contact, content)
             
-            # Check if the result indicates success
-            if result:
-                if hasattr(result, 'type') and result.type == EventType.ERROR:
-                    self.logger.error(f"❌ DM failed to {contact_name}: {result.payload}")
-                    return False
-                elif hasattr(result, 'type') and result.type == EventType.MSG_SENT:
-                    # For send_msg_with_retry, check if we got an ACK (result is not None means ACK received)
-                    if hasattr(self.bot.meshcore, 'commands') and hasattr(self.bot.meshcore.commands, 'send_msg_with_retry'):
-                        # We used send_msg_with_retry, so result being returned means ACK was received
-                        self.logger.info(f"✅ DM sent and ACK received from {contact_name}")
-                    else:
-                        # We used regular send_msg, so just log the send
-                        self.logger.info(f"✅ DM sent to {contact_name}")
-                    self.bot.rate_limiter.record_send()
-                    self.bot.bot_tx_rate_limiter.record_tx()
-                    return True
-                else:
-                    # If result is not None but doesn't have expected attributes, assume success
-                    self.logger.info(f"✅ DM sent to {contact_name} (result: {result})")
-                    self.bot.rate_limiter.record_send()
-                    self.bot.bot_tx_rate_limiter.record_tx()
-                    return True
-            else:
-                # This means send_msg_with_retry failed to get an ACK after all retries
-                if hasattr(self.bot.meshcore, 'commands') and hasattr(self.bot.meshcore.commands, 'send_msg_with_retry'):
-                    self.logger.error(f"❌ DM to {contact_name} failed - no ACK received after retries")
-                else:
-                    self.logger.error(f"❌ DM to {contact_name} failed - no result returned")
-                return False
+            # Check if send_msg_with_retry was used
+            used_retry_method = (hasattr(self.bot.meshcore, 'commands') and 
+                               hasattr(self.bot.meshcore.commands, 'send_msg_with_retry'))
+            
+            # Handle result using unified handler
+            return self._handle_send_result(result, "DM", contact_name, used_retry_method)
                 
         except Exception as e:
             self.logger.error(f"Failed to send DM: {e}")
@@ -304,20 +372,12 @@ class CommandManager:
         if not self.bot.connected or not self.bot.meshcore:
             return False
         
-        # Check user rate limiter (prevents spam from users)
-        if not self.bot.rate_limiter.can_send():
-            wait_time = self.bot.rate_limiter.time_until_next()
-            # Only log warning if there's a meaningful wait time (> 0.1 seconds)
-            # This avoids misleading "Wait 0.0 seconds" messages from timing edge cases
-            if wait_time > 0.1:
-                self.logger.warning(f"Rate limited. Wait {wait_time:.1f} seconds")
+        # Check all rate limits
+        can_send, reason = await self._check_rate_limits()
+        if not can_send:
+            if reason:
+                self.logger.warning(reason)
             return False
-        
-        # Wait for bot TX rate limiter (prevents network overload)
-        await self.bot.bot_tx_rate_limiter.wait_for_tx()
-        
-        # Apply transmission delay to prevent message collisions
-        await self._apply_tx_delay()
         
         try:
             # Get channel number from channel name
@@ -334,40 +394,9 @@ class CommandManager:
             from meshcore_cli.meshcore_cli import send_chan_msg
             result = await send_chan_msg(self.bot.meshcore, channel_num, content)
             
-            # Check if the result indicates success
-            if result:
-                if hasattr(result, 'type') and result.type == EventType.ERROR:
-                    # Actual error - log and return failure
-                    error_payload = result.payload if result else {}
-                    self.logger.error(f"Failed to send channel message to {channel} (channel {channel_num}): {error_payload if error_payload else 'Unknown error'}")
-                    return False
-                elif hasattr(result, 'type') and (result.type == EventType.MSG_SENT or result.type == EventType.OK):
-                    # Confirmed success - message was sent (OK or MSG_SENT both indicate success)
-                    self.logger.info(f"Successfully sent channel message to {channel} (channel {channel_num})")
-                    self.bot.rate_limiter.record_send()
-                    self.bot.bot_tx_rate_limiter.record_tx()
-                    return True
-                else:
-                    # Result is not None but doesn't have expected success event type
-                    # This could be a ROUTING_INFO or other intermediate event
-                    event_type_name = result.type.name if hasattr(result, 'type') and hasattr(result.type, 'name') else str(result.type) if hasattr(result, 'type') else 'unknown'
-                    self.logger.warning(f"Channel message to {channel} (channel {channel_num}) returned unexpected event type: {event_type_name}. Message may not have been sent.")
-                    # Check if this is a timeout/no-event-received error
-                    error_payload = result.payload if result else {}
-                    if isinstance(error_payload, dict) and error_payload.get('reason') == 'no_event_received':
-                        # Message likely sent but confirmation timed out - treat as success with warning
-                        self.logger.warning(f"Channel message sent to {channel} (channel {channel_num}) but confirmation event not received (message may have been sent)")
-                        self.bot.rate_limiter.record_send()
-                        self.bot.bot_tx_rate_limiter.record_tx()
-                        return True  # Treat as success since message likely sent
-                    else:
-                        # Unknown event type - log and return failure
-                        self.logger.error(f"Failed to send channel message to {channel} (channel {channel_num}): Unexpected event type {event_type_name}")
-                        return False
-            else:
-                # No result returned - this means send_chan_msg failed
-                self.logger.error(f"Failed to send channel message to {channel} (channel {channel_num}): No result returned from send_chan_msg")
-                return False
+            # Handle result using unified handler
+            target = f"{channel} (channel {channel_num})"
+            return self._handle_send_result(result, "Channel message", target)
                 
         except Exception as e:
             self.logger.error(f"Failed to send channel message: {e}")
@@ -670,28 +699,24 @@ class CommandManager:
         """
         Check internet connectivity with caching to avoid checking on every command.
         Uses synchronous check for keyword matching.
+        Note: This is a synchronous method, but the cache itself is thread-safe.
         
         Returns:
             True if internet is available, False otherwise
         """
         current_time = time.time()
         
-        # Check if we have a valid cached result
-        if self._internet_status_cache is not None:
-            cache_age = current_time - self._internet_status_cache['timestamp']
-            if cache_age < self._internet_cache_duration:
-                # Return cached result
-                return self._internet_status_cache['has_internet']
+        # Check if we have a valid cached result (no lock needed for read-only check)
+        if self._internet_cache.is_valid(self._internet_cache_duration):
+            return self._internet_cache.has_internet
         
         # Cache expired or doesn't exist - perform actual check
         from .utils import check_internet_connectivity
         has_internet = check_internet_connectivity()
         
-        # Update cache
-        self._internet_status_cache = {
-            'has_internet': has_internet,
-            'timestamp': current_time
-        }
+        # Update cache (synchronous update, but cache structure is thread-safe)
+        self._internet_cache.has_internet = has_internet
+        self._internet_cache.timestamp = current_time
         
         return has_internet
     
@@ -699,29 +724,27 @@ class CommandManager:
         """
         Check internet connectivity with caching to avoid checking on every command.
         Uses async check for command execution.
+        Thread-safe with asyncio.Lock to prevent race conditions.
         
         Returns:
             True if internet is available, False otherwise
         """
-        current_time = time.time()
-        
-        # Check if we have a valid cached result
-        if self._internet_status_cache is not None:
-            cache_age = current_time - self._internet_status_cache['timestamp']
-            if cache_age < self._internet_cache_duration:
-                # Return cached result
-                return self._internet_status_cache['has_internet']
-        
-        # Cache expired or doesn't exist - perform actual check
-        has_internet = await check_internet_connectivity_async()
-        
-        # Update cache
-        self._internet_status_cache = {
-            'has_internet': has_internet,
-            'timestamp': current_time
-        }
-        
-        return has_internet
+        # Use lock to prevent race conditions when checking/updating cache
+        async with self._internet_cache.lock:
+            current_time = time.time()
+            
+            # Check if we have a valid cached result
+            if self._internet_cache.is_valid(self._internet_cache_duration):
+                return self._internet_cache.has_internet
+            
+            # Cache expired or doesn't exist - perform actual check
+            has_internet = await check_internet_connectivity_async()
+            
+            # Update cache
+            self._internet_cache.has_internet = has_internet
+            self._internet_cache.timestamp = current_time
+            
+            return has_internet
     
     def get_plugin_by_keyword(self, keyword: str) -> Optional[BaseCommand]:
         """Get a plugin by keyword"""
