@@ -83,13 +83,26 @@ connection_type = serial
 serial_port = /dev/ttyUSB0
 ```
 
-**Step 3: Run with device mapping**
+**Step 3: Enable device mapping**
 
-The default `docker-compose.yml` already maps `/dev/ttyUSB0`. If your device is different:
+Edit `docker-compose.yml` and uncomment the devices section:
+
+```yaml
+devices:
+  - "/dev/ttyUSB0:/dev/ttyUSB0"
+```
+
+If your device is different (e.g., `/dev/ttyACM0`), update the path accordingly:
+
+```yaml
+devices:
+  - "/dev/ttyACM0:/dev/ttyACM0"
+```
+
+Then start the container:
 
 ```bash
-# Set custom device path
-SERIAL_DEVICE=/dev/ttyACM0 docker-compose up -d
+docker-compose up -d
 ```
 
 **Permissions:**

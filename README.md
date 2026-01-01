@@ -92,8 +92,11 @@ docker-compose logs -f
 
 **Serial Device (Linux/NAS):**
 ```bash
-# Uncomment devices section in docker-compose.yml, then:
-SERIAL_DEVICE=/dev/ttyUSB0 docker-compose up -d
+# Edit docker-compose.yml and uncomment the devices section:
+# devices:
+#   - "/dev/ttyUSB0:/dev/ttyUSB0"
+# Then run:
+docker-compose up -d
 ```
 
 **TCP Connection:**
