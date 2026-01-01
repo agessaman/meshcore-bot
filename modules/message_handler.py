@@ -1757,14 +1757,22 @@ class MessageHandler:
                         # response is not None here, so we know a response will be sent
                         stats_command.record_command(message, keyword, True)
                 
-                # Note: Command data capture is handled in command_manager.py after execution
-                # to avoid duplicate messages to web viewer
-                
                 # Send response
                 if message.is_dm:
-                    await self.bot.command_manager.send_dm(message.sender_id, response)
+                    success = await self.bot.command_manager.send_dm(message.sender_id, response)
                 else:
-                    await self.bot.command_manager.send_channel_message(message.channel, response)
+                    success = await self.bot.command_manager.send_channel_message(message.channel, response)
+                
+                # Capture keyword command data for web viewer
+                if (hasattr(self.bot, 'web_viewer_integration') and 
+                    self.bot.web_viewer_integration and 
+                    self.bot.web_viewer_integration.bot_integration):
+                    try:
+                        self.bot.web_viewer_integration.bot_integration.capture_command(
+                            message, keyword, response, success
+                        )
+                    except Exception as e:
+                        self.logger.debug(f"Failed to capture keyword data for web viewer: {e}")
         
         # Only execute commands if no help response was sent and no plugin command with response was matched
         # Help responses and plugin commands with responses should be the final response for that message

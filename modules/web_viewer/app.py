@@ -187,44 +187,38 @@ class BotDataViewer:
             db_path = resolve_path(db_path, self.bot_root)
             
             # Connect to database and create table if it doesn't exist
-            conn = sqlite3.connect(db_path, timeout=30)
-            cursor = conn.cursor()
-            
-            # Create packet_stream table with schema matching the INSERT statements
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS packet_stream (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp REAL NOT NULL,
-                    data TEXT NOT NULL,
-                    type TEXT NOT NULL
-                )
-            ''')
-            
-            # Create index on timestamp for faster queries
-            cursor.execute('''
-                CREATE INDEX IF NOT EXISTS idx_packet_stream_timestamp 
-                ON packet_stream(timestamp)
-            ''')
-            
-            # Create index on type for filtering by type
-            cursor.execute('''
-                CREATE INDEX IF NOT EXISTS idx_packet_stream_type 
-                ON packet_stream(type)
-            ''')
-            
-            conn.commit()
-            
-            self.logger.info(f"Initialized packet_stream table in {db_path}")
+            with sqlite3.connect(db_path, timeout=30) as conn:
+                cursor = conn.cursor()
+                
+                # Create packet_stream table with schema matching the INSERT statements
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS packet_stream (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp REAL NOT NULL,
+                        data TEXT NOT NULL,
+                        type TEXT NOT NULL
+                    )
+                ''')
+                
+                # Create index on timestamp for faster queries
+                cursor.execute('''
+                    CREATE INDEX IF NOT EXISTS idx_packet_stream_timestamp 
+                    ON packet_stream(timestamp)
+                ''')
+                
+                # Create index on type for filtering by type
+                cursor.execute('''
+                    CREATE INDEX IF NOT EXISTS idx_packet_stream_type 
+                    ON packet_stream(type)
+                ''')
+                
+                conn.commit()
+                
+                self.logger.info(f"Initialized packet_stream table in {db_path}")
             
         except Exception as e:
             self.logger.error(f"Failed to initialize packet_stream table: {e}")
             # Don't raise - allow web viewer to continue even if table init fails
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception as e:
-                    self.logger.debug(f"Error closing init connection: {e}")
     
     def _get_db_connection(self):
         """Get database connection - create new connection for each request to avoid threading issues"""
@@ -384,7 +378,6 @@ class BotDataViewer:
         @self.app.route('/api/recent_commands')
         def api_recent_commands():
             """API endpoint to get recent commands from database"""
-            conn = None
             try:
                 import sqlite3
                 import json
@@ -399,38 +392,32 @@ class BotDataViewer:
                 # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
                 db_path = resolve_path(db_path, self.bot_root)
                 
-                conn = sqlite3.connect(db_path, timeout=30)
-                cursor = conn.cursor()
-                
-                cursor.execute('''
-                    SELECT data FROM packet_stream 
-                    WHERE type = 'command' AND timestamp > ?
-                    ORDER BY timestamp DESC
-                    LIMIT 100
-                ''', (cutoff_time,))
-                
-                rows = cursor.fetchall()
-                
-                # Parse and return commands
-                commands = []
-                for (data_json,) in rows:
-                    try:
-                        command_data = json.loads(data_json)
-                        commands.append(command_data)
-                    except Exception as e:
-                        self.logger.debug(f"Error parsing command data: {e}")
-                
-                return jsonify({'commands': commands})
+                with sqlite3.connect(db_path, timeout=30) as conn:
+                    cursor = conn.cursor()
+                    
+                    cursor.execute('''
+                        SELECT data FROM packet_stream 
+                        WHERE type = 'command' AND timestamp > ?
+                        ORDER BY timestamp DESC
+                        LIMIT 100
+                    ''', (cutoff_time,))
+                    
+                    rows = cursor.fetchall()
+                    
+                    # Parse and return commands
+                    commands = []
+                    for (data_json,) in rows:
+                        try:
+                            command_data = json.loads(data_json)
+                            commands.append(command_data)
+                        except Exception as e:
+                            self.logger.debug(f"Error parsing command data: {e}")
+                    
+                    return jsonify({'commands': commands})
                 
             except Exception as e:
                 self.logger.error(f"Error getting recent commands: {e}")
                 return jsonify({'error': str(e)}), 500
-            finally:
-                if conn:
-                    try:
-                        conn.close()
-                    except Exception as e:
-                        self.logger.debug(f"Error closing recent_commands connection: {e}")
         
         @self.app.route('/api/geocode-contact', methods=['POST'])
         def api_geocode_contact():
@@ -1415,7 +1402,6 @@ class BotDataViewer:
             max_consecutive_errors = 10
             
             while True:
-                conn = None
                 try:
                     import time
                     import sqlite3
@@ -1428,37 +1414,37 @@ class BotDataViewer:
                     db_path = resolve_path(db_path, self.bot_root)
                     
                     # Connect to database with timeout to prevent hanging
-                    conn = sqlite3.connect(db_path, timeout=30)
-                    cursor = conn.cursor()
-                    
-                    # Get new data since last poll
-                    cursor.execute('''
-                        SELECT timestamp, data, type FROM packet_stream 
-                        WHERE timestamp > ? 
-                        ORDER BY timestamp ASC
-                    ''', (last_timestamp,))
-                    
-                    rows = cursor.fetchall()
-                    
-                    # Process new data
-                    for timestamp, data_json, data_type in rows:
-                        try:
-                            data = json.loads(data_json)
-                            
-                            # Broadcast based on type
-                            if data_type == 'command':
-                                self._handle_command_data(data)
-                            elif data_type == 'packet':
-                                self._handle_packet_data(data)
-                            elif data_type == 'routing':
-                                self._handle_packet_data(data)  # Treat routing as packet data
+                    with sqlite3.connect(db_path, timeout=30) as conn:
+                        cursor = conn.cursor()
+                        
+                        # Get new data since last poll
+                        cursor.execute('''
+                            SELECT timestamp, data, type FROM packet_stream 
+                            WHERE timestamp > ? 
+                            ORDER BY timestamp ASC
+                        ''', (last_timestamp,))
+                        
+                        rows = cursor.fetchall()
+                        
+                        # Process new data
+                        for timestamp, data_json, data_type in rows:
+                            try:
+                                data = json.loads(data_json)
                                 
-                        except Exception as e:
-                            self.logger.warning(f"Error processing database data: {e}")
-                    
-                    # Update last timestamp
-                    if rows:
-                        last_timestamp = rows[-1][0]
+                                # Broadcast based on type
+                                if data_type == 'command':
+                                    self._handle_command_data(data)
+                                elif data_type == 'packet':
+                                    self._handle_packet_data(data)
+                                elif data_type == 'routing':
+                                    self._handle_packet_data(data)  # Treat routing as packet data
+                                    
+                            except Exception as e:
+                                self.logger.warning(f"Error processing database data: {e}")
+                        
+                        # Update last timestamp
+                        if rows:
+                            last_timestamp = rows[-1][0]
                     
                     # Reset error counter on success
                     consecutive_errors = 0
@@ -1491,13 +1477,6 @@ class BotDataViewer:
                         self.logger.warning(f"Database polling unexpected error (attempt {consecutive_errors}): {e}")
                         time.sleep(2)
                 
-                finally:
-                    # Always close connection, even on error
-                    if conn:
-                        try:
-                            conn.close()
-                        except Exception as e:
-                            self.logger.debug(f"Error closing database connection: {e}")
         
         # Start polling thread
         polling_thread = threading.Thread(target=poll_database, daemon=True)
@@ -1529,7 +1508,6 @@ class BotDataViewer:
     
     def _cleanup_old_data(self, days_to_keep: int = 7):
         """Clean up old packet stream data to prevent database bloat"""
-        conn = None
         try:
             import sqlite3
             import time
@@ -1543,26 +1521,20 @@ class BotDataViewer:
             db_path = resolve_path(db_path, self.bot_root)
             
             # Use timeout to prevent hanging
-            conn = sqlite3.connect(db_path, timeout=30)
-            cursor = conn.cursor()
-            
-            # Clean up old packet stream data
-            cursor.execute('DELETE FROM packet_stream WHERE timestamp < ?', (cutoff_time,))
-            deleted_count = cursor.rowcount
-            
-            conn.commit()
-            
-            if deleted_count > 0:
-                self.logger.info(f"Cleaned up {deleted_count} old packet stream entries (older than {days_to_keep} days)")
+            with sqlite3.connect(db_path, timeout=30) as conn:
+                cursor = conn.cursor()
+                
+                # Clean up old packet stream data
+                cursor.execute('DELETE FROM packet_stream WHERE timestamp < ?', (cutoff_time,))
+                deleted_count = cursor.rowcount
+                
+                conn.commit()
+                
+                if deleted_count > 0:
+                    self.logger.info(f"Cleaned up {deleted_count} old packet stream entries (older than {days_to_keep} days)")
             
         except Exception as e:
             self.logger.error(f"Error cleaning up old packet stream data: {e}")
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception as e:
-                    self.logger.debug(f"Error closing cleanup connection: {e}")
     
     def _get_database_stats(self, top_users_window='all', top_commands_window='all', 
                            top_paths_window='all', top_channels_window='all'):

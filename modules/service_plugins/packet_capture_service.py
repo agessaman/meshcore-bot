@@ -331,8 +331,12 @@ class PacketCaptureService(BaseServicePlugin):
             try:
                 mqtt_client_info['client'].disconnect()
                 mqtt_client_info['client'].loop_stop()
-            except:
-                pass
+            except (AttributeError, RuntimeError, OSError) as e:
+                # Silently ignore expected errors during cleanup (client already disconnected, etc.)
+                self.logger.debug(f"Error disconnecting MQTT client during cleanup: {e}")
+            except Exception as e:
+                # Log unexpected errors but don't fail cleanup
+                self.logger.warning(f"Unexpected error disconnecting MQTT client: {e}")
         
         # Close output file
         if self.output_handle:
