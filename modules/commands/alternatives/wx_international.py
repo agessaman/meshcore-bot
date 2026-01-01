@@ -496,13 +496,14 @@ class GlobalWxCommand(BaseCommand):
             if conditions and len(weather) < 120:
                 weather += " " + " ".join(conditions)
             
-            # Add forecast for today/tonight and tomorrow
+            # Add forecast high/low for today (without repeating period name since current conditions already show it)
             # API should return temperatures in Fahrenheit when requested
             if daily:
                 today_high = int(daily['temperature_2m_max'][0])
                 today_low = int(daily['temperature_2m_min'][0])
                 
-                weather += f" | {period_name}: {today_high}{temp_symbol}/{today_low}{temp_symbol}"
+                # Show high/low with labels to make it clear
+                weather += f" | H:{today_high}{temp_symbol} L:{today_low}{temp_symbol}"
                 
                 # Add tomorrow if space allows (check length more carefully)
                 if len(daily['temperature_2m_max']) > 1:
