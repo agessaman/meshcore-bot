@@ -1253,6 +1253,9 @@ class MessageHandler:
                     self.logger.debug(f"Extracted sender from text: {sender_id}")
                     self.logger.debug(f"Message content for processing: {message_content}")
             
+            # Always strip trailing whitespace/newlines from message content to handle cases like "Wx 98104\n"
+            message_content = message_content.strip()
+            
             # Get channel name from channel number
             channel_name = self.bot.channel_manager.get_channel_name(channel_idx)
             
