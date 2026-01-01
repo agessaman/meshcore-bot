@@ -60,49 +60,48 @@ class PacketCaptureService(BaseServicePlugin):
         self.logger = logging.getLogger('PacketCaptureService')
         self.logger.setLevel(bot.logger.level)
         
-        # Clear any existing handlers to prevent duplicates
-        self.logger.handlers.clear()
-        
-        # Use the same formatter as the bot (colored if enabled)
-        # Get formatter from bot's console handler
-        bot_formatter = None
-        for handler in bot.logger.handlers:
-            if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
-                bot_formatter = handler.formatter
-                break
-        
-        # If no formatter found, create one matching bot's style
-        if not bot_formatter:
-            try:
-                import colorlog
-                if bot.config.getboolean('Logging', 'colored_output', fallback=True):
-                    bot_formatter = colorlog.ColoredFormatter(
-                        '%(log_color)s%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                        datefmt='%Y-%m-%d %H:%M:%S',
-                        log_colors={
-                            'DEBUG': 'cyan',
-                            'INFO': 'green',
-                            'WARNING': 'yellow',
-                            'ERROR': 'red',
-                            'CRITICAL': 'red,bg_white',
-                        }
-                    )
-                else:
+        # Only setup handlers if none exist to prevent duplicates
+        if not self.logger.handlers:
+            # Use the same formatter as the bot (colored if enabled)
+            # Get formatter from bot's console handler
+            bot_formatter = None
+            for handler in bot.logger.handlers:
+                if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
+                    bot_formatter = handler.formatter
+                    break
+            
+            # If no formatter found, create one matching bot's style
+            if not bot_formatter:
+                try:
+                    import colorlog
+                    if bot.config.getboolean('Logging', 'colored_output', fallback=True):
+                        bot_formatter = colorlog.ColoredFormatter(
+                            '%(log_color)s%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                            datefmt='%Y-%m-%d %H:%M:%S',
+                            log_colors={
+                                'DEBUG': 'cyan',
+                                'INFO': 'green',
+                                'WARNING': 'yellow',
+                                'ERROR': 'red',
+                                'CRITICAL': 'red,bg_white',
+                            }
+                        )
+                    else:
+                        bot_formatter = logging.Formatter(
+                            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                            datefmt='%Y-%m-%d %H:%M:%S'
+                        )
+                except ImportError:
+                    # Fallback if colorlog not available
                     bot_formatter = logging.Formatter(
                         '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                         datefmt='%Y-%m-%d %H:%M:%S'
                     )
-            except ImportError:
-                # Fallback if colorlog not available
-                bot_formatter = logging.Formatter(
-                    '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                    datefmt='%Y-%m-%d %H:%M:%S'
-                )
-        
-        # Add console handler with bot's formatter
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(bot_formatter)
-        self.logger.addHandler(console_handler)
+            
+            # Add console handler with bot's formatter
+            console_handler = logging.StreamHandler()
+            console_handler.setFormatter(bot_formatter)
+            self.logger.addHandler(console_handler)
         
         # Prevent propagation to root logger to avoid duplicate output
         self.logger.propagate = False
@@ -288,16 +287,15 @@ class PacketCaptureService(BaseServicePlugin):
         await self.setup_event_handlers()
         
         # Connect to MQTT brokers
-        if self.mqtt_enabled and mqtt:
-            await self.connect_mqtt_brokers()
-            # Give MQTT connections a moment to establish
-            await asyncio.sleep(2)
-            if self.mqtt_connected:
-                self.logger.info(f"MQTT connected to {len(self.mqtt_clients)} broker(s)")
-            else:
-                self.logger.warning("MQTT enabled but no brokers connected")
-        elif self.mqtt_enabled and not mqtt:
-            self.logger.warning("MQTT enabled but paho-mqtt not installed")
+        if self.mqtt_enabled:
+            if self._require_mqtt():
+                await self.connect_mqtt_brokers()
+                # Give MQTT connections a moment to establish
+                await asyncio.sleep(2)
+                if self.mqtt_connected:
+                    self.logger.info(f"MQTT connected to {len(self.mqtt_clients)} broker(s)")
+                else:
+                    self.logger.warning("MQTT enabled but no brokers connected")
         
         # Start background tasks
         await self.start_background_tasks()
@@ -829,9 +827,19 @@ class PacketCaptureService(BaseServicePlugin):
         bot_name = self.bot.config.get('Bot', 'bot_name', fallback='MeshCoreBot')
         return bot_name
     
+    def _require_mqtt(self) -> bool:
+        """Check if MQTT is available and required"""
+        if mqtt is None:
+            self.logger.warning(
+                "MQTT support not available. Install paho-mqtt: "
+                "pip install paho-mqtt"
+            )
+            return False
+        return True
+    
     async def connect_mqtt_brokers(self):
         """Connect to MQTT brokers"""
-        if not mqtt:
+        if not self._require_mqtt():
             return
         
         # Get bot name for client ID
