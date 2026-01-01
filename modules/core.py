@@ -6,6 +6,7 @@ Contains the main bot class and message processing logic
 
 import asyncio
 import configparser
+import json
 import logging
 import colorlog
 import time
@@ -13,6 +14,7 @@ import threading
 import schedule
 import signal
 import atexit
+import sqlite3
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
@@ -68,7 +70,7 @@ class MeshCoreBot:
         try:
             self.db_manager = DBManager(self, db_path)
             self.logger.info("Database manager initialized successfully")
-        except Exception as e:
+        except (OSError, ValueError, sqlite3.Error) as e:
             self.logger.error(f"Failed to initialize database manager: {e}")
             raise
         
@@ -76,7 +78,7 @@ class MeshCoreBot:
         try:
             self.db_manager.set_bot_start_time(self.start_time)
             self.logger.info("Bot start time stored in database")
-        except Exception as e:
+        except (OSError, sqlite3.Error, AttributeError) as e:
             self.logger.warning(f"Could not store start time in database: {e}")
         
         # Initialize web viewer integration (after database manager)
@@ -86,7 +88,7 @@ class MeshCoreBot:
             
             # Register cleanup handler for web viewer
             atexit.register(self._cleanup_web_viewer)
-        except Exception as e:
+        except (OSError, ValueError, AttributeError, ImportError) as e:
             self.logger.warning(f"Web viewer integration failed: {e}")
             self.web_viewer_integration = None
         
@@ -110,7 +112,7 @@ class MeshCoreBot:
             translation_path = self.config.get('Localization', 'translation_path', fallback='translations/')
             self.translator = Translator(language, translation_path)
             self.logger.info(f"Localization initialized: {language}")
-        except Exception as e:
+        except (OSError, ValueError, FileNotFoundError, json.JSONDecodeError) as e:
             self.logger.warning(f"Failed to initialize translator: {e}")
             # Create a dummy translator that just returns keys
             class DummyTranslator:
@@ -137,7 +139,7 @@ class MeshCoreBot:
         try:
             self.feed_manager = FeedManager(self)
             self.logger.info("Feed manager initialized successfully")
-        except Exception as e:
+        except (OSError, ValueError, AttributeError, ImportError) as e:
             self.logger.warning(f"Failed to initialize feed manager: {e}")
             self.feed_manager = None
         
@@ -146,7 +148,7 @@ class MeshCoreBot:
         try:
             self.repeater_manager = RepeaterManager(self)
             self.logger.info("Repeater manager initialized successfully")
-        except Exception as e:
+        except (OSError, ValueError, AttributeError) as e:
             self.logger.error(f"Failed to initialize repeater manager: {e}")
             raise
         
@@ -156,7 +158,7 @@ class MeshCoreBot:
             self.service_loader = ServicePluginLoader(self)
             self.services = self.service_loader.load_all_services()
             self.logger.info(f"Service plugin loader initialized with {len(self.services)} service(s)")
-        except Exception as e:
+        except (OSError, ImportError, AttributeError, ValueError) as e:
             self.logger.error(f"Failed to initialize service plugin loader: {e}")
             self.service_loader = None
             self.services = {}
@@ -183,13 +185,14 @@ class MeshCoreBot:
         
         # Clock sync tracking
         self.last_clock_sync_time = None
+        
+        # Shutdown event for graceful shutdown
+        self._shutdown_event = threading.Event()
     
     @property
     def bot_root(self) -> Path:
         """Get bot root directory (where config.ini is located)"""
         return Path(self.config_file).parent.resolve()
-        
-        self.logger.info(f"MeshCore Bot initialized: {self.config.get('Bot', 'bot_name')}")
     
     def load_config(self):
         """Load configuration from file"""
@@ -643,8 +646,10 @@ use_zulu_time = false
         """Setup signal handlers for graceful shutdown"""
         def signal_handler(signum, frame):
             self.logger.info(f"Received signal {signum}, initiating graceful shutdown...")
-            self._cleanup_web_viewer()
-            # Let the main loop handle the rest of the shutdown
+            # Set shutdown event to break main loop
+            self._shutdown_event.set()
+            # Set connected to False to break the while loop in start()
+            self.connected = False
         
         # Register signal handlers
         signal.signal(signal.SIGTERM, signal_handler)
@@ -700,7 +705,7 @@ use_zulu_time = false
                 self.logger.error("Failed to connect to MeshCore node")
                 return False
                 
-        except Exception as e:
+        except (OSError, ConnectionError, TimeoutError, ValueError, AttributeError) as e:
             self.logger.error(f"Connection failed: {e}")
             return False
     
@@ -740,7 +745,7 @@ use_zulu_time = false
                 self.logger.info("Device time is current or ahead - no update needed")
                 return True
                 
-        except Exception as e:
+        except (OSError, AttributeError, ValueError, KeyError) as e:
             self.logger.warning(f"Error checking/setting radio clock: {e}")
             return False
     
@@ -754,7 +759,7 @@ use_zulu_time = false
             self.logger.info("Manually requesting contacts from device...")
             result = await next_cmd(self.meshcore, ["contacts"])
             self.logger.info(f"Contacts command result: {len(result) if result else 0} contacts")
-        except Exception as e:
+        except (OSError, AttributeError, ValueError) as e:
             self.logger.warning(f"Error manually loading contacts: {e}")
         
         # Check if contacts are loaded (even if empty list)
@@ -854,13 +859,13 @@ use_zulu_time = false
             try:
                 await service_instance.start()
                 self.logger.info(f"Service '{service_name}' started")
-            except Exception as e:
+            except (OSError, AttributeError, ValueError, RuntimeError) as e:
                 self.logger.error(f"Failed to start service '{service_name}': {e}")
         
         # Keep running
         self.logger.info("Bot is running. Press Ctrl+C to stop.")
         try:
-            while self.connected:
+            while self.connected and not self._shutdown_event.is_set():
                 # Monitor web viewer process and health
                 if self.web_viewer_integration and self.web_viewer_integration.enabled:
                     # Check if process died
@@ -906,7 +911,7 @@ use_zulu_time = false
             try:
                 await service_instance.stop()
                 self.logger.info(f"Service '{service_name}' stopped")
-            except Exception as e:
+            except (OSError, AttributeError, RuntimeError, asyncio.CancelledError) as e:
                 self.logger.error(f"Failed to stop service '{service_name}': {e}")
         
         # Stop web viewer with proper shutdown sequence
@@ -936,7 +941,7 @@ use_zulu_time = false
                     self.logger.info("Web viewer cleanup completed")
                 except (AttributeError, TypeError):
                     print("Web viewer cleanup completed")
-        except Exception as e:
+        except (OSError, AttributeError, TypeError) as e:
             try:
                 self.logger.error(f"Error during web viewer cleanup: {e}")
             except (AttributeError, TypeError):
@@ -973,7 +978,7 @@ use_zulu_time = false
             
             self.logger.info(f"Startup {startup_advert} advert sent successfully")
                 
-        except Exception as e:
+        except (OSError, AttributeError, ValueError, RuntimeError) as e:
             self.logger.error(f"Error sending startup advert: {e}")
             import traceback
             self.logger.error(traceback.format_exc())

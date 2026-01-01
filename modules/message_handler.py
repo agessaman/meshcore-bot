@@ -42,6 +42,11 @@ class MessageHandler:
         self.rf_data_by_timestamp = {}  # Index by timestamp for faster lookup
         self.rf_data_by_pubkey = {}     # Index by pubkey for exact matches
         
+        # Cache memory management
+        self._max_rf_cache_size = 1000  # Maximum entries per cache
+        self._cache_cleanup_interval = 60  # Cleanup every 60 seconds
+        self._last_cache_cleanup = time.time()
+        
         # Multitest command listener (for collecting paths during listening window)
         self.multitest_listener = None
         
@@ -611,21 +616,7 @@ class MessageHandler:
                         self.rf_data_by_pubkey[packet_prefix].append(rf_data)
                     
                     # Clean up old data from all indexes
-                    self.recent_rf_data = [data for data in self.recent_rf_data 
-                                         if current_time - data['timestamp'] < self.rf_data_timeout]
-                    
-                    # Clean up timestamp index
-                    old_timestamps = [ts for ts in self.rf_data_by_timestamp.keys() 
-                                    if current_time - ts > self.rf_data_timeout]
-                    for ts in old_timestamps:
-                        del self.rf_data_by_timestamp[ts]
-                    
-                    # Clean up pubkey index
-                    for pubkey in list(self.rf_data_by_pubkey.keys()):
-                        self.rf_data_by_pubkey[pubkey] = [data for data in self.rf_data_by_pubkey[pubkey] 
-                                                         if current_time - data['timestamp'] < self.rf_data_timeout]
-                        if not self.rf_data_by_pubkey[pubkey]:
-                            del self.rf_data_by_pubkey[pubkey]
+                    self._cleanup_stale_cache_entries(current_time)
                     
                     # Try to correlate with any pending messages
                     self.try_correlate_pending_messages(rf_data)
@@ -698,6 +689,84 @@ class MessageHandler:
         except Exception as e:
             self.logger.debug(f"Error extracting path from raw hex: {e}")
             return None
+
+    def _cleanup_stale_cache_entries(self, current_time=None):
+        """Remove stale entries from RF data caches and enforce maximum size limits"""
+        if current_time is None:
+            current_time = time.time()
+        
+        # Only run periodic cleanup if enough time has passed
+        if current_time - self._last_cache_cleanup < self._cache_cleanup_interval:
+            # Still do basic timeout cleanup, but skip size enforcement
+            cutoff_time = current_time - self.rf_data_timeout
+            
+            # Clean timestamp-indexed cache (timeout only)
+            stale_timestamps = [ts for ts in self.rf_data_by_timestamp.keys() 
+                              if ts < cutoff_time]
+            for ts in stale_timestamps:
+                del self.rf_data_by_timestamp[ts]
+            
+            # Clean pubkey-indexed cache (timeout only)
+            for pubkey in list(self.rf_data_by_pubkey.keys()):
+                self.rf_data_by_pubkey[pubkey] = [data for data in self.rf_data_by_pubkey[pubkey] 
+                                                 if current_time - data['timestamp'] < self.rf_data_timeout]
+                if not self.rf_data_by_pubkey[pubkey]:
+                    del self.rf_data_by_pubkey[pubkey]
+            
+            # Clean recent_rf_data list (timeout only)
+            self.recent_rf_data = [data for data in self.recent_rf_data 
+                                 if current_time - data['timestamp'] < self.rf_data_timeout]
+            return
+        
+        # Full cleanup with size enforcement
+        self._last_cache_cleanup = current_time
+        cutoff_time = current_time - self.rf_data_timeout
+        
+        # Clean timestamp-indexed cache
+        stale_timestamps = [ts for ts in self.rf_data_by_timestamp.keys() 
+                          if ts < cutoff_time]
+        for ts in stale_timestamps:
+            del self.rf_data_by_timestamp[ts]
+        
+        # Enforce maximum size on timestamp cache (keep most recent)
+        if len(self.rf_data_by_timestamp) > self._max_rf_cache_size:
+            sorted_items = sorted(self.rf_data_by_timestamp.items(), 
+                                 key=lambda x: x[1].get('timestamp', 0), 
+                                 reverse=True)
+            self.rf_data_by_timestamp = dict(sorted_items[:self._max_rf_cache_size])
+        
+        # Clean pubkey-indexed cache
+        for pubkey in list(self.rf_data_by_pubkey.keys()):
+            self.rf_data_by_pubkey[pubkey] = [data for data in self.rf_data_by_pubkey[pubkey] 
+                                             if current_time - data['timestamp'] < self.rf_data_timeout]
+            if not self.rf_data_by_pubkey[pubkey]:
+                del self.rf_data_by_pubkey[pubkey]
+        
+        # Enforce maximum size on pubkey cache (keep most recent per pubkey)
+        total_pubkey_entries = sum(len(entries) for entries in self.rf_data_by_pubkey.values())
+        if total_pubkey_entries > self._max_rf_cache_size:
+            # Sort all entries by timestamp and keep most recent
+            all_pubkey_entries = []
+            for pubkey, entries in self.rf_data_by_pubkey.items():
+                for entry in entries:
+                    all_pubkey_entries.append((pubkey, entry))
+            all_pubkey_entries.sort(key=lambda x: x[1].get('timestamp', 0), reverse=True)
+            
+            # Rebuild pubkey cache with only the most recent entries
+            self.rf_data_by_pubkey = {}
+            for pubkey, entry in all_pubkey_entries[:self._max_rf_cache_size]:
+                if pubkey not in self.rf_data_by_pubkey:
+                    self.rf_data_by_pubkey[pubkey] = []
+                self.rf_data_by_pubkey[pubkey].append(entry)
+        
+        # Clean recent_rf_data list
+        self.recent_rf_data = [data for data in self.recent_rf_data 
+                             if current_time - data['timestamp'] < self.rf_data_timeout]
+        
+        # Enforce maximum size on recent_rf_data (keep most recent)
+        if len(self.recent_rf_data) > self._max_rf_cache_size:
+            self.recent_rf_data.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
+            self.recent_rf_data = self.recent_rf_data[:self._max_rf_cache_size]
 
     def find_recent_rf_data(self, correlation_key=None, max_age_seconds=None):
         """Find recent RF data for SNR/RSSI and packet decoding with improved correlation
@@ -1589,7 +1658,8 @@ class MessageHandler:
                 
         except Exception as e:
             self.logger.debug(f"Error formatting path string: {e}")
-            return f"Raw: {hex_path[:16]}..."  # Fallback to showing raw hex
+            truncated = hex_path[:16] if len(hex_path) > 16 else hex_path
+            return f"Raw: {truncated}{'...' if len(hex_path) > 16 else ''}"
     
     async def process_message(self, message: MeshMessage):
         """Process a received message"""
@@ -1597,8 +1667,11 @@ class MessageHandler:
         if self.multitest_listener:
             try:
                 self.multitest_listener.on_message_received(message)
+            except AttributeError as e:
+                self.logger.warning(f"Multitest listener missing method: {e}")
+                self.multitest_listener = None  # Disable broken listener
             except Exception as e:
-                self.logger.debug(f"Error notifying multitest listener: {e}")
+                self.logger.error(f"Error notifying multitest listener: {e}", exc_info=True)
         
         # Record all messages in stats database FIRST (before any filtering)
         # This ensures we collect stats for all channels, not just monitored ones
