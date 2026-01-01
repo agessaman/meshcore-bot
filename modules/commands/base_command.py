@@ -257,6 +257,54 @@ class BaseCommand(ABC):
             self.logger.error(f"Failed to send response: {e}")
             return False
     
+    def get_max_message_length(self, message: MeshMessage) -> int:
+        """
+        Calculate the maximum message length dynamically based on message type and bot username.
+        
+        Channel messages are formatted as "<username>: <message>", so:
+        max_length = 150 - username_length - 2 (for ": ")
+        
+        DM messages don't have a username prefix, so:
+        max_length = 150
+        
+        Args:
+            message: The MeshMessage to calculate max length for
+            
+        Returns:
+            Maximum message length in characters
+        """
+        # For DMs, no username prefix - full 150 characters available
+        if message.is_dm:
+            return 150
+        
+        # For channel messages, calculate based on bot username length
+        # Try to get device username from meshcore first (actual radio username)
+        username = None
+        if hasattr(self.bot, 'meshcore') and self.bot.meshcore:
+            try:
+                if hasattr(self.bot.meshcore, 'self_info') and self.bot.meshcore.self_info:
+                    self_info = self.bot.meshcore.self_info
+                    # Try to get name from self_info (could be dict or object)
+                    if isinstance(self_info, dict):
+                        username = self_info.get('name') or self_info.get('user_name')
+                    elif hasattr(self_info, 'name'):
+                        username = self_info.name
+                    elif hasattr(self_info, 'user_name'):
+                        username = self_info.user_name
+            except Exception as e:
+                self.logger.debug(f"Could not get username from meshcore.self_info: {e}")
+        
+        # Fall back to bot_name from config if device username not available
+        if not username:
+            username = self.bot.config.get('Bot', 'bot_name', fallback='Bot')
+        
+        # Calculate max length: 150 - username_length - 2 (for ": ")
+        max_length = 150 - len(str(username)) - 2
+        
+        # Ensure we don't return a negative or unreasonably small value
+        # Minimum of 130 characters to ensure some functionality
+        return max(130, max_length)
+    
     def _record_execution(self):
         """Record the execution time for cooldown tracking"""
         import time

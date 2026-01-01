@@ -27,6 +27,11 @@ class AnnouncementsCommand(BaseCommand):
         # Per-trigger cooldown tracking: trigger_name -> last_execution_time
         self.trigger_cooldowns: Dict[str, float] = {}
         
+        # Per-trigger lockout tracking: trigger_name -> last_send_time
+        # Prevents duplicate sends from retried DMs (60 second lockout)
+        self.trigger_lockouts: Dict[str, float] = {}
+        self.lockout_seconds = 60  # 60 second lockout to prevent duplicate sends
+        
         # Load configuration
         self.enabled = self.get_config_value('Announcements_Command', 'enabled', fallback=False, value_type='bool')
         self.default_channel = self.get_config_value('Announcements_Command', 'default_announcement_channel', fallback='Public', value_type='str')
@@ -172,7 +177,20 @@ class AnnouncementsCommand(BaseCommand):
     
     def _record_trigger_execution(self, trigger_name: str):
         """Record the execution time for a trigger"""
-        self.trigger_cooldowns[trigger_name] = time.time()
+        current_time = time.time()
+        self.trigger_cooldowns[trigger_name] = current_time
+        self.trigger_lockouts[trigger_name] = current_time
+    
+    def _is_trigger_locked(self, trigger_name: str) -> bool:
+        """Check if a trigger is currently locked (within 60 seconds of last send)"""
+        if trigger_name not in self.trigger_lockouts:
+            return False
+        
+        current_time = time.time()
+        last_send = self.trigger_lockouts[trigger_name]
+        elapsed = current_time - last_send
+        
+        return elapsed < self.lockout_seconds
     
     def _parse_command(self, content: str) -> tuple:
         """
@@ -249,6 +267,15 @@ class AnnouncementsCommand(BaseCommand):
                 await self.send_response(
                     message, 
                     f"Unknown trigger: {trigger_name}. Available: {available_triggers}"
+                )
+                return True
+            
+            # Check lockout (applies even with override - prevents duplicate sends from retries)
+            if self._is_trigger_locked(trigger_name):
+                remaining_seconds = int(self.lockout_seconds - (time.time() - self.trigger_lockouts[trigger_name]))
+                await self.send_response(
+                    message,
+                    f"That announcement was just sent. Please wait {remaining_seconds} seconds to prevent duplicate sends."
                 )
                 return True
             
