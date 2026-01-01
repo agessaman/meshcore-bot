@@ -11,9 +11,14 @@ from ..models import MeshMessage
 class HfcondCommand(BaseCommand):
     """Command to get HF band conditions"""
     
+    # Plugin metadata
+    name = "hfcond"
+    keywords = ['hfcond']
+    description = "Get HF band conditions for ham radio"
+    category = "solar"
+    
     def __init__(self, bot):
         super().__init__(bot)
-        self.keywords = ['hfcond']
     
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the hfcond command"""

@@ -87,7 +87,9 @@ class PluginLoader:
     
     def _validate_plugin(self, plugin_class: Type[BaseCommand]) -> List[str]:
         """
-        Validate a plugin class has required attributes.
+        Validate a plugin class has required attributes before instantiation.
+        All plugins should define name and keywords as class attributes (the standard convention).
+        We validate leniently here and re-check after instantiation to catch any edge cases.
         
         Args:
             plugin_class: The plugin class to validate
@@ -97,27 +99,50 @@ class PluginLoader:
         """
         errors = []
         
-        required_attrs = ['name', 'keywords', 'description', 'execute']
-        for attr in required_attrs:
-            if not hasattr(plugin_class, attr):
-                errors.append(f"Missing required attribute: {attr}")
-        
-        if hasattr(plugin_class, 'name'):
-            # Check if name is a class attribute (not just instance attribute)
-            name_value = getattr(plugin_class, 'name', None)
-            if not name_value:
-                errors.append("Plugin 'name' attribute is empty")
-        
-        if hasattr(plugin_class, 'keywords'):
-            keywords = getattr(plugin_class, 'keywords', None)
-            if not isinstance(keywords, list):
-                errors.append("Plugin 'keywords' must be a list")
-            elif not keywords:
-                errors.append("Plugin 'keywords' list is empty")
-        
-        if hasattr(plugin_class, 'execute'):
+        # Check for execute method (must exist as class method)
+        if not hasattr(plugin_class, 'execute'):
+            errors.append(f"Missing required attribute: execute")
+        elif hasattr(plugin_class, 'execute'):
             if not inspect.iscoroutinefunction(plugin_class.execute):
                 errors.append("Plugin 'execute' method must be async")
+        
+        # Check for keywords type if it exists (allow empty list for system commands)
+        if hasattr(plugin_class, 'keywords'):
+            keywords = getattr(plugin_class, 'keywords', None)
+            if keywords is not None and not isinstance(keywords, list):
+                errors.append("Plugin 'keywords' must be a list")
+            # Don't error on empty keywords - some commands (like greeter) intentionally have none
+        
+        # Note: We don't check name/keywords presence here since they may be set in __init__
+        # or derived from class name. Post-instantiation validation will catch missing attributes.
+        
+        return errors
+    
+    def _validate_plugin_instance(self, plugin_instance: BaseCommand, plugin_name: str) -> List[str]:
+        """
+        Validate a plugin instance after instantiation.
+        Ensures required attributes are present and correctly typed.
+        Note: Name may be derived from class name if not explicitly set.
+        
+        Args:
+            plugin_instance: The instantiated plugin
+            plugin_name: The file name of the plugin (for error messages)
+        
+        Returns:
+            List of validation errors (empty if valid)
+        """
+        errors = []
+        
+        # Check name - must be set (either as class attribute, in __init__, or derived from class name)
+        if not hasattr(plugin_instance, 'name') or not plugin_instance.name:
+            errors.append("Plugin 'name' attribute is empty or not set")
+        
+        # Check keywords - must be a list (can be empty for system commands like greeter)
+        if not hasattr(plugin_instance, 'keywords'):
+            errors.append("Plugin 'keywords' attribute is missing")
+        elif not isinstance(plugin_instance.keywords, list):
+            errors.append("Plugin 'keywords' must be a list")
+        # Allow empty keywords - some system commands intentionally have none
         
         return errors
     
@@ -157,7 +182,7 @@ class PluginLoader:
                 self._failed_plugins[plugin_name] = error_msg
                 return None
             
-            # Validate plugin class before instantiation
+            # Validate plugin class before instantiation (basic checks)
             validation_errors = self._validate_plugin(command_class)
             if validation_errors:
                 error_msg = f"Plugin validation failed: {', '.join(validation_errors)}"
@@ -168,12 +193,22 @@ class PluginLoader:
             # Instantiate the command
             plugin_instance = command_class(self.bot)
             
+            # Set name from class name if not set (before validation)
+            if not hasattr(plugin_instance, 'name') or not plugin_instance.name:
+                # Use the class name as the plugin name if not specified
+                derived_name = command_class.__name__.lower().replace('command', '')
+                plugin_instance.name = derived_name
+            
+            # Validate plugin instance after instantiation (catches attributes set in __init__)
+            instance_validation_errors = self._validate_plugin_instance(plugin_instance, plugin_name)
+            if instance_validation_errors:
+                error_msg = f"Plugin instance validation failed: {', '.join(instance_validation_errors)}"
+                self.logger.error(f"Failed to load plugin '{plugin_name}': {error_msg}")
+                self._failed_plugins[plugin_name] = error_msg
+                return None
+            
             # Validate plugin metadata
             metadata = plugin_instance.get_metadata()
-            if not metadata.get('name'):
-                # Use the class name as the plugin name if not specified
-                metadata['name'] = command_class.__name__.lower().replace('command', '')
-                plugin_instance.name = metadata['name']
             
             source = "alternatives" if from_alternatives else "default"
             self.logger.info(f"Successfully loaded plugin: {metadata['name']} from {plugin_name} ({source})")

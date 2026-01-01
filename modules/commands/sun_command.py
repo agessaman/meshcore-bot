@@ -11,9 +11,14 @@ from ..models import MeshMessage
 class SunCommand(BaseCommand):
     """Command to get sun information"""
     
+    # Plugin metadata
+    name = "sun"
+    keywords = ['sun']
+    description = "Get sunrise/sunset times"
+    category = "solar"
+    
     def __init__(self, bot):
         super().__init__(bot)
-        self.keywords = ['sun']
     
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the sun command"""
