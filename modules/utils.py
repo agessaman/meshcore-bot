@@ -15,15 +15,14 @@ from typing import Optional, Tuple, Dict, Union, List, Any
 
 
 def abbreviate_location(location: str, max_length: int = 20) -> str:
-    """
-    Abbreviate a location string to fit within character limits.
+    """Abbreviate a location string to fit within character limits.
     
     Args:
-        location: The location string to abbreviate
-        max_length: Maximum length for the abbreviated string
+        location: The location string to abbreviate.
+        max_length: Maximum length for the abbreviated string (default: 20).
         
     Returns:
-        Abbreviated location string
+        str: Abbreviated location string.
     """
     if not location:
         return location
@@ -118,16 +117,15 @@ def abbreviate_location(location: str, max_length: int = 20) -> str:
 
 
 def truncate_string(text: str, max_length: int, ellipsis: str = '...') -> str:
-    """
-    Truncate a string to a maximum length with ellipsis.
+    """Truncate a string to a maximum length with ellipsis.
     
     Args:
-        text: The string to truncate
-        max_length: Maximum length including ellipsis
-        ellipsis: String to append when truncating
+        text: The string to truncate.
+        max_length: Maximum length including ellipsis.
+        ellipsis: String to append when truncating (default: '...').
         
     Returns:
-        Truncated string
+        str: Truncated string.
     """
     if not text or len(text) <= max_length:
         return text
@@ -137,17 +135,16 @@ def truncate_string(text: str, max_length: int, ellipsis: str = '...') -> str:
 
 def format_location_for_display(city: Optional[str], state: Optional[str] = None, 
                                country: Optional[str] = None, max_length: int = 20) -> Optional[str]:
-    """
-    Format location data for display with intelligent abbreviation.
+    """Format location data for display with intelligent abbreviation.
     
     Args:
-        city: City name (may include neighborhood/district)
-        state: State/province name
-        country: Country name
-        max_length: Maximum length for the formatted location
+        city: City name (may include neighborhood/district).
+        state: State/province name (optional).
+        country: Country name (optional).
+        max_length: Maximum length for the formatted location (default: 20).
         
     Returns:
-        Formatted location string or None if no location data
+        Optional[str]: Formatted location string or None if no city provided.
     """
     if not city:
         return None
@@ -164,18 +161,18 @@ def format_location_for_display(city: Optional[str], state: Optional[str] = None
     return abbreviate_location(full_location, max_length)
 
 
-def get_major_city_queries(city: str, state_abbr: Optional[str] = None) -> list:
-    """
-    Get prioritized geocoding queries for major cities that have multiple locations.
+def get_major_city_queries(city: str, state_abbr: Optional[str] = None) -> List[str]:
+    """Get prioritized geocoding queries for major cities that have multiple locations.
+    
     This helps ensure that common city names resolve to the most likely major city
     rather than a small town with the same name.
     
     Args:
-        city: City name (normalized, lowercase)
-        state_abbr: Optional state abbreviation (e.g., "CA", "NY")
+        city: City name (normalized, lowercase).
+        state_abbr: Optional state abbreviation (e.g., "CA", "NY").
         
     Returns:
-        List of geocoding query strings in priority order
+        List[str]: List of geocoding query strings in priority order.
     """
     city_lower = city.lower().strip()
     
@@ -264,18 +261,18 @@ def get_major_city_queries(city: str, state_abbr: Optional[str] = None) -> list:
 
 
 def calculate_packet_hash(raw_hex: str, payload_type: int = None) -> str:
-    """
-    Calculate hash for packet identification - based on packet.cpp
+    """Calculate hash for packet identification - based on packet.cpp.
+    
     Packet hashes are unique to the originally sent message, allowing
     identification of the same message arriving via different paths.
     
     Args:
-        raw_hex: Raw packet data as hex string
-        payload_type: Optional payload type as integer (if None, extracted from header)
-                      Must be numeric value (0-15), not enum or string
+        raw_hex: Raw packet data as hex string.
+        payload_type: Optional payload type as integer (if None, extracted from header).
+                      Must be numeric value (0-15).
         
     Returns:
-        16-character hex string (8 bytes) in uppercase, or "0000000000000000" on error
+        str: 16-character hex string (8 bytes) in uppercase, or "0000000000000000" on error.
     """
     try:
         # Parse the packet to extract payload type and payload data
@@ -344,17 +341,16 @@ def calculate_packet_hash(raw_hex: str, payload_type: int = None) -> str:
 
 
 def calculate_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """
-    Calculate haversine distance between two points in kilometers.
+    """Calculate haversine distance between two points in kilometers.
     
     Args:
-        lat1: Latitude of first point in degrees
-        lon1: Longitude of first point in degrees
-        lat2: Latitude of second point in degrees
-        lon2: Longitude of second point in degrees
+        lat1: Latitude of first point in degrees.
+        lon1: Longitude of first point in degrees.
+        lat2: Latitude of second point in degrees.
+        lon2: Longitude of second point in degrees.
         
     Returns:
-        Distance in kilometers
+        float: Distance in kilometers.
     """
     import math
     
@@ -375,32 +371,30 @@ def calculate_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     return earth_radius * c
 
 
-def get_nominatim_geocoder(user_agent: str = "meshcore-bot", timeout: int = 10):
-    """
-    Get a Nominatim geocoder instance with proper User-Agent.
+def get_nominatim_geocoder(user_agent: str = "meshcore-bot", timeout: int = 10) -> Any:
+    """Get a Nominatim geocoder instance with proper User-Agent.
     
     Args:
-        user_agent: User-Agent string for Nominatim (required by their policy)
-        timeout: Request timeout in seconds
+        user_agent: User-Agent string for Nominatim (required by their policy).
+        timeout: Request timeout in seconds.
         
     Returns:
-        Nominatim geocoder instance
+        Any: Nominatim geocoder instance (from geopy).
     """
     from geopy.geocoders import Nominatim
     return Nominatim(user_agent=user_agent, timeout=timeout)
 
 
-async def rate_limited_nominatim_geocode(bot, query: str, timeout: int = 10):
-    """
-    Perform rate-limited Nominatim geocoding (forward geocoding).
+async def rate_limited_nominatim_geocode(bot: Any, query: str, timeout: int = 10) -> Optional[Any]:
+    """Perform rate-limited Nominatim geocoding (forward geocoding).
     
     Args:
-        bot: Bot instance (must have nominatim_rate_limiter attribute)
-        query: Location query string
-        timeout: Request timeout in seconds
+        bot: Bot instance (must have nominatim_rate_limiter attribute).
+        query: Location query string.
+        timeout: Request timeout in seconds.
         
     Returns:
-        Geocoding result or None
+        Optional[Any]: Geocoding result or None if failed/timed out.
     """
     if not hasattr(bot, 'nominatim_rate_limiter'):
         # Fallback if rate limiter not initialized
@@ -420,17 +414,16 @@ async def rate_limited_nominatim_geocode(bot, query: str, timeout: int = 10):
     return result
 
 
-async def rate_limited_nominatim_reverse(bot, coordinates: str, timeout: int = 10):
-    """
-    Perform rate-limited Nominatim reverse geocoding.
+async def rate_limited_nominatim_reverse(bot: Any, coordinates: str, timeout: int = 10) -> Optional[Any]:
+    """Perform rate-limited Nominatim reverse geocoding.
     
     Args:
-        bot: Bot instance (must have nominatim_rate_limiter attribute)
-        coordinates: Coordinates string in format "lat, lon"
-        timeout: Request timeout in seconds
+        bot: Bot instance (must have nominatim_rate_limiter attribute).
+        coordinates: Coordinates string in format "lat, lon".
+        timeout: Request timeout in seconds.
         
     Returns:
-        Reverse geocoding result or None
+        Optional[Any]: Reverse geocoding result or None if failed/timed out.
     """
     if not hasattr(bot, 'nominatim_rate_limiter'):
         # Fallback if rate limiter not initialized
@@ -450,17 +443,16 @@ async def rate_limited_nominatim_reverse(bot, coordinates: str, timeout: int = 1
     return result
 
 
-def rate_limited_nominatim_geocode_sync(bot, query: str, timeout: int = 10):
-    """
-    Perform rate-limited Nominatim geocoding (synchronous version).
+def rate_limited_nominatim_geocode_sync(bot: Any, query: str, timeout: int = 10) -> Optional[Any]:
+    """Perform rate-limited Nominatim geocoding (synchronous version).
     
     Args:
-        bot: Bot instance (must have nominatim_rate_limiter attribute)
-        query: Location query string
-        timeout: Request timeout in seconds
+        bot: Bot instance (must have nominatim_rate_limiter attribute).
+        query: Location query string.
+        timeout: Request timeout in seconds.
         
     Returns:
-        Geocoding result or None
+        Optional[Any]: Geocoding result or None if failed/timed out.
     """
     if not hasattr(bot, 'nominatim_rate_limiter'):
         # Fallback if rate limiter not initialized
@@ -480,17 +472,16 @@ def rate_limited_nominatim_geocode_sync(bot, query: str, timeout: int = 10):
     return result
 
 
-def rate_limited_nominatim_reverse_sync(bot, coordinates: str, timeout: int = 10):
-    """
-    Perform rate-limited Nominatim reverse geocoding (synchronous version).
+def rate_limited_nominatim_reverse_sync(bot: Any, coordinates: str, timeout: int = 10) -> Optional[Any]:
+    """Perform rate-limited Nominatim reverse geocoding (synchronous version).
     
     Args:
-        bot: Bot instance (must have nominatim_rate_limiter attribute)
-        coordinates: Coordinates string in format "lat, lon"
-        timeout: Request timeout in seconds
+        bot: Bot instance (must have nominatim_rate_limiter attribute).
+        coordinates: Coordinates string in format "lat, lon".
+        timeout: Request timeout in seconds.
         
     Returns:
-        Reverse geocoding result or None
+        Optional[Any]: Reverse geocoding result or None if failed/timed out.
     """
     if not hasattr(bot, 'nominatim_rate_limiter'):
         # Fallback if rate limiter not initialized
@@ -510,19 +501,19 @@ def rate_limited_nominatim_reverse_sync(bot, coordinates: str, timeout: int = 10
     return result
 
 
-async def geocode_zipcode(bot, zipcode: str, default_country: str = None, timeout: int = 10) -> Tuple[Optional[float], Optional[float]]:
-    """
-    Shared function to geocode a ZIP code to lat/lon coordinates.
+async def geocode_zipcode(bot: Any, zipcode: str, default_country: str = None, timeout: int = 10) -> Tuple[Optional[float], Optional[float]]:
+    """Shared function to geocode a ZIP code to lat/lon coordinates.
+    
     Checks cache first, then makes rate-limited API call if needed.
     
     Args:
-        bot: Bot instance (must have db_manager and nominatim_rate_limiter)
-        zipcode: ZIP code string
-        default_country: Default country code (e.g., "US"). If None, reads from bot.config
-        timeout: Request timeout in seconds
+        bot: Bot instance (must have db_manager and nominatim_rate_limiter).
+        zipcode: ZIP code string.
+        default_country: Default country code (e.g., "US"). If None, reads from bot.config.
+        timeout: Request timeout in seconds.
         
     Returns:
-        Tuple of (latitude, longitude) or (None, None) if not found
+        Tuple[Optional[float], Optional[float]]: Tuple of (latitude, longitude) or (None, None) if not found.
     """
     try:
         # Get default country from config if not provided
@@ -548,18 +539,17 @@ async def geocode_zipcode(bot, zipcode: str, default_country: str = None, timeou
         return None, None
 
 
-def geocode_zipcode_sync(bot, zipcode: str, default_country: str = None, timeout: int = 10) -> Tuple[Optional[float], Optional[float]]:
-    """
-    Synchronous version of geocode_zipcode.
+def geocode_zipcode_sync(bot: Any, zipcode: str, default_country: str = None, timeout: int = 10) -> Tuple[Optional[float], Optional[float]]:
+    """Synchronous version of geocode_zipcode.
     
     Args:
-        bot: Bot instance (must have db_manager and nominatim_rate_limiter)
-        zipcode: ZIP code string
-        default_country: Default country code (e.g., "US"). If None, reads from bot.config
-        timeout: Request timeout in seconds
+        bot: Bot instance (must have db_manager and nominatim_rate_limiter).
+        zipcode: ZIP code string.
+        default_country: Default country code (e.g., "US"). If None, reads from bot.config.
+        timeout: Request timeout in seconds.
         
     Returns:
-        Tuple of (latitude, longitude) or (None, None) if not found
+        Tuple[Optional[float], Optional[float]]: Tuple of (latitude, longitude) or (None, None) if not found.
     """
     try:
         # Get default country from config if not provided
@@ -585,25 +575,26 @@ def geocode_zipcode_sync(bot, zipcode: str, default_country: str = None, timeout
         return None, None
 
 
-async def geocode_city(bot, city: str, default_state: str = None, 
+async def geocode_city(bot: Any, city: str, default_state: str = None, 
                        default_country: str = None,
                        include_address_info: bool = False, 
                        timeout: int = 10) -> Tuple[Optional[float], Optional[float], Optional[Dict]]:
-    """
-    Shared function to geocode a city name to lat/lon coordinates.
+    """Shared function to geocode a city name to lat/lon coordinates.
+    
     Uses intelligent fallback logic with major city prioritization.
     
     Args:
-        bot: Bot instance (must have db_manager and nominatim_rate_limiter)
-        city: City name (may include state/country, e.g., "Seattle, WA" or "Paris, France")
-        default_state: Default state abbreviation (e.g., "WA"). If None, reads from bot.config
-        default_country: Default country code (e.g., "US"). If None, reads from bot.config
-        include_address_info: If True, also return address info via reverse geocoding
-        timeout: Request timeout in seconds
+        bot: Bot instance (must have db_manager and nominatim_rate_limiter).
+        city: City name (may include state/country, e.g., "Seattle, WA" or "Paris, France").
+        default_state: Default state abbreviation (e.g., "WA"). If None, reads from bot.config.
+        default_country: Default country code (e.g., "US"). If None, reads from bot.config.
+        include_address_info: If True, also return address info via reverse geocoding.
+        timeout: Request timeout in seconds.
         
     Returns:
-        Tuple of (latitude, longitude, address_info_dict) or (None, None, None) if not found
-        address_info_dict is None if include_address_info is False
+        Tuple[Optional[float], Optional[float], Optional[Dict]]: 
+            Tuple of (latitude, longitude, address_info_dict) or (None, None, None) if not found.
+            address_info_dict is None if include_address_info is False.
     """
     try:
         # Get defaults from config if not provided
@@ -778,24 +769,24 @@ async def geocode_city(bot, city: str, default_state: str = None,
         return None, None, None
 
 
-def geocode_city_sync(bot, city: str, default_state: str = None,
+def geocode_city_sync(bot: Any, city: str, default_state: str = None,
                       default_country: str = None,
                       include_address_info: bool = False,
                       timeout: int = 10) -> Tuple[Optional[float], Optional[float], Optional[Dict]]:
-    """
-    Synchronous version of geocode_city.
+    """Synchronous version of geocode_city.
     
     Args:
-        bot: Bot instance (must have db_manager and nominatim_rate_limiter)
-        city: City name (may include state/country, e.g., "Seattle, WA" or "Paris, France")
-        default_state: Default state abbreviation (e.g., "WA"). If None, reads from bot.config
-        default_country: Default country code (e.g., "US"). If None, reads from bot.config
-        include_address_info: If True, also return address info via reverse geocoding
-        timeout: Request timeout in seconds
+        bot: Bot instance (must have db_manager and nominatim_rate_limiter).
+        city: City name (may include state/country, e.g., "Seattle, WA" or "Paris, France").
+        default_state: Default state abbreviation (e.g., "WA"). If None, reads from bot.config.
+        default_country: Default country code (e.g., "US"). If None, reads from bot.config.
+        include_address_info: If True, also return address info via reverse geocoding.
+        timeout: Request timeout in seconds.
         
     Returns:
-        Tuple of (latitude, longitude, address_info_dict) or (None, None, None) if not found
-        address_info_dict is None if include_address_info is False
+        Tuple[Optional[float], Optional[float], Optional[Dict]]:
+            Tuple of (latitude, longitude, address_info_dict) or (None, None, None) if not found.
+            address_info_dict is None if include_address_info is False.
     """
     try:
         # Get defaults from config if not provided
@@ -971,18 +962,17 @@ def geocode_city_sync(bot, city: str, default_state: str = None,
 
 
 def resolve_path(file_path: Union[str, Path], base_dir: Union[str, Path] = '.') -> str:
-    """
-    Resolve a file path relative to a base directory.
+    """Resolve a file path relative to a base directory.
     
     If the path is absolute, it is resolved and returned as-is.
     If the path is relative, it is resolved relative to the base directory.
     
     Args:
-        file_path: Path to resolve (can be string or Path object)
-        base_dir: Base directory for resolving relative paths (default: current directory)
+        file_path: Path to resolve (can be string or Path object).
+        base_dir: Base directory for resolving relative paths (default: current directory).
     
     Returns:
-        Resolved absolute path as a string
+        str: Resolved absolute path as a string.
     
     Examples:
         >>> resolve_path('data.db', '/opt/bot')
@@ -1000,19 +990,18 @@ def resolve_path(file_path: Union[str, Path], base_dir: Union[str, Path] = '.') 
 
 
 def check_internet_connectivity(host: str = "8.8.8.8", port: int = 53, timeout: float = 3.0) -> bool:
-    """
-    Check if internet connectivity is available by attempting to connect to a reliable host.
+    """Check if internet connectivity is available by attempting to connect to a reliable host.
     
     First tries a lightweight DNS port check (faster, doesn't require DNS resolution).
     If that fails (e.g., DNS port is blocked), falls back to an HTTP request check.
     
     Args:
-        host: Host to connect to (default: 8.8.8.8, Google's public DNS)
-        port: Port to connect to (default: 53, DNS port)
-        timeout: Connection timeout in seconds (default: 3.0)
+        host: Host to connect to (default: 8.8.8.8, Google's public DNS).
+        port: Port to connect to (default: 53, DNS port).
+        timeout: Connection timeout in seconds (default: 3.0).
         
     Returns:
-        True if connection successful, False otherwise
+        bool: True if connection successful, False otherwise.
     """
     # First try: DNS port check (fastest, works if DNS port is open)
     try:
@@ -1045,19 +1034,18 @@ def check_internet_connectivity(host: str = "8.8.8.8", port: int = 53, timeout: 
 
 
 async def check_internet_connectivity_async(host: str = "8.8.8.8", port: int = 53, timeout: float = 3.0) -> bool:
-    """
-    Async version of check_internet_connectivity.
+    """Async version of check_internet_connectivity.
     
     First tries a lightweight DNS port check (faster, doesn't require DNS resolution).
     If that fails (e.g., DNS port is blocked), falls back to an HTTP request check.
     
     Args:
-        host: Host to connect to (default: 8.8.8.8, Google's public DNS)
-        port: Port to connect to (default: 53, DNS port)
-        timeout: Connection timeout in seconds (default: 3.0)
+        host: Host to connect to (default: 8.8.8.8, Google's public DNS).
+        port: Port to connect to (default: 53, DNS port).
+        timeout: Connection timeout in seconds (default: 3.0).
         
     Returns:
-        True if connection successful, False otherwise
+        bool: True if connection successful, False otherwise.
     """
     # First try: DNS port check (fastest, works if DNS port is open)
     try:
@@ -1109,8 +1097,7 @@ async def check_internet_connectivity_async(host: str = "8.8.8.8", port: int = 5
 
 
 def parse_path_string(path_str: str) -> List[str]:
-    """
-    Parse a path string to extract node IDs.
+    """Parse a path string to extract node IDs.
     
     Handles various formats:
     - "11,98,a4,49,cd,5f,01" (comma-separated)
@@ -1119,10 +1106,10 @@ def parse_path_string(path_str: str) -> List[str]:
     - "01,5f (2 hops)" (with hop count suffix)
     
     Args:
-        path_str: Path string in various formats
+        path_str: Path string in various formats.
         
     Returns:
-        List of 2-character uppercase hex node IDs
+        List[str]: List of 2-character uppercase hex node IDs.
     """
     if not path_str:
         return []
@@ -1142,18 +1129,17 @@ def parse_path_string(path_str: str) -> List[str]:
     return [match.upper() for match in hex_matches]
 
 
-def calculate_path_distances(bot, path_str: str) -> Tuple[str, str]:
-    """
-    Calculate path distance metrics from a path string.
+def calculate_path_distances(bot: Any, path_str: str) -> Tuple[str, str]:
+    """Calculate path distance metrics from a path string.
     
     Args:
-        bot: Bot instance (must have db_manager)
-        path_str: Path string (e.g., "11,98,a4,49,cd,5f,01" or "01,5f (2 hops)" or "Direct")
+        bot: Bot instance (must have db_manager).
+        path_str: Path string (e.g., "11,98,a4,49,cd,5f,01" or "01,5f (2 hops)" or "Direct").
         
     Returns:
-        Tuple of (path_distance_str, firstlast_distance_str)
-        - path_distance_str: Total distance with segment info (e.g., "123.4km (3 segs, 1 no-loc)" or "directly (0 hops)" or "locally (1 hop)")
-        - firstlast_distance_str: Distance between first and last repeater (e.g., "45.6km" or empty)
+        Tuple[str, str]: A tuple containing:
+            - path_distance_str: Total distance with segment info (e.g., "123.4km (3 segs, 1 no-loc)").
+            - firstlast_distance_str: Distance between first and last repeater (e.g., "45.6km").
     """
     if not path_str:
         return "directly (0 hops)", "N/A (direct)"
@@ -1253,16 +1239,15 @@ def calculate_path_distances(bot, path_str: str) -> Tuple[str, str]:
         return "", ""
 
 
-def _get_node_location_from_db(bot, node_id: str) -> Optional[Tuple[float, float]]:
-    """
-    Get location for a node ID from the database.
+def _get_node_location_from_db(bot: Any, node_id: str) -> Optional[Tuple[float, float]]:
+    """Get location for a node ID from the database.
     
     Args:
-        bot: Bot instance (must have db_manager)
-        node_id: 2-character hex node ID (e.g., "01", "5f")
+        bot: Bot instance (must have db_manager).
+        node_id: 2-character hex node ID (e.g., "01", "5f").
         
     Returns:
-        Tuple of (latitude, longitude) or None if not found
+        Optional[Tuple[float, float]]: Tuple of (latitude, longitude) or None if not found.
     """
     if not hasattr(bot, 'db_manager'):
         return None
@@ -1299,24 +1284,23 @@ def _get_node_location_from_db(bot, node_id: str) -> Optional[Tuple[float, float
 
 def format_keyword_response_with_placeholders(
     response_format: str,
-    message,
-    bot,
+    message: Any,
+    bot: Any,
     mesh_info: Optional[Dict[str, Any]] = None
 ) -> str:
-    """
-    Format a keyword response string with all available placeholders.
+    """Format a keyword response string with all available placeholders.
     
     Supports both message-based placeholders and mesh-info-based placeholders.
     This is a shared function used by both Keywords and Scheduled_Messages.
     
     Args:
-        response_format: Response format string with placeholders
-        message: MeshMessage instance (can be None for scheduled messages)
-        bot: Bot instance (must have config, db_manager)
-        mesh_info: Optional mesh network info dict (for scheduled message placeholders)
+        response_format: Response format string with placeholders.
+        message: MeshMessage instance (can be None for scheduled messages).
+        bot: Bot instance (must have config, db_manager).
+        mesh_info: Optional mesh network info dict (for scheduled message placeholders).
         
     Returns:
-        Formatted response string
+        str: Formatted response string.
     """
     try:
         replacements = {}

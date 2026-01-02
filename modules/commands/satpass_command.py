@@ -28,10 +28,22 @@ class SatpassCommand(BaseCommand):
     }
     
     def __init__(self, bot):
+        """Initialize the satpass command.
+        
+        Args:
+            bot: The bot instance.
+        """
         super().__init__(bot)
     
     async def execute(self, message: MeshMessage) -> bool:
-        """Execute the satpass command"""
+        """Execute the satpass command.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if executed successfully, False otherwise.
+        """
         try:
             # Check if user provided a satellite number
             content = message.content.strip()
@@ -77,8 +89,12 @@ class SatpassCommand(BaseCommand):
             await self.send_response(message, error_msg)
             return False
     
-    def _get_help_text(self):
-        """Get detailed help text with shortcuts"""
+    def _get_help_text(self) -> str:
+        """Get detailed help text with shortcuts.
+        
+        Returns:
+            str: Detailed help text including shortcuts.
+        """
         shortcuts_text = self.translate('commands.satpass.help_header')
         
         # Group shortcuts by category for better organization
@@ -111,6 +127,10 @@ class SatpassCommand(BaseCommand):
         
         return shortcuts_text
     
-    def get_help_text(self):
-        """Get help text for this command"""
+    def get_help_text(self) -> str:
+        """Get help text for this command.
+        
+        Returns:
+            str: The help text for this command.
+        """
         return self.translate('commands.satpass.description')

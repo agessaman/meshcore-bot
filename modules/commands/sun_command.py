@@ -9,7 +9,11 @@ from ..models import MeshMessage
 
 
 class SunCommand(BaseCommand):
-    """Command to get sun information"""
+    """Command to get sun information.
+    
+    Calculates and displays sunrise and sunset times for the bot's configured location
+    or a default location.
+    """
     
     # Plugin metadata
     name = "sun"
@@ -18,10 +22,24 @@ class SunCommand(BaseCommand):
     category = "solar"
     
     def __init__(self, bot):
+        """Initialize the sun command.
+        
+        Args:
+            bot: The MeshCoreBot instance.
+        """
         super().__init__(bot)
     
     async def execute(self, message: MeshMessage) -> bool:
-        """Execute the sun command"""
+        """Execute the sun command.
+        
+        Calculates sun events and sends the information to the user.
+        
+        Args:
+            message: The message that triggered the command.
+            
+        Returns:
+            bool: True if executed successfully, False otherwise.
+        """
         try:
             # Get sun information using default location
             sun_info = get_sun()
@@ -34,6 +52,10 @@ class SunCommand(BaseCommand):
             error_msg = self.translate('commands.sun.error', error=str(e))
             return await self.send_response(message, error_msg)
     
-    def get_help_text(self):
-        """Get help text for this command"""
+    def get_help_text(self) -> str:
+        """Get help text for this command.
+        
+        Returns:
+            str: The help text for this command.
+        """
         return self.translate('commands.sun.help')

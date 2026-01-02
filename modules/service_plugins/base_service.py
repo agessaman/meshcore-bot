@@ -8,7 +8,12 @@ from typing import Dict, Any, Optional
 
 
 class BaseServicePlugin(ABC):
-    """Base class for background service plugins"""
+    """Base class for background service plugins.
+    
+    This class defines the interface for service plugins, which are long-running
+    background tasks that can interact with the bot and mesh network. It manages
+    service lifecycle (start/stop) and metadata.
+    """
     
     # Optional: Config section name (if different from class name)
     # If not set, will be derived from class name (e.g., PacketCaptureService -> PacketCapture)
@@ -17,12 +22,11 @@ class BaseServicePlugin(ABC):
     # Optional: Service description for metadata
     description: str = ""
     
-    def __init__(self, bot):
-        """
-        Initialize the service plugin
+    def __init__(self, bot: Any):
+        """Initialize the service plugin.
         
         Args:
-            bot: The MeshCoreBot instance
+            bot: The MeshCoreBot instance containing the service.
         """
         self.bot = bot
         self.logger = bot.logger
@@ -30,9 +34,8 @@ class BaseServicePlugin(ABC):
         self._running = False
     
     @abstractmethod
-    async def start(self):
-        """
-        Start the service
+    async def start(self) -> None:
+        """Start the service.
         
         This method should:
         - Setup event handlers if needed
@@ -42,9 +45,8 @@ class BaseServicePlugin(ABC):
         pass
     
     @abstractmethod
-    async def stop(self):
-        """
-        Stop the service
+    async def stop(self) -> None:
+        """Stop the service.
         
         This method should:
         - Clean up event handlers
@@ -54,11 +56,10 @@ class BaseServicePlugin(ABC):
         pass
     
     def get_metadata(self) -> Dict[str, Any]:
-        """
-        Get service metadata
+        """Get service metadata.
         
         Returns:
-            Dictionary containing service metadata
+            Dict[str, Any]: Dictionary containing service metadata (name, status, etc.).
         """
         return {
             'name': self._derive_service_name(),
@@ -70,14 +71,22 @@ class BaseServicePlugin(ABC):
         }
     
     def _derive_service_name(self) -> str:
-        """Derive service name from class name"""
+        """Derive service name from class name.
+        
+        Returns:
+            str: Derived service name (e.g., 'PacketCaptureService' -> 'packetcapture').
+        """
         class_name = self.__class__.__name__
         if class_name.endswith('Service'):
             return class_name[:-7].lower()  # Remove 'Service' suffix and lowercase
         return class_name.lower()
     
     def _derive_config_section(self) -> str:
-        """Derive config section name from class name"""
+        """Derive config section name from class name.
+        
+        Returns:
+            str: Derived config section name.
+        """
         if self.config_section:
             return self.config_section
         
@@ -87,6 +96,10 @@ class BaseServicePlugin(ABC):
         return class_name
     
     def is_running(self) -> bool:
-        """Check if the service is currently running"""
+        """Check if the service is currently running.
+        
+        Returns:
+            bool: True if the service is running, False otherwise.
+        """
         return self._running
 

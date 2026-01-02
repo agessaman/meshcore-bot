@@ -66,7 +66,14 @@ UNIT_STATUS = {
 
 
 def _derive_key(salt: bytes) -> bytes:
-    """Derive AES key from the obfuscated password."""
+    """Derive AES key from the obfuscated password.
+    
+    Args:
+        salt: The salt bytes to use for derivation.
+        
+    Returns:
+        bytes: The derived 32-byte key.
+    """
     e = "CommonIncidents"
     password = e[13] + e[1] + e[2] + "brady" + "5" + "r" + e.lower()[6] + e[5] + "gs"
     
@@ -85,7 +92,14 @@ def _derive_key(salt: bytes) -> bytes:
 
 
 def _decrypt(data: dict) -> dict:
-    """Decrypt PulsePoint's encrypted response."""
+    """Decrypt PulsePoint's encrypted response.
+    
+    Args:
+        data: The encrypted data dictionary from the API.
+        
+    Returns:
+        dict: The decrypted JSON data.
+    """
     ct = base64.b64decode(data["ct"])
     iv = bytes.fromhex(data["iv"])
     salt = bytes.fromhex(data["s"])
@@ -100,8 +114,15 @@ def _decrypt(data: dict) -> dict:
     return json.loads(out)
 
 
-def _parse_time(iso_str: str) -> datetime:
-    """Parse ISO timestamp to datetime and convert to local time."""
+def _parse_time(iso_str: str) -> Optional[datetime]:
+    """Parse ISO timestamp to datetime and convert to local time.
+    
+    Args:
+        iso_str: ISO formatted timestamp string.
+        
+    Returns:
+        Optional[datetime]: Parsed timezone-aware datetime, or None if invalid.
+    """
     if not iso_str:
         return None
     try:
@@ -115,7 +136,14 @@ def _parse_time(iso_str: str) -> datetime:
 
 
 def _time_ago(dt: datetime) -> str:
-    """Format datetime as relative time string."""
+    """Format datetime as relative time string (e.g., '5m ago').
+    
+    Args:
+        dt: The datetime to compare against current time.
+        
+    Returns:
+        str: Relative time string.
+    """
     if not dt:
         return ""
     
@@ -138,7 +166,11 @@ def _time_ago(dt: datetime) -> str:
 
 
 class AlertCommand(BaseCommand):
-    """Handles alert/incident commands using PulsePoint API"""
+    """Handles alert/incident commands using PulsePoint API.
+    
+    Retrieves and displays active fire and emergency incidents for specified
+    locations (city, county, zipcode, or coordinates).
+    """
     
     # Plugin metadata
     name = "alert"
@@ -163,7 +195,14 @@ class AlertCommand(BaseCommand):
         self.max_incident_age_hours = self.get_config_value('Alert_Command', 'max_incident_age_hours', fallback=24.0, value_type='float')
     
     def can_execute(self, message: MeshMessage) -> bool:
-        """Check if this command can be executed with the given message"""
+        """Check if this command can be executed with the given message.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if command is enabled and checks pass, False otherwise.
+        """
         # Check if alert command is enabled
         alert_enabled = self.get_config_value('Alert_Command', 'alert_enabled', fallback=True, value_type='bool')
         if not alert_enabled:
@@ -173,7 +212,11 @@ class AlertCommand(BaseCommand):
         return super().can_execute(message)
     
     def _load_agencies(self) -> Tuple[Dict[str, str], Dict[str, str]]:
-        """Load agency IDs from config, separating cities and counties"""
+        """Load agency IDs from config, separating cities and counties.
+        
+        Returns:
+            Tuple[Dict[str, str], Dict[str, str]]: Tuple of (cities_map, counties_map).
+        """
         cities = {}
         counties = {}
         if self.bot.config.has_section('Alert_Command'):
@@ -196,11 +239,26 @@ class AlertCommand(BaseCommand):
         return cities, counties
     
     def _normalize_location_key(self, location: str) -> str:
-        """Normalize location name to match config key format (spaces -> underscores)"""
+        """Normalize location name to match config key format (spaces -> underscores).
+        
+        Args:
+            location: The raw location string.
+            
+        Returns:
+            str: Normalized location string.
+        """
         return location.lower().replace(' ', '_')
     
     def _get_agency_ids(self, location: str = None, location_type: str = None) -> Optional[str]:
-        """Get agency IDs for a city or county, or default to all configured agencies"""
+        """Get agency IDs for a city or county, or default to all configured agencies.
+        
+        Args:
+            location: Name of the city or county.
+            location_type: Type of location ('city' or 'county').
+            
+        Returns:
+            Optional[str]: Comma-separated agency IDs, or None if specific location not found.
+        """
         if location:
             location_lower = location.lower()
             location_normalized = self._normalize_location_key(location)
@@ -263,7 +321,14 @@ class AlertCommand(BaseCommand):
         return ",".join(all_agencies)
     
     def _fetch_incidents(self, agency_ids: str) -> List[Dict]:
-        """Fetch active incidents from PulsePoint"""
+        """Fetch active incidents from PulsePoint.
+        
+        Args:
+            agency_ids: Comma-separated string of agency IDs.
+            
+        Returns:
+            List[Dict]: List of incident dictionaries.
+        """
         url = "https://api.pulsepoint.org/v1/webapp"
         params = {"resource": "incidents", "agencyid": agency_ids}
         headers = {
@@ -357,12 +422,15 @@ class AlertCommand(BaseCommand):
             return []
     
     def _parse_query(self, query: str) -> Tuple[str, Optional[str], Optional[float], Optional[float]]:
-        """
-        Parse query string to determine search type.
+        """Parse query string to determine search type.
         
+        Args:
+            query: The raw query string from the user.
+            
         Returns:
-            Tuple of (query_type, location, lat, lon)
-            query_type: "zipcode", "coordinates", "street_city", "city", "county"
+            Tuple[str, Optional[str], Optional[float], Optional[float]]: 
+                Tuple of (query_type, location, lat, lon).
+                query_type can be: "zipcode", "coordinates", "street_city", "city", "county".
         """
         query = query.strip()
         
@@ -444,7 +512,15 @@ class AlertCommand(BaseCommand):
         return ("city", query, None, None)
     
     def _match_street_name(self, incidents: List[Dict], street_query: str) -> Tuple[List[Dict], List[Dict]]:
-        """Split incidents into matched and unmatched by street name"""
+        """Split incidents into matched and unmatched by street name.
+        
+        Args:
+            incidents: List of incidents to filter.
+            street_query: Street name to search for.
+            
+        Returns:
+            Tuple[List[Dict], List[Dict]]: (matched_incidents, unmatched_incidents).
+        """
         street_lower = street_query.lower().strip()
         matched = []
         unmatched = []
@@ -461,7 +537,15 @@ class AlertCommand(BaseCommand):
         return matched, unmatched
     
     def _matches_city(self, inc: Dict, city_query: str) -> bool:
-        """Check if incident matches the city name by substring matching on address field"""
+        """Check if incident matches the city name by substring matching on address field.
+        
+        Args:
+            inc: Incident dictionary.
+            city_query: City name to check.
+            
+        Returns:
+            bool: True if matched, False otherwise.
+        """
         city_query_lower = city_query.lower().strip()
         address = inc.get("address", "").lower().strip()
         city = inc.get("city", "").lower().strip()
@@ -470,14 +554,19 @@ class AlertCommand(BaseCommand):
         return city_query_lower in address
     
     def _get_city_match_priority(self, inc: Dict, city_query: str) -> int:
-        """
-        Get priority score for city match (higher = better match).
-        Returns 0 if no match, higher numbers for better matches.
+        """Get priority score for city match (higher = better match).
         
         We prioritize matches where the city name appears at the end of the address
         (after a comma), as this is the most reliable indicator. The city field
         can be inaccurate (e.g., showing "SEATTLE" for addresses in King County
         but not actually in Seattle).
+        
+        Args:
+            inc: Incident dictionary.
+            city_query: City name to match.
+            
+        Returns:
+            int: Priority score (2=suffix match, 1=substring match, 0=no match).
         """
         city_query_lower = city_query.lower().strip()
         address = inc.get("address", "").lower().strip()
@@ -500,7 +589,15 @@ class AlertCommand(BaseCommand):
         return 0
     
     def _match_city_name(self, incidents: List[Dict], city_query: str) -> Tuple[List[Dict], List[Dict]]:
-        """Split incidents into matched and unmatched by city name using simple substring matching on address"""
+        """Split incidents into matched and unmatched by city name.
+        
+        Args:
+            incidents: List of incidents to filter.
+            city_query: City name to filter by.
+            
+        Returns:
+            Tuple[List[Dict], List[Dict]]: (matched_incidents, unmatched_incidents).
+        """
         matched = []
         unmatched = []
         
@@ -513,7 +610,14 @@ class AlertCommand(BaseCommand):
         return matched, unmatched
     
     def _sort_by_time(self, incidents: List[Dict]) -> List[Dict]:
-        """Sort incidents by time (most recent first)"""
+        """Sort incidents by time (most recent first).
+        
+        Args:
+            incidents: List of incidents to sort.
+            
+        Returns:
+            List[Dict]: Sorted list of incidents.
+        """
         def get_time_key(inc):
             time = inc.get("time")
             if time is None:
@@ -526,9 +630,16 @@ class AlertCommand(BaseCommand):
         return sorted(incidents, key=get_time_key, reverse=True)
     
     def _sort_by_distance_then_time(self, incidents: List[Dict], lat: float, lon: float, max_distance: float = None) -> List[Dict]:
-        """
-        Sort incidents by distance first, then by time (most recent first) within same distance.
-        This maintains distance ordering while sorting by time as secondary criteria.
+        """Sort incidents by distance first, then by time (most recent first) within same distance.
+        
+        Args:
+            incidents: List of incidents to sort.
+            lat: Reference latitude.
+            lon: Reference longitude.
+            max_distance: Optional max distance in km to filter.
+            
+        Returns:
+            List[Dict]: Sorted list of incidents.
         """
         scored_incidents = []
         for inc in incidents:
@@ -557,7 +668,14 @@ class AlertCommand(BaseCommand):
         return sorted(scored_incidents, key=lambda x: (x.get("_distance", float('inf')), -x.get("_time_key", datetime.min).timestamp()))
     
     def _has_valid_coordinates(self, inc: Dict) -> bool:
-        """Check if incident has valid coordinates"""
+        """Check if incident has valid coordinates.
+        
+        Args:
+            inc: Incident dictionary.
+            
+        Returns:
+            bool: True if coordinates are valid and non-zero, False otherwise.
+        """
         inc_lat = inc.get("latitude", 0)
         inc_lon = inc.get("longitude", 0)
         # Valid if both are non-zero and within valid ranges
@@ -565,17 +683,16 @@ class AlertCommand(BaseCommand):
                 -90 <= inc_lat <= 90 and -180 <= inc_lon <= 180)
     
     def _sort_by_distance(self, incidents: List[Dict], lat: float, lon: float, max_distance: float = None) -> List[Dict]:
-        """
-        Sort incidents by distance from given coordinates.
+        """Sort incidents by distance from given coordinates.
         
         Args:
-            incidents: List of incident dicts
-            lat: Target latitude
-            lon: Target longitude
-            max_distance: Optional maximum distance in km (incidents beyond this are excluded)
+            incidents: List of incident dicts.
+            lat: Target latitude.
+            lon: Target longitude.
+            max_distance: Optional maximum distance in km (incidents beyond this are excluded).
         
         Returns:
-            Sorted list of incidents (closest first). Only includes incidents with valid coordinates.
+            List[Dict]: Sorted list of incidents (closest first). Only includes incidents with valid coordinates.
         """
         scored_incidents = []
         for inc in incidents:
@@ -596,7 +713,14 @@ class AlertCommand(BaseCommand):
         return sorted(scored_incidents, key=lambda x: x.get("_distance", float('inf')))
     
     def _format_incident_compact(self, inc: Dict) -> str:
-        """Format a single incident in compact format"""
+        """Format a single incident in compact format.
+        
+        Args:
+            inc: Incident dictionary.
+            
+        Returns:
+            str: Formatted incident string for display.
+        """
         # Get first unit with status icon
         unit_str = ""
         if inc.get("units"):
@@ -618,7 +742,15 @@ class AlertCommand(BaseCommand):
         return f"{inc['type']}: {inc['street']}{city_part}{time_part}{unit_str}"
     
     def _format_response(self, incidents: List[Dict], max_length: int = 130) -> str:
-        """Format incidents into a single message, limiting to max_length"""
+        """Format incidents into a single message, limiting to max_length.
+        
+        Args:
+            incidents: List of incidents to format.
+            max_length: Maximum length of the output string (default 130 for LoRa).
+            
+        Returns:
+            str: Formatted response string.
+        """
         if not incidents:
             return "🚨 No active incidents"
         
@@ -682,8 +814,13 @@ class AlertCommand(BaseCommand):
         
         return final_message
     
-    async def _send_all_response(self, message: MeshMessage, incidents: List[Dict]):
-        """Send up to 10 incidents in multiple messages, grouping efficiently"""
+    async def _send_all_response(self, message: MeshMessage, incidents: List[Dict]) -> None:
+        """Send up to 10 incidents in multiple messages, grouping efficiently.
+        
+        Args:
+            message: The message to respond to.
+            incidents: List of incidents to send.
+        """
         import asyncio
         
         if not incidents:
@@ -742,7 +879,16 @@ class AlertCommand(BaseCommand):
                 await asyncio.sleep(2.0)
     
     async def execute(self, message: MeshMessage) -> bool:
-        """Execute the alert command"""
+        """Execute the alert command.
+        
+        Parses query, fetches incidents, filters/sorts, and sends response.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if executed successfully, False otherwise.
+        """
         content = message.content.strip()
         
         # Parse command

@@ -6,12 +6,17 @@ Lists common hashtag channels for the region with multi-message support
 
 from .base_command import BaseCommand
 from ..models import MeshMessage
+from typing import Optional
 import asyncio
 import re
 
 
 class ChannelsCommand(BaseCommand):
-    """Handles the channels command"""
+    """Handles the channels command.
+    
+    Lists common hashtag channels for the region with multi-message support
+    and sub-category filtering.
+    """
     
     # Plugin metadata
     name = "channels"
@@ -23,7 +28,14 @@ class ChannelsCommand(BaseCommand):
         return self.translate('commands.channels.help')
     
     def matches_keyword(self, message: MeshMessage) -> bool:
-        """Check if this command matches the message content based on keywords"""
+        """Check if this command matches the message content based on keywords.
+        
+        Args:
+            message: The message to check.
+            
+        Returns:
+            bool: True if the message matches a command keyword.
+        """
         if not self.keywords:
             return False
         
@@ -60,7 +72,14 @@ class ChannelsCommand(BaseCommand):
         return False
     
     async def execute(self, message: MeshMessage) -> bool:
-        """Execute the channels command"""
+        """Execute the channels command.
+        
+        Args:
+            message: The input message trigger.
+            
+        Returns:
+            bool: True if execution was successful.
+        """
         try:
             # Parse the command to check for sub-commands
             content = message.content.strip()
@@ -131,7 +150,14 @@ class ChannelsCommand(BaseCommand):
             return False
     
     def _load_channels_from_config(self, sub_command: str = None) -> dict:
-        """Load channels from the Channels_List config section with optional sub-command filtering"""
+        """Load channels from the Channels_List config section with optional sub-command filtering.
+        
+        Args:
+            sub_command: Optional category filter.
+            
+        Returns:
+            dict: Dictionary of channel names to descriptions.
+        """
         channels = {}
         
         for channel_name, description in self._parse_config_channels():
@@ -163,8 +189,12 @@ class ChannelsCommand(BaseCommand):
         
         return channels
     
-    async def _show_all_categories(self, message: MeshMessage):
-        """Show all available channel categories"""
+    async def _show_all_categories(self, message: MeshMessage) -> None:
+        """Show all available channel categories.
+        
+        Args:
+            message: The message to reply to.
+        """
         try:
             categories = self._get_all_categories()
             
@@ -188,7 +218,11 @@ class ChannelsCommand(BaseCommand):
             await self.send_response(message, self.translate('commands.channels.error_retrieving_categories', error=str(e)))
     
     def _get_all_categories(self) -> dict:
-        """Get all available channel categories and their channel counts"""
+        """Get all available channel categories and their channel counts.
+        
+        Returns:
+            dict: Dictionary mapping category names to channel counts.
+        """
         categories = {}
         
         for channel_name, description in self._parse_config_channels():
@@ -206,8 +240,15 @@ class ChannelsCommand(BaseCommand):
         
         return categories
     
-    def _find_channel_by_name(self, search_name: str) -> str:
-        """Find a channel by partial name match across all categories"""
+    def _find_channel_by_name(self, search_name: str) -> Optional[str]:
+        """Find a channel by partial name match across all categories.
+        
+        Args:
+            search_name: The channel name to search for.
+            
+        Returns:
+            Optional[str]: The full channel name if found, None otherwise.
+        """
         search_name_lower = search_name.lower()
         
         for config_name, description in self._parse_config_channels():
@@ -224,8 +265,13 @@ class ChannelsCommand(BaseCommand):
         
         return None
     
-    async def _show_specific_channel(self, message: MeshMessage, channel_name: str):
-        """Show description for a specific channel"""
+    async def _show_specific_channel(self, message: MeshMessage, channel_name: str) -> None:
+        """Show description for a specific channel.
+        
+        Args:
+            message: The message to reply to.
+            channel_name: The channel name to show info for.
+        """
         try:
             # Search for the channel in all categories
             found_channel = None
@@ -268,7 +314,15 @@ class ChannelsCommand(BaseCommand):
             await self.send_response(message, self.translate('commands.channels.error_retrieving_channel_info', error=str(e)))
     
     def _split_into_messages(self, channel_list: list, sub_command: str = None) -> list:
-        """Split channel list into multiple messages if they exceed 130 characters"""
+        """Split channel list into multiple messages if they exceed 130 characters.
+        
+        Args:
+            channel_list: List of channel string items.
+            sub_command: The current sub-command/category context.
+            
+        Returns:
+            list: List of message strings ready for sending.
+        """
         messages = []
         
         # Set appropriate header based on sub-command
@@ -318,7 +372,14 @@ class ChannelsCommand(BaseCommand):
         return messages
     
     def _get_header_for_subcommand(self, sub_command: str = None) -> str:
-        """Get the appropriate header for a sub-command"""
+        """Get the appropriate header for a sub-command.
+        
+        Args:
+            sub_command: The sub-command/category name.
+            
+        Returns:
+            str: Header string.
+        """
         if sub_command == "Available categories":
             return self.translate('commands.channels.headers.available_categories')
         elif sub_command and sub_command != "general":
@@ -327,7 +388,14 @@ class ChannelsCommand(BaseCommand):
             return self.translate('commands.channels.headers.common_channels')
     
     def _get_continuation_header_for_subcommand(self, sub_command: str = None) -> str:
-        """Get the appropriate header for continuation messages"""
+        """Get the appropriate header for continuation messages.
+        
+        Args:
+            sub_command: The sub-command/category name.
+            
+        Returns:
+            str: Continuation header string.
+        """
         if sub_command == "Available categories":
             return self.translate('commands.channels.headers.available_categories')
         elif sub_command and sub_command != "general":
@@ -335,8 +403,13 @@ class ChannelsCommand(BaseCommand):
         else:
             return self.translate('commands.channels.headers.common_channels_cont')
     
-    async def _send_multiple_messages(self, message: MeshMessage, messages: list):
-        """Send multiple messages with delays between them"""
+    async def _send_multiple_messages(self, message: MeshMessage, messages: list) -> None:
+        """Send multiple messages with delays between them.
+        
+        Args:
+            message: The original command message.
+            messages: List of message strings to send.
+        """
         for i, msg_content in enumerate(messages):
             if i > 0:
                 # Small delay between messages to prevent overwhelming the network
@@ -344,7 +417,11 @@ class ChannelsCommand(BaseCommand):
             await self.send_response(message, msg_content)
     
     def _parse_config_channels(self):
-        """Parse all channels from config, returning a generator of (name, description) tuples"""
+        """Parse all channels from config, returning a generator of (name, description) tuples.
+        
+        Yields:
+            tuple: (channel_name, description) pairs.
+        """
         if not self.bot.config.has_section('Channels_List'):
             return
         
@@ -357,7 +434,14 @@ class ChannelsCommand(BaseCommand):
                 yield channel_name, description
     
     def _is_valid_category(self, category_name: str) -> bool:
-        """Check if a category name is valid (has channels with that prefix)"""
+        """Check if a category name is valid (has channels with that prefix).
+        
+        Args:
+            category_name: The category to check.
+            
+        Returns:
+            bool: True if the category exists.
+        """
         if not category_name:
             return False
         

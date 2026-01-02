@@ -38,23 +38,51 @@ except ImportError:
 
 
 def hex_to_bytes(hex_str: str) -> bytes:
-    """Convert hex string to bytes"""
+    """Convert hex string to bytes.
+    
+    Args:
+        hex_str: Hexadecimal string to convert.
+        
+    Returns:
+        bytes: Converted bytes object.
+    """
     return bytes.fromhex(hex_str.replace('0x', '').replace(' ', ''))
 
 
 def bytes_to_hex(data: bytes) -> str:
-    """Convert bytes to hex string (lowercase)"""
+    """Convert bytes to hex string (lowercase).
+    
+    Args:
+        data: Bytes object to convert.
+        
+    Returns:
+        str: Hexadecimal representation of the bytes (lowercase).
+    """
     return data.hex()
 
 
 def base64url_encode(data: bytes) -> str:
-    """Base64url encode (URL-safe base64 without padding)"""
+    """Base64url encode (URL-safe base64 without padding).
+    
+    Args:
+        data: Data to encode.
+        
+    Returns:
+        str: URL-safe Base64 encoded string.
+    """
     b64 = base64.b64encode(data).decode('ascii')
     return b64.replace('+', '-').replace('/', '_').replace('=', '')
 
 
 def base64url_decode(data: str) -> bytes:
-    """Base64url decode"""
+    """Base64url decode.
+    
+    Args:
+        data: URL-safe Base64 encoded string.
+        
+    Returns:
+        bytes: Decoded bytes.
+    """
     b64 = data.replace('-', '+').replace('_', '/')
     padding = 4 - (len(b64) % 4)
     if padding != 4:
@@ -63,12 +91,27 @@ def base64url_decode(data: str) -> bytes:
 
 
 def int_to_bytes_le(value: int, length: int) -> bytes:
-    """Convert integer to little-endian bytes"""
+    """Convert integer to little-endian bytes.
+    
+    Args:
+        value: Integer value to convert.
+        length: Number of bytes to use.
+        
+    Returns:
+        bytes: Little-endian byte representation.
+    """
     return value.to_bytes(length, byteorder='little')
 
 
 def bytes_to_int_le(data: bytes) -> int:
-    """Convert little-endian bytes to integer"""
+    """Convert little-endian bytes to integer.
+    
+    Args:
+        data: Bytes object to convert.
+        
+    Returns:
+        int: Integer value.
+    """
     return int.from_bytes(data, byteorder='little')
 
 
@@ -77,20 +120,22 @@ L = 2**252 + 27742317777372353535851937790883648493
 
 
 def ed25519_sign_with_expanded_key(message: bytes, scalar: bytes, prefix: bytes, public_key: bytes) -> bytes:
-    """
-    Sign a message using Ed25519 with pre-expanded key (orlp format)
+    """Sign a message using Ed25519 with pre-expanded key (orlp format).
     
     This implements RFC 8032 Ed25519 signing with an already-expanded key.
     This matches exactly how orlp/ed25519's ed25519_sign() works.
     
     Args:
-        message: Message to sign
-        scalar: First 32 bytes of orlp private key (clamped scalar)
-        prefix: Last 32 bytes of orlp private key (prefix for nonce)
-        public_key: 32-byte public key
+        message: Message to sign.
+        scalar: First 32 bytes of orlp private key (clamped scalar).
+        prefix: Last 32 bytes of orlp private key (prefix for nonce).
+        public_key: 32-byte public key.
         
     Returns:
-        64-byte signature (R || s)
+        bytes: 64-byte signature (R || s).
+        
+    Raises:
+        ImportError: If PyNaCl is not available.
     """
     if not PYNACL_AVAILABLE:
         raise ImportError("PyNaCl is required for Ed25519 signing")
@@ -117,14 +162,13 @@ def ed25519_sign_with_expanded_key(message: bytes, scalar: bytes, prefix: bytes,
 
 
 def read_private_key_file(key_file_path: str) -> Optional[str]:
-    """
-    Read a private key from a file (64-byte hex format for orlp/ed25519)
+    """Read a private key from a file (64-byte hex format for orlp/ed25519).
     
     Args:
-        key_file_path: Path to the private key file
+        key_file_path: Path to the private key file.
         
     Returns:
-        Private key as hex string (128 hex chars = 64 bytes), or None if invalid
+        Optional[str]: Private key as hex string (128 hex chars = 64 bytes), or None if invalid.
     """
     if not os.path.exists(key_file_path):
         return None
@@ -158,20 +202,23 @@ def read_private_key_file(key_file_path: str) -> Optional[str]:
 async def _create_auth_token_with_device(
     payload_dict: Dict[str, Any],
     public_key_hex: str,
-    meshcore_instance,
+    meshcore_instance: Any,
     chunk_size: int = 120
 ) -> str:
-    """
-    Create auth token using on-device signing via meshcore.commands.sign()
+    """Create auth token using on-device signing via meshcore.commands.sign().
     
     Args:
-        payload_dict: Token payload as dictionary
-        public_key_hex: Public key in hex (for verification)
-        meshcore_instance: Connected MeshCore instance
-        chunk_size: Maximum chunk size for signing (device may have limits)
+        payload_dict: Token payload as dictionary.
+        public_key_hex: Public key in hex (for verification).
+        meshcore_instance: Connected MeshCore instance.
+        chunk_size: Maximum chunk size for signing (device may have limits).
         
     Returns:
-        JWT-style token string (header.payload.signature)
+        str: JWT-style token string (header.payload.signature).
+        
+    Raises:
+        ImportError: If meshcore package is missing.
+        Exception: If device is not connected or signing fails.
     """
     try:
         from meshcore import EventType
@@ -303,16 +350,19 @@ def _create_auth_token_python(
     private_key_hex: str,
     public_key_hex: str
 ) -> str:
-    """
-    Create auth token using Python signing (PyNaCl)
+    """Create auth token using Python signing (PyNaCl).
     
     Args:
-        payload_dict: Token payload as dictionary
-        private_key_hex: 64-byte private key in hex (orlp format: scalar || prefix)
-        public_key_hex: 32-byte public key in hex
+        payload_dict: Token payload as dictionary.
+        private_key_hex: 64-byte private key in hex (orlp format: scalar || prefix).
+        public_key_hex: 32-byte public key in hex.
         
     Returns:
-        JWT-style token string (header.payload.signature)
+        str: JWT-style token string (header.payload.signature).
+        
+    Raises:
+        ImportError: If PyNaCl is required but missing.
+        ValueError: If key lengths are invalid.
     """
     if not PYNACL_AVAILABLE:
         raise ImportError("PyNaCl is required for Python signing. Install with: pip install pynacl")
@@ -378,15 +428,14 @@ def _create_auth_token_python(
     return token
 
 
-async def _fetch_private_key_from_device(meshcore_instance) -> Optional[str]:
-    """
-    Attempt to export private key from device
+async def _fetch_private_key_from_device(meshcore_instance: Any) -> Optional[str]:
+    """Attempt to export private key from device.
     
     Args:
-        meshcore_instance: Connected MeshCore instance
+        meshcore_instance: Connected MeshCore instance.
         
     Returns:
-        Private key as hex string (128 hex chars), or None if not available
+        Optional[str]: Private key as hex string (128 hex chars), or None if not available.
     """
     if not meshcore_instance or not meshcore_instance.is_connected:
         return None
@@ -430,7 +479,7 @@ async def _fetch_private_key_from_device(meshcore_instance) -> Optional[str]:
 
 
 async def create_auth_token_async(
-    meshcore_instance=None,
+    meshcore_instance: Optional[Any] = None,
     public_key_hex: Optional[str] = None,
     private_key_hex: Optional[str] = None,
     iata: str = "LOC",
@@ -441,24 +490,28 @@ async def create_auth_token_async(
     owner_email: Optional[str] = None,
     use_device: bool = True
 ) -> str:
-    """
-    Create a JWT-style authentication token for MQTT authentication
+    """Create a JWT-style authentication token for MQTT authentication.
     
     Supports on-device signing (preferred) with fallback to Python signing.
     
     Args:
-        meshcore_instance: Optional connected MeshCore instance for on-device signing
-        public_key_hex: Public key in hex (required)
-        private_key_hex: Private key in hex (64 bytes = 128 hex chars, orlp format)
-                         Required if meshcore_instance not available or device signing fails
-        iata: IATA code (default: "LOC")
-        timestamp: Unix timestamp for 'iat' claim (default: current time)
-        audience: Optional audience for token (e.g., MQTT broker hostname)
-        exp: Optional expiration time (Unix timestamp)
-        use_device: If True, try on-device signing first (default: True)
+        meshcore_instance: Optional connected MeshCore instance for on-device signing.
+        public_key_hex: Public key in hex (required).
+        private_key_hex: Private key in hex (64 bytes = 128 hex chars, orlp format).
+                         Required if meshcore_instance not available or device signing fails.
+        iata: IATA code (default: "LOC").
+        timestamp: Unix timestamp for 'iat' claim (default: current time).
+        audience: Optional audience for token (e.g., MQTT broker hostname).
+        exp: Optional expiration time (Unix timestamp).
+        owner_public_key: Optional owner public key.
+        owner_email: Optional owner email.
+        use_device: If True, try on-device signing first (default: True).
         
     Returns:
-        JWT-style token string (header.payload.signature)
+        str: JWT-style token string (header.payload.signature).
+        
+    Raises:
+        ValueError: If public_key_hex is missing or private key is missing for Python signing.
     """
     if timestamp is None:
         timestamp = int(time.time())
@@ -564,18 +617,17 @@ def create_auth_token(
     timestamp: Optional[int] = None,
     audience: Optional[str] = None
 ) -> str:
-    """
-    Synchronous version of create_auth_token (Python signing only)
+    """Synchronous version of create_auth_token (Python signing only).
     
     Args:
-        private_key_hex: Private key in hex (64 bytes = 128 hex chars, orlp format)
-        public_key_hex: Public key in hex (32 bytes = 64 hex chars)
-        iata: IATA code (default: "LOC")
-        timestamp: Unix timestamp (default: current time)
-        audience: Optional audience for token
+        private_key_hex: Private key in hex (64 bytes = 128 hex chars, orlp format).
+        public_key_hex: Public key in hex (32 bytes = 64 hex chars).
+        iata: IATA code (default: "LOC").
+        timestamp: Unix timestamp (default: current time).
+        audience: Optional audience for token.
         
     Returns:
-        JWT-style token string (header.payload.signature)
+        str: JWT-style token string (header.payload.signature).
     """
     if timestamp is None:
         timestamp = int(time.time())

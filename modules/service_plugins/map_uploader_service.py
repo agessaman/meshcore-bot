@@ -22,8 +22,10 @@ from ..enums import AdvertFlags, PayloadType
 # Import HTTP client
 try:
     import aiohttp
+    AIOHTTP_AVAILABLE = True
 except ImportError:
     aiohttp = None
+    AIOHTTP_AVAILABLE = False
 
 # Import cryptography for signature verification
 try:
@@ -31,7 +33,7 @@ try:
     CRYPTOGRAPHY_AVAILABLE = True
 except ImportError:
     CRYPTOGRAPHY_AVAILABLE = False
-    ed25519 = None
+    ed25519 = None  # type: ignore
 
 # Import private key utilities
 from .packet_capture_utils import (
@@ -48,13 +50,22 @@ from ..utils import resolve_path
 
 
 class MapUploaderService(BaseServicePlugin):
-    """Map uploader service - uploads node adverts to map.meshcore.dev"""
+    """Map uploader service.
+    
+    Uploads node adverts relative to the MeshCore network to map.meshcore.dev.
+    Listens for ADVERT packets and uploads them to the centralized map service.
+    Handles signing of data using the device's private key to ensure authenticity.
+    """
     
     config_section = 'MapUploader'  # Explicit config section
     description = "Uploads node adverts to map.meshcore.dev"
     
-    def __init__(self, bot):
-        """Initialize map uploader service"""
+    def __init__(self, bot: Any):
+        """Initialize map uploader service.
+        
+        Args:
+            bot: The bot instance.
+        """
         super().__init__(bot)
         
         # Setup logging
@@ -133,7 +144,8 @@ class MapUploaderService(BaseServicePlugin):
         self.radio_params: Dict[str, Any] = {}
         
         # HTTP session
-        self.http_session: Optional[aiohttp.ClientSession] = None
+        # HTTP session
+        self.http_session: Optional[aiohttp.ClientSession] = None  # type: ignore
         
         # Event subscriptions
         self.event_subscriptions = []
@@ -147,8 +159,8 @@ class MapUploaderService(BaseServicePlugin):
         
         self.logger.info("Map uploader service initialized")
     
-    def _load_config(self):
-        """Load configuration from bot's config"""
+    def _load_config(self) -> None:
+        """Load configuration from bot's config."""
         config = self.bot.config
         
         # Check if enabled
@@ -175,18 +187,26 @@ class MapUploaderService(BaseServicePlugin):
         self.verbose = config.getboolean('MapUploader', 'verbose', fallback=False)
     
     @property
-    def meshcore(self):
-        """Get meshcore connection from bot (always current)"""
+    def meshcore(self) -> Any:
+        """Get meshcore connection from bot (always current).
+        
+        Returns:
+            Any: The meshcore connection object or None.
+        """
         return self.bot.meshcore if self.bot else None
     
-    async def start(self):
-        """Start the map uploader service"""
+    async def start(self) -> None:
+        """Start the map uploader service.
+        
+        Initializes connections, fetches device keys, and registers event handlers.
+        Checks for required dependencies (aiohttp, cryptography) before starting.
+        """
         if not self.enabled:
             self.logger.info("Map uploader service is disabled")
             return
         
         # Check dependencies
-        if not aiohttp:
+        if not AIOHTTP_AVAILABLE:
             self.logger.error("aiohttp is required for map uploader service. Install with: pip install aiohttp")
             return
         
@@ -220,7 +240,7 @@ class MapUploaderService(BaseServicePlugin):
             return
         
         # Create HTTP session
-        self.http_session = aiohttp.ClientSession()
+        self.http_session = aiohttp.ClientSession()  # type: ignore
         
         # Setup event handlers
         await self._setup_event_handlers()
@@ -229,8 +249,12 @@ class MapUploaderService(BaseServicePlugin):
         self._running = True
         self.logger.info("Map uploader service started")
     
-    async def stop(self):
-        """Stop the map uploader service"""
+    async def stop(self) -> None:
+        """Stop the map uploader service.
+        
+        Closes connections to the map service and the bot's meshcore.
+        Cleans up resources and event subscriptions.
+        """
         self.logger.info("Stopping map uploader service...")
         
         self.should_exit = True
@@ -256,8 +280,12 @@ class MapUploaderService(BaseServicePlugin):
         
         self.logger.info("Map uploader service stopped")
     
-    async def _fetch_private_key(self):
-        """Fetch private key from device if not already loaded"""
+    async def _fetch_private_key(self) -> None:
+        """Fetch private key from device if not already loaded.
+        
+        Attempts to read the private key from the connected MeshCore device
+        for signing map uploads. This is required for valid uploads.
+        """
         if self.private_key_hex:
             self.logger.debug("Private key already loaded from file")
             return
@@ -279,8 +307,12 @@ class MapUploaderService(BaseServicePlugin):
         except Exception as e:
             self.logger.error(f"Error fetching private key from device: {e}")
     
-    async def _fetch_device_info(self):
-        """Fetch device info (public key and radio parameters)"""
+    async def _fetch_device_info(self) -> None:
+        """Fetch device info (public key and radio parameters).
+        
+        Retrieve public key and LoRa radio settings (frequency, coding rate, etc.)
+        from the device self_info. These parameters are sent with map uploads.
+        """
         if not self.meshcore or not self.meshcore.is_connected:
             self.logger.warning("Cannot fetch device info: not connected")
             return
@@ -349,8 +381,11 @@ class MapUploaderService(BaseServicePlugin):
                 'bw': 0
             }
     
-    async def _setup_event_handlers(self):
-        """Setup event handlers for packet capture"""
+    async def _setup_event_handlers(self) -> None:
+        """Setup event handlers for packet capture.
+        
+        Subscribes to RX_LOG_DATA events to intercept packets for upload.
+        """
         if not self.meshcore:
             return
         
@@ -367,13 +402,22 @@ class MapUploaderService(BaseServicePlugin):
         
         self.logger.info("Map uploader event handlers registered")
     
-    def _cleanup_event_subscriptions(self):
-        """Clean up event subscriptions"""
+    def _cleanup_event_subscriptions(self) -> None:
+        """Clean up event subscriptions.
+        
+        Clears the list of tracked subscriptions. The actual unsubscription
+        is handled by the meshcore library when the client disconnects,
+        but this clears our local tracking.
+        """
         # Note: meshcore library handles subscription cleanup automatically
         self.event_subscriptions = []
     
-    async def _cleanup_old_seen_adverts(self, current_timestamp: int):
-        """Clean up old entries from seen_adverts to prevent unbounded memory growth"""
+    async def _cleanup_old_seen_adverts(self, current_timestamp: int) -> None:
+        """Clean up old entries from seen_adverts to prevent unbounded memory growth.
+        
+        Args:
+            current_timestamp: The current timestamp from the latest packet.
+        """
         current_time = time.time()
         
         # Only cleanup periodically (not on every packet)
@@ -419,8 +463,13 @@ class MapUploaderService(BaseServicePlugin):
                 f"seen_adverts grew too large, trimmed to 5000 most recent entries"
             )
     
-    async def _handle_rx_log_data(self, event, metadata=None):
-        """Handle RX log data events"""
+    async def _handle_rx_log_data(self, event: Any, metadata: Any = None) -> None:
+        """Handle RX log data events.
+        
+        Args:
+            event: The event object containing packet data.
+            metadata: Optional metadata for the event.
+        """
         try:
             payload = event.payload
             
@@ -439,8 +488,15 @@ class MapUploaderService(BaseServicePlugin):
         except Exception as e:
             self.logger.error(f"Error handling RX log data: {e}", exc_info=True)
     
-    async def _process_packet(self, raw_hex: str):
-        """Process a packet and upload if it's an ADVERT"""
+    async def _process_packet(self, raw_hex: str) -> None:
+        """Process a packet and upload if it's an ADVERT.
+        
+        Parses the raw packet hex, validates it is an ADVERT, checks for duplicates,
+        verifies signature, and triggers upload if valid.
+        
+        Args:
+            raw_hex: Hex string representation of the raw packet.
+        """
         try:
             # Parse packet to check if it's an ADVERT
             byte_data = bytes.fromhex(raw_hex)
@@ -533,7 +589,14 @@ class MapUploaderService(BaseServicePlugin):
             self.logger.error(f"Error processing packet: {e}", exc_info=True)
     
     def _parse_advert(self, payload: bytes) -> Optional[Dict[str, Any]]:
-        """Parse advert payload"""
+        """Parse advert payload.
+        
+        Args:
+            payload: Binary payload of the packet.
+            
+        Returns:
+            Optional[Dict[str, Any]]: Parsed advert data dictionary or None if invalid.
+        """
         try:
             if len(payload) < 101:
                 return None
@@ -602,7 +665,15 @@ class MapUploaderService(BaseServicePlugin):
             return None
     
     async def _verify_advert_signature(self, advert: Dict[str, Any], payload: bytes) -> bool:
-        """Verify advert signature using ed25519"""
+        """Verify advert signature using ed25519.
+        
+        Args:
+            advert: The parsed advert dictionary containing the signature and public key.
+            payload: The full binary payload used to verify the signature.
+            
+        Returns:
+            bool: True if signature is valid, False otherwise.
+        """
         if not CRYPTOGRAPHY_AVAILABLE:
             self.logger.error("Cryptography library not available, cannot verify signatures")
             return False  # Fail verification if library not available (security)
@@ -640,8 +711,15 @@ class MapUploaderService(BaseServicePlugin):
                 self.logger.debug(f"Signature verification failed: {e}")
             return False
     
-    async def _upload_to_map(self, advert: Dict[str, Any], raw_packet_hex: str):
-        """Upload advert to map.meshcore.dev"""
+    async def _upload_to_map(self, advert: Dict[str, Any], raw_packet_hex: str) -> None:
+        """Upload advert to map.meshcore.dev.
+        
+        Signs the upload request and sends it via HTTP POST.
+        
+        Args:
+            advert: Parsed advert data.
+            raw_packet_hex: Raw hex of the packet to report.
+        """
         if not self.http_session:
             self.logger.error("HTTP session not available")
             return
@@ -723,7 +801,14 @@ class MapUploaderService(BaseServicePlugin):
             self.logger.error(f"Error uploading to map: {e}", exc_info=True)
     
     def _sign_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Sign data using private key"""
+        """Sign data using private key.
+        
+        Args:
+            data: Dictionary of data to sign.
+            
+        Returns:
+            Dict[str, Any]: Object containing original data (JSON string) and signature.
+        """
         # Convert data to JSON
         json_str = json.dumps(data, separators=(',', ':'))
         
@@ -739,7 +824,18 @@ class MapUploaderService(BaseServicePlugin):
         }
     
     def _sign_hash(self, data_hash: bytes) -> str:
-        """Sign a hash using ed25519 private key (orlp format)"""
+        """Sign a hash using ed25519 private key (orlp format).
+        
+        Args:
+            data_hash: The SHA256 hash of the data to sign.
+            
+        Returns:
+            str: Hex string of the signature.
+            
+        Raises:
+            ImportError: If PyNaCl is required but missing.
+            ValueError: If private key length is invalid.
+        """
         try:
             # Convert private key to bytes
             private_key_bytes = hex_to_bytes(self.private_key_hex)

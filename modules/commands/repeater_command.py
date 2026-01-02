@@ -11,7 +11,11 @@ from typing import List, Optional
 
 
 class RepeaterCommand(BaseCommand):
-    """Command for managing repeater contacts"""
+    """Command for managing repeater contacts.
+    
+    Provides functionality to scan, list, purge, and manage repeater and companion contacts
+    within the mesh network. Includes automated cleanup tools and statistics.
+    """
     
     # Plugin metadata
     name = "repeater"
@@ -25,7 +29,14 @@ class RepeaterCommand(BaseCommand):
         super().__init__(bot)
     
     def matches_keyword(self, message: MeshMessage) -> bool:
-        """Check if message starts with 'repeater' keyword"""
+        """Check if message starts with 'repeater' keyword.
+        
+        Args:
+            message: The message to check for the keyword.
+            
+        Returns:
+            bool: True if the message starts with any of the command keywords.
+        """
         content = message.content.strip()
         
         # Handle exclamation prefix
@@ -40,7 +51,16 @@ class RepeaterCommand(BaseCommand):
         return False
     
     async def execute(self, message: MeshMessage) -> bool:
-        """Execute repeater management command"""
+        """Execute repeater management command.
+        
+        Parses subcommands (scan, list, purge, etc.) and routes to the appropriate handler.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if executed successfully, False otherwise.
+        """
         self.logger.info(f"Repeater command executed with content: {message.content}")
         
         # Parse the message content to extract subcommand and args
@@ -129,7 +149,13 @@ class RepeaterCommand(BaseCommand):
         return True
     
     async def _handle_scan(self) -> str:
-        """Scan contacts for repeaters"""
+        """Scan contacts for repeaters.
+        
+        Triggers a scan of the device's contact list to identify and catalog repeaters.
+        
+        Returns:
+            str: Result message describing the scan outcome.
+        """
         self.logger.info("Repeater scan command received")
         
         if not hasattr(self.bot, 'repeater_manager'):
@@ -157,7 +183,14 @@ class RepeaterCommand(BaseCommand):
             return f"❌ Error scanning for repeaters: {e}"
     
     async def _handle_list(self, args: List[str]) -> str:
-        """List repeater contacts"""
+        """List repeater contacts.
+        
+        Args:
+            args: Command arguments (e.g., '--all' to show purged repeaters).
+            
+        Returns:
+            str: Formatted list of repeaters.
+        """
         if not hasattr(self.bot, 'repeater_manager'):
             return "Repeater manager not initialized. Please check bot configuration."
         
@@ -205,7 +238,16 @@ class RepeaterCommand(BaseCommand):
             return f"❌ Error listing repeaters: {e}"
     
     async def _handle_purge(self, args: List[str]) -> str:
-        """Purge repeater or companion contacts"""
+        """Purge repeater or companion contacts.
+        
+        Supports purging by name, age (days), or 'all'.
+        
+        Args:
+            args: Command arguments specifying what to purge.
+            
+        Returns:
+            str: Result message describing the purge outcome.
+        """
         if not hasattr(self.bot, 'repeater_manager'):
             return "Repeater manager not initialized. Please check bot configuration."
         
@@ -363,7 +405,14 @@ class RepeaterCommand(BaseCommand):
             return f"❌ Error purging repeaters: {e}"
     
     async def _handle_purge_companions(self, args: List[str]) -> str:
-        """Purge companion contacts based on inactivity"""
+        """Purge companion contacts based on inactivity.
+        
+        Args:
+            args: Command arguments (optional days threshold).
+            
+        Returns:
+            str: Result message describing the purge outcome.
+        """
         if not hasattr(self.bot, 'repeater_manager'):
             return "Repeater manager not initialized. Please check bot configuration."
         
@@ -448,7 +497,14 @@ class RepeaterCommand(BaseCommand):
             return f"❌ Error purging companions: {e}"
     
     async def _handle_restore(self, args: List[str]) -> str:
-        """Restore purged repeater contacts"""
+        """Restore purged repeater contacts.
+        
+        Args:
+            args: Command arguments (name pattern to restore).
+            
+        Returns:
+            str: Result message describing the restore outcome.
+        """
         if not hasattr(self.bot, 'repeater_manager'):
             return "Repeater manager not initialized. Please check bot configuration."
         
@@ -489,7 +545,11 @@ class RepeaterCommand(BaseCommand):
             return f"❌ Error restoring repeaters: {e}"
     
     async def _handle_stats(self) -> str:
-        """Show repeater management statistics"""
+        """Show repeater management statistics.
+        
+        Returns:
+            str: Formatted statistics summary.
+        """
         if not hasattr(self.bot, 'repeater_manager'):
             return "Repeater manager not initialized. Please check bot configuration."
         
@@ -517,7 +577,11 @@ class RepeaterCommand(BaseCommand):
             return f"❌ Error getting statistics: {e}"
     
     async def _handle_status(self) -> str:
-        """Show contact list status and limits"""
+        """Show contact list status and limits.
+        
+        Returns:
+            str: Formatted status message showing usage vs limits.
+        """
         if not hasattr(self.bot, 'repeater_manager'):
             return "Repeater manager not initialized. Please check bot configuration."
         
@@ -546,7 +610,14 @@ class RepeaterCommand(BaseCommand):
             return f"❌ Error getting contact status: {e}"
     
     async def _handle_manage(self, args: List[str]) -> str:
-        """Manage contact list to prevent hitting limits"""
+        """Manage contact list to prevent hitting limits.
+        
+        Args:
+            args: Command arguments (e.g., '--dry-run').
+            
+        Returns:
+            str: Result message describing actions taken or proposed.
+        """
         if not hasattr(self.bot, 'repeater_manager'):
             return "Repeater manager not initialized. Please check bot configuration."
         
@@ -609,7 +680,14 @@ class RepeaterCommand(BaseCommand):
             return f"❌ Error managing contact list: {e}"
     
     async def _handle_add(self, args: List[str]) -> str:
-        """Add a discovered contact to the contact list"""
+        """Add a discovered contact to the contact list.
+        
+        Args:
+            args: Command arguments (name, public_key, reason).
+            
+        Returns:
+            str: Result message indicating success or failure.
+        """
         if not hasattr(self.bot, 'repeater_manager'):
             return "Repeater manager not initialized. Please check bot configuration."
         
@@ -634,7 +712,13 @@ class RepeaterCommand(BaseCommand):
             return f"❌ Error adding contact: {e}"
     
     async def _handle_discover(self) -> str:
-        """Discover companion contacts"""
+        """Discover companion contacts.
+        
+        Triggers manual discovery of companion contacts.
+        
+        Returns:
+            str: Result message.
+        """
         if not hasattr(self.bot, 'repeater_manager'):
             return "Repeater manager not initialized. Please check bot configuration."
         
@@ -649,8 +733,12 @@ class RepeaterCommand(BaseCommand):
         except Exception as e:
             return f"❌ Error discovering contacts: {e}"
     
-    async def _handle_stats(self) -> str:
-        """Show statistics about the complete repeater tracking database"""
+    async def _handle_contact_stats(self) -> str:
+        """Show statistics about the complete repeater tracking database.
+        
+        Returns:
+            str: Formatted statistics summary.
+        """
         if not hasattr(self.bot, 'repeater_manager'):
             return "Repeater manager not initialized. Please check bot configuration."
         
@@ -691,7 +779,14 @@ class RepeaterCommand(BaseCommand):
             return f"❌ Error getting repeater statistics: {e}"
     
     async def _handle_auto_purge(self, args: List[str]) -> str:
-        """Handle auto-purge commands"""
+        """Handle auto-purge commands.
+        
+        Args:
+            args: Command arguments (trigger, enable, disable, monitor).
+            
+        Returns:
+            str: Result message.
+        """
         if not hasattr(self.bot, 'repeater_manager'):
             return "Repeater manager not initialized. Please check bot configuration."
         
@@ -744,7 +839,11 @@ class RepeaterCommand(BaseCommand):
             return f"❌ Error with auto-purge command: {e}"
     
     async def _handle_purge_status(self) -> str:
-        """Show detailed purge status and recommendations"""
+        """Show detailed purge status and recommendations.
+        
+        Returns:
+            str: Formatted status message.
+        """
         if not hasattr(self.bot, 'repeater_manager'):
             return "Repeater manager not initialized. Please check bot configuration."
         
@@ -771,7 +870,14 @@ class RepeaterCommand(BaseCommand):
             return f"❌ Error getting purge status: {e}"
     
     async def _handle_test_purge(self) -> str:
-        """Test the improved purge system"""
+        """Test the improved purge system.
+        
+        Runs a test purge operation without permanently removing valid contacts,
+        useful for verifying system functionality.
+        
+        Returns:
+            str: Test result message.
+        """
         if not hasattr(self.bot, 'repeater_manager'):
             return "Repeater manager not initialized. Please check bot configuration."
         

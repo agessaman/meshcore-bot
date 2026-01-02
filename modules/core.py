@@ -43,7 +43,11 @@ from .utils import resolve_path
 
 
 class MeshCoreBot:
-    """MeshCore Bot using official meshcore package"""
+    """MeshCore Bot using official meshcore package.
+    
+    This class handles the core functionality of the bot, including connection management,
+    message processing initialization, and module coordination.
+    """
     
     def __init__(self, config_file: str = "config.ini"):
         self.config_file = config_file
@@ -194,15 +198,23 @@ class MeshCoreBot:
         """Get bot root directory (where config.ini is located)"""
         return Path(self.config_file).parent.resolve()
     
-    def load_config(self):
-        """Load configuration from file"""
+    def load_config(self) -> None:
+        """Load configuration from file.
+        
+        Reads the configuration file specified in self.config_file. If the file
+        does not exist, a default configuration is created first.
+        """
         if not Path(self.config_file).exists():
             self.create_default_config()
         
         self.config.read(self.config_file)
     
-    def create_default_config(self):
-        """Create default configuration file"""
+    def create_default_config(self) -> None:
+        """Create default configuration file.
+        
+        Writes a default 'config.ini' file to disk with standard settings
+        and comments explaining each option.
+        """
         default_config = """[Connection]
 # Connection type: serial, ble, or tcp
 # serial: Connect via USB serial port
@@ -547,8 +559,13 @@ use_zulu_time = false
         # Note: Using print here since logger may not be initialized yet
         print(f"Created default config file: {self.config_file}")
     
-    def setup_logging(self):
-        """Setup logging configuration"""
+    def setup_logging(self) -> None:
+        """Setup logging configuration.
+        
+        Configures the logging system based on settings in the config file.
+        Sets up console and file handlers, formatters, and log levels for
+        both the bot and the underlying meshcore library.
+        """
         log_level = getattr(logging, self.config.get('Logging', 'log_level', fallback='INFO'))
         
         # Create formatter
@@ -632,8 +649,12 @@ use_zulu_time = false
         # Setup signal handlers for graceful shutdown
         self._setup_signal_handlers()
     
-    def _setup_routing_capture(self):
-        """Setup routing information capture for web viewer"""
+    def _setup_routing_capture(self) -> None:
+        """Setup routing information capture for web viewer.
+        
+        Initializes the mechanism to capture message routing information
+        if the web viewer integration is enabled.
+        """
         # Web viewer doesn't need complex routing capture
         # It uses direct database access instead of complex integration
         if not (hasattr(self, 'web_viewer_integration') and 
@@ -642,8 +663,12 @@ use_zulu_time = false
         
         self.logger.info("Web viewer routing capture setup complete")
     
-    def _setup_signal_handlers(self):
-        """Setup signal handlers for graceful shutdown"""
+    def _setup_signal_handlers(self) -> None:
+        """Setup signal handlers for graceful shutdown.
+        
+        Registers handlers for SIGTERM and SIGINT to ensure the bot can
+        clean up resources and disconnect properly when stopped.
+        """
         def signal_handler(signum, frame):
             self.logger.info(f"Received signal {signum}, initiating graceful shutdown...")
             # Set shutdown event to break main loop
@@ -656,7 +681,14 @@ use_zulu_time = false
         signal.signal(signal.SIGINT, signal_handler)
     
     async def connect(self) -> bool:
-        """Connect to MeshCore node using official package"""
+        """Connect to MeshCore node using official package.
+        
+        Establishes a connection to the mesh node via Serial, TCP, or BLE
+        based on the configuration.
+        
+        Returns:
+            bool: True if connection was successful, False otherwise.
+        """
         try:
             self.logger.info("Connecting to MeshCore node...")
             
@@ -710,7 +742,14 @@ use_zulu_time = false
             return False
     
     async def set_radio_clock(self) -> bool:
-        """Set radio clock only if device time is earlier than current system time"""
+        """Set radio clock if device time is earlier than system time.
+        
+        Checks the connected device's time and updates it to match the system
+        time if the device is lagging behind.
+        
+        Returns:
+            bool: True if check/update was successful (or not needed), False on error.
+        """
         try:
             if not self.meshcore or not self.meshcore.is_connected:
                 self.logger.warning("Cannot set radio clock - not connected to device")
@@ -749,8 +788,12 @@ use_zulu_time = false
             self.logger.warning(f"Error checking/setting radio clock: {e}")
             return False
     
-    async def wait_for_contacts(self):
-        """Wait for contacts to be loaded"""
+    async def wait_for_contacts(self) -> None:
+        """Wait for contacts to be loaded from the device.
+        
+        Polls the device for contact list or waits for automatic loading.
+        Times out after 30 seconds if contacts are not loaded.
+        """
         self.logger.info("Waiting for contacts to load...")
         
         # Try to manually load contacts first
@@ -781,8 +824,12 @@ use_zulu_time = false
         
         self.logger.warning(f"Contacts not loaded after {max_wait} seconds, proceeding anyway")
     
-    async def setup_message_handlers(self):
-        """Setup event handlers for messages"""
+    async def setup_message_handlers(self) -> None:
+        """Setup event handlers for messages.
+        
+        Registers callbacks for various meshcore events including contact messages,
+        channel messages, RF data, and raw data packets.
+        """
         # Handle contact messages (DMs)
         async def on_contact_message(event, metadata=None):
             await self.message_handler.handle_contact_message(event, metadata)
@@ -827,8 +874,12 @@ use_zulu_time = false
         
         self.logger.info("Message handlers setup complete")
     
-    async def start(self):
-        """Start the bot"""
+    async def start(self) -> None:
+        """Start the bot.
+        
+        Initiates the connection to the node, sets up scheduling, services,
+        and starts the main execution loop.
+        """
         self.logger.info("Starting MeshCore Bot...")
         
         # Connect to MeshCore node
@@ -903,8 +954,12 @@ use_zulu_time = false
         finally:
             await self.stop()
     
-    async def stop(self):
-        """Stop the bot"""
+    async def stop(self) -> None:
+        """Stop the bot.
+        
+        Performs graceful shutdown by stopping services, scheduling, and
+        disconnecting from the mesh node.
+        """
         try:
             self.logger.info("Stopping MeshCore Bot...")
         except (AttributeError, TypeError):
@@ -942,10 +997,13 @@ use_zulu_time = false
             print("Bot stopped")
     
     async def get_system_health(self) -> Dict[str, Any]:
-        """Aggregate health status from all components
+        """Aggregate health status from all components.
+        
+        Collects status information from the meshcore connection, database,
+        services, and other components to provide a system health report.
         
         Returns:
-            Dictionary containing overall health status and component details
+            Dict[str, Any]: Dictionary containing overall health status and component details.
         """
         health = {
             'status': 'healthy',
@@ -1029,8 +1087,12 @@ use_zulu_time = false
         
         return health
     
-    def _cleanup_web_viewer(self):
-        """Cleanup web viewer on exit"""
+    def _cleanup_web_viewer(self) -> None:
+        """Cleanup web viewer resources on exit.
+        
+        Called by atexit handler to ensure the web viewer process is terminated
+        properly when the bot shuts down.
+        """
         try:
             if hasattr(self, 'web_viewer_integration') and self.web_viewer_integration:
                 # Web viewer has simpler cleanup
@@ -1045,8 +1107,12 @@ use_zulu_time = false
             except (AttributeError, TypeError):
                 print(f"Error during web viewer cleanup: {e}")
     
-    async def send_startup_advert(self):
-        """Send a startup advert if enabled in config"""
+    async def send_startup_advert(self) -> None:
+        """Send a startup advertisement if configured.
+        
+        Sends a 'bot online' status message to the mesh network. Can be configured
+        as a local zero-hop broadcast or a flood message.
+        """
         try:
             # Check if startup advert is enabled
             startup_advert = self.config.get('Bot', 'startup_advert', fallback='false').lower()

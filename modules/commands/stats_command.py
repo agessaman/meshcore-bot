@@ -13,7 +13,11 @@ from ..models import MeshMessage
 
 
 class StatsCommand(BaseCommand):
-    """Handles the stats command with comprehensive data collection"""
+    """Handles the stats command with comprehensive data collection.
+    
+    This command tracks usage statistics including messages, commands, and routing paths.
+    It provides insights into bot activity and network performance over the last 24 hours.
+    """
     
     # Plugin metadata
     name = "stats"
@@ -26,8 +30,8 @@ class StatsCommand(BaseCommand):
         self._load_config()
         self._init_stats_tables()
     
-    def _load_config(self):
-        """Load configuration settings for stats command"""
+    def _load_config(self) -> None:
+        """Load configuration settings for stats command."""
         self.stats_enabled = self.get_config_value('Stats_Command', 'stats_enabled', fallback=True, value_type='bool')
         self.data_retention_days = self.get_config_value('Stats_Command', 'data_retention_days', fallback=7, value_type='int')
         self.auto_cleanup = self.get_config_value('Stats_Command', 'auto_cleanup', fallback=True, value_type='bool')
@@ -35,8 +39,12 @@ class StatsCommand(BaseCommand):
         self.track_command_details = self.get_config_value('Stats_Command', 'track_command_details', fallback=True, value_type='bool')
         self.anonymize_users = self.get_config_value('Stats_Command', 'anonymize_users', fallback=False, value_type='bool')
     
-    def _init_stats_tables(self):
-        """Initialize database tables for stats tracking"""
+    def _init_stats_tables(self) -> None:
+        """Initialize database tables for stats tracking.
+        
+        Creates tables for message stats, command stats, and path stats if they
+        don't already exist. Also sets up necessary indexes for performance.
+        """
         try:
             with sqlite3.connect(self.bot.db_manager.db_path) as conn:
                 cursor = conn.cursor()
@@ -104,8 +112,12 @@ class StatsCommand(BaseCommand):
             self.logger.error(f"Failed to initialize stats tables: {e}")
             raise
     
-    def record_message(self, message: MeshMessage):
-        """Record a message in the stats database"""
+    def record_message(self, message: MeshMessage) -> None:
+        """Record a message in the stats database.
+        
+        Args:
+            message: The message to record statistics for.
+        """
         if not self.stats_enabled or not self.track_all_messages:
             return
             
@@ -138,8 +150,14 @@ class StatsCommand(BaseCommand):
         except Exception as e:
             self.logger.error(f"Error recording message stats: {e}")
     
-    def record_command(self, message: MeshMessage, command_name: str, response_sent: bool = True):
-        """Record a command execution in the stats database"""
+    def record_command(self, message: MeshMessage, command_name: str, response_sent: bool = True) -> None:
+        """Record a command execution in the stats database.
+        
+        Args:
+            message: The message that triggered the command.
+            command_name: The name of the command executed.
+            response_sent: Whether a response was sent back to the user.
+        """
         if not self.stats_enabled or not self.track_command_details:
             return
             
@@ -169,8 +187,12 @@ class StatsCommand(BaseCommand):
         except Exception as e:
             self.logger.error(f"Error recording command stats: {e}")
     
-    def record_path_stats(self, message: MeshMessage):
-        """Record path statistics for longest path tracking"""
+    def record_path_stats(self, message: MeshMessage) -> None:
+        """Record path statistics for longest path tracking.
+        
+        Args:
+            message: The message containing path information.
+        """
         if not self.stats_enabled or not self.track_all_messages:
             return
             
@@ -212,7 +234,14 @@ class StatsCommand(BaseCommand):
             self.logger.error(f"Error recording path stats: {e}")
     
     def _is_valid_path_format(self, path: str) -> bool:
-        """Check if path contains actual node IDs rather than descriptive text"""
+        """Check if path contains actual node IDs rather than descriptive text.
+        
+        Args:
+            path: The path string to validate.
+            
+        Returns:
+            bool: True if the path structure appears valid, False otherwise.
+        """
         if not path:
             return False
         
@@ -234,7 +263,14 @@ class StatsCommand(BaseCommand):
         return False
     
     def _format_path_for_display(self, path: str) -> str:
-        """Format path string for display (e.g., '75,24,1d,5f,bd')"""
+        """Format path string for display (e.g., '75,24,1d,5f,bd').
+        
+        Args:
+            path: The raw path string.
+            
+        Returns:
+            str: The formatted path string.
+        """
         if not path:
             return "Direct"
         
@@ -262,7 +298,17 @@ class StatsCommand(BaseCommand):
         return self.translate('commands.stats.help')
     
     async def execute(self, message: MeshMessage) -> bool:
-        """Execute the stats command"""
+        """Execute the stats command.
+        
+        Handles subcommands for messages, channels, and paths, or shows basic stats
+        if no subcommand is provided.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if executed successfully, False otherwise.
+        """
         if not self.stats_enabled:
             await self.send_response(message, self.translate('commands.stats.disabled'))
             return False
@@ -302,7 +348,11 @@ class StatsCommand(BaseCommand):
             return False
     
     async def _get_basic_stats(self) -> str:
-        """Get basic bot statistics"""
+        """Get basic bot statistics.
+        
+        Returns:
+            str: Formatted string containing basic statistics (commands, top user, etc.).
+        """
         try:
             # Get time window (24 hours ago)
             now = int(time.time())
@@ -367,7 +417,11 @@ class StatsCommand(BaseCommand):
             return self.translate('commands.stats.error', error=str(e))
     
     async def _get_bot_user_leaderboard(self) -> str:
-        """Get leaderboard for bot users (people who triggered bot responses)"""
+        """Get leaderboard for bot users (people who triggered bot responses).
+        
+        Returns:
+            str: Formatted leaderboard string.
+        """
         try:
             # Get time window (24 hours ago)
             now = int(time.time())
@@ -404,7 +458,11 @@ class StatsCommand(BaseCommand):
             return self.translate('commands.stats.error_bot_users', error=str(e))
     
     async def _get_channel_leaderboard(self) -> str:
-        """Get leaderboard for channel message activity"""
+        """Get leaderboard for channel message activity.
+        
+        Returns:
+            str: Formatted leaderboard string.
+        """
         try:
             # Get time window (24 hours ago)
             now = int(time.time())
@@ -446,7 +504,11 @@ class StatsCommand(BaseCommand):
             return self.translate('commands.stats.error_channels', error=str(e))
     
     async def _get_path_leaderboard(self) -> str:
-        """Get leaderboard for longest paths seen"""
+        """Get leaderboard for longest paths seen.
+        
+        Returns:
+            str: Formatted leaderboard string.
+        """
         try:
             # Get time window (24 hours ago)
             now = int(time.time())
@@ -497,8 +559,12 @@ class StatsCommand(BaseCommand):
             self.logger.error(f"Error getting path leaderboard: {e}")
             return self.translate('commands.stats.error_paths', error=str(e))
     
-    def cleanup_old_stats(self, days_to_keep: int = 7):
-        """Clean up old stats data to prevent database bloat"""
+    def cleanup_old_stats(self, days_to_keep: int = 7) -> None:
+        """Clean up old stats data to prevent database bloat.
+        
+        Args:
+            days_to_keep: Number of days of data to retain.
+        """
         try:
             cutoff_time = int(time.time()) - (days_to_keep * 24 * 60 * 60)
             
@@ -527,7 +593,11 @@ class StatsCommand(BaseCommand):
             self.logger.error(f"Error cleaning up old stats: {e}")
     
     def get_stats_summary(self) -> Dict[str, Any]:
-        """Get a summary of all stats data"""
+        """Get a summary of all stats data.
+        
+        Returns:
+            Dict[str, Any]: Dictionary containing summary statistics.
+        """
         try:
             with sqlite3.connect(self.bot.db_manager.db_path) as conn:
                 cursor = conn.cursor()

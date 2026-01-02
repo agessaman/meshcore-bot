@@ -4,6 +4,7 @@ Cmd command for the MeshCore Bot
 Lists available commands in a compact, comma-separated format for LoRa
 """
 
+from typing import Optional
 from .base_command import BaseCommand
 from ..models import MeshMessage
 
@@ -18,16 +19,21 @@ class CmdCommand(BaseCommand):
     category = "basic"
     
     def get_help_text(self) -> str:
-        return "Lists commands in compact format."
-    
-    def _get_commands_list(self, max_length: int = None) -> str:
-        """Get a compact list of available commands, prioritizing important ones
-        
-        Args:
-            max_length: Maximum length for the command list (None = no limit)
+        """Get help text for the cmd command.
         
         Returns:
-            Comma-separated list of commands, truncated if necessary
+            str: The help text for this command.
+        """
+        return "Lists commands in compact format."
+    
+    def _get_commands_list(self, max_length: Optional[int] = None) -> str:
+        """Get a compact list of available commands, prioritizing important ones.
+        
+        Args:
+            max_length: Maximum length for the command list (None = no limit).
+        
+        Returns:
+            str: Comma-separated list of commands, truncated if necessary.
         """
         # Define priority order - most important/commonly used commands first
         priority_commands = [
@@ -109,7 +115,14 @@ class CmdCommand(BaseCommand):
         return prefix + ', '.join(result)
     
     async def execute(self, message: MeshMessage) -> bool:
-        """Execute the cmd command"""
+        """Execute the cmd command.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if executed successfully, False otherwise.
+        """
         try:
             # Check if user has defined a custom cmd keyword response in config
             # Use the already-loaded keywords dict (quotes are already stripped)

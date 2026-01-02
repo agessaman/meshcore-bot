@@ -30,10 +30,22 @@ class DiceCommand(BaseCommand):
     }
     
     def get_help_text(self) -> str:
+        """Get help text for the dice command.
+        
+        Returns:
+            str: Help text string.
+        """
         return self.translate('commands.dice.help')
     
     def matches_keyword(self, message: MeshMessage) -> bool:
-        """Override to handle dice-specific matching"""
+        """Override to handle dice-specific matching.
+        
+        Args:
+            message: The received message.
+            
+        Returns:
+            bool: True if message is a dice command, False otherwise.
+        """
         content = message.content.strip().lower()
         
         # Handle command-style messages
@@ -54,10 +66,15 @@ class DiceCommand(BaseCommand):
         return False
     
     def parse_dice_notation(self, dice_input: str) -> tuple:
-        """
-        Parse dice notation and return (sides, count, is_decade)
+        """Parse dice notation and return (sides, count, is_decade).
+        
         Supports: d20, 20, d6, 6, 2d6, 4d10, decade, etc.
-        Returns (sides, count, is_decade) or (None, None, False) if invalid
+        
+        Args:
+            dice_input: The dice string to parse.
+            
+        Returns:
+            tuple: (sides, count, is_decade) or (None, None, False) if invalid.
         """
         dice_input = dice_input.strip().lower()
         
@@ -107,10 +124,15 @@ class DiceCommand(BaseCommand):
         return None, None, False
     
     def parse_mixed_dice(self, dice_input: str) -> list:
-        """
-        Parse mixed dice notation and return list of (sides, count, is_decade) tuples
+        """Parse mixed dice notation and return list of (sides, count, is_decade) tuples.
+        
         Supports: "d10 d6", "2d6 d20", "d4 d8 d12", "decade", etc.
-        Returns list of (sides, count, is_decade) tuples, or empty list if invalid
+        
+        Args:
+            dice_input: The space-separated dice string.
+            
+        Returns:
+            list: List of (sides, count, is_decade) tuples, or empty list if invalid.
         """
         dice_input = dice_input.strip()
         if not dice_input:
@@ -129,9 +151,17 @@ class DiceCommand(BaseCommand):
         return parsed_dice
     
     def roll_dice(self, sides: int, count: int = 1, is_decade: bool = False) -> list:
-        """
-        Roll dice and return list of results
+        """Roll dice and return list of results.
+        
         For decade dice, returns values 0, 10, 20, ..., 90 (formatted as 00, 10, 20, etc.)
+        
+        Args:
+            sides: Number of sides on the die.
+            count: Number of dice to roll.
+            is_decade: Whether it's a decade die (00-90).
+            
+        Returns:
+            list: List of integer results.
         """
         if is_decade:
             # Decade die: 00, 10, 20, 30, 40, 50, 60, 70, 80, 90
@@ -140,7 +170,17 @@ class DiceCommand(BaseCommand):
             return [random.randint(1, sides) for _ in range(count)]
     
     def format_dice_result(self, sides: int, count: int, results: list, is_decade: bool = False) -> str:
-        """Format dice roll results into a readable string"""
+        """Format dice roll results into a readable string.
+        
+        Args:
+            sides: Number of sides.
+            count: Number of dice.
+            results: List of roll results.
+            is_decade: Whether it's a decade die.
+            
+        Returns:
+            str: Formatted result string.
+        """
         if is_decade:
             # Format decade dice results (00, 10, 20, etc.)
             formatted_results = [f"{r:02d}" for r in results]
@@ -161,9 +201,13 @@ class DiceCommand(BaseCommand):
                 return self.translate('commands.dice.multiple_dice', count=count, sides=sides, results=results_str, total=total)
     
     def format_mixed_dice_result(self, dice_results: list) -> str:
-        """
-        Format mixed dice roll results into a readable string
-        dice_results: list of tuples (sides, count, results_list, is_decade)
+        """Format mixed dice roll results into a readable string.
+        
+        Args:
+            dice_results: list of tuples (sides, count, results_list, is_decade).
+            
+        Returns:
+            str: Formatted result string for all dice.
         """
         parts = []
         grand_total = 0
@@ -194,7 +238,14 @@ class DiceCommand(BaseCommand):
         return f"🎲 {result_str}"
     
     async def execute(self, message: MeshMessage) -> bool:
-        """Execute the dice command"""
+        """Execute the dice command.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if executed successfully, False otherwise.
+        """
         content = message.content.strip()
         
         # Handle command-style messages

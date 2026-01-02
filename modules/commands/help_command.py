@@ -11,7 +11,12 @@ from ..models import MeshMessage
 
 
 class HelpCommand(BaseCommand):
-    """Handles the help command"""
+    """Handles the help command.
+    
+    Provides assistance to users by listing available commands or displaying
+    detailed help for specific commands. It dynamically aggregates command
+    information from all loaded plugins.
+    """
     
     # Plugin metadata
     name = "help"
@@ -20,17 +25,43 @@ class HelpCommand(BaseCommand):
     category = "basic"
     
     def get_help_text(self) -> str:
+        """Get help text for the help command.
+        
+        Returns:
+            str: The help text for this command.
+        """
         return self.translate('commands.help.description')
     
     async def execute(self, message: MeshMessage) -> bool:
-        """Execute the help command"""
+        """Execute the help command.
+        
+        Note: The help command logic is primarily handled by the CommandManager's
+        keyword matching system. This method serves as a placeholder or fallback.
+        
+        Args:
+            message: The message that triggered the command.
+            
+        Returns:
+            bool: True (always, as actual processing happens elsewhere).
+        """
         # The help command is now handled by keyword matching in the command manager
         # This is just a placeholder for future functionality
         self.logger.debug("Help command executed (handled by keyword matching)")
         return True
     
     def get_specific_help(self, command_name: str, message: MeshMessage = None) -> str:
-        """Get help text for a specific command"""
+        """Get help text for a specific command.
+        
+        Resolves aliases, finds the corresponding command plugin, and retrieves
+        its help text.
+        
+        Args:
+            command_name: The name or alias of the command.
+            message: Optional message object for context-aware help.
+            
+        Returns:
+            str: The formatted help text for the specific command.
+        """
         # Map command aliases to their actual command names
         command_aliases = {
             't': 't_phrase',
@@ -62,7 +93,13 @@ class HelpCommand(BaseCommand):
             return self.translate('commands.help.unknown', command=command_name, available=available)
     
     def get_general_help(self) -> str:
-        """Get general help text"""
+        """Get general help text.
+        
+        Compiles a list of available commands and usage examples.
+        
+        Returns:
+            str: The general help message to display to users.
+        """
         commands_list = self.get_available_commands_list()
         help_text = self.translate('commands.help.general', commands_list=commands_list)
         help_text += self.translate('commands.help.usage_examples')
@@ -70,7 +107,14 @@ class HelpCommand(BaseCommand):
         return help_text
     
     def get_available_commands_list(self) -> str:
-        """Get a list of most popular commands in descending order, showing only one variant per command"""
+        """Get a list of most popular commands in descending order.
+        
+        Queries usage statistics to order commands by popularity. Ensures each
+        command is listed only once using its primary name.
+        
+        Returns:
+            str: Comma-separated list of command names.
+        """
         try:
             # Use the plugin loader's keyword mappings to map keywords/aliases to primary command names
             plugin_loader = self.bot.command_manager.plugin_loader

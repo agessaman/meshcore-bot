@@ -16,7 +16,12 @@ from ..models import MeshMessage
 
 
 class AqiCommand(BaseCommand):
-    """Handles AQI commands with location support using OpenMeteo API"""
+    """Handles AQI commands with location support using OpenMeteo API.
+    
+    Provides Air Quality Index information for specified locations, including
+    cities, ZIP codes, and coordinates. Supports international locations and
+    provides health impact categories.
+    """
     
     # Plugin metadata
     name = "aqi"
@@ -84,12 +89,23 @@ class AqiCommand(BaseCommand):
         return f"Usage: aqi <city|neighborhood|city country|lat,lon|help> - Get AQI for city/neighborhood in {self.default_state}, international cities, coordinates, or pollutant help"
     
     def get_pollutant_help(self) -> str:
-        """Get help text explaining pollutant types within 130 characters"""
+        """Get help text explaining pollutant types within 130 characters.
+        
+        Returns:
+            str: Compact help string explaining pollutant abbreviations.
+        """
         # Compact explanation of all pollutants - fits within 130 chars
         return "AQI Help: PM2.5=fine particles, PM10=coarse, O3=ozone, NO2=nitrogen dioxide, CO=carbon monoxide, SO2=sulfur dioxide"
     
     async def execute(self, message: MeshMessage) -> bool:
-        """Execute the AQI command"""
+        """Execute the AQI command.
+        
+        Args:
+            message: The input message trigger.
+            
+        Returns:
+            bool: True if execution was successful.
+        """
         content = message.content.strip()
         
         # Parse the command to extract location
@@ -275,7 +291,15 @@ class AqiCommand(BaseCommand):
             return True
     
     async def get_aqi_for_location(self, location: str, location_type: str) -> str:
-        """Get AQI data for a location (city or coordinates)"""
+        """Get AQI data for a location (city or coordinates).
+        
+        Args:
+            location: Location string (city name, ZIP, or "lat,lon").
+            location_type: Type of location ("city", "zipcode", "coordinates").
+            
+        Returns:
+            str: Formatted AQI string or error message.
+        """
         try:
             # Define state abbreviation map for US states (needed for all location types)
             state_abbrev_map = {
@@ -571,7 +595,14 @@ class AqiCommand(BaseCommand):
             return f"Error getting AQI data: {e}"
     
     def city_to_lat_lon(self, city: str) -> tuple:
-        """Convert city name to latitude and longitude using default state"""
+        """Convert city name to latitude and longitude using default state.
+        
+        Args:
+            city: City name (can include state/country).
+            
+        Returns:
+            tuple: (latitude, longitude, address_info) or (None, None, None).
+        """
         try:
             # Check if the input contains a comma (city, state/country format)
             if ',' in city:
@@ -652,7 +683,14 @@ class AqiCommand(BaseCommand):
             return (None, None, None)
     
     def get_neighborhood_queries(self, city: str) -> list:
-        """Generate neighborhood-specific search queries for major cities"""
+        """Generate neighborhood-specific search queries for major cities.
+        
+        Args:
+            city: City name.
+            
+        Returns:
+            list: List of neighborhood-specific query strings.
+        """
         city_lower = city.lower()
         
         # Seattle neighborhoods
@@ -722,7 +760,15 @@ class AqiCommand(BaseCommand):
         return []
     
     def get_openmeteo_aqi(self, lat: float, lon: float) -> str:
-        """Get AQI data from OpenMeteo API"""
+        """Get AQI data from OpenMeteo API.
+        
+        Args:
+            lat: Latitude.
+            lon: Longitude.
+            
+        Returns:
+            str: Formatted AQI string or error constant.
+        """
         try:
             # Make sure all required weather variables are listed here
             # The order of variables in current is important to assign them correctly below
@@ -763,7 +809,22 @@ class AqiCommand(BaseCommand):
             return self.ERROR_FETCHING_DATA
     
     def format_aqi_response(self, us_aqi, european_aqi, pm10, pm2_5, co, no2, so2, ozone, dust) -> str:
-        """Format AQI data for display within 130 characters"""
+        """Format AQI data for display within 130 characters.
+        
+        Args:
+            us_aqi: US Air Quality Index value.
+            european_aqi: European Air Quality Index value.
+            pm10: PM10 concentration.
+            pm2_5: PM2.5 concentration.
+            co: Carbon Monoxide concentration.
+            no2: Nitrogen Dioxide concentration.
+            so2: Sulfur Dioxide concentration.
+            ozone: Ozone concentration.
+            dust: Dust concentration.
+            
+        Returns:
+            str: Formatted AQI string.
+        """
         try:
             # Start with US AQI as primary
             if us_aqi is not None and us_aqi > 0:
@@ -848,7 +909,14 @@ class AqiCommand(BaseCommand):
             return "Error formatting AQI data"
     
     def get_aqi_emoji(self, aqi: float) -> str:
-        """Get emoji for US AQI value"""
+        """Get emoji for US AQI value.
+        
+        Args:
+            aqi: US AQI value.
+            
+        Returns:
+            str: Emoji representing AQI level (🟢, 🟡, 🟠, 🔴, 🟣, 🟤).
+        """
         if aqi <= 50:
             return "🟢"  # Good
         elif aqi <= 100:
@@ -863,7 +931,14 @@ class AqiCommand(BaseCommand):
             return "🟤"  # Hazardous
     
     def get_european_aqi_emoji(self, aqi: float) -> str:
-        """Get emoji for European AQI value"""
+        """Get emoji for European AQI value.
+        
+        Args:
+            aqi: European AQI value.
+            
+        Returns:
+            str: Emoji representing European AQI level.
+        """
         if aqi <= 25:
             return "🟢"  # Good
         elif aqi <= 50:
@@ -876,7 +951,14 @@ class AqiCommand(BaseCommand):
             return "🟣"  # Very Poor
     
     def get_aqi_category(self, aqi: float) -> str:
-        """Get category name for US AQI value"""
+        """Get category name for US AQI value.
+        
+        Args:
+            aqi: US AQI value.
+            
+        Returns:
+            str: Category description (e.g., "Good", "Moderate").
+        """
         if aqi <= 50:
             return "Good"
         elif aqi <= 100:

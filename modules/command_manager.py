@@ -21,7 +21,13 @@ from .utils import check_internet_connectivity_async, format_keyword_response_wi
 
 @dataclass
 class InternetStatusCache:
-    """Thread-safe cache for internet connectivity status"""
+    """Thread-safe cache for internet connectivity status.
+    
+    Attributes:
+        has_internet: Boolean indicating if internet is available.
+        timestamp: Timestamp of the last check.
+        lock: Asyncio lock for thread-safe operations.
+    """
     has_internet: bool
     timestamp: float
     lock: Optional[asyncio.Lock] = None
@@ -31,12 +37,24 @@ class InternetStatusCache:
             self.lock = asyncio.Lock()
     
     def is_valid(self, cache_duration: float) -> bool:
-        """Check if cache entry is still valid"""
+        """Check if cache entry is still valid.
+        
+        Args:
+            cache_duration: Duration in seconds for which the cache is valid.
+            
+        Returns:
+            bool: True if the cache is still valid, False otherwise.
+        """
         return time.time() - self.timestamp < cache_duration
 
 
 class CommandManager:
-    """Manages all bot commands and responses using dynamic plugin loading"""
+    """Manages all bot commands and responses using dynamic plugin loading.
+    
+    This class handles loading commands from plugins, matching messages against
+    commands and keywords, checking permissions and rate limits, and executing
+    command logic. It also manages channel monitoring and banned users.
+    """
     
     def __init__(self, bot):
         self.bot = bot
@@ -66,11 +84,15 @@ class CommandManager:
             await asyncio.sleep(self.bot.tx_delay_ms / 1000.0)
     
     async def _check_rate_limits(self) -> Tuple[bool, str]:
-        """
-        Check all rate limits before sending.
+        """Check all rate limits before sending.
+        
+        Checks both the user-specific rate limits and the global bot transmission
+        limits. Also applies transmission delays if configured.
         
         Returns:
-            Tuple of (can_send: bool, reason: str)
+            Tuple[bool, str]: A tuple containing:
+                - can_send: True if the message can be sent, False otherwise.
+                - reason: Reason string if rate limited, empty string otherwise.
         """
         # Check user rate limiter
         if not self.bot.rate_limiter.can_send():
@@ -90,17 +112,16 @@ class CommandManager:
         return True, ""
     
     def _handle_send_result(self, result, operation_name: str, target: str, used_retry_method: bool = False) -> bool:
-        """
-        Handle result from message send operations.
+        """Handle result from message send operations.
         
         Args:
-            result: Result from meshcore send operation
-            operation_name: "DM" or "Channel message"
-            target: Recipient name or channel name
-            used_retry_method: True if send_msg_with_retry was used (affects logging)
+            result: Result object from meshcore send operation.
+            operation_name: Name of the operation ("DM" or "Channel message").
+            target: Recipient name or channel name for logging.
+            used_retry_method: True if send_msg_with_retry was used (affects logging).
         
         Returns:
-            bool: True if send succeeded, False otherwise
+            bool: True if send succeeded (ACK received or sent successfully), False otherwise.
         """
         if not result:
             if used_retry_method:
@@ -148,7 +169,11 @@ class CommandManager:
         return True
     
     def load_keywords(self) -> Dict[str, str]:
-        """Load keywords from config"""
+        """Load keywords from config.
+        
+        Returns:
+            Dict[str, str]: Dictionary mapping keywords to response strings.
+        """
         keywords = {}
         if self.bot.config.has_section('Keywords'):
             for keyword, response in self.bot.config.items('Keywords'):
@@ -180,7 +205,15 @@ class CommandManager:
         return [channel.strip() for channel in channels.split(',') if channel.strip()]
     
     def format_keyword_response(self, response_format: str, message: MeshMessage) -> str:
-        """Format a keyword response string with message data"""
+        """Format a keyword response string with message data.
+        
+        Args:
+            response_format: The response string format with placeholders.
+            message: The message object containing context for placeholders.
+            
+        Returns:
+            str: The formatted response string.
+        """
         # Use shared formatting function from utils
         return format_keyword_response_with_placeholders(
             response_format,
@@ -190,7 +223,17 @@ class CommandManager:
         )
     
     def check_keywords(self, message: MeshMessage) -> List[tuple]:
-        """Check message content for keywords and return matching responses"""
+        """Check message content for keywords and return matching responses.
+        
+        Evaluates the message against configured keywords, custom syntax patterns,
+        and command triggers.
+        
+        Args:
+            message: The incoming message to check.
+            
+        Returns:
+            List[tuple]: List of (trigger, response) tuples for matched keywords.
+        """
         matches = []
         # Strip exclamation mark if present (for command-style messages)
         content = message.content.strip()
@@ -282,7 +325,14 @@ class CommandManager:
         return matches
     
     async def handle_advert_command(self, message: MeshMessage):
-        """Handle the advert command from DM"""
+        """Handle the advert command from DM.
+        
+        Executes the advert command specifically, ensuring proper stat recording
+        and response handling.
+        
+        Args:
+            message: The message triggering the advert command.
+        """
         command = self.commands['advert']
         success = await command.execute(message)
         
@@ -303,7 +353,17 @@ class CommandManager:
                 stats_command.record_command(message, 'advert', response_sent)
     
     async def send_dm(self, recipient_id: str, content: str) -> bool:
-        """Send a direct message using meshcore-cli command"""
+        """Send a direct message using meshcore-cli command.
+        
+        Handles contact lookup, rate limiting, and uses retry logic if available.
+        
+        Args:
+            recipient_id: The recipient's name or ID.
+            content: The message content to send.
+            
+        Returns:
+            bool: True if sent successfully, False otherwise.
+        """
         if not self.bot.connected or not self.bot.meshcore:
             return False
         
@@ -368,7 +428,17 @@ class CommandManager:
             return False
     
     async def send_channel_message(self, channel: str, content: str) -> bool:
-        """Send a channel message using meshcore-cli command"""
+        """Send a channel message using meshcore-cli command.
+        
+        Resolves channel names to numbers and handles rate limiting.
+        
+        Args:
+            channel: The channel name (e.g., "LongFast").
+            content: The message content to send.
+            
+        Returns:
+            bool: True if sent successfully, False otherwise.
+        """
         if not self.bot.connected or not self.bot.meshcore:
             return False
         
@@ -403,7 +473,15 @@ class CommandManager:
             return False
     
     def get_help_for_command(self, command_name: str, message: MeshMessage = None) -> str:
-        """Get help text for a specific command (LoRa-friendly compact format)"""
+        """Get help text for a specific command (LoRa-friendly compact format).
+        
+        Args:
+            command_name: The name of the command to retrieve help for.
+            message: Optional message object for context-aware help (e.g. translated).
+            
+        Returns:
+            str: The help text for the command.
+        """
         # Special handling for common help requests
         if command_name.lower() in ['commands', 'list', 'all']:
             # User is asking for a list of commands, show general help
@@ -531,7 +609,18 @@ class CommandManager:
         return commands_list
     
     async def send_response(self, message: MeshMessage, content: str) -> bool:
-        """Unified method for sending responses to users"""
+        """Unified method for sending responses to users.
+        
+        Automatically determines whether to send a DM or channel message based
+        on the incoming message type.
+        
+        Args:
+            message: The original message being responded to.
+            content: The response content.
+            
+        Returns:
+            bool: True if response was sent successfully, False otherwise.
+        """
         try:
             # Store the response content for web viewer capture
             if hasattr(self, '_last_response'):
@@ -548,7 +637,14 @@ class CommandManager:
             return False
     
     async def execute_commands(self, message):
-        """Execute command objects that handle their own responses"""
+        """Execute command objects that handle their own responses.
+        
+        Identifies and executes commands that were not handled by simple keyword
+        matching, managing permissions, internet checks, and error handling.
+        
+        Args:
+            message: The message triggering the command execution.
+        """
         # Strip exclamation mark if present (for command-style messages)
         content = message.content.strip()
         if content.startswith('!'):
@@ -696,13 +792,13 @@ class CommandManager:
                 return
     
     def _check_internet_cached(self) -> bool:
-        """
-        Check internet connectivity with caching to avoid checking on every command.
-        Uses synchronous check for keyword matching.
-        Note: This is a synchronous method, but the cache itself is thread-safe.
+        """Check internet connectivity with caching to avoid checking on every command.
+        
+        Uses synchronous check for keyword matching. Note: This is a synchronous
+        method, but the cache itself is thread-safe.
         
         Returns:
-            True if internet is available, False otherwise
+            bool: True if internet is available, False otherwise.
         """
         current_time = time.time()
         
@@ -721,13 +817,13 @@ class CommandManager:
         return has_internet
     
     async def _check_internet_cached_async(self) -> bool:
-        """
-        Check internet connectivity with caching to avoid checking on every command.
-        Uses async check for command execution.
-        Thread-safe with asyncio.Lock to prevent race conditions.
+        """Check internet connectivity with caching to avoid checking on every command.
+        
+        Uses async check for command execution. Thread-safe with asyncio.Lock
+        to prevent race conditions.
         
         Returns:
-            True if internet is available, False otherwise
+            bool: True if internet is available, False otherwise.
         """
         # Use lock to prevent race conditions when checking/updating cache
         async with self._internet_cache.lock:

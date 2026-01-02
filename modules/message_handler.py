@@ -18,7 +18,13 @@ from .security_utils import sanitize_input
 
 
 class MessageHandler:
-    """Handles incoming messages and routes them to command processors"""
+    """Handles incoming messages and routes them to command processors.
+    
+    This class is responsible for processing various types of MeshCore events,
+    including contact messages (DMs), raw data packets, advertisement packets,
+    and RF log data. It also maintains caches for SNR/RSSI data and correlates
+    messages with routing information.
+    """
     
     def __init__(self, bot):
         self.bot = bot
@@ -53,7 +59,15 @@ class MessageHandler:
         self.logger.info(f"RF Data Correlation: timeout={self.rf_data_timeout}s, enhanced={self.enhanced_correlation}")
     
     async def handle_contact_message(self, event, metadata=None):
-        """Handle incoming contact message (DM)"""
+        """Handle incoming contact message (DM).
+        
+        Processes direct messages, extracts path information, correlates with
+        RF data for signal metrics (SNR/RSSI), and forwards to the command processor.
+        
+        Args:
+            event: The MeshCore event object containing the message payload.
+            metadata: Optional metadata dictionary associated with the event.
+        """
         try:
             payload = event.payload
             
@@ -338,7 +352,15 @@ class MessageHandler:
             self.logger.error(f"Error handling contact message: {e}")
     
     async def handle_raw_data(self, event, metadata=None):
-        """Handle raw data events (full packet data from debug mode)"""
+        """Handle raw data events (full packet data from debug mode).
+        
+        Processes raw packet data, attempts to decode it, and if successful,
+        checking if it's an advertisement packet to track.
+        
+        Args:
+            event: The MeshCore event object containing the raw data payload.
+            metadata: Optional metadata dictionary.
+        """
         try:
             payload = event.payload
             self.logger.info(f"📦 RAW_DATA EVENT RECEIVED: {payload}")
@@ -381,7 +403,15 @@ class MessageHandler:
             self.logger.error(traceback.format_exc())
     
     async def _process_advertisement_packet(self, packet_info: Dict, metadata=None):
-        """Process advertisement packets for complete repeater tracking"""
+        """Process advertisement packets for complete repeater tracking.
+        
+        Extracts node information, location data, and routing path from
+        advertisement packets and updates the repeater database.
+        
+        Args:
+            packet_info: Dictionary containing decoded packet information.
+            metadata: Optional metadata dictionary with signal metrics.
+        """
         try:
             # Check if this is an advertisement packet
             if (packet_info.get('payload_type') == 'ADVERT' or 
@@ -519,7 +549,15 @@ class MessageHandler:
             self.logger.error(f"Error processing advertisement packet: {e}")
     
     async def handle_rf_log_data(self, event, metadata=None):
-        """Handle RF log data events to cache SNR information and store raw packet data"""
+        """Handle RF log data events to cache SNR information and store raw packet data.
+        
+        Captures low-level RF information (SNR, RSSI) and raw packet data to
+        correlate with higher-level messages for detailed signal reporting.
+        
+        Args:
+            event: The MeshCore event object containing RF data.
+            metadata: Optional metadata dictionary.
+        """
         try:
             payload = event.payload
             
@@ -662,8 +700,19 @@ class MessageHandler:
         except Exception as e:
             self.logger.error(f"Error handling RF log data: {e}")
     
-    def extract_path_from_raw_hex(self, raw_hex, expected_hops):
-        """Extract path information directly from raw hex data"""
+    def extract_path_from_raw_hex(self, raw_hex: str, expected_hops: int) -> Optional[str]:
+        """Extract path information directly from raw hex data.
+        
+        Attempts to find a sequence of node IDs in the raw packet data that matches
+        the expected number of hops.
+        
+        Args:
+            raw_hex: Raw packet data as a hex string.
+            expected_hops: The expected number of hops in the path.
+            
+        Returns:
+            Optional[str]: Comma-separated path string if found, None otherwise.
+        """
         try:
             if not raw_hex or len(raw_hex) < 20:
                 return None
@@ -723,8 +772,12 @@ class MessageHandler:
             self.logger.debug(f"Error extracting path from raw hex: {e}")
             return None
 
-    def _cleanup_stale_cache_entries(self, current_time=None):
-        """Remove stale entries from RF data caches and enforce maximum size limits"""
+    def _cleanup_stale_cache_entries(self, current_time: Optional[float] = None) -> None:
+        """Remove stale entries from RF data caches and enforce maximum size limits.
+        
+        Args:
+            current_time: Optional timestamp to use as "now". Defaults to time.time().
+        """
         if current_time is None:
             current_time = time.time()
         

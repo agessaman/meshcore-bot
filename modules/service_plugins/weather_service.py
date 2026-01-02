@@ -31,13 +31,21 @@ from .base_service import BaseServicePlugin
 
 
 class WeatherService(BaseServicePlugin):
-    """Weather service providing scheduled forecasts and alert monitoring"""
+    """Weather service providing scheduled forecasts and alert monitoring.
+    
+    Manages daily weather forecasts, polls for NOAA weather alerts, and
+    monitors lightning strikes via MQTT (Blitzortung).
+    """
     
     config_section = 'Weather_Service'
     description = "Scheduled weather forecasts and alert monitoring"
     
-    def __init__(self, bot):
-        """Initialize weather service"""
+    def __init__(self, bot: Any):
+        """Initialize weather service.
+        
+        Args:
+            bot: The bot instance.
+        """
         super().__init__(bot)
         
         # Configuration
@@ -106,7 +114,11 @@ class WeatherService(BaseServicePlugin):
         self.logger.info(f"Weather service initialized: position=({self.my_position_lat}, {self.my_position_lon}), alarm={self.weather_alarm_time}")
     
     def _create_retry_session(self) -> requests.Session:
-        """Create a requests session with retry logic for API calls"""
+        """Create a requests session with retry logic for API calls.
+        
+        Returns:
+            requests.Session: Configured session with retry adapter.
+        """
         session = requests.Session()
         retry_strategy = Retry(
             total=2,
@@ -125,13 +137,13 @@ class WeatherService(BaseServicePlugin):
         return session
     
     def _get_sunrise_sunset_time(self, event: str) -> Optional[datetime]:
-        """Get sunrise or sunset time for configured position
+        """Get sunrise or sunset time for configured position.
         
         Args:
-            event: 'sunrise' or 'sunset'
+            event: 'sunrise' or 'sunset'.
         
         Returns:
-            datetime object with the next sunrise/sunset time, or None on error
+            Optional[datetime]: Datetime object with the next sunrise/sunset time, or None on error.
         """
         try:
             obs = ephem.Observer()
@@ -154,8 +166,11 @@ class WeatherService(BaseServicePlugin):
             self.logger.error(f"Error calculating {event}: {e}")
             return None
     
-    async def start(self):
-        """Start the weather service"""
+    async def start(self) -> None:
+        """Start the weather service.
+        
+        Initializes scheduled tasks for forecasts, alert polling, and lightning detection.
+        """
         if not self.enabled:
             self.logger.info("Weather service is disabled, not starting")
             return
@@ -186,8 +201,11 @@ class WeatherService(BaseServicePlugin):
         
         self.logger.info("Weather service started")
     
-    async def stop(self):
-        """Stop the weather service"""
+    async def stop(self) -> None:
+        """Stop the weather service.
+        
+        cancels all background tasks and closes connections.
+        """
         self._running = False
         self.logger.info("Stopping weather service")
         
@@ -235,8 +253,11 @@ class WeatherService(BaseServicePlugin):
         
         self.logger.info("Weather service stopped")
     
-    def _setup_daily_forecast(self):
-        """Setup daily weather forecast schedule for fixed times"""
+    def _setup_daily_forecast(self) -> None:
+        """Setup daily weather forecast schedule for fixed times.
+        
+        Configures the schedule library to trigger _send_daily_forecast at the configured time.
+        """
         try:
             # Parse time (format: "HH:MM" or "H:MM")
             if ':' in self.weather_alarm_time:
@@ -252,8 +273,11 @@ class WeatherService(BaseServicePlugin):
         except Exception as e:
             self.logger.error(f"Error setting up daily forecast schedule: {e}")
     
-    async def _sunrise_sunset_forecast_loop(self):
-        """Background task for sunrise/sunset-based forecasts"""
+    async def _sunrise_sunset_forecast_loop(self) -> None:
+        """Background task for sunrise/sunset-based forecasts.
+        
+        Calculates daily sunrise/sunset times and schedules the forecast accordingly.
+        """
         event_type = self.weather_alarm_time.lower()
         self.logger.info(f"Starting {event_type}-based forecast loop")
         
@@ -301,8 +325,11 @@ class WeatherService(BaseServicePlugin):
                 self.logger.error(f"Error in {event_type} forecast loop: {e}")
                 await asyncio.sleep(3600)  # Wait 1 hour on error
     
-    def _send_daily_forecast(self):
-        """Send daily weather forecast (called by schedule library)"""
+    def _send_daily_forecast(self) -> None:
+        """Send daily weather forecast (called by schedule library).
+        
+        Wrapper to run the async forecast sender from the synchronous schedule job.
+        """
         if not self._running:
             return
         
@@ -317,8 +344,12 @@ class WeatherService(BaseServicePlugin):
         
         loop.run_until_complete(self._send_daily_forecast_async())
     
-    async def _send_daily_forecast_async(self):
-        """Send daily weather forecast (async implementation)"""
+    async def _send_daily_forecast_async(self) -> None:
+        """Send daily weather forecast (async implementation).
+        
+        Fetches the forecast and sends it to the configured channel.
+        Uses Open-Meteo for weather data and manages its own error logging.
+        """
         try:
             # Get weather forecast
             forecast_text = await self._get_weather_forecast()
@@ -336,7 +367,11 @@ class WeatherService(BaseServicePlugin):
             self.logger.error(f"Error sending daily weather forecast: {e}")
     
     async def _get_weather_forecast(self) -> str:
-        """Get weather forecast for configured position using Open-Meteo API"""
+        """Get weather forecast for configured position using Open-Meteo API.
+        
+        Returns:
+            str: Formatted forecast string or error message.
+        """
         try:
             # Open-Meteo API endpoint
             api_url = "https://api.open-meteo.com/v1/forecast"
@@ -451,7 +486,14 @@ class WeatherService(BaseServicePlugin):
             return "Error fetching weather data"
     
     def _degrees_to_direction(self, degrees: float) -> str:
-        """Convert wind direction in degrees to compass direction"""
+        """Convert wind direction in degrees to compass direction.
+        
+        Args:
+            degrees: Wind direction in degrees (0-360).
+            
+        Returns:
+            str: Compass direction (e.g., 'N', 'NE', 'SW').
+        """
         if degrees is None:
             return ""
         
@@ -461,7 +503,14 @@ class WeatherService(BaseServicePlugin):
         return directions[index]
     
     def _get_weather_description(self, code: int) -> str:
-        """Get weather description from WMO weather code"""
+        """Get weather description from WMO weather code.
+        
+        Args:
+            code: WMO weather code integer.
+            
+        Returns:
+            str: Human-readable weather description.
+        """
         # WMO Weather interpretation codes (WW)
         codes = {
             0: "Clear", 1: "Mostly Clear", 2: "Partly Cloudy", 3: "Overcast",
@@ -478,7 +527,14 @@ class WeatherService(BaseServicePlugin):
         return codes.get(code, "Unknown")
     
     def _get_weather_emoji(self, code: int) -> str:
-        """Get weather emoji from WMO weather code"""
+        """Get weather emoji from WMO weather code.
+        
+        Args:
+            code: WMO weather code integer.
+            
+        Returns:
+            str: Emoji character representing the weather.
+        """
         if code == 0:
             return "☀️"
         elif code in [1, 2]:
@@ -496,8 +552,11 @@ class WeatherService(BaseServicePlugin):
         else:
             return "🌤️"
     
-    async def _poll_weather_alerts_loop(self):
-        """Background task to poll for weather alerts"""
+    async def _poll_weather_alerts_loop(self) -> None:
+        """Background task to poll for weather alerts.
+        
+        Runs periodically based on configured interval.
+        """
         self.logger.info(f"Starting weather alerts polling (interval: {self.poll_weather_alerts_interval}s)")
         
         while self._running:
@@ -510,8 +569,8 @@ class WeatherService(BaseServicePlugin):
                 self.logger.error(f"Error in weather alerts polling loop: {e}")
                 await asyncio.sleep(60)  # Wait 1 minute on error before retrying
     
-    async def _check_weather_alerts(self):
-        """Check for new weather alerts (US-only via NOAA API)
+    async def _check_weather_alerts(self) -> None:
+        """Check for new weather alerts (US-only via NOAA API).
         
         Note: Open-Meteo doesn't provide weather alerts, so we use NOAA which is US-only.
         For international locations, alerts will not be available.
@@ -626,8 +685,11 @@ class WeatherService(BaseServicePlugin):
         except Exception as e:
             self.logger.error(f"Error checking weather alerts: {e}")
     
-    async def _connect_blitzortung_mqtt(self):
-        """Connect to Blitzortung MQTT broker and subscribe to lightning data"""
+    async def _connect_blitzortung_mqtt(self) -> None:
+        """Connect to Blitzortung MQTT broker and subscribe to lightning data.
+        
+        Maintains a connection to the MQTT broker for real-time lightning strikes.
+        """
         if not self.blitz_area or not MQTT_AVAILABLE:
             return
         
@@ -709,8 +771,14 @@ class WeatherService(BaseServicePlugin):
                     self.logger.info("Reconnecting to Blitzortung MQTT in 30 seconds...")
                     await asyncio.sleep(30)
     
-    async def _handle_lightning_strike(self, blitz_data: Dict[str, Any]):
-        """Handle a single lightning strike from MQTT"""
+    async def _handle_lightning_strike(self, blitz_data: Dict[str, Any]) -> None:
+        """Handle a single lightning strike from MQTT.
+        
+        Calculates distance and adds to buffer if within range.
+        
+        Args:
+            blitz_data: Dictionary containing lightning strike data.
+        """
         lat = blitz_data.get('lat')
         lon = blitz_data.get('lon')
         
@@ -737,10 +805,16 @@ class WeatherService(BaseServicePlugin):
         })
     
     def _calculate_heading_and_distance(self, lat1: float, lon1: float, lat2: float, lon2: float) -> tuple:
-        """Calculate heading and distance between two points (same as original implementation)
+        """Calculate heading and distance between two points (same as original implementation).
         
+        Args:
+            lat1: Latitude of point 1.
+            lon1: Longitude of point 1.
+            lat2: Latitude of point 2.
+            lon2: Longitude of point 2.
+            
         Returns:
-            (heading_degrees, distance_km)
+            tuple: (heading_degrees, distance_km)
         """
         # Convert to radians
         lat1_rad = math.radians(lat1)
@@ -762,8 +836,11 @@ class WeatherService(BaseServicePlugin):
         
         return (int(heading_deg), distance_km)
     
-    async def _poll_lightning_loop(self):
-        """Background task to aggregate and report lightning strikes"""
+    async def _poll_lightning_loop(self) -> None:
+        """Background task to aggregate and report lightning strikes.
+        
+        Periodically processes the lightning buffer and sends alerts.
+        """
         self.logger.info(f"Starting lightning aggregation (interval: {self.blitz_collection_interval}s)")
         
         while self._running:
@@ -776,8 +853,11 @@ class WeatherService(BaseServicePlugin):
                 self.logger.error(f"Error in lightning aggregation loop: {e}")
                 await asyncio.sleep(60)  # Wait 1 minute on error before retrying
     
-    async def _process_lightning_buffer(self):
-        """Process buffered lightning strikes and send alerts if threshold met"""
+    async def _process_lightning_buffer(self) -> None:
+        """Process buffered lightning strikes and send alerts if threshold met.
+        
+        Groups strikes by location bucket and sends alerts if count exceeds threshold.
+        """
         if not self.blitz_buffer:
             return
         
@@ -832,7 +912,14 @@ class WeatherService(BaseServicePlugin):
             self.seen_blitz_keys = set(list(self.seen_blitz_keys)[-1000:])
     
     def _heading_to_compass(self, heading: int) -> str:
-        """Convert heading in degrees to compass direction name"""
+        """Convert heading in degrees to compass direction name.
+        
+        Args:
+            heading: Heading in degrees.
+            
+        Returns:
+            str: Compass direction abbreviation (e.g., 'N', 'NW').
+        """
         compass_points = [
             'N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
             'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'
@@ -841,7 +928,15 @@ class WeatherService(BaseServicePlugin):
         return compass_points[index]
     
     async def _geocode_location(self, lat: float, lon: float) -> Optional[str]:
-        """Geocode coordinates to location name (optional, may return None)"""
+        """Geocode coordinates to location name (optional, may return None).
+        
+        Args:
+            lat: Latitude.
+            lon: Longitude.
+            
+        Returns:
+            Optional[str]: City/town name or None if lookup fails.
+        """
         try:
             # Use reverse geocoding if available in utils
             from ..utils import rate_limited_nominatim_reverse_sync
@@ -855,15 +950,15 @@ class WeatherService(BaseServicePlugin):
             pass
         return None
     
-    def _parse_alert_entry(self, entry, alert_id: str) -> Optional[Dict[str, Any]]:
-        """Parse alert XML entry and extract full metadata (same logic as wx_command)
+    def _parse_alert_entry(self, entry: Any, alert_id: str) -> Optional[Dict[str, Any]]:
+        """Parse alert XML entry and extract full metadata (same logic as wx_command).
         
         Args:
-            entry: XML DOM entry element
-            alert_id: Alert ID string
+            entry: XML DOM entry element.
+            alert_id: Alert ID string.
         
         Returns:
-            Alert dict with event, event_type, severity, expires, office, etc., or None on error
+            Optional[Dict[str, Any]]: Alert dict with event, event_type, severity, expires, office, etc., or None on error.
         """
         try:
             # Extract title
@@ -1101,14 +1196,14 @@ class WeatherService(BaseServicePlugin):
             return None
     
     async def _format_alert_compact(self, alert: Dict[str, Any], include_details: bool = True) -> str:
-        """Format a single alert compactly (same as wx_command)
+        """Format a single alert compactly (same as wx_command).
         
         Args:
             alert: Alert dict with event, event_type, severity, expires, office, etc.
-            include_details: If True, include expiration time and office
+            include_details: If True, include expiration time and office.
         
         Returns:
-            Formatted alert string
+            str: Formatted alert string.
         """
         event = alert.get('event', '')
         event_type = alert.get('event_type', '')
@@ -1240,7 +1335,14 @@ class WeatherService(BaseServicePlugin):
             return f"{severity_emoji}{event} {event_type_abbrev}" if event else f"{severity_emoji}{event_type_abbrev}"
     
     def _compact_time(self, time_str: str) -> str:
-        """Compact time format (same as wx_command)"""
+        """Compact time format (same as wx_command).
+        
+        Args:
+            time_str: Time string to format.
+            
+        Returns:
+            str: Compact formatted time string.
+        """
         if not time_str:
             return time_str
         
@@ -1289,7 +1391,14 @@ class WeatherService(BaseServicePlugin):
         return time_str
     
     def _abbreviate_city_name(self, city: str) -> str:
-        """Abbreviate city names for compact display (same as wx_command)"""
+        """Abbreviate city names for compact display (same as wx_command).
+        
+        Args:
+            city: Full city name.
+            
+        Returns:
+            str: Abbreviated city name.
+        """
         if not city:
             return city
         
@@ -1332,13 +1441,13 @@ class WeatherService(BaseServicePlugin):
         return city[:4].upper() if len(city) >= 4 else city.upper()
     
     def _parse_iso_time(self, time_str: str) -> Optional[float]:
-        """Parse ISO 8601 timestamp to Unix timestamp
+        """Parse ISO 8601 timestamp to Unix timestamp.
         
         Args:
-            time_str: ISO 8601 time string (e.g., "2025-12-16T15:12:00-08:00" or "2025-12-16T15:12:00Z")
+            time_str: ISO 8601 time string (e.g., "2025-12-16T15:12:00-08:00" or "2025-12-16T15:12:00Z").
         
         Returns:
-            Unix timestamp (seconds since epoch), or None if parsing fails
+            Optional[float]: Unix timestamp (seconds since epoch), or None if parsing fails.
         """
         if not time_str:
             return None
@@ -1351,13 +1460,13 @@ class WeatherService(BaseServicePlugin):
             return None
     
     def _parse_alert_time(self, time_str: str) -> Optional[float]:
-        """Parse alert effective/issued time string to Unix timestamp
+        """Parse alert effective/issued time string to Unix timestamp.
         
         Args:
-            time_str: Time string from alert (e.g., "December 16 at 3:12PM PST" or ISO format)
+            time_str: Time string from alert (e.g., "December 16 at 3:12PM PST" or ISO format).
         
         Returns:
-            Unix timestamp (seconds since epoch), or None if parsing fails
+            Optional[float]: Unix timestamp (seconds since epoch), or None if parsing fails.
         """
         if not time_str:
             return None
@@ -1416,13 +1525,13 @@ class WeatherService(BaseServicePlugin):
         return None
     
     async def _shorten_url(self, url: str) -> str:
-        """Shorten URL using is.gd service
+        """Shorten URL using is.gd service.
         
         Args:
-            url: Full URL to shorten
+            url: Full URL to shorten.
         
         Returns:
-            Shortened URL string, or empty string on error
+            str: Shortened URL string, or empty string on error.
         """
         if not url:
             return ""

@@ -44,13 +44,21 @@ from .base_service import BaseServicePlugin
 
 
 class PacketCaptureService(BaseServicePlugin):
-    """Packet capture service using bot's meshcore connection"""
+    """Packet capture service using bot's meshcore connection.
+    
+    Captures packets from MeshCore network and publishes to MQTT.
+    Supports multiple MQTT brokers, auth tokens, and output to file.
+    """
     
     config_section = 'PacketCapture'  # Explicit config section
     description = "Captures packets from MeshCore network and publishes to MQTT"
     
     def __init__(self, bot):
-        """Initialize packet capture service"""
+        """Initialize packet capture service.
+        
+        Args:
+            bot: The bot instance.
+        """
         super().__init__(bot)
         
         # Don't store meshcore here - it's None until bot connects
@@ -149,8 +157,12 @@ class PacketCaptureService(BaseServicePlugin):
         
         self.logger.info("Packet capture service initialized")
     
-    def _load_config(self):
-        """Load configuration from bot's config"""
+    def _load_config(self) -> None:
+        """Load configuration from bot's config.
+        
+        Loads settings for output file, MQTT brokers, auth tokens, and
+        other service options.
+        """
         config = self.bot.config
         
         # Check if enabled
@@ -192,7 +204,14 @@ class PacketCaptureService(BaseServicePlugin):
         # from the device if private_key_hex is None and meshcore_instance is available
     
     def _parse_mqtt_brokers(self, config) -> List[Dict[str, Any]]:
-        """Parse MQTT broker configuration (mqttN_* format)"""
+        """Parse MQTT broker configuration (mqttN_* format).
+        
+        Args:
+            config: ConfigParser object containing the configuration.
+            
+        Returns:
+            List[Dict[str, Any]]: List of configured MQTT broker dictionaries.
+        """
         brokers = []
         
         # Parse multiple brokers (mqtt1_*, mqtt2_*, etc.)
@@ -236,28 +255,68 @@ class PacketCaptureService(BaseServicePlugin):
         return brokers
     
     def get_config_bool(self, key: str, fallback: bool = False) -> bool:
-        """Get boolean config value"""
+        """Get boolean config value.
+        
+        Args:
+            key: Config key to retrieve.
+            fallback: Default value if key is missing.
+            
+        Returns:
+            bool: Config value or fallback.
+        """
         return self.bot.config.getboolean('PacketCapture', key, fallback=fallback)
     
     def get_config_int(self, key: str, fallback: int = 0) -> int:
-        """Get integer config value"""
+        """Get integer config value.
+        
+        Args:
+            key: Config key to retrieve.
+            fallback: Default value if key is missing.
+            
+        Returns:
+            int: Config value or fallback.
+        """
         return self.bot.config.getint('PacketCapture', key, fallback=fallback)
     
     def get_config_float(self, key: str, fallback: float = 0.0) -> float:
-        """Get float config value"""
+        """Get float config value.
+        
+        Args:
+            key: Config key to retrieve.
+            fallback: Default value if key is missing.
+            
+        Returns:
+            float: Config value or fallback.
+        """
         return self.bot.config.getfloat('PacketCapture', key, fallback=fallback)
     
     def get_config_str(self, key: str, fallback: str = '') -> str:
-        """Get string config value"""
+        """Get string config value.
+        
+        Args:
+            key: Config key to retrieve.
+            fallback: Default value if key is missing.
+            
+        Returns:
+            str: Config value or fallback.
+        """
         return self.bot.config.get('PacketCapture', key, fallback=fallback)
     
     @property
     def meshcore(self):
-        """Get meshcore connection from bot (always current)"""
+        """Get meshcore connection from bot (always current).
+        
+        Returns:
+            MeshCore: The meshcore instance from the bot.
+        """
         return self.bot.meshcore if self.bot else None
     
-    async def start(self):
-        """Start the packet capture service"""
+    async def start(self) -> None:
+        """Start the packet capture service.
+        
+        Initializes output file, MQTT connections, and event handlers.
+        Waits for bot connection before starting.
+        """
         if not self.enabled:
             self.logger.info("Packet capture service is disabled")
             return
@@ -304,8 +363,11 @@ class PacketCaptureService(BaseServicePlugin):
         self._running = True
         self.logger.info(f"Packet capture service started (MQTT: {'connected' if self.mqtt_connected else 'not connected'})")
     
-    async def stop(self):
-        """Stop the packet capture service"""
+    async def stop(self) -> None:
+        """Stop the packet capture service.
+        
+        Closes output file, disconnects MQTT, and stops background tasks.
+        """
         self.logger.info("Stopping packet capture service...")
         
         self.should_exit = True
@@ -343,14 +405,20 @@ class PacketCaptureService(BaseServicePlugin):
         
         self.logger.info(f"Packet capture service stopped. Total packets captured: {self.packet_count}")
     
-    def cleanup_event_subscriptions(self):
-        """Clean up event subscriptions"""
+    def cleanup_event_subscriptions(self) -> None:
+        """Clean up event subscriptions.
+        
+        Clears local subscription tracking list.
+        """
         # Note: meshcore library handles subscription cleanup automatically
         # This is mainly for tracking/logging
         self.event_subscriptions = []
     
-    async def setup_event_handlers(self):
-        """Setup event handlers for packet capture"""
+    async def setup_event_handlers(self) -> None:
+        """Setup event handlers for packet capture.
+        
+        Subscribes to RX_LOG_DATA and RAW_DATA events.
+        """
         if not self.meshcore:
             return
         
@@ -373,8 +441,13 @@ class PacketCaptureService(BaseServicePlugin):
         
         self.logger.info("Packet capture event handlers registered")
     
-    async def handle_rx_log_data(self, event, metadata=None):
-        """Handle RX log data events (matches original script)"""
+    async def handle_rx_log_data(self, event: Any, metadata: Optional[Dict[str, Any]] = None) -> None:
+        """Handle RX log data events (matches original script).
+        
+        Args:
+            event: The RX log data event.
+            metadata: Optional metadata dictionary.
+        """
         try:
             payload = event.payload
             
@@ -402,8 +475,13 @@ class PacketCaptureService(BaseServicePlugin):
         except Exception as e:
             self.logger.error(f"Error handling RX log data: {e}")
     
-    async def handle_raw_data(self, event, metadata=None):
-        """Handle raw data events"""
+    async def handle_raw_data(self, event: Any, metadata: Optional[Dict[str, Any]] = None) -> None:
+        """Handle raw data events.
+        
+        Args:
+            event: The raw data event.
+            metadata: Optional metadata dictionary.
+        """
         try:
             payload = event.payload
             raw_data = payload.get('data', '')
@@ -427,8 +505,18 @@ class PacketCaptureService(BaseServicePlugin):
         except Exception as e:
             self.logger.error(f"Error handling raw data: {e}")
     
-    def _format_packet_data(self, raw_hex: str, packet_info: Dict, payload: Dict, metadata: Optional[Dict] = None) -> Dict[str, Any]:
-        """Format packet data to match original script's format_packet_data exactly"""
+    def _format_packet_data(self, raw_hex: str, packet_info: Dict[str, Any], payload: Dict[str, Any], metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Format packet data to match original script's format_packet_data exactly.
+        
+        Args:
+            raw_hex: Raw hex string of the packet.
+            packet_info: Decoded packet information.
+            payload: Payload dictionary from the event.
+            metadata: Optional metadata dictionary.
+            
+        Returns:
+            Dict[str, Any]: Formatted packet dictionary.
+        """
         current_time = datetime.now()
         timestamp = current_time.isoformat()
         
@@ -634,8 +722,16 @@ class PacketCaptureService(BaseServicePlugin):
         
         return packet_data
     
-    async def process_packet(self, raw_hex: str, payload: Dict, metadata: Optional[Dict] = None):
-        """Process a captured packet"""
+    async def process_packet(self, raw_hex: str, payload: Dict[str, Any], metadata: Optional[Dict[str, Any]] = None) -> None:
+        """Process a captured packet.
+        
+        Decodes the packet, formats it, writes to file, and publishes to MQTT.
+        
+        Args:
+            raw_hex: Raw hex string of the packet.
+            payload: Payload dictionary from the event.
+            metadata: Optional metadata dictionary.
+        """
         try:
             self.packet_count += 1
             
@@ -703,8 +799,16 @@ class PacketCaptureService(BaseServicePlugin):
         except Exception as e:
             self.logger.error(f"Error processing packet: {e}")
     
-    def decode_packet(self, raw_hex: str, payload: Dict) -> Optional[Dict]:
-        """Decode a MeshCore packet - matches original packet_capture.py functionality"""
+    def decode_packet(self, raw_hex: str, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Decode a MeshCore packet - matches original packet_capture.py functionality.
+        
+        Args:
+            raw_hex: Raw hex string of the packet.
+            payload: Payload dictionary from the event (unused in this method but kept for compatibility).
+            
+        Returns:
+            Optional[Dict[str, Any]]: Decoded packet info, or None if decoding fails.
+        """
         try:
             # Remove 0x prefix if present
             if raw_hex.startswith('0x'):
@@ -805,7 +909,11 @@ class PacketCaptureService(BaseServicePlugin):
             return None
     
     def _get_bot_name(self) -> str:
-        """Get bot name from device or config"""
+        """Get bot name from device or config.
+        
+        Returns:
+            str: The name of the bot/device.
+        """
         # Try to get name from device first
         if self.meshcore and hasattr(self.meshcore, 'self_info'):
             try:
@@ -828,7 +936,11 @@ class PacketCaptureService(BaseServicePlugin):
         return bot_name
     
     def _require_mqtt(self) -> bool:
-        """Check if MQTT is available and required"""
+        """Check if MQTT is available and required.
+        
+        Returns:
+            bool: True if MQTT requirements are met, False otherwise.
+        """
         if mqtt is None:
             self.logger.warning(
                 "MQTT support not available. Install paho-mqtt: "
@@ -837,8 +949,11 @@ class PacketCaptureService(BaseServicePlugin):
             return False
         return True
     
-    async def connect_mqtt_brokers(self):
-        """Connect to MQTT brokers"""
+    async def connect_mqtt_brokers(self) -> None:
+        """Connect to MQTT brokers.
+        
+        Establish connections to all configured MQTT brokers.
+        """
         if not self._require_mqtt():
             return
         
@@ -1101,8 +1216,16 @@ class PacketCaptureService(BaseServicePlugin):
         else:
             self.logger.warning("MQTT enabled but no brokers connected")
     
-    def _resolve_topic_template(self, template: str, packet_type: str = 'packet') -> str:
-        """Resolve topic template with placeholders"""
+    def _resolve_topic_template(self, template: str, packet_type: str = 'packet') -> Optional[str]:
+        """Resolve topic template with placeholders.
+        
+        Args:
+            template: Topic template string.
+            packet_type: Type of packet ('packet' or 'status').
+            
+        Returns:
+            Optional[str]: Resolved topic string, or None if template is empty.
+        """
         if not template:
             return None
         
@@ -1137,8 +1260,15 @@ class PacketCaptureService(BaseServicePlugin):
         
         return topic
     
-    async def publish_packet_mqtt(self, packet_info: Dict):
-        """Publish packet to MQTT - returns metrics dict with 'attempted' and 'succeeded' counts"""
+    async def publish_packet_mqtt(self, packet_info: Dict[str, Any]) -> Dict[str, int]:
+        """Publish packet to MQTT - returns metrics dict with 'attempted' and 'succeeded' counts.
+        
+        Args:
+            packet_info: Formatted packet dictionary.
+            
+        Returns:
+            Dict[str, int]: Dictionary with 'attempted' and 'succeeded' counts.
+        """
         # Always log when function is called (helps diagnose if it's not being invoked)
         self.logger.debug(f"publish_packet_mqtt called (packet {self.packet_count}, {len(self.mqtt_clients)} clients)")
         
@@ -1202,8 +1332,12 @@ class PacketCaptureService(BaseServicePlugin):
         
         return metrics
     
-    async def start_background_tasks(self):
-        """Start background tasks"""
+    async def start_background_tasks(self) -> None:
+        """Start background tasks.
+        
+        Initializes scheduler for stats refresh, JWT renewal, health checks,
+        and MQTT reconnection monitor.
+        """
         # Stats refresh scheduler (matches original script)
         if self.stats_status_enabled and self.stats_refresh_interval > 0:
             self.stats_update_task = asyncio.create_task(self.stats_refresh_scheduler())
@@ -1224,8 +1358,11 @@ class PacketCaptureService(BaseServicePlugin):
             task = asyncio.create_task(self.mqtt_reconnection_monitor())
             self.background_tasks.append(task)
     
-    async def stats_refresh_scheduler(self):
-        """Periodically refresh stats and publish them via MQTT (matches original script)"""
+    async def stats_refresh_scheduler(self) -> None:
+        """Periodically refresh stats and publish them via MQTT (matches original script).
+        
+        Fetches updated radio stats and triggers status publication.
+        """
         if self.stats_refresh_interval <= 0 or not self.stats_status_enabled:
             return
         
@@ -1245,14 +1382,25 @@ class PacketCaptureService(BaseServicePlugin):
                 break
     
     async def _wait_with_shutdown(self, timeout: float) -> bool:
-        """Wait for specified time but return immediately if shutdown is requested"""
+        """Wait for specified time but return immediately if shutdown is requested.
+        
+        Args:
+            timeout: Time to wait in seconds.
+            
+        Returns:
+            bool: True if shutdown requested, False if timeout completed.
+        """
         if self.should_exit:
             return True
         await asyncio.sleep(timeout)
         return False
     
     def _load_client_version(self) -> str:
-        """Load client version (matches original script)"""
+        """Load client version (matches original script).
+        
+        Returns:
+            str: Version string (e.g., 'meshcore-bot/1.0.0-abcdef').
+        """
         try:
             import os
             import subprocess
@@ -1283,8 +1431,12 @@ class PacketCaptureService(BaseServicePlugin):
         # Final fallback
         return "meshcore-bot/unknown"
     
-    async def get_firmware_info(self):
-        """Get firmware information from meshcore device (matches original script)"""
+    async def get_firmware_info(self) -> Dict[str, str]:
+        """Get firmware information from meshcore device (matches original script).
+        
+        Returns:
+            Dict[str, str]: Dictionary containing 'model' and 'version'.
+        """
         try:
             # During shutdown, always use cached info - don't query the device
             if self.should_exit:
@@ -1353,7 +1505,11 @@ class PacketCaptureService(BaseServicePlugin):
             return {"model": "unknown", "version": "unknown"}
     
     def stats_commands_available(self) -> bool:
-        """Detect whether the connected meshcore build exposes stats commands (matches original script)"""
+        """Detect whether the connected meshcore build exposes stats commands (matches original script).
+        
+        Returns:
+            bool: True if stats commands are available.
+        """
         if not self.meshcore or not hasattr(self.meshcore, "commands"):
             return False
         
@@ -1370,8 +1526,15 @@ class PacketCaptureService(BaseServicePlugin):
         self.stats_supported = available
         return available
     
-    async def refresh_stats(self, force: bool = False):
-        """Fetch stats from the radio and cache them for status publishing (matches original script)"""
+    async def refresh_stats(self, force: bool = False) -> Optional[Dict[str, Any]]:
+        """Fetch stats from the radio and cache them for status publishing (matches original script).
+        
+        Args:
+            force: Force refresh even if cache is fresh.
+            
+        Returns:
+            Optional[Dict[str, Any]]: Dictionary of stats or None if unavailable.
+        """
         if not self.stats_status_enabled:
             if self.debug:
                 self.logger.debug("Stats refresh skipped: stats_status_enabled is False")
@@ -1436,8 +1599,13 @@ class PacketCaptureService(BaseServicePlugin):
         
         return dict(self.latest_stats) if self.latest_stats else None
     
-    async def publish_status(self, status: str, refresh_stats: bool = True):
-        """Publish status with additional information (matches original script exactly)"""
+    async def publish_status(self, status: str, refresh_stats: bool = True) -> None:
+        """Publish status with additional information (matches original script exactly).
+        
+        Args:
+            status: Status string (e.g., 'online', 'offline').
+            refresh_stats: Whether to refresh stats before publishing.
+        """
         firmware_info = await self.get_firmware_info()
         
         # Get device name and public key
@@ -1545,8 +1713,11 @@ class PacketCaptureService(BaseServicePlugin):
             except Exception as e:
                 self.logger.error(f"Error publishing status to MQTT: {e}")
     
-    async def jwt_renewal_scheduler(self):
-        """Background task to check and renew JWT tokens"""
+    async def jwt_renewal_scheduler(self) -> None:
+        """Background task to check and renew JWT tokens.
+        
+        Periodically checks if JWT tokens need renewal.
+        """
         if self.jwt_renewal_interval <= 0:
             return
         
@@ -1561,8 +1732,11 @@ class PacketCaptureService(BaseServicePlugin):
                 self.logger.error(f"Error in JWT renewal scheduler: {e}")
                 await asyncio.sleep(60)
     
-    async def health_check_loop(self):
-        """Background task for health checks"""
+    async def health_check_loop(self) -> None:
+        """Background task for health checks.
+        
+        Monitors connection status and warns on failures.
+        """
         if self.health_check_interval <= 0:
             return
         
@@ -1583,8 +1757,12 @@ class PacketCaptureService(BaseServicePlugin):
                 self.logger.error(f"Error in health check loop: {e}")
                 await asyncio.sleep(60)
     
-    async def mqtt_reconnection_monitor(self):
-        """Proactive MQTT reconnection monitor - checks and reconnects disconnected brokers"""
+    async def mqtt_reconnection_monitor(self) -> None:
+        """Proactive MQTT reconnection monitor - checks and reconnects disconnected brokers.
+        
+        Periodically checks connectivity of all configured MQTT brokers and attempts
+        reconnection if disconnected.
+        """
         if not self.mqtt_enabled:
             return
         

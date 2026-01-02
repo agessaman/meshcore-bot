@@ -12,7 +12,11 @@ from ..security_utils import validate_pubkey_format
 
 
 class AnnouncementsCommand(BaseCommand):
-    """Handles announcements command for sending messages to channels"""
+    """Handles announcements command for sending messages to channels.
+    
+    Allows authorized users to trigger pre-configured announcements to be sent
+    to specific channels. Requires specific ACL access and operates via DM only.
+    """
     
     # Plugin metadata
     name = "announcements"
@@ -45,7 +49,11 @@ class AnnouncementsCommand(BaseCommand):
         self.announcements_acl = self._load_announcements_acl()
     
     def _load_triggers(self) -> Dict[str, str]:
-        """Load announcement triggers from config"""
+        """Load announcement triggers from config.
+        
+        Returns:
+            Dict[str, str]: Dictionary mapping trigger names to announcement text.
+        """
         triggers = {}
         if self.bot.config.has_section('Announcements_Command'):
             for key, value in self.bot.config.items('Announcements_Command'):
@@ -55,9 +63,12 @@ class AnnouncementsCommand(BaseCommand):
         return triggers
     
     def _load_announcements_acl(self) -> list:
-        """
-        Load announcements ACL from config.
+        """Load announcements ACL from config.
+        
         Inherits members of admin ACL if announcements_acl is not explicitly set.
+        
+        Returns:
+            list: List of permitted public keys.
         """
         acl_list = []
         
@@ -94,9 +105,15 @@ class AnnouncementsCommand(BaseCommand):
         return acl_list
     
     def _check_announcements_access(self, message: MeshMessage) -> bool:
-        """
-        Check if the message sender has announcements access.
+        """Check if the message sender has announcements access.
+        
         Uses the same security-hardened approach as admin ACL checking.
+        
+        Args:
+            message: The message to check access for.
+            
+        Returns:
+            bool: True if access is granted, False otherwise.
         """
         if not hasattr(self.bot, 'config'):
             return False
@@ -140,7 +157,14 @@ class AnnouncementsCommand(BaseCommand):
         return has_access
     
     def can_execute(self, message: MeshMessage) -> bool:
-        """Check if announcements command can be executed"""
+        """Check if announcements command can be executed.
+        
+        Args:
+            message: The message trigger.
+            
+        Returns:
+            bool: True if allowed to execute.
+        """
         # Check if command is enabled
         if not self.enabled:
             return False
@@ -156,7 +180,14 @@ class AnnouncementsCommand(BaseCommand):
         return True
     
     def _get_trigger_cooldown_remaining(self, trigger_name: str) -> int:
-        """Get remaining cooldown time in minutes for a trigger"""
+        """Get remaining cooldown time in minutes for a trigger.
+        
+        Args:
+            trigger_name: Name of the announcement trigger.
+            
+        Returns:
+            int: Remaining cooldown in minutes (0 if ready).
+        """
         if self.cooldown_seconds <= 0:
             return 0
         
@@ -175,14 +206,25 @@ class AnnouncementsCommand(BaseCommand):
         remaining_minutes = int((remaining_seconds + 59) // 60)
         return remaining_minutes
     
-    def _record_trigger_execution(self, trigger_name: str):
-        """Record the execution time for a trigger"""
+    def _record_trigger_execution(self, trigger_name: str) -> None:
+        """Record the execution time for a trigger.
+        
+        Args:
+            trigger_name: Name of the announcement trigger.
+        """
         current_time = time.time()
         self.trigger_cooldowns[trigger_name] = current_time
         self.trigger_lockouts[trigger_name] = current_time
     
     def _is_trigger_locked(self, trigger_name: str) -> bool:
-        """Check if a trigger is currently locked (within 60 seconds of last send)"""
+        """Check if a trigger is currently locked (within 60 seconds of last send).
+        
+        Args:
+            trigger_name: Name of the announcement trigger.
+            
+        Returns:
+            bool: True if locked, False otherwise.
+        """
         if trigger_name not in self.trigger_lockouts:
             return False
         
@@ -193,12 +235,15 @@ class AnnouncementsCommand(BaseCommand):
         return elapsed < self.lockout_seconds
     
     def _parse_command(self, content: str) -> tuple:
-        """
-        Parse the announce command.
+        """Parse the announce command.
+        
         Format: announce <trigger> [channel] [override]
         
+        Args:
+            content: Command content string.
+            
         Returns:
-            (trigger_name, channel_name, is_override) or (None, None, False) if invalid
+            tuple: (trigger_name, channel_name, is_override) or (None, None, False) if invalid.
         """
         # Remove 'announce' keyword
         parts = content.strip().split(None, 1)
@@ -224,7 +269,14 @@ class AnnouncementsCommand(BaseCommand):
         return (trigger_name, channel_name, is_override)
     
     async def execute(self, message: MeshMessage) -> bool:
-        """Execute the announcements command"""
+        """Execute the announcements command.
+        
+        Args:
+            message: The input message trigger.
+            
+        Returns:
+            bool: True if execution was successful.
+        """
         try:
             # Parse command
             trigger_name, channel_name, is_override = self._parse_command(message.content)

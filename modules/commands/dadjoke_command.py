@@ -29,6 +29,11 @@ class DadJokeCommand(BaseCommand):
     TIMEOUT = 10  # seconds
     
     def __init__(self, bot):
+        """Initialize the dadjoke command.
+        
+        Args:
+            bot: The bot instance.
+        """
         super().__init__(bot)
         
         # Load configuration
@@ -36,10 +41,22 @@ class DadJokeCommand(BaseCommand):
         self.long_jokes = bot.config.getboolean('Jokes', 'long_jokes', fallback=False)
     
     def get_help_text(self) -> str:
+        """Get help text for the dadjoke command.
+        
+        Returns:
+            str: The help text for this command.
+        """
         return "Usage: dadjoke - Get a random dad joke"
     
     def matches_keyword(self, message: MeshMessage) -> bool:
-        """Check if message starts with a dad joke keyword"""
+        """Check if message starts with a dad joke keyword.
+        
+        Args:
+            message: The received message.
+            
+        Returns:
+            bool: True if message matches a keyword, False otherwise.
+        """
         content = message.content.strip()
         if content.startswith('!'):
             content = content[1:].strip()
@@ -51,7 +68,14 @@ class DadJokeCommand(BaseCommand):
         return False
     
     def can_execute(self, message: MeshMessage) -> bool:
-        """Override to add custom check (dadjoke_enabled) while using base class cooldown"""
+        """Override to add custom check (dadjoke_enabled) while using base class cooldown.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if the command can be executed, False otherwise.
+        """
         # Use base class for channel access, DM requirements, and cooldown
         if not super().can_execute(message):
             return False
@@ -63,7 +87,14 @@ class DadJokeCommand(BaseCommand):
         return True
     
     async def execute(self, message: MeshMessage) -> bool:
-        """Execute the dad joke command"""
+        """Execute the dad joke command.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if executed successfully, False otherwise.
+        """
         try:
             # Record execution for this user
             self.record_execution(message.sender_id)
@@ -86,7 +117,11 @@ class DadJokeCommand(BaseCommand):
             return True
     
     async def get_dad_joke_from_api(self) -> Optional[Dict[str, Any]]:
-        """Get a dad joke from icanhazdadjoke.com API"""
+        """Get a dad joke from icanhazdadjoke.com API.
+        
+        Returns:
+            Optional[Dict[str, Any]]: The JSON response from the API, or None if failed.
+        """
         try:
             headers = {
                 'Accept': 'application/json',
@@ -128,7 +163,11 @@ class DadJokeCommand(BaseCommand):
             return None
     
     async def get_dad_joke_with_length_handling(self) -> Optional[Dict[str, Any]]:
-        """Get a dad joke from API with length handling based on configuration"""
+        """Get a dad joke from API with length handling based on configuration.
+        
+        Returns:
+            Optional[Dict[str, Any]]: The JSON response from the API, or None if failed.
+        """
         max_attempts = 5  # Prevent infinite loops
         
         for attempt in range(max_attempts):
@@ -155,8 +194,13 @@ class DadJokeCommand(BaseCommand):
         self.logger.warning(f"Could not get short dad joke after {max_attempts} attempts")
         return joke_data
     
-    async def send_dad_joke_with_length_handling(self, message: MeshMessage, joke_data: Dict[str, Any]):
-        """Send dad joke with length handling - split if necessary"""
+    async def send_dad_joke_with_length_handling(self, message: MeshMessage, joke_data: Dict[str, Any]) -> None:
+        """Send dad joke with length handling - split if necessary.
+        
+        Args:
+            message: The message to reply to.
+            joke_data: The joke data from the API.
+        """
         joke_text = self.format_dad_joke(joke_data)
         
         if len(joke_text) <= 130:
@@ -177,7 +221,14 @@ class DadJokeCommand(BaseCommand):
                 await self.send_response(message, joke_text)
     
     def split_dad_joke(self, joke_text: str) -> list:
-        """Split a long dad joke at a logical point"""
+        """Split a long dad joke at a logical point.
+        
+        Args:
+            joke_text: The long joke text to split.
+            
+        Returns:
+            list: A list of two strings (the split parts).
+        """
         # Remove emoji for splitting
         clean_joke = joke_text[2:] if joke_text.startswith('🥸 ') else joke_text
         
@@ -210,7 +261,14 @@ class DadJokeCommand(BaseCommand):
         return [f"🥸 {part1}", f"🥸 {part2}"]
     
     def format_dad_joke(self, joke_data: Dict[str, Any]) -> str:
-        """Format the dad joke data into a readable string"""
+        """Format the dad joke data into a readable string.
+        
+        Args:
+            joke_data: The joke data from the API.
+            
+        Returns:
+            str: The formatted joke string.
+        """
         try:
             joke = joke_data.get('joke', '')
             

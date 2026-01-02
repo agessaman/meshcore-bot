@@ -11,6 +11,7 @@ from geopy.geocoders import Nominatim
 from ...utils import rate_limited_nominatim_geocode_sync, rate_limited_nominatim_reverse_sync, get_nominatim_geocoder, geocode_city_sync
 from ..base_command import BaseCommand
 from ...models import MeshMessage
+from typing import Any, List, Optional, Tuple, Union
 
 
 class GlobalWxCommand(BaseCommand):
@@ -27,7 +28,12 @@ class GlobalWxCommand(BaseCommand):
     ERROR_FETCHING_DATA = "ERROR_FETCHING_DATA"  # Placeholder, will use translate()
     NO_ALERTS = "No weather alerts available"
     
-    def __init__(self, bot):
+    def __init__(self, bot: Any):
+        """Initialize the global weather command.
+        
+        Args:
+            bot: The bot instance.
+        """
         super().__init__(bot)
         self.url_timeout = 10  # seconds
         
@@ -58,10 +64,22 @@ class GlobalWxCommand(BaseCommand):
         self.db_manager = bot.db_manager
     
     def get_help_text(self) -> str:
+        """Get help text for the command.
+        
+        Returns:
+            str: Help text string.
+        """
         return self.translate('commands.gwx.help')
     
     def matches_keyword(self, message: MeshMessage) -> bool:
-        """Check if message starts with a weather keyword"""
+        """Check if message starts with a weather keyword.
+        
+        Args:
+            message: The received message.
+            
+        Returns:
+            bool: True if message matches a keyword, False otherwise.
+        """
         content = message.content.strip()
         if content.startswith('!'):
             content = content[1:].strip()
@@ -73,7 +91,14 @@ class GlobalWxCommand(BaseCommand):
     
     
     async def execute(self, message: MeshMessage) -> bool:
-        """Execute the weather command"""
+        """Execute the weather command.
+        
+        Args:
+            message: The received message.
+            
+        Returns:
+            bool: True if execution was successful.
+        """
         content = message.content.strip()
         
         # Parse the command to extract location and forecast type
@@ -145,14 +170,17 @@ class GlobalWxCommand(BaseCommand):
             await self.send_response(message, self.translate('commands.gwx.error', error=str(e)))
             return True
     
-    async def get_weather_for_location(self, location: str, forecast_type: str = "default", num_days: int = 7, message: MeshMessage = None) -> str:
-        """Get weather data for any global location
+    async def get_weather_for_location(self, location: str, forecast_type: str = "default", num_days: int = 7, message: MeshMessage = None) -> Union[str, Tuple[str, str, str]]:
+        """Get weather data for any global location.
         
         Args:
-            location: The location (city name, etc.)
-            forecast_type: "default", "tomorrow", or "multiday"
-            num_days: Number of days for multiday forecast (2-7)
-            message: The MeshMessage for dynamic length calculation
+            location: The location (city name, etc.).
+            forecast_type: "default", "tomorrow", or "multiday".
+            num_days: Number of days for multiday forecast (2-7).
+            message: The MeshMessage for dynamic length calculation.
+            
+        Returns:
+            Union[str, Tuple[str, str, str]]: Format string or tuple for multi-message response.
         """
         try:
             # Convert location to lat/lon with address details
@@ -193,11 +221,17 @@ class GlobalWxCommand(BaseCommand):
             return self.translate('commands.gwx.error', error=str(e))
     
     def geocode_location(self, location: str) -> tuple:
-        """Convert location string to lat/lon with address details
+        """Convert location string to lat/lon with address details.
         
         Handles both coordinate strings (lat,lon) and city names.
         Uses geocode_city_sync for proper default state/country handling,
         which prioritizes locations in the configured default state/country.
+        
+        Args:
+            location: Location string (e.g., "Seattle" or "47.6,-122.3").
+            
+        Returns:
+            tuple: (lat, lon, address_info, geocode_result) or (None, None, None, None) on failure.
         """
         try:
             # Check if location is coordinates (decimal numbers separated by comma, with optional spaces)
@@ -269,8 +303,17 @@ class GlobalWxCommand(BaseCommand):
             self.logger.error(f"Error geocoding location {location}: {e}")
             return None, None, None, None
     
-    def _format_location_display(self, address_info: dict, geocode_result, fallback: str) -> str:
-        """Format location name for display from address info - returns 'City, CountryCode' format"""
+    def _format_location_display(self, address_info: dict, geocode_result: Any, fallback: str) -> str:
+        """Format location name for display from address info - returns 'City, CountryCode' format.
+        
+        Args:
+            address_info: Dictionary containing address details.
+            geocode_result: Full geocode result object.
+            fallback: Fallback location string if detailed info is missing.
+            
+        Returns:
+            str: Formatted location string (e.g., "Seattle, US").
+        """
         # Get country code first (prefer this over full country name)
         country_code = ''
         if address_info:
@@ -361,7 +404,14 @@ class GlobalWxCommand(BaseCommand):
         return fallback.title()
     
     def _get_state_abbreviation(self, state: str) -> str:
-        """Convert full state name to abbreviation"""
+        """Convert full state name to abbreviation.
+        
+        Args:
+            state: Full state name (e.g., "Washington").
+            
+        Returns:
+            str: Two-letter state abbreviation (e.g., "WA") or original string if not found.
+        """
         state_map = {
             'Washington': 'WA', 'California': 'CA', 'New York': 'NY', 'Texas': 'TX',
             'Florida': 'FL', 'Illinois': 'IL', 'Pennsylvania': 'PA', 'Ohio': 'OH',
@@ -380,14 +430,17 @@ class GlobalWxCommand(BaseCommand):
         return state_map.get(state, state)
     
     def get_open_meteo_weather(self, lat: float, lon: float, forecast_type: str = "default", num_days: int = 7, message: MeshMessage = None) -> str:
-        """Get weather forecast from Open-Meteo API
+        """Get weather forecast from Open-Meteo API.
         
         Args:
-            lat: Latitude
-            lon: Longitude
-            forecast_type: "default", "tomorrow", or "multiday"
-            num_days: Number of days for multiday forecast (2-7)
-            message: The MeshMessage for dynamic length calculation
+            lat: Latitude.
+            lon: Longitude.
+            forecast_type: "default", "tomorrow", or "multiday".
+            num_days: Number of days for multiday forecast (2-7).
+            message: The MeshMessage for dynamic length calculation.
+            
+        Returns:
+            str: Formatted weather string or error message.
         """
         # Get max message length dynamically
         max_length = self.get_max_message_length(message) if message else 130
@@ -592,7 +645,14 @@ class GlobalWxCommand(BaseCommand):
             return self.translate('commands.gwx.error_fetching')
     
     def format_tomorrow_forecast(self, data: dict) -> str:
-        """Format a detailed forecast for tomorrow"""
+        """Format a detailed forecast for tomorrow.
+        
+        Args:
+            data: Weather data dictionary from Open-Meteo.
+            
+        Returns:
+            str: Formatted tomorrow forecast string.
+        """
         try:
             daily = data.get('daily', {})
             if not daily or len(daily.get('temperature_2m_max', [])) < 2:
@@ -643,7 +703,15 @@ class GlobalWxCommand(BaseCommand):
             return self.translate('commands.gwx.tomorrow_error')
     
     def format_multiday_forecast(self, data: dict, num_days: int = 7) -> str:
-        """Format a less detailed multi-day forecast summary"""
+        """Format a less detailed multi-day forecast summary.
+        
+        Args:
+            data: Weather data dictionary from Open-Meteo.
+            num_days: Number of days to include in forecast.
+            
+        Returns:
+            str: Formatted multi-day forecast string (newlines separate days).
+        """
         try:
             daily = data.get('daily', {})
             if not daily:
@@ -700,7 +768,14 @@ class GlobalWxCommand(BaseCommand):
             return self.translate('commands.gwx.multiday_error', num_days=num_days)
     
     def _count_display_width(self, text: str) -> int:
-        """Count display width of text, accounting for emojis which may take 2 display units"""
+        """Count display width of text, accounting for emojis which may take 2 display units.
+        
+        Args:
+            text: Text to measure.
+            
+        Returns:
+            int: Estimated display width.
+        """
         import re
         # Count regular characters
         width = len(text)
@@ -723,8 +798,13 @@ class GlobalWxCommand(BaseCommand):
         width += len(emoji_matches)
         return width
     
-    async def _send_multiday_forecast(self, message: MeshMessage, forecast_text: str):
-        """Send multi-day forecast response, splitting into multiple messages if needed"""
+    async def _send_multiday_forecast(self, message: MeshMessage, forecast_text: str) -> None:
+        """Send multi-day forecast response, splitting into multiple messages if needed.
+        
+        Args:
+            message: The original message (for reply context).
+            forecast_text: The full forecast text (lines separated by \n).
+        """
         import asyncio
         
         # Get max message length dynamically
@@ -788,7 +868,14 @@ class GlobalWxCommand(BaseCommand):
             await self.send_response(message, current_message)
     
     def _degrees_to_direction(self, degrees: float) -> str:
-        """Convert wind direction in degrees to compass direction with emoji"""
+        """Convert wind direction in degrees to compass direction with emoji.
+        
+        Args:
+            degrees: Wind direction in degrees.
+            
+        Returns:
+            str: Compass direction string with emoji (e.g., "⬆️N").
+        """
         if degrees is None:
             return ""
         
@@ -808,7 +895,14 @@ class GlobalWxCommand(BaseCommand):
         return "⬆️N"  # Default to North
     
     def _get_weather_description(self, code: int) -> str:
-        """Convert WMO weather code to description"""
+        """Convert WMO weather code to description.
+        
+        Args:
+            code: WMO weather code.
+            
+        Returns:
+            str: Weather description.
+        """
         # Try to get from translations first
         key = f"commands.gwx.weather_descriptions.{code}"
         description = self.translate(key)
@@ -851,7 +945,14 @@ class GlobalWxCommand(BaseCommand):
         return description
     
     def _get_weather_emoji(self, code: int) -> str:
-        """Convert WMO weather code to emoji"""
+        """Convert WMO weather code to emoji.
+        
+        Args:
+            code: WMO weather code.
+            
+        Returns:
+            str: Weather emoji.
+        """
         emoji_map = {
             0: "☀️",      # Clear
             1: "🌤️",     # Mostly Clear
@@ -885,8 +986,15 @@ class GlobalWxCommand(BaseCommand):
         
         return emoji_map.get(code, "🌤️")
     
-    def _check_extreme_conditions(self, weather_text: str) -> str:
-        """Check for extreme weather conditions that warrant warnings"""
+    def _check_extreme_conditions(self, weather_text: str) -> Optional[str]:
+        """Check for extreme weather conditions that warrant warnings.
+        
+        Args:
+            weather_text: The formatted weather text to check.
+            
+        Returns:
+            Optional[str]: Warning text if conditions found, None otherwise.
+        """
         warnings = []
         
         # Extract temperature from weather text
