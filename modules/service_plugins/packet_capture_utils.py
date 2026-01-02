@@ -540,9 +540,9 @@ async def create_auth_token_async(
     public_key_hex = public_key_hex.replace('0x', '').replace(' ', '').upper()
     
     # Create JWT payload
-    # Default expiration: 1 hour from now (3600 seconds)
+    # Default expiration: 24 hours from now (86400 seconds)
     if exp is None:
-        exp = timestamp + 3600
+        exp = timestamp + 86400
     
     payload_dict = {
         'publicKey': public_key_hex,

@@ -335,14 +335,28 @@ class WeatherService(BaseServicePlugin):
         
         self.logger.info(f"📅 Sending daily weather forecast at {datetime.now().strftime('%H:%M:%S')}")
         
-        # Run async function in event loop
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        
-        loop.run_until_complete(self._send_daily_forecast_async())
+        # Use the main event loop if available, otherwise create a new one
+        # This prevents deadlock when the main loop is already running
+        if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
+            # Schedule coroutine in the running main event loop
+            future = asyncio.run_coroutine_threadsafe(
+                self._send_daily_forecast_async(),
+                self.bot.main_event_loop
+            )
+            # Wait for completion (with timeout to prevent indefinite blocking)
+            try:
+                future.result(timeout=120)  # 2 minute timeout for weather forecast
+            except Exception as e:
+                self.logger.error(f"Error sending daily weather forecast: {e}")
+        else:
+            # Fallback: create new event loop if main loop not available
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            loop.run_until_complete(self._send_daily_forecast_async())
     
     async def _send_daily_forecast_async(self) -> None:
         """Send daily weather forecast (async implementation).

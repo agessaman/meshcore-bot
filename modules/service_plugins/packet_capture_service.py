@@ -144,8 +144,8 @@ class PacketCaptureService(BaseServicePlugin):
         self.background_tasks: List[asyncio.Task] = []
         self.should_exit = False
         
-        # JWT renewal
-        self.jwt_renewal_interval = self.get_config_int('jwt_renewal_interval', 3600)
+        # JWT renewal (default: 12 hours, tokens valid for 24 hours)
+        self.jwt_renewal_interval = self.get_config_int('jwt_renewal_interval', 43200)
         
         # Health check
         self.health_check_interval = self.get_config_int('health_check_interval', 30)
@@ -1063,7 +1063,7 @@ class PacketCaptureService(BaseServicePlugin):
                             password = token
                             self.logger.debug(
                                 f"Created auth token for {broker_config['host']} "
-                                f"(username: {username}, expires in 1 hour) "
+                                f"(username: {username}, valid for 24 hours) "
                                 f"using {'device' if use_device else 'Python'} signing"
                             )
                         else:
@@ -1714,18 +1714,87 @@ class PacketCaptureService(BaseServicePlugin):
                 self.logger.error(f"Error publishing status to MQTT: {e}")
     
     async def jwt_renewal_scheduler(self) -> None:
-        """Background task to check and renew JWT tokens.
-        
-        Periodically checks if JWT tokens need renewal.
+        """Background task to proactively renew JWT tokens before expiration.
+
+        Renews auth tokens for all MQTT brokers that use token authentication.
+        Runs every jwt_renewal_interval seconds (default: 12 hours).
+        Tokens are valid for 24 hours, so this provides a 12-hour buffer.
         """
         if self.jwt_renewal_interval <= 0:
             return
-        
+
         while not self.should_exit:
             try:
                 await asyncio.sleep(self.jwt_renewal_interval)
-                # JWT renewal logic would go here if needed
-                # For now, tokens are created on-demand
+
+                if self.should_exit:
+                    break
+
+                # Renew tokens for all MQTT brokers that use auth tokens
+                for mqtt_client_info in self.mqtt_clients:
+                    config = mqtt_client_info['config']
+                    client = mqtt_client_info['client']
+
+                    # Only renew for brokers that use auth tokens
+                    if not config.get('use_auth_token'):
+                        continue
+
+                    try:
+                        broker_host = config.get('host', 'unknown')
+                        self.logger.debug(f"Renewing auth token for MQTT broker {broker_host}...")
+
+                        # Get device's public key
+                        device_public_key_hex = None
+                        if self.meshcore and hasattr(self.meshcore, 'self_info'):
+                            try:
+                                self_info = self.meshcore.self_info
+                                if isinstance(self_info, dict):
+                                    device_public_key_hex = self_info.get('public_key', '')
+                                elif hasattr(self_info, 'public_key'):
+                                    device_public_key_hex = self_info.public_key
+
+                                # Convert to hex string if bytes
+                                if isinstance(device_public_key_hex, bytes):
+                                    device_public_key_hex = device_public_key_hex.hex()
+                                elif isinstance(device_public_key_hex, bytearray):
+                                    device_public_key_hex = bytes(device_public_key_hex).hex()
+                            except Exception as e:
+                                self.logger.debug(f"Could not get public key from device: {e}")
+
+                        if not device_public_key_hex:
+                            self.logger.warning(f"No device public key available for token renewal (broker: {broker_host})")
+                            continue
+
+                        # Create new auth token
+                        token_audience = config.get('token_audience') or broker_host
+                        username = f"v1_{device_public_key_hex.upper()}"
+
+                        use_device = (self.auth_token_method == 'device' and
+                                     self.meshcore and
+                                     self.meshcore.is_connected)
+                        meshcore_for_key_fetch = self.meshcore if self.meshcore and self.meshcore.is_connected else None
+
+                        token = await create_auth_token_async(
+                            meshcore_instance=meshcore_for_key_fetch,
+                            public_key_hex=device_public_key_hex,
+                            private_key_hex=self.private_key_hex,
+                            iata=self.global_iata,
+                            audience=token_audience,
+                            owner_public_key=self.owner_public_key,
+                            owner_email=self.owner_email,
+                            use_device=use_device
+                        )
+
+                        if token:
+                            # Update client credentials with new token
+                            client.username_pw_set(username, token)
+                            self.logger.info(f"✓ Renewed auth token for MQTT broker {broker_host} (valid for 24 hours)")
+                        else:
+                            self.logger.warning(f"Failed to renew auth token for MQTT broker {broker_host}")
+
+                    except Exception as e:
+                        self.logger.error(f"Error renewing token for MQTT broker {config.get('host', 'unknown')}: {e}")
+
             except asyncio.CancelledError:
                 break
             except Exception as e:

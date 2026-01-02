@@ -103,15 +103,29 @@ class MessageScheduler:
         
         import asyncio
         
-        # Create a new event loop for this thread if one doesn't exist
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        
-        # Run the async function in the event loop
-        loop.run_until_complete(self._send_scheduled_message_async(channel, message))
+        # Use the main event loop if available, otherwise create a new one
+        # This prevents deadlock when the main loop is already running
+        if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
+            # Schedule coroutine in the running main event loop
+            future = asyncio.run_coroutine_threadsafe(
+                self._send_scheduled_message_async(channel, message),
+                self.bot.main_event_loop
+            )
+            # Wait for completion (with timeout to prevent indefinite blocking)
+            try:
+                future.result(timeout=60)  # 60 second timeout
+            except Exception as e:
+                self.logger.error(f"Error sending scheduled message: {e}")
+        else:
+            # Fallback: create new event loop if main loop not available
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            # Run the async function in the event loop
+            loop.run_until_complete(self._send_scheduled_message_async(channel, message))
     
     async def _get_mesh_info(self) -> Dict[str, Any]:
         """Get mesh network information for scheduled messages"""
@@ -332,18 +346,30 @@ class MessageScheduler:
                     hasattr(self.bot, 'connected') and self.bot.connected):
                     # Run feed polling in async context
                     import asyncio
-                    try:
-                        loop = asyncio.get_event_loop()
-                    except RuntimeError:
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                    
-                    # Schedule feed polling
-                    try:
-                        loop.run_until_complete(self.bot.feed_manager.poll_all_feeds())
-                        self.logger.debug("Feed polling cycle completed")
-                    except Exception as e:
-                        self.logger.error(f"Error in feed polling cycle: {e}")
+                    if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
+                        # Schedule coroutine in the running main event loop
+                        future = asyncio.run_coroutine_threadsafe(
+                            self.bot.feed_manager.poll_all_feeds(),
+                            self.bot.main_event_loop
+                        )
+                        try:
+                            future.result(timeout=120)  # 2 minute timeout for feed polling
+                            self.logger.debug("Feed polling cycle completed")
+                        except Exception as e:
+                            self.logger.error(f"Error in feed polling cycle: {e}")
+                    else:
+                        # Fallback: create new event loop if main loop not available
+                        try:
+                            loop = asyncio.get_event_loop()
+                        except RuntimeError:
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                        
+                        try:
+                            loop.run_until_complete(self.bot.feed_manager.poll_all_feeds())
+                            self.logger.debug("Feed polling cycle completed")
+                        except Exception as e:
+                            self.logger.error(f"Error in feed polling cycle: {e}")
                     last_feed_poll_time = time.time()
             
             # Channels are fetched once on launch only - no periodic refresh
@@ -357,13 +383,25 @@ class MessageScheduler:
                 if (hasattr(self.bot, 'channel_manager') and self.bot.channel_manager and 
                     hasattr(self.bot, 'connected') and self.bot.connected):
                     import asyncio
-                    try:
-                        loop = asyncio.get_event_loop()
-                    except RuntimeError:
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                    
-                    loop.run_until_complete(self._process_channel_operations())
+                    if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
+                        # Schedule coroutine in the running main event loop
+                        future = asyncio.run_coroutine_threadsafe(
+                            self._process_channel_operations(),
+                            self.bot.main_event_loop
+                        )
+                        try:
+                            future.result(timeout=30)  # 30 second timeout
+                        except Exception as e:
+                            self.logger.error(f"Error processing channel operations: {e}")
+                    else:
+                        # Fallback: create new event loop if main loop not available
+                        try:
+                            loop = asyncio.get_event_loop()
+                        except RuntimeError:
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                        
+                        loop.run_until_complete(self._process_channel_operations())
                     self.last_channel_ops_check_time = time.time()
             
             # Process feed message queue (every 2 seconds)
@@ -374,13 +412,25 @@ class MessageScheduler:
                 if (hasattr(self.bot, 'feed_manager') and self.bot.feed_manager and 
                     hasattr(self.bot, 'connected') and self.bot.connected):
                     import asyncio
-                    try:
-                        loop = asyncio.get_event_loop()
-                    except RuntimeError:
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                    
-                    loop.run_until_complete(self.bot.feed_manager.process_message_queue())
+                    if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
+                        # Schedule coroutine in the running main event loop
+                        future = asyncio.run_coroutine_threadsafe(
+                            self.bot.feed_manager.process_message_queue(),
+                            self.bot.main_event_loop
+                        )
+                        try:
+                            future.result(timeout=30)  # 30 second timeout
+                        except Exception as e:
+                            self.logger.error(f"Error processing message queue: {e}")
+                    else:
+                        # Fallback: create new event loop if main loop not available
+                        try:
+                            loop = asyncio.get_event_loop()
+                        except RuntimeError:
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                        
+                        loop.run_until_complete(self.bot.feed_manager.process_message_queue())
                     self.last_message_queue_check_time = time.time()
             
             schedule.run_pending()
@@ -421,15 +471,29 @@ class MessageScheduler:
         
         import asyncio
         
-        # Create a new event loop for this thread if one doesn't exist
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        
-        # Run the async function in the event loop
-        loop.run_until_complete(self._send_interval_advert_async())
+        # Use the main event loop if available, otherwise create a new one
+        # This prevents deadlock when the main loop is already running
+        if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
+            # Schedule coroutine in the running main event loop
+            future = asyncio.run_coroutine_threadsafe(
+                self._send_interval_advert_async(),
+                self.bot.main_event_loop
+            )
+            # Wait for completion (with timeout to prevent indefinite blocking)
+            try:
+                future.result(timeout=60)  # 60 second timeout
+            except Exception as e:
+                self.logger.error(f"Error sending interval advert: {e}")
+        else:
+            # Fallback: create new event loop if main loop not available
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            # Run the async function in the event loop
+            loop.run_until_complete(self._send_interval_advert_async())
     
     async def _send_interval_advert_async(self):
         """Send an interval-based advert (async implementation)"""

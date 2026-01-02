@@ -882,6 +882,9 @@ use_zulu_time = false
         """
         self.logger.info("Starting MeshCore Bot...")
         
+        # Store reference to main event loop for scheduler thread access
+        self.main_event_loop = asyncio.get_running_loop()
+        
         # Connect to MeshCore node
         if not await self.connect():
             self.logger.error("Failed to connect to MeshCore node")
