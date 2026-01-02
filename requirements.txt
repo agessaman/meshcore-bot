@@ -1,11 +1,13 @@
 pyserial>=3.5
 bleak>=0.20.0
 asyncio-mqtt>=0.11.0
+paho-mqtt>=1.6.0
 configparser>=5.3.0
 python-dateutil>=2.8.2
 schedule>=1.2.0
 colorlog>=6.7.0
 requests>=2.31.0
+urllib3>=2.0.0
 pyephem>=4.1.4
 geopy>=2.3.0
 maidenhead>=1.4.0
