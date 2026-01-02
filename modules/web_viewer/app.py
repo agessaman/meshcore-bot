@@ -291,6 +291,41 @@ class BotDataViewer:
                 'version': 'modern_2.0'
             })
         
+        @self.app.route('/api/system-health')
+        def api_system_health():
+            """Get comprehensive system health status from database"""
+            try:
+                # Read health data from database (consistent with how other data is accessed)
+                health_data = self.db_manager.get_system_health()
+                
+                if not health_data:
+                    # If no health data in database, return minimal status
+                    return jsonify({
+                        'status': 'unknown',
+                        'timestamp': time.time(),
+                        'message': 'Health data not available yet',
+                        'components': {}
+                    })
+                
+                # Update timestamp to reflect current time (data may be slightly stale)
+                health_data['timestamp'] = time.time()
+                
+                # Recalculate uptime if start_time is available
+                start_time = self.db_manager.get_bot_start_time()
+                if start_time:
+                    health_data['uptime_seconds'] = time.time() - start_time
+                
+                return jsonify(health_data)
+                
+            except Exception as e:
+                self.logger.error(f"Error getting system health: {e}")
+                import traceback
+                self.logger.debug(traceback.format_exc())
+                return jsonify({
+                    'error': str(e),
+                    'status': 'error'
+                }), 500
+        
         @self.app.route('/api/stats')
         def api_stats():
             """Get comprehensive database statistics for dashboard"""

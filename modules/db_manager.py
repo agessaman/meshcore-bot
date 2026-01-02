@@ -499,3 +499,24 @@ class DBManager:
     def set_bot_start_time(self, start_time: float):
         """Set bot start time in metadata"""
         self.set_metadata('start_time', str(start_time))
+    
+    def set_system_health(self, health_data: Dict[str, Any]):
+        """Store system health data in metadata"""
+        try:
+            import json
+            health_json = json.dumps(health_data)
+            self.set_metadata('system_health', health_json)
+        except Exception as e:
+            self.logger.error(f"Error storing system health: {e}")
+    
+    def get_system_health(self) -> Optional[Dict[str, Any]]:
+        """Get system health data from metadata"""
+        try:
+            import json
+            health_json = self.get_metadata('system_health')
+            if health_json:
+                return json.loads(health_json)
+            return None
+        except Exception as e:
+            self.logger.error(f"Error getting system health: {e}")
+            return None
