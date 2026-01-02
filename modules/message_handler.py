@@ -472,7 +472,40 @@ class MessageHandler:
                         name = advert_data.get('name', 'No name')
                         location = ""
                         if 'lat' in advert_data and 'lon' in advert_data:
-                            location = f" at {advert_data['lat']:.4f},{advert_data['lon']:.4f}"
+                            # Try to get resolved location from database if available
+                            try:
+                                if hasattr(self.bot, 'repeater_manager'):
+                                    # Look up the contact to get resolved location
+                                    public_key = advert_data.get('public_key')
+                                    if public_key:
+                                        contact_query = self.bot.db_manager.execute_query(
+                                            'SELECT city, state, country FROM complete_contact_tracking WHERE public_key = ?',
+                                            (public_key,)
+                                        )
+                                        if contact_query:
+                                            contact = contact_query[0]
+                                            city = contact.get('city')
+                                            state = contact.get('state')
+                                            if city and state:
+                                                location = f" at {city}, {state}"
+                                            elif city:
+                                                location = f" at {city}"
+                                            else:
+                                                # Fallback to coordinates if no resolved location
+                                                location = f" at {advert_data['lat']:.4f},{advert_data['lon']:.4f}"
+                                        else:
+                                            # No contact found yet, use coordinates
+                                            location = f" at {advert_data['lat']:.4f},{advert_data['lon']:.4f}"
+                                    else:
+                                        # No public key, use coordinates
+                                        location = f" at {advert_data['lat']:.4f},{advert_data['lon']:.4f}"
+                                else:
+                                    # No repeater manager, use coordinates
+                                    location = f" at {advert_data['lat']:.4f},{advert_data['lon']:.4f}"
+                            except Exception as e:
+                                # If lookup fails, fallback to coordinates
+                                self.logger.debug(f"Could not get resolved location for logging: {e}")
+                                location = f" at {advert_data['lat']:.4f},{advert_data['lon']:.4f}"
                         
                         # Show hop count in log
                         hop_count = signal_info.get('hops', 0)
