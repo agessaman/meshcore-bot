@@ -117,7 +117,7 @@ class GlobalWxCommand(BaseCommand):
             self.record_execution(message.sender_id)
             
             # Get weather data for the location
-            weather_data = await self.get_weather_for_location(location, forecast_type, num_days)
+            weather_data = await self.get_weather_for_location(location, forecast_type, num_days, message)
             
             # Check if we need to send multiple messages (for alerts)
             if isinstance(weather_data, tuple) and weather_data[0] == "multi_message":
@@ -145,13 +145,14 @@ class GlobalWxCommand(BaseCommand):
             await self.send_response(message, self.translate('commands.gwx.error', error=str(e)))
             return True
     
-    async def get_weather_for_location(self, location: str, forecast_type: str = "default", num_days: int = 7) -> str:
+    async def get_weather_for_location(self, location: str, forecast_type: str = "default", num_days: int = 7, message: MeshMessage = None) -> str:
         """Get weather data for any global location
         
         Args:
             location: The location (city name, etc.)
             forecast_type: "default", "tomorrow", or "multiday"
             num_days: Number of days for multiday forecast (2-7)
+            message: The MeshMessage for dynamic length calculation
         """
         try:
             # Convert location to lat/lon with address details
@@ -166,11 +167,11 @@ class GlobalWxCommand(BaseCommand):
             
             # Get weather forecast from Open-Meteo based on type
             if forecast_type == "tomorrow":
-                weather_text = self.get_open_meteo_weather(lat, lon, forecast_type="tomorrow")
+                weather_text = self.get_open_meteo_weather(lat, lon, forecast_type="tomorrow", message=message)
             elif forecast_type == "multiday":
-                weather_text = self.get_open_meteo_weather(lat, lon, forecast_type="multiday", num_days=num_days)
+                weather_text = self.get_open_meteo_weather(lat, lon, forecast_type="multiday", num_days=num_days, message=message)
             else:
-                weather_text = self.get_open_meteo_weather(lat, lon)
+                weather_text = self.get_open_meteo_weather(lat, lon, message=message)
             
             # Check if it's an error (translated error message)
             error_fetching = self.translate('commands.gwx.error_fetching')
@@ -194,10 +195,47 @@ class GlobalWxCommand(BaseCommand):
     def geocode_location(self, location: str) -> tuple:
         """Convert location string to lat/lon with address details
         
+        Handles both coordinate strings (lat,lon) and city names.
         Uses geocode_city_sync for proper default state/country handling,
         which prioritizes locations in the configured default state/country.
         """
         try:
+            # Check if location is coordinates (decimal numbers separated by comma, with optional spaces)
+            # Handle formats like: "47.6,-122.3", "47.6, -122.3", "47.980525, -122.150649", " -47.6 , 122.3 "
+            if re.match(r'^\s*-?\d+\.?\d*\s*,\s*-?\d+\.?\d*\s*$', location):
+                # Parse lat,lon coordinates
+                try:
+                    lat_str, lon_str = location.split(',')
+                    lat = float(lat_str.strip())
+                    lon = float(lon_str.strip())
+                    
+                    # Validate coordinate ranges
+                    if not (-90 <= lat <= 90):
+                        self.logger.warning(f"Invalid latitude: {lat}. Must be between -90 and 90.")
+                        return None, None, None, None
+                    if not (-180 <= lon <= 180):
+                        self.logger.warning(f"Invalid longitude: {lon}. Must be between -180 and 180.")
+                        return None, None, None, None
+                    
+                    # Get address info via reverse geocoding
+                    address_info = None
+                    geocode_result = None
+                    try:
+                        reverse_location = rate_limited_nominatim_reverse_sync(
+                            self.bot, f"{lat}, {lon}", timeout=10
+                        )
+                        if reverse_location:
+                            geocode_result = reverse_location
+                            address_info = reverse_location.raw.get('address', {})
+                    except Exception as e:
+                        self.logger.debug(f"Reverse geocoding failed for coordinates: {e}")
+                        address_info = {}
+                    
+                    return lat, lon, address_info or {}, geocode_result
+                except ValueError:
+                    self.logger.warning(f"Invalid coordinates format: {location}")
+                    return None, None, None, None
+            
             # Use the shared geocode_city_sync function which properly handles
             # default state and country for city disambiguation
             # This ensures "olympia" matches Olympia, WA (not Greece) when default_state=WA
@@ -341,7 +379,7 @@ class GlobalWxCommand(BaseCommand):
         }
         return state_map.get(state, state)
     
-    def get_open_meteo_weather(self, lat: float, lon: float, forecast_type: str = "default", num_days: int = 7) -> str:
+    def get_open_meteo_weather(self, lat: float, lon: float, forecast_type: str = "default", num_days: int = 7, message: MeshMessage = None) -> str:
         """Get weather forecast from Open-Meteo API
         
         Args:
@@ -349,7 +387,10 @@ class GlobalWxCommand(BaseCommand):
             lon: Longitude
             forecast_type: "default", "tomorrow", or "multiday"
             num_days: Number of days for multiday forecast (2-7)
+            message: The MeshMessage for dynamic length calculation
         """
+        # Get max message length dynamically
+        max_length = self.get_max_message_length(message) if message else 130
         try:
             # Open-Meteo API endpoint with current weather and forecast
             api_url = "https://api.open-meteo.com/v1/forecast"
@@ -366,7 +407,7 @@ class GlobalWxCommand(BaseCommand):
                 'latitude': lat,
                 'longitude': lon,
                 'current': 'temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,dewpoint_2m,visibility,surface_pressure',
-                'daily': 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max',
+                'daily': 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max',
                 'hourly': 'temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m',
                 'temperature_unit': self.temperature_unit,
                 'wind_speed_unit': self.wind_speed_unit,
@@ -493,7 +534,9 @@ class GlobalWxCommand(BaseCommand):
                 conditions.append(f"📊{pressure_hpa}hPa")
             
             # Add conditions to weather string if space allows
-            if conditions and len(weather) < 120:
+            # Reserve space for forecast data (high/low and tomorrow)
+            conditions_max_length = max_length - 80  # Reserve ~80 chars for forecast data
+            if conditions and len(weather) < conditions_max_length:
                 weather += " " + " ".join(conditions)
             
             # Add forecast high/low for today (without repeating period name since current conditions already show it)
@@ -518,15 +561,28 @@ class GlobalWxCommand(BaseCommand):
                     tomorrow_str = f" | {tomorrow_period}: {tomorrow_emoji}{tomorrow_high}{temp_symbol}/{tomorrow_low}{temp_symbol}"
                     
                     # Only add if we have space (leave room for potential precipitation)
-                    if len(weather + tomorrow_str) < 180:  # Increased limit to prevent truncation
+                    if len(weather + tomorrow_str) < max_length - 10:  # Leave 10 chars buffer
                         weather += tomorrow_str
                         
-                        # Add precipitation probability if significant and space allows
+                        # Add precipitation probability and amount if significant and space allows
                         if len(daily.get('precipitation_probability_max', [])) > 1:
                             precip_prob = daily['precipitation_probability_max'][1]
                             if precip_prob >= 30:
-                                precip_str = f" 🌦️{precip_prob}%"
-                                if len(weather + precip_str) <= 200:  # Reasonable message length limit
+                                # Get precipitation amount if available
+                                precip_amount = None
+                                if len(daily.get('precipitation_sum', [])) > 1:
+                                    precip_amount = daily['precipitation_sum'][1]
+                                
+                                # Format precipitation info
+                                if precip_amount is not None and precip_amount > 0:
+                                    # Show both probability and amount
+                                    precip_unit = "in" if self.precipitation_unit == 'inch' else "mm"
+                                    precip_str = f" 🌦️{precip_prob}% {precip_amount:.2f}{precip_unit}"
+                                else:
+                                    # Only show probability if no amount available
+                                    precip_str = f" 🌦️{precip_prob}%"
+                                
+                                if len(weather + precip_str) <= max_length:
                                     weather += precip_str
             
             return weather
@@ -560,12 +616,24 @@ class GlobalWxCommand(BaseCommand):
                         if wind_gusts > wind_speed + 3:
                             wind_info += f"G{wind_gusts}"
             
-            # Get precipitation probability
+            # Get precipitation probability and amount
             precip_info = ""
             if len(daily.get('precipitation_probability_max', [])) > 1:
                 precip_prob = daily['precipitation_probability_max'][1]
                 if precip_prob >= 30:
-                    precip_info = f" 🌦️{precip_prob}%"
+                    # Get precipitation amount if available
+                    precip_amount = None
+                    if len(daily.get('precipitation_sum', [])) > 1:
+                        precip_amount = daily['precipitation_sum'][1]
+                    
+                    # Format precipitation info
+                    if precip_amount is not None and precip_amount > 0:
+                        # Show both probability and amount
+                        precip_unit = "in" if self.precipitation_unit == 'inch' else "mm"
+                        precip_info = f" 🌦️{precip_prob}% {precip_amount:.2f}{precip_unit}"
+                    else:
+                        # Only show probability if no amount available
+                        precip_info = f" 🌦️{precip_prob}%"
             
             tomorrow_period = self.translate('commands.gwx.periods.tomorrow')
             return f"{tomorrow_period}: {tomorrow_emoji}{tomorrow_desc} {tomorrow_high}{temp_symbol}/{tomorrow_low}{temp_symbol}{wind_info}{precip_info}"
@@ -659,6 +727,9 @@ class GlobalWxCommand(BaseCommand):
         """Send multi-day forecast response, splitting into multiple messages if needed"""
         import asyncio
         
+        # Get max message length dynamically
+        max_length = self.get_max_message_length(message)
+        
         lines = forecast_text.split('\n')
         
         # Remove empty lines
@@ -667,13 +738,13 @@ class GlobalWxCommand(BaseCommand):
         if not lines:
             return
         
-        # If single line and under 130 chars, send as-is
-        if self._count_display_width(forecast_text) <= 130:
+        # If single line and under max_length chars, send as-is
+        if self._count_display_width(forecast_text) <= max_length:
             await self.send_response(message, forecast_text)
             return
         
         # Multi-line message - try to fit as many days as possible in one message
-        # Only split when necessary (message would exceed 130 chars)
+        # Only split when necessary (message would exceed max_length chars)
         current_message = ""
         message_count = 0
         
@@ -681,14 +752,14 @@ class GlobalWxCommand(BaseCommand):
             if not line:
                 continue
             
-            # Check if adding this line would exceed 130 characters (using display width)
+            # Check if adding this line would exceed max_length characters (using display width)
             if current_message:
                 test_message = current_message + "\n" + line
             else:
                 test_message = line
             
-            # Only split if message would exceed 130 chars (using display width)
-            if self._count_display_width(test_message) > 130:
+            # Only split if message would exceed max_length chars (using display width)
+            if self._count_display_width(test_message) > max_length:
                 # Send current message and start new one
                 if current_message:
                     await self.send_response(message, current_message)
@@ -706,7 +777,7 @@ class GlobalWxCommand(BaseCommand):
                         await asyncio.sleep(2.0)
                     current_message = ""
             else:
-                # Add line to current message (fits within 130 chars)
+                # Add line to current message (fits within max_length)
                 if current_message:
                     current_message += "\n" + line
                 else:
