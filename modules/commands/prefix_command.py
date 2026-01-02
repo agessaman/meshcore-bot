@@ -27,7 +27,12 @@ class PrefixCommand(BaseCommand):
     cooldown_seconds = 2
     requires_internet = False  # Will be set to True in __init__ if API is configured
     
-    def __init__(self, bot):
+    def __init__(self, bot: Any):
+        """Initialize the prefix command.
+        
+        Args:
+            bot: The bot instance.
+        """
         super().__init__(bot)
         # Get API URL from config, no fallback to regional API
         self.api_url = self.bot.config.get('External_Data', 'repeater_prefix_api_url', fallback="")
@@ -63,6 +68,11 @@ class PrefixCommand(BaseCommand):
         )
     
     def get_help_text(self) -> str:
+        """Get help text for the prefix command.
+        
+        Returns:
+            str: The help text for this command.
+        """
         location_note = self.translate('commands.prefix.location_note') if self.show_repeater_locations else ""
         if not self.api_url or self.api_url.strip() == "":
             return self.translate('commands.prefix.help_no_api', location_note=location_note)
@@ -81,7 +91,14 @@ class PrefixCommand(BaseCommand):
         return content_lower == 'prefix' or content_lower.startswith('prefix ')
     
     async def execute(self, message: MeshMessage) -> bool:
-        """Execute the prefix command"""
+        """Execute the prefix command.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if executed successfully, False otherwise.
+        """
         content = message.content.strip()
         
         # Handle exclamation prefix
@@ -258,8 +275,8 @@ class PrefixCommand(BaseCommand):
             # Return original API data if enhancement fails
             return api_data
     
-    async def refresh_cache(self):
-        """Refresh the cache from the API"""
+    async def refresh_cache(self) -> None:
+        """Refresh the cache from the API."""
         try:
             # Check if API URL is configured
             if not self.api_url or self.api_url.strip() == "":
@@ -546,7 +563,15 @@ class PrefixCommand(BaseCommand):
             return [], 0, False
     
     def format_free_prefixes_response(self, free_prefixes: List[str], total_free: int) -> str:
-        """Format the free prefixes response"""
+        """Format the free prefixes response.
+        
+        Args:
+            free_prefixes: List of free prefixes to display.
+            total_free: Total count of free prefixes.
+            
+        Returns:
+            str: Formatted response string.
+        """
         if not free_prefixes:
             return self.translate('commands.prefix.no_free_prefixes')
         
@@ -569,7 +594,15 @@ class PrefixCommand(BaseCommand):
         return response
     
     def format_prefix_response(self, prefix: str, data: Dict[str, Any]) -> str:
-        """Format the prefix response"""
+        """Format the prefix response.
+        
+        Args:
+            prefix: The prefix being queried.
+            data: The prefix data dictionary.
+            
+        Returns:
+            str: Formatted response string.
+        """
         node_count = data['node_count']
         node_names = data['node_names']
         source = data.get('source', 'api')
@@ -617,8 +650,13 @@ class PrefixCommand(BaseCommand):
         
         return response
     
-    async def _send_prefix_response(self, message: MeshMessage, response: str):
-        """Send prefix response, splitting into multiple messages if necessary"""
+    async def _send_prefix_response(self, message: MeshMessage, response: str) -> None:
+        """Send prefix response, splitting into multiple messages if necessary.
+        
+        Args:
+            message: The original message to respond to.
+            response: The complete response string.
+        """
         # Store the complete response for web viewer integration BEFORE splitting
         # command_manager will prioritize command.last_response over _last_response
         # This ensures capture_command gets the full response, not just the last split message

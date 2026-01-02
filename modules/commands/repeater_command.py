@@ -24,6 +24,7 @@ class RepeaterCommand(BaseCommand):
     requires_dm = True
     cooldown_seconds = 0
     category = "management"
+    requires_internet = True  # Requires internet access for geocoding (Nominatim)
     
     def __init__(self, bot):
         super().__init__(bot)

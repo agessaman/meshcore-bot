@@ -7,7 +7,7 @@ Provides clean, family-friendly jokes from the JokeAPI
 import aiohttp
 import asyncio
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from .base_command import BaseCommand
 from ..models import MeshMessage
 
@@ -40,7 +40,12 @@ class JokeCommand(BaseCommand):
     BLACKLIST_FLAGS = "nsfw,religious,political,racist,sexist,explicit"
     TIMEOUT = 10  # seconds
     
-    def __init__(self, bot):
+    def __init__(self, bot: Any):
+        """Initialize the joke command.
+        
+        Args:
+            bot: The bot instance.
+        """
         super().__init__(bot)
         
         # Load configuration
@@ -61,7 +66,14 @@ class JokeCommand(BaseCommand):
             return f"Usage: joke [category] - Get a random joke or from categories: {categories}"
     
     def matches_keyword(self, message: MeshMessage) -> bool:
-        """Check if message starts with a joke keyword"""
+        """Check if message starts with a joke keyword.
+        
+        Args:
+            message: The message to check.
+            
+        Returns:
+            bool: True if a joke keyword matches, False otherwise.
+        """
         content = message.content.strip()
         if content.startswith('!'):
             content = content[1:].strip()
@@ -123,7 +135,14 @@ class JokeCommand(BaseCommand):
             return None
     
     async def execute(self, message: MeshMessage) -> bool:
-        """Execute the joke command"""
+        """Execute the joke command.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if executed successfully, False otherwise.
+        """
         content = message.content.strip()
         
         # Parse the command to extract category
@@ -166,8 +185,15 @@ class JokeCommand(BaseCommand):
             await self.send_response(message, "Sorry, something went wrong getting a joke!")
             return True
     
-    async def get_joke_from_api(self, category: str = None) -> dict:
-        """Get a joke from the JokeAPI"""
+    async def get_joke_from_api(self, category: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Get a joke from the JokeAPI.
+        
+        Args:
+            category: The joke category to fetch.
+            
+        Returns:
+            Optional[Dict[str, Any]]: The joke data from the API, or None if it fails.
+        """
         try:
             # Build the API URL
             # For dark jokes, don't use safe-mode since users expect dark humor
@@ -251,8 +277,13 @@ class JokeCommand(BaseCommand):
         self.logger.warning(f"Could not get short joke after {max_attempts} attempts")
         return joke_data
     
-    async def send_joke_with_length_handling(self, message: MeshMessage, joke_data: Dict[str, Any]):
-        """Send joke with length handling - split if necessary"""
+    async def send_joke_with_length_handling(self, message: MeshMessage, joke_data: Dict[str, Any]) -> None:
+        """Send joke with length handling - split if necessary.
+        
+        Args:
+            message: The original message to respond to.
+            joke_data: The joke data from the API.
+        """
         joke_text = self.format_joke(joke_data)
         
         if len(joke_text) <= 130:
@@ -272,8 +303,15 @@ class JokeCommand(BaseCommand):
                 # Cannot be split properly, send as single message (user will see truncation)
                 await self.send_response(message, joke_text)
     
-    def split_joke(self, joke_text: str) -> list:
-        """Split a long joke at a logical point"""
+    def split_joke(self, joke_text: str) -> List[str]:
+        """Split a long joke at a logical point.
+        
+        Args:
+            joke_text: The full text of the joke.
+            
+        Returns:
+            List[str]: A list of joke parts.
+        """
         # Remove emoji for splitting
         clean_joke = joke_text[2:] if joke_text.startswith('🎭 ') else joke_text
         
@@ -307,8 +345,15 @@ class JokeCommand(BaseCommand):
         
         return [f"🎭 {part1}", f"🎭 {part2}"]
     
-    def format_joke(self, joke_data: dict) -> str:
-        """Format the joke data into a readable string"""
+    def format_joke(self, joke_data: Dict[str, Any]) -> str:
+        """Format the joke data into a readable string.
+        
+        Args:
+            joke_data: The joke data from the API.
+            
+        Returns:
+            str: The formatted joke string.
+        """
         try:
             joke_type = joke_data.get('type', 'single')
             

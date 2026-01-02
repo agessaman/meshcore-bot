@@ -18,8 +18,9 @@ class SolarCommand(BaseCommand):
     # Plugin metadata
     name = "solar"
     keywords = ['solar']
-    description = "Get solar conditions and HF band status"
+    description = "Get current solar conditions and HF band info"
     category = "solar"
+    requires_internet = True  # Requires internet access for hamqsl.com API
     
     def __init__(self, bot):
         """Initialize the solar command.

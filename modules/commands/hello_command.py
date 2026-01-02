@@ -5,6 +5,7 @@ Responds to various greetings with robot-themed responses
 """
 
 import random
+from typing import Any, List, Dict
 from .base_command import BaseCommand
 from ..models import MeshMessage
 
@@ -18,14 +19,19 @@ class HelloCommand(BaseCommand):
     description = "Responds to greetings with robot-themed responses"
     category = "basic"
     
-    def __init__(self, bot):
+    def __init__(self, bot: Any):
+        """Initialize the hello command.
+        
+        Args:
+            bot: The bot instance.
+        """
         super().__init__(bot)
         
         # Fallback arrays if translations not available
         self._init_fallback_arrays()
     
-    def _init_fallback_arrays(self):
-        """Initialize fallback arrays for when translations are not available"""
+    def _init_fallback_arrays(self) -> None:
+        """Initialize fallback arrays for when translations are not available."""
         # Time-neutral greeting openings
         self.greeting_openings_fallback = [
             "Hello", "Greetings", "Salutations", "Hi", "Hey", "Howdy", "Yo", "Sup", 
@@ -171,57 +177,100 @@ class HelloCommand(BaseCommand):
             ]
         }        
     
-    def get_greeting_openings(self) -> list:
-        """Get greeting openings from translations or fallback"""
+    def get_greeting_openings(self) -> List[str]:
+        """Get greeting openings from translations or fallback.
+        
+        Returns:
+            List[str]: A list of greeting opening strings.
+        """
         openings = self.translate_get_value('commands.hello.greeting_openings')
         if openings and isinstance(openings, list) and len(openings) > 0:
             return openings
         return self.greeting_openings_fallback
     
-    def get_morning_greetings(self) -> list:
-        """Get morning greetings from translations or fallback"""
+    def get_morning_greetings(self) -> List[str]:
+        """Get morning greetings from translations or fallback.
+        
+        Returns:
+            List[str]: A list of morning greeting strings.
+        """
         greetings = self.translate_get_value('commands.hello.morning_greetings')
         if greetings and isinstance(greetings, list) and len(greetings) > 0:
             return greetings
         return self.morning_greetings_fallback
     
-    def get_afternoon_greetings(self) -> list:
-        """Get afternoon greetings from translations or fallback"""
+    def get_afternoon_greetings(self) -> List[str]:
+        """Get afternoon greetings from translations or fallback.
+        
+        Returns:
+            List[str]: A list of afternoon greeting strings.
+        """
         greetings = self.translate_get_value('commands.hello.afternoon_greetings')
         if greetings and isinstance(greetings, list) and len(greetings) > 0:
             return greetings
         return self.afternoon_greetings_fallback
     
-    def get_evening_greetings(self) -> list:
-        """Get evening greetings from translations or fallback"""
+    def get_evening_greetings(self) -> List[str]:
+        """Get evening greetings from translations or fallback.
+        
+        Returns:
+            List[str]: A list of evening greeting strings.
+        """
         greetings = self.translate_get_value('commands.hello.evening_greetings')
         if greetings and isinstance(greetings, list) and len(greetings) > 0:
             return greetings
         return self.evening_greetings_fallback
     
-    def get_human_descriptors(self) -> list:
-        """Get human descriptors from translations or fallback"""
+    def get_human_descriptors(self) -> List[str]:
+        """Get human descriptors from translations or fallback.
+        
+        Returns:
+            List[str]: A list of human descriptor strings.
+        """
         descriptors = self.translate_get_value('commands.hello.human_descriptors')
         if descriptors and isinstance(descriptors, list) and len(descriptors) > 0:
             return descriptors
         return self.human_descriptors_fallback
     
-    def get_emoji_responses(self) -> dict:
-        """Get emoji responses from translations or fallback"""
+    def get_emoji_responses(self) -> Dict[str, List[str]]:
+        """Get emoji responses from translations or fallback.
+        
+        Returns:
+            Dict[str, List[str]]: A dictionary mapping emojis to lists of response strings.
+        """
         responses = self.translate_get_value('commands.hello.emoji_responses')
         if responses and isinstance(responses, dict) and len(responses) > 0:
             return responses
         return self.emoji_responses_fallback        
     
     def get_help_text(self) -> str:
+        """Get help text for the hello command.
+        
+        Returns:
+            str: The help text for this command.
+        """
         return self.translate('commands.hello.help')
     
     def matches_custom_syntax(self, message: MeshMessage) -> bool:
-        """Check if message contains only defined emojis"""
+        """Check if message contains only defined emojis.
+        
+        Args:
+            message: The message to check.
+            
+        Returns:
+            bool: True if it's an emoji-only message, False otherwise.
+        """
         return self.is_emoji_only_message(message.content)
     
     async def execute(self, message: MeshMessage) -> bool:
-        """Execute the hello command"""
+        """Execute the hello command.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if executed successfully, False otherwise.
+        """
         # Get bot name from config
         bot_name = self.bot.config.get('Bot', 'bot_name', fallback='Bot')
         

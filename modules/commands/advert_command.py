@@ -5,6 +5,7 @@ Handles the 'advert' command for sending flood adverts
 """
 
 import time
+from typing import Any
 from .base_command import BaseCommand
 from ..models import MeshMessage
 
@@ -25,6 +26,14 @@ class AdvertCommand(BaseCommand):
     cooldown_seconds = 3600  # 1 hour
     category = "special"
     
+    def __init__(self, bot: Any):
+        """Initialize the advert command.
+        
+        Args:
+            bot: The bot instance.
+        """
+        super().__init__(bot)
+        
     def get_help_text(self) -> str:
         """Get help text for the advert command.
         

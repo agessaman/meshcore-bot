@@ -20,6 +20,7 @@ class HfcondCommand(BaseCommand):
     keywords = ['hfcond']
     description = "Get HF band conditions for ham radio"
     category = "solar"
+    requires_internet = True  # Requires internet access for hamqsl.com API
     
     def __init__(self, bot):
         """Initialize the hfcond command.

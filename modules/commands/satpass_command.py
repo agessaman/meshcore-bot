@@ -16,6 +16,7 @@ class SatpassCommand(BaseCommand):
     keywords = ['satpass']
     description = "Get satellite pass info: satpass <NORAD_number_or_shortcut> [visual]"
     category = "solar"
+    requires_internet = True  # Requires internet access for N2YO API
     
     # Common satellite shortcuts
     SATELLITE_SHORTCUTS = {

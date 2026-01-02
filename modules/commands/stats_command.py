@@ -25,7 +25,12 @@ class StatsCommand(BaseCommand):
     description = "Show statistics for past 24 hours. Use 'stats messages', 'stats channels', or 'stats paths' for specific stats."
     category = "analytics"
     
-    def __init__(self, bot):
+    def __init__(self, bot: Any):
+        """Initialize the stats command.
+        
+        Args:
+            bot: The bot instance.
+        """
         super().__init__(bot)
         self._load_config()
         self._init_stats_tables()
@@ -295,6 +300,11 @@ class StatsCommand(BaseCommand):
         return path
     
     def get_help_text(self) -> str:
+        """Get help text for the stats command.
+        
+        Returns:
+            str: The help text for this command.
+        """
         return self.translate('commands.stats.help')
     
     async def execute(self, message: MeshMessage) -> bool:
