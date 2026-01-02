@@ -500,6 +500,16 @@ class DBManager:
         """Set bot start time in metadata"""
         self.set_metadata('start_time', str(start_time))
     
+    def get_connection(self) -> sqlite3.Connection:
+        """Get a database connection with proper configuration
+        
+        Returns:
+            sqlite3.Connection with row factory and timeout configured
+        """
+        conn = sqlite3.connect(str(self.db_path), timeout=30.0)
+        conn.row_factory = sqlite3.Row
+        return conn
+    
     def set_system_health(self, health_data: Dict[str, Any]):
         """Store system health data in metadata"""
         try:
