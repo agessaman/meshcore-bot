@@ -20,7 +20,7 @@ Team IDs should be periodically verified, especially after:
 """
 
 from datetime import datetime, timezone
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, TYPE_CHECKING
 from .base_command import BaseCommand
 from ..models import MeshMessage
 from ..clients.espn_client import ESPNClient
@@ -28,6 +28,9 @@ from ..clients.thesportsdb_client import TheSportsDBClient
 from ..clients.sports_mappings import (
     SPORT_EMOJIS, TEAM_MAPPINGS, LEAGUE_MAPPINGS
 )
+
+if TYPE_CHECKING:
+    from ..core import MeshCoreBot
 
 
 class SportsCommand(BaseCommand):
@@ -47,15 +50,20 @@ class SportsCommand(BaseCommand):
     # TheSportsDB client for leagues not supported by ESPN
     thesportsdb_client: Optional[TheSportsDBClient] = None
     
-    
-    def __init__(self, bot):
+
+    def __init__(self, bot: "MeshCoreBot"):
+        """Initialize the sports command with API clients and configuration.
+
+        Args:
+            bot: The MeshCoreBot instance that owns this command.
+        """
         super().__init__(bot)
         self.url_timeout = 10  # seconds
-        
+
         # Initialize API clients
         self.espn_client = ESPNClient(logger=self.logger, timeout=self.url_timeout)
         self.thesportsdb_client = TheSportsDBClient(logger=self.logger)
-        
+
         # Load default teams from config
         self.default_teams = self.load_default_teams()
         # Note: allowed_channels is now loaded by BaseCommand from config

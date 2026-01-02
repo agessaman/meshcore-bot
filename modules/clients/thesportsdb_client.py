@@ -15,7 +15,14 @@ class TheSportsDBClient:
     BASE_URL = "https://www.thesportsdb.com/api/v1/json"
     FREE_API_KEY = "123"  # Free public API key
     
-    def __init__(self, logger=None, timeout: int = 10, session: Optional[aiohttp.ClientSession] = None):
+    def __init__(self, logger: Optional[logging.Logger] = None, timeout: int = 10, session: Optional[aiohttp.ClientSession] = None):
+        """Initialize the TheSportsDB API client with rate limiting.
+
+        Args:
+            logger: Logger instance for error and info logging. If None, creates a default logger.
+            timeout: Request timeout in seconds (default: 10)
+            session: Optional existing aiohttp session to reuse. If None, creates new sessions as needed.
+        """
         self.logger = logger or logging.getLogger(__name__)
         self.timeout = aiohttp.ClientTimeout(total=timeout)
         self.session = session
