@@ -122,10 +122,8 @@ class CmdCommand(BaseCommand):
             # Fallback to dynamic command list if no custom keyword is defined
             # Get max message length to ensure we fit within limits
             max_length = self.get_max_message_length(message)
-            # Reserve space for "Available commands: " prefix
-            available_length = max_length - len("Available commands: ")
-            commands_list = self._get_commands_list(max_length=available_length)
-            response = f"Available commands: {commands_list}"
+            # _get_commands_list handles the prefix internally
+            response = self._get_commands_list(max_length=max_length)
             return await self.send_response(message, response)
         except Exception as e:
             self.logger.error(f"Error executing cmd command: {e}")
