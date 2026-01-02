@@ -26,15 +26,24 @@ class InternetStatusCache:
     Attributes:
         has_internet: Boolean indicating if internet is available.
         timestamp: Timestamp of the last check.
-        lock: Asyncio lock for thread-safe operations.
+        _lock: Asyncio lock for thread-safe operations (lazily initialized).
     """
     has_internet: bool
     timestamp: float
-    lock: Optional[asyncio.Lock] = None
+    _lock: Optional[asyncio.Lock] = None
     
-    def __post_init__(self):
-        if self.lock is None:
-            self.lock = asyncio.Lock()
+    def _get_lock(self) -> asyncio.Lock:
+        """Lazily initialize the async lock.
+        
+        Creates the lock only when first needed in an async context,
+        preventing RuntimeError when instantiated before event loop is running.
+        
+        Returns:
+            asyncio.Lock: The lock instance.
+        """
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
     
     def is_valid(self, cache_duration: float) -> bool:
         """Check if cache entry is still valid.
@@ -826,7 +835,7 @@ class CommandManager:
             bool: True if internet is available, False otherwise.
         """
         # Use lock to prevent race conditions when checking/updating cache
-        async with self._internet_cache.lock:
+        async with self._internet_cache._get_lock():
             current_time = time.time()
             
             # Check if we have a valid cached result
