@@ -897,7 +897,7 @@ stats_in_status_enabled = true
 stats_refresh_interval = 300
 
 # JWT renewal interval (seconds, 0 = disabled)
-jwt_renewal_interval = 3600
+jwt_renewal_interval = 86400
 
 # Health check interval (seconds, 0 = disabled)
 health_check_interval = 30
