@@ -983,16 +983,54 @@ class WeatherService(BaseServicePlugin):
                 return None
             
             # Extract link URL (ATOM feeds have <link> elements)
+            # Prefer HTML links over CAP XML links
             link_url = ""
+            html_link_url = ""
+            cap_link_url = ""
+            
             link_elems = entry.getElementsByTagName("link")
             for link_elem in link_elems:
+                href = ""
                 if link_elem.hasAttribute("href"):
-                    link_url = link_elem.getAttribute("href")
-                    break
-                # Also check for text content
-                if link_elem.childNodes and link_elem.firstChild:
-                    link_url = link_elem.firstChild.nodeValue
-                    break
+                    href = link_elem.getAttribute("href")
+                elif link_elem.childNodes and link_elem.firstChild:
+                    href = link_elem.firstChild.nodeValue
+                
+                if not href:
+                    continue
+                
+                # Check link type and rel attributes
+                link_type = link_elem.getAttribute("type") or ""
+                link_rel = link_elem.getAttribute("rel") or ""
+                
+                # Prefer HTML links
+                if "text/html" in link_type or link_rel == "alternate":
+                    html_link_url = href
+                # Track CAP XML links as fallback
+                elif "cap+xml" in link_type or href.endswith(".cap") or "/alerts/" in href:
+                    cap_link_url = href
+            
+            # Use HTML link if available, otherwise fall back to first link or CAP link
+            if html_link_url:
+                link_url = html_link_url
+            elif cap_link_url:
+                # Convert CAP XML URL to HTML view URL
+                link_url = self._convert_cap_url_to_html(cap_link_url)
+            elif link_elems:
+                # Fallback: use first link found
+                first_link = link_elems[0]
+                if first_link.hasAttribute("href"):
+                    href = first_link.getAttribute("href")
+                    if href.endswith(".cap") or "/alerts/" in href:
+                        link_url = self._convert_cap_url_to_html(href)
+                    else:
+                        link_url = href
+                elif first_link.childNodes and first_link.firstChild:
+                    href = first_link.firstChild.nodeValue
+                    if href.endswith(".cap") or "/alerts/" in href:
+                        link_url = self._convert_cap_url_to_html(href)
+                    else:
+                        link_url = href
             
             # Extract summary/content
             summary = ""
@@ -1537,6 +1575,73 @@ class WeatherService(BaseServicePlugin):
         
         # If all parsing fails, return None (will use current time as fallback)
         return None
+    
+    def _convert_cap_url_to_html(self, cap_url: str) -> str:
+        """Convert CAP XML URL to a more readable format.
+        
+        For NOAA alerts, converts CAP XML URLs to API URLs that return JSON format.
+        According to NWS API documentation (https://www.weather.gov/documentation/services-web-api),
+        the API supports content negotiation and returns GeoJSON by default, which browsers
+        can display in a readable format with syntax highlighting.
+        
+        Note: The NWS alerts webpage has been decommissioned, so there is no direct HTML
+        view of individual alerts. The API JSON format is the most readable option available.
+        
+        Args:
+            cap_url: CAP XML URL (e.g., https://api.weather.gov/alerts/urn:oid:....cap)
+        
+        Returns:
+            str: API URL that returns JSON format (more readable than XML).
+        """
+        if not cap_url:
+            return cap_url
+        
+        # Check if this is a NOAA API alert URL
+        if "api.weather.gov/alerts/" in cap_url:
+            # Extract alert identifier from URL
+            # Pattern: https://api.weather.gov/alerts/urn:oid:... or ...urn:oid:....cap
+            parts = cap_url.split("/alerts/")
+            if len(parts) > 1:
+                alert_id = parts[1].split("?")[0].split("#")[0]  # Remove query params and fragments
+                # Remove .cap extension if present
+                if alert_id.endswith(".cap"):
+                    alert_id = alert_id[:-4]
+                # Use the API URL without .cap extension
+                # Per NWS API docs, this returns GeoJSON by default (application/geo+json)
+                # which browsers can display with syntax highlighting, making it readable
+                # This is the best available option since the alerts webpage was decommissioned
+                return f"https://api.weather.gov/alerts/{alert_id}"
+        
+        # Check if URL ends with .cap or contains alert identifier
+        if cap_url.endswith(".cap") or "urn:oid" in cap_url or "urn_oid" in cap_url:
+            # Try to extract the alert identifier
+            # Pattern: urn:oid:... or urn_oid_... (may include .cap extension)
+            # First try to extract from the path
+            if "/alerts/" in cap_url:
+                parts = cap_url.split("/alerts/")
+                if len(parts) > 1:
+                    alert_id = parts[1].split("?")[0].split("#")[0]
+                    if alert_id.endswith(".cap"):
+                        alert_id = alert_id[:-4]
+                    # Convert underscores to colons if needed
+                    alert_id = alert_id.replace("_", ":")
+                    # Use the API URL without .cap extension
+                    # Returns GeoJSON format which browsers display nicely
+                    return f"https://api.weather.gov/alerts/{alert_id}"
+            
+            # Fallback: extract using regex
+            match = re.search(r'urn[:_]oid[:_]([^./?&#]+)', cap_url)
+            if match:
+                alert_id = match.group(1).replace("_", ":")
+                # Remove .cap if it was captured
+                if alert_id.endswith(".cap"):
+                    alert_id = alert_id[:-4]
+                # Use the API URL - returns GeoJSON format
+                return f"https://api.weather.gov/alerts/{alert_id}"
+        
+        # If we can't convert it, return the original URL
+        # The URL shortener might still work, but users will get XML
+        return cap_url
     
     async def _shorten_url(self, url: str) -> str:
         """Shorten URL using is.gd service.
