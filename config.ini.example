@@ -988,3 +988,46 @@ blitz_collection_interval = 600000
 # blitz_area_min_lon = 15.54
 # blitz_area_max_lat = 48.76
 # blitz_area_max_lon = 18.62
+
+[DiscordBridge]
+# Enable Discord bridge service
+# Posts MeshCore channel messages to Discord via webhooks (one-way, read-only)
+# true: Enable Discord bridge
+# false: Discord bridge disabled (default)
+enabled = false
+
+# IMPORTANT: Direct messages (DMs) are NEVER bridged to Discord
+# This is hardcoded for privacy and cannot be changed
+
+# Discord Rate Limits:
+# - Webhooks are limited to 30 messages per minute per webhook URL
+# - The service will log warnings if approaching rate limit (within 20% of exhaustion)
+# - If rate limited, Discord returns HTTP 429 with retry-after header
+
+# Avatar generation style
+# Controls how user avatars are generated in Discord
+# Options:
+#   color - Generate colored Discord default avatars based on username hash (default, no external API)
+#   fun-emoji - Fun emoji-style avatars from DiceBear API
+#   avataaars - Cartoon avatar faces from DiceBear API
+#   bottts - Robot avatars from DiceBear API
+#   identicon - Geometric patterns (GitHub-style) from DiceBear API
+#   pixel-art - Retro pixel-style avatars from DiceBear API
+#   adventurer - Adventure-themed avatars from DiceBear API
+#   initials - User initials on colored background from DiceBear API
+# Default: color
+avatar_style = color
+
+# Channel mappings: bridge.<meshcore_channel> = <discord_webhook_url>
+# Only channels explicitly listed here will be bridged to Discord
+# Get webhook URLs from Discord: Channel Settings → Integrations → Webhooks → Create Webhook
+#
+# SECURITY WARNING: Webhook URLs contain authentication tokens
+# - Keep this config file secure and never commit real webhook URLs to version control
+# - Anyone with the webhook URL can post to your Discord channel
+# - Rotate webhook URLs immediately if exposed
+#
+# Example mappings:
+# bridge.general = https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz1234567890ABCDEFGHIJKLMNOPQRST
+# bridge.emergency = https://discord.com/api/webhooks/987654321098765432/ZYXWVUTSRQPONMLKJIHGFEDCBA0987654321zyxwvutsrqponmlkjihgf
+# bridge.wx = https://discord.com/api/webhooks/111222333444555666/WeatherChannelWebhookTokenGoesHere1234567890abcdefghijklmno

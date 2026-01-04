@@ -13,6 +13,13 @@ A Python bot that connects to MeshCore mesh networks via serial port, BLE, or TC
 - **Direct Message Support**: Respond to private messages
 - **Logging**: Console and file logging with configurable levels
 
+### Service Plugins
+
+- **Discord Bridge**: One-way webhook bridge to post mesh messages to Discord ([docs](docs/DISCORD_BRIDGE.md))
+- **Packet Capture**: Capture and publish packets to MQTT brokers ([docs](docs/PACKET_CAPTURE.md))
+- **Map Uploader**: Upload node adverts to map.meshcore.dev ([docs](docs/MAP_UPLOADER.md))
+- **Weather Service**: Scheduled forecasts, alerts, and lightning detection ([docs](docs/WEATHER_SERVICE.md))
+
 ## Requirements
 
 - Python 3.7+
@@ -151,11 +158,11 @@ Quick reference:
 - **Basic:** `test`, `ping`, `help`, `hello`, `cmd`
 - **Information:** `wx`, `gwx`, `aqi`, `sun`, `moon`, `solar`, `solarforecast`, `hfcond`, `satpass`, `channels`
 - **Emergency:** `alert`
-- **Gaming:** `dice`, `roll`
-- **Entertainment:** `joke`, `dadjoke`, `hacker`
+- **Gaming:** `dice`, `roll`, `magic8`
+- **Entertainment:** `joke`, `dadjoke`, `hacker`, `catfact`
 - **Sports:** `sports`
-- **MeshCore Utility:** `path`, `prefix`, `stats`, `multitest`
-- **Management (DM only):** `repeater`, `advert`, `feed`
+- **MeshCore Utility:** `path`, `prefix`, `stats`, `multitest`, `webviewer`
+- **Management (DM only):** `repeater`, `advert`, `feed`, `announcements`, `greeter`
 
 ## Message Response Templates
 
@@ -254,17 +261,18 @@ The bot uses a modular plugin architecture:
 
 - **Core modules** (`modules/`): Shared utilities and core functionality
 - **Command plugins** (`modules/commands/`): Individual command implementations
-- **Plugin loader**: Dynamic discovery and loading of command plugins
+- **Service plugins** (`modules/service_plugins/`): Background services (Discord bridge, packet capture, etc.)
+- **Plugin loaders**: Dynamic discovery and loading of command and service plugins
 - **Message handler**: Processes incoming messages and routes to appropriate handlers
 
-### Adding New Commands
+### Adding New Plugins
 
-1. Create a new command file in `modules/commands/`
+**Command Plugin:**
+1. Create a new file in `modules/commands/`
 2. Inherit from `BaseCommand`
 3. Implement the `execute()` method
-4. The plugin loader will automatically discover and load the command
+4. The plugin loader will automatically discover and load it
 
-Example:
 ```python
 from .base_command import BaseCommand
 from ..models import MeshMessage
@@ -273,11 +281,17 @@ class MyCommand(BaseCommand):
     name = "mycommand"
     keywords = ['mycommand']
     description = "My custom command"
-    
+
     async def execute(self, message: MeshMessage) -> bool:
         await self.send_response(message, "Hello from my command!")
         return True
 ```
+
+**Service Plugin:**
+1. Create a new file in `modules/service_plugins/`
+2. Inherit from `BaseServicePlugin`
+3. Implement `start()` and `stop()` methods
+4. Add configuration section to `config.ini.example`
 
 ## Contributing
 
@@ -289,88 +303,6 @@ class MyCommand(BaseCommand):
 ## License
 
 This project is licensed under the MIT License.
-
-## Packet Capture Service
-
-The bot includes an integrated packet capture service that can capture packets from the MeshCore network and publish them to MQTT brokers. This service is based on the standalone [meshcore-packet-capture](https://github.com/agessaman/meshcore-packet-capture) project.
-
-### Features
-
-- **Packet Capture**: Captures all incoming packets from the MeshCore network
-- **MQTT Publishing**: Publishes packets to one or more MQTT brokers
-- **Multiple Brokers**: Support for multiple MQTT brokers with individual configuration
-- **JWT Authentication**: Supports JWT-based authentication with on-device or Python signing
-- **Status Publishing**: Periodically publishes device status and statistics
-- **File Output**: Optional file output for packet logging
-
-### Configuration
-
-Enable the packet capture service in `config.ini`:
-
-```ini
-[PacketCapture]
-enabled = true
-output_file = packets.json          # Optional: save packets to file
-verbose = false                      # Enable verbose packet output
-debug = false                        # Enable debug logging
-
-# Owner information (for JWT authentication)
-owner_public_key = YOUR_OWNER_PUBLIC_KEY
-owner_email = your.email@example.com
-
-# Private key (optional if using on-device signing)
-private_key_path = /path/to/private_key.txt
-auth_token_method = device           # device or python
-
-# IATA airport code for topic templating
-iata = LOC
-
-# MQTT Broker Configuration (mqttN_* format)
-# Multiple brokers can be configured (mqtt1_*, mqtt2_*, etc.)
-
-# Broker 1 (Let's Mesh Analyzer - EU)
-mqtt1_server = mqtt-eu-v1.letsmesh.net
-mqtt1_port = 443
-mqtt1_transport = websockets
-mqtt1_use_tls = true
-mqtt1_use_auth_token = true
-mqtt1_token_audience = mqtt-eu-v1.letsmesh.net
-mqtt1_topic_status = meshcore/{IATA}/{PUBLIC_KEY}/status
-mqtt1_topic_packets = meshcore/{IATA}/{PUBLIC_KEY}/packets
-mqtt1_websocket_path = /mqtt
-
-# Broker 2 (Let's Mesh Analyzer - US)
-mqtt2_server = mqtt-us-v1.letsmesh.net
-mqtt2_port = 443
-mqtt2_transport = websockets
-mqtt2_use_tls = true
-mqtt2_use_auth_token = true
-mqtt2_token_audience = mqtt-us-v1.letsmesh.net
-mqtt2_topic_status = meshcore/{IATA}/{PUBLIC_KEY}/status
-mqtt2_topic_packets = meshcore/{IATA}/{PUBLIC_KEY}/packets
-mqtt2_websocket_path = /mqtt
-
-# Stats and status publishing
-stats_in_status_enabled = true
-stats_refresh_interval = 300         # Publish status every 5 minutes
-
-# JWT renewal interval (seconds, 0 = disabled)
-jwt_renewal_interval = 3600
-
-# Health check interval (seconds, 0 = disabled)
-health_check_interval = 30
-health_check_grace_period = 2
-```
-
-### MQTT Topic Templates
-
-Topic templates support placeholders:
-- `{IATA}` - Replaced with the configured IATA code
-- `{PUBLIC_KEY}` - Replaced with the device's public key
-
-### Standalone Version
-
-For a standalone packet capture solution that doesn't require the full bot, see the [meshcore-packet-capture](https://github.com/agessaman/meshcore-packet-capture) project.
 
 ## Acknowledgments
 
