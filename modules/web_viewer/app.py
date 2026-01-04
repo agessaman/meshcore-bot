@@ -1337,65 +1337,102 @@ class BotDataViewer:
         @self.socketio.on('connect')
         def handle_connect():
             """Handle client connection"""
-            client_id = request.sid
-            self.logger.info(f"Client connected: {client_id}")
-            
-            # Check client limit
-            if len(self.connected_clients) >= self.max_clients:
-                self.logger.warning(f"Client limit reached ({self.max_clients}), rejecting connection")
-                disconnect()
+            try:
+                client_id = request.sid
+                if not client_id:
+                    self.logger.warning("Connect event received but client_id is None")
+                    return False
+                
+                self.logger.info(f"Client connected: {client_id}")
+                
+                # Check client limit
+                if len(self.connected_clients) >= self.max_clients:
+                    self.logger.warning(f"Client limit reached ({self.max_clients}), rejecting connection")
+                    try:
+                        disconnect()
+                    except Exception as e:
+                        self.logger.error(f"Error disconnecting client: {e}")
+                    return False
+                
+                # Track client
+                self.connected_clients[client_id] = {
+                    'connected_at': time.time(),
+                    'last_activity': time.time(),
+                    'subscribed_commands': False,
+                    'subscribed_packets': False
+                }
+                
+                # Connection status is shown via the green indicator in the navbar, no toast needed
+                self.logger.info(f"Client {client_id} connected. Total clients: {len(self.connected_clients)}")
+            except Exception as e:
+                self.logger.error(f"Error in handle_connect: {e}", exc_info=True)
                 return False
-            
-            # Track client
-            self.connected_clients[client_id] = {
-                'connected_at': time.time(),
-                'last_activity': time.time(),
-                'subscribed_commands': False,
-                'subscribed_packets': False
-            }
-            
-            # Connection status is shown via the green indicator in the navbar, no toast needed
-            self.logger.info(f"Client {client_id} connected. Total clients: {len(self.connected_clients)}")
         
         @self.socketio.on('disconnect')
         def handle_disconnect(data=None):
             """Handle client disconnection"""
-            client_id = request.sid
-            if client_id in self.connected_clients:
-                del self.connected_clients[client_id]
-                self.logger.info(f"Client {client_id} disconnected. Total clients: {len(self.connected_clients)}")
+            try:
+                # Safely get client_id - it may be None if disconnect happens during error state
+                client_id = getattr(request, 'sid', None)
+                if client_id and client_id in self.connected_clients:
+                    del self.connected_clients[client_id]
+                    self.logger.info(f"Client {client_id} disconnected. Total clients: {len(self.connected_clients)}")
+                elif client_id:
+                    # Client disconnected but wasn't in our tracking dict (might have been cleaned up)
+                    self.logger.debug(f"Client {client_id} disconnected (not in tracking dict)")
+                else:
+                    # No client_id available - this can happen during error states
+                    self.logger.debug("Disconnect event received but client_id is None")
+            except Exception as e:
+                # Don't emit errors during disconnect as the connection may be broken
+                self.logger.error(f"Error in handle_disconnect: {e}", exc_info=True)
         
         @self.socketio.on('subscribe_commands')
         def handle_subscribe_commands():
             """Handle command stream subscription"""
-            client_id = request.sid
-            if client_id in self.connected_clients:
-                self.connected_clients[client_id]['subscribed_commands'] = True
-                emit('status', {'message': 'Subscribed to command stream'})
-                self.logger.debug(f"Client {client_id} subscribed to commands")
+            try:
+                client_id = getattr(request, 'sid', None)
+                if client_id and client_id in self.connected_clients:
+                    self.connected_clients[client_id]['subscribed_commands'] = True
+                    emit('status', {'message': 'Subscribed to command stream'})
+                    self.logger.debug(f"Client {client_id} subscribed to commands")
+            except Exception as e:
+                self.logger.error(f"Error in handle_subscribe_commands: {e}", exc_info=True)
         
         @self.socketio.on('subscribe_packets')
         def handle_subscribe_packets():
             """Handle packet stream subscription"""
-            client_id = request.sid
-            if client_id in self.connected_clients:
-                self.connected_clients[client_id]['subscribed_packets'] = True
-                emit('status', {'message': 'Subscribed to packet stream'})
-                self.logger.debug(f"Client {client_id} subscribed to packets")
+            try:
+                client_id = getattr(request, 'sid', None)
+                if client_id and client_id in self.connected_clients:
+                    self.connected_clients[client_id]['subscribed_packets'] = True
+                    emit('status', {'message': 'Subscribed to packet stream'})
+                    self.logger.debug(f"Client {client_id} subscribed to packets")
+            except Exception as e:
+                self.logger.error(f"Error in handle_subscribe_packets: {e}", exc_info=True)
         
         @self.socketio.on('ping')
         def handle_ping():
             """Handle client ping (modern ping/pong pattern)"""
-            client_id = request.sid
-            if client_id in self.connected_clients:
-                self.connected_clients[client_id]['last_activity'] = time.time()
-                emit('pong')  # Server responds with pong (Flask-SocketIO 5.x pattern)
+            try:
+                client_id = getattr(request, 'sid', None)
+                if client_id and client_id in self.connected_clients:
+                    self.connected_clients[client_id]['last_activity'] = time.time()
+                    emit('pong')  # Server responds with pong (Flask-SocketIO 5.x pattern)
+            except Exception as e:
+                self.logger.error(f"Error in handle_ping: {e}", exc_info=True)
         
         @self.socketio.on_error_default
         def default_error_handler(e):
             """Handle SocketIO errors gracefully"""
-            self.logger.error(f"SocketIO error: {e}")
-            emit('error', {'message': str(e)})
+            try:
+                self.logger.error(f"SocketIO error: {e}", exc_info=True)
+                # Only emit if we have a valid request context
+                if hasattr(request, 'sid') and request.sid:
+                    emit('error', {'message': str(e)})
+            except Exception as emit_error:
+                # If we can't emit, just log it
+                self.logger.error(f"Error emitting error message: {emit_error}")
     
     def _handle_command_data(self, command_data):
         """Handle incoming command data from bot"""
@@ -1435,6 +1472,7 @@ class BotDataViewer:
             last_timestamp = 0
             consecutive_errors = 0
             max_consecutive_errors = 10
+            db_path = None
             
             while True:
                 try:
@@ -1442,14 +1480,45 @@ class BotDataViewer:
                     import sqlite3
                     import json
                     
-                    # Get database path
+                    # Get database path (re-resolve on each iteration in case config changed)
                     db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
                     
                     # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
                     db_path = resolve_path(db_path, self.bot_root)
                     
+                    # Check if database file exists and is accessible
+                    db_file = Path(db_path)
+                    if not db_file.exists():
+                        consecutive_errors += 1
+                        if consecutive_errors == 1 or consecutive_errors % 10 == 0:
+                            self.logger.warning(f"Database file does not exist: {db_path}")
+                        time.sleep(5)
+                        continue
+                    
+                    if not os.access(db_path, os.R_OK):
+                        consecutive_errors += 1
+                        if consecutive_errors == 1 or consecutive_errors % 10 == 0:
+                            self.logger.warning(f"Database file is not readable: {db_path}")
+                        time.sleep(5)
+                        continue
+                    
                     # Connect to database with timeout to prevent hanging
-                    with sqlite3.connect(db_path, timeout=30) as conn:
+                    # Use check_same_thread=False for thread safety, but be careful
+                    try:
+                        conn = sqlite3.connect(db_path, timeout=30, check_same_thread=False)
+                        conn.row_factory = sqlite3.Row
+                    except sqlite3.OperationalError as conn_error:
+                        error_msg = str(conn_error)
+                        if "locked" in error_msg.lower() or "database is locked" in error_msg.lower():
+                            consecutive_errors += 1
+                            if consecutive_errors == 1 or consecutive_errors % 10 == 0:
+                                self.logger.warning(f"Database is locked, waiting: {db_path}")
+                            time.sleep(2)
+                            continue
+                        else:
+                            raise
+                    
+                    try:
                         cursor = conn.cursor()
                         
                         # Get new data since last poll
@@ -1462,8 +1531,11 @@ class BotDataViewer:
                         rows = cursor.fetchall()
                         
                         # Process new data
-                        for timestamp, data_json, data_type in rows:
+                        for row in rows:
                             try:
+                                timestamp = row[0]
+                                data_json = row[1]
+                                data_type = row[2]
                                 data = json.loads(data_json)
                                 
                                 # Broadcast based on type
@@ -1480,9 +1552,11 @@ class BotDataViewer:
                         # Update last timestamp
                         if rows:
                             last_timestamp = rows[-1][0]
-                    
-                    # Reset error counter on success
-                    consecutive_errors = 0
+                        
+                        # Reset error counter on success
+                        consecutive_errors = 0
+                    finally:
+                        conn.close()
                     
                     # Sleep before next poll
                     time.sleep(0.5)  # Poll every 500ms
@@ -1491,9 +1565,27 @@ class BotDataViewer:
                     consecutive_errors += 1
                     error_msg = str(e)
                     
+                    # Provide more diagnostic information on first error or periodic errors
+                    if consecutive_errors == 1 or consecutive_errors % 10 == 0:
+                        if db_path:
+                            db_file = Path(db_path)
+                            exists = db_file.exists()
+                            readable = os.access(db_path, os.R_OK) if exists else False
+                            writable = os.access(db_path, os.W_OK) if exists else False
+                            self.logger.error(
+                                f"Database polling error (attempt {consecutive_errors}): {error_msg}\n"
+                                f"  Path: {db_path}\n"
+                                f"  Exists: {exists}\n"
+                                f"  Readable: {readable}\n"
+                                f"  Writable: {writable}"
+                            )
+                        else:
+                            self.logger.error(f"Database polling error (attempt {consecutive_errors}): {error_msg}")
+                    
                     # Log at appropriate level based on error frequency
                     if consecutive_errors >= max_consecutive_errors:
-                        self.logger.error(f"Database polling persistent error (attempt {consecutive_errors}): {error_msg}")
+                        if consecutive_errors == max_consecutive_errors:
+                            self.logger.error(f"Database polling persistent error (attempt {consecutive_errors}): {error_msg}")
                         # Exponential backoff for persistent errors
                         time.sleep(min(60, 2 ** min(consecutive_errors - max_consecutive_errors, 5)))
                     elif consecutive_errors > 3:
@@ -1506,7 +1598,8 @@ class BotDataViewer:
                 except Exception as e:
                     consecutive_errors += 1
                     if consecutive_errors >= max_consecutive_errors:
-                        self.logger.error(f"Database polling unexpected error (attempt {consecutive_errors}): {e}", exc_info=True)
+                        if consecutive_errors == max_consecutive_errors:
+                            self.logger.error(f"Database polling unexpected error (attempt {consecutive_errors}): {e}", exc_info=True)
                         time.sleep(min(60, 2 ** min(consecutive_errors - max_consecutive_errors, 5)))
                     else:
                         self.logger.warning(f"Database polling unexpected error (attempt {consecutive_errors}): {e}")
