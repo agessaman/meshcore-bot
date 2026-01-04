@@ -1169,8 +1169,15 @@ class PathCommand(BaseCommand):
                     path_input = path_part
                     return await self._decode_path(path_input)
                 else:
-                    # Single node or unknown format
-                    return self.translate('commands.path.path_prefix', path_string=path_string)
+                    # Try to decode even single nodes (e.g., "01" should be decoded to a repeater name)
+                    # Check if path_part looks like it contains hex values
+                    hex_pattern = r'[0-9a-fA-F]{2}'
+                    if re.search(hex_pattern, path_part):
+                        # Looks like hex values, try to decode
+                        return await self._decode_path(path_part)
+                    else:
+                        # Unknown format - just show the raw path string
+                        return self.translate('commands.path.path_prefix', path_string=path_string)
             else:
                 return self.translate('commands.path.no_path')
                 
