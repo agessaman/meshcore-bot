@@ -8,6 +8,7 @@ import asyncio
 import time
 import json
 import re
+import copy
 from typing import List, Optional, Dict, Any
 from meshcore import EventType
 
@@ -69,7 +70,12 @@ class MessageHandler:
             metadata: Optional metadata dictionary associated with the event.
         """
         try:
-            payload = event.payload
+            # Copy payload immediately to avoid segfault if event is freed
+            import copy
+            payload = copy.deepcopy(event.payload) if hasattr(event, 'payload') else None
+            if payload is None:
+                self.logger.warning("Contact message event has no payload")
+                return
             
             # Debug: Log the full payload structure
             self.logger.debug(f"Contact message payload: {payload}")
@@ -362,7 +368,13 @@ class MessageHandler:
             metadata: Optional metadata dictionary.
         """
         try:
-            payload = event.payload
+            # Copy payload immediately to avoid segfault if event is freed
+            # Make a deep copy to ensure we have all the data we need
+            payload = copy.deepcopy(event.payload) if hasattr(event, 'payload') else None
+            if payload is None:
+                self.logger.warning("RAW_DATA event has no payload")
+                return
+            
             self.logger.info(f"📦 RAW_DATA EVENT RECEIVED: {payload}")
             self.logger.info(f"📦 Event type: {type(event)}")
             self.logger.info(f"📦 Metadata: {metadata}")
@@ -559,7 +571,12 @@ class MessageHandler:
             metadata: Optional metadata dictionary.
         """
         try:
-            payload = event.payload
+            # Copy payload immediately to avoid segfault if event is freed
+            import copy
+            payload = copy.deepcopy(event.payload) if hasattr(event, 'payload') else None
+            if payload is None:
+                self.logger.warning("RF log data event has no payload")
+                return
             
             # Extract SNR from payload
             if 'snr' in payload:
@@ -1318,7 +1335,13 @@ class MessageHandler:
     async def handle_channel_message(self, event, metadata=None):
         """Handle incoming channel message"""
         try:
-            payload = event.payload
+            # Copy payload immediately to avoid segfault if event is freed
+            import copy
+            payload = copy.deepcopy(event.payload) if hasattr(event, 'payload') else None
+            if payload is None:
+                self.logger.warning("Channel message event has no payload")
+                return
+            
             channel_idx = payload.get('channel_idx', 0)
             
             # Debug: Log the full payload structure
@@ -1908,16 +1931,21 @@ class MessageHandler:
     async def handle_new_contact(self, event, metadata=None):
         """Handle NEW_CONTACT events for automatic contact management"""
         try:
-            self.logger.info(f"🔍 NEW_CONTACT EVENT RECEIVED: {event}")
-            self.logger.info(f"📦 Event type: {type(event)}")
-            self.logger.info(f"📦 Event payload: {event.payload if hasattr(event, 'payload') else 'No payload'}")
-            
-            # Extract contact information from the event
-            contact_data = event.payload if hasattr(event, 'payload') else event
+            # Copy payload immediately to avoid segfault if event is freed
+            # Make a deep copy to ensure we have all the data we need
+            if hasattr(event, 'payload'):
+                contact_data = copy.deepcopy(event.payload)
+            else:
+                # Fallback: try to copy the event itself if it's a dict-like object
+                contact_data = copy.deepcopy(event) if isinstance(event, dict) else None
             
             if not contact_data:
                 self.logger.warning("NEW_CONTACT event has no payload data")
                 return
+            
+            self.logger.info(f"🔍 NEW_CONTACT EVENT RECEIVED: {event}")
+            self.logger.info(f"📦 Event type: {type(event)}")
+            self.logger.info(f"📦 Event payload: {contact_data}")
             
             # Get contact details
             contact_name = contact_data.get('name', contact_data.get('adv_name', 'Unknown'))

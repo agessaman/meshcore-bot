@@ -12,6 +12,7 @@ import hashlib
 import time
 import re
 import os
+import copy
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, List
@@ -449,7 +450,11 @@ class PacketCaptureService(BaseServicePlugin):
             metadata: Optional metadata dictionary.
         """
         try:
-            payload = event.payload
+            # Copy payload immediately to avoid segfault if event is freed
+            payload = copy.deepcopy(event.payload) if hasattr(event, 'payload') else None
+            if payload is None:
+                self.logger.warning("RX log data event has no payload")
+                return
             
             if 'snr' in payload:
                 # Try to get packet data - prefer 'payload' field, fallback to 'raw_hex'
@@ -483,7 +488,11 @@ class PacketCaptureService(BaseServicePlugin):
             metadata: Optional metadata dictionary.
         """
         try:
-            payload = event.payload
+            # Copy payload immediately to avoid segfault if event is freed
+            payload = copy.deepcopy(event.payload) if hasattr(event, 'payload') else None
+            if payload is None:
+                self.logger.warning("Raw data event has no payload")
+                return
             raw_data = payload.get('data', '')
             
             if not raw_data:

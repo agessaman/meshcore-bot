@@ -8,6 +8,7 @@ import asyncio
 import sys
 import os
 import hashlib
+import copy
 from typing import Dict, Any, List, Optional
 from meshcore import EventType
 
@@ -574,8 +575,9 @@ class ChannelManager:
             
             async def on_channel_info(event):
                 nonlocal channel_set
-                if event.payload.get('channel_idx') == channel_idx:
-                    payload = event.payload
+                # Copy payload immediately to avoid segfault if event is freed
+                payload = copy.deepcopy(event.payload) if hasattr(event, 'payload') else None
+                if payload and payload.get('channel_idx') == channel_idx:
                     if payload.get('channel_name') == channel_name:
                         channel_set = True
                         event_received.set()
@@ -660,8 +662,9 @@ class ChannelManager:
             
             async def on_channel_info(event):
                 nonlocal channel_cleared
-                if event.payload.get('channel_idx') == channel_idx:
-                    payload = event.payload
+                # Copy payload immediately to avoid segfault if event is freed
+                payload = copy.deepcopy(event.payload) if hasattr(event, 'payload') else None
+                if payload and payload.get('channel_idx') == channel_idx:
                     event_secret = payload.get('channel_secret', b'')
                     # Check if the channel was cleared (all zeros or empty name)
                     if isinstance(event_secret, bytes) and event_secret == empty_secret:

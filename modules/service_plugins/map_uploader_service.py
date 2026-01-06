@@ -10,6 +10,7 @@ import json
 import logging
 import hashlib
 import time
+import copy
 from typing import Optional, Dict, Any
 
 # Import meshcore
@@ -471,7 +472,11 @@ class MapUploaderService(BaseServicePlugin):
             metadata: Optional metadata for the event.
         """
         try:
-            payload = event.payload
+            # Copy payload immediately to avoid segfault if event is freed
+            payload = copy.deepcopy(event.payload) if hasattr(event, 'payload') else None
+            if payload is None:
+                self.logger.warning("RX log data event has no payload")
+                return
             
             # Get raw packet data
             raw_hex = None

@@ -7,6 +7,7 @@ Posts MeshCore channel messages to Discord via webhooks (one-way, read-only)
 import asyncio
 import logging
 import time
+import copy
 from typing import Dict, Optional, Any
 from datetime import datetime
 
@@ -268,7 +269,11 @@ class DiscordBridgeService(BaseServicePlugin):
             metadata: Optional metadata dictionary associated with the event.
         """
         try:
-            payload = event.payload
+            # Copy payload immediately to avoid segfault if event is freed
+            payload = copy.deepcopy(event.payload) if hasattr(event, 'payload') else None
+            if payload is None:
+                self.logger.warning("Channel message event has no payload")
+                return
 
             # Extract channel index and convert to channel name
             channel_idx = payload.get('channel_idx', 0)

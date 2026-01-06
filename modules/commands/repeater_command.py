@@ -12,11 +12,11 @@ from typing import List, Optional
 
 class RepeaterCommand(BaseCommand):
     """Command for managing repeater contacts.
-    
+
     Provides functionality to scan, list, purge, and manage repeater and companion contacts
     within the mesh network. Includes automated cleanup tools and statistics.
     """
-    
+
     # Plugin metadata
     name = "repeater"
     keywords = ["repeater", "repeaters", "rp"]
@@ -25,9 +25,44 @@ class RepeaterCommand(BaseCommand):
     cooldown_seconds = 0
     category = "management"
     requires_internet = True  # Requires internet access for geocoding (Nominatim)
-    
+
+    # LoRa message size limit (conservative to avoid overload)
+    # DM limit is 150 chars, public channel is 237 chars
+    MAX_LORA_MESSAGE_SIZE = 140  # characters, leaves buffer for protocol overhead
+
     def __init__(self, bot):
         super().__init__(bot)
+
+    def _truncate_for_lora(self, message: str, max_size: int = None) -> str:
+        """Truncate message to fit within LoRa size limits.
+
+        Args:
+            message: The message to truncate
+            max_size: Maximum size (defaults to MAX_LORA_MESSAGE_SIZE)
+
+        Returns:
+            Truncated message with indicator if truncated
+        """
+        max_size = max_size or self.MAX_LORA_MESSAGE_SIZE
+        if len(message) <= max_size:
+            return message
+
+        truncate_suffix = "...(use web viewer)"
+        available_size = max_size - len(truncate_suffix)
+        return message[:available_size] + truncate_suffix
+
+    def _get_deprecation_warning(self, web_viewer_url: str = None) -> str:
+        """Get deprecation warning message for commands replaced by web viewer.
+
+        Args:
+            web_viewer_url: Optional custom web viewer URL
+
+        Returns:
+            Deprecation warning message
+        """
+        if web_viewer_url:
+            return f"⚠️ DEPRECATED: Use web viewer at {web_viewer_url}/contacts"
+        return "⚠️ DEPRECATED: Use web viewer for this feature (check bot config for URL)"
     
     def matches_keyword(self, message: MeshMessage) -> bool:
         """Check if message starts with 'repeater' keyword.
@@ -150,93 +185,26 @@ class RepeaterCommand(BaseCommand):
         return True
     
     async def _handle_scan(self) -> str:
-        """Scan contacts for repeaters.
-        
+        """Scan contacts for repeaters (DEPRECATED - automatic in backend).
+
         Triggers a scan of the device's contact list to identify and catalog repeaters.
-        
+
         Returns:
             str: Result message describing the scan outcome.
         """
-        self.logger.info("Repeater scan command received")
-        
-        if not hasattr(self.bot, 'repeater_manager'):
-            self.logger.error("Repeater manager not found on bot object")
-            return "Repeater manager not initialized. Please check bot configuration."
-        
-        self.logger.info("Repeater manager found, starting scan...")
-        
-        try:
-            cataloged_count = await self.bot.repeater_manager.scan_and_catalog_repeaters()
-            self.logger.info(f"Scan completed, cataloged {cataloged_count} repeaters")
-            
-            # Get more detailed information about what happened
-            if cataloged_count > 0:
-                return f"✅ Scanned contacts and cataloged {cataloged_count} new repeaters"
-            else:
-                # Check if there are any repeaters in the database
-                repeaters = await self.bot.repeater_manager.get_repeater_contacts(active_only=True)
-                if repeaters:
-                    return f"✅ Scanned contacts - no new repeaters found, but updated location data for existing {len(repeaters)} repeaters"
-                else:
-                    return "✅ Scanned contacts - no repeaters found in contact list"
-        except Exception as e:
-            self.logger.error(f"Error in repeater scan: {e}")
-            return f"❌ Error scanning for repeaters: {e}"
+        # Return deprecation warning
+        return self._get_deprecation_warning() + "\nScanning happens automatically in the backend."
     
     async def _handle_list(self, args: List[str]) -> str:
-        """List repeater contacts.
-        
+        """List repeater contacts (DEPRECATED - use web viewer or prefix command).
+
         Args:
-            args: Command arguments (e.g., '--all' to show purged repeaters).
-            
+            args: Command arguments (ignored).
+
         Returns:
-            str: Formatted list of repeaters.
+            str: Deprecation warning.
         """
-        if not hasattr(self.bot, 'repeater_manager'):
-            return "Repeater manager not initialized. Please check bot configuration."
-        
-        try:
-            # Check for --all flag to show purged repeaters too
-            show_all = "--all" in args or "-a" in args
-            active_only = not show_all
-            
-            repeaters = await self.bot.repeater_manager.get_repeater_contacts(active_only=active_only)
-            
-            if not repeaters:
-                status = "all" if show_all else "active"
-                return f"No {status} repeaters found in database"
-            
-            # Format the output
-            lines = []
-            lines.append(f"📡 **Repeater Contacts** ({'All' if show_all else 'Active'}):")
-            lines.append("")
-            
-            for repeater in repeaters:
-                status_icon = "🟢" if repeater['is_active'] else "🔴"
-                device_icon = "📡" if repeater['device_type'] == 'Repeater' else "🏠"
-                
-                last_seen = repeater['last_seen']
-                if last_seen:
-                    # Parse and format the timestamp
-                    try:
-                        from datetime import datetime
-                        dt = datetime.fromisoformat(last_seen.replace('Z', '+00:00'))
-                        last_seen_str = dt.strftime("%Y-%m-%d %H:%M")
-                    except:
-                        last_seen_str = last_seen
-                else:
-                    last_seen_str = "Unknown"
-                
-                lines.append(f"{status_icon} {device_icon} **{repeater['name']}**")
-                lines.append(f"   Type: {repeater['device_type']}")
-                lines.append(f"   Last seen: {last_seen_str}")
-                lines.append(f"   Purge count: {repeater['purge_count']}")
-                lines.append("")
-            
-            return "\n".join(lines)
-            
-        except Exception as e:
-            return f"❌ Error listing repeaters: {e}"
+        return self._get_deprecation_warning() + "\nUse 'prefix <name>' to find specific repeaters or web viewer to browse all."
     
     async def _handle_purge(self, args: List[str]) -> str:
         """Purge repeater or companion contacts.
@@ -498,84 +466,23 @@ class RepeaterCommand(BaseCommand):
             return f"❌ Error purging companions: {e}"
     
     async def _handle_restore(self, args: List[str]) -> str:
-        """Restore purged repeater contacts.
-        
+        """Restore purged repeater contacts (DEPRECATED - use web viewer).
+
         Args:
             args: Command arguments (name pattern to restore).
-            
+
         Returns:
-            str: Result message describing the restore outcome.
+            str: Deprecation warning.
         """
-        if not hasattr(self.bot, 'repeater_manager'):
-            return "Repeater manager not initialized. Please check bot configuration."
-        
-        if not args:
-            return "Usage: !repeater restore <name_pattern> [reason]\nExample: !repeater restore 'Hillcrest' 'Manual restore'"
-        
-        try:
-            name_pattern = args[0]
-            reason = " ".join(args[1:]) if len(args) > 1 else "Manual restore"
-            
-            # Find purged repeaters matching the name pattern
-            repeaters = await self.bot.repeater_manager.get_repeater_contacts(active_only=False)
-            matching_repeaters = [r for r in repeaters if not r['is_active'] and name_pattern.lower() in r['name'].lower()]
-            
-            if not matching_repeaters:
-                return f"❌ No purged repeaters found matching '{name_pattern}'"
-            
-            if len(matching_repeaters) == 1:
-                # Restore the single match
-                repeater = matching_repeaters[0]
-                success = await self.bot.repeater_manager.restore_repeater(
-                    repeater['public_key'], reason
-                )
-                if success:
-                    return f"✅ Restored repeater: {repeater['name']}"
-                else:
-                    return f"❌ Failed to restore repeater: {repeater['name']}"
-            else:
-                # Multiple matches - show options
-                lines = [f"Multiple purged repeaters found matching '{name_pattern}':"]
-                for i, repeater in enumerate(matching_repeaters, 1):
-                    lines.append(f"{i}. {repeater['name']} ({repeater['device_type']})")
-                lines.append("")
-                lines.append("Please be more specific with the name.")
-                return "\n".join(lines)
-                
-        except Exception as e:
-            return f"❌ Error restoring repeaters: {e}"
+        return self._get_deprecation_warning()
     
     async def _handle_stats(self) -> str:
-        """Show repeater management statistics.
-        
+        """Show statistics (DEPRECATED - use web viewer).
+
         Returns:
-            str: Formatted statistics summary.
+            str: Deprecation warning.
         """
-        if not hasattr(self.bot, 'repeater_manager'):
-            return "Repeater manager not initialized. Please check bot configuration."
-        
-        try:
-            stats = await self.bot.repeater_manager.get_purging_stats()
-            
-            # Shortened for LoRa transmission
-            total = stats.get('total_repeaters', 0)
-            active = stats.get('active_repeaters', 0)
-            purged = stats.get('purged_repeaters', 0)
-            
-            response = f"📊 Stats: {total} total, {active} active, {purged} purged"
-            
-            recent_activity = stats.get('recent_activity_7_days', {})
-            if recent_activity:
-                activity_summary = []
-                for action, count in recent_activity.items():
-                    activity_summary.append(f"{action}:{count}")
-                if activity_summary:
-                    response += f" | 7d: {', '.join(activity_summary)}"
-            
-            return response
-            
-        except Exception as e:
-            return f"❌ Error getting statistics: {e}"
+        return self._get_deprecation_warning() + "\nView detailed statistics in the web viewer."
     
     async def _handle_status(self) -> str:
         """Show contact list status and limits.
@@ -611,128 +518,34 @@ class RepeaterCommand(BaseCommand):
             return f"❌ Error getting contact status: {e}"
     
     async def _handle_manage(self, args: List[str]) -> str:
-        """Manage contact list to prevent hitting limits.
-        
+        """Manage contact list (DEPRECATED - use web viewer).
+
         Args:
             args: Command arguments (e.g., '--dry-run').
-            
+
         Returns:
-            str: Result message describing actions taken or proposed.
+            str: Deprecation warning.
         """
-        if not hasattr(self.bot, 'repeater_manager'):
-            return "Repeater manager not initialized. Please check bot configuration."
-        
-        try:
-            # Check for --dry-run flag
-            dry_run = "--dry-run" in args or "-d" in args
-            auto_cleanup = not dry_run
-            
-            if dry_run:
-                # Just show what would be done
-                status = await self.bot.repeater_manager.get_contact_list_status()
-                if not status:
-                    return "❌ Failed to get contact list status"
-                
-                lines = []
-                lines.append("🔍 **Contact List Management (Dry Run)**")
-                lines.append("")
-                lines.append(f"📊 Current status: {status['current_contacts']}/{status['estimated_limit']} ({status['usage_percentage']:.1f}%)")
-                
-                if status['is_near_limit']:
-                    lines.append("")
-                    lines.append("⚠️ **Actions that would be taken:**")
-                    if status['stale_contacts']:
-                        lines.append(f"   • Remove {min(10, len(status['stale_contacts']))} stale contacts")
-                    if status['repeater_count'] > 0:
-                        lines.append("   • Remove old repeaters (14+ days)")
-                    if status['is_at_limit']:
-                        lines.append("   • Aggressive cleanup (7+ day repeaters, 14+ day stale contacts)")
-                else:
-                    lines.append("✅ No management actions needed")
-                
-                return "\n".join(lines)
-            else:
-                # Actually perform management
-                result = await self.bot.repeater_manager.manage_contact_list(auto_cleanup=True)
-                
-                if not result.get('success', False):
-                    return f"❌ Contact list management failed: {result.get('error', 'Unknown error')}"
-                
-                lines = []
-                lines.append("🔧 **Contact List Management Results**")
-                lines.append("")
-                
-                status = result['status']
-                lines.append(f"📊 Final status: {status['current_contacts']}/{status['estimated_limit']} ({status['usage_percentage']:.1f}%)")
-                
-                actions = result.get('actions_taken', [])
-                if actions:
-                    lines.append("")
-                    lines.append("✅ **Actions taken:**")
-                    for action in actions:
-                        lines.append(f"   • {action}")
-                else:
-                    lines.append("")
-                    lines.append("ℹ️ No actions were needed")
-                
-                return "\n".join(lines)
-                
-        except Exception as e:
-            return f"❌ Error managing contact list: {e}"
+        return self._get_deprecation_warning()
     
     async def _handle_add(self, args: List[str]) -> str:
-        """Add a discovered contact to the contact list.
-        
+        """Add a discovered contact (DEPRECATED - use web viewer).
+
         Args:
             args: Command arguments (name, public_key, reason).
-            
+
         Returns:
-            str: Result message indicating success or failure.
+            str: Deprecation warning.
         """
-        if not hasattr(self.bot, 'repeater_manager'):
-            return "Repeater manager not initialized. Please check bot configuration."
-        
-        if not args:
-            return "❌ Please specify a contact name to add"
-        
-        try:
-            contact_name = args[0]
-            public_key = args[1] if len(args) > 1 else None
-            reason = " ".join(args[2:]) if len(args) > 2 else "Manual addition"
-            
-            success = await self.bot.repeater_manager.add_discovered_contact(
-                contact_name, public_key, reason
-            )
-            
-            if success:
-                return f"✅ Successfully added contact: {contact_name}"
-            else:
-                return f"❌ Failed to add contact: {contact_name}"
-                
-        except Exception as e:
-            return f"❌ Error adding contact: {e}"
+        return self._get_deprecation_warning()
     
     async def _handle_discover(self) -> str:
-        """Discover companion contacts.
-        
-        Triggers manual discovery of companion contacts.
-        
+        """Discover companion contacts (DEPRECATED - automatic in backend).
+
         Returns:
-            str: Result message.
+            str: Deprecation warning.
         """
-        if not hasattr(self.bot, 'repeater_manager'):
-            return "Repeater manager not initialized. Please check bot configuration."
-        
-        try:
-            success = await self.bot.repeater_manager.discover_companion_contacts("Manual discovery command")
-            
-            if success:
-                return "✅ Companion contact discovery initiated"
-            else:
-                return "❌ Failed to initiate companion contact discovery"
-                
-        except Exception as e:
-            return f"❌ Error discovering contacts: {e}"
+        return self._get_deprecation_warning() + "\nDiscovery happens automatically in the backend."
     
     async def _handle_contact_stats(self) -> str:
         """Show statistics about the complete repeater tracking database.
@@ -905,371 +718,57 @@ class RepeaterCommand(BaseCommand):
             return f"❌ Error testing purge system: {e}"
     
     async def _handle_debug_purge(self) -> str:
-        """Debug the purge system to see what repeaters are available"""
-        if not hasattr(self.bot, 'repeater_manager'):
-            return "Repeater manager not initialized. Please check bot configuration."
-        
-        try:
-            # Get device contact info
-            total_contacts = len(self.bot.meshcore.contacts)
-            repeater_count = 0
-            repeaters_info = []
-            
-            for contact_key, contact_data in self.bot.meshcore.contacts.items():
-                if self.bot.repeater_manager._is_repeater_device(contact_data):
-                    repeater_count += 1
-                    name = contact_data.get('adv_name', contact_data.get('name', 'Unknown'))
-                    device_type = 'Repeater'
-                    if contact_data.get('type') == 3:
-                        device_type = 'RoomServer'
-                    
-                    last_seen = contact_data.get('last_seen', contact_data.get('last_advert', 'Unknown'))
-                    repeaters_info.append(f"• {name} ({device_type}) - Last seen: {last_seen}")
-            
-            # Shortened for LoRa transmission
-            response = f"🔍 Debug: {total_contacts} total, {repeater_count} repeaters"
-            
-            if repeaters_info:
-                # Show first 3 repeaters only
-                for info in repeaters_info[:3]:
-                    response += f" | {info[:30]}..."
-                if len(repeaters_info) > 3:
-                    response += f" | +{len(repeaters_info) - 3} more"
-            else:
-                response += " | ❌ No repeaters found"
-            
-            # Test the purge selection
-            test_repeaters = await self.bot.repeater_manager._get_repeaters_for_purging(3)
-            if test_repeaters:
-                response += f" | Test: {len(test_repeaters)} available"
-            else:
-                response += " | Test: ❌ None available"
-            
-            return response
-            
-        except Exception as e:
-            return f"❌ Error debugging purge system: {e}"
+        """Debug purge system (DEPRECATED - debug feature).
+
+        Returns:
+            str: Deprecation warning.
+        """
+        return "⚠️ DEPRECATED: Debug feature - check logs for purge system status."
     
     async def _handle_auto(self, args: List[str]) -> str:
-        """Toggle manual contact addition setting"""
-        if not hasattr(self.bot, 'repeater_manager'):
-            return "Repeater manager not initialized. Please check bot configuration."
-        
-        if not args:
-            return "❌ Please specify 'on' or 'off' for manual contact addition setting"
-        
-        try:
-            setting = args[0].lower()
-            reason = " ".join(args[1:]) if len(args) > 1 else "Manual toggle"
-            
-            if setting in ['on', 'enable', 'true', '1']:
-                enabled = True
-                setting_text = "enabled"
-            elif setting in ['off', 'disable', 'false', '0']:
-                enabled = False
-                setting_text = "disabled"
-            else:
-                return "❌ Invalid setting. Use 'on' or 'off'"
-            
-            success = await self.bot.repeater_manager.toggle_auto_add(enabled, reason)
-            
-            if success:
-                return f"✅ Manual contact addition {setting_text}"
-            else:
-                return f"❌ Failed to {setting_text} manual contact addition"
-                
-        except Exception as e:
-            return f"❌ Error toggling manual contact addition: {e}"
+        """Toggle auto settings (DEPRECATED - use config file).
+
+        Returns:
+            str: Deprecation warning.
+        """
+        return "⚠️ DEPRECATED: Edit config file to change auto-management settings."
     
     async def _handle_test(self, args: List[str]) -> str:
-        """Test meshcore-cli command functionality"""
-        if not hasattr(self.bot, 'repeater_manager'):
-            return "Repeater manager not initialized. Please check bot configuration."
-        
-        try:
-            results = await self.bot.repeater_manager.test_meshcore_cli_commands()
-            
-            lines = []
-            lines.append("🧪 **MeshCore-CLI Command Test Results**")
-            lines.append("")
-            
-            if 'error' in results:
-                lines.append(f"❌ **ERROR**: {results['error']}")
-                return "\n".join(lines)
-            
-            # Test results
-            help_status = "✅ PASS" if results.get('help', False) else "❌ FAIL"
-            remove_status = "✅ PASS" if results.get('remove_contact', False) else "❌ FAIL"
-            
-            lines.append(f"📋 Help command: {help_status}")
-            lines.append(f"🗑️ Remove contact command: {remove_status}")
-            lines.append("")
-            
-            if not results.get('remove_contact', False):
-                lines.append("⚠️ **WARNING**: remove_contact command not available!")
-                lines.append("This means repeater purging will not work properly.")
-                lines.append("Check your meshcore-cli installation and device connection.")
-            else:
-                lines.append("✅ All required commands are available.")
-            
-            return "\n".join(lines)
-            
-        except Exception as e:
-            return f"❌ Error testing meshcore-cli commands: {e}"
+        """Test commands (DEPRECATED - debug feature).
+
+        Returns:
+            str: Deprecation warning.
+        """
+        return "⚠️ DEPRECATED: Debug feature - check logs for system status."
     
     async def _handle_locations(self) -> str:
-        """Show location data status for repeaters"""
-        try:
-            if not hasattr(self.bot, 'repeater_manager'):
-                return "Repeater manager not initialized. Please check bot configuration."
-            
-            # Get all active repeaters
-            repeaters = await self.bot.repeater_manager.get_repeater_contacts(active_only=True)
-            
-            if not repeaters:
-                return "No active repeaters found in database"
-            
-            # Analyze location data
-            total_repeaters = len(repeaters)
-            with_coordinates = 0
-            with_city = 0
-            with_state = 0
-            with_country = 0
-            no_location = 0
-            
-            location_examples = []
-            
-            for repeater in repeaters:
-                has_coords = repeater.get('latitude') is not None and repeater.get('longitude') is not None
-                has_city = bool(repeater.get('city'))
-                has_state = bool(repeater.get('state'))
-                has_country = bool(repeater.get('country'))
-                
-                if has_coords:
-                    with_coordinates += 1
-                if has_city:
-                    with_city += 1
-                if has_state:
-                    with_state += 1
-                if has_country:
-                    with_country += 1
-                if not (has_coords or has_city or has_state or has_country):
-                    no_location += 1
-                
-                # Collect examples for display
-                if len(location_examples) < 3:  # Reduced to 3 examples to fit in message
-                    location_parts = []
-                    if has_city:
-                        location_parts.append(repeater['city'])
-                    if has_state:
-                        location_parts.append(repeater['state'])
-                    if has_country:
-                        location_parts.append(repeater['country'])
-                    
-                    if location_parts:
-                        location_examples.append(f"• {repeater['name']}: {', '.join(location_parts)}")
-                    elif has_coords:
-                        location_examples.append(f"• {repeater['name']}: {repeater['latitude']:.4f}, {repeater['longitude']:.4f}")
-                    else:
-                        location_examples.append(f"• {repeater['name']}: No location data")
-            
-            # Build first message (summary)
-            summary_lines = [
-                f"📍 Repeater Locations ({total_repeaters} total):",
-                f"GPS: {with_coordinates} ({with_coordinates/total_repeaters*100:.0f}%)",
-                f"City: {with_city} ({with_city/total_repeaters*100:.0f}%)",
-                f"State: {with_state} ({with_state/total_repeaters*100:.0f}%)",
-                f"Country: {with_country} ({with_country/total_repeaters*100:.0f}%)",
-                f"None: {no_location} ({no_location/total_repeaters*100:.0f}%)"
-            ]
-            
-            first_message = "\n".join(summary_lines)
-            
-            # Build second message (examples) if we have examples
-            if location_examples:
-                example_lines = ["Examples:"]
-                example_lines.extend(location_examples)
-                second_message = "\n".join(example_lines)
-                
-                # Return tuple for multi-message response
-                return ("multi_message", first_message, second_message)
-            else:
-                return first_message
-            
-        except Exception as e:
-            self.logger.error(f"Error getting repeater location status: {e}")
-            return f"❌ Error getting location status: {e}"
+        """Show location data (DEPRECATED - use web viewer map).
+
+        Returns:
+            str: Deprecation warning.
+        """
+        return self._get_deprecation_warning() + "\nView locations on the interactive map in the web viewer."
     
     async def _handle_update_geolocation(self, dry_run: bool = False, batch_size: int = 10) -> str:
-        """Update missing geolocation data for repeaters"""
-        try:
-            if not hasattr(self.bot, 'repeater_manager'):
-                return "Repeater manager not initialized. Please check bot configuration."
-            
-            self.logger.info(f"Starting geolocation update process (dry_run={dry_run})")
-            
-            # Call the repeater manager method
-            result = await self.bot.repeater_manager.populate_missing_geolocation_data(dry_run=dry_run, batch_size=batch_size)
-            
-            if 'error' in result:
-                return f"❌ Error updating geolocation data: {result['error']}"
-            
-            # Build response message
-            action = "Would update" if dry_run else "Updated"
-            response_lines = [
-                f"🌍 Geolocation Update {'(Dry Run)' if dry_run else ''}",
-                f"Batch size: {batch_size}",
-                f"Found: {result['total_found']} repeaters with missing data",
-                f"{action}: {result['updated']} repeaters",
-                f"Errors: {result['errors']}",
-                f"Skipped: {result['skipped']}"
-            ]
-            
-            if result['total_found'] == 0:
-                response_lines.append("✅ All repeaters already have complete geolocation data!")
-            elif result['updated'] > 0:
-                if dry_run:
-                    response_lines.append("💡 Run without 'dry-run' to apply these updates")
-                else:
-                    response_lines.append("✅ Geolocation data updated successfully!")
-            
-            return "\n".join(response_lines)
-            
-        except Exception as e:
-            self.logger.error(f"Error updating geolocation data: {e}")
-            return f"❌ Error updating geolocation data: {e}"
+        """Update geolocation data (DEPRECATED - automatic in backend).
+
+        Returns:
+            str: Deprecation warning.
+        """
+        return self._get_deprecation_warning() + "\nGeocoding happens automatically in the backend."
     
     def get_help(self) -> str:
-        """Get help text for the repeater command"""
-        return """📡 **Repeater & Contact Management Commands**
-
-**Usage:** `!repeater <subcommand> [options]`
-
-**Repeater Management:**
-• `scan` - Scan current contacts and catalog new repeaters
-• `list` - List repeater contacts (use `--all` to show purged ones)
-• `locations` - Show location data status for repeaters
-• `update-geo` - Update missing geolocation data (state/country) from coordinates
-• `update-geo dry-run` - Preview what would be updated without making changes
-• `update-geo 5` - Update up to 5 repeaters (default: 10)
-• `update-geo dry-run 3` - Preview updates for up to 3 repeaters
-        • `purge all` - Purge all repeaters
-        • `purge all force` - Force purge all repeaters (uses multiple removal methods)
-        • `purge <days>` - Purge repeaters older than specified days
-        • `purge <name>` - Purge specific repeater by name
-• `restore <name>` - Restore a previously purged repeater
-• `stats` - Show repeater management statistics
-
-**Contact List Management:**
-• `status` - Show contact list status and limits
-• `manage` - Manage contact list to prevent hitting limits
-• `manage --dry-run` - Show what management actions would be taken
-• `add <name> [key]` - Add a discovered contact to contact list
-• `auto-purge` - Show auto-purge status and controls
-• `auto-purge trigger` - Manually trigger auto-purge
-• `auto-purge enable/disable` - Enable/disable auto-purge
-• `purge-status` - Show detailed purge status and recommendations
-• `test-purge` - Test the improved purge system
-        • `discover` - Discover companion contacts
-        • `auto <on|off>` - Toggle manual contact addition setting
-        • `test` - Test meshcore-cli command functionality
-
-**Examples:**
-• `!repeater scan` - Find and catalog new repeaters
-• `!repeater status` - Check contact list capacity
-• `!repeater manage` - Auto-manage contact list
-• `!repeater manage --dry-run` - Preview management actions
-• `!repeater add "John"` - Add contact named John
-• `!repeater discover` - Discover new companion contacts
-• `!repeater auto-purge` - Check auto-purge status
-• `!repeater auto-purge trigger` - Manually trigger auto-purge
-• `!repeater purge-status` - Detailed purge status
-        • `!repeater auto off` - Disable manual contact addition
-        • `!repeater test` - Test meshcore-cli commands
-        • `!repeater purge all` - Purge all repeaters
-        • `!repeater purge all force` - Force purge all repeaters
-        • `!repeater purge 30` - Purge repeaters older than 30 days
-• `!repeater stats` - Show management statistics
-• `!repeater geocode` - Show geocoding status
-• `!repeater geocode trigger` - Manually trigger geocoding
-
-**Note:** This system helps manage both repeater contacts and overall contact list capacity. It automatically removes stale contacts and old repeaters when approaching device limits.
-
-        **Automatic Features:**
-        • NEW_CONTACT events are automatically monitored
-        • Repeaters are automatically cataloged when discovered
-        • Contact list capacity is monitored in real-time
-        • `auto_manage_contacts = device`: Device handles auto-addition, bot manages capacity
-        • `auto_manage_contacts = bot`: Bot automatically adds companion contacts and manages capacity
-        • `auto_manage_contacts = false`: Manual mode - use !repeater commands to manage contacts"""
+        """Get help text for the repeater command (essential commands only)"""
+        # Ultra-compact help for 150 char DM limit
+        return "status|purge all|purge companions [days]|auto-purge\n⚠️ Use web viewer or 'prefix' cmd to browse"
     
     async def _handle_geocode(self, args: List[str]) -> str:
-        """Handle geocoding commands"""
-        if not hasattr(self.bot, 'repeater_manager'):
-            return "Repeater manager not initialized. Please check bot configuration."
-        
-        try:
-            if not args:
-                # Show geocoding status
-                status = await self._get_geocoding_status()
-                return status
-            elif args[0] == "trigger":
-                # Manually trigger background geocoding (single contact)
-                await self.bot.repeater_manager._background_geocoding()
-                return "🌍 Background geocoding triggered (1 contact)"
-            elif args[0] == "bulk":
-                # Trigger bulk geocoding for multiple contacts
-                batch_size = 10
-                if len(args) > 1 and args[1].isdigit():
-                    batch_size = int(args[1])
-                    batch_size = min(batch_size, 50)  # Cap at 50 for safety
-                
-                result = await self.bot.repeater_manager.populate_missing_geolocation_data(
-                    dry_run=False, 
-                    batch_size=batch_size
-                )
-                
-                if 'error' in result:
-                    return f"❌ Bulk geocoding error: {result['error']}"
-                
-                return (f"🌍 Bulk geocoding completed:\n"
-                       f"Found: {result['total_found']} contacts\n"
-                       f"Updated: {result['updated']} contacts\n"
-                       f"Errors: {result['errors']}\n"
-                       f"Skipped: {result['skipped']}")
-            elif args[0] == "dry-run":
-                # Test bulk geocoding without making changes
-                batch_size = 10
-                if len(args) > 1 and args[1].isdigit():
-                    batch_size = int(args[1])
-                    batch_size = min(batch_size, 50)
-                
-                result = await self.bot.repeater_manager.populate_missing_geolocation_data(
-                    dry_run=True, 
-                    batch_size=batch_size
-                )
-                
-                if 'error' in result:
-                    return f"❌ Dry run error: {result['error']}"
-                
-                return (f"🌍 Dry run results:\n"
-                       f"Would update: {result['updated']} contacts\n"
-                       f"Found: {result['total_found']} contacts\n"
-                       f"Errors: {result['errors']}\n"
-                       f"Skipped: {result['skipped']}\n"
-                       f"💡 Use '!repeater geocode bulk' to apply changes")
-            elif args[0] == "status":
-                # Show detailed geocoding status
-                return await self._get_geocoding_status()
-            else:
-                return ("Usage: !repeater geocode [trigger|bulk|dry-run|status]\n"
-                       "  trigger - Geocode 1 contact\n"
-                       "  bulk [N] - Geocode up to N contacts (default: 10, max: 50)\n"
-                       "  dry-run [N] - Test geocoding without changes\n"
-                       "  status - Show geocoding status")
-        except Exception as e:
-            self.logger.error(f"Error in geocoding command: {e}")
-            return f"❌ Geocoding error: {e}"
+        """Handle geocoding (DEPRECATED - automatic in backend).
+
+        Returns:
+            str: Deprecation warning.
+        """
+        return self._get_deprecation_warning() + "\nGeocoding happens automatically in the backend."
     
     async def _get_geocoding_status(self) -> str:
         """Get geocoding status"""
