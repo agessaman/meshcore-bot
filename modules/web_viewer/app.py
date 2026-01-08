@@ -3899,7 +3899,10 @@ def main():
     parser.add_argument('--host', default='127.0.0.1', help='Host to bind to')
     parser.add_argument('--port', type=int, default=8080, help='Port to bind to')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')
-    parser.add_argument( "--config", default="config.ini", help="Path to configuration file (default: config.ini)",
+    parser.add_argument(
+        "--config",
+        default="config.ini",
+        help="Path to configuration file (default: config.ini)",
     )
     
     args = parser.parse_args()

@@ -130,6 +130,16 @@
       pyproject = true;
 
       nativeBuildInputs = with pkgs.python3Packages; [setuptools];
+      
+      # Install translations to share directory for NixOS module compatibility
+      # Translations are in the source root, copy them to the standard location
+      postInstall = ''
+        mkdir -p $out/share/meshcore-bot
+        if [ -d "$src/translations" ]; then
+          cp -r "$src/translations" $out/share/meshcore-bot/
+        fi
+      '';
+      
       propagatedBuildInputs =
         (with pkgs.python3Packages; [
           # Core Python dependencies from requirements.txt
@@ -150,6 +160,9 @@
           requests-cache
           schedule
           cryptography
+          paho-mqtt
+          urllib3
+          pynacl
         ])
         ++ [
           # Custom packages from PyPI

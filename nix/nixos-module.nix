@@ -73,6 +73,7 @@
               db_path = "${cfg.dataDir}/meshcore-bot.db";
             };
             Localization = {
+              # Translation path: translations are installed to share directory by Nix package
               translation_path = "${cfg.package}/share/meshcore-bot/translations";
             };
             Logging = {
