@@ -635,7 +635,9 @@ class GlobalWxCommand(BaseCommand):
                                     # Only show probability if no amount available
                                     precip_str = f" 🌦️{precip_prob}%"
                                 
-                                if len(weather + precip_str) <= max_length:
+                                # Use display width to check if we have space, with buffer to avoid cutting emojis
+                                # Add buffer of 5 chars to ensure we don't truncate in middle of emoji
+                                if self._count_display_width(weather + precip_str) <= max_length - 5:
                                     weather += precip_str
             
             return weather
