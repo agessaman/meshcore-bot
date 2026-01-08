@@ -89,8 +89,9 @@
             print("⚠ Database file not found (bot may have failed before DB initialization)")
             # Check if there are critical errors (import failures, etc.)
             critical_errors = machine.succeed("journalctl -u meshcore-bot.service | grep -iE 'import.*error|module.*not found|no module named|traceback' | head -3 || echo 'none'")
-            if "none" not in critical_errors and len(critical_errors.strip()) > 10:
-              print(f"⚠ Critical errors found: {critical_errors[:150]}")
+            critical_errors_clean = critical_errors.strip()
+            if "none" not in critical_errors and len(critical_errors_clean) > 10:
+              print(f"⚠ Critical errors found: {critical_errors_clean[:150]}")
             else:
               print("✓ No critical import/initialization errors (connection failures are expected)")
 
