@@ -47,6 +47,22 @@
         description = "The meshcore-bot package to use.";
       };
 
+      webviewer = {
+        enable = lib.mkEnableOption "MeshCore Bot Web Viewer service";
+
+        host = lib.mkOption {
+          type = lib.types.str;
+          default = "127.0.0.1";
+          description = "Host to bind the web viewer to.";
+        };
+
+        port = lib.mkOption {
+          type = lib.types.int;
+          default = 8080;
+          description = "Port to bind the web viewer to.";
+        };
+      };
+
       settings = lib.mkOption {
         type = lib.types.attrsOf (lib.types.attrsOf lib.types.anything);
         default = {};
@@ -85,6 +101,10 @@
             };
             Web_Viewer = {
               enabled = false;
+              db_path = "${cfg.dataDir}/meshcore-bot.db";
+              auto_start = false; #We start it in a seperate unit
+              host = cfg.webviewer.host;
+              port = cfg.webviewer.port;
             };
           };
         in
@@ -173,6 +193,62 @@
 
       # Install package data (translations, templates, etc.)
       environment.systemPackages = [cfg.package];
+
+      # Web viewer service
+      systemd.services.meshcore-bot-viewer = lib.mkIf cfg.webviewer.enable {
+        description = "MeshCore Bot Web Viewer - Web interface for MeshCore Bot";
+        after = ["network.target" "meshcore-bot.service"];
+        wantedBy = ["multi-user.target"];
+
+        # Service configuration
+        serviceConfig = {
+          Type = "simple";
+          User = "meshcore-bot";
+          Group = "meshcore-bot";
+
+          # Working directory - systemd will create it automatically
+          WorkingDirectory = cfg.dataDir;
+
+          # StateDirectory creates /var/lib/meshcore-bot with correct ownership
+          # This is the NixOS/systemd way to manage service state directories
+          StateDirectory = "meshcore-bot";
+          StateDirectoryMode = "0750";
+
+          # LogsDirectory creates /var/log/meshcore-bot with correct ownership
+          LogsDirectory = "meshcore-bot";
+          LogsDirectoryMode = "0750";
+
+          # Start command
+          ExecStart = "${cfg.package}/bin/meshcore-viewer --host ${cfg.webviewer.host} --port ${toString cfg.webviewer.port} --config ${configFile}";
+
+          # Restart policy
+          Restart = "on-failure";
+          RestartSec = "10s";
+
+          # Security hardening
+          NoNewPrivileges = true;
+          PrivateTmp = true;
+          ProtectSystem = "strict";
+          ProtectHome = true;
+
+          # Additional hardening
+          ProtectKernelTunables = true;
+          ProtectKernelModules = true;
+          ProtectControlGroups = true;
+          RestrictAddressFamilies = ["AF_UNIX" "AF_INET" "AF_INET6"];
+          RestrictNamespaces = true;
+          LockPersonality = true;
+          RestrictRealtime = true;
+          RestrictSUIDSGID = true;
+          RemoveIPC = true;
+          PrivateMounts = true;
+        };
+
+        # Environment
+        environment = {
+          PYTHONUNBUFFERED = "1";
+        };
+      };
     };
   };
 }
