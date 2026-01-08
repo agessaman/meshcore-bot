@@ -3891,15 +3891,21 @@ class BotDataViewer:
             self.logger.error(f"Error running web viewer: {e}")
             raise
 
-if __name__ == '__main__':
+def main():
+    """Entry point for the meshcore-viewer command"""
     import argparse
     
     parser = argparse.ArgumentParser(description='MeshCore Bot Data Viewer')
     parser.add_argument('--host', default='127.0.0.1', help='Host to bind to')
     parser.add_argument('--port', type=int, default=8080, help='Port to bind to')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')
+    parser.add_argument( "--config", default="config.ini", help="Path to configuration file (default: config.ini)",
+    )
     
     args = parser.parse_args()
     
-    viewer = BotDataViewer()
+    viewer = BotDataViewer(config_path=args.config)
     viewer.run(host=args.host, port=args.port, debug=args.debug)
+
+if __name__ == '__main__':
+    main()

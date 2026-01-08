@@ -4,6 +4,7 @@ MeshCore Bot using the meshcore-cli and meshcore.py packages
 Uses a modular structure for command creation and organization
 """
 
+import argparse
 import asyncio
 import signal
 import sys
@@ -12,8 +13,19 @@ import sys
 from modules.core import MeshCoreBot
 
 
-if __name__ == "__main__":
-    bot = MeshCoreBot()
+def main():
+    parser = argparse.ArgumentParser(
+        description="MeshCore Bot - Mesh network bot for MeshCore devices"
+    )
+    parser.add_argument(
+        "--config",
+        default="config.ini",
+        help="Path to configuration file (default: config.ini)",
+    )
+
+    args = parser.parse_args()
+
+    bot = MeshCoreBot(config_file=args.config)
     
     def signal_handler(sig, frame):
         print("\nShutting down...")
@@ -30,6 +42,10 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Error: {e}")
         asyncio.run(bot.stop())
+
+
+if __name__ == "__main__":
+    main()
 
 
 

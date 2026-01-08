@@ -1,0 +1,48 @@
+# pyproject.toml
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "meshcore-bot"
+version = "0.1.0"
+description = "MeshCore Bot using the meshcore-cli and meshcore.py packages"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "pyserial>=3.5",
+    "bleak>=0.20.0",
+    "asyncio-mqtt>=0.11.0",
+    "configparser>=5.3.0",
+    "python-dateutil>=2.8.2",
+    "schedule>=1.2.0",
+    "colorlog>=6.7.0",
+    "requests>=2.31.0",
+    "pyephem>=4.1.4",
+    "geopy>=2.3.0",
+    "maidenhead>=1.4.0",
+    "pytz>=2023.3",
+    "aiohttp>=3.8.0",
+    "meshcore>=2.1.6",
+    "openmeteo-requests>=1.7.2",
+    "requests-cache>=1.1.1",
+    "retry-requests>=1.0.0",
+    "flask>=2.3.0",
+    "flask-socketio>=5.3.0",
+    "meshcore-cli",
+    "feedparser>=6.0.10",
+]
+
+[project.scripts]
+meshcore-bot = "meshcore_bot:main"
+meshcore-viewer = "modules.web_viewer.app:main"
+
+[tool.setuptools]
+# Include both the main module and the modules package
+py-modules = ["meshcore_bot"]
+packages = ["modules", "modules.commands", "modules.commands.alternatives", 
+            "modules.commands.alternatives.inactive", "modules.service_plugins", "modules.web_viewer"]
+
+[tool.setuptools.package-data]
+"*" = ["*.json"]
+modules = ["web_viewer/templates/*.html"]
