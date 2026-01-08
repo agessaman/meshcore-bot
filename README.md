@@ -76,6 +76,29 @@ sudo systemctl status meshcore-bot
 
 See [SERVICE-INSTALLATION.md](SERVICE-INSTALLATION.md) for detailed service installation instructions.
 
+## NixOS
+Use the Nix flake via flake.nix
+```nix
+meshcore-bot.url = "github:agessaman/meshcore-bot/";
+```
+
+And in your system config
+
+```nix
+{
+  imports = [inputs.meshcore-bot.nixosModules.default];
+  services.meshcore-bot = {
+    enable = true;
+    webviewer.enable = true;
+    settings = {
+      Connection.connection_type = "serial";
+      Connection.serial_port = "/dev/ttyUSB0";
+      Bot.bot_name = "MyBot";
+    };
+  };
+}
+```
+
 ## Configuration
 
 The bot uses `config.ini` for all settings. Key configuration sections:
