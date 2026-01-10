@@ -1626,7 +1626,7 @@ class BotDataViewer:
                     self._cleanup_old_data(days_to_keep=7)
                     
                 except Exception as e:
-                    self.logger.debug(f"Error in cleanup scheduler: {e}")
+                    self.logger.error(f"Error in cleanup scheduler: {e}", exc_info=True)
                     time.sleep(60)  # Sleep on error
         
         # Start the cleanup thread
@@ -1636,6 +1636,7 @@ class BotDataViewer:
     
     def _cleanup_old_data(self, days_to_keep: int = 7):
         """Clean up old packet stream data to prevent database bloat"""
+        conn = None
         try:
             import sqlite3
             import time
@@ -1648,21 +1649,52 @@ class BotDataViewer:
             # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
             db_path = resolve_path(db_path, self.bot_root)
             
-            # Use timeout to prevent hanging
-            with sqlite3.connect(db_path, timeout=30) as conn:
-                cursor = conn.cursor()
-                
-                # Clean up old packet stream data
-                cursor.execute('DELETE FROM packet_stream WHERE timestamp < ?', (cutoff_time,))
+            # Use shorter timeout and isolation_level for better concurrency
+            conn = sqlite3.connect(db_path, timeout=10, isolation_level='DEFERRED')
+            cursor = conn.cursor()
+            
+            # Use WAL mode for better concurrent access (if not already set)
+            try:
+                cursor.execute('PRAGMA journal_mode=WAL')
+            except sqlite3.OperationalError:
+                pass  # Ignore if database is locked - WAL may already be set
+            
+            # Delete in smaller batches to avoid long locks
+            # This prevents blocking the polling thread for extended periods
+            batch_size = 1000
+            total_deleted = 0
+            
+            while True:
+                cursor.execute(
+                    'DELETE FROM packet_stream WHERE id IN '
+                    '(SELECT id FROM packet_stream WHERE timestamp < ? LIMIT ?)',
+                    (cutoff_time, batch_size)
+                )
                 deleted_count = cursor.rowcount
-                
                 conn.commit()
                 
-                if deleted_count > 0:
-                    self.logger.info(f"Cleaned up {deleted_count} old packet stream entries (older than {days_to_keep} days)")
+                if deleted_count == 0:
+                    break
+                    
+                total_deleted += deleted_count
+                
+                # Brief sleep between batches to allow other operations
+                if deleted_count == batch_size:
+                    time.sleep(0.1)
             
+            if total_deleted > 0:
+                self.logger.info(f"Cleaned up {total_deleted} old packet stream entries (older than {days_to_keep} days)")
+            
+        except sqlite3.OperationalError as e:
+            self.logger.warning(f"Database busy during cleanup (will retry next cycle): {e}")
         except Exception as e:
-            self.logger.error(f"Error cleaning up old packet stream data: {e}")
+            self.logger.error(f"Error cleaning up old packet stream data: {e}", exc_info=True)
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     
     def _get_database_stats(self, top_users_window='all', top_commands_window='all', 
                            top_paths_window='all', top_channels_window='all'):

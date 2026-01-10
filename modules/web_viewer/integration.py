@@ -120,12 +120,8 @@ class BotIntegration:
             conn.commit()
             conn.close()
             
-            # Periodic cleanup (every 100 packets to avoid performance impact)
-            if not hasattr(self, '_packet_count'):
-                self._packet_count = 0
-            self._packet_count += 1
-            if self._packet_count % 100 == 0:
-                self.cleanup_old_data()
+            # Note: Cleanup is handled by the web viewer subprocess to avoid
+            # database lock contention between bot and web viewer processes
             
         except Exception as e:
             self.bot.logger.debug(f"Error storing packet data: {e}")
