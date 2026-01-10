@@ -41,6 +41,7 @@ class SolarforecastCommand(BaseCommand):
     
     def __init__(self, bot):
         super().__init__(bot)
+        self.solarforecast_enabled = self.get_config_value('Solarforecast_Command', 'enabled', fallback=True, value_type='bool')
         self.url_timeout = 15  # seconds
         
         # Forecast cache: {cache_key: {'data': dict, 'timestamp': float}}
@@ -54,6 +55,19 @@ class SolarforecastCommand(BaseCommand):
         
         # Get database manager for geocoding cache
         self.db_manager = bot.db_manager
+    
+    def can_execute(self, message: MeshMessage) -> bool:
+        """Check if this command can be executed with the given message.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if command is enabled and checks pass, False otherwise.
+        """
+        if not self.solarforecast_enabled:
+            return False
+        return super().can_execute(message)
     
     def get_help_text(self) -> str:
         return self.translate('commands.solarforecast.usage')

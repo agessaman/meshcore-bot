@@ -33,6 +33,7 @@ class AdvertCommand(BaseCommand):
             bot: The bot instance.
         """
         super().__init__(bot)
+        self.advert_enabled = self.get_config_value('Advert_Command', 'enabled', fallback=True, value_type='bool')
         
     def get_help_text(self) -> str:
         """Get help text for the advert command.
@@ -54,6 +55,10 @@ class AdvertCommand(BaseCommand):
         Returns:
             bool: True if the command can be executed, False otherwise.
         """
+        # Check if advert command is enabled
+        if not self.advert_enabled:
+            return False
+        
         # Use the base class cooldown check
         if not super().can_execute(message):
             return False

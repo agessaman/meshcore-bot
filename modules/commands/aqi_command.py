@@ -37,6 +37,7 @@ class AqiCommand(BaseCommand):
     
     def __init__(self, bot):
         super().__init__(bot)
+        self.aqi_enabled = self.get_config_value('Aqi_Command', 'enabled', fallback=True, value_type='bool')
         self.url_timeout = 10  # seconds
         
         # Get default state from config for city disambiguation
@@ -87,6 +88,19 @@ class AqiCommand(BaseCommand):
     
     def get_help_text(self) -> str:
         return f"Usage: aqi <city|neighborhood|city country|lat,lon|help> - Get AQI for city/neighborhood in {self.default_state}, international cities, coordinates, or pollutant help"
+    
+    def can_execute(self, message: MeshMessage) -> bool:
+        """Check if this command can be executed with the given message.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if command is enabled and checks pass, False otherwise.
+        """
+        if not self.aqi_enabled:
+            return False
+        return super().can_execute(message)
     
     def get_pollutant_help(self) -> str:
         """Get help text explaining pollutant types within 130 characters.

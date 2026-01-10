@@ -26,6 +26,7 @@ class PathCommand(BaseCommand):
     
     def __init__(self, bot):
         super().__init__(bot)
+        self.path_enabled = self.get_config_value('Path_Command', 'enabled', fallback=True, value_type='bool')
         # Get bot location from config for geographic proximity calculations
         # Check if geographic guessing is enabled (bot has location configured)
         self.geographic_guessing_enabled = False
@@ -84,6 +85,19 @@ class PathCommand(BaseCommand):
                 self.logger.info("Bot section not found - geographic proximity guessing disabled")
         except Exception as e:
             self.logger.warning(f"Error reading bot location from config: {e} - geographic proximity guessing disabled")
+    
+    def can_execute(self, message: MeshMessage) -> bool:
+        """Check if this command can be executed with the given message.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if command is enabled and checks pass, False otherwise.
+        """
+        if not self.path_enabled:
+            return False
+        return super().can_execute(message)
     
     def matches_keyword(self, message: MeshMessage) -> bool:
         """Check if message starts with 'path' keyword or 'p' shortcut (if enabled)"""

@@ -24,6 +24,28 @@ class ChannelsCommand(BaseCommand):
     description = "Lists hashtag channels with sub-categories. Use 'channels' for general, 'channels list' for all categories, 'channels <category>' for specific categories, 'channels #channel' for specific channel info."
     category = "basic"
     
+    def __init__(self, bot):
+        """Initialize the channels command.
+        
+        Args:
+            bot: The bot instance.
+        """
+        super().__init__(bot)
+        self.channels_enabled = self.get_config_value('Channels_Command', 'enabled', fallback=True, value_type='bool')
+    
+    def can_execute(self, message: MeshMessage) -> bool:
+        """Check if this command can be executed with the given message.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if command is enabled and checks pass, False otherwise.
+        """
+        if not self.channels_enabled:
+            return False
+        return super().can_execute(message)
+    
     def get_help_text(self) -> str:
         return self.translate('commands.channels.help')
     

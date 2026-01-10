@@ -27,6 +27,9 @@ class HelloCommand(BaseCommand):
         """
         super().__init__(bot)
         
+        # Load configuration
+        self.hello_enabled = self.get_config_value('Hello_Command', 'enabled', fallback=True, value_type='bool')
+        
         # Fallback arrays if translations not available
         self._init_fallback_arrays()
     
@@ -352,6 +355,22 @@ class HelloCommand(BaseCommand):
         defined_emoji_pattern = r'[🖖👋😊😄🤗👋🏻👋🏼👋🏽👋🏾👋🏿✌️🙏🙋🙋‍♂️🙋‍♀️👽👾🛸\s]+$'
         
         return bool(re.match(defined_emoji_pattern, cleaned_text))
+    
+    def can_execute(self, message: MeshMessage) -> bool:
+        """Check if this command can be executed with the given message.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if command is enabled and checks pass, False otherwise.
+        """
+        # Check if hello command is enabled
+        if not self.hello_enabled:
+            return False
+        
+        # Call parent can_execute() which includes channel checking, cooldown, etc.
+        return super().can_execute(message)
     
     def get_emoji_response(self, text: str, bot_name: str) -> str:
         """Get appropriate response for emoji-only message"""

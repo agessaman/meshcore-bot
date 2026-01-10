@@ -28,6 +28,20 @@ class SunCommand(BaseCommand):
             bot: The MeshCoreBot instance.
         """
         super().__init__(bot)
+        self.sun_enabled = self.get_config_value('Sun_Command', 'enabled', fallback=True, value_type='bool')
+    
+    def can_execute(self, message: MeshMessage) -> bool:
+        """Check if this command can be executed with the given message.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if command is enabled and checks pass, False otherwise.
+        """
+        if not self.sun_enabled:
+            return False
+        return super().can_execute(message)
     
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the sun command.

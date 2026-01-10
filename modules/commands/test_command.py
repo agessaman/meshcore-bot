@@ -28,6 +28,7 @@ class TestCommand(BaseCommand):
     
     def __init__(self, bot):
         super().__init__(bot)
+        self.test_enabled = self.get_config_value('Test_Command', 'enabled', fallback=True, value_type='bool')
         # Get bot location from config for geographic proximity calculations
         self.geographic_guessing_enabled = False
         self.bot_latitude = None
@@ -55,6 +56,19 @@ class TestCommand(BaseCommand):
                         self.logger.warning(f"Invalid bot coordinates in config: {lat}, {lon}")
         except Exception as e:
             self.logger.warning(f"Error reading bot location from config: {e}")
+    
+    def can_execute(self, message: MeshMessage) -> bool:
+        """Check if this command can be executed with the given message.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if command is enabled and checks pass, False otherwise.
+        """
+        if not self.test_enabled:
+            return False
+        return super().can_execute(message)
     
     def get_help_text(self) -> str:
         """Get help text for the command.

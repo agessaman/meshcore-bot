@@ -34,6 +34,7 @@ class PrefixCommand(BaseCommand):
             bot: The bot instance.
         """
         super().__init__(bot)
+        self.prefix_enabled = self.get_config_value('Prefix_Command', 'enabled', fallback=True, value_type='bool')
         # Get API URL from config, no fallback to regional API
         self.api_url = self.bot.config.get('External_Data', 'repeater_prefix_api_url', fallback="")
         
@@ -66,6 +67,19 @@ class PrefixCommand(BaseCommand):
             self.bot_longitude is not None and
             self.max_prefix_range > 0
         )
+    
+    def can_execute(self, message: MeshMessage) -> bool:
+        """Check if this command can be executed with the given message.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if command is enabled and checks pass, False otherwise.
+        """
+        if not self.prefix_enabled:
+            return False
+        return super().can_execute(message)
     
     def get_help_text(self) -> str:
         """Get help text for the prefix command.

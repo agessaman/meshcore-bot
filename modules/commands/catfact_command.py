@@ -31,6 +31,7 @@ class CatfactCommand(BaseCommand):
             bot: The bot instance.
         """
         super().__init__(bot)
+        self.catfact_enabled = self.get_config_value('Catfact_Command', 'enabled', fallback=True, value_type='bool')
         
         # Collection of cat facts - fallback if translations not available
         self.cat_facts_fallback = [
@@ -123,6 +124,19 @@ class CatfactCommand(BaseCommand):
         """
         # Return empty string so it doesn't appear in help
         return ""
+    
+    def can_execute(self, message: MeshMessage) -> bool:
+        """Check if this command can be executed with the given message.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if command is enabled and checks pass, False otherwise.
+        """
+        if not self.catfact_enabled:
+            return False
+        return super().can_execute(message)
     
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the cat fact command.

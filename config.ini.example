@@ -219,16 +219,44 @@ long_jokes = false
 # channels = general,#bot,#jokes
 
 [Keywords]
-# Keyword-response pairs (keyword = response format)
-# Available fields: {sender}, {connection_info}, {snr}, {timestamp}, {path}, {path_distance}, {firstlast_distance}
-# {sender}: Name/ID of message sender
-# {connection_info}: "Direct connection (0 hops)" or "Routed through X hops"
-# {snr}: Signal-to-noise ratio in dB
-# {timestamp}: Message timestamp in HH:MM:SS format
-# {path}: Message routing path (e.g., "01,5f (2 hops)")
-# {rssi}: Received Signal Strength Indicator in dBm
-# {path_distance}: Total distance between all hops in path with locations (e.g., "123.4km (3 segs, 1 no-loc)")
-# {firstlast_distance}: Distance between first and last repeater in path (e.g., "45.6km" or empty if locations missing)
+# Available placeholders (message-based):
+# {sender} - Name/ID of message sender
+# {connection_info} - Path info, SNR, and RSSI combined (e.g., "01,5f (2 hops) | SNR: 15 dB | RSSI: -120 dBm")
+# {snr} - Signal-to-noise ratio in dB
+# {rssi} - Received signal strength indicator in dBm
+# {timestamp} - Message timestamp in HH:MM:SS format
+# {path} - Message routing path (e.g., "01,5f (2 hops)")
+# {path_distance} - Total distance between all hops in path with locations (e.g., "123.4km (3 segs, 1 no-loc)")
+# {firstlast_distance} - Distance between first and last repeater in path (e.g., "45.6km" or empty if locations missing)
+# {elapsed} - Message elapsed time
+# 
+# Available placeholders (mesh network info - same as Scheduled_Messages):
+# Total counts (ever heard):
+# {total_contacts} - Total number of contacts ever heard
+# {total_repeaters} - Total number of repeater devices ever heard
+# {total_companions} - Total number of companion devices ever heard
+# {total_roomservers} - Total number of roomserver devices ever heard
+# {total_sensors} - Total number of sensor devices ever heard
+# 
+# Recent activity:
+# {recent_activity_24h} - Number of unique users active in last 24 hours
+# 
+# Active in last 30 days (last_heard):
+# {total_contacts_30d} - Total contacts active (last_heard) in last 30 days
+# {total_repeaters_30d} - Total repeaters active (last_heard) in last 30 days
+# {total_companions_30d} - Total companions active (last_heard) in last 30 days
+# {total_roomservers_30d} - Total roomservers active (last_heard) in last 30 days
+# {total_sensors_30d} - Total sensors active (last_heard) in last 30 days
+# 
+# New devices (first heard in last 7 days):
+# {new_companions_7d} - New companion devices first heard in last 7 days
+# {new_repeaters_7d} - New repeater devices first heard in last 7 days
+# {new_roomservers_7d} - New roomserver devices first heard in last 7 days
+# {new_sensors_7d} - New sensor devices first heard in last 7 days
+# 
+# Legacy placeholders (for backward compatibility):
+# {repeaters} - Same as {total_repeaters}
+# {companions} - Same as {total_companions}
 test = "ack @[{sender}]{phrase_part} | {connection_info} | Received at: {timestamp}"
 ping = "Pong!"
 pong = "Ping!"

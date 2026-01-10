@@ -44,6 +44,7 @@ class WxCommand(BaseCommand):
     
     def __init__(self, bot):
         super().__init__(bot)
+        self.wx_enabled = self.get_config_value('Wx_Command', 'enabled', fallback=True, value_type='bool')
         
         # Check weather provider setting - delegate to international command if using Open-Meteo
         weather_provider = bot.config.get('Weather', 'weather_provider', fallback='noaa').lower()
@@ -129,6 +130,10 @@ class WxCommand(BaseCommand):
     
     def can_execute(self, message: MeshMessage) -> bool:
         """Override to delegate or use base class cooldown"""
+        # Check if wx command is enabled
+        if not self.wx_enabled:
+            return False
+        
         if self.delegate_command:
             return self.delegate_command.can_execute(message)
         

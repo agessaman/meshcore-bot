@@ -18,6 +18,28 @@ class CmdCommand(BaseCommand):
     description = "Lists available commands in compact format"
     category = "basic"
     
+    def __init__(self, bot):
+        """Initialize the cmd command.
+        
+        Args:
+            bot: The bot instance.
+        """
+        super().__init__(bot)
+        self.cmd_enabled = self.get_config_value('Cmd_Command', 'enabled', fallback=True, value_type='bool')
+    
+    def can_execute(self, message: MeshMessage) -> bool:
+        """Check if this command can be executed with the given message.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if command is enabled and checks pass, False otherwise.
+        """
+        if not self.cmd_enabled:
+            return False
+        return super().can_execute(message)
+    
     def get_help_text(self) -> str:
         """Get help text for the cmd command.
         

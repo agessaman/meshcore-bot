@@ -24,6 +24,20 @@ class MoonCommand(BaseCommand):
             bot: The bot instance.
         """
         super().__init__(bot)
+        self.moon_enabled = self.get_config_value('Moon_Command', 'enabled', fallback=True, value_type='bool')
+    
+    def can_execute(self, message: MeshMessage) -> bool:
+        """Check if this command can be executed with the given message.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if command is enabled and checks pass, False otherwise.
+        """
+        if not self.moon_enabled:
+            return False
+        return super().can_execute(message)
     
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the moon command.
