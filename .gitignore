@@ -119,6 +119,7 @@ Thumbs.db
 
 # Project specific
 *.log
+logs/
 config.ini
 *.db
 *.db-wal
