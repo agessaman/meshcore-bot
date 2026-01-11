@@ -4,6 +4,7 @@ MeshCore Bot using the meshcore-cli and meshcore.py packages
 Uses a modular structure for command creation and organization
 """
 
+import argparse
 import asyncio
 import signal
 import sys
@@ -12,24 +13,88 @@ import sys
 from modules.core import MeshCoreBot
 
 
-if __name__ == "__main__":
-    bot = MeshCoreBot()
+def main():
+    parser = argparse.ArgumentParser(
+        description="MeshCore Bot - Mesh network bot for MeshCore devices"
+    )
+    parser.add_argument(
+        "--config",
+        default="config.ini",
+        help="Path to configuration file (default: config.ini)",
+    )
+
+    args = parser.parse_args()
+
+    bot = MeshCoreBot(config_file=args.config)
     
-    def signal_handler(sig, frame):
-        print("\nShutting down...")
-        asyncio.create_task(bot.stop())
-        sys.exit(0)
-    
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+    # Use asyncio.run() which handles KeyboardInterrupt properly
+    # For SIGTERM, we'll handle it in the async context
+    async def run_bot():
+        """Run bot with proper signal handling"""
+        # Set up signal handlers for graceful shutdown (Unix only)
+        if sys.platform != 'win32':
+            loop = asyncio.get_running_loop()
+            shutdown_event = asyncio.Event()
+            
+            def signal_handler():
+                """Signal handler for graceful shutdown"""
+                print("\nShutting down...")
+                shutdown_event.set()
+            
+            # Register signal handlers
+            for sig in (signal.SIGTERM, signal.SIGINT):
+                loop.add_signal_handler(sig, signal_handler)
+            
+            # Start bot
+            bot_task = asyncio.create_task(bot.start())
+            
+            # Wait for shutdown or completion
+            done, pending = await asyncio.wait(
+                [bot_task, asyncio.create_task(shutdown_event.wait())],
+                return_when=asyncio.FIRST_COMPLETED
+            )
+            
+            # Cancel pending
+            for task in pending:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+            
+            # If shutdown triggered, stop gracefully
+            if shutdown_event.is_set():
+                bot_task.cancel()
+                try:
+                    await bot_task
+                except asyncio.CancelledError:
+                    pass
+                await bot.stop()
+            else:
+                # Bot completed normally
+                try:
+                    await bot_task
+                finally:
+                    await bot.stop()
+        else:
+            # Windows: just run and catch KeyboardInterrupt
+            try:
+                await bot.start()
+            finally:
+                await bot.stop()
     
     try:
-        asyncio.run(bot.start())
+        asyncio.run(run_bot())
     except KeyboardInterrupt:
         print("\nShutting down...")
+        asyncio.run(bot.stop())
     except Exception as e:
         print(f"Error: {e}")
         asyncio.run(bot.stop())
+
+
+if __name__ == "__main__":
+    main()
 
 
 

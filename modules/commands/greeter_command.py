@@ -8,7 +8,7 @@ import sqlite3
 import time
 import asyncio
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 from .base_command import BaseCommand
 from ..models import MeshMessage
 
@@ -22,7 +22,12 @@ class GreeterCommand(BaseCommand):
     description = "Greets users on their first public channel message (once globally by default, or per-channel if configured)"
     category = "system"
     
-    def __init__(self, bot):
+    def __init__(self, bot: Any):
+        """Initialize the greeter command.
+        
+        Args:
+            bot: The bot instance.
+        """
         super().__init__(bot)
         self._init_greeter_tables()
         self._load_config()
@@ -45,7 +50,7 @@ class GreeterCommand(BaseCommand):
         # Auto-start rollout if enabled, rollout_days > 0, and no active rollout exists
         if self.enabled and self.rollout_days > 0:
             try:
-                with sqlite3.connect(self.bot.db_manager.db_path) as conn:
+                with self.bot.db_manager.get_connection() as conn:
                     cursor = conn.cursor()
                     # Check for active rollout (more robust check)
                     cursor.execute('''
@@ -114,8 +119,8 @@ class GreeterCommand(BaseCommand):
                 import traceback
                 self.logger.error(traceback.format_exc())
     
-    def _load_config(self):
-        """Load configuration for greeter command"""
+    def _load_config(self) -> None:
+        """Load configuration for greeter command."""
         self.enabled = self.get_config_value('Greeter_Command', 'enabled', fallback=False, value_type='bool')
         self.greeting_message = self.get_config_value('Greeter_Command', 'greeting_message', 
                                                       fallback='Welcome to the mesh, {sender}!')
@@ -179,10 +184,10 @@ class GreeterCommand(BaseCommand):
         self.levenshtein_distance = self.get_config_value('Greeter_Command', 'levenshtein_distance',
                                                           fallback=0, value_type='int')
     
-    def _init_greeter_tables(self):
-        """Initialize database tables for greeter tracking"""
+    def _init_greeter_tables(self) -> None:
+        """Initialize database tables for greeter tracking."""
         try:
-            with sqlite3.connect(self.bot.db_manager.db_path) as conn:
+            with self.bot.db_manager.get_connection() as conn:
                 cursor = conn.cursor()
                 
                 # Create greeted_users table for tracking who has been greeted
@@ -226,13 +231,13 @@ class GreeterCommand(BaseCommand):
             self.logger.error(f"Failed to initialize greeter tables: {e}")
             raise
     
-    def _check_rollout_period(self):
-        """Check if we're in a rollout period and mark active users if needed"""
+    def _check_rollout_period(self) -> None:
+        """Check if we're in a rollout period and mark active users if needed."""
         if not self.enabled:
             return
         
         try:
-            with sqlite3.connect(self.bot.db_manager.db_path) as conn:
+            with self.bot.db_manager.get_connection() as conn:
                 cursor = conn.cursor()
                 
                 # Check if there's an active rollout
@@ -281,10 +286,14 @@ class GreeterCommand(BaseCommand):
         except Exception as e:
             self.logger.error(f"Error checking rollout period: {e}")
     
-    def _mark_active_users_as_greeted(self, rollout_id: int):
-        """Mark all users who have posted on public channels during rollout period as greeted"""
+    def _mark_active_users_as_greeted(self, rollout_id: int) -> None:
+        """Mark all users who have posted on public channels during rollout period as greeted.
+        
+        Args:
+            rollout_id: The ID of the active rollout.
+        """
         try:
-            with sqlite3.connect(self.bot.db_manager.db_path) as conn:
+            with self.bot.db_manager.get_connection() as conn:
                 cursor = conn.cursor()
                 
                 # Get rollout start date
@@ -355,24 +364,23 @@ class GreeterCommand(BaseCommand):
             self.logger.error(f"Error marking active users as greeted: {e}")
     
     def backfill_greeted_users(self, lookback_days: Optional[int] = None) -> Dict[str, Any]:
-        """
-        Backfill greeted_users table from historical message_stats data
+        """Backfill greeted_users table from historical message_stats data.
         
         This allows marking all users who have posted on public channels in the past,
         which can shorten or eliminate the rollout period.
         
         Args:
-            lookback_days: Number of days to look back (None = all time)
+            lookback_days: Number of days to look back (None = all time).
             
         Returns:
-            Dictionary with backfill results (marked_count, total_users, etc.)
+            Dict[str, Any]: Dictionary with backfill results (marked_count, total_users, etc.)
         """
         if not self.enabled:
             self.logger.warning("Greeter is disabled - cannot backfill")
             return {'success': False, 'error': 'Greeter is disabled'}
         
         try:
-            with sqlite3.connect(self.bot.db_manager.db_path) as conn:
+            with self.bot.db_manager.get_connection() as conn:
                 cursor = conn.cursor()
                 
                 # Check if message_stats table exists
@@ -464,15 +472,14 @@ class GreeterCommand(BaseCommand):
             }
     
     def start_rollout(self, days: Optional[int] = None, backfill_first: bool = True) -> bool:
-        """
-        Start a rollout period where all active users are marked as greeted
+        """Start a rollout period where all active users are marked as greeted.
         
         Args:
-            days: Number of days for rollout period (uses config default if None)
-            backfill_first: If True, backfill from historical data before starting rollout
+            days: Number of days for rollout period (uses config default if None).
+            backfill_first: If True, backfill from historical data before starting rollout.
             
         Returns:
-            True if rollout started successfully
+            bool: True if rollout started successfully.
         """
         if not self.enabled:
             self.logger.warning("Greeter is disabled - cannot start rollout")
@@ -488,7 +495,7 @@ class GreeterCommand(BaseCommand):
             
             rollout_days = days or self.rollout_days
             
-            with sqlite3.connect(self.bot.db_manager.db_path) as conn:
+            with self.bot.db_manager.get_connection() as conn:
                 cursor = conn.cursor()
                 
                 # Check if there's already an active rollout
@@ -521,15 +528,14 @@ class GreeterCommand(BaseCommand):
             return False
     
     def _levenshtein_distance(self, s1: str, s2: str) -> int:
-        """
-        Calculate Levenshtein distance between two strings
+        """Calculate Levenshtein distance between two strings.
         
         Args:
-            s1: First string
-            s2: Second string
+            s1: First string.
+            s2: Second string.
             
         Returns:
-            Levenshtein distance (number of edits needed)
+            int: Levenshtein distance (number of edits needed).
         """
         if len(s1) < len(s2):
             return self._levenshtein_distance(s2, s1)
@@ -550,21 +556,20 @@ class GreeterCommand(BaseCommand):
         return previous_row[-1]
     
     def _find_similar_greeted_user(self, sender_id: str, channel: str) -> Optional[str]:
-        """
-        Find if a user with a similar name (within Levenshtein distance) has been greeted
+        """Find if a user with a similar name has been greeted.
         
         Args:
-            sender_id: The user's ID to check
-            channel: The channel name (used only if per_channel_greetings is True)
+            sender_id: The user's ID to check.
+            channel: The channel name (used only if per_channel_greetings is True).
             
         Returns:
-            The greeted sender_id if a similar one is found, None otherwise
+            Optional[str]: The greeted sender_id if a similar one is found, None otherwise.
         """
         if self.levenshtein_distance <= 0:
             return None
         
         try:
-            with sqlite3.connect(self.bot.db_manager.db_path) as conn:
+            with self.bot.db_manager.get_connection() as conn:
                 cursor = conn.cursor()
                 
                 if self.per_channel_greetings:
@@ -595,18 +600,17 @@ class GreeterCommand(BaseCommand):
             return None
     
     def has_been_greeted(self, sender_id: str, channel: str) -> bool:
-        """
-        Check if a user has been greeted (with optional Levenshtein distance matching)
+        """Check if a user has been greeted.
         
         Args:
-            sender_id: The user's ID
-            channel: The channel name (used only if per_channel_greetings is True)
+            sender_id: The user's ID.
+            channel: The channel name (used only if per_channel_greetings is True).
             
         Returns:
-            True if user has been greeted (globally or on this channel, depending on config)
+            bool: True if user has been greeted (globally or on this channel), False otherwise.
         """
         try:
-            with sqlite3.connect(self.bot.db_manager.db_path) as conn:
+            with self.bot.db_manager.get_connection() as conn:
                 cursor = conn.cursor()
                 
                 if self.per_channel_greetings:
@@ -638,25 +642,21 @@ class GreeterCommand(BaseCommand):
             return False
     
     def mark_as_greeted(self, sender_id: str, channel: str) -> bool:
-        """
-        Mark a user as greeted atomically.
+        """Mark a user as greeted atomically.
         
         Uses INSERT OR IGNORE with UNIQUE constraint to handle race conditions.
-        Returns True if user was successfully marked (or already marked).
-        Returns False only on actual errors (not on duplicate attempts).
         
         Args:
-            sender_id: The user's ID
-            channel: The channel name (stored only if per_channel_greetings is True)
+            sender_id: The user's ID.
+            channel: The channel name (stored only if per_channel_greetings is True).
             
         Returns:
-            True if user was marked (or already marked), False on error
+            bool: True if user was marked (or already marked), False on error.
         """
         try:
-            db_path = self.bot.db_manager.db_path
-            self.logger.debug(f"Marking {sender_id} as greeted (channel: {channel}, db: {db_path})")
+            self.logger.debug(f"Marking {sender_id} as greeted (channel: {channel})")
             
-            with sqlite3.connect(db_path, timeout=10.0) as conn:
+            with self.bot.db_manager.get_connection() as conn:
                 # Use WAL mode for better concurrency (if not already enabled)
                 # This helps with race conditions
                 conn.execute('PRAGMA journal_mode=WAL')
@@ -781,9 +781,13 @@ class GreeterCommand(BaseCommand):
             return False
     
     def get_greeted_users_count(self) -> int:
-        """Get count of users who have been greeted (for verification)"""
+        """Get count of users who have been greeted.
+        
+        Returns:
+            int: The total count of greeted users.
+        """
         try:
-            with sqlite3.connect(self.bot.db_manager.db_path) as conn:
+            with self.bot.db_manager.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('SELECT COUNT(*) FROM greeted_users')
                 count = cursor.fetchone()[0]
@@ -792,10 +796,10 @@ class GreeterCommand(BaseCommand):
             self.logger.error(f"Error getting greeted users count: {e}")
             return 0
     
-    def _cleanup_duplicate_greetings(self):
-        """Remove duplicate entries from greeted_users table, keeping the earliest (first) greeting"""
+    def _cleanup_duplicate_greetings(self) -> None:
+        """Remove duplicate entries from greeted_users table."""
         try:
-            with sqlite3.connect(self.bot.db_manager.db_path) as conn:
+            with self.bot.db_manager.get_connection() as conn:
                 cursor = conn.cursor()
                 
                 # Find duplicates - count how many exist per (sender_id, channel)
@@ -853,10 +857,16 @@ class GreeterCommand(BaseCommand):
             # Don't raise - allow initialization to continue even if cleanup fails
     
     def get_recent_greeted_users(self, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get recent greeted users (for verification) - ordered by first greeting time"""
+        """Get recent greeted users.
+        
+        Args:
+            limit: Maximum number of users to return.
+            
+        Returns:
+            List[Dict[str, Any]]: A list of dictionaries containing greeted user info.
+        """
         try:
-            with sqlite3.connect(self.bot.db_manager.db_path) as conn:
-                conn.row_factory = sqlite3.Row
+            with self.bot.db_manager.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     SELECT sender_id, channel, MIN(greeted_at) as greeted_at, 
@@ -873,7 +883,11 @@ class GreeterCommand(BaseCommand):
             return []
     
     async def _get_mesh_info(self) -> Dict[str, Any]:
-        """Get mesh network information for greeting"""
+        """Get mesh network information for greeting.
+        
+        Returns:
+            Dict[str, Any]: A dictionary containing mesh statistics.
+        """
         info = {
             'total_contacts': 0,
             'repeaters': 0,
@@ -909,7 +923,7 @@ class GreeterCommand(BaseCommand):
             # Get recent activity from message_stats if available
             if info['recent_activity_24h'] == 0:
                 try:
-                    with sqlite3.connect(self.bot.db_manager.db_path) as conn:
+                    with self.bot.db_manager.get_connection() as conn:
                         cursor = conn.cursor()
                         # Check if message_stats table exists
                         cursor.execute('''
@@ -935,30 +949,28 @@ class GreeterCommand(BaseCommand):
         return info
     
     def _get_greeting_for_channel(self, channel: str) -> str:
-        """
-        Get greeting message for a specific channel
+        """Get greeting message for a specific channel.
         
         Args:
-            channel: Channel name
+            channel: Channel name.
             
         Returns:
-            Greeting message template for the channel, or default if not specified
+            str: Greeting message template for the channel, or default if not specified.
         """
         if channel and channel.lower() in self.channel_greetings:
             return self.channel_greetings[channel.lower()]['greeting']
         return self.greeting_message
     
-    async def _format_greeting_parts(self, sender_id: str, channel: str = None, mesh_info: Optional[Dict[str, Any]] = None) -> list:
-        """
-        Format greeting message parts with mesh information
+    async def _format_greeting_parts(self, sender_id: str, channel: Optional[str] = None, mesh_info: Optional[Dict[str, Any]] = None) -> List[str]:
+        """Format greeting message parts with mesh information.
         
         Args:
-            sender_id: The user's ID
-            channel: Channel name (for channel-specific greetings)
-            mesh_info: Optional mesh info dict (will be fetched if None)
+            sender_id: The user's ID.
+            channel: Channel name (for channel-specific greetings).
+            mesh_info: Optional mesh info dict (will be fetched if None).
         
         Returns:
-            List of greeting message strings (for multi-part greetings)
+            List[str]: List of greeting message strings (for multi-part greetings).
         """
         if mesh_info is None:
             mesh_info = await self._get_mesh_info()
@@ -995,17 +1007,35 @@ class GreeterCommand(BaseCommand):
         return formatted_parts
     
     def matches_keyword(self, message: MeshMessage) -> bool:
-        """Greeter doesn't match keywords - it's triggered automatically"""
+        """Greeter doesn't match keywords - it's triggered automatically.
+        
+        Args:
+            message: The message to check.
+            
+        Returns:
+            bool: Always False.
+        """
         return False
     
     def matches_custom_syntax(self, message: MeshMessage) -> bool:
-        """Greeter doesn't match custom syntax"""
+        """Greeter doesn't match custom syntax.
+        
+        Args:
+            message: The message to check.
+            
+        Returns:
+            bool: Always False.
+        """
         return False
     
     def _is_rollout_active(self) -> bool:
-        """Check if there's an active rollout period"""
+        """Check if there's an active rollout period.
+        
+        Returns:
+            bool: True if a rollout is active, False otherwise.
+        """
         try:
-            with sqlite3.connect(self.bot.db_manager.db_path) as conn:
+            with self.bot.db_manager.get_connection() as conn:
                 cursor = conn.cursor()
                 # Use SQLite's datetime functions to calculate end date and compare with current time
                 # This handles timezone issues automatically since both are in UTC
@@ -1053,22 +1083,21 @@ class GreeterCommand(BaseCommand):
             return False
     
     def _check_human_greeting(self, new_user_id: str, channel: str, since_timestamp: int) -> bool:
-        """
-        Check if a human has greeted the new user by mentioning their name in a message
+        """Check if a human has greeted the new user.
         
         Args:
-            new_user_id: The new user's ID to check for
-            channel: The channel to check
-            since_timestamp: Only check messages after this timestamp
+            new_user_id: The new user's ID to check for.
+            channel: The channel to check.
+            since_timestamp: Only check messages after this timestamp.
             
         Returns:
-            True if a human (not the new user) has mentioned the new user's name
+            bool: True if a human has mentioned the new user, False otherwise.
         """
         if not self.defer_to_human_greeting:
             return False
         
         try:
-            with sqlite3.connect(self.bot.db_manager.db_path) as conn:
+            with self.bot.db_manager.get_connection() as conn:
                 cursor = conn.cursor()
                 
                 # Check if message_stats table exists
@@ -1117,8 +1146,13 @@ class GreeterCommand(BaseCommand):
             self.logger.error(f"Error checking for human greeting: {e}")
             return False
     
-    def _cancel_pending_greeting(self, sender_id: str, channel: str):
-        """Cancel a pending greeting if it exists"""
+    def _cancel_pending_greeting(self, sender_id: str, channel: str) -> None:
+        """Cancel a pending greeting if it exists.
+        
+        Args:
+            sender_id: The user's ID.
+            channel: The channel name.
+        """
         key = (sender_id, channel)
         if key in self.pending_greetings:
             task = self.pending_greetings[key]
@@ -1127,12 +1161,11 @@ class GreeterCommand(BaseCommand):
                 self.logger.info(f"Cancelled pending greeting for {sender_id} on {channel}")
             del self.pending_greetings[key]
     
-    async def _send_delayed_greeting(self, message: MeshMessage):
-        """
-        Send a greeting after the dead air delay, checking for human greetings during the delay
+    async def _send_delayed_greeting(self, message: MeshMessage) -> None:
+        """Send a greeting after the dead air delay.
         
         Args:
-            message: The original message that triggered the greeting
+            message: The original message that triggered the greeting.
         """
         key = (message.sender_id, message.channel)
         original_timestamp = message.timestamp or int(time.time())
@@ -1184,14 +1217,13 @@ class GreeterCommand(BaseCommand):
                 del self.pending_greetings[key]
     
     async def _send_greeting(self, message: MeshMessage) -> bool:
-        """
-        Actually send the greeting message (extracted from execute for reuse)
+        """Actually send the greeting message.
         
         Args:
-            message: The message that triggered the greeting
+            message: The message that triggered the greeting.
             
         Returns:
-            True if greeting was sent successfully
+            bool: True if greeting was sent successfully.
         """
         try:
             # Format greeting parts (may be single or multi-part)
@@ -1229,9 +1261,13 @@ class GreeterCommand(BaseCommand):
             return False
     
     def should_execute(self, message: MeshMessage) -> bool:
-        """
-        Check if greeter should execute for this message
-        Only executes for public channel messages (not DMs) on monitored channels
+        """Check if greeter should execute for this message.
+        
+        Args:
+            message: The message to check.
+            
+        Returns:
+            bool: True if the greeter should execute, False otherwise.
         """
         if not self.enabled:
             return False
@@ -1279,7 +1315,14 @@ class GreeterCommand(BaseCommand):
         return True
     
     async def execute(self, message: MeshMessage) -> bool:
-        """Execute the greeter command - greet the user on their first public message"""
+        """Execute the greeter command.
+        
+        Args:
+            message: The message triggering the greeting.
+            
+        Returns:
+            bool: True if executed successfully, False otherwise.
+        """
         try:
             # Double-check we should greet (race condition protection)
             if not self.should_execute(message):
@@ -1301,7 +1344,7 @@ class GreeterCommand(BaseCommand):
                 # If the record was just created (within last 5 seconds), we likely created it
                 # If it's older, another process may have created it first
                 try:
-                    with sqlite3.connect(self.bot.db_manager.db_path) as conn:
+                    with self.bot.db_manager.get_connection() as conn:
                         cursor = conn.cursor()
                         if self.per_channel_greetings:
                             cursor.execute('''
@@ -1355,13 +1398,11 @@ class GreeterCommand(BaseCommand):
             self.logger.error(f"Error executing greeter command: {e}")
             return False
     
-    def check_message_for_human_greeting(self, message: MeshMessage):
-        """
-        Check if an incoming message should cancel a pending greeting
-        Called from message handler when new messages arrive
+    def check_message_for_human_greeting(self, message: MeshMessage) -> None:
+        """Check if an incoming message should cancel a pending greeting.
         
         Args:
-            message: The incoming message to check
+            message: The incoming message to check.
         """
         if not self.defer_to_human_greeting or not self.dead_air_delay_seconds > 0:
             return
@@ -1399,6 +1440,11 @@ class GreeterCommand(BaseCommand):
             self.mark_as_greeted(key[0], key[1])
     
     def get_help_text(self) -> str:
+        """Get help text for the greeter command.
+        
+        Returns:
+            str: The help text for this command.
+        """
         mode = "per-channel" if self.per_channel_greetings else "global (once total)"
         return f"Greeter automatically welcomes new users on public channels ({mode} mode). Configure in [Greeter_Command] section."
 

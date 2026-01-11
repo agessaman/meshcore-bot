@@ -7,7 +7,7 @@ Provides clean, family-friendly jokes from the JokeAPI
 import aiohttp
 import asyncio
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from .base_command import BaseCommand
 from ..models import MeshMessage
 
@@ -40,11 +40,13 @@ class JokeCommand(BaseCommand):
     BLACKLIST_FLAGS = "nsfw,religious,political,racist,sexist,explicit"
     TIMEOUT = 10  # seconds
     
-    def __init__(self, bot):
-        super().__init__(bot)
+    def __init__(self, bot: Any):
+        """Initialize the joke command.
         
-        # Per-user cooldown tracking
-        self.user_cooldowns = {}  # user_id -> last_execution_time
+        Args:
+            bot: The bot instance.
+        """
+        super().__init__(bot)
         
         # Load configuration
         self.joke_enabled = bot.config.getboolean('Jokes', 'joke_enabled', fallback=True)
@@ -64,7 +66,14 @@ class JokeCommand(BaseCommand):
             return f"Usage: joke [category] - Get a random joke or from categories: {categories}"
     
     def matches_keyword(self, message: MeshMessage) -> bool:
-        """Check if message starts with a joke keyword"""
+        """Check if message starts with a joke keyword.
+        
+        Args:
+            message: The message to check.
+            
+        Returns:
+            bool: True if a joke keyword matches, False otherwise.
+        """
         content = message.content.strip()
         if content.startswith('!'):
             content = content[1:].strip()
@@ -76,7 +85,11 @@ class JokeCommand(BaseCommand):
         return False
     
     def can_execute(self, message: MeshMessage) -> bool:
-        """Override cooldown check to be per-user instead of per-command-instance"""
+        """Override to add custom checks (joke_enabled, dark joke) while using base class cooldown"""
+        # Use base class for channel access, DM requirements, and cooldown
+        if not super().can_execute(message):
+            return False
+        
         # Check if joke command is enabled
         if not self.joke_enabled:
             return False
@@ -85,37 +98,7 @@ class JokeCommand(BaseCommand):
         if self.is_dark_joke_request(message) and not message.is_dm:
             return False
         
-        # Check if command requires DM and message is not DM
-        if self.requires_dm and not message.is_dm:
-            return False
-        
-        # Check per-user cooldown
-        if self.cooldown_seconds > 0:
-            import time
-            current_time = time.time()
-            user_id = message.sender_id
-            
-            if user_id in self.user_cooldowns:
-                last_execution = self.user_cooldowns[user_id]
-                if (current_time - last_execution) < self.cooldown_seconds:
-                    return False
-        
         return True
-    
-    def get_remaining_cooldown(self, user_id: str) -> int:
-        """Get remaining cooldown time for a specific user"""
-        if self.cooldown_seconds <= 0:
-            return 0
-        
-        import time
-        current_time = time.time()
-        if user_id in self.user_cooldowns:
-            last_execution = self.user_cooldowns[user_id]
-            elapsed = current_time - last_execution
-            remaining = self.cooldown_seconds - elapsed
-            return max(0, int(remaining))
-        
-        return 0
     
     def is_dark_joke_request(self, message: MeshMessage) -> bool:
         """Check if the message is requesting a dark joke"""
@@ -130,11 +113,6 @@ class JokeCommand(BaseCommand):
             return category_input == 'dark'
         
         return False
-    
-    def _record_execution(self, user_id: str):
-        """Record the execution time for a specific user"""
-        import time
-        self.user_cooldowns[user_id] = time.time()
     
     def get_seasonal_default(self) -> str:
         """Get the seasonal default category based on current month"""
@@ -157,7 +135,14 @@ class JokeCommand(BaseCommand):
             return None
     
     async def execute(self, message: MeshMessage) -> bool:
-        """Execute the joke command"""
+        """Execute the joke command.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if executed successfully, False otherwise.
+        """
         content = message.content.strip()
         
         # Parse the command to extract category
@@ -178,7 +163,7 @@ class JokeCommand(BaseCommand):
         
         try:
             # Record execution for this user
-            self._record_execution(message.sender_id)
+            self.record_execution(message.sender_id)
             
             # Get joke from API with length handling
             joke_data = await self.get_joke_with_length_handling(category)
@@ -200,8 +185,15 @@ class JokeCommand(BaseCommand):
             await self.send_response(message, "Sorry, something went wrong getting a joke!")
             return True
     
-    async def get_joke_from_api(self, category: str = None) -> dict:
-        """Get a joke from the JokeAPI"""
+    async def get_joke_from_api(self, category: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Get a joke from the JokeAPI.
+        
+        Args:
+            category: The joke category to fetch.
+            
+        Returns:
+            Optional[Dict[str, Any]]: The joke data from the API, or None if it fails.
+        """
         try:
             # Build the API URL
             # For dark jokes, don't use safe-mode since users expect dark humor
@@ -285,8 +277,13 @@ class JokeCommand(BaseCommand):
         self.logger.warning(f"Could not get short joke after {max_attempts} attempts")
         return joke_data
     
-    async def send_joke_with_length_handling(self, message: MeshMessage, joke_data: Dict[str, Any]):
-        """Send joke with length handling - split if necessary"""
+    async def send_joke_with_length_handling(self, message: MeshMessage, joke_data: Dict[str, Any]) -> None:
+        """Send joke with length handling - split if necessary.
+        
+        Args:
+            message: The original message to respond to.
+            joke_data: The joke data from the API.
+        """
         joke_text = self.format_joke(joke_data)
         
         if len(joke_text) <= 130:
@@ -306,8 +303,15 @@ class JokeCommand(BaseCommand):
                 # Cannot be split properly, send as single message (user will see truncation)
                 await self.send_response(message, joke_text)
     
-    def split_joke(self, joke_text: str) -> list:
-        """Split a long joke at a logical point"""
+    def split_joke(self, joke_text: str) -> List[str]:
+        """Split a long joke at a logical point.
+        
+        Args:
+            joke_text: The full text of the joke.
+            
+        Returns:
+            List[str]: A list of joke parts.
+        """
         # Remove emoji for splitting
         clean_joke = joke_text[2:] if joke_text.startswith('🎭 ') else joke_text
         
@@ -341,8 +345,15 @@ class JokeCommand(BaseCommand):
         
         return [f"🎭 {part1}", f"🎭 {part2}"]
     
-    def format_joke(self, joke_data: dict) -> str:
-        """Format the joke data into a readable string"""
+    def format_joke(self, joke_data: Dict[str, Any]) -> str:
+        """Format the joke data into a readable string.
+        
+        Args:
+            joke_data: The joke data from the API.
+            
+        Returns:
+            str: The formatted joke string.
+        """
         try:
             joke_type = joke_data.get('type', 'single')
             

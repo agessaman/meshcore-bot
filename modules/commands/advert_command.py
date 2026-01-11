@@ -5,12 +5,18 @@ Handles the 'advert' command for sending flood adverts
 """
 
 import time
+from typing import Any
 from .base_command import BaseCommand
 from ..models import MeshMessage
 
 
 class AdvertCommand(BaseCommand):
-    """Handles the advert command"""
+    """Handles the advert command.
+    
+    This command allows users to manually trigger a flood advertisement
+    to help propagate their node information across the mesh network.
+    It enforces a strict cooldown to prevent network congestion.
+    """
     
     # Plugin metadata
     name = "advert"
@@ -20,11 +26,39 @@ class AdvertCommand(BaseCommand):
     cooldown_seconds = 3600  # 1 hour
     category = "special"
     
+    def __init__(self, bot: Any):
+        """Initialize the advert command.
+        
+        Args:
+            bot: The bot instance.
+        """
+        super().__init__(bot)
+        self.advert_enabled = self.get_config_value('Advert_Command', 'enabled', fallback=True, value_type='bool')
+        
     def get_help_text(self) -> str:
+        """Get help text for the advert command.
+        
+        Returns:
+            str: The help text for this command.
+        """
         return self.translate('commands.advert.description')
     
     def can_execute(self, message: MeshMessage) -> bool:
-        """Check if advert command can be executed"""
+        """Check if advert command can be executed.
+        
+        Verifies both the standard command cooldowns and checks against the
+        bot's global last advertisement time.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if the command can be executed, False otherwise.
+        """
+        # Check if advert command is enabled
+        if not self.advert_enabled:
+            return False
+        
         # Use the base class cooldown check
         if not super().can_execute(message):
             return False
@@ -38,7 +72,17 @@ class AdvertCommand(BaseCommand):
         return True
     
     async def execute(self, message: MeshMessage) -> bool:
-        """Execute the advert command"""
+        """Execute the advert command.
+        
+        Sends a flood advertisement if the cooldown has passed. If on cooldown,
+        informs the user of the remaining time.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if executed successfully (including cooldown notice), False otherwise.
+        """
         try:
             # Check if enough time has passed since last advert (1 hour)
             current_time = time.time()

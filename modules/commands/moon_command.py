@@ -18,10 +18,36 @@ class MoonCommand(BaseCommand):
     category = "solar"
     
     def __init__(self, bot):
+        """Initialize the moon command.
+        
+        Args:
+            bot: The bot instance.
+        """
         super().__init__(bot)
+        self.moon_enabled = self.get_config_value('Moon_Command', 'enabled', fallback=True, value_type='bool')
+    
+    def can_execute(self, message: MeshMessage) -> bool:
+        """Check if this command can be executed with the given message.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if command is enabled and checks pass, False otherwise.
+        """
+        if not self.moon_enabled:
+            return False
+        return super().can_execute(message)
     
     async def execute(self, message: MeshMessage) -> bool:
-        """Execute the moon command"""
+        """Execute the moon command.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if executed successfully, False otherwise.
+        """
         try:
             # Get moon information using default location
             moon_info = get_moon()
@@ -39,7 +65,14 @@ class MoonCommand(BaseCommand):
             return False
     
     def _translate_phase_name(self, phase_name: str) -> str:
-        """Translate English phase name to localized version"""
+        """Translate English phase name to localized version.
+        
+        Args:
+            phase_name: The English phase name (e.g., 'New Moon').
+            
+        Returns:
+            str: The translated phase name, or original if not found.
+        """
         # Map English phase names (with or without emoji) to translation keys
         phase_mapping = {
             'New Moon': 'new_moon',
@@ -69,7 +102,14 @@ class MoonCommand(BaseCommand):
         return phase_name
     
     def _format_moon_response(self, moon_info: str) -> str:
-        """Format moon information to be more compact and readable"""
+        """Format moon information to be more compact and readable.
+        
+        Args:
+            moon_info: The raw moon info string.
+            
+        Returns:
+            str: The formatted response string.
+        """
         try:
             # Parse the moon info string to extract key information
             lines = moon_info.split('\n')
@@ -130,6 +170,10 @@ class MoonCommand(BaseCommand):
             # Fallback to original format if formatting fails
             return self.translate('commands.moon.fallback', info=moon_info)
     
-    def get_help_text(self):
-        """Get help text for this command"""
+    def get_help_text(self) -> str:
+        """Get help text for this command.
+        
+        Returns:
+            str: The help text for this command.
+        """
         return self.description

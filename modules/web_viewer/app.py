@@ -24,6 +24,7 @@ sys.path.insert(0, project_root)
 
 from modules.db_manager import DBManager
 from modules.repeater_manager import RepeaterManager
+from modules.utils import resolve_path
 
 class BotDataViewer:
     """Complete web interface using Flask-SocketIO 5.x best practices"""
@@ -32,7 +33,16 @@ class BotDataViewer:
         # Setup comprehensive logging
         self._setup_logging()
         
-        self.app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), 'templates'))
+        # Set bot root directory (project root) for path validation
+        # This is the directory containing the modules folder
+        self.bot_root = Path(os.path.join(os.path.dirname(__file__), '..', '..')).resolve()
+        
+        self.app = Flask(
+            __name__, 
+            template_folder=os.path.join(os.path.dirname(__file__), 'templates'),
+            static_folder=os.path.join(os.path.dirname(__file__), 'static'),
+            static_url_path='/static'
+        )
         self.app.config['SECRET_KEY'] = 'meshcore_bot_viewer_secret'
         
         # Flask-SocketIO configuration following 5.x best practices
@@ -52,6 +62,7 @@ class BotDataViewer:
         
         # Connection management using Flask-SocketIO built-ins
         self.connected_clients = {}  # Track client metadata
+        self._clients_lock = threading.Lock()  # Thread safety for connected_clients
         self.max_clients = 10
         
         # Database connection pooling with thread safety
@@ -82,7 +93,9 @@ class BotDataViewer:
         self.logger.info("BotDataViewer initialized with Flask-SocketIO 5.x best practices")
     
     def _setup_logging(self):
-        """Setup comprehensive logging"""
+        """Setup comprehensive logging with rotation"""
+        from logging.handlers import RotatingFileHandler
+        
         # Create logs directory if it doesn't exist
         os.makedirs('logs', exist_ok=True)
         
@@ -93,8 +106,13 @@ class BotDataViewer:
         # Remove existing handlers to avoid duplicates
         self.logger.handlers.clear()
         
-        # Create file handler
-        file_handler = logging.FileHandler('logs/web_viewer_modern.log')
+        # Create rotating file handler (max 5MB per file, keep 3 backups)
+        file_handler = RotatingFileHandler(
+            'logs/web_viewer_modern.log',
+            maxBytes=5 * 1024 * 1024,  # 5 MB
+            backupCount=3,
+            encoding='utf-8'
+        )
         file_handler.setLevel(logging.DEBUG)
         file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         file_handler.setFormatter(file_formatter)
@@ -110,7 +128,7 @@ class BotDataViewer:
         # Prevent propagation to root logger to avoid duplicate messages
         self.logger.propagate = False
         
-        self.logger.info("Web viewer logging initialized")
+        self.logger.info("Web viewer logging initialized with rotation (5MB max, 3 backups)")
     
     def _load_config(self, config_path):
         """Load configuration from file"""
@@ -176,47 +194,44 @@ class BotDataViewer:
         conn = None
         try:
             # Get database path from config
-            db_path = self.config.get('Database', 'path', fallback='bot_data.db')
+            db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
+            
+            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
+            db_path = resolve_path(db_path, self.bot_root)
             
             # Connect to database and create table if it doesn't exist
-            conn = sqlite3.connect(db_path, timeout=30)
-            cursor = conn.cursor()
-            
-            # Create packet_stream table with schema matching the INSERT statements
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS packet_stream (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp REAL NOT NULL,
-                    data TEXT NOT NULL,
-                    type TEXT NOT NULL
-                )
-            ''')
-            
-            # Create index on timestamp for faster queries
-            cursor.execute('''
-                CREATE INDEX IF NOT EXISTS idx_packet_stream_timestamp 
-                ON packet_stream(timestamp)
-            ''')
-            
-            # Create index on type for filtering by type
-            cursor.execute('''
-                CREATE INDEX IF NOT EXISTS idx_packet_stream_type 
-                ON packet_stream(type)
-            ''')
-            
-            conn.commit()
-            
-            self.logger.info(f"Initialized packet_stream table in {db_path}")
+            with sqlite3.connect(db_path, timeout=30) as conn:
+                cursor = conn.cursor()
+                
+                # Create packet_stream table with schema matching the INSERT statements
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS packet_stream (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp REAL NOT NULL,
+                        data TEXT NOT NULL,
+                        type TEXT NOT NULL
+                    )
+                ''')
+                
+                # Create index on timestamp for faster queries
+                cursor.execute('''
+                    CREATE INDEX IF NOT EXISTS idx_packet_stream_timestamp 
+                    ON packet_stream(timestamp)
+                ''')
+                
+                # Create index on type for filtering by type
+                cursor.execute('''
+                    CREATE INDEX IF NOT EXISTS idx_packet_stream_type 
+                    ON packet_stream(type)
+                ''')
+                
+                conn.commit()
+                
+                self.logger.info(f"Initialized packet_stream table in {db_path}")
             
         except Exception as e:
             self.logger.error(f"Failed to initialize packet_stream table: {e}")
             # Don't raise - allow web viewer to continue even if table init fails
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception as e:
-                    self.logger.debug(f"Error closing init connection: {e}")
     
     def _get_db_connection(self):
         """Get database connection - create new connection for each request to avoid threading issues"""
@@ -280,14 +295,52 @@ class BotDataViewer:
             # Get bot uptime
             bot_uptime = self._get_bot_uptime()
             
+            with self._clients_lock:
+                client_count = len(self.connected_clients)
+            
             return jsonify({
                 'status': 'healthy',
-                'connected_clients': len(self.connected_clients),
+                'connected_clients': client_count,
                 'max_clients': self.max_clients,
                 'timestamp': time.time(),
                 'bot_uptime': bot_uptime,
                 'version': 'modern_2.0'
             })
+        
+        @self.app.route('/api/system-health')
+        def api_system_health():
+            """Get comprehensive system health status from database"""
+            try:
+                # Read health data from database (consistent with how other data is accessed)
+                health_data = self.db_manager.get_system_health()
+                
+                if not health_data:
+                    # If no health data in database, return minimal status
+                    return jsonify({
+                        'status': 'unknown',
+                        'timestamp': time.time(),
+                        'message': 'Health data not available yet',
+                        'components': {}
+                    })
+                
+                # Update timestamp to reflect current time (data may be slightly stale)
+                health_data['timestamp'] = time.time()
+                
+                # Recalculate uptime if start_time is available
+                start_time = self.db_manager.get_bot_start_time()
+                if start_time:
+                    health_data['uptime_seconds'] = time.time() - start_time
+                
+                return jsonify(health_data)
+                
+            except Exception as e:
+                self.logger.error(f"Error getting system health: {e}")
+                import traceback
+                self.logger.debug(traceback.format_exc())
+                return jsonify({
+                    'error': str(e),
+                    'status': 'error'
+                }), 500
         
         @self.app.route('/api/stats')
         def api_stats():
@@ -376,7 +429,6 @@ class BotDataViewer:
         @self.app.route('/api/recent_commands')
         def api_recent_commands():
             """API endpoint to get recent commands from database"""
-            conn = None
             try:
                 import sqlite3
                 import json
@@ -386,44 +438,42 @@ class BotDataViewer:
                 cutoff_time = time.time() - (60 * 60)  # 60 minutes ago
                 
                 # Get database path
-                db_path = self.config.get('Database', 'path', fallback='bot_data.db')
+                db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
                 
-                conn = sqlite3.connect(db_path, timeout=30)
-                cursor = conn.cursor()
+                # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
+                db_path = resolve_path(db_path, self.bot_root)
                 
-                cursor.execute('''
-                    SELECT data FROM packet_stream 
-                    WHERE type = 'command' AND timestamp > ?
-                    ORDER BY timestamp DESC
-                    LIMIT 100
-                ''', (cutoff_time,))
-                
-                rows = cursor.fetchall()
-                
-                # Parse and return commands
-                commands = []
-                for (data_json,) in rows:
-                    try:
-                        command_data = json.loads(data_json)
-                        commands.append(command_data)
-                    except Exception as e:
-                        self.logger.debug(f"Error parsing command data: {e}")
-                
-                return jsonify({'commands': commands})
+                with sqlite3.connect(db_path, timeout=30) as conn:
+                    cursor = conn.cursor()
+                    
+                    cursor.execute('''
+                        SELECT data FROM packet_stream 
+                        WHERE type = 'command' AND timestamp > ?
+                        ORDER BY timestamp DESC
+                        LIMIT 100
+                    ''', (cutoff_time,))
+                    
+                    rows = cursor.fetchall()
+                    
+                    # Parse and return commands
+                    commands = []
+                    for (data_json,) in rows:
+                        try:
+                            command_data = json.loads(data_json)
+                            commands.append(command_data)
+                        except Exception as e:
+                            self.logger.debug(f"Error parsing command data: {e}")
+                    
+                    return jsonify({'commands': commands})
                 
             except Exception as e:
                 self.logger.error(f"Error getting recent commands: {e}")
                 return jsonify({'error': str(e)}), 500
-            finally:
-                if conn:
-                    try:
-                        conn.close()
-                    except Exception as e:
-                        self.logger.debug(f"Error closing recent_commands connection: {e}")
         
         @self.app.route('/api/geocode-contact', methods=['POST'])
         def api_geocode_contact():
             """Manually geocode a contact by public_key"""
+            conn = None
             try:
                 data = request.get_json()
                 if not data or 'public_key' not in data:
@@ -443,7 +493,6 @@ class BotDataViewer:
                 
                 contact = cursor.fetchone()
                 if not contact:
-                    conn.close()
                     return jsonify({'error': 'Contact not found'}), 404
                 
                 lat = contact['latitude']
@@ -452,7 +501,6 @@ class BotDataViewer:
                 
                 # Check if we have valid coordinates
                 if lat is None or lon is None or lat == 0.0 or lon == 0.0:
-                    conn.close()
                     return jsonify({'error': 'Contact does not have valid coordinates'}), 400
                 
                 # Perform geocoding
@@ -467,7 +515,6 @@ class BotDataViewer:
                     location_info = self.repeater_manager._get_full_location_from_coordinates(lat, lon)
                     self.logger.debug(f"Geocoding result for {name}: {location_info}")
                 except Exception as geocode_error:
-                    conn.close()
                     self.logger.error(f"Exception during geocoding for {name} at {lat}, {lon}: {geocode_error}", exc_info=True)
                     return jsonify({
                         'success': False,
@@ -479,7 +526,6 @@ class BotDataViewer:
                 has_location_data = location_info.get('city') or location_info.get('state') or location_info.get('country')
                 
                 if not has_location_data:
-                    conn.close()
                     self.logger.warning(f"Geocoding returned no location data for {name} at {lat}, {lon}. Result: {location_info}")
                     return jsonify({
                         'success': False,
@@ -500,7 +546,6 @@ class BotDataViewer:
                 ))
                 
                 conn.commit()
-                conn.close()
                 
                 # Build success message with what was found
                 found_parts = []
@@ -523,10 +568,14 @@ class BotDataViewer:
             except Exception as e:
                 self.logger.error(f"Error geocoding contact: {e}", exc_info=True)
                 return jsonify({'error': str(e)}), 500
+            finally:
+                if conn:
+                    conn.close()
         
         @self.app.route('/api/toggle-star-contact', methods=['POST'])
         def api_toggle_star_contact():
             """Toggle star status for a contact by public_key (only for repeaters and roomservers)"""
+            conn = None
             try:
                 data = request.get_json()
                 if not data or 'public_key' not in data:
@@ -546,14 +595,12 @@ class BotDataViewer:
                 
                 contact = cursor.fetchone()
                 if not contact:
-                    conn.close()
                     return jsonify({'error': 'Contact not found'}), 404
                 
                 # Only allow starring repeaters and roomservers
                 # sqlite3.Row objects use dictionary-style access with []
                 role = contact['role']
                 if role and role.lower() not in ('repeater', 'roomserver'):
-                    conn.close()
                     return jsonify({'error': 'Only repeaters and roomservers can be starred'}), 400
                 
                 # Toggle star status
@@ -567,7 +614,6 @@ class BotDataViewer:
                 ''', (new_star_status, public_key))
                 
                 conn.commit()
-                conn.close()
                 
                 action = 'starred' if new_star_status else 'unstarred'
                 self.logger.info(f"Contact {contact['name']} ({public_key[:16]}...) {action}")
@@ -581,6 +627,9 @@ class BotDataViewer:
             except Exception as e:
                 self.logger.error(f"Error toggling star status: {e}", exc_info=True)
                 return jsonify({'error': str(e)}), 500
+            finally:
+                if conn:
+                    conn.close()
         
         @self.app.route('/api/decode-path', methods=['POST'])
         def api_decode_path():
@@ -609,6 +658,7 @@ class BotDataViewer:
         @self.app.route('/api/delete-contact', methods=['POST'])
         def api_delete_contact():
             """Delete a contact from the complete contact tracking database"""
+            conn = None
             try:
                 data = request.get_json()
                 if not data or 'public_key' not in data:
@@ -628,7 +678,6 @@ class BotDataViewer:
                 
                 contact = cursor.fetchone()
                 if not contact:
-                    conn.close()
                     return jsonify({'error': 'Contact not found'}), 404
                 
                 contact_name = contact['name']
@@ -655,7 +704,6 @@ class BotDataViewer:
                     deleted_counts['repeater_contacts'] = 0
                 
                 conn.commit()
-                conn.close()
                 
                 # Log the deletion
                 self.logger.info(f"Contact deleted: {contact_name} ({public_key[:16]}...) - Role: {contact_role}, Device: {contact_device_type}")
@@ -670,10 +718,14 @@ class BotDataViewer:
             except Exception as e:
                 self.logger.error(f"Error deleting contact: {e}", exc_info=True)
                 return jsonify({'error': str(e)}), 500
+            finally:
+                if conn:
+                    conn.close()
         
         @self.app.route('/api/greeter')
         def api_greeter():
             """Get greeter data including rollout status, settings, and greeted users"""
+            conn = None
             try:
                 conn = self._get_db_connection()
                 cursor = conn.cursor()
@@ -681,7 +733,6 @@ class BotDataViewer:
                 # Check if greeter tables exist
                 cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='greeter_rollout'")
                 if not cursor.fetchone():
-                    conn.close()
                     return jsonify({
                         'enabled': False,
                         'rollout_active': False,
@@ -829,8 +880,6 @@ class BotDataViewer:
                         'last_seen': last_seen
                     })
                 
-                conn.close()
-                
                 return jsonify({
                     'enabled': settings['enabled'],
                     'rollout_active': rollout_active,
@@ -845,10 +894,14 @@ class BotDataViewer:
             except Exception as e:
                 self.logger.error(f"Error getting greeter data: {e}", exc_info=True)
                 return jsonify({'error': str(e)}), 500
+            finally:
+                if conn:
+                    conn.close()
         
         @self.app.route('/api/greeter/end-rollout', methods=['POST'])
         def api_end_rollout():
             """End the active onboarding period"""
+            conn = None
             try:
                 conn = self._get_db_connection()
                 cursor = conn.cursor()
@@ -863,7 +916,6 @@ class BotDataViewer:
                 rollout = cursor.fetchone()
                 
                 if not rollout:
-                    conn.close()
                     return jsonify({'success': False, 'error': 'No active rollout found'}), 404
                 
                 rollout_id = rollout['id']
@@ -876,7 +928,6 @@ class BotDataViewer:
                 ''', (rollout_id,))
                 
                 conn.commit()
-                conn.close()
                 
                 self.logger.info(f"Greeter rollout {rollout_id} ended manually via web viewer")
                 
@@ -888,10 +939,14 @@ class BotDataViewer:
             except Exception as e:
                 self.logger.error(f"Error ending rollout: {e}", exc_info=True)
                 return jsonify({'success': False, 'error': str(e)}), 500
+            finally:
+                if conn:
+                    conn.close()
         
         @self.app.route('/api/greeter/ungreet', methods=['POST'])
         def api_ungreet_user():
             """Mark a user as ungreeted (remove from greeted_users table)"""
+            conn = None
             try:
                 data = request.get_json()
                 if not data or 'sender_id' not in data:
@@ -916,7 +971,6 @@ class BotDataViewer:
                     ''', (sender_id,))
                 
                 if not cursor.fetchone():
-                    conn.close()
                     return jsonify({'error': 'User not found in greeted users'}), 404
                 
                 # Delete the record
@@ -932,7 +986,6 @@ class BotDataViewer:
                     ''', (sender_id,))
                 
                 conn.commit()
-                conn.close()
                 
                 self.logger.info(f"User {sender_id} marked as ungreeted (channel: {channel or 'global'})")
                 
@@ -944,6 +997,9 @@ class BotDataViewer:
             except Exception as e:
                 self.logger.error(f"Error ungreeting user: {e}", exc_info=True)
                 return jsonify({'success': False, 'error': str(e)}), 500
+            finally:
+                if conn:
+                    conn.close()
         
         # Feed management API endpoints
         @self.app.route('/api/feeds')
@@ -1216,6 +1272,7 @@ class BotDataViewer:
         @self.app.route('/api/channel-operations/<int:operation_id>', methods=['GET'])
         def api_get_operation_status(operation_id):
             """Get status of a channel operation"""
+            conn = None
             try:
                 conn = self._get_db_connection()
                 cursor = conn.cursor()
@@ -1226,7 +1283,6 @@ class BotDataViewer:
                 ''', (operation_id,))
                 
                 result = cursor.fetchone()
-                conn.close()
                 
                 if not result:
                     return jsonify({'error': 'Operation not found'}), 404
@@ -1243,6 +1299,9 @@ class BotDataViewer:
             except Exception as e:
                 self.logger.error(f"Error getting operation status: {e}")
                 return jsonify({'error': str(e)}), 500
+            finally:
+                if conn:
+                    conn.close()
         
         @self.app.route('/api/channels/validate', methods=['POST'])
         def api_validate_channel():
@@ -1304,74 +1363,117 @@ class BotDataViewer:
         @self.socketio.on('connect')
         def handle_connect():
             """Handle client connection"""
-            client_id = request.sid
-            self.logger.info(f"Client connected: {client_id}")
-            
-            # Check client limit
-            if len(self.connected_clients) >= self.max_clients:
-                self.logger.warning(f"Client limit reached ({self.max_clients}), rejecting connection")
-                disconnect()
+            try:
+                client_id = request.sid
+                if not client_id:
+                    self.logger.warning("Connect event received but client_id is None")
+                    return False
+                
+                self.logger.info(f"Client connected: {client_id}")
+                
+                with self._clients_lock:
+                    # Check client limit
+                    if len(self.connected_clients) >= self.max_clients:
+                        self.logger.warning(f"Client limit reached ({self.max_clients}), rejecting connection")
+                        try:
+                            disconnect()
+                        except Exception as e:
+                            self.logger.error(f"Error disconnecting client: {e}")
+                        return False
+                    
+                    # Track client
+                    self.connected_clients[client_id] = {
+                        'connected_at': time.time(),
+                        'last_activity': time.time(),
+                        'subscribed_commands': False,
+                        'subscribed_packets': False
+                    }
+                    
+                    # Connection status is shown via the green indicator in the navbar, no toast needed
+                    self.logger.info(f"Client {client_id} connected. Total clients: {len(self.connected_clients)}")
+            except Exception as e:
+                self.logger.error(f"Error in handle_connect: {e}", exc_info=True)
                 return False
-            
-            # Track client
-            self.connected_clients[client_id] = {
-                'connected_at': time.time(),
-                'last_activity': time.time(),
-                'subscribed_commands': False,
-                'subscribed_packets': False
-            }
-            
-            # Connection status is shown via the green indicator in the navbar, no toast needed
-            self.logger.info(f"Client {client_id} connected. Total clients: {len(self.connected_clients)}")
         
         @self.socketio.on('disconnect')
         def handle_disconnect(data=None):
             """Handle client disconnection"""
-            client_id = request.sid
-            if client_id in self.connected_clients:
-                del self.connected_clients[client_id]
-                self.logger.info(f"Client {client_id} disconnected. Total clients: {len(self.connected_clients)}")
+            try:
+                # Safely get client_id - it may be None if disconnect happens during error state
+                client_id = getattr(request, 'sid', None)
+                with self._clients_lock:
+                    if client_id and client_id in self.connected_clients:
+                        del self.connected_clients[client_id]
+                        self.logger.info(f"Client {client_id} disconnected. Total clients: {len(self.connected_clients)}")
+                    elif client_id:
+                        # Client disconnected but wasn't in our tracking dict (might have been cleaned up)
+                        self.logger.debug(f"Client {client_id} disconnected (not in tracking dict)")
+                    else:
+                        # No client_id available - this can happen during error states
+                        self.logger.debug("Disconnect event received but client_id is None")
+            except Exception as e:
+                # Don't emit errors during disconnect as the connection may be broken
+                self.logger.error(f"Error in handle_disconnect: {e}", exc_info=True)
         
         @self.socketio.on('subscribe_commands')
         def handle_subscribe_commands():
             """Handle command stream subscription"""
-            client_id = request.sid
-            if client_id in self.connected_clients:
-                self.connected_clients[client_id]['subscribed_commands'] = True
+            try:
+                client_id = getattr(request, 'sid', None)
+                with self._clients_lock:
+                    if client_id and client_id in self.connected_clients:
+                        self.connected_clients[client_id]['subscribed_commands'] = True
                 emit('status', {'message': 'Subscribed to command stream'})
                 self.logger.debug(f"Client {client_id} subscribed to commands")
+            except Exception as e:
+                self.logger.error(f"Error in handle_subscribe_commands: {e}", exc_info=True)
         
         @self.socketio.on('subscribe_packets')
         def handle_subscribe_packets():
             """Handle packet stream subscription"""
-            client_id = request.sid
-            if client_id in self.connected_clients:
-                self.connected_clients[client_id]['subscribed_packets'] = True
+            try:
+                client_id = getattr(request, 'sid', None)
+                with self._clients_lock:
+                    if client_id and client_id in self.connected_clients:
+                        self.connected_clients[client_id]['subscribed_packets'] = True
                 emit('status', {'message': 'Subscribed to packet stream'})
                 self.logger.debug(f"Client {client_id} subscribed to packets")
+            except Exception as e:
+                self.logger.error(f"Error in handle_subscribe_packets: {e}", exc_info=True)
         
         @self.socketio.on('ping')
         def handle_ping():
             """Handle client ping (modern ping/pong pattern)"""
-            client_id = request.sid
-            if client_id in self.connected_clients:
-                self.connected_clients[client_id]['last_activity'] = time.time()
+            try:
+                client_id = getattr(request, 'sid', None)
+                with self._clients_lock:
+                    if client_id and client_id in self.connected_clients:
+                        self.connected_clients[client_id]['last_activity'] = time.time()
                 emit('pong')  # Server responds with pong (Flask-SocketIO 5.x pattern)
+            except Exception as e:
+                self.logger.error(f"Error in handle_ping: {e}", exc_info=True)
         
         @self.socketio.on_error_default
         def default_error_handler(e):
             """Handle SocketIO errors gracefully"""
-            self.logger.error(f"SocketIO error: {e}")
-            emit('error', {'message': str(e)})
+            try:
+                self.logger.error(f"SocketIO error: {e}", exc_info=True)
+                # Only emit if we have a valid request context
+                if hasattr(request, 'sid') and request.sid:
+                    emit('error', {'message': str(e)})
+            except Exception as emit_error:
+                # If we can't emit, just log it
+                self.logger.error(f"Error emitting error message: {emit_error}")
     
     def _handle_command_data(self, command_data):
         """Handle incoming command data from bot"""
         try:
             # Broadcast to subscribed clients
-            subscribed_clients = [
-                client_id for client_id, client_info in self.connected_clients.items()
-                if client_info.get('subscribed_commands', False)
-            ]
+            with self._clients_lock:
+                subscribed_clients = [
+                    client_id for client_id, client_info in self.connected_clients.items()
+                    if client_info.get('subscribed_commands', False)
+                ]
             
             if subscribed_clients:
                 self.socketio.emit('command_data', command_data, room=None)
@@ -1383,10 +1485,11 @@ class BotDataViewer:
         """Handle incoming packet data from bot"""
         try:
             # Broadcast to subscribed clients
-            subscribed_clients = [
-                client_id for client_id, client_info in self.connected_clients.items()
-                if client_info.get('subscribed_packets', False)
-            ]
+            with self._clients_lock:
+                subscribed_clients = [
+                    client_id for client_id, client_info in self.connected_clients.items()
+                    if client_info.get('subscribed_packets', False)
+                ]
             
             if subscribed_clients:
                 self.socketio.emit('packet_data', packet_data, room=None)
@@ -1402,52 +1505,91 @@ class BotDataViewer:
             last_timestamp = 0
             consecutive_errors = 0
             max_consecutive_errors = 10
+            db_path = None
             
             while True:
-                conn = None
                 try:
                     import time
                     import sqlite3
                     import json
                     
-                    # Get database path
-                    db_path = self.config.get('Database', 'path', fallback='bot_data.db')
+                    # Get database path (re-resolve on each iteration in case config changed)
+                    db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
+                    
+                    # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
+                    db_path = resolve_path(db_path, self.bot_root)
+                    
+                    # Check if database file exists and is accessible
+                    db_file = Path(db_path)
+                    if not db_file.exists():
+                        consecutive_errors += 1
+                        if consecutive_errors == 1 or consecutive_errors % 10 == 0:
+                            self.logger.warning(f"Database file does not exist: {db_path}")
+                        time.sleep(5)
+                        continue
+                    
+                    if not os.access(db_path, os.R_OK):
+                        consecutive_errors += 1
+                        if consecutive_errors == 1 or consecutive_errors % 10 == 0:
+                            self.logger.warning(f"Database file is not readable: {db_path}")
+                        time.sleep(5)
+                        continue
                     
                     # Connect to database with timeout to prevent hanging
-                    conn = sqlite3.connect(db_path, timeout=30)
-                    cursor = conn.cursor()
+                    # Use check_same_thread=False for thread safety, but be careful
+                    try:
+                        conn = sqlite3.connect(db_path, timeout=30, check_same_thread=False)
+                        conn.row_factory = sqlite3.Row
+                    except sqlite3.OperationalError as conn_error:
+                        error_msg = str(conn_error)
+                        if "locked" in error_msg.lower() or "database is locked" in error_msg.lower():
+                            consecutive_errors += 1
+                            if consecutive_errors == 1 or consecutive_errors % 10 == 0:
+                                self.logger.warning(f"Database is locked, waiting: {db_path}")
+                            time.sleep(2)
+                            continue
+                        else:
+                            raise
                     
-                    # Get new data since last poll
-                    cursor.execute('''
-                        SELECT timestamp, data, type FROM packet_stream 
-                        WHERE timestamp > ? 
-                        ORDER BY timestamp ASC
-                    ''', (last_timestamp,))
-                    
-                    rows = cursor.fetchall()
-                    
-                    # Process new data
-                    for timestamp, data_json, data_type in rows:
-                        try:
-                            data = json.loads(data_json)
-                            
-                            # Broadcast based on type
-                            if data_type == 'command':
-                                self._handle_command_data(data)
-                            elif data_type == 'packet':
-                                self._handle_packet_data(data)
-                            elif data_type == 'routing':
-                                self._handle_packet_data(data)  # Treat routing as packet data
+                    try:
+                        cursor = conn.cursor()
+                        
+                        # Get new data since last poll
+                        cursor.execute('''
+                            SELECT timestamp, data, type FROM packet_stream 
+                            WHERE timestamp > ? 
+                            ORDER BY timestamp ASC
+                        ''', (last_timestamp,))
+                        
+                        rows = cursor.fetchall()
+                        
+                        # Process new data
+                        for row in rows:
+                            try:
+                                timestamp = row[0]
+                                data_json = row[1]
+                                data_type = row[2]
+                                data = json.loads(data_json)
                                 
-                        except Exception as e:
-                            self.logger.warning(f"Error processing database data: {e}")
-                    
-                    # Update last timestamp
-                    if rows:
-                        last_timestamp = rows[-1][0]
-                    
-                    # Reset error counter on success
-                    consecutive_errors = 0
+                                # Broadcast based on type
+                                if data_type == 'command':
+                                    self._handle_command_data(data)
+                                elif data_type == 'packet':
+                                    self._handle_packet_data(data)
+                                elif data_type == 'routing':
+                                    self._handle_packet_data(data)  # Treat routing as packet data
+                                    
+                            except Exception as e:
+                                self.logger.warning(f"Error processing database data: {e}")
+                        
+                        # Update last timestamp
+                        if rows:
+                            last_timestamp = rows[-1][0]
+                        
+                        # Reset error counter on success
+                        consecutive_errors = 0
+                    finally:
+                        conn.close()
                     
                     # Sleep before next poll
                     time.sleep(0.5)  # Poll every 500ms
@@ -1456,9 +1598,27 @@ class BotDataViewer:
                     consecutive_errors += 1
                     error_msg = str(e)
                     
+                    # Provide more diagnostic information on first error or periodic errors
+                    if consecutive_errors == 1 or consecutive_errors % 10 == 0:
+                        if db_path:
+                            db_file = Path(db_path)
+                            exists = db_file.exists()
+                            readable = os.access(db_path, os.R_OK) if exists else False
+                            writable = os.access(db_path, os.W_OK) if exists else False
+                            self.logger.error(
+                                f"Database polling error (attempt {consecutive_errors}): {error_msg}\n"
+                                f"  Path: {db_path}\n"
+                                f"  Exists: {exists}\n"
+                                f"  Readable: {readable}\n"
+                                f"  Writable: {writable}"
+                            )
+                        else:
+                            self.logger.error(f"Database polling error (attempt {consecutive_errors}): {error_msg}")
+                    
                     # Log at appropriate level based on error frequency
                     if consecutive_errors >= max_consecutive_errors:
-                        self.logger.error(f"Database polling persistent error (attempt {consecutive_errors}): {error_msg}")
+                        if consecutive_errors == max_consecutive_errors:
+                            self.logger.error(f"Database polling persistent error (attempt {consecutive_errors}): {error_msg}")
                         # Exponential backoff for persistent errors
                         time.sleep(min(60, 2 ** min(consecutive_errors - max_consecutive_errors, 5)))
                     elif consecutive_errors > 3:
@@ -1471,19 +1631,13 @@ class BotDataViewer:
                 except Exception as e:
                     consecutive_errors += 1
                     if consecutive_errors >= max_consecutive_errors:
-                        self.logger.error(f"Database polling unexpected error (attempt {consecutive_errors}): {e}", exc_info=True)
+                        if consecutive_errors == max_consecutive_errors:
+                            self.logger.error(f"Database polling unexpected error (attempt {consecutive_errors}): {e}", exc_info=True)
                         time.sleep(min(60, 2 ** min(consecutive_errors - max_consecutive_errors, 5)))
                     else:
                         self.logger.warning(f"Database polling unexpected error (attempt {consecutive_errors}): {e}")
                         time.sleep(2)
                 
-                finally:
-                    # Always close connection, even on error
-                    if conn:
-                        try:
-                            conn.close()
-                        except Exception as e:
-                            self.logger.debug(f"Error closing database connection: {e}")
         
         # Start polling thread
         polling_thread = threading.Thread(target=poll_database, daemon=True)
@@ -1498,20 +1652,43 @@ class BotDataViewer:
             import time
             while True:
                 try:
-                    # Clean up old data every hour
-                    time.sleep(3600)  # 1 hour
+                    # Clean up stale clients every 5 minutes
+                    for _ in range(12):  # 12 x 5 minutes = 1 hour
+                        time.sleep(300)  # 5 minutes
+                        self._cleanup_stale_clients()
                     
-                    # Clean up data older than 7 days
+                    # Clean up old data every hour (after 12 stale client cleanups)
                     self._cleanup_old_data(days_to_keep=7)
                     
                 except Exception as e:
-                    self.logger.debug(f"Error in cleanup scheduler: {e}")
+                    self.logger.error(f"Error in cleanup scheduler: {e}", exc_info=True)
                     time.sleep(60)  # Sleep on error
         
         # Start the cleanup thread
         cleanup_thread = threading.Thread(target=cleanup_scheduler, daemon=True)
         cleanup_thread.start()
         self.logger.info("Cleanup scheduler started")
+    
+    def _cleanup_stale_clients(self, max_idle_seconds: int = 300):
+        """Remove clients that haven't had activity in max_idle_seconds"""
+        try:
+            current_time = time.time()
+            stale_clients = []
+            
+            with self._clients_lock:
+                for client_id, client_info in self.connected_clients.items():
+                    last_activity = client_info.get('last_activity', 0)
+                    if current_time - last_activity > max_idle_seconds:
+                        stale_clients.append(client_id)
+                
+                for client_id in stale_clients:
+                    del self.connected_clients[client_id]
+            
+            if stale_clients:
+                self.logger.info(f"Cleaned up {len(stale_clients)} stale client(s)")
+                
+        except Exception as e:
+            self.logger.error(f"Error cleaning up stale clients: {e}")
     
     def _cleanup_old_data(self, days_to_keep: int = 7):
         """Clean up old packet stream data to prevent database bloat"""
@@ -1523,29 +1700,57 @@ class BotDataViewer:
             cutoff_time = time.time() - (days_to_keep * 24 * 60 * 60)
             
             # Get database path
-            db_path = self.config.get('Database', 'path', fallback='bot_data.db')
+            db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
             
-            # Use timeout to prevent hanging
-            conn = sqlite3.connect(db_path, timeout=30)
+            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
+            db_path = resolve_path(db_path, self.bot_root)
+            
+            # Use shorter timeout and isolation_level for better concurrency
+            conn = sqlite3.connect(db_path, timeout=10, isolation_level='DEFERRED')
             cursor = conn.cursor()
             
-            # Clean up old packet stream data
-            cursor.execute('DELETE FROM packet_stream WHERE timestamp < ?', (cutoff_time,))
-            deleted_count = cursor.rowcount
+            # Use WAL mode for better concurrent access (if not already set)
+            try:
+                cursor.execute('PRAGMA journal_mode=WAL')
+            except sqlite3.OperationalError:
+                pass  # Ignore if database is locked - WAL may already be set
             
-            conn.commit()
+            # Delete in smaller batches to avoid long locks
+            # This prevents blocking the polling thread for extended periods
+            batch_size = 1000
+            total_deleted = 0
             
-            if deleted_count > 0:
-                self.logger.info(f"Cleaned up {deleted_count} old packet stream entries (older than {days_to_keep} days)")
+            while True:
+                cursor.execute(
+                    'DELETE FROM packet_stream WHERE id IN '
+                    '(SELECT id FROM packet_stream WHERE timestamp < ? LIMIT ?)',
+                    (cutoff_time, batch_size)
+                )
+                deleted_count = cursor.rowcount
+                conn.commit()
+                
+                if deleted_count == 0:
+                    break
+                    
+                total_deleted += deleted_count
+                
+                # Brief sleep between batches to allow other operations
+                if deleted_count == batch_size:
+                    time.sleep(0.1)
             
+            if total_deleted > 0:
+                self.logger.info(f"Cleaned up {total_deleted} old packet stream entries (older than {days_to_keep} days)")
+            
+        except sqlite3.OperationalError as e:
+            self.logger.warning(f"Database busy during cleanup (will retry next cycle): {e}")
         except Exception as e:
-            self.logger.error(f"Error cleaning up old packet stream data: {e}")
+            self.logger.error(f"Error cleaning up old packet stream data: {e}", exc_info=True)
         finally:
             if conn:
                 try:
                     conn.close()
-                except Exception as e:
-                    self.logger.debug(f"Error closing cleanup connection: {e}")
+                except Exception:
+                    pass
     
     def _get_database_stats(self, top_users_window='all', top_commands_window='all', 
                            top_paths_window='all', top_channels_window='all'):
@@ -1559,9 +1764,12 @@ class BotDataViewer:
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = [row[0] for row in cursor.fetchall()]
             
+            with self._clients_lock:
+                client_count = len(self.connected_clients)
+            
             stats = {
                 'timestamp': time.time(),
-                'connected_clients': len(self.connected_clients),
+                'connected_clients': client_count,
                 'tables': tables
             }
             
@@ -2003,7 +2211,9 @@ class BotDataViewer:
             
             # Get database file size
             import os
-            db_path = self.config.get('Database', 'path', fallback='bot_data.db')
+            db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
+            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
+            db_path = resolve_path(db_path, self.bot_root)
             try:
                 db_size_bytes = os.path.getsize(db_path)
                 if db_size_bytes < 1024:
@@ -2059,7 +2269,9 @@ class BotDataViewer:
             
             # Get initial database size
             import os
-            db_path = self.config.get('Database', 'path', fallback='bot_data.db')
+            db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
+            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
+            db_path = resolve_path(db_path, self.bot_root)
             initial_size = os.path.getsize(db_path)
             
             # Perform VACUUM to reclaim unused space
@@ -2388,6 +2600,7 @@ class BotDataViewer:
     
     def _get_cache_data(self):
         """Get cache data"""
+        conn = None
         try:
             conn = self._get_db_connection()
             cursor = conn.cursor()
@@ -2417,6 +2630,9 @@ class BotDataViewer:
         except Exception as e:
             self.logger.error(f"Error getting cache data: {e}")
             return {'error': str(e)}
+        finally:
+            if conn:
+                conn.close()
     
     
     def _get_feed_subscriptions(self, channel_filter=None):
@@ -2722,33 +2938,57 @@ class BotDataViewer:
         return []
     
     def _get_channels(self):
-        """Get all configured channels from database"""
+        """Get all configured channels from database plus additional decode-only channels"""
         import sqlite3
         conn = None
         try:
             conn = self._get_db_connection()
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            
+
             cursor.execute('''
                 SELECT channel_idx, channel_name, channel_type, channel_key_hex, last_updated
                 FROM channels
                 ORDER BY channel_idx
             ''')
-            
+
             rows = cursor.fetchall()
             channels = []
+            existing_names = set()
+            
             for row in rows:
+                name = row['channel_name']
                 channels.append({
                     'channel_idx': row['channel_idx'],
                     'index': row['channel_idx'],  # Alias for compatibility
-                    'name': row['channel_name'],
-                    'channel_name': row['channel_name'],  # Alias for compatibility
+                    'name': name,
+                    'channel_name': name,  # Alias for compatibility
                     'type': row['channel_type'] or 'hashtag',
                     'key_hex': row['channel_key_hex'],
                     'last_updated': row['last_updated']
                 })
-            
+                # Track names for deduplication (normalize to lowercase with #)
+                normalized = name.lower() if name.startswith('#') else f'#{name.lower()}'
+                existing_names.add(normalized)
+
+            # Add additional decode-only hashtag channels from config
+            additional_channels = self._get_additional_decode_channels()
+            for channel_name in additional_channels:
+                # Normalize name
+                normalized = channel_name.lower() if channel_name.startswith('#') else f'#{channel_name.lower()}'
+                if normalized not in existing_names:
+                    channels.append({
+                        'channel_idx': None,  # Not a real radio channel
+                        'index': None,
+                        'name': normalized,
+                        'channel_name': normalized,
+                        'type': 'hashtag',
+                        'key_hex': None,  # Key will be derived client-side
+                        'last_updated': None,
+                        'decode_only': True  # Flag to indicate this is decode-only
+                    })
+                    existing_names.add(normalized)
+
             return channels
         except Exception as e:
             self.logger.error(f"Error getting channels: {e}")
@@ -2756,6 +2996,40 @@ class BotDataViewer:
         finally:
             if conn:
                 conn.close()
+    
+    def _get_additional_decode_channels(self):
+        """Get additional hashtag channels to decode from config"""
+        channels = set()  # Use set for automatic deduplication
+        
+        try:
+            # 1. Get channels from decode_hashtag_channels in [Web_Viewer]
+            if self.config and self.config.has_option('Web_Viewer', 'decode_hashtag_channels'):
+                channels_str = self.config.get('Web_Viewer', 'decode_hashtag_channels', fallback='')
+                if channels_str:
+                    for c in channels_str.split(','):
+                        c = c.strip().lower()
+                        if c:
+                            # Remove # prefix if present for normalization
+                            if c.startswith('#'):
+                                c = c[1:]
+                            channels.add(c)
+            
+            # 2. Import channels from [Channels_List] section
+            if self.config and self.config.has_section('Channels_List'):
+                for key in self.config.options('Channels_List'):
+                    # Handle categorized channels like "sports.sounders" -> "sounders"
+                    if '.' in key:
+                        channel_name = key.split('.')[-1]  # Get part after last dot
+                    else:
+                        channel_name = key
+                    
+                    channel_name = channel_name.strip().lower()
+                    if channel_name:
+                        channels.add(channel_name)
+        except Exception as e:
+            self.logger.error(f"Error reading decode channels config: {e}")
+        
+        return list(channels)
     
     def _get_channel_number(self, channel_name):
         """Get channel number from channel name"""
@@ -3770,15 +4044,24 @@ class BotDataViewer:
             self.logger.error(f"Error running web viewer: {e}")
             raise
 
-if __name__ == '__main__':
+def main():
+    """Entry point for the meshcore-viewer command"""
     import argparse
     
     parser = argparse.ArgumentParser(description='MeshCore Bot Data Viewer')
     parser.add_argument('--host', default='127.0.0.1', help='Host to bind to')
     parser.add_argument('--port', type=int, default=8080, help='Port to bind to')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')
+    parser.add_argument(
+        "--config",
+        default="config.ini",
+        help="Path to configuration file (default: config.ini)",
+    )
     
     args = parser.parse_args()
     
-    viewer = BotDataViewer()
+    viewer = BotDataViewer(config_path=args.config)
     viewer.run(host=args.host, port=args.port, debug=args.debug)
+
+if __name__ == '__main__':
+    main()

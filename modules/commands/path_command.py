@@ -26,6 +26,7 @@ class PathCommand(BaseCommand):
     
     def __init__(self, bot):
         super().__init__(bot)
+        self.path_enabled = self.get_config_value('Path_Command', 'enabled', fallback=True, value_type='bool')
         # Get bot location from config for geographic proximity calculations
         # Check if geographic guessing is enabled (bot has location configured)
         self.geographic_guessing_enabled = False
@@ -84,6 +85,19 @@ class PathCommand(BaseCommand):
                 self.logger.info("Bot section not found - geographic proximity guessing disabled")
         except Exception as e:
             self.logger.warning(f"Error reading bot location from config: {e} - geographic proximity guessing disabled")
+    
+    def can_execute(self, message: MeshMessage) -> bool:
+        """Check if this command can be executed with the given message.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if command is enabled and checks pass, False otherwise.
+        """
+        if not self.path_enabled:
+            return False
+        return super().can_execute(message)
     
     def matches_keyword(self, message: MeshMessage) -> bool:
         """Check if message starts with 'path' keyword or 'p' shortcut (if enabled)"""
@@ -1037,7 +1051,7 @@ class PathCommand(BaseCommand):
         return None, 0.0
     
     def _format_path_response(self, node_ids: List[str], repeater_info: Dict[str, Dict[str, Any]]) -> str:
-        """Format the path decode response (max 130 chars per line)
+        """Format the path decode response
         
         Maintains the order of repeaters as they appear in the path (first to last)
         """
@@ -1103,7 +1117,10 @@ class PathCommand(BaseCommand):
         # This ensures capture_command gets the full response, not just the last split message
         self.last_response = response
         
-        if len(response) <= 130:
+        # Get dynamic max message length based on message type and bot username
+        max_length = self.get_max_message_length(message)
+        
+        if len(response) <= max_length:
             # Single message is fine
             await self.send_response(message, response)
         else:
@@ -1114,8 +1131,8 @@ class PathCommand(BaseCommand):
             message_count = 0
             
             for i, line in enumerate(lines):
-                # Check if adding this line would exceed 130 characters
-                if len(current_message) + len(line) + 1 > 130:  # +1 for newline
+                # Check if adding this line would exceed max_length characters
+                if len(current_message) + len(line) + 1 > max_length:  # +1 for newline
                     # Send current message and start new one
                     if current_message:
                         # Add ellipsis on new line to end of continued message (if not the last message)
@@ -1166,8 +1183,15 @@ class PathCommand(BaseCommand):
                     path_input = path_part
                     return await self._decode_path(path_input)
                 else:
-                    # Single node or unknown format
-                    return self.translate('commands.path.path_prefix', path_string=path_string)
+                    # Try to decode even single nodes (e.g., "01" should be decoded to a repeater name)
+                    # Check if path_part looks like it contains hex values
+                    hex_pattern = r'[0-9a-fA-F]{2}'
+                    if re.search(hex_pattern, path_part):
+                        # Looks like hex values, try to decode
+                        return await self._decode_path(path_part)
+                    else:
+                        # Unknown format - just show the raw path string
+                        return self.translate('commands.path.path_prefix', path_string=path_string)
             else:
                 return self.translate('commands.path.no_path')
                 

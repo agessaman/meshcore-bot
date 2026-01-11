@@ -23,6 +23,7 @@ class MultitestCommand(BaseCommand):
     
     def __init__(self, bot):
         super().__init__(bot)
+        self.multitest_enabled = self.get_config_value('Multitest_Command', 'enabled', fallback=True, value_type='bool')
         self.listening = False
         self.collected_paths: Set[str] = set()
         self.listening_start_time = 0
@@ -30,6 +31,19 @@ class MultitestCommand(BaseCommand):
         self.target_packet_hash: Optional[str] = None  # Hash of the message we're tracking
         self.triggering_timestamp: float = 0.0  # Timestamp of the triggering message
         self._load_config()
+    
+    def can_execute(self, message: MeshMessage) -> bool:
+        """Check if this command can be executed with the given message.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if command is enabled and checks pass, False otherwise.
+        """
+        if not self.multitest_enabled:
+            return False
+        return super().can_execute(message)
     
     def _load_config(self):
         """Load configuration for multitest command"""

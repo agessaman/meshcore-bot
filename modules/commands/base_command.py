@@ -14,7 +14,12 @@ from ..security_utils import validate_pubkey_format
 
 
 class BaseCommand(ABC):
-    """Base class for all bot commands - Plugin Interface"""
+    """Base class for all bot commands - Plugin Interface.
+    
+    This class defines the interface that all commands must implement. It provides
+    common functionality for configuration loading, localization, permission checking,
+    rate limiting, and message response handling.
+    """
     
     # Plugin metadata - to be overridden by subclasses
     name: str = ""
@@ -30,6 +35,9 @@ class BaseCommand(ABC):
         self.logger = bot.logger
         self._last_execution_time = 0
         
+        # Per-user cooldown tracking (for commands that need per-user rate limiting)
+        self._user_cooldowns: Dict[str, float] = {}
+        
         # Load allowed channels from config (standardized channel override)
         self.allowed_channels = self._load_allowed_channels()
     
@@ -37,15 +45,14 @@ class BaseCommand(ABC):
         self._load_translated_keywords()
     
     def translate(self, key: str, **kwargs) -> str:
-        """
-        Translate a key using the bot's translator
+        """Translate a key using the bot's translator.
         
         Args:
-            key: Dot-separated key path (e.g., 'commands.wx.usage')
-            **kwargs: Formatting parameters for string.format()
+            key: Dot-separated key path (e.g., 'commands.wx.usage').
+            **kwargs: Formatting parameters for string.format().
         
         Returns:
-            Translated string, or key if translation not found
+            str: Translated string, or key if translation not found.
         """
         if hasattr(self.bot, 'translator'):
             return self.bot.translator.translate(key, **kwargs)
@@ -53,34 +60,32 @@ class BaseCommand(ABC):
         return key
     
     def translate_get_value(self, key: str) -> Any:
-        """
-        Get a raw value from translations (can be string, list, dict, etc.)
+        """Get a raw value from translations (can be string, list, dict, etc.).
         
         Args:
-            key: Dot-separated key path (e.g., 'commands.hacker.sudo_errors')
+            key: Dot-separated key path (e.g., 'commands.hacker.sudo_errors').
         
         Returns:
-            The value at the key path, or None if not found
+            Any: The value at the key path, or None if not found.
         """
         if hasattr(self.bot, 'translator'):
             return self.bot.translator.get_value(key)
         return None
     
-    def get_config_value(self, section: str, key: str, fallback=None, value_type: str = 'str'):
-        """
-        Get config value with backward compatibility for section name changes.
+    def get_config_value(self, section: str, key: str, fallback: Any = None, value_type: str = 'str') -> Any:
+        """Get config value with backward compatibility for section name changes.
         
         For command configs, checks both old format (e.g., 'Hacker') and new format (e.g., 'Hacker_Command').
         This allows smooth migration from old config format to new standardized format.
         
         Args:
-            section: Config section name (new format preferred)
-            key: Config key name
-            fallback: Default value if not found
-            value_type: Type of value ('str', 'bool', 'int', 'float')
+            section: Config section name (new format preferred).
+            key: Config key name.
+            fallback: Default value if not found.
+            value_type: Type of value ('str', 'bool', 'int', 'float', 'list').
         
         Returns:
-            Config value of appropriate type, or fallback if not found
+            Any: Config value of appropriate type, or fallback if not found.
         """
         # Map of old section names to new standardized names
         section_migration = {
@@ -105,14 +110,26 @@ class BaseCommand(ABC):
         for sec in sections_to_try:
             if self.bot.config.has_section(sec):
                 try:
-                    if value_type == 'bool':
+                    if not self.bot.config.has_option(sec, key):
+                        continue
+                    
+                    raw_value = self.bot.config.get(sec, key)
+                    
+                    # Type conversion
+                    if value_type == 'str':
+                        value = raw_value
+                    elif value_type == 'bool':
                         value = self.bot.config.getboolean(sec, key, fallback=fallback)
                     elif value_type == 'int':
                         value = self.bot.config.getint(sec, key, fallback=fallback)
                     elif value_type == 'float':
                         value = self.bot.config.getfloat(sec, key, fallback=fallback)
+                    elif value_type == 'list':
+                        # Parse comma-separated list
+                        value = [item.strip() for item in raw_value.split(',') if item.strip()]
                     else:
-                        value = self.bot.config.get(sec, key, fallback=fallback)
+                        self.logger.warning(f"Unknown value_type '{value_type}' for {sec}.{key}, returning as string")
+                        value = raw_value
                     
                     # If we got a value (not fallback), return it
                     if value != fallback or self.bot.config.has_option(sec, key):
@@ -121,6 +138,9 @@ class BaseCommand(ABC):
                             self.logger.info(f"Config migration: Using old section '[{old_section}]' for '{key}'. "
                                            f"Please update to '[{new_section}]' in config.ini")
                         return value
+                except (ValueError, TypeError) as e:
+                    self.logger.debug(f"Config conversion error for {sec}.{key}: {e}")
+                    continue
                 except Exception as e:
                     self.logger.debug(f"Error reading config {sec}.{key}: {e}")
                     continue
@@ -128,29 +148,64 @@ class BaseCommand(ABC):
         return fallback
     
     @abstractmethod
+    @abstractmethod
     async def execute(self, message: MeshMessage) -> bool:
-        """Execute the command with the given message"""
+        """Execute the command with the given message.
+        
+        Args:
+            message: The message that triggered the command.
+            
+        Returns:
+            bool: True if execution was successful, False otherwise.
+        """
         pass
     
     def get_help_text(self) -> str:
-        """Get help text for this command"""
+        """Get help text for this command.
+        
+        Returns:
+            str: The help text (description) for this command.
+        """
         return self.description or "No help available for this command."
     
-    def _load_allowed_channels(self) -> Optional[List[str]]:
+    def _derive_config_section_name(self) -> str:
+        """Derive config section name from command name.
+        
+        Handles camelCase names like "dadjoke" -> "DadJoke_Command"
+        Regular names like "sports" -> "Sports_Command"
+        
+        Returns:
+            str: The derived config section name.
         """
-        Load allowed channels from config.
+        # Special handling for camelCase names
+        camel_case_map = {
+            'dadjoke': 'DadJoke',
+        }
+        
+        if self.name in camel_case_map:
+            base_name = camel_case_map[self.name]
+        else:
+            # Use title() for regular names
+            base_name = self.name.title().replace('_', '_')
+        
+        return f"{base_name}_Command"
+    
+    def _load_allowed_channels(self) -> Optional[List[str]]:
+        """Load allowed channels from config.
         
         Config format: [CommandName_Command]
         channels = channel1,channel2,channel3
         
         Returns:
-            - None: Use global monitor_channels (default behavior)
-            - Empty list []: Command disabled for all channels (only DMs)
-            - List of channels: Command only works in these channels
+            Optional[List[str]]: 
+                - None: Use global monitor_channels (default behavior)
+                - Empty list []: Command disabled for all channels (only DMs)
+                - List of channels: Command only works in these channels
         """
         # Derive section name from command name
         # Convert "sports" -> "Sports_Command", "greeter" -> "Greeter_Command", etc.
-        section_name = f"{self.name.title().replace('_', '_')}_Command"
+        # Handle camelCase names like "dadjoke" -> "DadJoke_Command"
+        section_name = self._derive_config_section_name()
         
         # Try to get channels config
         channels_str = self.get_config_value(section_name, 'channels', fallback=None, value_type='str')
@@ -166,13 +221,16 @@ class BaseCommand(ABC):
         return channels if channels else None
     
     def is_channel_allowed(self, message: MeshMessage) -> bool:
-        """
-        Check if this command is allowed in the message's channel.
+        """Check if this command is allowed in the message's channel.
         
+        Args:
+            message: The message to check.
+            
         Returns:
-            - True if DM and command allows DMs (unless requires_dm is False, but that's separate)
-            - True if channel is in allowed_channels (or None for global)
-            - False otherwise
+            bool: 
+                - True if DM and command allows DMs (unless requires_dm is False, but that's separate)
+                - True if channel is in allowed_channels (or None for global)
+                - False otherwise
         """
         # DMs are always allowed (unless requires_dm is False, but that's checked separately)
         if message.is_dm:
@@ -190,7 +248,16 @@ class BaseCommand(ABC):
         return message.channel in self.allowed_channels
     
     def can_execute(self, message: MeshMessage) -> bool:
-        """Check if this command can be executed with the given message"""
+        """Check if this command can be executed with the given message.
+        
+        Checks channel permissions, DM requirements, cooldowns, and admin access.
+        
+        Args:
+            message: The message to check execution for.
+            
+        Returns:
+            bool: True if the command can be executed, False otherwise.
+        """
         # Check channel access (standardized channel override)
         if not self.is_channel_allowed(message):
             return False
@@ -199,11 +266,10 @@ class BaseCommand(ABC):
         if self.requires_dm and not message.is_dm:
             return False
         
-        # Check cooldown
+        # Check cooldown (per-user if message has sender_id, otherwise global)
         if self.cooldown_seconds > 0:
-            import time
-            current_time = time.time()
-            if (current_time - self._last_execution_time) < self.cooldown_seconds:
+            can_execute, _ = self.check_cooldown(message.sender_id if message.sender_id else None)
+            if not can_execute:
                 return False
         
         # Check admin ACL if this command requires admin access
@@ -214,7 +280,11 @@ class BaseCommand(ABC):
         return True
     
     def get_metadata(self) -> Dict[str, Any]:
-        """Get plugin metadata for discovery and registration"""
+        """Get plugin metadata for discovery and registration.
+        
+        Returns:
+            Dict[str, Any]: A dictionary containing metadata about the command.
+        """
         return {
             'name': self.name,
             'keywords': self.keywords,
@@ -228,7 +298,15 @@ class BaseCommand(ABC):
         }
     
     async def send_response(self, message: MeshMessage, content: str) -> bool:
-        """Unified method for sending responses to users"""
+        """Unified method for sending responses to users.
+        
+        Args:
+            message: The message to respond to.
+            content: The response content.
+            
+        Returns:
+            bool: True if the response was sent successfully, False otherwise.
+        """
         try:
             # Use the command manager's send_response method to ensure response capture
             return await self.bot.command_manager.send_response(message, content)
@@ -236,20 +314,129 @@ class BaseCommand(ABC):
             self.logger.error(f"Failed to send response: {e}")
             return False
     
-    def _record_execution(self):
-        """Record the execution time for cooldown tracking"""
-        import time
-        self._last_execution_time = time.time()
+    def get_max_message_length(self, message: MeshMessage) -> int:
+        """Calculate the maximum message length dynamically based on message type and bot username.
+        
+        Channel messages are formatted as "<username>: <message>", so:
+        max_length = 150 - username_length - 2 (for ": ")
+        
+        DM messages don't have a username prefix, so:
+        max_length = 150
+        
+        Args:
+            message: The MeshMessage to calculate max length for.
+            
+        Returns:
+            int: Maximum message length in characters.
+        """
+        # For DMs, no username prefix - full 150 characters available
+        if message.is_dm:
+            return 150
+        
+        # For channel messages, calculate based on bot username length
+        # Try to get device username from meshcore first (actual radio username)
+        username = None
+        if hasattr(self.bot, 'meshcore') and self.bot.meshcore:
+            try:
+                if hasattr(self.bot.meshcore, 'self_info') and self.bot.meshcore.self_info:
+                    self_info = self.bot.meshcore.self_info
+                    # Try to get name from self_info (could be dict or object)
+                    if isinstance(self_info, dict):
+                        username = self_info.get('name') or self_info.get('user_name')
+                    elif hasattr(self_info, 'name'):
+                        username = self_info.name
+                    elif hasattr(self_info, 'user_name'):
+                        username = self_info.user_name
+            except Exception as e:
+                self.logger.debug(f"Could not get username from meshcore.self_info: {e}")
+        
+        # Fall back to bot_name from config if device username not available
+        if not username:
+            username = self.bot.config.get('Bot', 'bot_name', fallback='Bot')
+        
+        # Calculate max length: 150 - username_length - 2 (for ": ")
+        max_length = 150 - len(str(username)) - 2
+        
+        # Ensure we don't return a negative or unreasonably small value
+        # Minimum of 130 characters to ensure some functionality
+        return max(130, max_length)
     
-    def get_remaining_cooldown(self) -> int:
-        """Get remaining cooldown time in seconds"""
+    def check_cooldown(self, user_id: Optional[str] = None) -> Tuple[bool, float]:
+        """Check if user is on cooldown.
+        
+        Args:
+            user_id: User ID to check cooldown for. If None, checks global cooldown.
+        
+        Returns:
+            Tuple[bool, float]: A tuple containing:
+                - can_execute: True if command can be executed, False otherwise.
+                - remaining_seconds: Float representing seconds remaining on cooldown.
+        """
         if self.cooldown_seconds <= 0:
-            return 0
+            return True, 0.0
         
         import time
+        
+        if user_id:
+            # Per-user cooldown
+            last_exec = self._user_cooldowns.get(user_id, 0)
+            elapsed = time.time() - last_exec
+            remaining = self.cooldown_seconds - elapsed
+            
+            if remaining > 0:
+                return False, remaining
+            return True, 0.0
+        else:
+            # Global cooldown (backward compatibility)
+            elapsed = time.time() - self._last_execution_time
+            remaining = self.cooldown_seconds - elapsed
+            
+            if remaining > 0:
+                return False, remaining
+            return True, 0.0
+    
+    def record_execution(self, user_id: Optional[str] = None) -> None:
+        """Record command execution for cooldown tracking.
+        
+        Args:
+            user_id: User ID to record execution for. If None, records global execution.
+        """
+        import time
         current_time = time.time()
-        elapsed = current_time - self._last_execution_time
-        remaining = self.cooldown_seconds - elapsed
+        
+        if user_id:
+            # Per-user cooldown
+            self._user_cooldowns[user_id] = current_time
+            
+            # Clean up old entries periodically to prevent memory growth
+            if len(self._user_cooldowns) > 1000:
+                cutoff = current_time - (self.cooldown_seconds * 2)
+                self._user_cooldowns = {
+                    k: v for k, v in self._user_cooldowns.items() 
+                    if v > cutoff
+                }
+        else:
+            # Global cooldown (backward compatibility)
+            self._last_execution_time = current_time
+    
+    def _record_execution(self, user_id: Optional[str] = None):
+        """Record the execution time for cooldown tracking (backward compatibility).
+        
+        Args:
+            user_id: User ID to record execution for. If None, records global execution.
+        """
+        self.record_execution(user_id)
+    
+    def get_remaining_cooldown(self, user_id: Optional[str] = None) -> int:
+        """Get remaining cooldown time in seconds.
+        
+        Args:
+            user_id: User ID to check cooldown for. If None, checks global cooldown.
+        
+        Returns:
+            int: Remaining cooldown time in seconds (as integer).
+        """
+        _, remaining = self.check_cooldown(user_id)
         return max(0, int(remaining))
     
     def _load_translated_keywords(self):
@@ -377,6 +564,29 @@ class BaseCommand(ABC):
         except:
             return "Unknown"
     
+    def format_elapsed(self, message: MeshMessage) -> str:
+        """Format message timestamp for display"""
+        if message.timestamp and message.timestamp != 'unknown':
+            try:
+                from datetime import datetime,UTC
+                el = round((datetime.now(UTC).timestamp()-message.timestamp)*1000)
+                return f"{el}ms"
+            except:
+                return str(message.timestamp)
+        else:
+            return "Unknown"
+    def format_elapsed(self, message: MeshMessage) -> str:
+        """Format message timestamp for display"""
+        if message.timestamp and message.timestamp != 'unknown':
+            try:
+                from datetime import datetime,UTC
+                el = round((datetime.now(UTC).timestamp()-message.timestamp)*1000)
+                return f"{el}ms"
+            except:
+                return str(message.timestamp)
+        else:
+            return "Unknown"
+
     def format_response(self, message: MeshMessage, response_format: str) -> str:
         """Format a response string with message data"""
         try:

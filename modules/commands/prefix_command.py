@@ -27,8 +27,14 @@ class PrefixCommand(BaseCommand):
     cooldown_seconds = 2
     requires_internet = False  # Will be set to True in __init__ if API is configured
     
-    def __init__(self, bot):
+    def __init__(self, bot: Any):
+        """Initialize the prefix command.
+        
+        Args:
+            bot: The bot instance.
+        """
         super().__init__(bot)
+        self.prefix_enabled = self.get_config_value('Prefix_Command', 'enabled', fallback=True, value_type='bool')
         # Get API URL from config, no fallback to regional API
         self.api_url = self.bot.config.get('External_Data', 'repeater_prefix_api_url', fallback="")
         
@@ -62,7 +68,25 @@ class PrefixCommand(BaseCommand):
             self.max_prefix_range > 0
         )
     
+    def can_execute(self, message: MeshMessage) -> bool:
+        """Check if this command can be executed with the given message.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if command is enabled and checks pass, False otherwise.
+        """
+        if not self.prefix_enabled:
+            return False
+        return super().can_execute(message)
+    
     def get_help_text(self) -> str:
+        """Get help text for the prefix command.
+        
+        Returns:
+            str: The help text for this command.
+        """
         location_note = self.translate('commands.prefix.location_note') if self.show_repeater_locations else ""
         if not self.api_url or self.api_url.strip() == "":
             return self.translate('commands.prefix.help_no_api', location_note=location_note)
@@ -81,7 +105,14 @@ class PrefixCommand(BaseCommand):
         return content_lower == 'prefix' or content_lower.startswith('prefix ')
     
     async def execute(self, message: MeshMessage) -> bool:
-        """Execute the prefix command"""
+        """Execute the prefix command.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if executed successfully, False otherwise.
+        """
         content = message.content.strip()
         
         # Handle exclamation prefix
@@ -110,9 +141,11 @@ class PrefixCommand(BaseCommand):
             free_prefixes, total_free, has_data = await self.get_free_prefixes()
             if not has_data:
                 response = self.translate('commands.prefix.unable_determine_free')
+                return await self.send_response(message, response)
             else:
                 response = self.format_free_prefixes_response(free_prefixes, total_free)
-            return await self.send_response(message, response)
+                await self._send_prefix_response(message, response)
+                return True
         
         # Check for "all" modifier
         include_all = False
@@ -136,7 +169,8 @@ class PrefixCommand(BaseCommand):
         
         # Format response
         response = self.format_prefix_response(command, prefix_data)
-        return await self.send_response(message, response)
+        await self._send_prefix_response(message, response)
+        return True
     
     async def get_prefix_data(self, prefix: str, include_all: bool = False) -> Optional[Dict[str, Any]]:
         """Get prefix data from API first, enhanced with local database location data
@@ -255,8 +289,8 @@ class PrefixCommand(BaseCommand):
             # Return original API data if enhancement fails
             return api_data
     
-    async def refresh_cache(self):
-        """Refresh the cache from the API"""
+    async def refresh_cache(self) -> None:
+        """Refresh the cache from the API."""
         try:
             # Check if API URL is configured
             if not self.api_url or self.api_url.strip() == "":
@@ -543,7 +577,15 @@ class PrefixCommand(BaseCommand):
             return [], 0, False
     
     def format_free_prefixes_response(self, free_prefixes: List[str], total_free: int) -> str:
-        """Format the free prefixes response"""
+        """Format the free prefixes response.
+        
+        Args:
+            free_prefixes: List of free prefixes to display.
+            total_free: Total count of free prefixes.
+            
+        Returns:
+            str: Formatted response string.
+        """
         if not free_prefixes:
             return self.translate('commands.prefix.no_free_prefixes')
         
@@ -566,7 +608,15 @@ class PrefixCommand(BaseCommand):
         return response
     
     def format_prefix_response(self, prefix: str, data: Dict[str, Any]) -> str:
-        """Format the prefix response"""
+        """Format the prefix response.
+        
+        Args:
+            prefix: The prefix being queried.
+            data: The prefix data dictionary.
+            
+        Returns:
+            str: Formatted response string.
+        """
         node_count = data['node_count']
         node_names = data['node_names']
         source = data.get('source', 'api')
@@ -613,6 +663,108 @@ class PrefixCommand(BaseCommand):
             response = response.rstrip('\n')
         
         return response
+    
+    async def _send_prefix_response(self, message: MeshMessage, response: str) -> None:
+        """Send prefix response, splitting into multiple messages if necessary.
+        
+        Args:
+            message: The original message to respond to.
+            response: The complete response string.
+        """
+        # Store the complete response for web viewer integration BEFORE splitting
+        # command_manager will prioritize command.last_response over _last_response
+        # This ensures capture_command gets the full response, not just the last split message
+        self.last_response = response
+        
+        # Get dynamic max message length based on message type and bot username
+        max_length = self.get_max_message_length(message)
+        
+        if len(response) <= max_length:
+            # Single message is fine
+            await self.send_response(message, response)
+        else:
+            # Split into multiple messages for over-the-air transmission
+            # But keep the full response in last_response for web viewer
+            lines = response.split('\n')
+            
+            # Calculate continuation markers length for planning
+            continuation_end = self.translate('commands.path.continuation_end')
+            continuation_start_template = self.translate('commands.path.continuation_start', line='PLACEHOLDER')
+            # Estimate continuation overhead (account for variable line length in template)
+            continuation_overhead = len(continuation_end) + len(continuation_start_template) - len('PLACEHOLDER')
+            
+            # Estimate how many messages we'll need based on total content
+            total_content_length = sum(len(line) for line in lines) + (len(lines) - 1)  # +1 for each newline between lines
+            # Account for continuation markers in multi-message scenarios
+            estimated_messages = max(2, (total_content_length + continuation_overhead * 2) // max(max_length - continuation_overhead, 1) + 1)
+            target_lines_per_message = max(1, (len(lines) + estimated_messages - 1) // estimated_messages)  # Ceiling division
+            
+            current_message = ""
+            message_count = 0
+            lines_in_current = 0
+            
+            for i, line in enumerate(lines):
+                # Calculate if adding this line would exceed max_length
+                test_message = current_message
+                if test_message:
+                    test_message += f"\n{line}"
+                else:
+                    test_message = line
+                
+                # Determine if we should split
+                must_split = len(test_message) > max_length
+                
+                # Smart splitting: try to balance lines across messages
+                # Calculate remaining lines and messages for balancing
+                remaining_lines = len(lines) - i - 1  # Lines after current one
+                remaining_messages = estimated_messages - message_count - 1  # Messages after current one
+                
+                # For first message, be more aggressive about fitting lines (prioritize earlier messages)
+                # For subsequent messages, balance more evenly
+                if message_count == 0:
+                    # First message: try to fit more lines, only split if we must
+                    # Be very conservative about splitting the first message - only if we absolutely must
+                    # or if we're way over target and have plenty of room left
+                    first_message_target = max(target_lines_per_message, 3)  # At least 3 lines in first message if possible
+                    should_balance_split = (
+                        lines_in_current >= first_message_target and  # We've hit minimum target for first message
+                        remaining_lines > 0 and  # There are more lines
+                        remaining_messages > 0 and  # There are more messages
+                        len(test_message) > max_length * 0.95  # Very close to limit (95% threshold - be aggressive)
+                    )
+                else:
+                    # Subsequent messages: balance more evenly, but still try to fit reasonable amounts
+                    should_balance_split = (
+                        lines_in_current >= max(target_lines_per_message, 2) and  # At least 2 lines per message
+                        remaining_lines > 0 and  # There are more lines
+                        remaining_messages > 0 and  # There are more messages
+                        (remaining_lines >= remaining_messages or lines_in_current >= target_lines_per_message + 1) and  # Can distribute or we've exceeded target
+                        len(test_message) > max_length * 0.88  # Getting close to limit (88% threshold)
+                    )
+                
+                if (must_split or should_balance_split) and current_message:
+                    # Send current message and start new one
+                    # Add ellipsis on new line to end of continued message
+                    current_message += continuation_end
+                    await self.send_response(message, current_message.rstrip())
+                    await asyncio.sleep(3.0)  # Delay between messages (same as other commands)
+                    message_count += 1
+                    lines_in_current = 0
+                    
+                    # Start new message with ellipsis on new line at beginning
+                    current_message = self.translate('commands.path.continuation_start', line=line)
+                    lines_in_current = 1
+                else:
+                    # Add line to current message
+                    if current_message:
+                        current_message += f"\n{line}"
+                    else:
+                        current_message = line
+                    lines_in_current += 1
+            
+            # Send the last message if there's content
+            if current_message:
+                await self.send_response(message, current_message)
     
     async def __aenter__(self):
         """Async context manager entry"""

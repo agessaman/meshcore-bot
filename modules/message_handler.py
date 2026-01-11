@@ -8,6 +8,7 @@ import asyncio
 import time
 import json
 import re
+import copy
 from typing import List, Optional, Dict, Any
 from meshcore import EventType
 
@@ -18,7 +19,13 @@ from .security_utils import sanitize_input
 
 
 class MessageHandler:
-    """Handles incoming messages and routes them to command processors"""
+    """Handles incoming messages and routes them to command processors.
+    
+    This class is responsible for processing various types of MeshCore events,
+    including contact messages (DMs), raw data packets, advertisement packets,
+    and RF log data. It also maintains caches for SNR/RSSI data and correlates
+    messages with routing information.
+    """
     
     def __init__(self, bot):
         self.bot = bot
@@ -42,15 +49,33 @@ class MessageHandler:
         self.rf_data_by_timestamp = {}  # Index by timestamp for faster lookup
         self.rf_data_by_pubkey = {}     # Index by pubkey for exact matches
         
+        # Cache memory management
+        self._max_rf_cache_size = 1000  # Maximum entries per cache
+        self._cache_cleanup_interval = 60  # Cleanup every 60 seconds
+        self._last_cache_cleanup = time.time()
+        
         # Multitest command listener (for collecting paths during listening window)
         self.multitest_listener = None
         
         self.logger.info(f"RF Data Correlation: timeout={self.rf_data_timeout}s, enhanced={self.enhanced_correlation}")
     
     async def handle_contact_message(self, event, metadata=None):
-        """Handle incoming contact message (DM)"""
+        """Handle incoming contact message (DM).
+        
+        Processes direct messages, extracts path information, correlates with
+        RF data for signal metrics (SNR/RSSI), and forwards to the command processor.
+        
+        Args:
+            event: The MeshCore event object containing the message payload.
+            metadata: Optional metadata dictionary associated with the event.
+        """
         try:
-            payload = event.payload
+            # Copy payload immediately to avoid segfault if event is freed
+            import copy
+            payload = copy.deepcopy(event.payload) if hasattr(event, 'payload') else None
+            if payload is None:
+                self.logger.warning("Contact message event has no payload")
+                return
             
             # Debug: Log the full payload structure
             self.logger.debug(f"Contact message payload: {payload}")
@@ -277,6 +302,17 @@ class MessageHandler:
             # but still strip control characters for security
             message_content = payload.get('text', '')
             message_content = sanitize_input(message_content, max_length=None, strip_controls=True)
+
+            # Format timestamp
+            if timestamp and timestamp != 'unknown':
+                try:
+                    from datetime import datetime,UTC
+                    dt = datetime.fromtimestamp(message.timestamp)
+                    elapsed_str = round((datetime.now(UTC).timestamp()-message.timestamp)*1000)
+                except:
+                    elapsed_str = "Unknown"
+                else:
+                    elapsed_str = "Unknown"
             
             # Convert to our message format
             message = MeshMessage(
@@ -287,6 +323,7 @@ class MessageHandler:
                 timestamp=timestamp,
                 snr=snr,
                 rssi=rssi,
+                elapsed=elapsed_str,
                 hops=path_len if path_len != 255 else 0,
                 path=path_info
             )
@@ -321,9 +358,23 @@ class MessageHandler:
             self.logger.error(f"Error handling contact message: {e}")
     
     async def handle_raw_data(self, event, metadata=None):
-        """Handle raw data events (full packet data from debug mode)"""
+        """Handle raw data events (full packet data from debug mode).
+        
+        Processes raw packet data, attempts to decode it, and if successful,
+        checking if it's an advertisement packet to track.
+        
+        Args:
+            event: The MeshCore event object containing the raw data payload.
+            metadata: Optional metadata dictionary.
+        """
         try:
-            payload = event.payload
+            # Copy payload immediately to avoid segfault if event is freed
+            # Make a deep copy to ensure we have all the data we need
+            payload = copy.deepcopy(event.payload) if hasattr(event, 'payload') else None
+            if payload is None:
+                self.logger.warning("RAW_DATA event has no payload")
+                return
+            
             self.logger.info(f"📦 RAW_DATA EVENT RECEIVED: {payload}")
             self.logger.info(f"📦 Event type: {type(event)}")
             self.logger.info(f"📦 Metadata: {metadata}")
@@ -364,7 +415,15 @@ class MessageHandler:
             self.logger.error(traceback.format_exc())
     
     async def _process_advertisement_packet(self, packet_info: Dict, metadata=None):
-        """Process advertisement packets for complete repeater tracking"""
+        """Process advertisement packets for complete repeater tracking.
+        
+        Extracts node information, location data, and routing path from
+        advertisement packets and updates the repeater database.
+        
+        Args:
+            packet_info: Dictionary containing decoded packet information.
+            metadata: Optional metadata dictionary with signal metrics.
+        """
         try:
             # Check if this is an advertisement packet
             if (packet_info.get('payload_type') == 'ADVERT' or 
@@ -455,7 +514,40 @@ class MessageHandler:
                         name = advert_data.get('name', 'No name')
                         location = ""
                         if 'lat' in advert_data and 'lon' in advert_data:
-                            location = f" at {advert_data['lat']:.4f},{advert_data['lon']:.4f}"
+                            # Try to get resolved location from database if available
+                            try:
+                                if hasattr(self.bot, 'repeater_manager'):
+                                    # Look up the contact to get resolved location
+                                    public_key = advert_data.get('public_key')
+                                    if public_key:
+                                        contact_query = self.bot.db_manager.execute_query(
+                                            'SELECT city, state, country FROM complete_contact_tracking WHERE public_key = ?',
+                                            (public_key,)
+                                        )
+                                        if contact_query:
+                                            contact = contact_query[0]
+                                            city = contact.get('city')
+                                            state = contact.get('state')
+                                            if city and state:
+                                                location = f" at {city}, {state}"
+                                            elif city:
+                                                location = f" at {city}"
+                                            else:
+                                                # Fallback to coordinates if no resolved location
+                                                location = f" at {advert_data['lat']:.4f},{advert_data['lon']:.4f}"
+                                        else:
+                                            # No contact found yet, use coordinates
+                                            location = f" at {advert_data['lat']:.4f},{advert_data['lon']:.4f}"
+                                    else:
+                                        # No public key, use coordinates
+                                        location = f" at {advert_data['lat']:.4f},{advert_data['lon']:.4f}"
+                                else:
+                                    # No repeater manager, use coordinates
+                                    location = f" at {advert_data['lat']:.4f},{advert_data['lon']:.4f}"
+                            except Exception as e:
+                                # If lookup fails, fallback to coordinates
+                                self.logger.debug(f"Could not get resolved location for logging: {e}")
+                                location = f" at {advert_data['lat']:.4f},{advert_data['lon']:.4f}"
                         
                         # Show hop count in log
                         hop_count = signal_info.get('hops', 0)
@@ -469,9 +561,22 @@ class MessageHandler:
             self.logger.error(f"Error processing advertisement packet: {e}")
     
     async def handle_rf_log_data(self, event, metadata=None):
-        """Handle RF log data events to cache SNR information and store raw packet data"""
+        """Handle RF log data events to cache SNR information and store raw packet data.
+        
+        Captures low-level RF information (SNR, RSSI) and raw packet data to
+        correlate with higher-level messages for detailed signal reporting.
+        
+        Args:
+            event: The MeshCore event object containing RF data.
+            metadata: Optional metadata dictionary.
+        """
         try:
-            payload = event.payload
+            # Copy payload immediately to avoid segfault if event is freed
+            import copy
+            payload = copy.deepcopy(event.payload) if hasattr(event, 'payload') else None
+            if payload is None:
+                self.logger.warning("RF log data event has no payload")
+                return
             
             # Extract SNR from payload
             if 'snr' in payload:
@@ -563,6 +668,10 @@ class MessageHandler:
                             if (hasattr(self.bot, 'web_viewer_integration') and 
                                 self.bot.web_viewer_integration and 
                                 self.bot.web_viewer_integration.bot_integration):
+                                # Use extracted_payload which is the full MeshCore packet
+                                # (header + path_len + path + payload, without RF wrapper)
+                                decoded_packet['raw_packet_hex'] = extracted_payload if extracted_payload else raw_hex
+                                decoded_packet['packet_hash'] = packet_hash
                                 self.bot.web_viewer_integration.bot_integration.capture_full_packet_data(decoded_packet)
                             
                             # Process ADVERT packets for contact tracking (regardless of path length)
@@ -599,21 +708,7 @@ class MessageHandler:
                         self.rf_data_by_pubkey[packet_prefix].append(rf_data)
                     
                     # Clean up old data from all indexes
-                    self.recent_rf_data = [data for data in self.recent_rf_data 
-                                         if current_time - data['timestamp'] < self.rf_data_timeout]
-                    
-                    # Clean up timestamp index
-                    old_timestamps = [ts for ts in self.rf_data_by_timestamp.keys() 
-                                    if current_time - ts > self.rf_data_timeout]
-                    for ts in old_timestamps:
-                        del self.rf_data_by_timestamp[ts]
-                    
-                    # Clean up pubkey index
-                    for pubkey in list(self.rf_data_by_pubkey.keys()):
-                        self.rf_data_by_pubkey[pubkey] = [data for data in self.rf_data_by_pubkey[pubkey] 
-                                                         if current_time - data['timestamp'] < self.rf_data_timeout]
-                        if not self.rf_data_by_pubkey[pubkey]:
-                            del self.rf_data_by_pubkey[pubkey]
+                    self._cleanup_stale_cache_entries(current_time)
                     
                     # Try to correlate with any pending messages
                     self.try_correlate_pending_messages(rf_data)
@@ -626,8 +721,19 @@ class MessageHandler:
         except Exception as e:
             self.logger.error(f"Error handling RF log data: {e}")
     
-    def extract_path_from_raw_hex(self, raw_hex, expected_hops):
-        """Extract path information directly from raw hex data"""
+    def extract_path_from_raw_hex(self, raw_hex: str, expected_hops: int) -> Optional[str]:
+        """Extract path information directly from raw hex data.
+        
+        Attempts to find a sequence of node IDs in the raw packet data that matches
+        the expected number of hops.
+        
+        Args:
+            raw_hex: Raw packet data as a hex string.
+            expected_hops: The expected number of hops in the path.
+            
+        Returns:
+            Optional[str]: Comma-separated path string if found, None otherwise.
+        """
         try:
             if not raw_hex or len(raw_hex) < 20:
                 return None
@@ -686,6 +792,88 @@ class MessageHandler:
         except Exception as e:
             self.logger.debug(f"Error extracting path from raw hex: {e}")
             return None
+
+    def _cleanup_stale_cache_entries(self, current_time: Optional[float] = None) -> None:
+        """Remove stale entries from RF data caches and enforce maximum size limits.
+        
+        Args:
+            current_time: Optional timestamp to use as "now". Defaults to time.time().
+        """
+        if current_time is None:
+            current_time = time.time()
+        
+        # Only run periodic cleanup if enough time has passed
+        if current_time - self._last_cache_cleanup < self._cache_cleanup_interval:
+            # Still do basic timeout cleanup, but skip size enforcement
+            cutoff_time = current_time - self.rf_data_timeout
+            
+            # Clean timestamp-indexed cache (timeout only)
+            stale_timestamps = [ts for ts in self.rf_data_by_timestamp.keys() 
+                              if ts < cutoff_time]
+            for ts in stale_timestamps:
+                del self.rf_data_by_timestamp[ts]
+            
+            # Clean pubkey-indexed cache (timeout only)
+            for pubkey in list(self.rf_data_by_pubkey.keys()):
+                self.rf_data_by_pubkey[pubkey] = [data for data in self.rf_data_by_pubkey[pubkey] 
+                                                 if current_time - data['timestamp'] < self.rf_data_timeout]
+                if not self.rf_data_by_pubkey[pubkey]:
+                    del self.rf_data_by_pubkey[pubkey]
+            
+            # Clean recent_rf_data list (timeout only)
+            self.recent_rf_data = [data for data in self.recent_rf_data 
+                                 if current_time - data['timestamp'] < self.rf_data_timeout]
+            return
+        
+        # Full cleanup with size enforcement
+        self._last_cache_cleanup = current_time
+        cutoff_time = current_time - self.rf_data_timeout
+        
+        # Clean timestamp-indexed cache
+        stale_timestamps = [ts for ts in self.rf_data_by_timestamp.keys() 
+                          if ts < cutoff_time]
+        for ts in stale_timestamps:
+            del self.rf_data_by_timestamp[ts]
+        
+        # Enforce maximum size on timestamp cache (keep most recent)
+        if len(self.rf_data_by_timestamp) > self._max_rf_cache_size:
+            sorted_items = sorted(self.rf_data_by_timestamp.items(), 
+                                 key=lambda x: x[1].get('timestamp', 0), 
+                                 reverse=True)
+            self.rf_data_by_timestamp = dict(sorted_items[:self._max_rf_cache_size])
+        
+        # Clean pubkey-indexed cache
+        for pubkey in list(self.rf_data_by_pubkey.keys()):
+            self.rf_data_by_pubkey[pubkey] = [data for data in self.rf_data_by_pubkey[pubkey] 
+                                             if current_time - data['timestamp'] < self.rf_data_timeout]
+            if not self.rf_data_by_pubkey[pubkey]:
+                del self.rf_data_by_pubkey[pubkey]
+        
+        # Enforce maximum size on pubkey cache (keep most recent per pubkey)
+        total_pubkey_entries = sum(len(entries) for entries in self.rf_data_by_pubkey.values())
+        if total_pubkey_entries > self._max_rf_cache_size:
+            # Sort all entries by timestamp and keep most recent
+            all_pubkey_entries = []
+            for pubkey, entries in self.rf_data_by_pubkey.items():
+                for entry in entries:
+                    all_pubkey_entries.append((pubkey, entry))
+            all_pubkey_entries.sort(key=lambda x: x[1].get('timestamp', 0), reverse=True)
+            
+            # Rebuild pubkey cache with only the most recent entries
+            self.rf_data_by_pubkey = {}
+            for pubkey, entry in all_pubkey_entries[:self._max_rf_cache_size]:
+                if pubkey not in self.rf_data_by_pubkey:
+                    self.rf_data_by_pubkey[pubkey] = []
+                self.rf_data_by_pubkey[pubkey].append(entry)
+        
+        # Clean recent_rf_data list
+        self.recent_rf_data = [data for data in self.recent_rf_data 
+                             if current_time - data['timestamp'] < self.rf_data_timeout]
+        
+        # Enforce maximum size on recent_rf_data (keep most recent)
+        if len(self.recent_rf_data) > self._max_rf_cache_size:
+            self.recent_rf_data.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
+            self.recent_rf_data = self.recent_rf_data[:self._max_rf_cache_size]
 
     def find_recent_rf_data(self, correlation_key=None, max_age_seconds=None):
         """Find recent RF data for SNR/RSSI and packet decoding with improved correlation
@@ -1151,7 +1339,13 @@ class MessageHandler:
     async def handle_channel_message(self, event, metadata=None):
         """Handle incoming channel message"""
         try:
-            payload = event.payload
+            # Copy payload immediately to avoid segfault if event is freed
+            import copy
+            payload = copy.deepcopy(event.payload) if hasattr(event, 'payload') else None
+            if payload is None:
+                self.logger.warning("Channel message event has no payload")
+                return
+            
             channel_idx = payload.get('channel_idx', 0)
             
             # Debug: Log the full payload structure
@@ -1171,6 +1365,9 @@ class MessageHandler:
                     message_content = parts[1].strip()  # Use the part after the colon for keyword processing
                     self.logger.debug(f"Extracted sender from text: {sender_id}")
                     self.logger.debug(f"Message content for processing: {message_content}")
+            
+            # Always strip trailing whitespace/newlines from message content to handle cases like "Wx 98104\n"
+            message_content = message_content.strip()
             
             # Get channel name from channel number
             channel_name = self.bot.channel_manager.get_channel_name(channel_idx)
@@ -1577,7 +1774,8 @@ class MessageHandler:
                 
         except Exception as e:
             self.logger.debug(f"Error formatting path string: {e}")
-            return f"Raw: {hex_path[:16]}..."  # Fallback to showing raw hex
+            truncated = hex_path[:16] if len(hex_path) > 16 else hex_path
+            return f"Raw: {truncated}{'...' if len(hex_path) > 16 else ''}"
     
     async def process_message(self, message: MeshMessage):
         """Process a received message"""
@@ -1585,8 +1783,11 @@ class MessageHandler:
         if self.multitest_listener:
             try:
                 self.multitest_listener.on_message_received(message)
+            except AttributeError as e:
+                self.logger.warning(f"Multitest listener missing method: {e}")
+                self.multitest_listener = None  # Disable broken listener
             except Exception as e:
-                self.logger.debug(f"Error notifying multitest listener: {e}")
+                self.logger.error(f"Error notifying multitest listener: {e}", exc_info=True)
         
         # Record all messages in stats database FIRST (before any filtering)
         # This ensures we collect stats for all channels, not just monitored ones
@@ -1672,14 +1873,22 @@ class MessageHandler:
                         # response is not None here, so we know a response will be sent
                         stats_command.record_command(message, keyword, True)
                 
-                # Note: Command data capture is handled in command_manager.py after execution
-                # to avoid duplicate messages to web viewer
-                
                 # Send response
                 if message.is_dm:
-                    await self.bot.command_manager.send_dm(message.sender_id, response)
+                    success = await self.bot.command_manager.send_dm(message.sender_id, response)
                 else:
-                    await self.bot.command_manager.send_channel_message(message.channel, response)
+                    success = await self.bot.command_manager.send_channel_message(message.channel, response)
+                
+                # Capture keyword command data for web viewer
+                if (hasattr(self.bot, 'web_viewer_integration') and 
+                    self.bot.web_viewer_integration and 
+                    self.bot.web_viewer_integration.bot_integration):
+                    try:
+                        self.bot.web_viewer_integration.bot_integration.capture_command(
+                            message, keyword, response, success
+                        )
+                    except Exception as e:
+                        self.logger.debug(f"Failed to capture keyword data for web viewer: {e}")
         
         # Only execute commands if no help response was sent and no plugin command with response was matched
         # Help responses and plugin commands with responses should be the final response for that message
@@ -1726,16 +1935,21 @@ class MessageHandler:
     async def handle_new_contact(self, event, metadata=None):
         """Handle NEW_CONTACT events for automatic contact management"""
         try:
-            self.logger.info(f"🔍 NEW_CONTACT EVENT RECEIVED: {event}")
-            self.logger.info(f"📦 Event type: {type(event)}")
-            self.logger.info(f"📦 Event payload: {event.payload if hasattr(event, 'payload') else 'No payload'}")
-            
-            # Extract contact information from the event
-            contact_data = event.payload if hasattr(event, 'payload') else event
+            # Copy payload immediately to avoid segfault if event is freed
+            # Make a deep copy to ensure we have all the data we need
+            if hasattr(event, 'payload'):
+                contact_data = copy.deepcopy(event.payload)
+            else:
+                # Fallback: try to copy the event itself if it's a dict-like object
+                contact_data = copy.deepcopy(event) if isinstance(event, dict) else None
             
             if not contact_data:
                 self.logger.warning("NEW_CONTACT event has no payload data")
                 return
+            
+            self.logger.info(f"🔍 NEW_CONTACT EVENT RECEIVED: {event}")
+            self.logger.info(f"📦 Event type: {type(event)}")
+            self.logger.info(f"📦 Event payload: {contact_data}")
             
             # Get contact details
             contact_name = contact_data.get('name', contact_data.get('adv_name', 'Unknown'))

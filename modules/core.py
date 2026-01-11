@@ -6,6 +6,7 @@ Contains the main bot class and message processing logic
 
 import asyncio
 import configparser
+import json
 import logging
 import colorlog
 import time
@@ -13,6 +14,7 @@ import threading
 import schedule
 import signal
 import atexit
+import sqlite3
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
@@ -36,11 +38,16 @@ from .i18n import Translator
 from .solar_conditions import set_config
 from .web_viewer.integration import WebViewerIntegration
 from .feed_manager import FeedManager
-from .security_utils import validate_safe_path
+from .service_plugin_loader import ServicePluginLoader
+from .utils import resolve_path
 
 
 class MeshCoreBot:
-    """MeshCore Bot using official meshcore package"""
+    """MeshCore Bot using official meshcore package.
+    
+    This class handles the core functionality of the bot, including connection management,
+    message processing initialization, and module coordination.
+    """
     
     def __init__(self, config_file: str = "config.ini"):
         self.config_file = config_file
@@ -60,20 +67,14 @@ class MeshCoreBot:
         # Initialize database manager first (needed by plugins)
         db_path = self.config.get('Bot', 'db_path', fallback='meshcore_bot.db')
         
-        # Validate database path for security (prevent path traversal)
-        # Use explicit bot root directory (where config.ini is located)
-        try:
-            db_path = str(validate_safe_path(db_path, base_dir=str(self.bot_root), allow_absolute=False))
-        except ValueError as e:
-            self.logger.error(f"Invalid database path: {e}")
-            self.logger.error("Using default: meshcore_bot.db")
-            db_path = 'meshcore_bot.db'
+        # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
+        db_path = resolve_path(db_path, self.bot_root)
         
         self.logger.info(f"Initializing database manager with database: {db_path}")
         try:
             self.db_manager = DBManager(self, db_path)
             self.logger.info("Database manager initialized successfully")
-        except Exception as e:
+        except (OSError, ValueError, sqlite3.Error) as e:
             self.logger.error(f"Failed to initialize database manager: {e}")
             raise
         
@@ -81,7 +82,7 @@ class MeshCoreBot:
         try:
             self.db_manager.set_bot_start_time(self.start_time)
             self.logger.info("Bot start time stored in database")
-        except Exception as e:
+        except (OSError, sqlite3.Error, AttributeError) as e:
             self.logger.warning(f"Could not store start time in database: {e}")
         
         # Initialize web viewer integration (after database manager)
@@ -91,7 +92,7 @@ class MeshCoreBot:
             
             # Register cleanup handler for web viewer
             atexit.register(self._cleanup_web_viewer)
-        except Exception as e:
+        except (OSError, ValueError, AttributeError, ImportError) as e:
             self.logger.warning(f"Web viewer integration failed: {e}")
             self.web_viewer_integration = None
         
@@ -115,7 +116,7 @@ class MeshCoreBot:
             translation_path = self.config.get('Localization', 'translation_path', fallback='translations/')
             self.translator = Translator(language, translation_path)
             self.logger.info(f"Localization initialized: {language}")
-        except Exception as e:
+        except (OSError, ValueError, FileNotFoundError, json.JSONDecodeError) as e:
             self.logger.warning(f"Failed to initialize translator: {e}")
             # Create a dummy translator that just returns keys
             class DummyTranslator:
@@ -142,7 +143,7 @@ class MeshCoreBot:
         try:
             self.feed_manager = FeedManager(self)
             self.logger.info("Feed manager initialized successfully")
-        except Exception as e:
+        except (OSError, ValueError, AttributeError, ImportError) as e:
             self.logger.warning(f"Failed to initialize feed manager: {e}")
             self.feed_manager = None
         
@@ -151,9 +152,30 @@ class MeshCoreBot:
         try:
             self.repeater_manager = RepeaterManager(self)
             self.logger.info("Repeater manager initialized successfully")
-        except Exception as e:
+        except (OSError, ValueError, AttributeError) as e:
             self.logger.error(f"Failed to initialize repeater manager: {e}")
             raise
+        
+        # Initialize service plugin loader and load all services
+        self.logger.info("Initializing service plugin loader")
+        try:
+            self.service_loader = ServicePluginLoader(self)
+            self.services = self.service_loader.load_all_services()
+            self.logger.info(f"Service plugin loader initialized with {len(self.services)} service(s)")
+        except (OSError, ImportError, AttributeError, ValueError) as e:
+            self.logger.error(f"Failed to initialize service plugin loader: {e}")
+            self.service_loader = None
+            self.services = {}
+        
+        # Backward compatibility: expose packet_capture_service for existing code
+        # This allows code that references self.packet_capture_service to continue working
+        # Try to find by service name first, then by class name
+        self.packet_capture_service = None
+        for service_name, service_instance in self.services.items():
+            if (service_name == 'packetcapture' or 
+                service_instance.__class__.__name__ == 'PacketCaptureService'):
+                self.packet_capture_service = service_instance
+                break
         
         # Reload translated keywords for all commands now that translator is available
         # This ensures keywords are loaded even if translator wasn't ready during command init
@@ -167,23 +189,32 @@ class MeshCoreBot:
         
         # Clock sync tracking
         self.last_clock_sync_time = None
+        
+        # Shutdown event for graceful shutdown
+        self._shutdown_event = threading.Event()
     
     @property
     def bot_root(self) -> Path:
         """Get bot root directory (where config.ini is located)"""
         return Path(self.config_file).parent.resolve()
-        
-        self.logger.info(f"MeshCore Bot initialized: {self.config.get('Bot', 'bot_name')}")
     
-    def load_config(self):
-        """Load configuration from file"""
+    def load_config(self) -> None:
+        """Load configuration from file.
+        
+        Reads the configuration file specified in self.config_file. If the file
+        does not exist, a default configuration is created first.
+        """
         if not Path(self.config_file).exists():
             self.create_default_config()
         
         self.config.read(self.config_file)
     
-    def create_default_config(self):
-        """Create default configuration file"""
+    def create_default_config(self) -> None:
+        """Create default configuration file.
+        
+        Writes a default 'config.ini' file to disk with standard settings
+        and comments explaining each option.
+        """
         default_config = """[Connection]
 # Connection type: serial, ble, or tcp
 # serial: Connect via USB serial port
@@ -528,8 +559,13 @@ use_zulu_time = false
         # Note: Using print here since logger may not be initialized yet
         print(f"Created default config file: {self.config_file}")
     
-    def setup_logging(self):
-        """Setup logging configuration"""
+    def setup_logging(self) -> None:
+        """Setup logging configuration.
+        
+        Configures the logging system based on settings in the config file.
+        Sets up console and file handlers, formatters, and log levels for
+        both the bot and the underlying meshcore library.
+        """
         log_level = getattr(logging, self.config.get('Logging', 'log_level', fallback='INFO'))
         
         # Create formatter
@@ -566,14 +602,8 @@ use_zulu_time = false
         # File handler
         log_file = self.config.get('Logging', 'log_file', fallback='meshcore_bot.log')
         
-        # Validate log file path for security (prevent path traversal)
-        # Use explicit bot root directory (where config.ini is located)
-        try:
-            log_file = str(validate_safe_path(log_file, base_dir=str(self.bot_root), allow_absolute=False))
-        except ValueError as e:
-            self.logger.warning(f"Invalid log file path: {e}")
-            self.logger.warning("Using default: meshcore_bot.log")
-            log_file = 'meshcore_bot.log'
+        # Resolve log file path (relative paths resolved from bot root, absolute paths used as-is)
+        log_file = resolve_path(log_file, self.bot_root)
         
         file_handler = logging.FileHandler(log_file)
         file_handler.setFormatter(formatter)
@@ -619,8 +649,12 @@ use_zulu_time = false
         # Setup signal handlers for graceful shutdown
         self._setup_signal_handlers()
     
-    def _setup_routing_capture(self):
-        """Setup routing information capture for web viewer"""
+    def _setup_routing_capture(self) -> None:
+        """Setup routing information capture for web viewer.
+        
+        Initializes the mechanism to capture message routing information
+        if the web viewer integration is enabled.
+        """
         # Web viewer doesn't need complex routing capture
         # It uses direct database access instead of complex integration
         if not (hasattr(self, 'web_viewer_integration') and 
@@ -629,19 +663,32 @@ use_zulu_time = false
         
         self.logger.info("Web viewer routing capture setup complete")
     
-    def _setup_signal_handlers(self):
-        """Setup signal handlers for graceful shutdown"""
+    def _setup_signal_handlers(self) -> None:
+        """Setup signal handlers for graceful shutdown.
+        
+        Registers handlers for SIGTERM and SIGINT to ensure the bot can
+        clean up resources and disconnect properly when stopped.
+        """
         def signal_handler(signum, frame):
             self.logger.info(f"Received signal {signum}, initiating graceful shutdown...")
-            self._cleanup_web_viewer()
-            # Let the main loop handle the rest of the shutdown
+            # Set shutdown event to break main loop
+            self._shutdown_event.set()
+            # Set connected to False to break the while loop in start()
+            self.connected = False
         
         # Register signal handlers
         signal.signal(signal.SIGTERM, signal_handler)
         signal.signal(signal.SIGINT, signal_handler)
     
     async def connect(self) -> bool:
-        """Connect to MeshCore node using official package"""
+        """Connect to MeshCore node using official package.
+        
+        Establishes a connection to the mesh node via Serial, TCP, or BLE
+        based on the configuration.
+        
+        Returns:
+            bool: True if connection was successful, False otherwise.
+        """
         try:
             self.logger.info("Connecting to MeshCore node...")
             
@@ -690,12 +737,19 @@ use_zulu_time = false
                 self.logger.error("Failed to connect to MeshCore node")
                 return False
                 
-        except Exception as e:
+        except (OSError, ConnectionError, TimeoutError, ValueError, AttributeError) as e:
             self.logger.error(f"Connection failed: {e}")
             return False
     
     async def set_radio_clock(self) -> bool:
-        """Set radio clock only if device time is earlier than current system time"""
+        """Set radio clock if device time is earlier than system time.
+        
+        Checks the connected device's time and updates it to match the system
+        time if the device is lagging behind.
+        
+        Returns:
+            bool: True if check/update was successful (or not needed), False on error.
+        """
         try:
             if not self.meshcore or not self.meshcore.is_connected:
                 self.logger.warning("Cannot set radio clock - not connected to device")
@@ -730,12 +784,16 @@ use_zulu_time = false
                 self.logger.info("Device time is current or ahead - no update needed")
                 return True
                 
-        except Exception as e:
+        except (OSError, AttributeError, ValueError, KeyError) as e:
             self.logger.warning(f"Error checking/setting radio clock: {e}")
             return False
     
-    async def wait_for_contacts(self):
-        """Wait for contacts to be loaded"""
+    async def wait_for_contacts(self) -> None:
+        """Wait for contacts to be loaded from the device.
+        
+        Polls the device for contact list or waits for automatic loading.
+        Times out after 30 seconds if contacts are not loaded.
+        """
         self.logger.info("Waiting for contacts to load...")
         
         # Try to manually load contacts first
@@ -744,7 +802,7 @@ use_zulu_time = false
             self.logger.info("Manually requesting contacts from device...")
             result = await next_cmd(self.meshcore, ["contacts"])
             self.logger.info(f"Contacts command result: {len(result) if result else 0} contacts")
-        except Exception as e:
+        except (OSError, AttributeError, ValueError) as e:
             self.logger.warning(f"Error manually loading contacts: {e}")
         
         # Check if contacts are loaded (even if empty list)
@@ -766,8 +824,12 @@ use_zulu_time = false
         
         self.logger.warning(f"Contacts not loaded after {max_wait} seconds, proceeding anyway")
     
-    async def setup_message_handlers(self):
-        """Setup event handlers for messages"""
+    async def setup_message_handlers(self) -> None:
+        """Setup event handlers for messages.
+        
+        Registers callbacks for various meshcore events including contact messages,
+        channel messages, RF data, and raw data packets.
+        """
         # Handle contact messages (DMs)
         async def on_contact_message(event, metadata=None):
             await self.message_handler.handle_contact_message(event, metadata)
@@ -812,9 +874,16 @@ use_zulu_time = false
         
         self.logger.info("Message handlers setup complete")
     
-    async def start(self):
-        """Start the bot"""
+    async def start(self) -> None:
+        """Start the bot.
+        
+        Initiates the connection to the node, sets up scheduling, services,
+        and starts the main execution loop.
+        """
         self.logger.info("Starting MeshCore Bot...")
+        
+        # Store reference to main event loop for scheduler thread access
+        self.main_event_loop = asyncio.get_running_loop()
         
         # Connect to MeshCore node
         if not await self.connect():
@@ -839,10 +908,18 @@ use_zulu_time = false
         # Send startup advert if enabled
         await self.send_startup_advert()
         
+        # Start all loaded services
+        for service_name, service_instance in self.services.items():
+            try:
+                await service_instance.start()
+                self.logger.info(f"Service '{service_name}' started")
+            except (OSError, AttributeError, ValueError, RuntimeError) as e:
+                self.logger.error(f"Failed to start service '{service_name}': {e}")
+        
         # Keep running
         self.logger.info("Bot is running. Press Ctrl+C to stop.")
         try:
-            while self.connected:
+            while self.connected and not self._shutdown_event.is_set():
                 # Monitor web viewer process and health
                 if self.web_viewer_integration and self.web_viewer_integration.enabled:
                     # Check if process died
@@ -864,14 +941,28 @@ use_zulu_time = false
                         except (AttributeError, TypeError) as e:
                             print(f"Web viewer health check failed: {e}")
                 
+                # Periodically update system health in database (every 30 seconds)
+                if not hasattr(self, '_last_health_update'):
+                    self._last_health_update = 0
+                if time.time() - self._last_health_update >= 30:
+                    try:
+                        await self.get_system_health()  # This stores it in the database
+                        self._last_health_update = time.time()
+                    except Exception as e:
+                        self.logger.debug(f"Error updating system health: {e}")
+                
                 await asyncio.sleep(5)  # Check every 5 seconds
         except KeyboardInterrupt:
             self.logger.info("Received interrupt signal")
         finally:
             await self.stop()
     
-    async def stop(self):
-        """Stop the bot"""
+    async def stop(self) -> None:
+        """Stop the bot.
+        
+        Performs graceful shutdown by stopping services, scheduling, and
+        disconnecting from the mesh node.
+        """
         try:
             self.logger.info("Stopping MeshCore Bot...")
         except (AttributeError, TypeError):
@@ -882,6 +973,14 @@ use_zulu_time = false
         # Stop feed manager
         if self.feed_manager:
             await self.feed_manager.stop()
+        
+        # Stop all loaded services
+        for service_name, service_instance in self.services.items():
+            try:
+                await service_instance.stop()
+                self.logger.info(f"Service '{service_name}' stopped")
+            except (OSError, AttributeError, RuntimeError, asyncio.CancelledError) as e:
+                self.logger.error(f"Failed to stop service '{service_name}': {e}")
         
         # Stop web viewer with proper shutdown sequence
         if self.web_viewer_integration:
@@ -900,8 +999,103 @@ use_zulu_time = false
         except (AttributeError, TypeError):
             print("Bot stopped")
     
-    def _cleanup_web_viewer(self):
-        """Cleanup web viewer on exit"""
+    async def get_system_health(self) -> Dict[str, Any]:
+        """Aggregate health status from all components.
+        
+        Collects status information from the meshcore connection, database,
+        services, and other components to provide a system health report.
+        
+        Returns:
+            Dict[str, Any]: Dictionary containing overall health status and component details.
+        """
+        health = {
+            'status': 'healthy',
+            'timestamp': time.time(),
+            'uptime_seconds': time.time() - self.start_time,
+            'components': {}
+        }
+        
+        # Check core connection
+        health['components']['meshcore'] = {
+            'healthy': self.connected and self.meshcore is not None,
+            'message': 'Connected' if (self.connected and self.meshcore is not None) else 'Disconnected'
+        }
+        
+        # Check database
+        try:
+            stats = self.db_manager.get_database_stats()
+            health['components']['database'] = {
+                'healthy': True,
+                'entries': stats.get('geocoding_cache_entries', 0) + stats.get('generic_cache_entries', 0),
+                'message': 'Operational'
+            }
+        except Exception as e:
+            health['components']['database'] = {
+                'healthy': False,
+                'error': str(e),
+                'message': f'Error: {str(e)}'
+            }
+        
+        # Check services
+        if hasattr(self, 'services') and self.services:
+            for name, service in self.services.items():
+                try:
+                    # Services have is_running() method, not health_check()
+                    is_running = service.is_running() if hasattr(service, 'is_running') else False
+                    health['components'][f'service_{name}'] = {
+                        'healthy': is_running,
+                        'message': 'Running' if is_running else 'Stopped',
+                        'enabled': getattr(service, 'enabled', True)
+                    }
+                except Exception as e:
+                    health['components'][f'service_{name}'] = {
+                        'healthy': False,
+                        'error': str(e),
+                        'message': f'Error: {str(e)}'
+                    }
+        
+        # Check web viewer if available
+        if hasattr(self, 'web_viewer_integration') and self.web_viewer_integration:
+            try:
+                is_healthy = self.web_viewer_integration.is_viewer_healthy() if hasattr(
+                    self.web_viewer_integration, 'is_viewer_healthy'
+                ) else True
+                health['components']['web_viewer'] = {
+                    'healthy': is_healthy,
+                    'message': 'Operational' if is_healthy else 'Unhealthy'
+                }
+            except Exception as e:
+                health['components']['web_viewer'] = {
+                    'healthy': False,
+                    'error': str(e),
+                    'message': f'Error: {str(e)}'
+                }
+        
+        # Determine overall status
+        unhealthy = [
+            k for k, v in health['components'].items()
+            if not v.get('healthy', True)
+        ]
+        if unhealthy:
+            if len(unhealthy) < len(health['components']):
+                health['status'] = 'degraded'
+            else:
+                health['status'] = 'unhealthy'
+        
+        # Store health data in database for web viewer access
+        try:
+            self.db_manager.set_system_health(health)
+        except Exception as e:
+            self.logger.debug(f"Could not store system health in database: {e}")
+        
+        return health
+    
+    def _cleanup_web_viewer(self) -> None:
+        """Cleanup web viewer resources on exit.
+        
+        Called by atexit handler to ensure the web viewer process is terminated
+        properly when the bot shuts down.
+        """
         try:
             if hasattr(self, 'web_viewer_integration') and self.web_viewer_integration:
                 # Web viewer has simpler cleanup
@@ -910,14 +1104,18 @@ use_zulu_time = false
                     self.logger.info("Web viewer cleanup completed")
                 except (AttributeError, TypeError):
                     print("Web viewer cleanup completed")
-        except Exception as e:
+        except (OSError, AttributeError, TypeError) as e:
             try:
                 self.logger.error(f"Error during web viewer cleanup: {e}")
             except (AttributeError, TypeError):
                 print(f"Error during web viewer cleanup: {e}")
     
-    async def send_startup_advert(self):
-        """Send a startup advert if enabled in config"""
+    async def send_startup_advert(self) -> None:
+        """Send a startup advertisement if configured.
+        
+        Sends a 'bot online' status message to the mesh network. Can be configured
+        as a local zero-hop broadcast or a flood message.
+        """
         try:
             # Check if startup advert is enabled
             startup_advert = self.config.get('Bot', 'startup_advert', fallback='false').lower()
@@ -947,7 +1145,7 @@ use_zulu_time = false
             
             self.logger.info(f"Startup {startup_advert} advert sent successfully")
                 
-        except Exception as e:
+        except (OSError, AttributeError, ValueError, RuntimeError) as e:
             self.logger.error(f"Error sending startup advert: {e}")
             import traceback
             self.logger.error(traceback.format_exc())

@@ -14,7 +14,11 @@ from ..utils import calculate_distance
 
 
 class TestCommand(BaseCommand):
-    """Handles the test command"""
+    """Handles the test command.
+    
+    Responds to 'test' or 't' with connection info. Supports an optional phrase.
+    Can utilize repeater geographic location data to estimate path distance.
+    """
     
     # Plugin metadata
     name = "test"
@@ -24,6 +28,7 @@ class TestCommand(BaseCommand):
     
     def __init__(self, bot):
         super().__init__(bot)
+        self.test_enabled = self.get_config_value('Test_Command', 'enabled', fallback=True, value_type='bool')
         # Get bot location from config for geographic proximity calculations
         self.geographic_guessing_enabled = False
         self.bot_latitude = None
@@ -52,11 +57,36 @@ class TestCommand(BaseCommand):
         except Exception as e:
             self.logger.warning(f"Error reading bot location from config: {e}")
     
+    def can_execute(self, message: MeshMessage) -> bool:
+        """Check if this command can be executed with the given message.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if command is enabled and checks pass, False otherwise.
+        """
+        if not self.test_enabled:
+            return False
+        return super().can_execute(message)
+    
     def get_help_text(self) -> str:
+        """Get help text for the command.
+        
+        Returns:
+            str: Help text string.
+        """
         return self.translate('commands.test.help')
     
     def clean_content(self, content: str) -> str:
-        """Clean content by removing control characters and normalizing whitespace"""
+        """Clean content by removing control characters and normalizing whitespace.
+        
+        Args:
+            content: The raw message content.
+            
+        Returns:
+            str: Cleaned and normalized content string.
+        """
         import re
         # Remove control characters (except newline, tab, carriage return)
         cleaned = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', content)
@@ -65,7 +95,16 @@ class TestCommand(BaseCommand):
         return cleaned
     
     def matches_keyword(self, message: MeshMessage) -> bool:
-        """Override to implement special test keyword matching with optional phrase"""
+        """Override to implement special test keyword matching with optional phrase.
+        
+        Matches 'test', 't', 'test <phrase>', or 't <phrase>'.
+        
+        Args:
+            message: The message to check.
+            
+        Returns:
+            bool: True if the message matches the keyword patterns.
+        """
         # Clean content to remove control characters and normalize whitespace
         content = self.clean_content(message.content)
         
@@ -89,15 +128,26 @@ class TestCommand(BaseCommand):
         
         return False
     
-    def get_response_format(self) -> str:
-        """Get the response format from config"""
+    def get_response_format(self) -> Optional[str]:
+        """Get the response format from config.
+        
+        Returns:
+            Optional[str]: The configured response format string, or None if not set.
+        """
         if self.bot.config.has_section('Keywords'):
             format_str = self.bot.config.get('Keywords', 'test', fallback=None)
             return self._strip_quotes_from_config(format_str) if format_str else None
         return None
     
     def _extract_path_node_ids(self, message: MeshMessage) -> List[str]:
-        """Extract path node IDs from message path string"""
+        """Extract path node IDs from message path string.
+        
+        Args:
+            message: The message object containing the path.
+            
+        Returns:
+            List[str]: List of valid 2-character hex node IDs.
+        """
         if not message.path:
             return []
         
@@ -136,7 +186,15 @@ class TestCommand(BaseCommand):
     
     
     def _lookup_repeater_location(self, node_id: str, path_context: Optional[List[str]] = None) -> Optional[Tuple[float, float]]:
-        """Look up repeater location for a node ID using geographic proximity selection when path context is available"""
+        """Look up repeater location for a node ID using geographic proximity selection when path context is available.
+        
+        Args:
+            node_id: The node ID to look up.
+            path_context: Optional list of all node IDs in the path for context-aware selection.
+            
+        Returns:
+            Optional[Tuple[float, float]]: (latitude, longitude) or None if not found.
+        """
         try:
             if not hasattr(self.bot, 'db_manager'):
                 return None
@@ -196,7 +254,11 @@ class TestCommand(BaseCommand):
             return None
     
     def _get_sender_location(self) -> Optional[Tuple[float, float]]:
-        """Get sender location from current message if available"""
+        """Get sender location from current message if available.
+        
+        Returns:
+            Optional[Tuple[float, float]]: (latitude, longitude) or None if unavailable/error.
+        """
         try:
             if not hasattr(self, '_current_message') or not self._current_message:
                 return None
@@ -227,7 +289,14 @@ class TestCommand(BaseCommand):
             return None
     
     def _calculate_recency_weighted_scores(self, repeaters: List[Dict[str, Any]]) -> List[Tuple[Dict[str, Any], float]]:
-        """Calculate recency-weighted scores for repeaters (0.0 to 1.0, higher = more recent)"""
+        """Calculate recency-weighted scores for repeaters (0.0 to 1.0, higher = more recent).
+        
+        Args:
+            repeaters: List of repeater dictionaries.
+            
+        Returns:
+            List[Tuple[Dict[str, Any], float]]: List of (repeater, score) tuples sorting by score descending.
+        """
         scored_repeaters = []
         now = datetime.now()
         
@@ -274,7 +343,14 @@ class TestCommand(BaseCommand):
         return scored_repeaters
     
     def _get_node_location_simple(self, node_id: str) -> Optional[Tuple[float, float]]:
-        """Simple lookup without proximity selection - used for reference nodes"""
+        """Simple lookup without proximity selection - used for reference nodes.
+        
+        Args:
+            node_id: The node ID to look up.
+            
+        Returns:
+            Optional[Tuple[float, float]]: (latitude, longitude) or None if not found.
+        """
         try:
             if not hasattr(self.bot, 'db_manager'):
                 return None
@@ -305,7 +381,17 @@ class TestCommand(BaseCommand):
             return None
     
     def _select_by_path_proximity(self, repeaters: List[Dict[str, Any]], node_id: str, path_context: List[str], sender_location: Optional[Tuple[float, float]] = None) -> Optional[Dict[str, Any]]:
-        """Select repeater based on proximity to previous/next nodes in path"""
+        """Select repeater based on proximity to previous/next nodes in path.
+        
+        Args:
+            repeaters: List of candidate repeaters.
+            node_id: Current node ID being resolved.
+            path_context: Full path of node IDs.
+            sender_location: Optional sender location for first hop optimization.
+            
+        Returns:
+            Optional[Dict[str, Any]]: Selected repeater dict or None.
+        """
         try:
             # Filter by recency first
             scored_repeaters = self._calculate_recency_weighted_scores(repeaters)
@@ -366,7 +452,16 @@ class TestCommand(BaseCommand):
             return None
     
     def _select_by_dual_proximity(self, repeaters: List[Dict[str, Any]], prev_location: Tuple[float, float], next_location: Tuple[float, float]) -> Optional[Dict[str, Any]]:
-        """Select repeater based on proximity to both previous and next nodes"""
+        """Select repeater based on proximity to both previous and next nodes.
+        
+        Args:
+            repeaters: List of candidate repeaters.
+            prev_location: Coordinates of previous node.
+            next_location: Coordinates of next node.
+            
+        Returns:
+            Optional[Dict[str, Any]]: Best matching repeater or None.
+        """
         scored_repeaters = self._calculate_recency_weighted_scores(repeaters)
         min_recency_threshold = 0.01
         scored_repeaters = [(r, score) for r, score in scored_repeaters if score >= min_recency_threshold]
@@ -410,7 +505,16 @@ class TestCommand(BaseCommand):
         return best_repeater
     
     def _select_by_single_proximity(self, repeaters: List[Dict[str, Any]], reference_location: Tuple[float, float], direction: str = "unknown") -> Optional[Dict[str, Any]]:
-        """Select repeater based on proximity to single reference node"""
+        """Select repeater based on proximity to single reference node.
+        
+        Args:
+            repeaters: List of candidate repeaters.
+            reference_location: Coordinates of reference node (sender, bot, next, previous).
+            direction: Direction indicator ('sender', 'bot', 'next', 'previous').
+            
+        Returns:
+            Optional[Dict[str, Any]]: Best matching repeater or None.
+        """
         scored_repeaters = self._calculate_recency_weighted_scores(repeaters)
         min_recency_threshold = 0.01
         scored_repeaters = [(r, score) for r, score in scored_repeaters if score >= min_recency_threshold]
@@ -457,7 +561,14 @@ class TestCommand(BaseCommand):
         return best_repeater
     
     def _calculate_path_distance(self, message: MeshMessage) -> str:
-        """Calculate total distance along path (sum of distances between consecutive repeaters with locations)"""
+        """Calculate total distance along path (sum of distances between consecutive repeaters with locations).
+        
+        Args:
+            message: The message containing the path.
+            
+        Returns:
+            str: Formatted distance string used in response.
+        """
         node_ids = self._extract_path_node_ids(message)
         if len(node_ids) < 2:
             # Check if it's a direct connection
@@ -502,7 +613,14 @@ class TestCommand(BaseCommand):
             return f"{total_distance:.1f}km ({valid_segments} segs)"
     
     def _calculate_firstlast_distance(self, message: MeshMessage) -> str:
-        """Calculate straight-line distance between first and last repeater in path"""
+        """Calculate straight-line distance between first and last repeater in path.
+        
+        Args:
+            message: The message containing the path.
+            
+        Returns:
+            str: Formatted distance string used in response.
+        """
         node_ids = self._extract_path_node_ids(message)
         if len(node_ids) < 2:
             # Check if it's a direct connection
@@ -531,7 +649,15 @@ class TestCommand(BaseCommand):
         return f"{distance:.1f}km"
     
     def format_response(self, message: MeshMessage, response_format: str) -> str:
-        """Override to handle phrase extraction"""
+        """Override to handle phrase extraction.
+        
+        Args:
+            message: The original message.
+            response_format: The format string.
+            
+        Returns:
+            str: Formatted response string.
+        """
         # Clean content to remove control characters and normalize whitespace
         content = self.clean_content(message.content)
         
@@ -554,6 +680,7 @@ class TestCommand(BaseCommand):
         try:
             connection_info = self.build_enhanced_connection_info(message)
             timestamp = self.format_timestamp(message)
+            elapsed = self.format_elapsed(message)
             
             # Calculate distance placeholders
             path_distance = self._calculate_path_distance(message)
@@ -569,6 +696,7 @@ class TestCommand(BaseCommand):
                 connection_info=connection_info,
                 path=message.path or self.translate('common.unknown_path'),
                 timestamp=timestamp,
+                elapsed=elapsed,
                 snr=message.snr or self.translate('common.unknown'),
                 path_distance=path_distance or "",
                 firstlast_distance=firstlast_distance or ""
@@ -578,7 +706,14 @@ class TestCommand(BaseCommand):
             return response_format
     
     async def execute(self, message: MeshMessage) -> bool:
-        """Execute the test command"""
+        """Execute the test command.
+        
+        Args:
+            message: The input message trigger.
+            
+        Returns:
+            bool: True if execution was successful.
+        """
         # Store the current message for use in location lookups
         self._current_message = message
         return await self.handle_keyword_match(message)

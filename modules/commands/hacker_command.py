@@ -5,6 +5,7 @@ Responds to Linux commands with hilarious supervillain mainframe error messages
 """
 
 import random
+from typing import Any
 from .base_command import BaseCommand
 from ..models import MeshMessage
 
@@ -21,15 +22,32 @@ class HackerCommand(BaseCommand):
     description = "Simulates hacking a supervillain's mainframe with hilarious error messages"
     category = "fun"
     
-    def __init__(self, bot):
+    def __init__(self, bot: Any):
+        """Initialize the hacker command.
+        
+        Args:
+            bot: The bot instance.
+        """
         super().__init__(bot)
         self.enabled = self.get_config_value('Hacker_Command', 'hacker_enabled', fallback=False, value_type='bool')
     
     def get_help_text(self) -> str:
+        """Get help text for the hacker command.
+        
+        Returns:
+            str: The help text for this command.
+        """
         return self.description
     
     async def execute(self, message: MeshMessage) -> bool:
-        """Execute the hacker command"""
+        """Execute the hacker command.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if executed successfully, False otherwise.
+        """
         if not self.enabled:
             return False
         
@@ -45,7 +63,14 @@ class HackerCommand(BaseCommand):
         return await self.send_response(message, error_msg)
     
     def get_hacker_error(self, command: str) -> str:
-        """Get a hilarious error message for the given command"""
+        """Get a hilarious error message for the given command.
+        
+        Args:
+            command: The command that triggered the error.
+            
+        Returns:
+            str: A randomized hacker-themed error message.
+        """
         command_lower = command.lower()
         
         # Try to get errors from translations, fallback to hardcoded if not available
@@ -440,7 +465,14 @@ class HackerCommand(BaseCommand):
             return get_random_error('commands.hacker.generic_errors', fallback)
     
     def matches_keyword(self, message: MeshMessage) -> bool:
-        """Override to check for command matches (exact for some, prefix for others)"""
+        """Check if message matches any of the hacker keywords.
+        
+        Args:
+            message: The received message.
+            
+        Returns:
+            bool: True if it matches, False otherwise.
+        """
         if not self.enabled:
             return False
         

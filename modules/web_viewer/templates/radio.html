@@ -164,7 +164,8 @@ class RadioManager {
         try {
             const response = await fetch('/api/channels');
             const data = await response.json();
-            this.channels = data.channels || [];
+            // Filter out decode-only channels (they're for packet decoding, not radio management)
+            this.channels = (data.channels || []).filter(c => !c.decode_only);
             this.renderChannels();
             this.updateChannelIndexDisplay();
         } catch (error) {

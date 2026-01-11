@@ -5,12 +5,17 @@ Provides random cat facts as a hidden easter egg command
 """
 
 import random
+from typing import List
 from .base_command import BaseCommand
 from ..models import MeshMessage
 
 
 class CatfactCommand(BaseCommand):
-    """Handles cat fact commands - hidden easter egg"""
+    """Handles cat fact commands - hidden easter egg.
+    
+    Responds to various cat-related keywords with random facts about cats.
+    This is designed as a hidden feature and does not appear in standard help listings.
+    """
     
     # Plugin metadata
     name = "catfact"
@@ -19,11 +24,14 @@ class CatfactCommand(BaseCommand):
     category = "hidden"  # Hidden category so it won't appear in help
     cooldown_seconds = 3  # 3 second cooldown per user
     
-    # Per-user cooldown tracking
-    user_cooldowns = {}  # user_id -> last_execution_time
-    
     def __init__(self, bot):
+        """Initialize the catfact command.
+        
+        Args:
+            bot: The bot instance.
+        """
         super().__init__(bot)
+        self.catfact_enabled = self.get_config_value('Catfact_Command', 'enabled', fallback=True, value_type='bool')
         
         # Collection of cat facts - fallback if translations not available
         self.cat_facts_fallback = [
@@ -97,61 +105,53 @@ class CatfactCommand(BaseCommand):
             "A cat's average body temperature is 101.5°F (38.6°C) - higher than humans. 🌡️"
         ]
     
-    def get_cat_facts(self) -> list:
-        """Get cat facts from translations or fallback to hardcoded list"""
+    def get_cat_facts(self) -> List[str]:
+        """Get cat facts from translations or fallback to hardcoded list.
+        
+        Returns:
+            List[str]: A list of cat fact strings.
+        """
         facts = self.translate_get_value('commands.catfact.facts')
         if facts and isinstance(facts, list) and len(facts) > 0:
             return facts
         return self.cat_facts_fallback
     
     def get_help_text(self) -> str:
+        """Get help text for the catfact command.
+        
+        Returns:
+            str: Empty string (to keep the command hidden).
+        """
         # Return empty string so it doesn't appear in help
         return ""
     
     def can_execute(self, message: MeshMessage) -> bool:
-        """Override cooldown check to be per-user instead of per-command-instance"""
-        # Check if command requires DM and message is not DM
-        if self.requires_dm and not message.is_dm:
-            return False
+        """Check if this command can be executed with the given message.
         
-        # Check per-user cooldown
-        if self.cooldown_seconds > 0:
-            import time
-            current_time = time.time()
-            user_id = message.sender_id
+        Args:
+            message: The message triggering the command.
             
-            if user_id in self.user_cooldowns:
-                last_execution = self.user_cooldowns[user_id]
-                if (current_time - last_execution) < self.cooldown_seconds:
-                    return False
-        
-        return True
-    
-    def get_remaining_cooldown(self, user_id: str) -> int:
-        """Get remaining cooldown time for a specific user"""
-        if self.cooldown_seconds <= 0:
-            return 0
-        
-        import time
-        current_time = time.time()
-        if user_id in self.user_cooldowns:
-            last_execution = self.user_cooldowns[user_id]
-            elapsed = current_time - last_execution
-            remaining = self.cooldown_seconds - elapsed
-            return max(0, int(remaining))
-        
-        return 0
-    
-    def _record_execution(self, user_id: str):
-        """Record the execution time for a specific user"""
-        import time
-        self.user_cooldowns[user_id] = time.time()
+        Returns:
+            bool: True if command is enabled and checks pass, False otherwise.
+        """
+        if not self.catfact_enabled:
+            return False
+        return super().can_execute(message)
     
     async def execute(self, message: MeshMessage) -> bool:
-        """Execute the cat fact command"""
+        """Execute the cat fact command.
+        
+        Selects a random cat fact and sends it to the user.
+        
+        Args:
+            message: The message triggering the command.
+            
+        Returns:
+            bool: True if executed successfully, False otherwise.
+        """
         try:
             # Record execution for this user
-            self._record_execution(message.sender_id)
+            self.record_execution(message.sender_id)
             
             # Get cat facts from translations or fallback
             cat_facts = self.get_cat_facts()

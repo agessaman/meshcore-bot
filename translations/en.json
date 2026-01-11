@@ -198,7 +198,7 @@
     },
     "path": {
       "description": "Decode hex path data to show which repeaters were involved in message routing",
-      "help": "Path: path [hex] - Decode path to show repeaters. Use !path alone for recent message path, or path [7e,01] for specific path.",
+      "help": "Path: path [hex] - Decode path to show repeaters. Use path alone for current message path, or path [7e,01] for specific path.",
       "no_valid_hex": "❌ No valid hex values found in path data. Use format like: 11,98,a4,49,cd,5f,01",
       "no_path": "❌ No path information available in current message",
       "error": "Error processing path: {error}",
@@ -410,9 +410,9 @@
       "category_count": "{category} ({count} channels)"
     },
     "dice": {
-      "description": "Roll dice (usage: dice [sides] or dice [count]d[sides])",
-      "help": "Roll dice. Use 'dice' for d6, 'dice d20' for d20, 'dice 2d6' for 2d6, etc.",
-      "invalid_dice_type": "Invalid dice type. Available: {available}",
+      "description": "Roll dice (usage: dice [sides] or dice [count]d[sides] or dice d10 d6 for mixed dice or dice decade for decade die)",
+      "help": "Roll dice. Use 'dice' for d6, 'dice d20' for d20, 'dice 2d6' for 2d6, 'dice d10 d6' for mixed dice, 'dice decade' for decade die (00-90), etc.",
+      "invalid_dice_type": "Invalid dice type.",
       "single_die": "🎲 d{sides}: {result}",
       "multiple_dice": "🎲 {count}d{sides}: [{results}] = {total}"
     },

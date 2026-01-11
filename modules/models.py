@@ -21,3 +21,4 @@ class MeshMessage:
     timestamp: Optional[int] = None
     snr: Optional[float] = None
     rssi: Optional[int] = None
+    elapsed: Optional[str] = None

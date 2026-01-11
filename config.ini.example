@@ -108,6 +108,10 @@ startup_advert = false
 # false: Manual mode - no automatic actions, use !repeater commands to manage contacts (default)
 auto_manage_contacts = false
 
+# Database path for main bot database
+# Default: meshcore_bot.db
+db_path = meshcore_bot.db
+
 [Localization]
 # Language code for bot responses (en, es, es-MX, es-ES, fr, de, ja, etc.)
 # Default: en (English)
@@ -198,22 +202,68 @@ dadjoke_enabled = true
 # true: Split long jokes into multiple messages
 long_jokes = false
 
+[Joke_Command]
+# Channels where joke command is allowed
+# IMPORTANT: Leave commented out (or omit entirely) to use global monitor_channels (default behavior)
+# If uncommented with empty value (channels = ), command will be DM-only
+# Comma-separated list to restrict to specific channels (only joke command works there)
+# Example: channels = #jokes,#fun (only joke command works in these channels)
+# channels = general,#bot,#jokes
+
+[DadJoke_Command]
+# Channels where dadjoke command is allowed
+# IMPORTANT: Leave commented out (or omit entirely) to use global monitor_channels (default behavior)
+# If uncommented with empty value (channels = ), command will be DM-only
+# Comma-separated list to restrict to specific channels (only dadjoke command works there)
+# Example: channels = #jokes,#fun (only dadjoke command works in these channels)
+# channels = general,#bot,#jokes
+
 [Keywords]
-# Keyword-response pairs (keyword = response format)
-# Available fields: {sender}, {connection_info}, {snr}, {timestamp}, {path}, {path_distance}, {firstlast_distance}
-# {sender}: Name/ID of message sender
-# {connection_info}: "Direct connection (0 hops)" or "Routed through X hops"
-# {snr}: Signal-to-noise ratio in dB
-# {timestamp}: Message timestamp in HH:MM:SS format
-# {path}: Message routing path (e.g., "01,5f (2 hops)")
-# {rssi}: Received Signal Strength Indicator in dBm
-# {path_distance}: Total distance between all hops in path with locations (e.g., "123.4km (3 segs, 1 no-loc)")
-# {firstlast_distance}: Distance between first and last repeater in path (e.g., "45.6km" or empty if locations missing)
+# Available placeholders (message-based):
+# {sender} - Name/ID of message sender
+# {connection_info} - Path info, SNR, and RSSI combined (e.g., "01,5f (2 hops) | SNR: 15 dB | RSSI: -120 dBm")
+# {snr} - Signal-to-noise ratio in dB
+# {rssi} - Received signal strength indicator in dBm
+# {timestamp} - Message timestamp in HH:MM:SS format
+# {path} - Message routing path (e.g., "01,5f (2 hops)")
+# {path_distance} - Total distance between all hops in path with locations (e.g., "123.4km (3 segs, 1 no-loc)")
+# {firstlast_distance} - Distance between first and last repeater in path (e.g., "45.6km" or empty if locations missing)
+# {elapsed} - Message elapsed time
+# 
+# Available placeholders (mesh network info - same as Scheduled_Messages):
+# Total counts (ever heard):
+# {total_contacts} - Total number of contacts ever heard
+# {total_repeaters} - Total number of repeater devices ever heard
+# {total_companions} - Total number of companion devices ever heard
+# {total_roomservers} - Total number of roomserver devices ever heard
+# {total_sensors} - Total number of sensor devices ever heard
+# 
+# Recent activity:
+# {recent_activity_24h} - Number of unique users active in last 24 hours
+# 
+# Active in last 30 days (last_heard):
+# {total_contacts_30d} - Total contacts active (last_heard) in last 30 days
+# {total_repeaters_30d} - Total repeaters active (last_heard) in last 30 days
+# {total_companions_30d} - Total companions active (last_heard) in last 30 days
+# {total_roomservers_30d} - Total roomservers active (last_heard) in last 30 days
+# {total_sensors_30d} - Total sensors active (last_heard) in last 30 days
+# 
+# New devices (first heard in last 7 days):
+# {new_companions_7d} - New companion devices first heard in last 7 days
+# {new_repeaters_7d} - New repeater devices first heard in last 7 days
+# {new_roomservers_7d} - New roomserver devices first heard in last 7 days
+# {new_sensors_7d} - New sensor devices first heard in last 7 days
+# 
+# Legacy placeholders (for backward compatibility):
+# {repeaters} - Same as {total_repeaters}
+# {companions} - Same as {total_companions}
 test = "ack @[{sender}]{phrase_part} | {connection_info} | Received at: {timestamp}"
 ping = "Pong!"
 pong = "Ping!"
 help = "Bot Help: test (or t), ping, help, hello, cmd, advert, @string, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats | More: 'help <command>'"
-cmd = "Available commands: test (or t), ping, help, hello, cmd, advert, @string, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats"
+
+# Override 'cmd' command output
+# cmd = "Available commands: test (or t), ping, help, hello, cmd, advert, @string, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats"
 
 [Channels]
 # Channels to monitor (comma-separated)
@@ -236,9 +286,44 @@ banned_users =
 # Time format: HHMM (24-hour, no colon)
 # Bot will send these messages at the specified times daily
 # Example: 0800 = general:Good morning! Weather update coming soon.
-0800 = general:Good morning! Bot is online and ready.
-1200 = general:Midday status check - all systems operational.
-1800 = general:Evening update - bot status: Good
+# 
+# Available placeholders for mesh network information:
+# 
+# Total counts (ever heard):
+# {total_contacts} - Total number of contacts ever heard
+# {total_repeaters} - Total number of repeater devices ever heard
+# {total_companions} - Total number of companion devices ever heard
+# {total_roomservers} - Total number of roomserver devices ever heard
+# {total_sensors} - Total number of sensor devices ever heard
+# 
+# Recent activity:
+# {recent_activity_24h} - Number of unique users active in last 24 hours
+# 
+# Active in last 30 days (last_heard):
+# {total_contacts_30d} - Total contacts active (last_heard) in last 30 days
+# {total_repeaters_30d} - Total repeaters active (last_heard) in last 30 days
+# {total_companions_30d} - Total companions active (last_heard) in last 30 days
+# {total_roomservers_30d} - Total roomservers active (last_heard) in last 30 days
+# {total_sensors_30d} - Total sensors active (last_heard) in last 30 days
+# 
+# New devices (first heard in last 7 days):
+# {new_companions_7d} - New companion devices first heard in last 7 days
+# {new_repeaters_7d} - New repeater devices first heard in last 7 days
+# {new_roomservers_7d} - New roomserver devices first heard in last 7 days
+# {new_sensors_7d} - New sensor devices first heard in last 7 days
+# 
+# Legacy placeholders (for backward compatibility):
+# {repeaters} - Same as {total_repeaters}
+# {companions} - Same as {total_companions}
+# 
+# Example with placeholders:
+# 0800 = Public:Good morning! Network: {total_contacts} total ({total_repeaters} repeaters, {total_companions} companions). {new_repeaters_7d} new repeaters, {new_companions_7d} new companions in last 7d. {recent_activity_24h} active in 24h.
+# Example with 30-day active devices and new devices in 7d:
+# 0900 = Public:{total_contacts_30d} active in last 30d: ({total_repeaters_30d} repeaters, {total_companions_30d} companions). {new_repeaters_7d} new repeaters, {new_companions_7d} new companions in last 7d. {recent_activity_24h} users active in last 24h.
+
+#0800 = Public:Good morning! Bot is online and ready.
+#1200 = Public:Midday status check - all systems operational.
+#1800 = Public:Evening update - bot status: Good
 
 [Logging]
 # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
@@ -347,6 +432,15 @@ prefix_free_days = 7
 max_prefix_range = 200
 
 [Weather]
+# NOTE: Unit settings are used by both the wx and gwx commands and Weather_Service plugin
+
+# Weather provider selection
+# Options: noaa, openmeteo
+#   noaa: Use NOAA API (US-focused, better for US locations, includes weather alerts)
+#   openmeteo: Use Open-Meteo API (global coverage, works worldwide)
+# Default: noaa
+weather_provider = noaa
+
 # Default state for city name disambiguation
 # When users type "wx seattle", it will search for "seattle, WA, USA"
 # Use 2-letter state abbreviation (e.g., WA, CA, NY, TX)
@@ -639,6 +733,38 @@ alert_enabled = false
 # Example: Combined region (all counties/agencies)
 # agency.region_all = 
 
+[Announcements_Command]
+# Enable or disable the announcements command
+# true: Announcements command is available
+# false: Announcements command is disabled (default)
+enabled = false
+
+# Announcements Access Control List (ACL)
+# Only users with public keys listed here can send announcements
+# This ACL automatically inherits all members from the Admin_ACL
+# Format: comma-separated list of 64-character hex public keys (without spaces)
+# Example: f5d2b56d19b24412756933e917d4632e088cdd5daeadc9002feca73bf5d2b56d
+# Leave empty to only use Admin_ACL members
+announcements_acl = 
+
+# Default channel for announcements when no channel is specified
+# Announcements will be sent to this channel if no channel is provided
+default_announcement_channel = Public
+
+# Announcement cooldown in minutes
+# Prevents the same announcement from being sent too frequently
+# Default: 60 minutes
+announcement_cooldown = 60
+
+# Announcement triggers
+# Format: announce.<trigger_name> = <announcement_text>
+# Users can send: announce <trigger_name> [channel]
+# If channel is not specified, uses default_announcement_channel
+# Example triggers:
+announce.default = This is the default announcement.
+announce.bots = This is an announcement with the list of bots.
+announce.other = This is a different announcement on another topic.
+
 [Web_Viewer]
 # Enable or disable the web data viewer
 # SECURITY NOTE: Web viewer has NO AUTHENTICATION built-in
@@ -675,3 +801,274 @@ debug = false
 # true: Start web viewer automatically when bot starts
 # false: Start web viewer manually (recommended)
 auto_start = false
+
+# Database path for web viewer data
+# Default: bot_data.db
+db_path = bot_data.db
+
+# Additional hashtag channels to decode in the packet stream
+# The web viewer can decrypt GroupText messages from hashtag channels
+# without adding them to the radio. Enter channel names (with or without #)
+# as a comma-separated list. The Public channel is always included.
+#
+# Example: #CQ,#ARES,#EmComm
+# This will allow decryption of messages on #CQ, #ARES, and #EmComm channels
+# in addition to any channels configured on your radio.
+#
+# Note: Only hashtag channels work here - custom channels with private keys
+# must be added to the radio itself.
+decode_hashtag_channels = 
+
+####################################################################################################
+#                                                                                                  #
+#                                       Service Plugins Config                                     #
+#                                                                                                  #
+#          Settings for non-interactive bot services and plugins (weather, alerts, etc.)           #
+#                                                                                                  #
+####################################################################################################
+
+[PacketCapture]
+# Enable packet capture service
+# true: Capture packets and publish to MQTT/file
+# false: Packet capture service disabled
+enabled = false
+
+# Output file for packet data (optional)
+# Leave empty to disable file output
+# Packets will be written as JSON lines
+output_file = 
+
+# Verbose output (show JSON packet data in logs)
+# true: Show packet data in logs
+# false: Minimal logging
+verbose = false
+
+# Debug output (show detailed debugging info)
+# true: Show all debugging information
+# false: Standard logging
+debug = false
+
+# Owner information (for packet analyzer registration)
+# Owner public key (64-character hex string)
+owner_public_key = 
+
+# Owner email address
+owner_email = 
+
+# Private key file path for auth token generation (fallback if device signing unavailable)
+# Optional - on-device signing is preferred
+# Supports 64-byte orlp format (128 hex chars) or 32-byte seed (64 hex chars)
+# Required only if device doesn't support on-device signing or auth_token_method = python
+# Note: If not provided and auth_token_method = python, the service will attempt to fetch
+# the private key from the device automatically
+private_key_path = 
+
+# Auth token signing method
+# device: Try on-device signing first, fallback to Python signing (default, recommended)
+# python: Use Python signing only (requires private_key_path or device key export capability)
+auth_token_method = device
+
+# Location Code (IATA code for your location)
+# Used in topic templates and auth tokens
+# Example: SEA, LAX, JFK, etc.
+# Default: LOC (if not set)
+iata = LOC
+
+# MQTT configuration
+# Enable MQTT publishing
+mqtt_enabled = true
+
+# MQTT Broker Configuration
+# You can configure multiple MQTT brokers by using mqtt1_*, mqtt2_*, mqtt3_*, etc.
+# Each broker can have independent settings for transport, TLS, authentication, and topics.
+#
+# Broker-specific options (replace N with broker number: 1, 2, 3, etc.):
+# mqttN_enabled = true/false          # Enable/disable this broker
+# mqttN_server = hostname             # MQTT broker hostname or IP
+# mqttN_port = 1883                   # MQTT broker port (1883 for TCP, 443 for WSS)
+# mqttN_transport = tcp/websockets    # Transport type (tcp or websockets)
+# mqttN_use_tls = true/false          # Enable TLS/SSL (required for WSS)
+# mqttN_websocket_path = /mqtt        # WebSocket path (for websockets transport)
+# mqttN_username =                     # MQTT username (optional, auto-generated for auth tokens)
+# mqttN_password =                     # MQTT password (optional, auto-generated for auth tokens)
+# mqttN_use_auth_token = true/false   # Use JWT auth token instead of username/password
+# mqttN_token_audience =              # JWT audience (usually the broker hostname)
+# mqttN_topic_status =                # Status topic template (uses placeholders below)
+# mqttN_topic_packets =               # Packets topic template (uses placeholders below)
+# mqttN_topic_prefix =                # Legacy topic prefix (fallback if topic_status/topic_packets not set)
+# mqttN_client_id =                   # MQTT client ID (optional, auto-generated from bot name)
+#
+# Topic template placeholders:
+# {IATA} - Uppercase IATA code (e.g., SEA)
+# {iata} - Lowercase IATA code (e.g., sea)
+# {PUBLIC_KEY} - Uppercase device public key (64 hex chars)
+# {public_key} - Lowercase device public key (64 hex chars)
+
+# MQTT Broker 1 - Let's Mesh Analyzer (US)
+mqtt1_enabled = true
+mqtt1_server = mqtt-us-v1.letsmesh.net
+mqtt1_port = 443
+mqtt1_transport = websockets
+mqtt1_use_tls = true
+mqtt1_use_auth_token = true
+mqtt1_token_audience = mqtt-us-v1.letsmesh.net
+mqtt1_topic_status = meshcore/{IATA}/{PUBLIC_KEY}/status
+mqtt1_topic_packets = meshcore/{IATA}/{PUBLIC_KEY}/packets
+mqtt1_websocket_path = /mqtt
+mqtt1_client_id = 
+
+# MQTT Broker 2 - Let's Mesh Analyzer (EU)
+mqtt2_enabled = true
+mqtt2_server = mqtt-eu-v1.letsmesh.net
+mqtt2_port = 443
+mqtt2_transport = websockets
+mqtt2_use_tls = true
+mqtt2_use_auth_token = true
+mqtt2_token_audience = mqtt-eu-v1.letsmesh.net
+mqtt2_topic_status = meshcore/{IATA}/{PUBLIC_KEY}/status
+mqtt2_topic_packets = meshcore/{IATA}/{PUBLIC_KEY}/packets
+mqtt2_websocket_path = /mqtt
+mqtt2_client_id = 
+
+# Stats and status publishing
+# Enable stats in status messages
+stats_in_status_enabled = true
+
+# Stats refresh interval (seconds)
+stats_refresh_interval = 300
+
+# JWT renewal interval (seconds, 0 = disabled)
+jwt_renewal_interval = 86400
+
+# Health check interval (seconds, 0 = disabled)
+health_check_interval = 30
+
+# Health check grace period (consecutive failures before warning)
+health_check_grace_period = 2
+
+[MapUploader]
+# Enable map uploader service
+# Uploads node adverts (repeaters, room servers, sensors) to map.meshcore.dev
+# CHAT adverts are skipped (only non-CHAT adverts are uploaded)
+# Adverts without GPS coordinates or with any coordinate exactly 0.0 are skipped
+# Uses your device's radio parameters (freq, cr, sf, bw) for all uploads
+# true: Enable map uploader service
+# false: Map uploader disabled (default)
+enabled = false
+
+# API endpoint URL
+# The map.meshcore.dev API endpoint for uploading node adverts
+# Default: https://map.meshcore.dev/api/v1/uploader/node
+api_url = https://map.meshcore.dev/api/v1/uploader/node
+
+# Private key file path (optional)
+# Path to file containing device private key for signing uploads
+# If not provided, the service will attempt to fetch the private key from the device
+# Supports 64-byte orlp format (128 hex chars) or 32-byte seed (64 hex chars)
+# Required only if device doesn't support private key export
+private_key_path = 
+
+# Minimum time between re-uploads of same node (seconds)
+# Prevents uploading the same node too frequently to avoid API spam
+# Only nodes with timestamps newer than last upload + this interval will be uploaded
+# Default: 3600 (1 hour)
+min_reupload_interval = 3600
+
+# Verbose logging
+# Enable detailed debug logging including upload data and signature details
+# true: Show detailed debug information (useful for troubleshooting)
+# false: Standard logging (default)
+verbose = false
+
+[Weather_Service]
+# Enable weather service
+# true: Enable scheduled weather forecasts and alert monitoring
+# false: Weather service disabled
+enabled = false
+
+# Daily weather forecast time
+# Format: HH:MM (24-hour format, e.g., "6:00" for 6 AM)
+# Or use "sunrise" or "sunset" for dynamic times based on your location
+# Bot will send daily weather forecast at this time
+weather_alarm = 6:00
+
+# NOTE: Temperature, wind speed, and precipitation units are inherited from [Weather] section
+# See [Weather] section below for temperature_unit, wind_speed_unit, and precipitation_unit settings
+
+# Bot position for weather forecasts and alerts
+# Latitude in decimal degrees
+my_position_lat = 
+
+# Longitude in decimal degrees
+my_position_lon = 
+
+# Channel for daily weather forecasts
+# Weather forecasts will be sent to this channel
+weather_channel = #weather
+
+# Channel for weather alerts
+# Weather alerts will be sent to this channel
+alerts_channel = #weather
+
+# Weather alert polling interval (milliseconds)
+# How often to check for new weather alerts
+# Default: 600000 (10 minutes)
+poll_weather_alerts_interval = 600000
+
+# Thunder/storm data collection interval (milliseconds)
+# How often to aggregate thunder data for evaluation
+# Default: 600000 (10 minutes)
+# Note: Storm detection area must be configured for this to work
+blitz_collection_interval = 600000
+
+# Storm detection area (optional)
+# Only report storms detected within this area
+# Leave empty to disable area filtering
+# Format: decimal degrees
+# blitz_area_min_lat = 47.51
+# blitz_area_min_lon = 15.54
+# blitz_area_max_lat = 48.76
+# blitz_area_max_lon = 18.62
+
+[DiscordBridge]
+# Enable Discord bridge service
+# Posts MeshCore channel messages to Discord via webhooks (one-way, read-only)
+# true: Enable Discord bridge
+# false: Discord bridge disabled (default)
+enabled = false
+
+# IMPORTANT: Direct messages (DMs) are NEVER bridged to Discord
+# This is hardcoded for privacy and cannot be changed
+
+# Discord Rate Limits:
+# - Webhooks are limited to 30 messages per minute per webhook URL
+# - The service will log warnings if approaching rate limit (within 20% of exhaustion)
+# - If rate limited, Discord returns HTTP 429 with retry-after header
+
+# Avatar generation style
+# Controls how user avatars are generated in Discord
+# Options:
+#   color - Generate colored Discord default avatars based on username hash (default, no external API)
+#   fun-emoji - Fun emoji-style avatars from DiceBear API
+#   avataaars - Cartoon avatar faces from DiceBear API
+#   bottts - Robot avatars from DiceBear API
+#   identicon - Geometric patterns (GitHub-style) from DiceBear API
+#   pixel-art - Retro pixel-style avatars from DiceBear API
+#   adventurer - Adventure-themed avatars from DiceBear API
+#   initials - User initials on colored background from DiceBear API
+# Default: color
+avatar_style = color
+
+# Channel mappings: bridge.<meshcore_channel> = <discord_webhook_url>
+# Only channels explicitly listed here will be bridged to Discord
+# Get webhook URLs from Discord: Channel Settings → Integrations → Webhooks → Create Webhook
+#
+# SECURITY WARNING: Webhook URLs contain authentication tokens
+# - Keep this config file secure and never commit real webhook URLs to version control
+# - Anyone with the webhook URL can post to your Discord channel
+# - Rotate webhook URLs immediately if exposed
+#
+# Example mappings:
+# bridge.general = https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz1234567890ABCDEFGHIJKLMNOPQRST
+# bridge.emergency = https://discord.com/api/webhooks/987654321098765432/ZYXWVUTSRQPONMLKJIHGFEDCBA0987654321zyxwvutsrqponmlkjihgf
+# bridge.wx = https://discord.com/api/webhooks/111222333444555666/WeatherChannelWebhookTokenGoesHere1234567890abcdefghijklmno

@@ -13,7 +13,11 @@ from pathlib import Path
 
 
 class DBManager:
-    """Generalized database manager for common operations"""
+    """Generalized database manager for common operations.
+    
+    Handles database initialization, schema management, caching, and metadata storage.
+    Enforces a table whitelist for security.
+    """
     
     # Whitelist of allowed tables for security
     ALLOWED_TABLES = {
@@ -29,16 +33,20 @@ class DBManager:
         'purging_log',  # Repeater manager
     }
     
-    def __init__(self, bot, db_path: str = "meshcore_bot.db"):
+    def __init__(self, bot: Any, db_path: str = "meshcore_bot.db"):
         self.bot = bot
         self.logger = bot.logger
         self.db_path = db_path
         self._init_database()
     
-    def _init_database(self):
-        """Initialize the SQLite database with required tables"""
+    def _init_database(self) -> None:
+        """Initialize the SQLite database with required tables.
+        
+        Creates all necessary tables including cache, metadata, feed subscriptions,
+        activity logs, and proper indexes for performance optimization.
+        """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
                 
                 # Create geocoding_cache table for weather command optimization
@@ -213,9 +221,17 @@ class DBManager:
     
     # Geocoding cache methods
     def get_cached_geocoding(self, query: str) -> Tuple[Optional[float], Optional[float]]:
-        """Get cached geocoding result for a query"""
+        """Get cached geocoding result for a query.
+        
+        Args:
+            query: The geocoding query string.
+            
+        Returns:
+            Tuple[Optional[float], Optional[float]]: A tuple containing (latitude, longitude)
+            if found and valid, otherwise (None, None).
+        """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     SELECT latitude, longitude FROM geocoding_cache 
@@ -229,14 +245,21 @@ class DBManager:
             self.logger.error(f"Error getting cached geocoding: {e}")
             return None, None
     
-    def cache_geocoding(self, query: str, latitude: float, longitude: float, cache_hours: int = 720):
-        """Cache geocoding result for future use (default: 30 days)"""
+    def cache_geocoding(self, query: str, latitude: float, longitude: float, cache_hours: int = 720) -> None:
+        """Cache geocoding result for future use.
+        
+        Args:
+            query: The geocoding query string.
+            latitude: Latitude coordinate.
+            longitude: Longitude coordinate.
+            cache_hours: Expiration time in hours (default: 720 hours / 30 days).
+        """
         try:
             # Validate cache_hours to prevent SQL injection
             if not isinstance(cache_hours, int) or cache_hours < 1 or cache_hours > 87600:  # Max 10 years
                 raise ValueError(f"cache_hours must be an integer between 1 and 87600, got: {cache_hours}")
             
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
                 # Use parameter binding instead of string formatting
                 cursor.execute('''
@@ -250,9 +273,17 @@ class DBManager:
     
     # Generic cache methods
     def get_cached_value(self, cache_key: str, cache_type: str) -> Optional[str]:
-        """Get cached value for a key and type"""
+        """Get cached value for a key and type.
+        
+        Args:
+            cache_key: Unique key for the cached item.
+            cache_type: Category or type identifier for the cache.
+            
+        Returns:
+            Optional[str]: Cached string value if found and valid, None otherwise.
+        """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     SELECT cache_value FROM generic_cache 
@@ -266,14 +297,21 @@ class DBManager:
             self.logger.error(f"Error getting cached value: {e}")
             return None
     
-    def cache_value(self, cache_key: str, cache_value: str, cache_type: str, cache_hours: int = 24):
-        """Cache a value for future use"""
+    def cache_value(self, cache_key: str, cache_value: str, cache_type: str, cache_hours: int = 24) -> None:
+        """Cache a value for future use.
+        
+        Args:
+            cache_key: Unique key for the cached item.
+            cache_value: String value to cache.
+            cache_type: Category or type identifier.
+            cache_hours: Expiration time in hours (default: 24 hours).
+        """
         try:
             # Validate cache_hours to prevent SQL injection
             if not isinstance(cache_hours, int) or cache_hours < 1 or cache_hours > 87600:  # Max 10 years
                 raise ValueError(f"cache_hours must be an integer between 1 and 87600, got: {cache_hours}")
             
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
                 # Use parameter binding instead of string formatting
                 cursor.execute('''
@@ -286,7 +324,15 @@ class DBManager:
             self.logger.error(f"Error caching value: {e}")
     
     def get_cached_json(self, cache_key: str, cache_type: str) -> Optional[Dict]:
-        """Get cached JSON value for a key and type"""
+        """Get cached JSON value for a key and type.
+        
+        Args:
+            cache_key: Unique key for the cached item.
+            cache_type: Category or type identifier.
+            
+        Returns:
+            Optional[Dict]: Parsed JSON dictionary if found and valid, None otherwise.
+        """
         cached_value = self.get_cached_value(cache_key, cache_type)
         if cached_value:
             try:
@@ -296,8 +342,15 @@ class DBManager:
                 return None
         return None
     
-    def cache_json(self, cache_key: str, cache_value: Dict, cache_type: str, cache_hours: int = 720):
-        """Cache a JSON value for future use (default: 30 days for geolocation)"""
+    def cache_json(self, cache_key: str, cache_value: Dict, cache_type: str, cache_hours: int = 720) -> None:
+        """Cache a JSON value for future use.
+        
+        Args:
+            cache_key: Unique key for the cached item.
+            cache_value: Dictionary to serialize and cache.
+            cache_type: Category or type identifier.
+            cache_hours: Expiration time in hours (default: 720 hours / 30 days).
+        """
         try:
             json_str = json.dumps(cache_value)
             self.cache_value(cache_key, json_str, cache_type, cache_hours)
@@ -305,10 +358,14 @@ class DBManager:
             self.logger.error(f"Error caching JSON value: {e}")
     
     # Cache cleanup methods
-    def cleanup_expired_cache(self):
-        """Remove expired cache entries from all cache tables"""
+    def cleanup_expired_cache(self) -> None:
+        """Remove expired cache entries from all cache tables.
+        
+        Deletes rows from geocoding_cache and generic_cache where the
+        expiration timestamp has passed.
+        """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
                 
                 # Clean up geocoding cache
@@ -328,10 +385,10 @@ class DBManager:
         except Exception as e:
             self.logger.error(f"Error cleaning up expired cache: {e}")
     
-    def cleanup_geocoding_cache(self):
+    def cleanup_geocoding_cache(self) -> None:
         """Remove expired geocoding cache entries"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
                 cursor.execute("DELETE FROM geocoding_cache WHERE expires_at < datetime('now')")
                 deleted_count = cursor.rowcount
@@ -344,7 +401,7 @@ class DBManager:
     def get_database_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
                 
                 stats = {}
@@ -377,18 +434,29 @@ class DBManager:
             self.logger.error(f"Error getting database stats: {e}")
             return {}
     
-    def vacuum_database(self):
-        """Optimize database by reclaiming unused space"""
+    def vacuum_database(self) -> None:
+        """Optimize database by reclaiming unused space.
+        
+        Executes the VACUUM command to rebuild the database file and reduce size.
+        """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 conn.execute("VACUUM")
                 self.logger.info("Database vacuum completed")
         except Exception as e:
             self.logger.error(f"Error vacuuming database: {e}")
     
     # Table management methods
-    def create_table(self, table_name: str, schema: str):
-        """Create a custom table with the given schema (whitelist-protected)"""
+    def create_table(self, table_name: str, schema: str) -> None:
+        """Create a custom table with the given schema.
+        
+        Args:
+            table_name: Name of the table to create (must be whitelist-protected).
+            schema: SQL schema definition for the table columns.
+            
+        Raises:
+            ValueError: If table_name is not in the allowed whitelist.
+        """
         try:
             # Validate table name against whitelist
             if table_name not in self.ALLOWED_TABLES:
@@ -398,7 +466,7 @@ class DBManager:
             if not re.match(r'^[a-z_][a-z0-9_]*$', table_name):
                 raise ValueError(f"Invalid table name format: {table_name}")
             
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
                 # Table names cannot be parameterized, but we've validated against whitelist
                 cursor.execute(f'CREATE TABLE IF NOT EXISTS {table_name} ({schema})')
@@ -408,8 +476,15 @@ class DBManager:
             self.logger.error(f"Error creating table {table_name}: {e}")
             raise
     
-    def drop_table(self, table_name: str):
-        """Drop a table (whitelist-protected, use with extreme caution)"""
+    def drop_table(self, table_name: str) -> None:
+        """Drop a table.
+        
+        Args:
+            table_name: Name of the table to drop (must be whitelist-protected).
+            
+        Raises:
+            ValueError: If table_name is not in the allowed whitelist.
+        """
         try:
             # Validate table name against whitelist
             if table_name not in self.ALLOWED_TABLES:
@@ -422,7 +497,7 @@ class DBManager:
             # Extra safety: log critical action
             self.logger.warning(f"CRITICAL: Dropping table '{table_name}'")
             
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
                 # Table names cannot be parameterized, but we've validated against whitelist
                 cursor.execute(f'DROP TABLE IF EXISTS {table_name}')
@@ -435,7 +510,7 @@ class DBManager:
     def execute_query(self, query: str, params: Tuple = ()) -> List[Dict]:
         """Execute a custom query and return results as list of dictionaries"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
                 cursor.execute(query, params)
@@ -448,7 +523,7 @@ class DBManager:
     def execute_update(self, query: str, params: Tuple = ()) -> int:
         """Execute an update/insert/delete query and return number of affected rows"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
                 cursor.execute(query, params)
                 conn.commit()
@@ -458,10 +533,15 @@ class DBManager:
             return 0
     
     # Bot metadata methods
-    def set_metadata(self, key: str, value: str):
-        """Set a metadata value for the bot"""
+    def set_metadata(self, key: str, value: str) -> None:
+        """Set a metadata value for the bot.
+        
+        Args:
+            key: Metadata key name.
+            value: Metadata string value.
+        """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     INSERT OR REPLACE INTO bot_metadata (key, value, updated_at)
@@ -472,9 +552,16 @@ class DBManager:
             self.logger.error(f"Error setting metadata {key}: {e}")
     
     def get_metadata(self, key: str) -> Optional[str]:
-        """Get a metadata value for the bot"""
+        """Get a metadata value for the bot.
+        
+        Args:
+            key: Metadata key to retrieve.
+            
+        Returns:
+            Optional[str]: Value string if found, None otherwise.
+        """
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(str(self.db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
                 cursor.execute('SELECT value FROM bot_metadata WHERE key = ?', (key,))
                 result = cursor.fetchone()
@@ -496,6 +583,37 @@ class DBManager:
                 return None
         return None
     
-    def set_bot_start_time(self, start_time: float):
+    def set_bot_start_time(self, start_time: float) -> None:
         """Set bot start time in metadata"""
         self.set_metadata('start_time', str(start_time))
+    
+    def get_connection(self) -> sqlite3.Connection:
+        """Get a database connection with proper configuration
+        
+        Returns:
+            sqlite3.Connection with row factory and timeout configured
+        """
+        conn = sqlite3.connect(str(self.db_path), timeout=30.0)
+        conn.row_factory = sqlite3.Row
+        return conn
+    
+    def set_system_health(self, health_data: Dict[str, Any]) -> None:
+        """Store system health data in metadata"""
+        try:
+            import json
+            health_json = json.dumps(health_data)
+            self.set_metadata('system_health', health_json)
+        except Exception as e:
+            self.logger.error(f"Error storing system health: {e}")
+    
+    def get_system_health(self) -> Optional[Dict[str, Any]]:
+        """Get system health data from metadata"""
+        try:
+            import json
+            health_json = self.get_metadata('system_health')
+            if health_json:
+                return json.loads(health_json)
+            return None
+        except Exception as e:
+            self.logger.error(f"Error getting system health: {e}")
+            return None

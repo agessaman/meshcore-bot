@@ -12,6 +12,8 @@ import os
 import re
 from pathlib import Path
 
+from ..utils import resolve_path
+
 class BotIntegration:
     """Simple bot integration for web viewer compatibility"""
     
@@ -34,10 +36,14 @@ class BotIntegration:
             import sqlite3
             
             # Get database path from config
-            db_path = self.bot.config.get('Database', 'path', fallback='bot_data.db')
+            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
+            
+            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
+            base_dir = self.bot.bot_root if hasattr(self.bot, 'bot_root') else '.'
+            db_path = resolve_path(db_path, base_dir)
             
             # Connect to database and create table if it doesn't exist
-            conn = sqlite3.connect(db_path)
+            conn = sqlite3.connect(str(db_path), timeout=30.0)
             cursor = conn.cursor()
             
             # Create packet_stream table with schema matching the INSERT statements
@@ -78,6 +84,7 @@ class BotIntegration:
             import sqlite3
             import json
             import time
+            from datetime import datetime
             
             # Ensure packet_data is a dict (might be passed as dict already)
             if not isinstance(packet_data, dict):
@@ -94,12 +101,19 @@ class BotIntegration:
                 # If no path_len either, default to 0 hops
                 packet_data['hops'] = 0
             
+            # Add datetime for frontend display
+            if 'datetime' not in packet_data:
+                packet_data['datetime'] = datetime.now().isoformat()
+            
             # Convert non-serializable objects to strings
             serializable_data = self._make_json_serializable(packet_data)
             
             # Store in database for web viewer to read
-            db_path = self.bot.config.get('Database', 'path', fallback='bot_data.db')
-            conn = sqlite3.connect(db_path)
+            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
+            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
+            base_dir = self.bot.bot_root if hasattr(self.bot, 'bot_root') else '.'
+            db_path = resolve_path(db_path, base_dir)
+            conn = sqlite3.connect(str(db_path), timeout=30.0)
             cursor = conn.cursor()
             
             # Insert packet data
@@ -111,12 +125,8 @@ class BotIntegration:
             conn.commit()
             conn.close()
             
-            # Periodic cleanup (every 100 packets to avoid performance impact)
-            if not hasattr(self, '_packet_count'):
-                self._packet_count = 0
-            self._packet_count += 1
-            if self._packet_count % 100 == 0:
-                self.cleanup_old_data()
+            # Note: Cleanup is handled by the web viewer subprocess to avoid
+            # database lock contention between bot and web viewer processes
             
         except Exception as e:
             self.bot.logger.debug(f"Error storing packet data: {e}")
@@ -148,8 +158,11 @@ class BotIntegration:
             serializable_data = self._make_json_serializable(command_data)
             
             # Store in database for web viewer to read
-            db_path = self.bot.config.get('Database', 'path', fallback='bot_data.db')
-            conn = sqlite3.connect(db_path)
+            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
+            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
+            base_dir = self.bot.bot_root if hasattr(self.bot, 'bot_root') else '.'
+            db_path = resolve_path(db_path, base_dir)
+            conn = sqlite3.connect(str(db_path), timeout=30.0)
             cursor = conn.cursor()
             
             # Insert command data
@@ -175,8 +188,11 @@ class BotIntegration:
             serializable_data = self._make_json_serializable(routing_data)
             
             # Store in database for web viewer to read
-            db_path = self.bot.config.get('Database', 'path', fallback='bot_data.db')
-            conn = sqlite3.connect(db_path)
+            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
+            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
+            base_dir = self.bot.bot_root if hasattr(self.bot, 'bot_root') else '.'
+            db_path = resolve_path(db_path, base_dir)
+            conn = sqlite3.connect(str(db_path), timeout=30.0)
             cursor = conn.cursor()
             
             # Insert routing data
@@ -199,8 +215,11 @@ class BotIntegration:
             
             cutoff_time = time.time() - (days_to_keep * 24 * 60 * 60)
             
-            db_path = self.bot.config.get('Database', 'path', fallback='bot_data.db')
-            conn = sqlite3.connect(db_path)
+            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
+            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
+            base_dir = self.bot.bot_root if hasattr(self.bot, 'bot_root') else '.'
+            db_path = resolve_path(db_path, base_dir)
+            conn = sqlite3.connect(str(db_path), timeout=30.0)
             cursor = conn.cursor()
             
             # Clean up old packet stream data
@@ -257,6 +276,10 @@ class WebViewerIntegration:
         self.viewer_process = None
         self.viewer_thread = None
         self.running = False
+        
+        # File handles for subprocess stdout/stderr (for proper cleanup)
+        self._viewer_stdout_file = None
+        self._viewer_stderr_file = None
         
         # Get web viewer settings from config
         self.enabled = bot.config.getboolean('Web_Viewer', 'enabled', fallback=False)
@@ -349,7 +372,25 @@ class WebViewerIntegration:
                     self.logger.warning(f"Error during web viewer shutdown: {e}")
                 finally:
                     self.viewer_process = None
-            else:
+            
+            # Close log file handles
+            if self._viewer_stdout_file:
+                try:
+                    self._viewer_stdout_file.close()
+                except Exception as e:
+                    self.logger.debug(f"Error closing stdout file: {e}")
+                finally:
+                    self._viewer_stdout_file = None
+            
+            if self._viewer_stderr_file:
+                try:
+                    self._viewer_stderr_file.close()
+                except Exception as e:
+                    self.logger.debug(f"Error closing stderr file: {e}")
+                finally:
+                    self._viewer_stderr_file = None
+            
+            if not self.viewer_process:
                 self.logger.info("Web viewer already stopped")
             
             # Additional cleanup: kill any remaining processes on the port
@@ -388,6 +429,9 @@ class WebViewerIntegration:
     
     def _run_viewer(self):
         """Run the web viewer in a separate process"""
+        stdout_file = None
+        stderr_file = None
+        
         try:
             # Get the path to the web viewer script
             viewer_script = Path(__file__).parent / "app.py"
@@ -403,11 +447,28 @@ class WebViewerIntegration:
             if self.debug:
                 cmd.append("--debug")
             
-            # Start the viewer process
+            # Ensure logs directory exists
+            os.makedirs('logs', exist_ok=True)
+            
+            # Open log files in write mode to prevent buffer blocking
+            # This fixes the issue where subprocess.PIPE buffers (~64KB) fill up
+            # after ~5 minutes and cause the subprocess to hang.
+            # Using 'w' mode (overwrite) instead of 'a' (append) since:
+            # - The web viewer already has proper logging to web_viewer_modern.log
+            # - stdout/stderr are mainly for immediate debugging
+            # - Prevents unbounded log file growth
+            stdout_file = open('logs/web_viewer_stdout.log', 'w')
+            stderr_file = open('logs/web_viewer_stderr.log', 'w')
+            
+            # Store file handles for proper cleanup
+            self._viewer_stdout_file = stdout_file
+            self._viewer_stderr_file = stderr_file
+            
+            # Start the viewer process with log file redirection
             self.viewer_process = subprocess.Popen(
                 cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=stdout_file,
+                stderr=stderr_file,
                 text=True
             )
             
@@ -416,13 +477,37 @@ class WebViewerIntegration:
             
             # Check if it started successfully
             if self.viewer_process and self.viewer_process.poll() is not None:
-                stdout, stderr = self.viewer_process.communicate()
+                # Process failed immediately - read from log files for error reporting
+                stdout_file.flush()
+                stderr_file.flush()
+                
+                # Read last few lines from stderr for error reporting
+                try:
+                    stderr_file.close()
+                    with open('logs/web_viewer_stderr.log', 'r') as f:
+                        stderr_lines = f.readlines()[-20:]  # Last 20 lines
+                        stderr = ''.join(stderr_lines)
+                except Exception:
+                    stderr = "Could not read stderr log"
+                
+                # Read last few lines from stdout for error reporting
+                try:
+                    stdout_file.close()
+                    with open('logs/web_viewer_stdout.log', 'r') as f:
+                        stdout_lines = f.readlines()[-20:]  # Last 20 lines
+                        stdout = ''.join(stdout_lines)
+                except Exception:
+                    stdout = "Could not read stdout log"
+                
                 self.logger.error(f"Web viewer failed to start. Return code: {self.viewer_process.returncode}")
-                if stderr:
+                if stderr and stderr.strip():
                     self.logger.error(f"Web viewer startup error: {stderr}")
-                if stdout:
+                if stdout and stdout.strip():
                     self.logger.error(f"Web viewer startup output: {stdout}")
+                
                 self.viewer_process = None
+                self._viewer_stdout_file = None
+                self._viewer_stderr_file = None
                 return
             
             # Web viewer is ready
@@ -432,18 +517,50 @@ class WebViewerIntegration:
             while self.running and self.viewer_process and self.viewer_process.poll() is None:
                 time.sleep(1)
             
+            # Process exited - read from log files for error reporting if needed
             if self.viewer_process and self.viewer_process.returncode != 0:
-                stdout, stderr = self.viewer_process.communicate()
+                stdout_file.flush()
+                stderr_file.flush()
+                
+                # Read last few lines from stderr for error reporting
+                try:
+                    stderr_file.close()
+                    with open('logs/web_viewer_stderr.log', 'r') as f:
+                        stderr_lines = f.readlines()[-20:]  # Last 20 lines
+                        stderr = ''.join(stderr_lines)
+                except Exception:
+                    stderr = "Could not read stderr log"
+                
+                # Close stdout file as well
+                try:
+                    stdout_file.close()
+                except Exception:
+                    pass
+                
                 self.logger.error(f"Web viewer process exited with code {self.viewer_process.returncode}")
-                if stderr:
+                if stderr and stderr.strip():
                     self.logger.error(f"Web viewer stderr: {stderr}")
-                if stdout:
-                    self.logger.error(f"Web viewer stdout: {stdout}")
+                
+                self._viewer_stdout_file = None
+                self._viewer_stderr_file = None
             elif self.viewer_process and self.viewer_process.returncode == 0:
                 self.logger.info("Web viewer process exited normally")
                     
         except Exception as e:
             self.logger.error(f"Error running web viewer: {e}")
+            # Close file handles on error
+            if stdout_file:
+                try:
+                    stdout_file.close()
+                except Exception:
+                    pass
+            if stderr_file:
+                try:
+                    stderr_file.close()
+                except Exception:
+                    pass
+            self._viewer_stdout_file = None
+            self._viewer_stderr_file = None
         finally:
             self.running = False
     

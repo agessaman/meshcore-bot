@@ -17,6 +17,14 @@ import maidenhead as mh
 from .base_command import BaseCommand
 from ..models import MeshMessage
 
+# Import for delegation when using Open-Meteo provider
+try:
+    from .alternatives.wx_international import GlobalWxCommand
+    WX_INTERNATIONAL_AVAILABLE = True
+except ImportError:
+    WX_INTERNATIONAL_AVAILABLE = False
+    GlobalWxCommand = None
+
 
 class WxCommand(BaseCommand):
     """Handles weather commands with zipcode support"""
@@ -36,28 +44,41 @@ class WxCommand(BaseCommand):
     
     def __init__(self, bot):
         super().__init__(bot)
-        self.url_timeout = 8  # seconds (reduced from 10 for faster failure detection)
-        self.forecast_duration = 3  # days
-        self.num_wx_alerts = 2  # number of alerts to show
-        self.use_metric = False  # Use imperial units by default
-        self.zulu_time = False  # Use local time by default
+        self.wx_enabled = self.get_config_value('Wx_Command', 'enabled', fallback=True, value_type='bool')
         
-        # Per-user cooldown tracking
-        self.user_cooldowns = {}  # user_id -> last_execution_time
+        # Check weather provider setting - delegate to international command if using Open-Meteo
+        weather_provider = bot.config.get('Weather', 'weather_provider', fallback='noaa').lower()
+        if weather_provider == 'openmeteo' and WX_INTERNATIONAL_AVAILABLE:
+            # Delegate to international weather command
+            self.delegate_command = GlobalWxCommand(bot)
+            # Update keywords to match wx command for compatibility
+            self.delegate_command.keywords = ['wx', 'weather', 'wxa', 'wxalert']
+            self.delegate_command.description = "Get weather information for any location (usage: wx Tokyo)"
+            self.logger.info("Weather provider set to 'openmeteo', delegating wx command to wx_international")
+        else:
+            self.delegate_command = None
         
-        # Get default state from config for city disambiguation
-        self.default_state = self.bot.config.get('Weather', 'default_state', fallback='WA')
-        
-        # Initialize geocoder (will use rate-limited helpers for actual calls)
-        # Keep geolocator for backwards compatibility, but prefer rate-limited helpers
-        self.geolocator = get_nominatim_geocoder()
-        
-        # Get database manager for geocoding cache
-        self.db_manager = bot.db_manager
-        
-        # Create a retry-enabled session for NOAA API calls
-        # This makes the API more resilient to timeouts and transient errors
-        self.noaa_session = self._create_retry_session()
+        # Only initialize NOAA-specific attributes if not delegating
+        if self.delegate_command is None:
+            self.url_timeout = 8  # seconds (reduced from 10 for faster failure detection)
+            self.forecast_duration = 3  # days
+            self.num_wx_alerts = 2  # number of alerts to show
+            self.use_metric = False  # Use imperial units by default
+            self.zulu_time = False  # Use local time by default
+            
+            # Get default state from config for city disambiguation
+            self.default_state = self.bot.config.get('Weather', 'default_state', fallback='WA')
+            
+            # Initialize geocoder (will use rate-limited helpers for actual calls)
+            # Keep geolocator for backwards compatibility, but prefer rate-limited helpers
+            self.geolocator = get_nominatim_geocoder()
+            
+            # Get database manager for geocoding cache
+            self.db_manager = bot.db_manager
+            
+            # Create a retry-enabled session for NOAA API calls
+            # This makes the API more resilient to timeouts and transient errors
+            self.noaa_session = self._create_retry_session()
     
     def _create_retry_session(self) -> requests.Session:
         """Create a requests session with retry logic for NOAA API calls"""
@@ -88,10 +109,16 @@ class WxCommand(BaseCommand):
         return session
     
     def get_help_text(self) -> str:
+        """Get help text, delegating to international command if using Open-Meteo"""
+        if self.delegate_command:
+            return self.delegate_command.get_help_text()
         return self.translate('commands.wx.description')
     
     def matches_keyword(self, message: MeshMessage) -> bool:
         """Check if message starts with a weather keyword"""
+        if self.delegate_command:
+            return self.delegate_command.matches_keyword(message)
+        
         content = message.content.strip()
         if content.startswith('!'):
             content = content[1:].strip()
@@ -102,46 +129,31 @@ class WxCommand(BaseCommand):
         return False
     
     def can_execute(self, message: MeshMessage) -> bool:
-        """Override cooldown check to be per-user instead of per-command-instance"""
-        # Check if command requires DM and message is not DM
-        if self.requires_dm and not message.is_dm:
+        """Override to delegate or use base class cooldown"""
+        # Check if wx command is enabled
+        if not self.wx_enabled:
             return False
         
-        # Check per-user cooldown
-        if self.cooldown_seconds > 0:
-            import time
-            current_time = time.time()
-            user_id = message.sender_id
-            
-            if user_id in self.user_cooldowns:
-                last_execution = self.user_cooldowns[user_id]
-                if (current_time - last_execution) < self.cooldown_seconds:
-                    return False
+        if self.delegate_command:
+            return self.delegate_command.can_execute(message)
         
-        return True
+        # Use base class for cooldown and other checks
+        return super().can_execute(message)
     
     def get_remaining_cooldown(self, user_id: str) -> int:
         """Get remaining cooldown time for a specific user"""
-        if self.cooldown_seconds <= 0:
-            return 0
+        if self.delegate_command:
+            return self.delegate_command.get_remaining_cooldown(user_id)
         
-        import time
-        current_time = time.time()
-        if user_id in self.user_cooldowns:
-            last_execution = self.user_cooldowns[user_id]
-            elapsed = current_time - last_execution
-            remaining = self.cooldown_seconds - elapsed
-            return max(0, int(remaining))
-        
-        return 0
-    
-    def _record_execution(self, user_id: str):
-        """Record the execution time for a specific user"""
-        import time
-        self.user_cooldowns[user_id] = time.time()
+        # Use base class method
+        return super().get_remaining_cooldown(user_id)
     
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the weather command"""
+        # Delegate to international command if using Open-Meteo provider
+        if self.delegate_command:
+            return await self.delegate_command.execute(message)
+        
         content = message.content.strip()
         
         # Parse the command to extract location and forecast type
@@ -202,7 +214,7 @@ class WxCommand(BaseCommand):
         
         try:
             # Record execution for this user
-            self._record_execution(message.sender_id)
+            self.record_execution(message.sender_id)
             
             # Special handling for "alerts" command
             if show_full_alerts:
@@ -560,18 +572,51 @@ class WxCommand(BaseCommand):
             
             # If current is Tonight and we haven't found Tomorrow yet, look for next day's periods
             if is_current_tonight and not tomorrow_period:
-                # Look for periods after Tonight (next day)
-                for i, period in enumerate(forecast):
-                    if i > 0:  # Skip current period
-                        period_name = period.get('name', '').lower()
-                        # Look for tomorrow, next day, or day names
-                        if any(word in period_name for word in ['tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
-                            tomorrow_period = (i, period)
-                            break
+                # If today_period is a day name (not "Today"), look for the next period after it
+                if today_period:
+                    period_name_lower = today_period[1].get('name', '').lower()
+                    day_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+                    if any(day in period_name_lower for day in day_names) and 'today' not in period_name_lower:
+                        # today_period is actually tomorrow's daytime period - look for the night period after it
+                        today_period_index = today_period[0]
+                        # Look for the next period after today_period (should be the night period for that day)
+                        for i, period in enumerate(forecast):
+                            if i > today_period_index:  # Look for periods after today_period
+                                period_name = period.get('name', '').lower()
+                                # Look for the night period for the same day, or the next day
+                                if any(word in period_name for word in ['night', 'tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
+                                    tomorrow_period = (i, period)
+                                    break
+                        # If we didn't find a night period, use today_period as tomorrow_period
+                        if not tomorrow_period:
+                            tomorrow_period = today_period
+                    else:
+                        # Look for periods after Tonight (next day)
+                        for i, period in enumerate(forecast):
+                            if i > 0:  # Skip current period
+                                period_name = period.get('name', '').lower()
+                                # Skip if this period is already set as today_period (avoid duplicates)
+                                if today_period and today_period[0] == i:
+                                    continue
+                                # Look for tomorrow, next day, or day names
+                                if any(word in period_name for word in ['tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
+                                    tomorrow_period = (i, period)
+                                    break
+                else:
+                    # Look for periods after Tonight (next day)
+                    for i, period in enumerate(forecast):
+                        if i > 0:  # Skip current period
+                            period_name = period.get('name', '').lower()
+                            # Look for tomorrow, next day, or day names
+                            if any(word in period_name for word in ['tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
+                                tomorrow_period = (i, period)
+                                break
             
             # If current is a night period, prioritize adding Today (the upcoming daytime)
+            # When today_period is a day name (like "Tuesday"), we still add it as tomorrow's daytime period
             if is_current_night and today_period:
                 period = today_period[1]
+                # Always add today_period - it represents tomorrow's daytime when current is Tonight
                 period_name = self.abbreviate_noaa(period.get('name', 'Today'))
                 period_temp = period.get('temperature', '')
                 period_short = period.get('shortForecast', '')
@@ -756,10 +801,17 @@ class WxCommand(BaseCommand):
                         period_str = self._add_period_details(period_str, period_detailed, current_weather_len, max_chars)
                     
                     # Only add if we have space (using display width, prioritize current period)
-                    # Be more conservative - only add if current period is reasonable length
+                    # Be more aggressive about adding tomorrow_period when current is Tonight and we have space
                     max_chars = 128 if (is_current_tonight or is_current_night) else 130
-                    if current_weather_len < 110 and self._count_display_width(weather + period_str) <= max_chars:
-                        weather += period_str
+                    # If current is Tonight and we have plenty of space, be more lenient with the length check
+                    if is_current_tonight or is_current_night:
+                        # Allow adding tomorrow_period if we're under 120 chars (more lenient than 110)
+                        if current_weather_len < 120 and self._count_display_width(weather + period_str) <= max_chars:
+                            weather += period_str
+                    else:
+                        # For non-night periods, use the stricter check
+                        if current_weather_len < 110 and self._count_display_width(weather + period_str) <= max_chars:
+                            weather += period_str
             
             return weather, weather_json
             
@@ -2949,6 +3001,8 @@ class WxCommand(BaseCommand):
         # Weather condition emojis
         if any(word in condition_lower for word in ['sunny', 'clear']):
             return "☀️"
+        elif any(word in condition_lower for word in ['heavy rain', 'heavy showers', 'excessive rain']):
+            return "🌧️"  # Cloud with rain - more rain, less sun
         elif any(word in condition_lower for word in ['cloudy', 'overcast']):
             return "☁️"
         elif any(word in condition_lower for word in ['partly cloudy', 'mostly cloudy']):

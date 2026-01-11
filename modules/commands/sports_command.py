@@ -19,13 +19,18 @@ Team IDs should be periodically verified, especially after:
 - When users report "no games found" for known active teams
 """
 
-import re
-import json
-import requests
 from datetime import datetime, timezone
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, TYPE_CHECKING
 from .base_command import BaseCommand
 from ..models import MeshMessage
+from ..clients.espn_client import ESPNClient
+from ..clients.thesportsdb_client import TheSportsDBClient
+from ..clients.sports_mappings import (
+    SPORT_EMOJIS, TEAM_MAPPINGS, LEAGUE_MAPPINGS
+)
+
+if TYPE_CHECKING:
+    from ..core import MeshCoreBot
 
 
 class SportsCommand(BaseCommand):
@@ -39,514 +44,26 @@ class SportsCommand(BaseCommand):
     cooldown_seconds = 3  # 3 second cooldown per user to prevent API abuse
     requires_internet = True  # Requires internet access for ESPN API
     
-    # ESPN API base URL
-    ESPN_BASE_URL = "http://site.api.espn.com/apis/site/v2/sports"
+    # ESPN client
+    espn_client: Optional[ESPNClient] = None
     
-    # Sport emojis for easy identification
-    SPORT_EMOJIS = {
-        'football': '🏈',
-        'baseball': '⚾',
-        'basketball': '🏀',
-        'hockey': '🏒',
-        'soccer': '⚽'
-    }
+    # TheSportsDB client for leagues not supported by ESPN
+    thesportsdb_client: Optional[TheSportsDBClient] = None
     
-    # Custom team abbreviations to distinguish between leagues
-    # Only use -W suffixes for women's leagues
-    WOMENS_TEAM_ABBREVIATIONS = {
-        # NWSL teams - use custom abbreviations to distinguish from MLS
-        '21422': 'LA-W',   # Angel City FC (Women's)
-        '22187': 'BAY-W',  # Bay FC (Women's)
-        '15360': 'CHI-W',  # Chicago Stars FC (Women's)
-        '15364': 'GFC-W',  # Gotham FC (Women's)
-        '17346': 'HOU-W',  # Houston Dash (Women's)
-        '20907': 'KC-W',   # Kansas City Current (Women's)
-        '15366': 'NC-W',   # North Carolina Courage (Women's)
-        '18206': 'ORL-W',  # Orlando Pride (Women's)
-        '15362': 'POR-W',  # Portland Thorns FC (Women's)
-        '20905': 'LOU-W',  # Racing Louisville FC (Women's)
-        '21423': 'SD-W',   # San Diego Wave FC (Women's)
-        '15363': 'SEA-W',  # Seattle Reign FC (Women's)
-        '19141': 'UTA-W',  # Utah Royals (Women's)
-        '15365': 'WAS-W',  # Washington Spirit (Women's)
-        # WNBA teams - use custom abbreviations to distinguish from NBA
-        '14': 'SEA-W',     # Seattle Storm (Women's)
-        '9': 'NY-W',       # New York Liberty (Women's)
-        '6': 'LA-W',       # Los Angeles Sparks (Women's)
-        '19': 'CHI-W',     # Chicago Sky (Women's)
-        '20': 'ATL-W',     # Atlanta Dream (Women's)
-        '18': 'CON-W',     # Connecticut Sun (Women's)
-        '3': 'DAL-W',      # Dallas Wings (Women's)
-        '129689': 'GS-W',  # Golden State Valkyries (Women's)
-        '5': 'IND-W',      # Indiana Fever (Women's)
-        '17': 'LV-W',      # Las Vegas Aces (Women's)
-        '8': 'MIN-W',      # Minnesota Lynx (Women's)
-        '11': 'PHX-W',     # Phoenix Mercury (Women's)
-        '16': 'WSH-W',     # Washington Mystics (Women's)
-        # PWHL teams - use custom abbreviations to distinguish from NHL
-        # NOTE: Team IDs need to be verified using test_scripts/find_espn_team_id.py hockey pwhl <team_name>
-        # Once verified, uncomment and replace 'VERIFY_TEAM_ID' with the actual ESPN team ID
-        # Format: 'ACTUAL_TEAM_ID': 'ABBREV-W',  # Team Name (Women's)
-        # Example: '123456': 'BOS-W',  # Boston (Women's)
-        # 'VERIFY_BOS': 'BOS-W',  # Boston (Women's) - verify team_id
-        # 'VERIFY_MIN': 'MIN-W',  # Minnesota (Women's) - verify team_id
-        # 'VERIFY_MTL': 'MTL-W',  # Montreal (Women's) - verify team_id
-        # 'VERIFY_NY': 'NY-W',    # New York (Women's) - verify team_id
-        # 'VERIFY_OTT': 'OTT-W',  # Ottawa (Women's) - verify team_id
-        # 'VERIFY_TOR': 'TOR-W',  # Toronto (Women's) - verify team_id
-        # 'VERIFY_SEA': 'SEA-W',  # Seattle Torrent (Women's) - verify team_id
-    }
-    
-    # Team mappings for common searches
-    # NOTE: Team IDs can change over time (see module docstring).
-    # Use test_scripts/find_espn_team_id.py to verify/update team IDs.
-    TEAM_MAPPINGS = {
-        # NFL Teams
-        'seahawks': {'sport': 'football', 'league': 'nfl', 'team_id': '26'},
-        'hawks': {'sport': 'football', 'league': 'nfl', 'team_id': '26'},
-        '49ers': {'sport': 'football', 'league': 'nfl', 'team_id': '25'},
-        'niners': {'sport': 'football', 'league': 'nfl', 'team_id': '25'},
-        'sf': {'sport': 'football', 'league': 'nfl', 'team_id': '25'},
-        'bears': {'sport': 'football', 'league': 'nfl', 'team_id': '3'},
-        'chicago': {'sport': 'football', 'league': 'nfl', 'team_id': '3'},
-        'chi': {'sport': 'football', 'league': 'nfl', 'team_id': '3'},
-        'bengals': {'sport': 'football', 'league': 'nfl', 'team_id': '4'},
-        'cincinnati': {'sport': 'football', 'league': 'nfl', 'team_id': '4'},
-        'cin': {'sport': 'football', 'league': 'nfl', 'team_id': '4'},
-        'bills': {'sport': 'football', 'league': 'nfl', 'team_id': '2'},
-        'buffalo': {'sport': 'football', 'league': 'nfl', 'team_id': '2'},
-        'buf': {'sport': 'football', 'league': 'nfl', 'team_id': '2'},
-        'broncos': {'sport': 'football', 'league': 'nfl', 'team_id': '7'},
-        'denver': {'sport': 'football', 'league': 'nfl', 'team_id': '7'},
-        'den': {'sport': 'football', 'league': 'nfl', 'team_id': '7'},
-        'browns': {'sport': 'football', 'league': 'nfl', 'team_id': '5'},
-        'cleveland': {'sport': 'football', 'league': 'nfl', 'team_id': '5'},
-        'cle': {'sport': 'football', 'league': 'nfl', 'team_id': '5'},
-        'buccaneers': {'sport': 'football', 'league': 'nfl', 'team_id': '27'},
-        'bucs': {'sport': 'football', 'league': 'nfl', 'team_id': '27'},
-        'tampa bay': {'sport': 'football', 'league': 'nfl', 'team_id': '27'},
-        'tb': {'sport': 'football', 'league': 'nfl', 'team_id': '27'},
-        'cardinals': {'sport': 'football', 'league': 'nfl', 'team_id': '22'},
-        'arizona': {'sport': 'football', 'league': 'nfl', 'team_id': '22'},
-        'ari': {'sport': 'football', 'league': 'nfl', 'team_id': '22'},
-        'chargers': {'sport': 'football', 'league': 'nfl', 'team_id': '24'},
-        'lac': {'sport': 'football', 'league': 'nfl', 'team_id': '24'},
-        'la chargers': {'sport': 'football', 'league': 'nfl', 'team_id': '24'},
-        'los angeles chargers': {'sport': 'football', 'league': 'nfl', 'team_id': '24'},
-        'chiefs': {'sport': 'football', 'league': 'nfl', 'team_id': '12'},
-        'kansas city': {'sport': 'football', 'league': 'nfl', 'team_id': '12'},
-        'kc': {'sport': 'football', 'league': 'nfl', 'team_id': '12'},
-        'colts': {'sport': 'football', 'league': 'nfl', 'team_id': '11'},
-        'indianapolis': {'sport': 'football', 'league': 'nfl', 'team_id': '11'},
-        'ind': {'sport': 'football', 'league': 'nfl', 'team_id': '11'},
-        'commanders': {'sport': 'football', 'league': 'nfl', 'team_id': '28'},
-        'washington': {'sport': 'football', 'league': 'nfl', 'team_id': '28'},
-        'wsh': {'sport': 'football', 'league': 'nfl', 'team_id': '28'},
-        'cowboys': {'sport': 'football', 'league': 'nfl', 'team_id': '6'},
-        'dallas': {'sport': 'football', 'league': 'nfl', 'team_id': '6'},
-        'dal': {'sport': 'football', 'league': 'nfl', 'team_id': '6'},
-        'dolphins': {'sport': 'football', 'league': 'nfl', 'team_id': '15'},
-        'miami': {'sport': 'football', 'league': 'nfl', 'team_id': '15'},
-        'mia': {'sport': 'football', 'league': 'nfl', 'team_id': '15'},
-        'eagles': {'sport': 'football', 'league': 'nfl', 'team_id': '21'},
-        'philadelphia': {'sport': 'football', 'league': 'nfl', 'team_id': '21'},
-        'phi': {'sport': 'football', 'league': 'nfl', 'team_id': '21'},
-        'falcons': {'sport': 'football', 'league': 'nfl', 'team_id': '1'},
-        'atlanta': {'sport': 'football', 'league': 'nfl', 'team_id': '1'},
-        'atl': {'sport': 'football', 'league': 'nfl', 'team_id': '1'},
-        'giants': {'sport': 'football', 'league': 'nfl', 'team_id': '19'},
-        'nyg': {'sport': 'football', 'league': 'nfl', 'team_id': '19'},
-        'jaguars': {'sport': 'football', 'league': 'nfl', 'team_id': '30'},
-        'jax': {'sport': 'football', 'league': 'nfl', 'team_id': '30'},
-        'jacksonville': {'sport': 'football', 'league': 'nfl', 'team_id': '30'},
-        'jets': {'sport': 'football', 'league': 'nfl', 'team_id': '20'},
-        'nyj': {'sport': 'football', 'league': 'nfl', 'team_id': '20'},
-        'lions': {'sport': 'football', 'league': 'nfl', 'team_id': '8'},
-        'detroit': {'sport': 'football', 'league': 'nfl', 'team_id': '8'},
-        'det': {'sport': 'football', 'league': 'nfl', 'team_id': '8'},
-        'packers': {'sport': 'football', 'league': 'nfl', 'team_id': '9'},
-        'green bay': {'sport': 'football', 'league': 'nfl', 'team_id': '9'},
-        'gb': {'sport': 'football', 'league': 'nfl', 'team_id': '9'},
-        'panthers': {'sport': 'football', 'league': 'nfl', 'team_id': '29'},
-        'carolina': {'sport': 'football', 'league': 'nfl', 'team_id': '29'},
-        'car': {'sport': 'football', 'league': 'nfl', 'team_id': '29'},
-        'patriots': {'sport': 'football', 'league': 'nfl', 'team_id': '17'},
-        'new england': {'sport': 'football', 'league': 'nfl', 'team_id': '17'},
-        'ne': {'sport': 'football', 'league': 'nfl', 'team_id': '17'},
-        'raiders': {'sport': 'football', 'league': 'nfl', 'team_id': '13'},
-        'las vegas': {'sport': 'football', 'league': 'nfl', 'team_id': '13'},
-        'lv': {'sport': 'football', 'league': 'nfl', 'team_id': '13'},
-        'rams': {'sport': 'football', 'league': 'nfl', 'team_id': '14'},
-        'lar': {'sport': 'football', 'league': 'nfl', 'team_id': '14'},
-        'la rams': {'sport': 'football', 'league': 'nfl', 'team_id': '14'},
-        'los angeles rams': {'sport': 'football', 'league': 'nfl', 'team_id': '14'},
-        'ravens': {'sport': 'football', 'league': 'nfl', 'team_id': '33'},
-        'baltimore': {'sport': 'football', 'league': 'nfl', 'team_id': '33'},
-        'bal': {'sport': 'football', 'league': 'nfl', 'team_id': '33'},
-        'saints': {'sport': 'football', 'league': 'nfl', 'team_id': '18'},
-        'new orleans': {'sport': 'football', 'league': 'nfl', 'team_id': '18'},
-        'no': {'sport': 'football', 'league': 'nfl', 'team_id': '18'},
-        'steelers': {'sport': 'football', 'league': 'nfl', 'team_id': '23'},
-        'pittsburgh': {'sport': 'football', 'league': 'nfl', 'team_id': '23'},
-        'pit': {'sport': 'football', 'league': 'nfl', 'team_id': '23'},
-        'texans': {'sport': 'football', 'league': 'nfl', 'team_id': '34'},
-        'houston': {'sport': 'football', 'league': 'nfl', 'team_id': '34'},
-        'hou': {'sport': 'football', 'league': 'nfl', 'team_id': '34'},
-        'titans': {'sport': 'football', 'league': 'nfl', 'team_id': '10'},
-        'tennessee': {'sport': 'football', 'league': 'nfl', 'team_id': '10'},
-        'ten': {'sport': 'football', 'league': 'nfl', 'team_id': '10'},
-        'vikings': {'sport': 'football', 'league': 'nfl', 'team_id': '16'},
-        'minnesota': {'sport': 'football', 'league': 'nfl', 'team_id': '16'},
-        'min': {'sport': 'football', 'league': 'nfl', 'team_id': '16'},
-        
-        # MLB Teams
-        'mariners': {'sport': 'baseball', 'league': 'mlb', 'team_id': '12'},
-        'seattle': {'sport': 'baseball', 'league': 'mlb', 'team_id': '12'},
-        'sea': {'sport': 'baseball', 'league': 'mlb', 'team_id': '12'},
-        'angels': {'sport': 'baseball', 'league': 'mlb', 'team_id': '3'},
-        'laa': {'sport': 'baseball', 'league': 'mlb', 'team_id': '3'},
-        'astros': {'sport': 'baseball', 'league': 'mlb', 'team_id': '18'},
-        'houston': {'sport': 'baseball', 'league': 'mlb', 'team_id': '18'},
-        'hou': {'sport': 'baseball', 'league': 'mlb', 'team_id': '18'},
-        'athletics': {'sport': 'baseball', 'league': 'mlb', 'team_id': '11'},
-        'a\'s': {'sport': 'baseball', 'league': 'mlb', 'team_id': '11'},
-        'oakland': {'sport': 'baseball', 'league': 'mlb', 'team_id': '11'},
-        'oak': {'sport': 'baseball', 'league': 'mlb', 'team_id': '11'},
-        'blue jays': {'sport': 'baseball', 'league': 'mlb', 'team_id': '14'},
-        'toronto': {'sport': 'baseball', 'league': 'mlb', 'team_id': '14'},
-        'tor': {'sport': 'baseball', 'league': 'mlb', 'team_id': '14'},
-        'braves': {'sport': 'baseball', 'league': 'mlb', 'team_id': '15'},
-        'atlanta': {'sport': 'baseball', 'league': 'mlb', 'team_id': '15'},
-        'atl': {'sport': 'baseball', 'league': 'mlb', 'team_id': '15'},
-        'brewers': {'sport': 'baseball', 'league': 'mlb', 'team_id': '8'},
-        'milwaukee': {'sport': 'baseball', 'league': 'mlb', 'team_id': '8'},
-        'mil': {'sport': 'baseball', 'league': 'mlb', 'team_id': '8'},
-        'cardinals': {'sport': 'baseball', 'league': 'mlb', 'team_id': '24'},
-        'st louis': {'sport': 'baseball', 'league': 'mlb', 'team_id': '24'},
-        'stl': {'sport': 'baseball', 'league': 'mlb', 'team_id': '24'},
-        'cubs': {'sport': 'baseball', 'league': 'mlb', 'team_id': '16'},
-        'chicago': {'sport': 'baseball', 'league': 'mlb', 'team_id': '16'},
-        'chc': {'sport': 'baseball', 'league': 'mlb', 'team_id': '16'},
-        'diamondbacks': {'sport': 'baseball', 'league': 'mlb', 'team_id': '29'},
-        'arizona': {'sport': 'baseball', 'league': 'mlb', 'team_id': '29'},
-        'ari': {'sport': 'baseball', 'league': 'mlb', 'team_id': '29'},
-        'dodgers': {'sport': 'baseball', 'league': 'mlb', 'team_id': '19'},
-        'lad': {'sport': 'baseball', 'league': 'mlb', 'team_id': '19'},
-        'giants': {'sport': 'baseball', 'league': 'mlb', 'team_id': '26'},
-        'san francisco': {'sport': 'baseball', 'league': 'mlb', 'team_id': '26'},
-        'sf': {'sport': 'baseball', 'league': 'mlb', 'team_id': '26'},
-        'guardians': {'sport': 'baseball', 'league': 'mlb', 'team_id': '5'},
-        'cleveland': {'sport': 'baseball', 'league': 'mlb', 'team_id': '5'},
-        'cle': {'sport': 'baseball', 'league': 'mlb', 'team_id': '5'},
-        'marlins': {'sport': 'baseball', 'league': 'mlb', 'team_id': '28'},
-        'miami': {'sport': 'baseball', 'league': 'mlb', 'team_id': '28'},
-        'mia': {'sport': 'baseball', 'league': 'mlb', 'team_id': '28'},
-        'mets': {'sport': 'baseball', 'league': 'mlb', 'team_id': '21'},
-        'nym': {'sport': 'baseball', 'league': 'mlb', 'team_id': '21'},
-        'nationals': {'sport': 'baseball', 'league': 'mlb', 'team_id': '20'},
-        'washington': {'sport': 'baseball', 'league': 'mlb', 'team_id': '20'},
-        'was': {'sport': 'baseball', 'league': 'mlb', 'team_id': '20'},
-        'orioles': {'sport': 'baseball', 'league': 'mlb', 'team_id': '1'},
-        'baltimore': {'sport': 'baseball', 'league': 'mlb', 'team_id': '1'},
-        'bal': {'sport': 'baseball', 'league': 'mlb', 'team_id': '1'},
-        'padres': {'sport': 'baseball', 'league': 'mlb', 'team_id': '25'},
-        'san diego': {'sport': 'baseball', 'league': 'mlb', 'team_id': '25'},
-        'sd': {'sport': 'baseball', 'league': 'mlb', 'team_id': '25'},
-        'phillies': {'sport': 'baseball', 'league': 'mlb', 'team_id': '22'},
-        'philadelphia': {'sport': 'baseball', 'league': 'mlb', 'team_id': '22'},
-        'phi': {'sport': 'baseball', 'league': 'mlb', 'team_id': '22'},
-        'pirates': {'sport': 'baseball', 'league': 'mlb', 'team_id': '23'},
-        'pittsburgh': {'sport': 'baseball', 'league': 'mlb', 'team_id': '23'},
-        'pit': {'sport': 'baseball', 'league': 'mlb', 'team_id': '23'},
-        'rangers': {'sport': 'baseball', 'league': 'mlb', 'team_id': '13'},
-        'texas': {'sport': 'baseball', 'league': 'mlb', 'team_id': '13'},
-        'tex': {'sport': 'baseball', 'league': 'mlb', 'team_id': '13'},
-        'rays': {'sport': 'baseball', 'league': 'mlb', 'team_id': '30'},
-        'tampa bay': {'sport': 'baseball', 'league': 'mlb', 'team_id': '30'},
-        'tb': {'sport': 'baseball', 'league': 'mlb', 'team_id': '30'},
-        'red sox': {'sport': 'baseball', 'league': 'mlb', 'team_id': '2'},
-        'boston': {'sport': 'baseball', 'league': 'mlb', 'team_id': '2'},
-        'bos': {'sport': 'baseball', 'league': 'mlb', 'team_id': '2'},
-        'reds': {'sport': 'baseball', 'league': 'mlb', 'team_id': '17'},
-        'cincinnati': {'sport': 'baseball', 'league': 'mlb', 'team_id': '17'},
-        'cin': {'sport': 'baseball', 'league': 'mlb', 'team_id': '17'},
-        'rockies': {'sport': 'baseball', 'league': 'mlb', 'team_id': '27'},
-        'colorado': {'sport': 'baseball', 'league': 'mlb', 'team_id': '27'},
-        'col': {'sport': 'baseball', 'league': 'mlb', 'team_id': '27'},
-        'royals': {'sport': 'baseball', 'league': 'mlb', 'team_id': '7'},
-        'kansas city': {'sport': 'baseball', 'league': 'mlb', 'team_id': '7'},
-        'kc': {'sport': 'baseball', 'league': 'mlb', 'team_id': '7'},
-        'tigers': {'sport': 'baseball', 'league': 'mlb', 'team_id': '6'},
-        'detroit': {'sport': 'baseball', 'league': 'mlb', 'team_id': '6'},
-        'det': {'sport': 'baseball', 'league': 'mlb', 'team_id': '6'},
-        'twins': {'sport': 'baseball', 'league': 'mlb', 'team_id': '9'},
-        'minnesota': {'sport': 'baseball', 'league': 'mlb', 'team_id': '9'},
-        'min': {'sport': 'baseball', 'league': 'mlb', 'team_id': '9'},
-        'white sox': {'sport': 'baseball', 'league': 'mlb', 'team_id': '4'},
-        'chw': {'sport': 'baseball', 'league': 'mlb', 'team_id': '4'},
-        'yankees': {'sport': 'baseball', 'league': 'mlb', 'team_id': '10'},
-        'new york': {'sport': 'baseball', 'league': 'mlb', 'team_id': '10'},
-        'nyy': {'sport': 'baseball', 'league': 'mlb', 'team_id': '10'},
-        
-        # NBA Teams (limited data available from API)
-        'lakers': {'sport': 'basketball', 'league': 'nba', 'team_id': '13'},
-        'warriors': {'sport': 'basketball', 'league': 'nba', 'team_id': '9'},
-        'celtics': {'sport': 'basketball', 'league': 'nba', 'team_id': '2'},
-        'heat': {'sport': 'basketball', 'league': 'nba', 'team_id': '14'},
-        '76ers': {'sport': 'basketball', 'league': 'nba', 'team_id': '20'},
-        'knicks': {'sport': 'basketball', 'league': 'nba', 'team_id': '18'},
-        'pelicans': {'sport': 'basketball', 'league': 'nba', 'team_id': '3'},
-        'trail blazers': {'sport': 'basketball', 'league': 'nba', 'team_id': '22'},
-        'blazers': {'sport': 'basketball', 'league': 'nba', 'team_id': '22'},
-        
-        # WNBA Teams
-        'storm': {'sport': 'basketball', 'league': 'wnba', 'team_id': '14'},
-        'seattle storm': {'sport': 'basketball', 'league': 'wnba', 'team_id': '14'},
-        'liberty': {'sport': 'basketball', 'league': 'wnba', 'team_id': '9'},
-        'new york liberty': {'sport': 'basketball', 'league': 'wnba', 'team_id': '9'},
-        'sparks': {'sport': 'basketball', 'league': 'wnba', 'team_id': '6'},
-        'los angeles sparks': {'sport': 'basketball', 'league': 'wnba', 'team_id': '6'},
-        'sky': {'sport': 'basketball', 'league': 'wnba', 'team_id': '19'},
-        'chicago sky': {'sport': 'basketball', 'league': 'wnba', 'team_id': '19'},
-        'dream': {'sport': 'basketball', 'league': 'wnba', 'team_id': '20'},
-        'atlanta dream': {'sport': 'basketball', 'league': 'wnba', 'team_id': '20'},
-        'sun': {'sport': 'basketball', 'league': 'wnba', 'team_id': '18'},
-        'connecticut sun': {'sport': 'basketball', 'league': 'wnba', 'team_id': '18'},
-        'wings': {'sport': 'basketball', 'league': 'wnba', 'team_id': '3'},
-        'dallas wings': {'sport': 'basketball', 'league': 'wnba', 'team_id': '3'},
-        'valkyries': {'sport': 'basketball', 'league': 'wnba', 'team_id': '129689'},
-        'golden state valkyries': {'sport': 'basketball', 'league': 'wnba', 'team_id': '129689'},
-        'fever': {'sport': 'basketball', 'league': 'wnba', 'team_id': '5'},
-        'indiana fever': {'sport': 'basketball', 'league': 'wnba', 'team_id': '5'},
-        'aces': {'sport': 'basketball', 'league': 'wnba', 'team_id': '17'},
-        'las vegas aces': {'sport': 'basketball', 'league': 'wnba', 'team_id': '17'},
-        'lynx': {'sport': 'basketball', 'league': 'wnba', 'team_id': '8'},
-        'minnesota lynx': {'sport': 'basketball', 'league': 'wnba', 'team_id': '8'},
-        'mercury': {'sport': 'basketball', 'league': 'wnba', 'team_id': '11'},
-        'phoenix mercury': {'sport': 'basketball', 'league': 'wnba', 'team_id': '11'},
-        'mystics': {'sport': 'basketball', 'league': 'wnba', 'team_id': '16'},
-        'washington mystics': {'sport': 'basketball', 'league': 'wnba', 'team_id': '16'},
-        
-        # NHL Teams
-        'ducks': {'sport': 'hockey', 'league': 'nhl', 'team_id': '25'},
-        'anaheim': {'sport': 'hockey', 'league': 'nhl', 'team_id': '25'},
-        'ana': {'sport': 'hockey', 'league': 'nhl', 'team_id': '25'},
-        'bruins': {'sport': 'hockey', 'league': 'nhl', 'team_id': '1'},
-        'boston bruins': {'sport': 'hockey', 'league': 'nhl', 'team_id': '1'},
-        'bos': {'sport': 'hockey', 'league': 'nhl', 'team_id': '1'},
-        'sabres': {'sport': 'hockey', 'league': 'nhl', 'team_id': '2'},
-        'buffalo': {'sport': 'hockey', 'league': 'nhl', 'team_id': '2'},
-        'buf': {'sport': 'hockey', 'league': 'nhl', 'team_id': '2'},
-        'flames': {'sport': 'hockey', 'league': 'nhl', 'team_id': '3'},
-        'calgary': {'sport': 'hockey', 'league': 'nhl', 'team_id': '3'},
-        'cgy': {'sport': 'hockey', 'league': 'nhl', 'team_id': '3'},
-        'hurricanes': {'sport': 'hockey', 'league': 'nhl', 'team_id': '7'},
-        'carolina': {'sport': 'hockey', 'league': 'nhl', 'team_id': '7'},
-        'car': {'sport': 'hockey', 'league': 'nhl', 'team_id': '7'},
-        'blackhawks': {'sport': 'hockey', 'league': 'nhl', 'team_id': '4'},
-        'chicago blackhawks': {'sport': 'hockey', 'league': 'nhl', 'team_id': '4'},
-        'chi': {'sport': 'hockey', 'league': 'nhl', 'team_id': '4'},
-        'avalanche': {'sport': 'hockey', 'league': 'nhl', 'team_id': '17'},
-        'colorado': {'sport': 'hockey', 'league': 'nhl', 'team_id': '17'},
-        'col': {'sport': 'hockey', 'league': 'nhl', 'team_id': '17'},
-        'blue jackets': {'sport': 'hockey', 'league': 'nhl', 'team_id': '29'},
-        'columbus': {'sport': 'hockey', 'league': 'nhl', 'team_id': '29'},
-        'cbj': {'sport': 'hockey', 'league': 'nhl', 'team_id': '29'},
-        'stars': {'sport': 'hockey', 'league': 'nhl', 'team_id': '9'},
-        'dallas': {'sport': 'hockey', 'league': 'nhl', 'team_id': '9'},
-        'dal': {'sport': 'hockey', 'league': 'nhl', 'team_id': '9'},
-        'red wings': {'sport': 'hockey', 'league': 'nhl', 'team_id': '5'},
-        'detroit': {'sport': 'hockey', 'league': 'nhl', 'team_id': '5'},
-        'det': {'sport': 'hockey', 'league': 'nhl', 'team_id': '5'},
-        'oilers': {'sport': 'hockey', 'league': 'nhl', 'team_id': '6'},
-        'edmonton': {'sport': 'hockey', 'league': 'nhl', 'team_id': '6'},
-        'edm': {'sport': 'hockey', 'league': 'nhl', 'team_id': '6'},
-        'panthers': {'sport': 'hockey', 'league': 'nhl', 'team_id': '26'},
-        'florida': {'sport': 'hockey', 'league': 'nhl', 'team_id': '26'},
-        'fla': {'sport': 'hockey', 'league': 'nhl', 'team_id': '26'},
-        'kings': {'sport': 'hockey', 'league': 'nhl', 'team_id': '8'},
-        'los angeles': {'sport': 'hockey', 'league': 'nhl', 'team_id': '8'},
-        'la': {'sport': 'hockey', 'league': 'nhl', 'team_id': '8'},
-        'wild': {'sport': 'hockey', 'league': 'nhl', 'team_id': '30'},
-        'minnesota': {'sport': 'hockey', 'league': 'nhl', 'team_id': '30'},
-        'min': {'sport': 'hockey', 'league': 'nhl', 'team_id': '30'},
-        'canadiens': {'sport': 'hockey', 'league': 'nhl', 'team_id': '10'},
-        'montreal': {'sport': 'hockey', 'league': 'nhl', 'team_id': '10'},
-        'mtl': {'sport': 'hockey', 'league': 'nhl', 'team_id': '10'},
-        'predators': {'sport': 'hockey', 'league': 'nhl', 'team_id': '27'},
-        'nashville': {'sport': 'hockey', 'league': 'nhl', 'team_id': '27'},
-        'nsh': {'sport': 'hockey', 'league': 'nhl', 'team_id': '27'},
-        'devils': {'sport': 'hockey', 'league': 'nhl', 'team_id': '11'},
-        'new jersey': {'sport': 'hockey', 'league': 'nhl', 'team_id': '11'},
-        'nj': {'sport': 'hockey', 'league': 'nhl', 'team_id': '11'},
-        'islanders': {'sport': 'hockey', 'league': 'nhl', 'team_id': '12'},
-        'new york islanders': {'sport': 'hockey', 'league': 'nhl', 'team_id': '12'},
-        'nyi': {'sport': 'hockey', 'league': 'nhl', 'team_id': '12'},
-        'rangers': {'sport': 'hockey', 'league': 'nhl', 'team_id': '13'},
-        'new york rangers': {'sport': 'hockey', 'league': 'nhl', 'team_id': '13'},
-        'nyr': {'sport': 'hockey', 'league': 'nhl', 'team_id': '13'},
-        'senators': {'sport': 'hockey', 'league': 'nhl', 'team_id': '14'},
-        'ottawa': {'sport': 'hockey', 'league': 'nhl', 'team_id': '14'},
-        'ott': {'sport': 'hockey', 'league': 'nhl', 'team_id': '14'},
-        'flyers': {'sport': 'hockey', 'league': 'nhl', 'team_id': '15'},
-        'philadelphia': {'sport': 'hockey', 'league': 'nhl', 'team_id': '15'},
-        'phi': {'sport': 'hockey', 'league': 'nhl', 'team_id': '15'},
-        'penguins': {'sport': 'hockey', 'league': 'nhl', 'team_id': '16'},
-        'pittsburgh': {'sport': 'hockey', 'league': 'nhl', 'team_id': '16'},
-        'pit': {'sport': 'hockey', 'league': 'nhl', 'team_id': '16'},
-        'sharks': {'sport': 'hockey', 'league': 'nhl', 'team_id': '18'},
-        'san jose': {'sport': 'hockey', 'league': 'nhl', 'team_id': '18'},
-        'sj': {'sport': 'hockey', 'league': 'nhl', 'team_id': '18'},
-        'kraken': {'sport': 'hockey', 'league': 'nhl', 'team_id': '124292'},
-        'seattle kraken': {'sport': 'hockey', 'league': 'nhl', 'team_id': '124292'},
-        'seattle': {'sport': 'hockey', 'league': 'nhl', 'team_id': '124292'},
-        'blues': {'sport': 'hockey', 'league': 'nhl', 'team_id': '19'},
-        'st louis': {'sport': 'hockey', 'league': 'nhl', 'team_id': '19'},
-        'stl': {'sport': 'hockey', 'league': 'nhl', 'team_id': '19'},
-        'lightning': {'sport': 'hockey', 'league': 'nhl', 'team_id': '20'},
-        'tampa bay': {'sport': 'hockey', 'league': 'nhl', 'team_id': '20'},
-        'tb': {'sport': 'hockey', 'league': 'nhl', 'team_id': '20'},
-        'maple leafs': {'sport': 'hockey', 'league': 'nhl', 'team_id': '21'},
-        'toronto': {'sport': 'hockey', 'league': 'nhl', 'team_id': '21'},
-        'tor': {'sport': 'hockey', 'league': 'nhl', 'team_id': '21'},
-        'mammoth': {'sport': 'hockey', 'league': 'nhl', 'team_id': '129764'},
-        'utah': {'sport': 'hockey', 'league': 'nhl', 'team_id': '129764'},
-        'utah mammoth': {'sport': 'hockey', 'league': 'nhl', 'team_id': '129764'},
-        'canucks': {'sport': 'hockey', 'league': 'nhl', 'team_id': '22'},
-        'vancouver': {'sport': 'hockey', 'league': 'nhl', 'team_id': '22'},
-        'van': {'sport': 'hockey', 'league': 'nhl', 'team_id': '22'},
-        'golden knights': {'sport': 'hockey', 'league': 'nhl', 'team_id': '37'},
-        'vegas': {'sport': 'hockey', 'league': 'nhl', 'team_id': '37'},
-        'vgk': {'sport': 'hockey', 'league': 'nhl', 'team_id': '37'},
-        'capitals': {'sport': 'hockey', 'league': 'nhl', 'team_id': '23'},
-        'washington': {'sport': 'hockey', 'league': 'nhl', 'team_id': '23'},
-        'wsh': {'sport': 'hockey', 'league': 'nhl', 'team_id': '23'},
-        'jets': {'sport': 'hockey', 'league': 'nhl', 'team_id': '28'},
-        'winnipeg': {'sport': 'hockey', 'league': 'nhl', 'team_id': '28'},
-        'wpg': {'sport': 'hockey', 'league': 'nhl', 'team_id': '28'},
-        
-        # PWHL Teams (Professional Women's Hockey League)
-        # NOTE: As of now, PWHL data may not be available in ESPN's API yet.
-        # ESPN may not have added PWHL teams to their API endpoints.
-        # Team IDs need to be verified using test_scripts/find_espn_team_id.py hockey pwhl <team_name>
-        # Once ESPN adds PWHL support and team IDs are verified, uncomment and update the team_id values below
-        # 'torrent': {'sport': 'hockey', 'league': 'pwhl', 'team_id': 'VERIFY_TEAM_ID'},
-        # 'seattle torrent': {'sport': 'hockey', 'league': 'pwhl', 'team_id': 'VERIFY_TEAM_ID'},
-        # 'boston pwhl': {'sport': 'hockey', 'league': 'pwhl', 'team_id': 'VERIFY_TEAM_ID'},
-        # 'minnesota pwhl': {'sport': 'hockey', 'league': 'pwhl', 'team_id': 'VERIFY_TEAM_ID'},
-        # 'montreal pwhl': {'sport': 'hockey', 'league': 'pwhl', 'team_id': 'VERIFY_TEAM_ID'},
-        # 'new york pwhl': {'sport': 'hockey', 'league': 'pwhl', 'team_id': 'VERIFY_TEAM_ID'},
-        # 'ottawa pwhl': {'sport': 'hockey', 'league': 'pwhl', 'team_id': 'VERIFY_TEAM_ID'},
-        # 'toronto pwhl': {'sport': 'hockey', 'league': 'pwhl', 'team_id': 'VERIFY_TEAM_ID'},
-        
-        # MLS Teams
-        'sounders': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '9726'},
-        'seattle sounders': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '9726'},
-        
-        # NWSL Teams
-        'reign': {'sport': 'soccer', 'league': 'usa.nwsl', 'team_id': '15363'},
-        'seattle reign': {'sport': 'soccer', 'league': 'usa.nwsl', 'team_id': '15363'},
-        'racing': {'sport': 'soccer', 'league': 'usa.nwsl', 'team_id': '20905'},
-        'racing louisville': {'sport': 'soccer', 'league': 'usa.nwsl', 'team_id': '20905'},
-        'louisville': {'sport': 'soccer', 'league': 'usa.nwsl', 'team_id': '20905'},
-        'atlanta united': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '18418'},
-        'atl': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '18418'},
-        'austin fc': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '20906'},
-        'atx': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '20906'},
-        'cf montreal': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '9720'},
-        'montreal': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '9720'},
-        'mtl': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '9720'},
-        'charlotte fc': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '21300'},
-        'clt': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '21300'},
-        'chicago fire': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '182'},
-        'fire': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '182'},
-        'chi': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '182'},
-        'rapids': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '184'},
-        'colorado': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '184'},
-        'col': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '184'},
-        'crew': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '183'},
-        'columbus': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '183'},
-        'clb': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '183'},
-        'dc united': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '193'},
-        'dc': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '193'},
-        'fc cincinnati': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '18267'},
-        'cincinnati': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '18267'},
-        'cin': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '18267'},
-        'fc dallas': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '185'},
-        'dallas': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '185'},
-        'dal': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '185'},
-        'dynamo': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '6077'},
-        'houston': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '6077'},
-        'hou': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '6077'},
-        'inter miami': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '20232'},
-        'miami': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '20232'},
-        'mia': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '20232'},
-        'la galaxy': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '187'},
-        'galaxy': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '187'},
-        'la': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '187'},
-        'lafc': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '18966'},
-        'minnesota united': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '17362'},
-        'minnesota': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '17362'},
-        'min': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '17362'},
-        'nashville sc': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '18986'},
-        'nashville': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '18986'},
-        'nsh': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '18986'},
-        'revolution': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '189'},
-        'new england': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '189'},
-        'ne': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '189'},
-        'nyc fc': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '17606'},
-        'nyc': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '17606'},
-        'red bulls': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '190'},
-        'ny': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '190'},
-        'orlando city': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '12011'},
-        'orlando': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '12011'},
-        'orl': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '12011'},
-        'union': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '10739'},
-        'philadelphia': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '10739'},
-        'phi': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '10739'},
-        'timbers': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '9723'},
-        'portland': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '9723'},
-        'por': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '9723'},
-        'real salt lake': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '4771'},
-        'salt lake': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '4771'},
-        'rsl': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '4771'},
-        'san diego fc': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '22529'},
-        'san diego': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '22529'},
-        'sd': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '22529'},
-        'earthquakes': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '191'},
-        'san jose': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '191'},
-        'sj': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '191'},
-        'sporting kc': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '186'},
-        'sporting kansas city': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '186'},
-        'skc': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '186'},
-        'st louis city': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '21812'},
-        'st louis': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '21812'},
-        'stl': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '21812'},
-        'toronto fc': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '7318'},
-        'toronto': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '7318'},
-        'tor': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '7318'},
-        'whitecaps': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '9727'},
-        'vancouver': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '9727'},
-        'van': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '9727'},
-        
-        # Premier League Teams
-        'lfc': {'sport': 'soccer', 'league': 'eng.1', 'team_id': '364'},
-        'liverpool': {'sport': 'soccer', 'league': 'eng.1', 'team_id': '364'},
-        'manchester united': {'sport': 'soccer', 'league': 'eng.1', 'team_id': '360'},
-        'man united': {'sport': 'soccer', 'league': 'eng.1', 'team_id': '360'},
-        'arsenal': {'sport': 'soccer', 'league': 'eng.1', 'team_id': '359'},
-        'chelsea': {'sport': 'soccer', 'league': 'eng.1', 'team_id': '363'},
-        'manchester city': {'sport': 'soccer', 'league': 'eng.1', 'team_id': '382'},
-        'man city': {'sport': 'soccer', 'league': 'eng.1', 'team_id': '382'},
-    }
-    
-    def __init__(self, bot):
+
+    def __init__(self, bot: "MeshCoreBot"):
+        """Initialize the sports command with API clients and configuration.
+
+        Args:
+            bot: The MeshCoreBot instance that owns this command.
+        """
         super().__init__(bot)
         self.url_timeout = 10  # seconds
-        
-        # Per-user cooldown tracking
-        self.user_cooldowns = {}  # user_id -> last_execution_time
-        
+
+        # Initialize API clients
+        self.espn_client = ESPNClient(logger=self.logger, timeout=self.url_timeout)
+        self.thesportsdb_client = TheSportsDBClient(logger=self.logger)
+
         # Load default teams from config
         self.default_teams = self.load_default_teams()
         # Note: allowed_channels is now loaded by BaseCommand from config
@@ -575,92 +92,7 @@ class SportsCommand(BaseCommand):
                     overrides[channel.strip()] = team.strip().lower()
         return overrides
     
-    def is_womens_league(self, sport: str, league: str) -> bool:
-        """Check if the league is a women's league"""
-        womens_leagues = {
-            ('basketball', 'wnba'),
-            ('soccer', 'usa.nwsl'),
-            ('hockey', 'pwhl')
-        }
-        return (sport, league) in womens_leagues
     
-    def get_team_abbreviation(self, team_id: str, team_abbreviation: str, sport: str, league: str) -> str:
-        """Get team abbreviation, using -W suffix only for women's leagues"""
-        if self.is_womens_league(sport, league):
-            return self.WOMENS_TEAM_ABBREVIATIONS.get(team_id, team_abbreviation)
-        else:
-            return team_abbreviation
-    
-    def extract_score(self, competitor: Dict) -> str:
-        """Extract score value from competitor data, handling both dict and string formats
-        
-        ESPN API returns scores in different formats:
-        - Schedule endpoint: {'value': 13.0, 'displayValue': '13'}
-        - Scoreboard endpoint: may be string or dict format
-        
-        Returns the score as a string for consistent formatting.
-        """
-        score = competitor.get('score', '0')
-        
-        # Handle dictionary format (from schedule endpoint)
-        if isinstance(score, dict):
-            # Prefer displayValue if available, otherwise use value
-            if 'displayValue' in score:
-                return str(score['displayValue'])
-            elif 'value' in score:
-                # Convert float to int if it's a whole number, otherwise keep as is
-                value = score['value']
-                if isinstance(value, float) and value.is_integer():
-                    return str(int(value))
-                return str(value)
-            else:
-                return '0'
-        
-        # Handle string format (from scoreboard endpoint or already processed)
-        if isinstance(score, str):
-            return score
-        
-        # Handle numeric format
-        if isinstance(score, (int, float)):
-            if isinstance(score, float) and score.is_integer():
-                return str(int(score))
-            return str(score)
-        
-        # Fallback
-        return '0'
-    
-    def extract_shootout_score(self, competitor: Dict) -> Optional[int]:
-        """Extract penalty shootout score from competitor data"""
-        score = competitor.get('score', {})
-        if isinstance(score, dict) and 'shootoutScore' in score:
-            shootout = score['shootoutScore']
-            if isinstance(shootout, (int, float)):
-                return int(shootout) if isinstance(shootout, float) and shootout.is_integer() else int(shootout)
-        return None
-    
-    def format_clean_date_time(self, dt) -> str:
-        """Format date and time without leading zeros"""
-        month = dt.month
-        day = dt.day
-        minute = dt.minute
-        ampm = dt.strftime("%p")
-        
-        # Convert to 12-hour format
-        hour_12 = dt.hour
-        if hour_12 == 0:
-            hour_12 = 12
-        elif hour_12 > 12:
-            hour_12 = hour_12 - 12
-        
-        # Remove leading zeros
-        time_str = f"{month}/{day} {hour_12}:{minute:02d} {ampm}"
-        return time_str
-    
-    def format_clean_date(self, dt) -> str:
-        """Format date without leading zeros"""
-        month = dt.month
-        day = dt.day
-        return f"{month}/{day}"
     
     def matches_keyword(self, message: MeshMessage) -> bool:
         """Check if this command matches the message content - sports must be first word"""
@@ -692,64 +124,13 @@ class SportsCommand(BaseCommand):
         if not sports_enabled:
             return False
         
-        # Channel access is now handled by BaseCommand.is_channel_allowed()
-        # Call parent can_execute() which includes channel checking
-        if not super().can_execute(message):
-            return False
-        
-        # Check per-user cooldown (don't set it here, just check)
-        if self.cooldown_seconds > 0:
-            import time
-            current_time = time.time()
-            user_id = message.sender_id or "unknown"
-            
-            if user_id in self.user_cooldowns:
-                time_since_last = current_time - self.user_cooldowns[user_id]
-                if time_since_last < self.cooldown_seconds:
-                    remaining = self.cooldown_seconds - time_since_last
-                    self.logger.info(f"Sports command cooldown active for user {user_id}, {remaining:.1f}s remaining")
-                    return False
-        
-        return True
+        # Channel access and cooldown are now handled by BaseCommand.can_execute()
+        # Call parent can_execute() which includes channel checking and cooldown
+        return super().can_execute(message)
     
     def get_help_text(self) -> str:
         return self.translate('commands.sports.help')
     
-    async def execute(self, message: MeshMessage) -> bool:
-        """Execute the sports command"""
-        try:
-            # Set cooldown for this user
-            if self.cooldown_seconds > 0:
-                import time
-                current_time = time.time()
-                user_id = message.sender_id or "unknown"
-                self.user_cooldowns[user_id] = current_time
-            
-            # Parse the command
-            content = message.content.strip()
-            if content.startswith('!'):
-                content = content[1:].strip()
-            
-            # Extract team name if provided
-            parts = content.split()
-            if len(parts) > 1:
-                # Join all parts after 'sports' keyword, preserving "schedule" if present
-                team_name = ' '.join(parts[1:]).lower()
-                response = await self.get_team_scores(team_name)
-            else:
-                # Check if this channel has an override team
-                if not message.is_dm and message.channel in self.channel_overrides:
-                    override_team = self.channel_overrides[message.channel]
-                    response = await self.get_team_scores(override_team)
-                else:
-                    response = await self.get_default_teams_scores()
-            
-            # Send response
-            return await self.send_response(message, response)
-            
-        except Exception as e:
-            self.logger.error(f"Error in sports command: {e}")
-            return await self.send_response(message, self.translate('commands.sports.error_fetching'))
     
     async def get_default_teams_scores(self) -> str:
         """Get scores for default teams, sorted by game time"""
@@ -759,7 +140,7 @@ class SportsCommand(BaseCommand):
         game_data = []
         for team in self.default_teams:
             try:
-                team_info = self.TEAM_MAPPINGS.get(team)
+                team_info = TEAM_MAPPINGS.get(team)
                 if team_info:
                     # Get all relevant games for this team (live, past within 8 days, upcoming within 6 weeks)
                     games = await self.fetch_team_games(team_info)
@@ -777,7 +158,7 @@ class SportsCommand(BaseCommand):
         # Format responses with sport emojis
         responses = []
         for game in game_data:
-            sport_emoji = self.SPORT_EMOJIS.get(game['sport'], '🏆')
+            sport_emoji = SPORT_EMOJIS.get(game['sport'], '🏆')
             responses.append(f"{sport_emoji} {game['formatted']}")
         
         # Join responses with newlines and ensure under 130 characters
@@ -794,48 +175,7 @@ class SportsCommand(BaseCommand):
     
     def get_league_info(self, league_name: str) -> Optional[Dict[str, str]]:
         """Get league information for league queries"""
-        league_mappings = {
-            # NFL
-            'nfl': {'sport': 'football', 'league': 'nfl'},
-            'football': {'sport': 'football', 'league': 'nfl'},
-            
-            # MLB
-            'mlb': {'sport': 'baseball', 'league': 'mlb'},
-            'baseball': {'sport': 'baseball', 'league': 'mlb'},
-            
-            # NBA
-            'nba': {'sport': 'basketball', 'league': 'nba'},
-            'basketball': {'sport': 'basketball', 'league': 'nba'},
-            
-            # WNBA
-            'wnba': {'sport': 'basketball', 'league': 'wnba'},
-            'womens basketball': {'sport': 'basketball', 'league': 'wnba'},
-            'womens': {'sport': 'basketball', 'league': 'wnba'},
-            
-            # NHL
-            'nhl': {'sport': 'hockey', 'league': 'nhl'},
-            'hockey': {'sport': 'hockey', 'league': 'nhl'},
-            
-            # PWHL
-            'pwhl': {'sport': 'hockey', 'league': 'pwhl'},
-            'womens hockey': {'sport': 'hockey', 'league': 'pwhl'},
-            
-            # MLS
-            'mls': {'sport': 'soccer', 'league': 'usa.1'},
-            'soccer': {'sport': 'soccer', 'league': 'usa.1'},
-            
-            # NWSL
-            'nwsl': {'sport': 'soccer', 'league': 'usa.nwsl'},
-            'womens soccer': {'sport': 'soccer', 'league': 'usa.nwsl'},
-            'womens': {'sport': 'soccer', 'league': 'usa.nwsl'},
-            
-            # Premier League
-            'epl': {'sport': 'soccer', 'league': 'eng.1'},
-            'premier league': {'sport': 'soccer', 'league': 'eng.1'},
-            'premier': {'sport': 'soccer', 'league': 'eng.1'},
-        }
-        
-        return league_mappings.get(league_name.lower())
+        return LEAGUE_MAPPINGS.get(league_name.lower())
     
     def get_city_teams(self, city_name: str) -> List[Dict[str, str]]:
         """Get all teams for a given city"""
@@ -851,7 +191,6 @@ class SportsCommand(BaseCommand):
             'la': ['rams', 'dodgers', 'lakers', 'la galaxy', 'lafc', 'sparks'],
             'miami': ['dolphins', 'marlins', 'heat', 'inter miami'],
             'boston': ['patriots', 'red sox', 'celtics', 'revolution', 'bruins'],  # Add PWHL Boston when team_id verified
-            'philadelphia': ['eagles', 'phillies', '76ers', 'union'],
             'philadelphia': ['eagles', 'phillies', '76ers', 'union'],
             'atlanta': ['falcons', 'braves', 'hawks', 'atlanta united', 'dream'],
             'houston': ['texans', 'astros', 'dynamo'],
@@ -935,7 +274,7 @@ class SportsCommand(BaseCommand):
         # Get team info for each team name
         city_teams = []
         for team_name in team_names:
-            team_info = self.TEAM_MAPPINGS.get(team_name)
+            team_info = TEAM_MAPPINGS.get(team_name)
             if team_info:
                 city_teams.append(team_info)
         
@@ -965,7 +304,7 @@ class SportsCommand(BaseCommand):
         # Format responses with sport emojis
         responses = []
         for game in game_data:
-            sport_emoji = self.SPORT_EMOJIS.get(game['sport'], '🏆')
+            sport_emoji = SPORT_EMOJIS.get(game['sport'], '🏆')
             responses.append(f"{sport_emoji} {game['formatted']}")
         
         # Join responses with newlines and ensure under 130 characters
@@ -982,26 +321,16 @@ class SportsCommand(BaseCommand):
     
     async def get_league_scores(self, league_info: Dict[str, str]) -> str:
         """Get upcoming games for a league"""
+        # Check if this league uses TheSportsDB
+        if league_info.get('api_source') == 'thesportsdb':
+            return await self.get_league_scores_thesportsdb(league_info)
+        
+        # Default to ESPN API
         try:
-            # Construct API URL
-            url = f"{self.ESPN_BASE_URL}/{league_info['sport']}/{league_info['league']}/scoreboard"
-            
-            # Make API request
-            response = requests.get(url, timeout=self.url_timeout)
-            response.raise_for_status()
-            
-            data = response.json()
-            events = data.get('events', [])
-            
-            if not events:
-                return self.translate('commands.sports.no_games_league', sport=league_info['sport'])
-            
-            # Parse all games and sort by time
-            game_data = []
-            for event in events:
-                game_info = self.parse_league_game_event(event, league_info['sport'], league_info['league'])
-                if game_info:
-                    game_data.append(game_info)
+            # Fetch and parse scoreboard via client
+            game_data = await self.espn_client.fetch_scoreboard(
+                league_info['sport'], league_info['league']
+            )
             
             if not game_data:
                 return self.translate('commands.sports.no_games_league', sport=league_info['sport'])
@@ -1012,7 +341,7 @@ class SportsCommand(BaseCommand):
             # Format responses with sport emojis
             responses = []
             for game in game_data[:5]:  # Limit to 5 games to keep under 130 chars
-                sport_emoji = self.SPORT_EMOJIS.get(game['sport'], '🏆')
+                sport_emoji = SPORT_EMOJIS.get(game['sport'], '🏆')
                 responses.append(f"{sport_emoji} {game['formatted']}")
             
             # Join responses with newlines and ensure under 130 characters
@@ -1031,216 +360,73 @@ class SportsCommand(BaseCommand):
             self.logger.error(f"Error fetching league scores: {e}")
             return self.translate('commands.sports.error_fetching_league', sport=league_info['sport'])
     
-    def parse_league_game_event(self, event: Dict, sport: str, league: str) -> Optional[Dict]:
-        """Parse a league game event and return structured data with timestamp for sorting"""
+    async def get_league_scores_thesportsdb(self, league_info: Dict[str, str]) -> str:
+        """Get upcoming games for a league from TheSportsDB"""
+        if not self.thesportsdb_client:
+            self.logger.error("TheSportsDB client not initialized")
+            return self.translate('commands.sports.error_fetching_league', sport=league_info.get('sport', 'unknown'))
+        
+        league_id = league_info.get('league_id')
+        if not league_id:
+            league_name = league_info.get('league', 'unknown').upper()
+            return f"League ID not configured for {league_name}. Please query specific teams instead."
+        
         try:
-            competitions = event.get('competitions', [])
-            if not competitions:
-                return None
+            # Delegate to client
+            all_event_data = await self.thesportsdb_client.fetch_league_scores(
+                league_info['sport'], league_info['league'], league_id
+            )
             
-            competition = competitions[0]
-            competitors = competition.get('competitors', [])
+            if not all_event_data:
+                return self.translate('commands.sports.no_recent_scores', sport=league_info['sport'])
             
-            if len(competitors) != 2:
-                return None
+            # Sort by timestamp
+            all_event_data.sort(key=lambda x: x['timestamp'])
             
-            # Extract team info
-            team1 = competitors[0]
-            team2 = competitors[1]
+            # Format responses with sport emojis
+            sport_emoji = SPORT_EMOJIS.get(league_info['sport'], '🏆')
+            responses = []
+            current_length = 0
+            max_length = 130
             
-            # Determine home/away teams for all sports
-            home_team = team1 if team1.get('homeAway') == 'home' else team2
-            away_team = team2 if team1.get('homeAway') == 'home' else team1
-            home_team_id = home_team.get('team', {}).get('id', '')
-            away_team_id = away_team.get('team', {}).get('id', '')
-            home_abbreviation = home_team.get('team', {}).get('abbreviation', 'UNK')
-            away_abbreviation = away_team.get('team', {}).get('abbreviation', 'UNK')
-            home_name = self.get_team_abbreviation(home_team_id, home_abbreviation, sport, league)
-            away_name = self.get_team_abbreviation(away_team_id, away_abbreviation, sport, league)
-            home_score = self.extract_score(home_team)
-            away_score = self.extract_score(away_team)
-            
-            # Keep original variables for backward compatibility
-            team1_name = away_name  # away team first
-            team2_name = home_name  # home team second (gets @ symbol)
-            team1_score = away_score
-            team2_score = home_score
-            
-            # Get game status
-            # In schedule endpoint, status is in competition, not event
-            status = competition.get('status', event.get('status', {}))
-            status_type = status.get('type', {})
-            status_name = status_type.get('name', 'UNKNOWN')
-            
-            # Get timestamp for sorting
-            date_str = event.get('date', '')
-            timestamp = 0  # Default for sorting
-            event_timestamp = None
-            if date_str:
-                try:
-                    dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-                    event_timestamp = dt.timestamp()
-                    timestamp = event_timestamp
-                except:
-                    pass
-            
-            # Format based on game status
-            if status_name in ['STATUS_IN_PROGRESS', 'STATUS_FIRST_HALF', 'STATUS_SECOND_HALF', 'STATUS_END_PERIOD']:
-                # Game is live - prioritize these (use negative timestamp)
-                # STATUS_END_PERIOD means a period just ended but game is still ongoing
-                clock = status.get('displayClock', '')
-                period = status.get('period', 0)
-                is_end_period = (status_name == 'STATUS_END_PERIOD')
-                
-                # Format period based on sport
-                if sport == 'soccer':
-                    # For soccer, use displayClock if available (e.g., "90'+5'"), otherwise use half
-                    # For soccer, show home team first (traditional soccer format)
-                    if clock and clock != '0:00' and clock != "0'":
-                        period_str = clock  # Use displayClock directly (e.g., "90'+5'")
-                        formatted = f"@{home_name} {home_score}-{away_score} {away_name} ({period_str})"
-                    else:
-                        period_str = f"{period}H"  # Fallback to half
-                        formatted = f"@{home_name} {home_score}-{away_score} {away_name} ({clock} {period_str})"
-                elif sport == 'baseball':
-                    # Use shortDetail for ongoing baseball games to show top/bottom of inning
-                    short_detail = status_type.get('shortDetail', '')
-                    if short_detail and ('Top' in short_detail or 'Bottom' in short_detail):
-                        period_str = short_detail  # e.g., "Top 14th", "Bottom 9th"
-                    else:
-                        period_str = f"{period}I"  # Fallback to inning number only
-                    if is_end_period:
-                        period_str = f"End {period_str}"
-                    formatted = f"{away_name} {away_score}-{home_score} @{home_name} ({period_str})"
-                elif sport == 'football':
-                    period_str = f"Q{period}"  # Quarters
-                    if is_end_period:
-                        period_str = f"End {period_str}"
-                    formatted = f"{away_name} {away_score}-{home_score} @{home_name} ({clock} {period_str})"
+            for game in all_event_data:
+                game_str = f"{sport_emoji} {game['formatted']}"
+                if responses:
+                    test_length = current_length + len("\n") + len(game_str)
                 else:
-                    period_str = f"P{period}"  # Generic periods
-                    if is_end_period:
-                        period_str = f"End {period_str}"
-                    formatted = f"{away_name} {away_score}-{home_score} @{home_name} ({clock} {period_str})"
+                    test_length = len(game_str)
                 
-                timestamp = -1  # Live games first
-                
-            elif status_name == 'STATUS_SCHEDULED':
-                # Game is scheduled
-                if date_str:
-                    try:
-                        dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-                        local_dt = dt.astimezone()
-                        time_str = self.format_clean_date_time(local_dt)
-                        if sport == 'soccer':
-                            formatted = f"@{home_name} vs. {away_name} ({time_str})"
-                        else:
-                            formatted = f"{away_name} @ {home_name} ({time_str})"
-                    except:
-                        if sport == 'soccer':
-                            formatted = f"@{home_name} vs. {away_name} (TBD)"
-                        else:
-                            formatted = f"{away_name} @ {home_name} (TBD)"
-                        timestamp = 9999999999  # Put TBD games last
+                if test_length <= max_length:
+                    responses.append(game_str)
+                    current_length = test_length
                 else:
-                    if sport == 'soccer':
-                        formatted = f"@{home_name} vs. {away_name} (TBD)"
-                    else:
-                        formatted = f"{away_name} @ {home_name} (TBD)"
-                    timestamp = 9999999999  # Put TBD games last
-                    
-            elif status_name == 'STATUS_HALFTIME':
-                # Game is at halftime
-                if sport == 'soccer':
-                    formatted = f"@{home_name} {home_score}-{away_score} {away_name} (HT)"
-                else:
-                    formatted = f"{away_name} {away_score}-{home_score} @{home_name} (HT)"
-                timestamp = -2  # Halftime games second priority after live games
-            elif status_name == 'STATUS_FULL_TIME':
-                # Soccer game is finished - put these last
-                # Check if game was played today or on a different day
-                date_suffix = ""
-                if date_str:
-                    try:
-                        dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-                        local_dt = dt.astimezone()
-                        today = datetime.now().date()
-                        game_date = local_dt.date()
-                        if game_date != today:
-                            date_suffix = f", {self.format_clean_date(local_dt)}"
-                    except:
-                        pass
-                formatted = f"@{home_name} {home_score}-{away_score} {away_name} (FT{date_suffix})"
-                timestamp = 9999999998  # Final games second to last
-            elif status_name == 'STATUS_FINAL_PEN':
-                # Soccer game finished in penalty shootout
-                # Check if game was played today or on a different day
-                date_suffix = ""
-                if date_str:
-                    try:
-                        dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-                        local_dt = dt.astimezone()
-                        today = datetime.now().date()
-                        game_date = local_dt.date()
-                        if game_date != today:
-                            date_suffix = f", {self.format_clean_date(local_dt)}"
-                    except:
-                        pass
-                
-                # Get penalty shootout scores
-                home_shootout = self.extract_shootout_score(home_team)
-                away_shootout = self.extract_shootout_score(away_team)
-                
-                # Format with penalty shootout result
-                if home_shootout is not None and away_shootout is not None:
-                    formatted = f"@{home_name} {home_score}-{away_score} {away_name} (FT-PEN {home_shootout}-{away_shootout}{date_suffix})"
-                else:
-                    formatted = f"@{home_name} {home_score}-{away_score} {away_name} (FT-PEN{date_suffix})"
-                
-                timestamp = 9999999998  # Final games second to last
-            elif status_name == 'STATUS_FINAL':
-                # Other sports game is finished - put these last
-                # Check if game was played today or on a different day
-                date_suffix = ""
-                if date_str:
-                    try:
-                        dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-                        local_dt = dt.astimezone()
-                        today = datetime.now().date()
-                        game_date = local_dt.date()
-                        if game_date != today:
-                            date_suffix = f", {self.format_clean_date(local_dt)}"
-                    except:
-                        pass
-                formatted = f"{away_name} {away_score}-{home_score} @{home_name} (F{date_suffix})"
-                timestamp = 9999999998  # Final games second to last
-                
-            else:
-                # Other status
-                if sport == 'soccer':
-                    formatted = f"@{home_name} {home_score}-{away_score} {away_name} ({status_name})"
-                else:
-                    formatted = f"{away_name} {away_score}-{home_score} @{home_name} ({status_name})"
-                timestamp = 9999999997  # Other statuses third to last
+                    break
             
-            return {
-                'timestamp': timestamp,
-                'event_timestamp': event_timestamp,
-                'formatted': formatted,
-                'sport': sport,
-                'status': status_name
-            }
-                
+            return "\n".join(responses)
+            
         except Exception as e:
-            self.logger.error(f"Error parsing league game event: {e}")
-            return None
+            self.logger.error(f"Error getting league scores from TheSportsDB: {e}")
+            return self.translate('commands.sports.error_fetching_league', sport=league_info['sport'])
+    
+    
+    
     
     async def get_team_scores(self, team_name: str) -> str:
         """Get scores for a specific team or league"""
         # Check if this is a schedule query (team_name ends with " schedule")
-        if team_name.endswith(' schedule'):
+        is_schedule_query = team_name.endswith(' schedule')
+        if is_schedule_query:
             team_name_clean = team_name[:-9].strip()  # Remove " schedule"
-            team_info = self.TEAM_MAPPINGS.get(team_name_clean)
+            
+            # First check if it's a league query
+            league_info = self.get_league_info(team_name_clean)
+            if league_info:
+                # For league schedule queries, we can return upcoming games
+                # (which is essentially the schedule)
+                return await self.get_league_scores(league_info)
+            
+            # Otherwise, treat as team query
+            team_info = TEAM_MAPPINGS.get(team_name_clean)
             if not team_info:
                 return self.translate('commands.sports.team_not_found', team=team_name_clean)
             
@@ -1265,7 +451,7 @@ class SportsCommand(BaseCommand):
             return await self.get_city_scores(city_teams, team_name)
         
         # Otherwise, treat as single team query
-        team_info = self.TEAM_MAPPINGS.get(team_name)
+        team_info = TEAM_MAPPINGS.get(team_name)
         if not team_info:
             return self.translate('commands.sports.team_not_found', team=team_name)
         
@@ -1288,7 +474,7 @@ class SportsCommand(BaseCommand):
         
         # Format games to fit within message limit (130 characters)
         # Use 125 as a buffer to avoid cutting off mid-game
-        sport_emoji = self.SPORT_EMOJIS.get(team_info['sport'], '🏆')
+        sport_emoji = SPORT_EMOJIS.get(team_info['sport'], '🏆')
         formatted_games = []
         current_length = 0
         max_length = 125  # Leave buffer to avoid cutoff
@@ -1297,7 +483,7 @@ class SportsCommand(BaseCommand):
             # Ensure game['formatted'] doesn't already have an emoji
             game_formatted = game['formatted'].strip()
             # Remove emoji if it's at the start (some games might have it)
-            if game_formatted and game_formatted[0] in self.SPORT_EMOJIS.values():
+            if game_formatted and game_formatted[0] in SPORT_EMOJIS.values():
                 game_formatted = game_formatted[1:].strip()
             
             game_str = f"{sport_emoji} {game_formatted}"
@@ -1318,7 +504,7 @@ class SportsCommand(BaseCommand):
         if not formatted_games:
             # If even the first game doesn't fit, return it anyway (truncated)
             game_formatted = games[0]['formatted'].strip()
-            if game_formatted and game_formatted[0] in self.SPORT_EMOJIS.values():
+            if game_formatted and game_formatted[0] in SPORT_EMOJIS.values():
                 game_formatted = game_formatted[1:].strip()
             return f"{sport_emoji} {game_formatted[:120]}"
         
@@ -1332,45 +518,41 @@ class SportsCommand(BaseCommand):
         - Live games first
         - Last completed game (if within last 8 days)
         - Next scheduled game (if known)
+        
+        Supports both ESPN API and TheSportsDB API based on team_info['api_source'].
         """
+        # Check if this team uses TheSportsDB
+        if team_info.get('api_source') == 'thesportsdb':
+            return await self.fetch_team_games_thesportsdb(team_info)
+        
+        # Default to ESPN API
         try:
-            # Use team schedule endpoint - returns both past and upcoming games
-            url = f"{self.ESPN_BASE_URL}/{team_info['sport']}/{team_info['league']}/teams/{team_info['team_id']}/schedule"
-            
-            # Make API request
-            response = requests.get(url, timeout=self.url_timeout)
-            response.raise_for_status()
-            
-            data = response.json()
-            events = data.get('events', [])
-            
-            if not events:
-                return []
-            
-            # Parse all games
-            all_games = []
-            live_event_ids = []  # Track event IDs for live games
-            for event in events:
-                game_data = self.parse_game_event_with_timestamp(event, team_info['team_id'], team_info['sport'], team_info['league'])
-                if game_data:
-                    all_games.append(game_data)
-                    # If this is a live game, store the event ID to fetch live data
-                    if game_data['timestamp'] < 0:  # Negative timestamp indicates live game
-                        event_id = event.get('id')
-                        if event_id:
-                            live_event_ids.append((event_id, len(all_games) - 1))  # Store index too
+            # Use team schedule endpoint via client
+            # The client already parses the events
+            all_games = await self.espn_client.fetch_team_schedule(
+                team_info['sport'], team_info['league'], team_info['team_id']
+            )
             
             if not all_games:
                 return []
             
+            # Track event IDs for live games to fetch real-time scores
+            live_event_ids = []
+            for i, game_data in enumerate(all_games):
+                if game_data['timestamp'] < 0:  # Negative timestamp indicates live game
+                    event_id = game_data.get('id')
+                    if event_id:
+                        live_event_ids.append((event_id, i))
+            
             # Fetch live event data for live games to get real-time scores
             for event_id, game_index in live_event_ids:
                 try:
-                    live_event_data = await self.fetch_live_event_data(event_id, team_info['sport'], team_info['league'])
+                    live_event_data = await self.espn_client.fetch_live_event_data(
+                        event_id, team_info['sport'], team_info['league']
+                    )
                     if live_event_data:
-                        # The event endpoint returns the event directly (not in an array)
                         # Update the game data with live scores
-                        updated_game = self.parse_game_event_with_timestamp(
+                        updated_game = self.espn_client.parse_game_event_with_timestamp(
                             live_event_data, team_info['team_id'], team_info['sport'], team_info['league']
                         )
                         if updated_game:
@@ -1444,33 +626,15 @@ class SportsCommand(BaseCommand):
             self.logger.error(f"Error fetching team games: {e}")
             return []
     
-    async def fetch_live_event_data(self, event_id: str, sport: str, league: str) -> Optional[Dict]:
-        """Fetch live event data from the scoreboard endpoint for real-time scores
+    async def fetch_team_games_thesportsdb(self, team_info: Dict[str, str]) -> List[Dict]:
+        """Fetch team games from TheSportsDB API via client"""
+        if not self.thesportsdb_client:
+            self.logger.error("TheSportsDB client not initialized")
+            return []
         
-        The scoreboard endpoint provides more up-to-date scores for live games than the schedule endpoint.
-        We fetch the scoreboard and find the matching event by ID.
-        """
-        try:
-            # Use scoreboard endpoint which has live scores
-            url = f"{self.ESPN_BASE_URL}/{sport}/{league}/scoreboard"
-            response = requests.get(url, timeout=self.url_timeout)
-            response.raise_for_status()
-            data = response.json()
-            
-            # Find the event with matching ID in the scoreboard
-            # Convert event_id to string for comparison (API may return IDs as strings or ints)
-            event_id_str = str(event_id)
-            events = data.get('events', [])
-            for event in events:
-                event_id_from_api = str(event.get('id', ''))
-                if event_id_from_api == event_id_str:
-                    return event
-            
-            # If not found in scoreboard, return None (event might not be live anymore)
-            return None
-        except Exception as e:
-            self.logger.warning(f"Error fetching live event data for {event_id}: {e}")
-            return None
+        return await self.thesportsdb_client.fetch_team_games(
+            team_info['sport'], team_info['league'], team_info['team_id']
+        )
     
     async def fetch_team_game_data(self, team_info: Dict[str, str]) -> Optional[Dict]:
         """Fetch structured game data for a team with timestamp for sorting
@@ -1487,57 +651,55 @@ class SportsCommand(BaseCommand):
         
         Returns as many upcoming games as available from the schedule endpoint.
         Used for 'sports <teamname> schedule' command.
+        
+        Supports both ESPN API and TheSportsDB API based on team_info['api_source'].
         """
+        # Check if this team uses TheSportsDB
+        if team_info.get('api_source') == 'thesportsdb':
+            return await self.fetch_team_schedule_thesportsdb(team_info)
+        
+        # Default to ESPN API
         try:
-            # Use team schedule endpoint - returns both past and upcoming games
-            url = f"{self.ESPN_BASE_URL}/{team_info['sport']}/{team_info['league']}/teams/{team_info['team_id']}/schedule"
-            
-            # Make API request
-            response = requests.get(url, timeout=self.url_timeout)
-            response.raise_for_status()
-            
-            data = response.json()
-            events = data.get('events', [])
-            
-            if not events:
-                return []
-            
-            # Parse all games
-            all_games = []
-            for event in events:
-                game_data = self.parse_game_event_with_timestamp(event, team_info['team_id'], team_info['sport'], team_info['league'])
-                if game_data:
-                    all_games.append(game_data)
+            # The client already parses these events
+            all_games = await self.espn_client.fetch_team_schedule(
+                team_info['sport'], team_info['league'], team_info['team_id']
+            )
             
             if not all_games:
                 return []
             
             # Get current time for comparison
             now = datetime.now(timezone.utc).timestamp()
+            # 1 hour buffer for ongoing games
+            one_hour_ago = now - 3600
             
-            # Filter to only upcoming games
-            upcoming_games = []
-            for game in all_games:
-                # Skip live games (negative timestamps)
-                if game['timestamp'] < 0:
-                    continue
+            parsed_games = []
+            # We already have parsed games, but we need to filter/re-format them for schedule view
+            for game_data in all_games:
+                # Check if game is in the future or started very recently
+                ts = game_data.get('event_timestamp') or game_data['timestamp']
                 
-                game_event_ts = game.get('event_timestamp')
-                effective_ts = game_event_ts if game_event_ts is not None else game['timestamp']
-                
-                # Only include games with valid future timestamps
-                if effective_ts is not None and effective_ts > now:
-                    upcoming_games.append((effective_ts, game))
+                # If timestamp is negative (live), it's definitely something we could show
+                # Otherwise check if it's in the future or within the last hour
+                if game_data['timestamp'] < 0 or ts >= one_hour_ago:
+                    parsed_games.append(game_data)
             
             # Sort by soonest first
-            upcoming_games.sort(key=lambda x: x[0] if x[0] is not None else float('inf'))
-            
-            # Return all upcoming games (caller will limit by message length)
-            return [g for _, g in upcoming_games]
+            parsed_games.sort(key=lambda x: x.get('event_timestamp') or x['timestamp'])
+            return parsed_games
             
         except Exception as e:
             self.logger.error(f"Error fetching team schedule: {e}")
             return []
+    
+    async def fetch_team_schedule_thesportsdb(self, team_info: Dict[str, str]) -> List[Dict]:
+        """Fetch upcoming scheduled games for a team from TheSportsDB via client"""
+        if not self.thesportsdb_client:
+            return []
+        
+        return await self.thesportsdb_client.fetch_team_schedule(
+            team_info['sport'], team_info['league'], team_info['team_id']
+        )
     
     async def fetch_team_schedule_formatted(self, team_info: Dict[str, str]) -> Optional[str]:
         """Fetch and format upcoming scheduled games for a team
@@ -1550,7 +712,7 @@ class SportsCommand(BaseCommand):
         
         # Format games to fit within message limit (130 characters)
         # Use 125 as a buffer to avoid cutting off mid-game
-        sport_emoji = self.SPORT_EMOJIS.get(team_info['sport'], '🏆')
+        sport_emoji = SPORT_EMOJIS.get(team_info['sport'], '🏆')
         formatted_games = []
         current_length = 0
         max_length = 125  # Leave buffer to avoid cutoff
@@ -1559,7 +721,7 @@ class SportsCommand(BaseCommand):
             # Ensure game['formatted'] doesn't already have an emoji
             game_formatted = game['formatted'].strip()
             # Remove emoji if it's at the start (some games might have it)
-            if game_formatted and game_formatted[0] in self.SPORT_EMOJIS.values():
+            if game_formatted and game_formatted[0] in SPORT_EMOJIS.values():
                 game_formatted = game_formatted[1:].strip()
             
             game_str = f"{sport_emoji} {game_formatted}"
@@ -1580,357 +742,55 @@ class SportsCommand(BaseCommand):
         if not formatted_games:
             # If even the first game doesn't fit, return it anyway (truncated)
             game_formatted = games[0]['formatted'].strip()
-            if game_formatted and game_formatted[0] in self.SPORT_EMOJIS.values():
+            if game_formatted and game_formatted[0] in SPORT_EMOJIS.values():
                 game_formatted = game_formatted[1:].strip()
             return f"{sport_emoji} {game_formatted[:120]}"
         
         return "\n".join(formatted_games)
-    
-    def parse_game_event_with_timestamp(self, event: Dict, team_id: str, sport: str, league: str) -> Optional[Dict]:
-        """Parse a game event and return structured data with timestamp for sorting"""
-        try:
-            competitions = event.get('competitions', [])
-            if not competitions:
-                return None
-            
-            competition = competitions[0]
-            competitors = competition.get('competitors', [])
-            
-            if len(competitors) != 2:
-                return None
-            
-            # Check if our team is in this game
-            our_team = None
-            other_team = None
-            
-            for competitor in competitors:
-                if competitor.get('team', {}).get('id') == team_id:
-                    our_team = competitor
-                else:
-                    other_team = competitor
-            
-            if not our_team or not other_team:
-                return None
-            
-            # Determine home/away teams for all sports
-            home_team = our_team if our_team.get('homeAway') == 'home' else other_team
-            away_team = other_team if our_team.get('homeAway') == 'home' else our_team
-            home_team_id = home_team.get('team', {}).get('id', '')
-            away_team_id = away_team.get('team', {}).get('id', '')
-            home_abbreviation = home_team.get('team', {}).get('abbreviation', 'UNK')
-            away_abbreviation = away_team.get('team', {}).get('abbreviation', 'UNK')
-            home_name = self.get_team_abbreviation(home_team_id, home_abbreviation, sport, league)
-            away_name = self.get_team_abbreviation(away_team_id, away_abbreviation, sport, league)
-            home_score = self.extract_score(home_team)
-            away_score = self.extract_score(away_team)
-            
-            # For individual team queries, we still want to show our team first
-            # but in the correct home/away order for each sport
-            if our_team.get('homeAway') == 'home':
-                our_team_name = home_name
-                other_team_name = away_name
-                our_score = home_score
-                other_score = away_score
-            else:
-                our_team_name = away_name
-                other_team_name = home_name
-                our_score = away_score
-                other_score = home_score
-            
-            # Get game status
-            # In schedule endpoint, status is in competition, not event
-            status = competition.get('status', event.get('status', {}))
-            status_type = status.get('type', {})
-            status_name = status_type.get('name', 'UNKNOWN')
-            
-            # Get timestamp for sorting
-            date_str = event.get('date', '')
-            timestamp = 0  # Default for sorting
-            event_timestamp = None
-            if date_str:
-                try:
-                    dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-                    event_timestamp = dt.timestamp()
-                    timestamp = event_timestamp
-                except:
-                    pass
-            
-            # Format based on game status
-            if status_name in ['STATUS_IN_PROGRESS', 'STATUS_FIRST_HALF', 'STATUS_SECOND_HALF', 'STATUS_END_PERIOD']:
-                # Game is live - prioritize these (use negative timestamp)
-                # STATUS_END_PERIOD means a period just ended but game is still ongoing
-                clock = status.get('displayClock', '')
-                period = status.get('period', 0)
-                is_end_period = (status_name == 'STATUS_END_PERIOD')
-                
-                # Format period based on sport
-                if sport == 'soccer':
-                    # For soccer, use displayClock if available (e.g., "90'+5'"), otherwise use half
-                    # For soccer, show home team first (traditional soccer format)
-                    if clock and clock != '0:00' and clock != "0'":
-                        period_str = clock  # Use displayClock directly (e.g., "90'+5'")
-                        formatted = f"@{home_name} {home_score}-{away_score} {away_name} ({period_str})"
-                    else:
-                        period_str = f"{period}H"  # Fallback to half
-                        formatted = f"@{home_name} {home_score}-{away_score} {away_name} ({clock} {period_str})"
-                elif sport == 'baseball':
-                    # Use shortDetail for ongoing baseball games to show top/bottom of inning
-                    short_detail = status.get('type', {}).get('shortDetail', '')
-                    if short_detail and ('Top' in short_detail or 'Bottom' in short_detail):
-                        period_str = short_detail  # e.g., "Top 14th", "Bottom 9th"
-                    else:
-                        period_str = f"{period}I"  # Fallback to inning number only
-                    formatted = f"{away_name} {away_score}-{home_score} @{home_name} ({period_str})"
-                elif sport == 'football':
-                    period_str = f"Q{period}"  # Quarters
-                    if is_end_period:
-                        period_str = f"End {period_str}"
-                    formatted = f"{away_name} {away_score}-{home_score} @{home_name} ({clock} {period_str})"
-                else:
-                    period_str = f"P{period}"  # Generic periods (hockey, etc.)
-                    if is_end_period:
-                        period_str = f"End {period_str}"
-                    formatted = f"{away_name} {away_score}-{home_score} @{home_name} ({clock} {period_str})"
-                
-                timestamp = -1  # Live games first
-                
-            elif status_name == 'STATUS_SCHEDULED':
-                # Game is scheduled
-                if date_str:
-                    try:
-                        dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-                        local_dt = dt.astimezone()
-                        time_str = self.format_clean_date_time(local_dt)
-                        if sport == 'soccer':
-                            formatted = f"@{home_name} vs. {away_name} ({time_str})"
-                        else:
-                            formatted = f"{away_name} @ {home_name} ({time_str})"
-                    except:
-                        if sport == 'soccer':
-                            formatted = f"@{home_name} vs. {away_name} (TBD)"
-                        else:
-                            formatted = f"{away_name} @ {home_name} (TBD)"
-                        timestamp = 9999999999  # Put TBD games last
-                else:
-                    if sport == 'soccer':
-                        formatted = f"@{home_name} vs. {away_name} (TBD)"
-                    else:
-                        formatted = f"{away_name} @ {home_name} (TBD)"
-                    timestamp = 9999999999  # Put TBD games last
-                    
-            elif status_name == 'STATUS_HALFTIME':
-                # Game is at halftime
-                if sport == 'soccer':
-                    formatted = f"@{home_name} {home_score}-{away_score} {away_name} (HT)"
-                else:
-                    formatted = f"{away_name} {away_score}-{home_score} @{home_name} (HT)"
-                timestamp = -2  # Halftime games second priority after live games
-            elif status_name == 'STATUS_FULL_TIME':
-                # Soccer game is finished - put these last
-                # Check if game was played today or on a different day
-                date_suffix = ""
-                if date_str:
-                    try:
-                        dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-                        local_dt = dt.astimezone()
-                        today = datetime.now().date()
-                        game_date = local_dt.date()
-                        if game_date != today:
-                            date_suffix = f", {self.format_clean_date(local_dt)}"
-                    except:
-                        pass
-                formatted = f"@{home_name} {home_score}-{away_score} {away_name} (FT{date_suffix})"
-                timestamp = 9999999998  # Final games second to last
-            elif status_name == 'STATUS_FINAL_PEN':
-                # Soccer game finished in penalty shootout
-                # Check if game was played today or on a different day
-                date_suffix = ""
-                if date_str:
-                    try:
-                        dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-                        local_dt = dt.astimezone()
-                        today = datetime.now().date()
-                        game_date = local_dt.date()
-                        if game_date != today:
-                            date_suffix = f", {self.format_clean_date(local_dt)}"
-                    except:
-                        pass
-                
-                # Get penalty shootout scores
-                home_shootout = self.extract_shootout_score(home_team)
-                away_shootout = self.extract_shootout_score(away_team)
-                
-                # Format with penalty shootout result
-                if home_shootout is not None and away_shootout is not None:
-                    formatted = f"@{home_name} {home_score}-{away_score} {away_name} (FT-PEN {home_shootout}-{away_shootout}{date_suffix})"
-                else:
-                    formatted = f"@{home_name} {home_score}-{away_score} {away_name} (FT-PEN{date_suffix})"
-                
-                timestamp = 9999999998  # Final games second to last
-            elif status_name == 'STATUS_FINAL':
-                # Other sports game is finished - put these last
-                # Check if game was played today or on a different day
-                date_suffix = ""
-                if date_str:
-                    try:
-                        dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-                        local_dt = dt.astimezone()
-                        today = datetime.now().date()
-                        game_date = local_dt.date()
-                        if game_date != today:
-                            date_suffix = f", {self.format_clean_date(local_dt)}"
-                    except:
-                        pass
-                formatted = f"{away_name} {away_score}-{home_score} @{home_name} (F{date_suffix})"
-                timestamp = 9999999998  # Final games second to last
-                
-            else:
-                # Other status
-                if sport == 'soccer':
-                    formatted = f"@{home_name} {home_score}-{away_score} {away_name} ({status_name})"
-                else:
-                    formatted = f"{away_name} {away_score}-{home_score} @{home_name} ({status_name})"
-                timestamp = 9999999997  # Other statuses third to last
-            
-            return {
-                'timestamp': timestamp,
-                'event_timestamp': event_timestamp,
-                'formatted': formatted,
-                'sport': sport,
-                'status': status_name
-            }
-                
-        except Exception as e:
-            self.logger.error(f"Error parsing game event with timestamp: {e}")
-            return None
 
-    def parse_game_event(self, event: Dict, team_id: str) -> Optional[str]:
-        """Parse a game event and return formatted score info"""
+    async def execute(self, message: MeshMessage) -> bool:
+        """Main entry point for command execution"""
         try:
-            competitions = event.get('competitions', [])
-            if not competitions:
-                return None
+            # Record execution for this user (handles cooldown)
+            self.record_execution(message.sender_id)
             
-            competition = competitions[0]
-            competitors = competition.get('competitors', [])
+            content = message.content.strip()
+            if content.startswith('!'):
+                content = content[1:].strip()
             
-            if len(competitors) != 2:
-                return None
-            
-            # Check if our team is in this game
-            our_team = None
-            other_team = None
-            
-            for competitor in competitors:
-                if competitor.get('team', {}).get('id') == team_id:
-                    our_team = competitor
+            # Parse command: !sports [query]
+            parts = content.split(' ', 1)
+            if len(parts) < 2:
+                # Check if this channel has an override team
+                if not message.is_dm and message.channel in self.channel_overrides:
+                    override_team = self.channel_overrides[message.channel]
+                    response = await self.get_team_scores(override_team)
                 else:
-                    other_team = competitor
+                    response = await self.get_default_teams_scores()
+                return await self.send_response(message, response)
             
-            if not our_team or not other_team:
-                return None
+            query = parts[1].strip()
             
-            # Extract team info
-            our_team_name = our_team.get('team', {}).get('abbreviation', 'UNK')
-            other_team_name = other_team.get('team', {}).get('abbreviation', 'UNK')
+            # Check if it's a league query (e.g., "nfl", "mlb", etc.)
+            league_info = self.get_league_info(query)
+            if league_info:
+                scores = await self.get_league_scores(league_info)
+                return await self.send_response(message, scores)
             
-            # Determine home/away teams
-            our_home_away = our_team.get('homeAway', '')
-            other_home_away = other_team.get('homeAway', '')
+            # Check if it's a city query (e.g., "seattle")
+            city_teams = self.get_city_teams(query)
+            if city_teams:
+                scores = await self.get_city_scores(city_teams, query)
+                return await self.send_response(message, scores)
             
-            if our_home_away == 'home':
-                home_team_name = our_team_name
-                away_team_name = other_team_name
-            elif other_home_away == 'home':
-                home_team_name = other_team_name
-                away_team_name = our_team_name
-            else:
-                # Fallback if homeAway is not available
-                home_team_name = other_team_name
-                away_team_name = our_team_name
-            
-            # Get scores
-            our_score = self.extract_score(our_team)
-            other_score = self.extract_score(other_team)
-            
-            # Get game status
-            status = event.get('status', {})
-            status_type = status.get('type', {})
-            status_name = status_type.get('name', 'UNKNOWN')
-            
-            # Format based on game status
-            if status_name in ['STATUS_IN_PROGRESS', 'STATUS_FIRST_HALF', 'STATUS_SECOND_HALF']:
-                # Game is live
-                clock = status.get('displayClock', '')
-                period = status.get('period', 0)
+            # Treat as team score query
+            scores = await self.get_team_scores(query)
+            if not scores:
+                return await self.send_response(message, f"No games found for {query}.")
                 
-                # Format period based on sport (need to determine sport from team_info)
-                # This is a legacy method, so we'll use a generic approach
-                if period <= 2:
-                    period_str = f"{period}H"  # Likely soccer (halves)
-                elif period <= 4:
-                    period_str = f"Q{period}"  # Likely football (quarters)
-                else:
-                    period_str = f"{period}I"  # Likely baseball (innings)
-                
-                return f"{our_team_name} {our_score}-{other_score} @{other_team_name} ({clock} {period_str})"
+            return await self.send_response(message, scores)
             
-            elif status_name == 'STATUS_SCHEDULED':
-                # Game is scheduled
-                date_str = event.get('date', '')
-                if date_str:
-                    try:
-                        # Parse date and format
-                        dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-                        # Convert to local time (assuming Pacific for Seattle teams)
-                        local_dt = dt.astimezone()
-                        time_str = self.format_clean_date_time(local_dt)
-                        return f"{away_team_name} @ {home_team_name} ({time_str})"
-                    except:
-                        return f"{away_team_name} @ {home_team_name} (TBD)"
-                else:
-                    return f"{away_team_name} @ {home_team_name} (TBD)"
-            
-            elif status_name == 'STATUS_HALFTIME':
-                # Game is at halftime
-                return f"{our_team_name} {our_score}-{other_score} @{other_team_name} (HT)"
-            elif status_name == 'STATUS_FULL_TIME':
-                # Soccer game is finished
-                # Check if game was played today or on a different day
-                date_str = event.get('date', '')
-                date_suffix = ""
-                if date_str:
-                    try:
-                        dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-                        local_dt = dt.astimezone()
-                        today = datetime.now().date()
-                        game_date = local_dt.date()
-                        if game_date != today:
-                            date_suffix = f", {self.format_clean_date(local_dt)}"
-                    except:
-                        pass
-                return f"{our_team_name} {our_score}-{other_score} @{other_team_name} (FT{date_suffix})"
-            elif status_name == 'STATUS_FINAL':
-                # Other sports game is finished
-                # Check if game was played today or on a different day
-                date_str = event.get('date', '')
-                date_suffix = ""
-                if date_str:
-                    try:
-                        dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-                        local_dt = dt.astimezone()
-                        today = datetime.now().date()
-                        game_date = local_dt.date()
-                        if game_date != today:
-                            date_suffix = f", {self.format_clean_date(local_dt)}"
-                    except:
-                        pass
-                return f"{our_team_name} {our_score}-{other_score} @{other_team_name} (F{date_suffix})"
-            
-            else:
-                # Other status
-                return f"{our_team_name} {our_score}-{other_score} {other_team_name} ({status_name})"
-                
         except Exception as e:
-            self.logger.error(f"Error parsing game event: {e}")
-            return None
+            self.logger.error(f"Error in sports execute: {e}")
+            return await self.send_response(message, "Error processing sports command.")
+    

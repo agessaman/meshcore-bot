@@ -1327,13 +1327,22 @@ class RepeaterManager:
             if location:
                 address = location.raw.get('address', {})
                 
-                # Get city name from various fields
+                # Get city name from various fields (in order of preference)
                 city = (address.get('city') or 
                        address.get('town') or 
                        address.get('village') or 
                        address.get('hamlet') or 
                        address.get('municipality') or 
                        address.get('suburb'))
+                
+                # If no city found, try county as fallback (for rural areas)
+                # Keep "County" in the name to disambiguate from cities with the same name
+                if not city:
+                    county = address.get('county')
+                    if county:
+                        # Keep full county name to distinguish from cities (e.g., "Snohomish County" vs "Snohomish" city)
+                        city = county  # Keep "County" suffix to avoid ambiguity
+                        self.logger.debug(f"Using county '{county}' as location name for coordinates {latitude}, {longitude}")
                 
                 if city:
                     # For large cities, try to get neighborhood information
@@ -1405,13 +1414,22 @@ class RepeaterManager:
                 address = location.raw.get('address', {})
                 self.logger.debug(f"Geocoding API returned address data: {list(address.keys())}")
                 
-                # Get city name from various fields
+                # Get city name from various fields (in order of preference)
                 city = (address.get('city') or 
                        address.get('town') or 
                        address.get('village') or 
                        address.get('hamlet') or 
                        address.get('municipality') or 
                        address.get('suburb'))
+                
+                # If no city found, try county as fallback (for rural areas)
+                # Keep "County" in the name to disambiguate from cities with the same name
+                if not city:
+                    county = address.get('county')
+                    if county:
+                        # Keep full county name to distinguish from cities (e.g., "Snohomish County" vs "Snohomish" city)
+                        city = county  # Keep "County" suffix to avoid ambiguity
+                        self.logger.debug(f"Using county '{county}' as location name for coordinates {latitude}, {longitude}")
                 
                 if city:
                     # For large cities, try to get neighborhood information
@@ -1422,11 +1440,10 @@ class RepeaterManager:
                         location_info['city'] = city
                     self.logger.debug(f"Extracted city: {location_info['city']}")
                 
-                # Get state/province information
+                # Get state/province information (don't use county here since we may have used it for city)
                 state = (address.get('state') or 
                         address.get('province') or 
-                        address.get('region') or 
-                        address.get('county'))
+                        address.get('region'))
                 if state:
                     location_info['state'] = state
                     self.logger.debug(f"Extracted state: {state}")

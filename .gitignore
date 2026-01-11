@@ -119,7 +119,9 @@ Thumbs.db
 
 # Project specific
 *.log
+logs/
 config.ini
+config.min.ini
 *.db
 *.db-wal
 *.db-shm
@@ -138,3 +140,4 @@ test_*.log
 docs/local/
 tests/
 test_scripts/
+dev/
