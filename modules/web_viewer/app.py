@@ -37,7 +37,12 @@ class BotDataViewer:
         # This is the directory containing the modules folder
         self.bot_root = Path(os.path.join(os.path.dirname(__file__), '..', '..')).resolve()
         
-        self.app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), 'templates'))
+        self.app = Flask(
+            __name__, 
+            template_folder=os.path.join(os.path.dirname(__file__), 'templates'),
+            static_folder=os.path.join(os.path.dirname(__file__), 'static'),
+            static_url_path='/static'
+        )
         self.app.config['SECRET_KEY'] = 'meshcore_bot_viewer_secret'
         
         # Flask-SocketIO configuration following 5.x best practices
@@ -2933,33 +2938,57 @@ class BotDataViewer:
         return []
     
     def _get_channels(self):
-        """Get all configured channels from database"""
+        """Get all configured channels from database plus additional decode-only channels"""
         import sqlite3
         conn = None
         try:
             conn = self._get_db_connection()
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            
+
             cursor.execute('''
                 SELECT channel_idx, channel_name, channel_type, channel_key_hex, last_updated
                 FROM channels
                 ORDER BY channel_idx
             ''')
-            
+
             rows = cursor.fetchall()
             channels = []
+            existing_names = set()
+            
             for row in rows:
+                name = row['channel_name']
                 channels.append({
                     'channel_idx': row['channel_idx'],
                     'index': row['channel_idx'],  # Alias for compatibility
-                    'name': row['channel_name'],
-                    'channel_name': row['channel_name'],  # Alias for compatibility
+                    'name': name,
+                    'channel_name': name,  # Alias for compatibility
                     'type': row['channel_type'] or 'hashtag',
                     'key_hex': row['channel_key_hex'],
                     'last_updated': row['last_updated']
                 })
-            
+                # Track names for deduplication (normalize to lowercase with #)
+                normalized = name.lower() if name.startswith('#') else f'#{name.lower()}'
+                existing_names.add(normalized)
+
+            # Add additional decode-only hashtag channels from config
+            additional_channels = self._get_additional_decode_channels()
+            for channel_name in additional_channels:
+                # Normalize name
+                normalized = channel_name.lower() if channel_name.startswith('#') else f'#{channel_name.lower()}'
+                if normalized not in existing_names:
+                    channels.append({
+                        'channel_idx': None,  # Not a real radio channel
+                        'index': None,
+                        'name': normalized,
+                        'channel_name': normalized,
+                        'type': 'hashtag',
+                        'key_hex': None,  # Key will be derived client-side
+                        'last_updated': None,
+                        'decode_only': True  # Flag to indicate this is decode-only
+                    })
+                    existing_names.add(normalized)
+
             return channels
         except Exception as e:
             self.logger.error(f"Error getting channels: {e}")
@@ -2967,6 +2996,40 @@ class BotDataViewer:
         finally:
             if conn:
                 conn.close()
+    
+    def _get_additional_decode_channels(self):
+        """Get additional hashtag channels to decode from config"""
+        channels = set()  # Use set for automatic deduplication
+        
+        try:
+            # 1. Get channels from decode_hashtag_channels in [Web_Viewer]
+            if self.config and self.config.has_option('Web_Viewer', 'decode_hashtag_channels'):
+                channels_str = self.config.get('Web_Viewer', 'decode_hashtag_channels', fallback='')
+                if channels_str:
+                    for c in channels_str.split(','):
+                        c = c.strip().lower()
+                        if c:
+                            # Remove # prefix if present for normalization
+                            if c.startswith('#'):
+                                c = c[1:]
+                            channels.add(c)
+            
+            # 2. Import channels from [Channels_List] section
+            if self.config and self.config.has_section('Channels_List'):
+                for key in self.config.options('Channels_List'):
+                    # Handle categorized channels like "sports.sounders" -> "sounders"
+                    if '.' in key:
+                        channel_name = key.split('.')[-1]  # Get part after last dot
+                    else:
+                        channel_name = key
+                    
+                    channel_name = channel_name.strip().lower()
+                    if channel_name:
+                        channels.add(channel_name)
+        except Exception as e:
+            self.logger.error(f"Error reading decode channels config: {e}")
+        
+        return list(channels)
     
     def _get_channel_number(self, channel_name):
         """Get channel number from channel name"""

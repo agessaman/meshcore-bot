@@ -332,3 +332,4 @@ This project is licensed under the MIT License.
 - [MeshCore Project](https://github.com/meshcore-dev/MeshCore) for the mesh networking protocol
 - Some commands adapted from MeshingAround bot by K7MHI Kelly Keeton 2024
 - Packet capture service based on [meshcore-packet-capture](https://github.com/agessaman/meshcore-packet-capture) by agessaman
+- [meshcore-decoder](https://github.com/michaelhart/meshcore-decoder) by Michael Hart for client-side packet decoding and decryption in the web viewer

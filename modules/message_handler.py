@@ -668,6 +668,10 @@ class MessageHandler:
                             if (hasattr(self.bot, 'web_viewer_integration') and 
                                 self.bot.web_viewer_integration and 
                                 self.bot.web_viewer_integration.bot_integration):
+                                # Use extracted_payload which is the full MeshCore packet
+                                # (header + path_len + path + payload, without RF wrapper)
+                                decoded_packet['raw_packet_hex'] = extracted_payload if extracted_payload else raw_hex
+                                decoded_packet['packet_hash'] = packet_hash
                                 self.bot.web_viewer_integration.bot_integration.capture_full_packet_data(decoded_packet)
                             
                             # Process ADVERT packets for contact tracking (regardless of path length)

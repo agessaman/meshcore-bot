@@ -262,7 +262,7 @@ ping = "Pong!"
 pong = "Ping!"
 help = "Bot Help: test (or t), ping, help, hello, cmd, advert, @string, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats | More: 'help <command>'"
 
-Override 'cmd' command output
+# Override 'cmd' command output
 # cmd = "Available commands: test (or t), ping, help, hello, cmd, advert, @string, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats"
 
 [Channels]
@@ -805,6 +805,19 @@ auto_start = false
 # Database path for web viewer data
 # Default: bot_data.db
 db_path = bot_data.db
+
+# Additional hashtag channels to decode in the packet stream
+# The web viewer can decrypt GroupText messages from hashtag channels
+# without adding them to the radio. Enter channel names (with or without #)
+# as a comma-separated list. The Public channel is always included.
+#
+# Example: #CQ,#ARES,#EmComm
+# This will allow decryption of messages on #CQ, #ARES, and #EmComm channels
+# in addition to any channels configured on your radio.
+#
+# Note: Only hashtag channels work here - custom channels with private keys
+# must be added to the radio itself.
+decode_hashtag_channels = 
 
 ####################################################################################################
 #                                                                                                  #

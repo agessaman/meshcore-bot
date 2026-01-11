@@ -2,6 +2,354 @@
 
 {% block title %}Real-time Monitoring - MeshCore Bot Data Viewer{% endblock %}
 
+{% block extra_css %}
+<style>
+    .status-indicator {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 8px;
+    }
+    .status-connected { background-color: #28a745; }
+    .status-disconnected { background-color: #dc3545; }
+    .status-warning { background-color: #ffc107; }
+    
+    .stream-container {
+        height: calc(100vh - 300px);
+        min-height: 400px;
+        overflow-y: auto;
+        background-color: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 0.375rem;
+        padding: 0.5rem;
+    }
+    
+    .stream-entry {
+        background-color: var(--card-bg);
+        transition: all 0.3s ease;
+        border-left: 3px solid #6c757d;
+        color: var(--text-color);
+    }
+    
+    .stream-entry:hover {
+        box-shadow: 0 2px 8px var(--shadow-color);
+        transform: translateY(-1px);
+    }
+    
+    .stream-entry:first-child {
+        box-shadow: 0 2px 8px rgba(40, 167, 69, 0.2);
+    }
+    
+    /* Packet type color-coding */
+    .packet-advert { border-left-color: #fd7e14; }      /* Orange for Adverts */
+    .packet-grouptext { border-left-color: #0dcaf0; }   /* Cyan for GroupText */
+    .packet-txt { border-left-color: #198754; }         /* Green for direct Text */
+    .packet-ack { border-left-color: #6c757d; }         /* Gray for ACK */
+    .packet-ping { border-left-color: #ffc107; }        /* Yellow for Ping */
+    .packet-pong { border-left-color: #ffc107; }        /* Yellow for Pong */
+    .packet-req { border-left-color: #0d6efd; }         /* Blue for Request */
+    .packet-resp { border-left-color: #0d6efd; }        /* Blue for Response */
+    .packet-trace { border-left-color: #6f42c1; }       /* Purple for Trace */
+    .packet-cmd { border-left-color: #d63384; }         /* Pink for Command */
+    .packet-unknown { border-left-color: #6c757d; }     /* Gray for Unknown */
+    
+    /* Clickable packet entries */
+    .packet-clickable {
+        cursor: pointer;
+    }
+    
+    .packet-clickable:hover {
+        background-color: var(--bg-tertiary);
+        border-left-color: #17a2b8;
+    }
+    
+    .click-hint {
+        margin-left: 8px;
+        color: var(--text-muted);
+        font-size: 0.8em;
+    }
+    
+    .packet-clickable:hover .click-hint {
+        color: #17a2b8;
+    }
+    
+    .badge {
+        font-size: 0.75em;
+    }
+    
+    .bg-purple {
+        background-color: #6f42c1 !important;
+        color: #fff;
+    }
+    
+    .text-warning {
+        color: #fd7e14 !important;
+    }
+    
+    .conversation-entry {
+        border-left: 3px solid #007bff;
+        padding-left: 10px;
+        margin-left: 5px;
+    }
+    
+    .user-message {
+        background-color: #e3f2fd;
+        border: 1px solid #bbdefb;
+        box-shadow: 0 1px 3px var(--shadow-color);
+        color: var(--text-color);
+    }
+
+    [data-theme="dark"] .user-message {
+        background-color: #1a237e;
+        border-color: #283593;
+        color: #e3f2fd;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    }
+    
+    .bot-message-success {
+        background-color: #e8f5e8;
+        border: 1px solid #c8e6c9;
+        box-shadow: 0 1px 3px var(--shadow-color);
+        color: var(--text-color);
+    }
+
+    [data-theme="dark"] .bot-message-success {
+        background-color: #1b5e20;
+        border-color: #2e7d32;
+        color: #c8e6c9;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    }
+
+    .bot-message-danger {
+        background-color: #ffebee;
+        border: 1px solid #ffcdd2;
+        box-shadow: 0 1px 3px var(--shadow-color);
+        color: var(--text-color);
+    }
+
+    [data-theme="dark"] .bot-message-danger {
+        background-color: #4a148c;
+        border-color: #6a1b9a;
+        color: #f8bbd0;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    }
+    
+    .response-text {
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+    
+    /* Packet Detail Modal Styles */
+    .packet-detail-body {
+        background-color: #1a1d21;
+        color: #e9ecef;
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+    
+    #packetDetailModal .modal-content {
+        background-color: #1a1d21;
+        border: 1px solid #343a40;
+    }
+    
+    #packetDetailModal .modal-header {
+        background-color: #212529;
+        border-bottom: 1px solid #343a40;
+        color: #e9ecef;
+    }
+    
+    #packetDetailModal .modal-footer {
+        background-color: #212529;
+        border-top: 1px solid #343a40;
+    }
+    
+    .packet-info-item {
+        margin-bottom: 0.5rem;
+    }
+    
+    .packet-info-label {
+        color: #adb5bd;
+        margin-right: 0.5rem;
+    }
+    
+    .packet-hash {
+        color: #ffc107;
+        font-size: 1.1em;
+    }
+    
+    .section-title {
+        color: #17a2b8;
+        border-bottom: 1px solid #343a40;
+        padding-bottom: 0.5rem;
+        margin-bottom: 1rem;
+    }
+    
+    /* Hex Breakdown */
+    .hex-breakdown-container {
+        background-color: #212529;
+        border-radius: 0.375rem;
+        padding: 1rem;
+    }
+    
+    .hex-breakdown {
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        font-size: 0.85rem;
+        line-height: 1.8;
+        word-break: break-all;
+        background-color: #2d3238;
+        padding: 1rem;
+        border-radius: 0.25rem;
+        border-left: 4px solid #ffc107;
+    }
+    
+    /* Hex segment colors - high contrast for dark mode */
+    .hex-header { color: #000; background-color: #ffc107; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
+    .hex-pathlen { color: #000; background-color: #17a2b8; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
+    .hex-path { color: #fff; background-color: #28a745; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
+    .hex-payload { color: #fff; background-color: #0d6efd; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
+    .hex-transport { color: #000; background-color: #fd7e14; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
+    .hex-unknown { color: #adb5bd; }
+    
+    /* GroupText hex colors - high contrast for dark mode */
+    .hex-channel-hash { color: #fff; background-color: #dc3545; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
+    .hex-cipher-mac { color: #000; background-color: #ffc107; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
+    .hex-ciphertext { color: #000; background-color: #17a2b8; padding: 2px 4px; border-radius: 2px; font-weight: 600; }
+    
+    /* Segment Cards */
+    .segment-card {
+        background-color: #212529;
+        border: 1px solid #343a40;
+        border-radius: 0.375rem;
+        padding: 1rem;
+        height: 100%;
+    }
+    
+    .segment-title {
+        font-size: 0.9rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    .segment-bytes {
+        font-size: 0.75rem;
+        color: #6c757d;
+        margin-bottom: 0.5rem;
+    }
+    
+    .segment-value {
+        display: block;
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        font-size: 0.85rem;
+        background-color: #2d3238;
+        padding: 0.5rem;
+        border-radius: 0.25rem;
+        word-break: break-all;
+        color: #e9ecef;
+    }
+    
+    .segment-description {
+        font-size: 0.8rem;
+        color: #adb5bd;
+        margin-top: 0.5rem;
+        margin-bottom: 0;
+    }
+    
+    .text-truncate-multi {
+        max-height: 4.5em;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    /* Header bits table */
+    .header-bits-table {
+        font-size: 0.8rem;
+        margin-bottom: 0;
+    }
+    
+    .header-bits-table th {
+        color: #adb5bd;
+        font-weight: 500;
+        border-color: #343a40 !important;
+    }
+    
+    .header-bits-table td {
+        border-color: #343a40 !important;
+        color: #e9ecef;
+    }
+    
+    /* Decrypted message card */
+    .decrypted-card {
+        background-color: rgba(40, 167, 69, 0.1);
+        border-color: #28a745;
+    }
+    
+    .decrypted-field {
+        margin-bottom: 0.25rem;
+    }
+    
+    .decrypted-label {
+        color: #adb5bd;
+        font-size: 0.85rem;
+    }
+    
+    .decrypted-value {
+        color: #e9ecef;
+        font-weight: 500;
+    }
+    
+    .message-content {
+        background-color: #2d3238;
+        padding: 0.75rem;
+        border-radius: 0.25rem;
+        font-family: inherit;
+        white-space: pre-wrap;
+        word-break: break-word;
+        margin-top: 0.5rem;
+    }
+    
+    /* GroupText section */
+    #grouptext-breakdown {
+        display: none;
+        background-color: #212529;
+        border: 1px solid #343a40;
+        border-radius: 0.375rem;
+        padding: 1rem;
+        margin-top: 1rem;
+    }
+    
+    #grouptext-breakdown.visible {
+        display: block !important;
+    }
+    
+    /* Advert section */
+    #advert-breakdown {
+        display: none;
+        background-color: #212529;
+        border: 1px solid #343a40;
+        border-radius: 0.375rem;
+        padding: 1rem;
+        margin-top: 1rem;
+    }
+    
+    #advert-breakdown.show-section {
+        display: block !important;
+    }
+    
+    /* Light mode overrides for modal (keep modal dark themed) */
+    [data-theme="light"] .packet-detail-body,
+    [data-theme="light"] #packetDetailModal .modal-content,
+    [data-theme="light"] #packetDetailModal .modal-header,
+    [data-theme="light"] #packetDetailModal .modal-footer {
+        background-color: #1a1d21;
+        color: #e9ecef;
+    }
+    
+    [data-theme="light"] #packetDetailModal .btn-close {
+        filter: invert(1);
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="row">
     <div class="col-12">
@@ -38,7 +386,7 @@
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h6><i class="fas fa-route"></i> Packet Stream</h6>
                 <div>
-                    <span class="badge bg-success" id="packet-status">Connected</span>
+                    <span class="badge bg-success" id="packet-status">Active</span>
                     <button class="btn btn-sm btn-outline-secondary ms-2" onclick="clearPackets()">Clear</button>
                 </div>
             </div>
@@ -52,16 +400,389 @@
         </div>
     </div>
 </div>
+
+<!-- Packet Detail Modal -->
+<div class="modal fade" id="packetDetailModal" tabindex="-1" aria-labelledby="packetDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="packetDetailModalLabel">
+                    <i class="fas fa-microchip"></i> Packet Byte Breakdown
+                    <span id="packet-total-bytes" class="badge bg-secondary ms-2"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body packet-detail-body">
+                <!-- Packet Header Info -->
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="packet-info-item">
+                            <span class="packet-info-label">Packet Hash:</span>
+                            <code id="detail-packet-hash" class="packet-hash"></code>
+                        </div>
+                        <div class="packet-info-item">
+                            <span class="packet-info-label">Type:</span>
+                            <span id="detail-payload-type"></span>
+                        </div>
+                        <div class="packet-info-item">
+                            <span class="packet-info-label">Heard at:</span>
+                            <span id="detail-timestamp"></span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="packet-info-item">
+                            <span class="packet-info-label">Route:</span>
+                            <span id="detail-route-type"></span>
+                        </div>
+                        <div class="packet-info-item">
+                            <span class="packet-info-label">Path:</span>
+                            <span id="detail-path"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Full Hex Breakdown -->
+                <div class="hex-breakdown-container mb-4">
+                    <h6 class="section-title">Raw Packet Data</h6>
+                    <div id="hex-breakdown" class="hex-breakdown"></div>
+                </div>
+
+                <!-- Header Analysis -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="segment-card">
+                            <h6 class="segment-title text-warning">Header</h6>
+                            <div class="segment-bytes" id="header-bytes">Bytes 0-0</div>
+                            <code id="header-value" class="segment-value"></code>
+                            <table class="table table-sm table-dark header-bits-table mt-2">
+                                <thead>
+                                    <tr>
+                                        <th>BITS</th>
+                                        <th>FIELD</th>
+                                        <th>VALUE</th>
+                                        <th>BINARY</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="header-bits-body">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="segment-card">
+                            <h6 class="segment-title text-info">Path Length</h6>
+                            <div class="segment-bytes" id="pathlen-bytes">Bytes 1-1</div>
+                            <code id="pathlen-value" class="segment-value"></code>
+                            <p id="pathlen-description" class="segment-description"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Path and Payload -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="segment-card">
+                            <h6 class="segment-title text-success">Path Data</h6>
+                            <div class="segment-bytes" id="path-bytes">Bytes 2-?</div>
+                            <code id="path-value" class="segment-value"></code>
+                            <p class="segment-description">Historical route taken (bytes are added as packet floods through network)</p>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="segment-card">
+                            <h6 class="segment-title text-primary">Payload</h6>
+                            <div class="segment-bytes" id="payload-bytes">Bytes ?-?</div>
+                            <code id="payload-value" class="segment-value text-truncate-multi"></code>
+                            <p id="payload-description" class="segment-description"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- GroupText Payload Breakdown (shown only for GroupText packets) -->
+                <div id="grouptext-breakdown" class="grouptext-section">
+                    <h6 class="section-title">GroupText Payload Byte Breakdown</h6>
+                    <div id="grouptext-hex" class="hex-breakdown mb-3"></div>
+                    
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="segment-card">
+                                <h6 class="segment-title text-danger">Channel Hash</h6>
+                                <div class="segment-bytes">Bytes 0-0</div>
+                                <code id="channel-hash-value" class="segment-value"></code>
+                                <p class="segment-description">First byte of SHA256 of channel's shared key</p>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="segment-card">
+                                <h6 class="segment-title text-warning">Cipher MAC</h6>
+                                <div class="segment-bytes">Bytes 1-2</div>
+                                <code id="cipher-mac-value" class="segment-value"></code>
+                                <p class="segment-description">MAC for encrypted data</p>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="segment-card">
+                                <h6 class="segment-title text-info">Ciphertext</h6>
+                                <div class="segment-bytes" id="ciphertext-bytes">Bytes 3-?</div>
+                                <code id="ciphertext-value" class="segment-value text-truncate-multi"></code>
+                                <p class="segment-description">Encrypted message content (timestamp + flags + message)</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Decrypted Message (if available) -->
+                    <div id="decrypted-section" class="mt-3" style="display: none;">
+                        <div class="segment-card decrypted-card">
+                            <h6 class="segment-title text-success"><i class="fas fa-unlock"></i> Decrypted Message</h6>
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <div class="decrypted-field">
+                                        <span class="decrypted-label">Sender:</span>
+                                        <span id="decrypted-sender" class="decrypted-value"></span>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="decrypted-field">
+                                        <span class="decrypted-label">Timestamp:</span>
+                                        <span id="decrypted-timestamp" class="decrypted-value"></span>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="decrypted-field">
+                                        <span class="decrypted-label">Channel:</span>
+                                        <span id="decrypted-channel" class="decrypted-value"></span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="decrypted-message mt-2">
+                                <span class="decrypted-label">Message:</span>
+                                <div id="decrypted-message" class="message-content"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Advert Payload Breakdown (shown only for Advert packets) -->
+                <div id="advert-breakdown">
+                    <h6 class="section-title">Advertisement Payload Breakdown</h6>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="segment-card">
+                                <h6 class="segment-title text-info">Public Key</h6>
+                                <code id="advert-pubkey" class="segment-value text-truncate-multi"></code>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="segment-card">
+                                <h6 class="segment-title text-success">Node Info</h6>
+                                <div id="advert-node-info"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Decoder Error -->
+                <div id="decoder-error" class="alert alert-warning" style="display: none;">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span id="decoder-error-message"></span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-outline-primary" onclick="copyRawPacket()">
+                    <i class="fas fa-copy"></i> Copy Raw Hex
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
-<script>
+<script type="module">
+    // Import meshcore-decoder for client-side packet decoding
+    import { decodePacket, MeshCoreKeyStore } from '/static/js/meshcore-browser.mjs';
+    
+    // Make decoder available globally for use in functions
+    window.meshCoreDecoder = { decodePacket, MeshCoreKeyStore };
+    
     // Initialize Socket.IO connection
     const socket = io();
     
     // Connection status
     let commandConnected = false;
     let packetConnected = false;
+    
+    // Storage for packet data (for click-to-detail feature)
+    const packetStore = new Map();
+    window.packetStore = packetStore; // Make accessible globally
+    let packetCounter = 0;
+    
+    // Public channel secret (well-known, publicly documented)
+    const PUBLIC_CHANNEL_SECRET = '8b3387e9c5cdea6ac9e5edbaa115cd72';
+    
+    // Channel secrets storage (Public + derived hashtag keys)
+    let channelSecrets = [PUBLIC_CHANNEL_SECRET];
+    
+    // Channel hash to name mapping (for displaying friendly channel names)
+    // Maps hash -> array of {name, secret} since multiple channels can share a hash
+    const channelHashMap = new Map();
+    window.channelHashMap = channelHashMap;
+    
+    // MeshCore decoder key store
+    let decoderKeyStore = null;
+    
+    // Current packet being viewed in modal
+    let currentPacketHex = null;
+    window.currentPacketHex = null; // Make accessible globally
+    
+    // Identify which channel a message belongs to by trying decryption with each candidate key
+    async function identifyChannelByDecryption(channelEntries, fullPacketHex) {
+        if (!window.meshCoreDecoder || !channelEntries || channelEntries.length === 0) {
+            return channelEntries?.map(e => e.name).join(' or ') || 'Unknown';
+        }
+        
+        // Try decryption with each candidate key individually
+        for (const entry of channelEntries) {
+            try {
+                // Create a key store with just this one secret
+                const testKeyStore = new MeshCoreKeyStore({
+                    channelSecrets: [entry.secret]
+                });
+                
+                // Try to decode the full packet with just this key
+                const testResult = window.meshCoreDecoder.decodePacket(fullPacketHex, { keyStore: testKeyStore });
+                
+                // If decryption succeeded (has decrypted content), this is the right key
+                if (testResult?.payload?.decoded?.decrypted) {
+                    return entry.name;
+                }
+            } catch (e) {
+                // This key didn't work, try next
+                continue;
+            }
+        }
+        
+        // Couldn't determine - show all possibilities
+        return channelEntries.map(e => e.name).join(' or ');
+    }
+    
+    // Compute channel hash from secret (first byte of SHA256 of the secret)
+    async function computeChannelHash(secretHex) {
+        try {
+            // Convert hex secret to bytes
+            const secretBytes = new Uint8Array(secretHex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+            
+            // Use js-sha256 library
+            if (typeof sha256 !== 'undefined') {
+                const hashHex = sha256(secretBytes);
+                return hashHex.slice(0, 2).toUpperCase(); // First byte as hex
+            }
+            
+            // Fallback to Web Crypto API
+            if (window.crypto && window.crypto.subtle) {
+                const hashBuffer = await crypto.subtle.digest('SHA-256', secretBytes);
+                const hashArray = new Uint8Array(hashBuffer);
+                return hashArray[0].toString(16).padStart(2, '0').toUpperCase();
+            }
+        } catch (e) {
+            console.warn('Could not compute channel hash:', e);
+        }
+        return null;
+    }
+    
+    // Initialize decoder with channel secrets
+    async function initializeKeyStore() {
+        try {
+            // Fetch configured channels
+            const response = await fetch('/api/channels');
+            const data = await response.json();
+
+            let radioChannels = 0;
+            let decodeOnlyChannels = 0;
+            
+            // Add Public channel to maps
+            const publicHash = await computeChannelHash(PUBLIC_CHANNEL_SECRET);
+            if (publicHash) {
+                channelHashMap.set(publicHash, [{ name: 'Public', secret: PUBLIC_CHANNEL_SECRET }]);
+            }
+
+            if (data.channels && data.channels.length > 0) {
+                // Derive keys for hashtag channels
+                for (const channel of data.channels) {
+                    if (channel.type === 'hashtag' && channel.name) {
+                        const derivedKey = await deriveHashtagKey(channel.name);
+                        if (derivedKey && !channelSecrets.includes(derivedKey)) {
+                            channelSecrets.push(derivedKey);
+                            
+                            // Store with # prefix for display
+                            const displayName = channel.name.startsWith('#') ? channel.name : `#${channel.name}`;
+                            
+                            // Add to hash map (handles collisions by storing array)
+                            const channelHash = await computeChannelHash(derivedKey);
+                            if (channelHash) {
+                                const existing = channelHashMap.get(channelHash) || [];
+                                existing.push({ name: displayName, secret: derivedKey });
+                                channelHashMap.set(channelHash, existing);
+                            }
+                            
+                            if (channel.decode_only) {
+                                decodeOnlyChannels++;
+                            } else {
+                                radioChannels++;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Create the decoder key store with all channel secrets
+            decoderKeyStore = new MeshCoreKeyStore({
+                channelSecrets: channelSecrets
+            });
+            window.decoderKeyStore = decoderKeyStore;
+
+            let logMsg = `Initialized MeshCore decoder with ${channelSecrets.length} channel keys (Public`;
+            if (radioChannels > 0) logMsg += ` + ${radioChannels} radio`;
+            if (decodeOnlyChannels > 0) logMsg += ` + ${decodeOnlyChannels} decode-only`;
+            logMsg += ')';
+            console.log(logMsg);
+        } catch (error) {
+            console.warn('Could not initialize decoder key store:', error);
+        }
+    }
+    
+    // Derive hashtag channel key: first 16 bytes of SHA256(lowercase_channel_name)
+    async function deriveHashtagKey(channelName) {
+        try {
+            // Ensure channel name starts with # and is lowercase
+            let name = channelName.toLowerCase();
+            if (!name.startsWith('#')) {
+                name = '#' + name;
+            }
+            
+            // Use js-sha256 library (works in non-HTTPS contexts)
+            if (typeof sha256 !== 'undefined') {
+                const hashHex = sha256(name);
+                return hashHex.slice(0, 32); // First 16 bytes as hex
+            }
+            
+            // Fallback to Web Crypto API (only works in secure contexts)
+            if (window.crypto && window.crypto.subtle) {
+                const encoder = new TextEncoder();
+                const data = encoder.encode(name);
+                const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+                const hashArray = new Uint8Array(hashBuffer);
+                return Array.from(hashArray.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join('');
+            }
+            
+            console.warn('No SHA-256 implementation available');
+            return null;
+        } catch (error) {
+            console.warn('Could not derive hashtag key:', error);
+            return null;
+        }
+    }
     
     // Load recent commands on page load
     function loadRecentCommands() {
@@ -99,6 +820,9 @@
         
         // Load recent commands when connected
         loadRecentCommands();
+        
+        // Initialize key store for decryption
+        initializeKeyStore();
         
         // Start ping interval to keep connection alive
         startPingInterval();
@@ -195,7 +919,7 @@
                     <small class="text-muted me-2">${data.channel || 'Unknown'}</small>
                     <small class="text-muted ms-auto">${data.timestamp ? new Date(data.timestamp * 1000).toLocaleTimeString() : new Date().toLocaleTimeString()}</small>
                 </div>
-                <div class="fw-bold">${data.user_input || `/${data.command || 'Unknown Command'}`}</div>
+                <div class="fw-bold">${escapeHtml(data.user_input || `/${data.command || 'Unknown Command'}`)}</div>
             </div>
         `;
         
@@ -212,7 +936,7 @@
                     <span class="badge bg-${responseClass} small me-2">${data.success ? 'Success' : 'Failed'}</span>
                     <small class="text-muted ms-auto">${data.timestamp ? new Date(data.timestamp * 1000).toLocaleTimeString() : new Date().toLocaleTimeString()}</small>
                 </div>
-                <div class="response-text">${responseText}</div>
+                <div class="response-text">${escapeHtml(responseText)}</div>
             </div>
         `;
         
@@ -237,6 +961,10 @@
             waiting.remove();
         }
         
+        // Store packet data for later access
+        const packetId = ++packetCounter;
+        packetStore.set(packetId, data);
+        
         // Format timestamp
         const timestamp = data.datetime ? new Date(data.datetime).toLocaleTimeString() : new Date().toLocaleTimeString();
         
@@ -255,7 +983,7 @@
         }
         
         // Format transport info (only show if present)
-        const transportInfo = data.has_transport && data.transport_codes ? 
+        const transportInfo = data.has_transport_codes && data.transport_codes ? 
             `<div class="small text-warning">Transport: ${data.transport_codes.hex || 'Unknown'}</div>` : '';
         
         // Format payload info (only show if present)
@@ -263,18 +991,72 @@
             `<div class="small text-muted">Payload: ${data.payload_bytes} bytes</div>` : '';
         
         // Format advert info (only show if this is an ADVERT packet with advert data)
-        const advertInfo = data.advert_name && data.payload_type === 'ADVERT' ? 
-            `<div class="small text-success"><strong>Advertised:</strong> ${data.advert_name} (${data.advert_mode || 'Unknown'})</div>` : '';
+        const advertInfo = data.advert_name && data.payload_type_name === 'ADVERT' ? 
+            `<div class="small text-success"><strong>Advertised:</strong> ${escapeHtml(data.advert_name)} (${data.advert_mode || 'Unknown'})</div>` : '';
         
+        // Check if raw packet hex is available for detailed view
+        const hasRawHex = !!(data.raw_packet_hex || data.payload_hex);
+        const clickableClass = hasRawHex ? 'packet-clickable' : '';
+        const clickHint = hasRawHex ? '<span class="click-hint"><i class="fas fa-search-plus"></i></span>' : '';
+        
+        // Determine packet type class for color-coding
+        const payloadTypeName = (data.payload_type_name || data.payload_type || '').toString().toUpperCase();
+        let packetTypeClass = 'packet-unknown';
+        if (payloadTypeName.includes('ADVERT')) {
+            packetTypeClass = 'packet-advert';
+        } else if (payloadTypeName.includes('GRP') || payloadTypeName.includes('GROUP')) {
+            packetTypeClass = 'packet-grouptext';
+        } else if (payloadTypeName === 'TXT' || payloadTypeName === 'TEXT') {
+            packetTypeClass = 'packet-txt';
+        } else if (payloadTypeName.includes('ACK')) {
+            packetTypeClass = 'packet-ack';
+        } else if (payloadTypeName.includes('PING')) {
+            packetTypeClass = 'packet-ping';
+        } else if (payloadTypeName.includes('PONG')) {
+            packetTypeClass = 'packet-pong';
+        } else if (payloadTypeName.includes('REQ')) {
+            packetTypeClass = 'packet-req';
+        } else if (payloadTypeName.includes('RESP') || payloadTypeName.includes('RSP')) {
+            packetTypeClass = 'packet-resp';
+        } else if (payloadTypeName.includes('TRACE')) {
+            packetTypeClass = 'packet-trace';
+        } else if (payloadTypeName.includes('CMD') || payloadTypeName.includes('COMMAND')) {
+            packetTypeClass = 'packet-cmd';
+        }
+
         const entry = document.createElement('div');
-        entry.className = 'stream-entry mb-2 p-3 border rounded';
+        entry.className = `stream-entry mb-2 p-3 border rounded ${clickableClass} ${packetTypeClass}`;
+        entry.dataset.packetId = packetId;
+        
+        if (hasRawHex) {
+            entry.onclick = () => showPacketDetail(packetId);
+            entry.title = 'Click to view packet details';
+        }
+        
+        // Badge color based on packet type
+        const badgeColorMap = {
+            'packet-advert': 'bg-warning text-dark',
+            'packet-grouptext': 'bg-info',
+            'packet-txt': 'bg-success',
+            'packet-ack': 'bg-secondary',
+            'packet-ping': 'bg-warning text-dark',
+            'packet-pong': 'bg-warning text-dark',
+            'packet-req': 'bg-primary',
+            'packet-resp': 'bg-primary',
+            'packet-trace': 'bg-purple',
+            'packet-cmd': 'bg-danger',
+            'packet-unknown': 'bg-secondary'
+        };
+        const badgeColor = badgeColorMap[packetTypeClass] || 'bg-secondary';
+        
         entry.innerHTML = `
             <div class="d-flex justify-content-between align-items-start">
                 <div class="flex-grow-1">
                     <div class="d-flex align-items-center mb-2">
-                        <div class="fw-bold text-info me-2">${data.route_type || 'Unknown Route'}</div>
-                        <span class="badge bg-secondary">${data.payload_type || 'Unknown'}</span>
+                        <div class="fw-bold text-info me-2">${data.route_type_name || data.route_type || 'Unknown Route'}</div>
+                        <span class="badge ${badgeColor}">${data.payload_type_name || data.payload_type || 'Unknown'}</span>
                         ${data.payload_version !== undefined ? `<span class="badge bg-light text-dark ms-1">v${data.payload_version}</span>` : ''}
+                        ${clickHint}
                     </div>
                     
                     <div class="small text-muted mb-1">
@@ -291,8 +1073,8 @@
                 <div class="text-end">
                     <div class="small text-muted mb-1">${timestamp}</div>
                     <div class="d-flex flex-column align-items-end">
-                        <span class="badge bg-info mb-1">${data.hops || 0} hops</span>
-                        ${data.has_transport ? '<span class="badge bg-warning small">Transport</span>' : ''}
+                        <span class="badge bg-info mb-1">${data.hops || data.path_len || 0} hops</span>
+                        ${data.has_transport_codes ? '<span class="badge bg-warning small">Transport</span>' : ''}
                     </div>
                 </div>
             </div>
@@ -300,12 +1082,591 @@
         
         container.insertBefore(entry, container.firstChild);
         
-        // Limit to 50 entries
+        // Limit to 50 entries and clean up old packet data
         while (container.children.length > 50) {
-            container.removeChild(container.lastChild);
+            const lastChild = container.lastChild;
+            if (lastChild && lastChild.dataset && lastChild.dataset.packetId) {
+                const oldPacketId = parseInt(lastChild.dataset.packetId);
+                if (oldPacketId) {
+                    packetStore.delete(oldPacketId);
+                }
+            }
+            container.removeChild(lastChild);
         }
         
         updateStatus('packet-status', 'Active', 'success');
+    }
+    
+    // Show packet detail modal
+    async function showPacketDetail(packetId) {
+        const data = packetStore.get(packetId);
+        if (!data) {
+            console.error('Packet data not found:', packetId);
+            return;
+        }
+        
+        // Get the raw packet hex
+        const rawHex = data.raw_packet_hex || data.payload_hex;
+        if (!rawHex) {
+            console.error('No raw packet hex available');
+            return;
+        }
+        
+        currentPacketHex = rawHex;
+        window.currentPacketHex = rawHex;
+        
+        // Try to decode with meshcore-decoder
+        let decoded = null;
+        let decodeError = null;
+        
+        if (window.meshCoreDecoder) {
+            try {
+                const options = window.decoderKeyStore ? { keyStore: window.decoderKeyStore } : {};
+                decoded = window.meshCoreDecoder.decodePacket(rawHex, options);
+            } catch (error) {
+                decodeError = error.message;
+                console.warn('Decoder error:', error);
+            }
+        } else {
+            decodeError = 'MeshCore decoder not loaded';
+        }
+        
+        // Build structure for hex breakdown
+        const structure = buildStructureFromDecodedData(decoded, data, rawHex);
+        
+        // Populate modal with decoded data (prefer decoder output, fallback to server data)
+        await populatePacketModal(data, rawHex, decoded, structure, decodeError);
+
+        // Show the modal
+        const modal = new bootstrap.Modal(document.getElementById('packetDetailModal'));
+        modal.show();
+    }
+    // Make showPacketDetail accessible globally
+    window.showPacketDetail = showPacketDetail;
+    
+    // Build packet structure from decoded data
+    function buildStructureFromDecodedData(decoded, serverData, rawHex) {
+        const segments = [];
+        const totalBytes = rawHex.length / 2;
+        
+        // Check for transport codes
+        const hasTransport = decoded?.hasTransport ?? serverData.has_transport_codes ?? false;
+        let offset = 0;
+        
+        if (hasTransport) {
+            segments.push({
+                name: 'Transport',
+                startByte: 0,
+                endByte: 3,
+                value: rawHex.slice(0, 8).toUpperCase(),
+                description: 'Transport codes'
+            });
+            offset = 4;
+        }
+        
+        // Header byte
+        segments.push({
+            name: 'Header',
+            startByte: offset,
+            endByte: offset,
+            value: '0x' + rawHex.slice(offset * 2, offset * 2 + 2).toUpperCase(),
+            description: 'Route type, payload type, version'
+        });
+        
+        // Path length byte
+        const pathLen = decoded?.pathLength ?? serverData.path_len ?? 0;
+        segments.push({
+            name: 'Path Length',
+            startByte: offset + 1,
+            endByte: offset + 1,
+            value: '0x' + rawHex.slice((offset + 1) * 2, (offset + 1) * 2 + 2).toUpperCase(),
+            description: `${pathLen} bytes of path data`
+        });
+        
+        // Path data (if present)
+        if (pathLen > 0) {
+            segments.push({
+                name: 'Path',
+                startByte: offset + 2,
+                endByte: offset + 1 + pathLen,
+                value: rawHex.slice((offset + 2) * 2, (offset + 2 + pathLen) * 2).toUpperCase(),
+                description: 'Route taken through mesh'
+            });
+        }
+        
+        // Payload
+        const payloadStart = offset + 2 + pathLen;
+        if (payloadStart < totalBytes) {
+            const payloadTypeName = decoded?.payloadType !== undefined 
+                ? getPayloadTypeName(decoded.payloadType) 
+                : (serverData.payload_type_name || 'Unknown');
+            segments.push({
+                name: 'Payload',
+                startByte: payloadStart,
+                endByte: totalBytes - 1,
+                value: rawHex.slice(payloadStart * 2).toUpperCase(),
+                description: `${payloadTypeName} payload data`
+            });
+        }
+        
+        return { segments };
+    }
+    
+    // Populate packet detail modal using decoded data (from meshcore-decoder or server)
+    async function populatePacketModal(serverData, rawHex, decoded, structure, decodeError) {
+        // Total bytes
+        document.getElementById('packet-total-bytes').textContent = `${rawHex.length / 2} bytes`;
+        
+        // Packet hash - prefer decoder, then server, then compute
+        let packetHash = decoded?.messageHash || serverData.packet_hash;
+        if (!packetHash && rawHex && typeof sha256 !== 'undefined') {
+            const fullHash = sha256(rawHex);
+            packetHash = fullHash.slice(0, 8).toUpperCase();
+        }
+        document.getElementById('detail-packet-hash').textContent = packetHash || 'N/A';
+        
+        // Timestamp
+        const timestamp = serverData.datetime 
+            ? new Date(serverData.datetime).toLocaleString()
+            : new Date().toLocaleString();
+        document.getElementById('detail-timestamp').textContent = timestamp;
+        
+        // Type and Route - prefer decoder output
+        const payloadTypeNum = decoded?.payloadType ?? serverData.payload_type;
+        const payloadType = decoded?.payloadType !== undefined 
+            ? getPayloadTypeName(decoded.payloadType)
+            : (serverData.payload_type_name || getPayloadTypeName(serverData.payload_type));
+        document.getElementById('detail-payload-type').textContent = payloadType;
+        
+        const routeType = decoded?.routeType !== undefined
+            ? getRouteTypeName(decoded.routeType)
+            : (serverData.route_type_name || getRouteTypeName(serverData.route_type));
+        document.getElementById('detail-route-type').textContent = routeType;
+        
+        // Path - prefer decoder output
+        let pathDisplay = 'Direct';
+        if (decoded?.path && decoded.path.length > 0) {
+            pathDisplay = decoded.path.join(' → ');
+        } else if (serverData.path && serverData.path.length > 0) {
+            pathDisplay = serverData.path.join(' → ');
+        }
+        document.getElementById('detail-path').textContent = pathDisplay;
+        
+        // Hex breakdown with color coding
+        renderHexBreakdown(rawHex, structure);
+        
+        // Header analysis
+        populateHeaderAnalysis(decoded, serverData);
+        
+        // Path and Payload
+        populatePathAndPayload(decoded, serverData, structure);
+        
+        // GroupText breakdown (if applicable)
+        const grouptextSection = document.getElementById('grouptext-breakdown');
+        const advertSection = document.getElementById('advert-breakdown');
+        
+        // Handle payload type as number or string (server may send number or string)
+        const ptNum = typeof payloadTypeNum === 'string' ? parseInt(payloadTypeNum, 10) : payloadTypeNum;
+        const isGroupText = ptNum === 5 || payloadTypeNum === 'GRP_TXT' || payloadType === 'GRP_TXT' || payloadType === 'GroupText';
+        const isAdvert = ptNum === 4 || payloadTypeNum === 'ADVERT' || payloadType === 'Advert' || payloadType === 'ADVERT';
+        
+        if (isGroupText) {
+            if (grouptextSection) grouptextSection.classList.add('visible');
+            if (advertSection) advertSection.classList.remove('show-section');
+            await populateGroupTextBreakdown(decoded, serverData, structure, rawHex);
+        } else if (isAdvert) {
+            if (grouptextSection) grouptextSection.classList.remove('visible');
+            if (advertSection) {
+                advertSection.classList.add('show-section');
+            }
+            populateAdvertBreakdown(decoded, serverData);
+        } else {
+            if (grouptextSection) grouptextSection.classList.remove('visible');
+            if (advertSection) advertSection.classList.remove('show-section');
+        }
+        
+        // Show decoder error if any
+        const errorDiv = document.getElementById('decoder-error');
+        if (decodeError) {
+            errorDiv.style.display = 'block';
+            document.getElementById('decoder-error-message').textContent = decodeError;
+        } else {
+            errorDiv.style.display = 'none';
+        }
+    }
+    
+    // Render color-coded hex breakdown
+    function renderHexBreakdown(rawHex, structure) {
+        const container = document.getElementById('hex-breakdown');
+        
+        if (!structure || !structure.segments) {
+            // Simple hex display without structure
+            container.innerHTML = formatHexSimple(rawHex);
+            return;
+        }
+        
+        // Build color-coded hex display from segments
+        let html = '';
+        const hexUpper = rawHex.toUpperCase();
+        const segments = structure.segments;
+        
+        // Color mapping for segments
+        const colorMap = {
+            'Header': 'hex-header',
+            'Path Length': 'hex-pathlen',
+            'Path': 'hex-path',
+            'Payload': 'hex-payload',
+            'Transport': 'hex-transport'
+        };
+        
+        let currentPos = 0;
+        for (const segment of segments) {
+            const startByte = segment.startByte;
+            const endByte = segment.endByte;
+            const startHex = startByte * 2;
+            const endHex = (endByte + 1) * 2;
+            
+            // Add any gap before this segment
+            if (currentPos < startHex) {
+                html += `<span class="hex-unknown">${hexUpper.slice(currentPos, startHex)}</span>`;
+            }
+            
+            // Add the segment with color
+            const colorClass = colorMap[segment.name] || 'hex-unknown';
+            const segmentHex = hexUpper.slice(startHex, endHex);
+            html += `<span class="${colorClass}" title="${segment.name}: ${segment.description || ''}">${formatHexSpaced(segmentHex)}</span>`;
+            
+            currentPos = endHex;
+        }
+        
+        // Add any remaining bytes
+        if (currentPos < hexUpper.length) {
+            html += `<span class="hex-unknown">${hexUpper.slice(currentPos)}</span>`;
+        }
+        
+        container.innerHTML = html;
+    }
+    
+    // Format hex with spaces every 2 characters
+    function formatHexSpaced(hex) {
+        return hex.match(/.{1,2}/g)?.join(' ') || hex;
+    }
+    
+    // Simple hex format
+    function formatHexSimple(hex) {
+        const upper = hex.toUpperCase();
+        return `<span class="hex-unknown">${formatHexSpaced(upper)}</span>`;
+    }
+    
+    // Populate header analysis using decoded data
+    function populateHeaderAnalysis(decoded, serverData) {
+        // Get route type, payload type, version - prefer decoder output
+        const routeType = decoded?.routeType ?? serverData.route_type;
+        const payloadType = decoded?.payloadType ?? serverData.payload_type;
+        const version = decoded?.payloadVersion ?? serverData.payload_version;
+        
+        // Compute header byte from components for display
+        let headerByte;
+        if (routeType !== undefined && payloadType !== undefined) {
+            headerByte = (routeType & 0x03) | ((payloadType & 0x0F) << 2) | (((version ?? 0) & 0x03) << 6);
+        } else if (serverData.header !== undefined) {
+            headerByte = typeof serverData.header === 'string' 
+                ? parseInt(serverData.header, 16) 
+                : serverData.header;
+        }
+        
+        const headerHex = headerByte !== undefined && !isNaN(headerByte)
+            ? `0x${headerByte.toString(16).padStart(2, '0').toUpperCase()}` 
+            : 'Unknown';
+        
+        document.getElementById('header-value').textContent = headerHex;
+        
+        // Parse header bits
+        const tbody = document.getElementById('header-bits-body');
+        
+        if (routeType !== undefined && payloadType !== undefined) {
+            const routeTypeName = getRouteTypeName(routeType);
+            const payloadTypeName = getPayloadTypeName(payloadType);
+            
+            tbody.innerHTML = `
+                <tr>
+                    <td>0-1</td>
+                    <td>Route Type</td>
+                    <td>${routeTypeName}</td>
+                    <td class="text-danger">${(routeType).toString(2).padStart(2, '0')}</td>
+                </tr>
+                <tr>
+                    <td>2-5</td>
+                    <td>Payload Type</td>
+                    <td>${payloadTypeName}</td>
+                    <td class="text-danger">${(payloadType).toString(2).padStart(4, '0')}</td>
+                </tr>
+                <tr>
+                    <td>6-7</td>
+                    <td>Version</td>
+                    <td>${version ?? '?'}</td>
+                    <td class="text-danger">${version !== null && version !== undefined ? version.toString(2).padStart(2, '0') : '??'}</td>
+                </tr>
+            `;
+        } else {
+            tbody.innerHTML = '<tr><td colspan="4">Unable to parse header</td></tr>';
+        }
+    }
+    
+    // Populate path and payload sections
+    function populatePathAndPayload(decoded, serverData, structure) {
+        // Path length - prefer decoder output
+        const pathLen = decoded?.pathLength ?? serverData.path_len ?? 0;
+        document.getElementById('pathlen-value').textContent = `0x${pathLen.toString(16).padStart(2, '0').toUpperCase()}`;
+        document.getElementById('pathlen-description').textContent = 
+            pathLen > 0 
+                ? `${pathLen} bytes showing route taken (increases as packet floods)`
+                : 'Direct message (no hops)';
+        
+        // Path data - prefer decoder output
+        let pathHex = '';
+        if (decoded?.path && decoded.path.length > 0) {
+            pathHex = decoded.path.join('');
+        } else if (serverData.path_hex) {
+            pathHex = serverData.path_hex;
+        } else if (serverData.path) {
+            pathHex = serverData.path.join('');
+        }
+        document.getElementById('path-value').textContent = pathHex.toUpperCase() || 'None';
+        
+        // Calculate byte positions
+        const hasTransport = decoded?.hasTransport ?? serverData.has_transport_codes ?? false;
+        const pathStart = hasTransport ? 6 : 2;
+        const pathEnd = pathStart + pathLen - 1;
+        document.getElementById('path-bytes').textContent = pathLen > 0 
+            ? `Bytes ${pathStart}-${pathEnd}`
+            : 'N/A';
+        
+        // Payload - prefer decoder output
+        const payloadHex = decoded?.payload?.raw || serverData.payload_hex || '';
+        const payloadStart = pathStart + pathLen;
+        const totalBytes = window.currentPacketHex ? window.currentPacketHex.length / 2 : 0;
+        document.getElementById('payload-bytes').textContent = `Bytes ${payloadStart}-${totalBytes - 1}`;
+        document.getElementById('payload-value').textContent = payloadHex.toUpperCase().slice(0, 100) + (payloadHex.length > 100 ? '...' : '');
+        
+        const payloadTypeName = decoded?.payloadType !== undefined 
+            ? getPayloadTypeName(decoded.payloadType)
+            : (serverData.payload_type_name || getPayloadTypeName(serverData.payload_type));
+        document.getElementById('payload-description').textContent = `${payloadTypeName} payload data`;
+    }
+    
+    // Populate GroupText breakdown using decoded data
+    async function populateGroupTextBreakdown(decoded, serverData, structure, fullPacketHex) {
+        const payloadHex = decoded?.payload?.raw || serverData.payload_hex || '';
+        const decodedPayload = decoded?.payload?.decoded;
+        
+        if (payloadHex.length < 6) {
+            document.getElementById('grouptext-hex').textContent = 'Payload too short for GroupText';
+            return;
+        }
+        
+        // Parse GroupText structure - prefer decoded data
+        // GroupText format: [channel_hash(1)] [cipher_mac(2)] [ciphertext(N)]
+        const channelHash = decodedPayload?.channelHash || payloadHex.slice(0, 2).toUpperCase();
+        const cipherMAC = decodedPayload?.cipherMAC || payloadHex.slice(2, 6).toUpperCase();
+        const ciphertext = decodedPayload?.ciphertext || payloadHex.slice(6).toUpperCase();
+        
+        // Channel hash - show name(s) if known
+        const hashKey = typeof channelHash === 'string' ? channelHash.toUpperCase() : channelHash.toString(16).padStart(2, '0').toUpperCase();
+        const channelEntries = channelHashMap.get(hashKey) || [];
+        let channelHashDisplay = `0x${hashKey}`;
+        if (channelEntries.length === 1) {
+            channelHashDisplay += ` (${channelEntries[0].name})`;
+        } else if (channelEntries.length > 1) {
+            // Multiple channels share this hash
+            const names = channelEntries.map(e => e.name).join(' or ');
+            channelHashDisplay += ` (${names})`;
+        }
+        document.getElementById('channel-hash-value').textContent = channelHashDisplay;
+        
+        // Cipher MAC
+        document.getElementById('cipher-mac-value').textContent = cipherMAC;
+        
+        // Ciphertext
+        document.getElementById('ciphertext-value').textContent = ciphertext.slice(0, 80) + (ciphertext.length > 80 ? '...' : '');
+        document.getElementById('ciphertext-bytes').textContent = `Bytes 3-${2 + (ciphertext.length / 2)}`;
+        
+        // Render GroupText hex with color coding
+        renderGroupTextHex(payloadHex);
+        
+        // Decrypted message - check if decoder decrypted it
+        const decryptedSection = document.getElementById('decrypted-section');
+        if (decodedPayload?.decrypted) {
+            decryptedSection.style.display = 'block';
+            const decrypted = decodedPayload.decrypted;
+            document.getElementById('decrypted-sender').textContent = decrypted.sender || decrypted.senderPubKeyPrefix || 'Unknown';
+            document.getElementById('decrypted-timestamp').textContent = decrypted.timestamp 
+                ? new Date(decrypted.timestamp * 1000).toLocaleString()
+                : 'Unknown';
+            // Look up channel name - prefer decoder's key info, then verify by trying decryption
+            const hashKey = typeof channelHash === 'string' ? channelHash.toUpperCase() : channelHash.toString(16).padStart(2, '0').toUpperCase();
+            let resolvedChannelName = decrypted.channelName;
+            
+            if (!resolvedChannelName) {
+                // Look up by hash, try decryption if multiple candidates
+                const channelEntries = channelHashMap.get(hashKey) || [];
+                if (channelEntries.length === 1) {
+                    resolvedChannelName = channelEntries[0].name;
+                } else if (channelEntries.length > 1 && fullPacketHex) {
+                    // Multiple candidates - try decrypting with each to find the right one
+                    resolvedChannelName = await identifyChannelByDecryption(channelEntries, fullPacketHex);
+                } else if (channelEntries.length > 1) {
+                    resolvedChannelName = channelEntries.map(e => e.name).join(' or ');
+                } else {
+                    resolvedChannelName = `Unknown (Hash: ${hashKey})`;
+                }
+            }
+            document.getElementById('decrypted-channel').textContent = resolvedChannelName;
+            document.getElementById('decrypted-message').textContent = decrypted.message || decrypted.text || '';
+        } else if (serverData.decrypted_message) {
+            // Fallback to server-provided decryption
+            decryptedSection.style.display = 'block';
+            document.getElementById('decrypted-sender').textContent = serverData.decrypted_sender || 'Unknown';
+            document.getElementById('decrypted-timestamp').textContent = serverData.decrypted_timestamp 
+                ? new Date(serverData.decrypted_timestamp * 1000).toLocaleString()
+                : 'Unknown';
+            document.getElementById('decrypted-channel').textContent = serverData.decrypted_channel || 'Unknown';
+            document.getElementById('decrypted-message').textContent = serverData.decrypted_message;
+        } else {
+            decryptedSection.style.display = 'none';
+        }
+    }
+    
+    // Render GroupText hex with color coding
+    function renderGroupTextHex(payloadHex) {
+        const container = document.getElementById('grouptext-hex');
+        const hex = payloadHex.toUpperCase();
+        
+        if (hex.length < 6) {
+            container.textContent = hex;
+            return;
+        }
+        
+        // Color-code: Channel Hash (0-1), MAC (2-5), Ciphertext (6+)
+        const channelHash = hex.slice(0, 2);
+        const mac = hex.slice(2, 6);
+        const ciphertext = hex.slice(6);
+        
+        container.innerHTML = `<span class="hex-channel-hash" title="Channel Hash">${channelHash}</span> ` +
+            `<span class="hex-cipher-mac" title="Cipher MAC">${formatHexSpaced(mac)}</span> ` +
+            `<span class="hex-ciphertext" title="Ciphertext">${formatHexSpaced(ciphertext)}</span>`;
+    }
+    
+    // Populate Advert breakdown using decoded data
+    function populateAdvertBreakdown(decoded, serverData) {
+        const decodedPayload = decoded?.payload?.decoded;
+        const payloadHex = decoded?.payload?.raw || serverData.payload_hex || '';
+        
+        // Public key - prefer decoded data
+        const pubkey = decodedPayload?.publicKey || 
+            (payloadHex.length >= 64 ? payloadHex.slice(0, 64).toUpperCase() : null) ||
+            serverData.advert_public_key || 
+            'Unknown';
+        document.getElementById('advert-pubkey').textContent = pubkey;
+        
+        // Node info - prefer decoded data
+        const nodeInfo = document.getElementById('advert-node-info');
+        const appData = decodedPayload?.appData;
+        
+        const name = appData?.name || serverData.advert_name || 'Unknown';
+        const role = appData?.deviceRole !== undefined 
+            ? getDeviceRoleName(appData.deviceRole)
+            : (serverData.advert_mode || 'Unknown');
+        
+        // Location
+        let locationHtml = '';
+        if (appData?.location) {
+            locationHtml = `<div><strong>Location:</strong> ${appData.location.latitude.toFixed(4)}, ${appData.location.longitude.toFixed(4)}</div>`;
+        } else if (serverData.advert_latitude !== undefined && serverData.advert_longitude !== undefined) {
+            locationHtml = `<div><strong>Location:</strong> ${serverData.advert_latitude.toFixed(4)}, ${serverData.advert_longitude.toFixed(4)}</div>`;
+        }
+        
+        // Timestamp from decoded advert or server
+        let timestampHtml = '';
+        if (decodedPayload?.timestamp) {
+            timestampHtml = `<div><strong>Advert Time:</strong> ${new Date(decodedPayload.timestamp * 1000).toLocaleString()}</div>`;
+        } else if (serverData.advert_timestamp) {
+            timestampHtml = `<div><strong>Advert Time:</strong> ${new Date(serverData.advert_timestamp * 1000).toLocaleString()}</div>`;
+        }
+        
+        nodeInfo.innerHTML = `
+            <div><strong>Name:</strong> ${escapeHtml(name)}</div>
+            <div><strong>Role:</strong> ${role}</div>
+            ${locationHtml}
+            ${timestampHtml}
+        `;
+    }
+    
+    // Helper: Get payload type name
+    function getPayloadTypeName(type) {
+        const names = {
+            0: 'Request',
+            1: 'Response',
+            2: 'PlainText',
+            3: 'Ack',
+            4: 'Advert',
+            5: 'GroupText',
+            6: 'GroupDatagram',
+            7: 'AnonRequest',
+            8: 'ReturnedPath',
+            9: 'Trace',
+            10: 'MultiPart',
+            15: 'Custom'
+        };
+        return names[type] || `Type${type}`;
+    }
+    
+    // Helper: Get route type name
+    function getRouteTypeName(type) {
+        const names = {
+            0: 'Direct',
+            1: 'Flood',
+            2: 'TransportFlood',
+            3: 'TransportDirect'
+        };
+        return names[type] || `Route${type}`;
+    }
+    
+    // Helper: Get device role name
+    function getDeviceRoleName(role) {
+        const names = {
+            0: 'Client',
+            1: 'Companion',
+            2: 'Repeater',
+            3: 'RoomServer'
+        };
+        return names[role] || `Role${role}`;
+    }
+    
+    // Helper: Escape HTML
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    // Copy raw packet hex to clipboard
+    function copyRawPacket() {
+        const hex = window.currentPacketHex || currentPacketHex;
+        if (hex) {
+            navigator.clipboard.writeText(hex).then(() => {
+                // Show brief feedback
+                const btn = document.querySelector('[onclick="copyRawPacket()"]');
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+                setTimeout(() => {
+                    btn.innerHTML = originalText;
+                }, 1500);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+            });
+        }
     }
     
     function clearCommands() {
@@ -322,107 +1683,13 @@
                 <i class="fas fa-hourglass-half"></i> Waiting for packet data...
             </div>
         `;
+        packetStore.clear();
+        packetCounter = 0;
     }
+    
+    // Export functions to global scope for onclick handlers
+    window.clearCommands = clearCommands;
+    window.clearPackets = clearPackets;
+    window.copyRawPacket = copyRawPacket;
 </script>
-
-<style>
-    .status-indicator {
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        display: inline-block;
-        margin-right: 8px;
-    }
-    .status-connected { background-color: #28a745; }
-    .status-disconnected { background-color: #dc3545; }
-    .status-warning { background-color: #ffc107; }
-    
-    .stream-container {
-        height: calc(100vh - 300px); /* Use full viewport height minus header/nav space */
-        min-height: 400px; /* Ensure minimum usable height */
-        overflow-y: auto;
-        background-color: var(--bg-secondary);
-        border: 1px solid var(--border-color);
-        border-radius: 0.375rem;
-        padding: 0.5rem;
-    }
-    
-    .stream-entry {
-        background-color: var(--card-bg);
-        transition: all 0.3s ease;
-        border-left: 3px solid #007bff;
-        color: var(--text-color);
-    }
-    
-    .stream-entry:hover {
-        box-shadow: 0 2px 8px var(--shadow-color);
-        transform: translateY(-1px);
-    }
-    
-    .stream-entry:first-child {
-        border-left: 4px solid #28a745;
-        box-shadow: 0 2px 8px rgba(40, 167, 69, 0.2);
-    }
-    
-    .badge {
-        font-size: 0.75em;
-    }
-    
-    .text-warning {
-        color: #fd7e14 !important;
-    }
-    
-    .conversation-entry {
-        border-left: 3px solid #007bff;
-        padding-left: 10px;
-        margin-left: 5px;
-    }
-    
-    .user-message {
-        background-color: #e3f2fd;
-        border: 1px solid #bbdefb;
-        box-shadow: 0 1px 3px var(--shadow-color);
-        color: var(--text-color);
-    }
-
-    [data-theme="dark"] .user-message {
-        background-color: #1a237e;
-        border-color: #283593;
-        color: #e3f2fd;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-    }
-    
-    .bot-message-success {
-        background-color: #e8f5e8;
-        border: 1px solid #c8e6c9;
-        box-shadow: 0 1px 3px var(--shadow-color);
-        color: var(--text-color);
-    }
-
-    [data-theme="dark"] .bot-message-success {
-        background-color: #1b5e20;
-        border-color: #2e7d32;
-        color: #c8e6c9;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-    }
-
-    .bot-message-danger {
-        background-color: #ffebee;
-        border: 1px solid #ffcdd2;
-        box-shadow: 0 1px 3px var(--shadow-color);
-        color: var(--text-color);
-    }
-
-    [data-theme="dark"] .bot-message-danger {
-        background-color: #4a148c;
-        border-color: #6a1b9a;
-        color: #f8bbd0;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-    }
-    
-    .response-text {
-        white-space: pre-wrap;
-        word-break: break-word;
-    }
-</style>
 {% endblock %}
