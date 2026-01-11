@@ -41,9 +41,17 @@ pip install -r requirements.txt
 ```
 
 3. Copy and configure the bot:
+
+**Full Configuration Option**: This config.ini example enables all bot commands and provides full configuration options.
 ```bash
 cp config.ini.example config.ini
 # Edit config.ini with your settings
+```
+
+**Minimal Configuration Option**: For users who only want core testing commands (ping, test, path, prefix, multitest), you can use the minimal configuration instead:
+```bash
+cp config.ini.minimal-example config.ini
+# Edit config.ini with your connection and bot settings
 ```
 
 4. Run the bot:

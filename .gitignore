@@ -121,6 +121,7 @@ Thumbs.db
 *.log
 logs/
 config.ini
+config.min.ini
 *.db
 *.db-wal
 *.db-shm
