@@ -35,47 +35,45 @@ def main():
         if sys.platform != 'win32':
             loop = asyncio.get_running_loop()
             shutdown_event = asyncio.Event()
+            bot_task = None
             
             def signal_handler():
                 """Signal handler for graceful shutdown"""
                 print("\nShutting down...")
                 shutdown_event.set()
             
-            # Register signal handlers
-            for sig in (signal.SIGTERM, signal.SIGINT):
-                loop.add_signal_handler(sig, signal_handler)
-            
-            # Start bot
-            bot_task = asyncio.create_task(bot.start())
-            
-            # Wait for shutdown or completion
-            done, pending = await asyncio.wait(
-                [bot_task, asyncio.create_task(shutdown_event.wait())],
-                return_when=asyncio.FIRST_COMPLETED
-            )
-            
-            # Cancel pending
-            for task in pending:
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
-            
-            # If shutdown triggered, stop gracefully
-            if shutdown_event.is_set():
-                bot_task.cancel()
-                try:
-                    await bot_task
-                except asyncio.CancelledError:
-                    pass
+            try:
+                # Register signal handlers
+                for sig in (signal.SIGTERM, signal.SIGINT):
+                    loop.add_signal_handler(sig, signal_handler)
+                
+                # Start bot
+                bot_task = asyncio.create_task(bot.start())
+                
+                # Wait for shutdown or completion
+                done, pending = await asyncio.wait(
+                    [bot_task, asyncio.create_task(shutdown_event.wait())],
+                    return_when=asyncio.FIRST_COMPLETED
+                )
+                
+                # Cancel pending tasks
+                for task in pending:
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+                
+                # If shutdown triggered, cancel bot task
+                if shutdown_event.is_set() and bot_task and not bot_task.done():
+                    bot_task.cancel()
+                    try:
+                        await bot_task
+                    except asyncio.CancelledError:
+                        pass
+            finally:
+                # Always ensure cleanup happens
                 await bot.stop()
-            else:
-                # Bot completed normally
-                try:
-                    await bot_task
-                finally:
-                    await bot.stop()
         else:
             # Windows: just run and catch KeyboardInterrupt
             try:
@@ -86,11 +84,11 @@ def main():
     try:
         asyncio.run(run_bot())
     except KeyboardInterrupt:
-        print("\nShutting down...")
-        asyncio.run(bot.stop())
+        # Cleanup already handled in run_bot's finally block
+        print("\nShutdown complete.")
     except Exception as e:
+        # Cleanup already handled in run_bot's finally block
         print(f"Error: {e}")
-        asyncio.run(bot.stop())
 
 
 if __name__ == "__main__":
