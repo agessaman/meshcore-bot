@@ -205,6 +205,24 @@ Keyword responses support these template variables:
 - `{timestamp}` - Message timestamp
 - `{path}` - Message routing path
 
+### Adding Newlines
+
+To add newlines in keyword responses, use `\\n` (double backslash + n):
+
+```ini
+[Keywords]
+test = "Line 1\\nLine 2\\nLine 3"
+```
+
+This will output:
+```
+Line 1
+Line 2
+Line 3
+```
+
+Other escape sequences: `\\t` (tab), `\\r` (carriage return), `\\\\` (literal backslash)
+
 Example:
 ```ini
 [Keywords]

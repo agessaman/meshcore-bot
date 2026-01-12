@@ -177,6 +177,27 @@ class CommandManager:
         self.bot.bot_tx_rate_limiter.record_tx()
         return True
     
+    def _decode_escape_sequences(self, text: str) -> str:
+        """Decode escape sequences in config strings.
+        
+        Processes common escape sequences like \\n (newline), \\t (tab), \\\\ (backslash).
+        This allows users to add newlines in keyword responses using \\n.
+        
+        Args:
+            text: The text string to process.
+            
+        Returns:
+            str: The text with escape sequences decoded.
+        """
+        # Replace escape sequences
+        # Order matters: \\ must be processed first to avoid double-processing
+        text = text.replace('\\\\', '\x00')  # Temporary placeholder for backslash
+        text = text.replace('\\n', '\n')     # Newline
+        text = text.replace('\\t', '\t')     # Tab
+        text = text.replace('\\r', '\r')     # Carriage return
+        text = text.replace('\x00', '\\')    # Restore backslash
+        return text
+    
     def load_keywords(self) -> Dict[str, str]:
         """Load keywords from config.
         
@@ -189,6 +210,8 @@ class CommandManager:
                 # Strip quotes from the response if present
                 if response.startswith('"') and response.endswith('"'):
                     response = response[1:-1]
+                # Decode escape sequences (e.g., \\n for newlines)
+                response = self._decode_escape_sequences(response)
                 keywords[keyword.lower()] = response
         return keywords
     
@@ -200,6 +223,8 @@ class CommandManager:
                 # Strip quotes from the response format if present
                 if response_format.startswith('"') and response_format.endswith('"'):
                     response_format = response_format[1:-1]
+                # Decode escape sequences (e.g., \\n for newlines)
+                response_format = self._decode_escape_sequences(response_format)
                 syntax_patterns[pattern] = response_format
         return syntax_patterns
     

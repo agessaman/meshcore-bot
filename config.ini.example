@@ -229,6 +229,15 @@ long_jokes = false
 # {path_distance} - Total distance between all hops in path with locations (e.g., "123.4km (3 segs, 1 no-loc)")
 # {firstlast_distance} - Distance between first and last repeater in path (e.g., "45.6km" or empty if locations missing)
 # {elapsed} - Message elapsed time
+#
+# To add newlines in responses, use \\n (double backslash + n):
+# Example: test = "Line 1\\nLine 2\\nLine 3"
+# This will output:
+# Line 1
+# Line 2
+# Line 3
+#
+# Other escape sequences: \\t (tab), \\r (carriage return), \\\\ (literal backslash)
 # 
 # Available placeholders (mesh network info - same as Scheduled_Messages):
 # Total counts (ever heard):
