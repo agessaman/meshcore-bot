@@ -131,7 +131,7 @@ class BotIntegration:
         except Exception as e:
             self.bot.logger.debug(f"Error storing packet data: {e}")
     
-    def capture_command(self, message, command_name, response, success):
+    def capture_command(self, message, command_name, response, success, command_id=None):
         """Capture command data and store in database for web viewer"""
         try:
             import sqlite3
@@ -143,6 +143,18 @@ class BotIntegration:
             channel = getattr(message, 'channel', 'Unknown')
             user_input = getattr(message, 'content', f'/{command_name}')
             
+            # Get repeat information if transmission tracker is available
+            repeat_count = 0
+            repeater_prefixes = []
+            repeater_counts = {}
+            if (hasattr(self.bot, 'transmission_tracker') and 
+                self.bot.transmission_tracker and 
+                command_id):
+                repeat_info = self.bot.transmission_tracker.get_repeat_info(command_id=command_id)
+                repeat_count = repeat_info.get('repeat_count', 0)
+                repeater_prefixes = repeat_info.get('repeater_prefixes', [])
+                repeater_counts = repeat_info.get('repeater_counts', {})
+            
             # Construct command data structure
             command_data = {
                 'user': user,
@@ -151,7 +163,11 @@ class BotIntegration:
                 'user_input': user_input,
                 'response': response,
                 'success': success,
-                'timestamp': time.time()
+                'timestamp': time.time(),
+                'repeat_count': repeat_count,
+                'repeater_prefixes': repeater_prefixes,
+                'repeater_counts': repeater_counts,  # Count per repeater prefix
+                'command_id': command_id  # Store command_id for later updates
             }
             
             # Convert non-serializable objects to strings

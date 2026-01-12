@@ -11,7 +11,7 @@ import configparser
 import logging
 import threading
 from datetime import datetime, timedelta, date
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, send_from_directory
 from flask_socketio import SocketIO, emit, join_room, leave_room, disconnect
 from pathlib import Path
 import os
@@ -286,6 +286,48 @@ class BotDataViewer:
         def radio():
             """Radio settings page"""
             return render_template('radio.html')
+        
+        # Favicon routes
+        @self.app.route('/apple-touch-icon.png')
+        def apple_touch_icon():
+            """Apple touch icon"""
+            return send_from_directory(
+                os.path.join(os.path.dirname(__file__), 'static', 'ico'),
+                'apple-touch-icon.png'
+            )
+        
+        @self.app.route('/favicon-32x32.png')
+        def favicon_32x32():
+            """32x32 favicon"""
+            return send_from_directory(
+                os.path.join(os.path.dirname(__file__), 'static', 'ico'),
+                'favicon-32x32.png'
+            )
+        
+        @self.app.route('/favicon-16x16.png')
+        def favicon_16x16():
+            """16x16 favicon"""
+            return send_from_directory(
+                os.path.join(os.path.dirname(__file__), 'static', 'ico'),
+                'favicon-16x16.png'
+            )
+        
+        @self.app.route('/site.webmanifest')
+        def site_webmanifest():
+            """Web manifest file"""
+            return send_from_directory(
+                os.path.join(os.path.dirname(__file__), 'static', 'ico'),
+                'site.webmanifest',
+                mimetype='application/manifest+json'
+            )
+        
+        @self.app.route('/favicon.ico')
+        def favicon():
+            """Default favicon"""
+            return send_from_directory(
+                os.path.join(os.path.dirname(__file__), 'static', 'ico'),
+                'favicon.ico'
+            )
         
         
         # API Routes

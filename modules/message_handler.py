@@ -643,6 +643,58 @@ class MessageHandler:
                                 payload_type_value = int(payload_type_value)
                             packet_hash = calculate_packet_hash(packet_hex_for_hash, payload_type_value)
                             
+                            # Check if this is a repeat of one of our transmissions
+                            if (hasattr(self.bot, 'transmission_tracker') and 
+                                self.bot.transmission_tracker and 
+                                packet_hash and packet_hash != "0000000000000000"):
+                                
+                                # Extract repeater prefixes from path - try multiple field names
+                                # decode_meshcore_packet returns 'path' not 'path_nodes'
+                                path_nodes = decoded_packet.get('path', [])
+                                # Also try 'path_nodes' field (from routing_info)
+                                if not path_nodes:
+                                    path_nodes = decoded_packet.get('path_nodes', [])
+                                
+                                path_hex = decoded_packet.get('path_hex', '')
+                                
+                                # If we don't have path_nodes but have path_hex, convert it
+                                if not path_nodes and path_hex and len(path_hex) >= 2:
+                                    path_nodes = [path_hex[i:i+2] for i in range(0, len(path_hex), 2)]
+                                
+                                path_string = ','.join(path_nodes) if path_nodes else None
+                                
+                                # Debug logging
+                                if path_nodes:
+                                    self.logger.debug(f"📡 Extracting prefixes from path_nodes: {path_nodes}, path_hex: {path_hex}, bot_prefix: {self.bot.transmission_tracker.bot_prefix}")
+                                
+                                # Try to match this packet hash to a transmission
+                                record = self.bot.transmission_tracker.match_packet_hash(
+                                    packet_hash, current_time
+                                )
+                                
+                                if record:
+                                    # This is one of our transmissions - check for repeats
+                                    # Extract repeater prefixes from the path
+                                    prefixes = self.bot.transmission_tracker.extract_repeater_prefixes_from_path(
+                                        path_string, path_nodes
+                                    )
+                                    
+                                    # Log for debugging
+                                    if prefixes:
+                                        self.logger.info(f"📡 Found {len(prefixes)} repeater prefix(es) in repeat: {', '.join(prefixes)}")
+                                    elif path_nodes or path_hex:
+                                        self.logger.debug(f"📡 Repeat detected but no repeater prefixes extracted (path_nodes: {path_nodes}, path_hex: {path_hex}, bot_prefix: {self.bot.transmission_tracker.bot_prefix})")
+                                    
+                                    # Record the repeat
+                                    for prefix in prefixes:
+                                        self.bot.transmission_tracker.record_repeat(packet_hash, prefix)
+                                    
+                                    # If no prefixes but we have a path, it might be a direct repeat
+                                    # (path contains our own node, so we filter it out)
+                                    if not prefixes and (path_nodes or path_hex):
+                                        # Still count as a repeat (heard by our radio)
+                                        self.bot.transmission_tracker.record_repeat(packet_hash, None)
+                            
                             routing_info = {
                                 'path_length': decoded_packet.get('path_len', 0),
                                 'path_hex': decoded_packet.get('path_hex', ''),
@@ -1873,11 +1925,22 @@ class MessageHandler:
                         # response is not None here, so we know a response will be sent
                         stats_command.record_command(message, keyword, True)
                 
-                # Send response
-                if message.is_dm:
-                    success = await self.bot.command_manager.send_dm(message.sender_id, response)
-                else:
-                    success = await self.bot.command_manager.send_channel_message(message.channel, response)
+                # Generate command_id for repeat tracking (before sending)
+                import time
+                command_id = f"keyword_{keyword}_{message.sender_id}_{int(time.time())}"
+                
+                # Send response (pass command_id so transmission record uses it directly)
+                try:
+                    if message.is_dm:
+                        success = await self.bot.command_manager.send_dm(message.sender_id, response, command_id)
+                    else:
+                        success = await self.bot.command_manager.send_channel_message(message.channel, response, command_id)
+                    
+                    if not success:
+                        self.logger.warning(f"Failed to send keyword response for '{keyword}' to {message.sender_id if message.is_dm else message.channel}")
+                except Exception as e:
+                    self.logger.error(f"Error sending keyword response for '{keyword}': {e}", exc_info=True)
+                    success = False
                 
                 # Capture keyword command data for web viewer
                 if (hasattr(self.bot, 'web_viewer_integration') and 
@@ -1885,7 +1948,7 @@ class MessageHandler:
                     self.bot.web_viewer_integration.bot_integration):
                     try:
                         self.bot.web_viewer_integration.bot_integration.capture_command(
-                            message, keyword, response, success
+                            message, keyword, response, success, command_id
                         )
                     except Exception as e:
                         self.logger.debug(f"Failed to capture keyword data for web viewer: {e}")

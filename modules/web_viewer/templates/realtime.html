@@ -986,9 +986,76 @@
             waiting.remove();
         }
         
+        // Check if we already have this command (by command_id) and update it instead
+        if (data.command_id) {
+            const existingEntry = container.querySelector(`[data-command-id="${data.command_id}"]`);
+            if (existingEntry) {
+                // Update existing entry with new repeat information
+                const botMessage = existingEntry.querySelector('.bot-message');
+                if (botMessage) {
+                    const responseText = data.response || 'No response';
+                    const responseClass = data.success ? 'success' : 'danger';
+                    const botMessageClass = data.success ? 'bot-message-success' : 'bot-message-danger';
+                    
+                    // Display repeat information if available
+                    const repeatCount = data.repeat_count || 0;
+                    const repeaterPrefixes = data.repeater_prefixes || [];
+                    const repeaterCounts = data.repeater_counts || {};
+                    let repeatInfo = '';
+                    if (repeatCount > 0) {
+                        let tooltipText = '';
+                        if (repeaterPrefixes.length > 0) {
+                            // Build detailed tooltip with counts per repeater
+                            const prefixDetails = repeaterPrefixes.map(prefix => {
+                                const count = repeaterCounts[prefix] || 1;
+                                return count > 1 ? `${prefix} (${count}x)` : prefix;
+                            }).join(', ');
+                            tooltipText = `Repeater prefixes: ${prefixDetails}`;
+                            if (repeatCount > repeaterPrefixes.length) {
+                                tooltipText += `\n\nTotal: ${repeatCount} repeats from ${repeaterPrefixes.length} unique repeater${repeaterPrefixes.length !== 1 ? 's' : ''}`;
+                            }
+                        } else {
+                            tooltipText = 'Heard by radio (no repeater prefixes identified)';
+                        }
+                        repeatInfo = `<div class="small text-info mt-1">
+                            <i class="fas fa-broadcast-tower"></i> Heard <span class="text-decoration-underline" style="cursor: help;" data-bs-toggle="tooltip" data-bs-placement="top" title="${escapeHtml(tooltipText)}">${repeatCount} repeat${repeatCount !== 1 ? 's' : ''}</span>
+                        </div>`;
+                    }
+                    
+                    botMessage.innerHTML = `
+                        <div class="d-flex align-items-center mb-1">
+                            <strong class="text-success me-2">🤖 Bot</strong>
+                            <span class="badge bg-${responseClass} small me-2">${data.success ? 'Success' : 'Failed'}</span>
+                            <small class="text-muted ms-auto">${data.timestamp ? new Date(data.timestamp * 1000).toLocaleTimeString() : new Date().toLocaleTimeString()}</small>
+                        </div>
+                        <div class="response-text">${escapeHtml(responseText)}</div>
+                        ${repeatInfo}
+                    `;
+                    
+                    // Initialize Bootstrap tooltips for repeat counts in updated entry
+                    if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+                        const tooltipElements = botMessage.querySelectorAll('[data-bs-toggle="tooltip"]');
+                        tooltipElements.forEach(el => {
+                            // Destroy existing tooltip if any
+                            const existingTooltip = bootstrap.Tooltip.getInstance(el);
+                            if (existingTooltip) {
+                                existingTooltip.dispose();
+                            }
+                            // Create new tooltip
+                            new bootstrap.Tooltip(el);
+                        });
+                    }
+                }
+                return; // Don't create a new entry
+            }
+        }
+        
         // Create conversation-style entry
         const entry = document.createElement('div');
         entry.className = 'conversation-entry mb-3';
+        if (data.command_id) {
+            entry.setAttribute('data-command-id', data.command_id);
+        }
         
         // User command message
         const userMessage = document.createElement('div');
@@ -1010,6 +1077,32 @@
         const responseText = data.response || 'No response';
         const responseClass = data.success ? 'success' : 'danger';
         const botMessageClass = data.success ? 'bot-message-success' : 'bot-message-danger';
+        
+        // Display repeat information if available
+        const repeatCount = data.repeat_count || 0;
+        const repeaterPrefixes = data.repeater_prefixes || [];
+        const repeaterCounts = data.repeater_counts || {};
+        let repeatInfo = '';
+        if (repeatCount > 0) {
+            let tooltipText = '';
+            if (repeaterPrefixes.length > 0) {
+                // Build detailed tooltip with counts per repeater
+                const prefixDetails = repeaterPrefixes.map(prefix => {
+                    const count = repeaterCounts[prefix] || 1;
+                    return count > 1 ? `${prefix} (${count}x)` : prefix;
+                }).join(', ');
+                tooltipText = `Repeater prefixes: ${prefixDetails}`;
+                if (repeatCount > repeaterPrefixes.length) {
+                    tooltipText += `\n\nTotal: ${repeatCount} repeats from ${repeaterPrefixes.length} unique repeater${repeaterPrefixes.length !== 1 ? 's' : ''}`;
+                }
+            } else {
+                tooltipText = 'Heard by radio (no repeater prefixes identified)';
+            }
+            repeatInfo = `<div class="small text-info mt-1">
+                <i class="fas fa-broadcast-tower"></i> Heard <span class="text-decoration-underline" style="cursor: help;" data-bs-toggle="tooltip" data-bs-placement="top" title="${escapeHtml(tooltipText)}">${repeatCount} repeat${repeatCount !== 1 ? 's' : ''}</span>
+            </div>`;
+        }
+        
         botMessage.innerHTML = `
             <div class="bot-message p-2 rounded ${botMessageClass}" style="max-width: 80%;">
                 <div class="d-flex align-items-center mb-1">
@@ -1018,12 +1111,27 @@
                     <small class="text-muted ms-auto">${data.timestamp ? new Date(data.timestamp * 1000).toLocaleTimeString() : new Date().toLocaleTimeString()}</small>
                 </div>
                 <div class="response-text">${escapeHtml(responseText)}</div>
+                ${repeatInfo}
             </div>
         `;
         
         entry.appendChild(userMessage);
         entry.appendChild(botMessage);
         container.insertBefore(entry, container.firstChild);
+        
+        // Initialize Bootstrap tooltips for repeat counts
+        if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+            const tooltipElements = entry.querySelectorAll('[data-bs-toggle="tooltip"]');
+            tooltipElements.forEach(el => {
+                // Destroy existing tooltip if any
+                const existingTooltip = bootstrap.Tooltip.getInstance(el);
+                if (existingTooltip) {
+                    existingTooltip.dispose();
+                }
+                // Create new tooltip
+                new bootstrap.Tooltip(el);
+            });
+        }
         
         // Limit to 25 conversation pairs (50 total messages)
         while (container.children.length > 25) {

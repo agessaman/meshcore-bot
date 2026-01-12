@@ -361,7 +361,7 @@ class CommandManager:
             if stats_command:
                 stats_command.record_command(message, 'advert', response_sent)
     
-    async def send_dm(self, recipient_id: str, content: str) -> bool:
+    async def send_dm(self, recipient_id: str, content: str, command_id: Optional[str] = None) -> bool:
         """Send a direct message using meshcore-cli command.
         
         Handles contact lookup, rate limiting, and uses retry logic if available.
@@ -369,6 +369,7 @@ class CommandManager:
         Args:
             recipient_id: The recipient's name or ID.
             content: The message content to send.
+            command_id: Optional command_id for repeat tracking (if not provided, one will be generated).
             
         Returns:
             bool: True if sent successfully, False otherwise.
@@ -393,6 +394,21 @@ class CommandManager:
             # Use the contact name for logging
             contact_name = contact.get('name', contact.get('adv_name', recipient_id))
             self.logger.info(f"Sending DM to {contact_name}: {content}")
+            
+            # Record transmission for repeat tracking (don't let this block sending)
+            try:
+                if hasattr(self.bot, 'transmission_tracker') and self.bot.transmission_tracker:
+                    if not command_id:
+                        command_id = f"dm_{contact_name}_{int(time.time())}"
+                    self.bot.transmission_tracker.record_transmission(
+                        content=content,
+                        target=contact_name,
+                        message_type='dm',
+                        command_id=command_id
+                    )
+            except Exception as e:
+                self.logger.debug(f"Error recording transmission for repeat tracking: {e}")
+                # Don't fail the send if transmission tracking fails
             
             # Try to use send_msg_with_retry if available (meshcore-2.1.6+)
             try:
@@ -436,7 +452,7 @@ class CommandManager:
             self.logger.error(f"Failed to send DM: {e}")
             return False
     
-    async def send_channel_message(self, channel: str, content: str) -> bool:
+    async def send_channel_message(self, channel: str, content: str, command_id: Optional[str] = None) -> bool:
         """Send a channel message using meshcore-cli command.
         
         Resolves channel names to numbers and handles rate limiting.
@@ -444,6 +460,7 @@ class CommandManager:
         Args:
             channel: The channel name (e.g., "LongFast").
             content: The message content to send.
+            command_id: Optional command_id for repeat tracking (if not provided, one will be generated).
             
         Returns:
             bool: True if sent successfully, False otherwise.
@@ -468,6 +485,21 @@ class CommandManager:
                 return False
             
             self.logger.info(f"Sending channel message to {channel} (channel {channel_num}): {content}")
+            
+            # Record transmission for repeat tracking (don't let this block sending)
+            try:
+                if hasattr(self.bot, 'transmission_tracker') and self.bot.transmission_tracker:
+                    if not command_id:
+                        command_id = f"channel_{channel}_{int(time.time())}"
+                    self.bot.transmission_tracker.record_transmission(
+                        content=content,
+                        target=channel,
+                        message_type='channel',
+                        command_id=command_id
+                    )
+            except Exception as e:
+                self.logger.debug(f"Error recording transmission for repeat tracking: {e}")
+                # Don't fail the send if transmission tracking fails
             
             # Use meshcore-cli send_chan_msg function
             from meshcore_cli.meshcore_cli import send_chan_msg
@@ -770,8 +802,42 @@ class CommandManager:
                             if response is None:
                                 response = "Command executed"
                             
+                            # Generate command_id for repeat tracking
+                            command_id = f"{command_name}_{message.sender_id}_{int(time.time())}"
+                            
+                            # Try to find matching transmission by content and timestamp
+                            if (hasattr(self.bot, 'transmission_tracker') and 
+                                self.bot.transmission_tracker and 
+                                response):
+                                # Search for recent transmission with matching content
+                                current_time = time.time()
+                                matched = False
+                                for timestamp_key in range(int(current_time - 10), int(current_time + 1)):
+                                    if timestamp_key in self.bot.transmission_tracker.pending_transmissions:
+                                        for record in self.bot.transmission_tracker.pending_transmissions[timestamp_key]:
+                                            # Match by content (exact or substring) and recent timestamp
+                                            if (record.content == response or 
+                                                (response in record.content or record.content in response)) and \
+                                               abs(record.timestamp - current_time) < 10:
+                                                record.command_id = command_id
+                                                self.logger.debug(f"Linked command {command_id} to transmission: {record.message_type} to {record.target}")
+                                                matched = True
+                                                break
+                                        if matched:
+                                            break
+                                
+                                # Also check confirmed transmissions
+                                if not matched:
+                                    for packet_hash, record in self.bot.transmission_tracker.confirmed_transmissions.items():
+                                        if (record.content == response or 
+                                            (response in record.content or record.content in response)) and \
+                                           abs(record.timestamp - current_time) < 10:
+                                            record.command_id = command_id
+                                            self.logger.debug(f"Linked command {command_id} to confirmed transmission: {record.message_type} to {record.target}")
+                                            break
+                            
                             self.bot.web_viewer_integration.bot_integration.capture_command(
-                                message, command_name, response, success if success is not None else True
+                                message, command_name, response, success if success is not None else True, command_id
                             )
                         except Exception as e:
                             self.logger.debug(f"Failed to capture command data for web viewer: {e}")
@@ -793,8 +859,9 @@ class CommandManager:
                         self.bot.web_viewer_integration and 
                         self.bot.web_viewer_integration.bot_integration):
                         try:
+                            command_id = f"{command_name}_{message.sender_id}_{int(time.time())}"
                             self.bot.web_viewer_integration.bot_integration.capture_command(
-                                message, command_name, f"Error: {e}", False
+                                message, command_name, f"Error: {e}", False, command_id
                             )
                         except Exception as capture_error:
                             self.logger.debug(f"Failed to capture failed command data: {capture_error}")

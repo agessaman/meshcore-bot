@@ -39,6 +39,7 @@ from .solar_conditions import set_config
 from .web_viewer.integration import WebViewerIntegration
 from .feed_manager import FeedManager
 from .service_plugin_loader import ServicePluginLoader
+from .transmission_tracker import TransmissionTracker
 from .utils import resolve_path
 
 
@@ -131,6 +132,14 @@ class MeshCoreBot:
         
         self.message_handler = MessageHandler(self)
         self.command_manager = CommandManager(self)
+        
+        # Initialize transmission tracker for monitoring TX success
+        try:
+            self.transmission_tracker = TransmissionTracker(self)
+            self.logger.info("Transmission tracker initialized")
+        except Exception as e:
+            self.logger.warning(f"Failed to initialize transmission tracker: {e}")
+            self.transmission_tracker = None
         
         # Load max_channels from config (default 40, MeshCore supports up to 40 channels)
         max_channels = self.config.getint('Bot', 'max_channels', fallback=40)
@@ -889,7 +898,11 @@ use_zulu_time = false
         if not await self.connect():
             self.logger.error("Failed to connect to MeshCore node")
             return
-        
+
+        # Update transmission tracker bot prefix now that we're connected
+        if hasattr(self, 'transmission_tracker') and self.transmission_tracker:
+            self.transmission_tracker._update_bot_prefix()
+
         # Setup scheduled messages
         self.scheduler.setup_scheduled_messages()
         
