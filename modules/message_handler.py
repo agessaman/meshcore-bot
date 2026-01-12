@@ -674,7 +674,8 @@ class MessageHandler:
                                 
                                 if record:
                                     # This is one of our transmissions - check for repeats
-                                    # Extract repeater prefixes from the path
+                                    # Extract repeater prefix from the last hop in the path
+                                    # (the repeater that sent this packet to us)
                                     prefixes = self.bot.transmission_tracker.extract_repeater_prefixes_from_path(
                                         path_string, path_nodes
                                     )

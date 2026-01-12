@@ -277,26 +277,29 @@ class TransmissionTracker:
     
     def extract_repeater_prefixes_from_path(self, path: Optional[str], 
                                            path_nodes: Optional[List[str]] = None) -> List[str]:
-        """Extract repeater prefixes from a message path.
+        """Extract repeater prefix from the last hop in a message path.
+        
+        The repeater that sent the packet is always the last hop in the path.
+        We only extract the prefix from that last hop, not from intermediate nodes.
         
         Args:
             path: Path string (e.g., "01,7e,55,86")
             path_nodes: List of path nodes (alternative to path string)
             
         Returns:
-            List of repeater prefixes (2-character hex strings)
+            List containing the repeater prefix (2-character hex string) from the last hop,
+            or empty list if no valid prefix found
         """
-        prefixes = []
-        
         # Try path_nodes first (more reliable)
-        if path_nodes:
-            for node in path_nodes:
-                if isinstance(node, str) and len(node) >= 2:
-                    # Take first 2 characters as prefix
-                    prefix = node[:2].lower()
-                    # Filter out our own prefix
-                    if prefix != self.bot_prefix:
-                        prefixes.append(prefix)
+        if path_nodes and len(path_nodes) > 0:
+            # Get the last node in the path (the repeater that sent the packet)
+            last_node = path_nodes[-1]
+            if isinstance(last_node, str) and len(last_node) >= 2:
+                # Take first 2 characters as prefix
+                prefix = last_node[:2].lower()
+                # Filter out our own prefix
+                if prefix != self.bot_prefix:
+                    return [prefix]
         
         # Fallback to parsing path string
         elif path:
@@ -306,16 +309,17 @@ class TransmissionTracker:
             if '(' in path_part:
                 path_part = path_part.split('(')[0].strip()
             
-            # Split by comma
-            for part in path_part.split(','):
-                part = part.strip()
-                if len(part) >= 2:
-                    prefix = part[:2].lower()
+            # Split by comma and get the last part (the repeater that sent the packet)
+            parts = [p.strip() for p in path_part.split(',') if p.strip()]
+            if parts:
+                last_part = parts[-1]
+                if len(last_part) >= 2:
+                    prefix = last_part[:2].lower()
                     # Filter out our own prefix
                     if prefix != self.bot_prefix:
-                        prefixes.append(prefix)
+                        return [prefix]
         
-        return list(set(prefixes))  # Remove duplicates
+        return []  # No valid prefix found
     
     def cleanup_old_records(self):
         """Remove old transmission records that are beyond the cleanup window"""
