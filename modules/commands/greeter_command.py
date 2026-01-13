@@ -123,7 +123,11 @@ class GreeterCommand(BaseCommand):
         """Decode escape sequences in config strings.
         
         Processes common escape sequences like \\n (newline), \\t (tab), \\\\ (backslash).
-        This allows users to add newlines in greeting messages using \\n.
+        This allows users to add newlines in greeting messages using \n (single backslash).
+        
+        Behavior:
+        - \n in config file → newline character
+        - \\n in config file → literal backslash + n
         
         Args:
             text: The text string to process.
@@ -133,6 +137,7 @@ class GreeterCommand(BaseCommand):
         """
         # Replace escape sequences
         # Order matters: \\ must be processed first to avoid double-processing
+        # This preserves literal backslashes (\\n becomes \n, not a newline)
         text = text.replace('\\\\', '\x00')  # Temporary placeholder for backslash
         text = text.replace('\\n', '\n')     # Newline
         text = text.replace('\\t', '\t')     # Tab
@@ -153,8 +158,12 @@ class GreeterCommand(BaseCommand):
                                                        fallback=True, value_type='bool')
         self.mesh_info_format = self.get_config_value('Greeter_Command', 'mesh_info_format',
                                                       fallback='\n\nMesh Info: {total_contacts} contacts, {repeaters} repeaters')
-        # Decode escape sequences (e.g., \\n for newlines)
+        # Decode escape sequences (e.g., \n for newlines)
         self.mesh_info_format = self._decode_escape_sequences(self.mesh_info_format)
+        
+        # Log configuration for debugging
+        self.logger.debug(f"Greeter config loaded: include_mesh_info={self.include_mesh_info}, "
+                         f"mesh_info_format={repr(self.mesh_info_format)}")
         
         self.per_channel_greetings = self.get_config_value('Greeter_Command', 'per_channel_greetings',
                                                            fallback=False, value_type='bool')
@@ -1021,17 +1030,28 @@ class GreeterCommand(BaseCommand):
         
         # Add mesh info to the last part if enabled
         if self.include_mesh_info:
-            mesh_info_text = self.mesh_info_format.format(
-                total_contacts=mesh_info.get('total_contacts', 0),
-                repeaters=mesh_info.get('repeaters', 0),
-                companions=mesh_info.get('companions', 0),
-                recent_activity_24h=mesh_info.get('recent_activity_24h', 0)
-            )
-            # Append mesh info to the last greeting part
-            if formatted_parts:
-                formatted_parts[-1] += mesh_info_text
-            else:
-                formatted_parts.append(mesh_info_text)
+            self.logger.debug(f"Including mesh info. Format: {repr(self.mesh_info_format)}, Mesh info: {mesh_info}")
+            try:
+                mesh_info_text = self.mesh_info_format.format(
+                    total_contacts=mesh_info.get('total_contacts', 0),
+                    repeaters=mesh_info.get('repeaters', 0),
+                    companions=mesh_info.get('companions', 0),
+                    recent_activity_24h=mesh_info.get('recent_activity_24h', 0)
+                )
+                self.logger.debug(f"Formatted mesh info text: {repr(mesh_info_text)}")
+                # Append mesh info to the last greeting part
+                if formatted_parts:
+                    formatted_parts[-1] += mesh_info_text
+                else:
+                    formatted_parts.append(mesh_info_text)
+            except (KeyError, ValueError) as e:
+                self.logger.warning(f"Error formatting mesh info: {e}. Format string: {repr(self.mesh_info_format)}, Mesh info keys: {list(mesh_info.keys())}")
+                # Continue without mesh info rather than failing the entire greeting
+            except Exception as e:
+                self.logger.error(f"Unexpected error formatting mesh info: {e}", exc_info=True)
+                # Continue without mesh info rather than failing the entire greeting
+        else:
+            self.logger.debug("Mesh info not included (include_mesh_info is False)")
         
         return formatted_parts
     

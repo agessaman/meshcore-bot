@@ -207,11 +207,11 @@ Keyword responses support these template variables:
 
 ### Adding Newlines
 
-To add newlines in keyword responses, use `\\n` (double backslash + n):
+To add newlines in keyword responses, use `\n` (single backslash + n):
 
 ```ini
 [Keywords]
-test = "Line 1\\nLine 2\\nLine 3"
+test = "Line 1\nLine 2\nLine 3"
 ```
 
 This will output:
@@ -221,7 +221,8 @@ Line 2
 Line 3
 ```
 
-Other escape sequences: `\\t` (tab), `\\r` (carriage return), `\\\\` (literal backslash)
+To use a literal backslash + n, use `\\n` (double backslash + n).  
+Other escape sequences: `\t` (tab), `\r` (carriage return), `\\` (literal backslash)
 
 Example:
 ```ini

@@ -181,7 +181,11 @@ class CommandManager:
         """Decode escape sequences in config strings.
         
         Processes common escape sequences like \\n (newline), \\t (tab), \\\\ (backslash).
-        This allows users to add newlines in keyword responses using \\n.
+        This allows users to add newlines in keyword responses using \n (single backslash).
+        
+        Behavior:
+        - \n in config file → newline character
+        - \\n in config file → literal backslash + n
         
         Args:
             text: The text string to process.
@@ -191,6 +195,7 @@ class CommandManager:
         """
         # Replace escape sequences
         # Order matters: \\ must be processed first to avoid double-processing
+        # This preserves literal backslashes (\\n becomes \n, not a newline)
         text = text.replace('\\\\', '\x00')  # Temporary placeholder for backslash
         text = text.replace('\\n', '\n')     # Newline
         text = text.replace('\\t', '\t')     # Tab
