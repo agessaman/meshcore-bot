@@ -216,6 +216,77 @@ aqi help
 
 ---
 
+### `airplanes [location] [options]` / `overhead [lat,lon]`
+
+Get aircraft tracking information using ADS-B data from airplanes.live or compatible APIs.
+
+**Aliases:** `aircraft`, `planes`, `adsb`, `overhead`
+
+**Usage:**
+```
+airplanes
+airplanes here
+airplanes <latitude>,<longitude>
+airplanes [location] [options]
+overhead
+overhead <latitude>,<longitude>
+```
+
+**Special Command: `overhead`**
+- Returns the single closest aircraft directly overhead
+- Uses companion location from database (if available)
+- If companion location not available, prompts user to specify coordinates
+- Always returns one aircraft sorted by distance (closest first)
+
+**Location Options:**
+- No location: Uses companion location (if available), otherwise bot location
+- `here`: Uses bot location from config
+- `<lat>,<lon>`: Uses specified coordinates (e.g., `47.6,-122.3`)
+
+**Filter Options:**
+- `radius=<nm>` - Search radius in nautical miles (default: 25, max: 250)
+- `alt=<min>-<max>` - Filter by altitude range in feet (e.g., `alt=1000-5000`)
+- `speed=<min>-<max>` - Filter by ground speed range in knots
+- `type=<code>` - Filter by aircraft type code (e.g., `B738`, `A321`)
+- `callsign=<pattern>` - Filter by callsign pattern
+- `military` - Show only military aircraft
+- `ladd` - Show only LADD aircraft
+- `pia` - Show only PIA aircraft
+- `squawk=<code>` - Filter by transponder squawk code
+- `limit=<n>` - Limit number of results (default: 10, max: 50)
+- `closest` - Sort by distance (closest first)
+- `highest` - Sort by altitude (highest first)
+- `fastest` - Sort by speed (fastest first)
+
+**Examples:**
+```
+airplanes
+airplanes here
+airplanes 47.6,-122.3
+airplanes radius=50
+airplanes alt=10000-40000
+airplanes type=B738
+airplanes military
+airplanes callsign=UAL limit=5
+airplanes 47.6,-122.3 radius=25 closest
+```
+
+**Response:**
+- **Single aircraft**: Detailed format with callsign, type, altitude, speed, track, distance, bearing, vertical rate, and registration
+- **Multiple aircraft**: Compact list format with callsign, altitude, speed, distance, and bearing
+
+**Configuration:**
+The command can be configured in `config.ini` under `[Airplanes_Command]`:
+- `enabled` - Enable/disable the command
+- `api_url` - API endpoint URL (default: `http://api.airplanes.live/v2/`)
+- `default_radius` - Default search radius in nautical miles
+- `max_results` - Maximum number of results to return
+- `url_timeout` - API request timeout in seconds
+
+**Note:** Uses companion location from database if available, otherwise falls back to bot location from config. The API is rate-limited to 1 request per second.
+
+---
+
 ### `sun`
 
 Get sunrise and sunset times for the bot's configured location.

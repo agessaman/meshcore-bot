@@ -245,6 +245,17 @@
       "description": "Manage repeater contacts and purging operations (DM only)",
       "admin_only": "Repeater command requires admin access"
     },
+    "airplanes": {
+      "description": "Get aircraft overhead (usage: airplanes [location] [options] or overhead [lat,lon])",
+      "usage": "Usage: airplanes [location] [options]\nLocation: 'here' for bot location, or lat,lon (e.g., 47.6,-122.3)\nOptions: radius=<nm>, alt=<min>-<max>, speed=<min>-<max>, type=<code>, callsign=<pattern>, military, limit=<n>",
+      "no_location": "No location available. Specify coordinates: airplanes 47.6,-122.3 or use 'airplanes here' for bot location",
+      "overhead_no_location": "I don't know your companion location. Send 'advert' to flood advert with your location, or specify coordinates: 'overhead [lat,lon]'",
+      "no_aircraft": "No aircraft found within {radius}nm",
+      "no_aircraft_filtered": "No aircraft found matching filters within {radius}nm",
+      "api_error": "Unable to fetch aircraft data. API may be unavailable.",
+      "invalid_coords": "Invalid coordinates. Use format: lat,lon (e.g., 47.6,-122.3)",
+      "error": "Error: {error}"
+    },
     "aqi": {
       "description": "Get Air Quality Index for a location (usage: aqi seattle, aqi greenwood, aqi vancouver canada, aqi 47.6,-122.3, or aqi help)",
       "usage": "Usage: aqi <city|neighborhood|city country|lat,lon> - Example: aqi seattle, aqi greenwood, aqi vancouver canada, or aqi 47.6,-122.3",

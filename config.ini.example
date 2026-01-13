@@ -774,6 +774,32 @@ announce.default = This is the default announcement.
 announce.bots = This is an announcement with the list of bots.
 announce.other = This is a different announcement on another topic.
 
+[Airplanes_Command]
+# Enable or disable the airplanes command
+# true: Airplanes command is available (default)
+# false: Airplanes command is disabled
+enabled = true
+
+# API endpoint URL for ADS-B aircraft data
+# Default: airplanes.live API
+# Supports any standardized ADS-B API using readsb/airplanes.live format
+# Examples:
+#   http://api.airplanes.live/v2/ (default)
+#   https://adsbexchange-com1.p.rapidapi.com/v2/ (if compatible)
+#   http://localhost:8080/data/ (local readsb instance)
+api_url = http://api.airplanes.live/v2/
+
+# Default search radius in nautical miles
+# Maximum: 250 nautical miles
+default_radius = 25
+
+# Maximum number of aircraft to return in results
+# Maximum: 50
+max_results = 10
+
+# API request timeout in seconds
+url_timeout = 10
+
 [Web_Viewer]
 # Enable or disable the web data viewer
 # SECURITY NOTE: Web viewer has NO AUTHENTICATION built-in
