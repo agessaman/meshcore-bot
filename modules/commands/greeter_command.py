@@ -1293,16 +1293,20 @@ class GreeterCommand(BaseCommand):
                 if i > 0:
                     # Wait for bot TX rate limiter between multi-part messages
                     # This ensures we respect the bot's rate limiting configuration
+                    # Note: User rate limiter is not checked here since greeter is an automated bot response
                     await self.bot.bot_tx_rate_limiter.wait_for_tx()
+                    
                     # Additional delay to ensure proper spacing (use configured rate limit)
                     rate_limit = self.bot.config.getfloat('Bot', 'bot_tx_rate_limit_seconds', fallback=1.0)
                     # Use a conservative sleep time to avoid rate limiting
                     sleep_time = max(rate_limit + 0.5, 1.0)  # At least 1 second, or rate_limit + 0.5 seconds
                     await asyncio.sleep(sleep_time)
                 
-                result = await self.send_response(message, greeting_part)
+                # Skip user rate limiter for greeter messages since they're automated bot responses
+                result = await self.send_response(message, greeting_part, skip_user_rate_limit=True)
                 if not result:
                     success = False
+                    self.logger.warning(f"Failed to send greeting part {i+1} of {len(greeting_parts)}")
             
             return success
         except Exception as e:

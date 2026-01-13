@@ -92,25 +92,29 @@ class CommandManager:
             self.logger.debug(f"Applying {self.bot.tx_delay_ms}ms transmission delay")
             await asyncio.sleep(self.bot.tx_delay_ms / 1000.0)
     
-    async def _check_rate_limits(self) -> Tuple[bool, str]:
+    async def _check_rate_limits(self, skip_user_rate_limit: bool = False) -> Tuple[bool, str]:
         """Check all rate limits before sending.
         
         Checks both the user-specific rate limits and the global bot transmission
         limits. Also applies transmission delays if configured.
+        
+        Args:
+            skip_user_rate_limit: If True, skip the user rate limiter check (for automated responses).
         
         Returns:
             Tuple[bool, str]: A tuple containing:
                 - can_send: True if the message can be sent, False otherwise.
                 - reason: Reason string if rate limited, empty string otherwise.
         """
-        # Check user rate limiter
-        if not self.bot.rate_limiter.can_send():
-            wait_time = self.bot.rate_limiter.time_until_next()
-            # Only log warning if there's a meaningful wait time (> 0.1 seconds)
-            # This avoids misleading "Wait 0.0 seconds" messages from timing edge cases
-            if wait_time > 0.1:
-                return False, f"Rate limited. Wait {wait_time:.1f} seconds"
-            return False, ""  # Still rate limited, just don't log for very short waits
+        # Check user rate limiter (unless skipped for automated responses)
+        if not skip_user_rate_limit:
+            if not self.bot.rate_limiter.can_send():
+                wait_time = self.bot.rate_limiter.time_until_next()
+                # Only log warning if there's a meaningful wait time (> 0.1 seconds)
+                # This avoids misleading "Wait 0.0 seconds" messages from timing edge cases
+                if wait_time > 0.1:
+                    return False, f"Rate limited. Wait {wait_time:.1f} seconds"
+                return False, ""  # Still rate limited, just don't log for very short waits
         
         # Wait for bot TX rate limiter
         await self.bot.bot_tx_rate_limiter.wait_for_tx()
@@ -391,7 +395,7 @@ class CommandManager:
             if stats_command:
                 stats_command.record_command(message, 'advert', response_sent)
     
-    async def send_dm(self, recipient_id: str, content: str, command_id: Optional[str] = None) -> bool:
+    async def send_dm(self, recipient_id: str, content: str, command_id: Optional[str] = None, skip_user_rate_limit: bool = False) -> bool:
         """Send a direct message using meshcore-cli command.
         
         Handles contact lookup, rate limiting, and uses retry logic if available.
@@ -408,7 +412,7 @@ class CommandManager:
             return False
         
         # Check all rate limits
-        can_send, reason = await self._check_rate_limits()
+        can_send, reason = await self._check_rate_limits(skip_user_rate_limit=skip_user_rate_limit)
         if not can_send:
             if reason:
                 self.logger.warning(reason)
@@ -482,7 +486,7 @@ class CommandManager:
             self.logger.error(f"Failed to send DM: {e}")
             return False
     
-    async def send_channel_message(self, channel: str, content: str, command_id: Optional[str] = None) -> bool:
+    async def send_channel_message(self, channel: str, content: str, command_id: Optional[str] = None, skip_user_rate_limit: bool = False) -> bool:
         """Send a channel message using meshcore-cli command.
         
         Resolves channel names to numbers and handles rate limiting.
@@ -499,7 +503,7 @@ class CommandManager:
             return False
         
         # Check all rate limits
-        can_send, reason = await self._check_rate_limits()
+        can_send, reason = await self._check_rate_limits(skip_user_rate_limit=skip_user_rate_limit)
         if not can_send:
             if reason:
                 self.logger.warning(reason)
@@ -679,7 +683,7 @@ class CommandManager:
         
         return commands_list
     
-    async def send_response(self, message: MeshMessage, content: str) -> bool:
+    async def send_response(self, message: MeshMessage, content: str, skip_user_rate_limit: bool = False) -> bool:
         """Unified method for sending responses to users.
         
         Automatically determines whether to send a DM or channel message based
@@ -688,6 +692,7 @@ class CommandManager:
         Args:
             message: The original message being responded to.
             content: The response content.
+            skip_user_rate_limit: If True, skip the user rate limiter check (for automated responses).
             
         Returns:
             bool: True if response was sent successfully, False otherwise.
@@ -700,9 +705,9 @@ class CommandManager:
                 self._last_response = content
             
             if message.is_dm:
-                return await self.send_dm(message.sender_id, content)
+                return await self.send_dm(message.sender_id, content, skip_user_rate_limit=skip_user_rate_limit)
             else:
-                return await self.send_channel_message(message.channel, content)
+                return await self.send_channel_message(message.channel, content, skip_user_rate_limit=skip_user_rate_limit)
         except Exception as e:
             self.logger.error(f"Failed to send response: {e}")
             return False
