@@ -240,7 +240,7 @@ class WxCommand(BaseCommand):
                 return True
             
             # Get weather data for the location
-            weather_data = await self.get_weather_for_location(location, location_type, forecast_type, num_days)
+            weather_data = await self.get_weather_for_location(location, location_type, forecast_type, num_days, message)
             
             # Check if we need to send multiple messages
             if isinstance(weather_data, tuple) and weather_data[0] == "multi_message":
@@ -272,7 +272,7 @@ class WxCommand(BaseCommand):
             await self.send_response(message, self.translate('commands.wx.error', error=str(e)))
             return True
     
-    async def get_weather_for_location(self, location: str, location_type: str, forecast_type: str = "default", num_days: int = 7) -> str:
+    async def get_weather_for_location(self, location: str, location_type: str, forecast_type: str = "default", num_days: int = 7, message: MeshMessage = None) -> str:
         """Get weather data for a location (zipcode or city)
         
         Args:
@@ -280,6 +280,7 @@ class WxCommand(BaseCommand):
             location_type: "zipcode" or "city"
             forecast_type: "default", "tomorrow", "multiday", or "hourly"
             num_days: Number of days for multiday forecast (2-7)
+            message: The MeshMessage for dynamic length calculation
         """
         try:
             # Convert location to lat/lon
@@ -346,24 +347,27 @@ class WxCommand(BaseCommand):
                 if states_different:
                     location_prefix = f"{actual_city}, {actual_state}: "
             
+            # Get max message length dynamically
+            max_length = self.get_max_message_length(message) if message else 130
+            
             # Get weather forecast based on type
             if forecast_type == "tomorrow":
-                forecast_periods, points_data = self.get_noaa_weather(lat, lon, return_periods=True)
+                forecast_periods, points_data = self.get_noaa_weather(lat, lon, return_periods=True, max_length=max_length)
                 if forecast_periods == self.ERROR_FETCHING_DATA:
                     return self.translate('commands.wx.error_fetching')
-                weather = self.format_tomorrow_forecast(forecast_periods)
+                weather = self.format_tomorrow_forecast(forecast_periods, max_length=max_length)
             elif forecast_type == "multiday":
-                forecast_periods, points_data = self.get_noaa_weather(lat, lon, return_periods=True)
+                forecast_periods, points_data = self.get_noaa_weather(lat, lon, return_periods=True, max_length=max_length)
                 if forecast_periods == self.ERROR_FETCHING_DATA:
                     return self.translate('commands.wx.error_fetching')
-                weather = self.format_multiday_forecast(forecast_periods, num_days)
+                weather = self.format_multiday_forecast(forecast_periods, num_days, max_length=max_length)
             elif forecast_type == "hourly":
                 hourly_periods, points_data = self.get_noaa_hourly_weather(lat, lon)
                 if hourly_periods == self.ERROR_FETCHING_DATA:
                     return self.translate('commands.wx.error_fetching')
-                weather = self.format_hourly_forecast(hourly_periods)
+                weather = self.format_hourly_forecast(hourly_periods, max_length=max_length)
             else:  # default
-                weather, points_data = self.get_noaa_weather(lat, lon)
+                weather, points_data = self.get_noaa_weather(lat, lon, max_length=max_length)
                 if weather == self.ERROR_FETCHING_DATA:
                     return self.translate('commands.wx.error_fetching')
                 
@@ -385,7 +389,7 @@ class WxCommand(BaseCommand):
                         if alerts_full_result not in [self.ERROR_FETCHING_DATA, self.NO_ALERTS]:
                             alerts_list, _ = alerts_full_result
                             # Format with prioritization and summary
-                            formatted_alert_text = self._format_alerts_compact_summary(alerts_list, alert_count)
+                            formatted_alert_text = self._format_alerts_compact_summary(alerts_list, alert_count, max_length=max_length)
                         else:
                             # Fallback to old format
                             formatted_alert_text = full_alert_text
@@ -432,13 +436,14 @@ class WxCommand(BaseCommand):
             self.logger.error(f"Error geocoding city {city}: {e}")
             return None, None, None
     
-    def get_noaa_weather(self, lat: float, lon: float, return_periods: bool = False) -> tuple:
+    def get_noaa_weather(self, lat: float, lon: float, return_periods: bool = False, max_length: int = 130) -> tuple:
         """Get weather forecast from NOAA and return both weather string and points data
         
         Args:
             lat: Latitude
             lon: Longitude
             return_periods: If True, return forecast periods array instead of formatted string
+            max_length: Maximum message length (default 130 for backwards compatibility)
         
         Returns:
             Tuple of (weather_string_or_periods, points_data)
@@ -517,18 +522,19 @@ class WxCommand(BaseCommand):
             # Get observation station data for more accurate current conditions
             observation_data = self.get_observation_data(weather_json)
             
-            # Use most of the 130 char limit (120 chars) to ensure current period gets full details
+            # Use most of the max_length limit (max_length - 10 chars) to ensure current period gets full details
             # Additional periods will only be added if there's remaining space
             # Pass observation_data to use real-time station data instead of parsing from text
-            weather = self._add_period_details(weather, detailed_forecast, 0, max_length=120, observation_data=observation_data)
+            current_period_max = max_length - 10
+            weather = self._add_period_details(weather, detailed_forecast, 0, max_length=current_period_max, observation_data=observation_data)
             
             # Also add precipitation chance if available (not in helper function)
-            if precip_chance and self._count_display_width(weather) < 120:
+            if precip_chance and self._count_display_width(weather) < current_period_max:
                 weather += f" 🌦️{precip_chance}%"
             
             # Also add UV index if available (not in helper function)
             uv_index = self.extract_uv_index(detailed_forecast)
-            if uv_index and self._count_display_width(weather) < 120:
+            if uv_index and self._count_display_width(weather) < current_period_max:
                 weather += f" UV{uv_index}"
             
             # Add next period (Today, Tonight) and Tomorrow if available
@@ -637,27 +643,27 @@ class WxCommand(BaseCommand):
                     # Add wind info if space allows (using display width)
                     if period_wind_speed and period_wind_direction:
                         test_str = weather + period_str
-                        if self._count_display_width(test_str) < 120:
+                        if self._count_display_width(test_str) < max_length - 10:
                             wind_match = re.search(r'(\d+)', period_wind_speed)
                             if wind_match:
                                 wind_num = wind_match.group(1)
                                 wind_dir = self.abbreviate_wind_direction(period_wind_direction)
                                 if wind_dir:
                                     wind_info = f" {wind_dir}{wind_num}"
-                                    if self._count_display_width(test_str + wind_info) <= 130:
+                                    if self._count_display_width(test_str + wind_info) <= max_length:
                                         period_str += wind_info
                     
                     # Add additional details (humidity, dew point, visibility, etc.)
                     # But only if current period isn't too long - prioritize current period details
                     current_weather_len = self._count_display_width(weather)
-                    # Only add details to additional periods if current period is under 110 chars
+                    # Only add details to additional periods if current period is under max_length - 20 chars
                     # This ensures we prioritize current period details first
-                    if current_weather_len < 110:
-                        period_str = self._add_period_details(period_str, period_detailed, current_weather_len, max_length=130)
+                    if current_weather_len < max_length - 20:
+                        period_str = self._add_period_details(period_str, period_detailed, current_weather_len, max_length=max_length)
                     
                     # Only add if we have space (using display width)
                     # Be more conservative - only add if current period is reasonable length
-                    if current_weather_len < 110 and self._count_display_width(weather + period_str) <= 130:
+                    if current_weather_len < max_length - 20 and self._count_display_width(weather + period_str) <= max_length:
                         weather += period_str
             
             # Add Tonight if it's the immediate next period (and current is not already Tonight)
@@ -695,31 +701,31 @@ class WxCommand(BaseCommand):
                         # Add wind info if space allows (using display width)
                         if period_wind_speed and period_wind_direction:
                             test_str = weather + period_str
-                            if self._count_display_width(test_str) < 120:
+                            if self._count_display_width(test_str) < max_length - 10:
                                 wind_match = re.search(r'(\d+)', period_wind_speed)
                                 if wind_match:
                                     wind_num = wind_match.group(1)
                                     wind_dir = self.abbreviate_wind_direction(period_wind_direction)
                                     if wind_dir:
                                         wind_info = f" {wind_dir}{wind_num}"
-                                        if self._count_display_width(test_str + wind_info) <= 130:
+                                        if self._count_display_width(test_str + wind_info) <= max_length:
                                             period_str += wind_info
                         
                     # Add additional details (humidity, dew point, visibility, etc.)
                     # But only if current period isn't too long - prioritize current period details
                     current_weather_len = self._count_display_width(weather)
-                    # Only add details to additional periods if current period is under 110 chars
+                    # Only add details to additional periods if current period is under max_length - 20 chars
                     # This ensures we prioritize current period details first
-                    if current_weather_len < 110:
-                        period_str = self._add_period_details(period_str, period_detailed, current_weather_len, max_length=130)
+                    if current_weather_len < max_length - 20:
+                        period_str = self._add_period_details(period_str, period_detailed, current_weather_len, max_length=max_length)
                     
                     # Only add if we have space (using display width)
                     # Be more conservative - only add if current period is reasonable length
-                    if current_weather_len < 110 and self._count_display_width(weather + period_str) <= 130:
+                    if current_weather_len < max_length - 20 and self._count_display_width(weather + period_str) <= max_length:
                         weather += period_str
             
             # Always try to add Tomorrow if available (especially if current is Tonight)
-            # Prioritize adding Tomorrow when current is Tonight to use more of the 130 char limit
+            # Prioritize adding Tomorrow when current is Tonight to use more of the available message length
             if tomorrow_period:
                 period = tomorrow_period[1]
                 period_name = self.abbreviate_noaa(period.get('name', 'Tomorrow'))
@@ -788,29 +794,29 @@ class WxCommand(BaseCommand):
                                 wind_dir = self.abbreviate_wind_direction(period_wind_direction)
                                 if wind_dir:
                                     wind_info = f" {wind_dir}{wind_num}"
-                                    if self._count_display_width(test_str + wind_info) <= 130:
+                                    if self._count_display_width(test_str + wind_info) <= max_length:
                                         period_str += wind_info
                     
                     # Add additional details (humidity, dew point, visibility, etc.)
                     # But only if current period isn't too long - prioritize current period details
                     current_weather_len = self._count_display_width(weather)
-                    # Only add details to additional periods if current period is under 110 chars
+                    # Only add details to additional periods if current period is under max_length - 20 chars
                     # This ensures we prioritize current period details first
-                    if current_weather_len < 110:
-                        max_chars = 128 if (is_current_tonight or is_current_night) else 130
+                    if current_weather_len < max_length - 20:
+                        max_chars = max_length - 2 if (is_current_tonight or is_current_night) else max_length
                         period_str = self._add_period_details(period_str, period_detailed, current_weather_len, max_chars)
                     
                     # Only add if we have space (using display width, prioritize current period)
                     # Be more aggressive about adding tomorrow_period when current is Tonight and we have space
-                    max_chars = 128 if (is_current_tonight or is_current_night) else 130
+                    max_chars = max_length - 2 if (is_current_tonight or is_current_night) else max_length
                     # If current is Tonight and we have plenty of space, be more lenient with the length check
                     if is_current_tonight or is_current_night:
-                        # Allow adding tomorrow_period if we're under 120 chars (more lenient than 110)
-                        if current_weather_len < 120 and self._count_display_width(weather + period_str) <= max_chars:
+                        # Allow adding tomorrow_period if we're under max_length - 10 chars (more lenient)
+                        if current_weather_len < max_length - 10 and self._count_display_width(weather + period_str) <= max_chars:
                             weather += period_str
                     else:
                         # For non-night periods, use the stricter check
-                        if current_weather_len < 110 and self._count_display_width(weather + period_str) <= max_chars:
+                        if current_weather_len < max_length - 20 and self._count_display_width(weather + period_str) <= max_chars:
                             weather += period_str
             
             return weather, weather_json
@@ -877,11 +883,12 @@ class WxCommand(BaseCommand):
             self.logger.error(f"Error fetching NOAA hourly weather: {e}")
             return self.ERROR_FETCHING_DATA, None
     
-    def format_hourly_forecast(self, hourly_periods: list) -> str:
-        """Format hourly forecast to fit as many hours as possible in 130 chars
+    def format_hourly_forecast(self, hourly_periods: list, max_length: int = 130) -> str:
+        """Format hourly forecast to fit as many hours as possible in max_length chars
         
         Args:
             hourly_periods: List of hourly forecast periods from NOAA
+            max_length: Maximum message length (default 130 for backwards compatibility)
         
         Returns:
             Formatted string with one hour per line
@@ -892,7 +899,6 @@ class WxCommand(BaseCommand):
             
             lines = []
             current_length = 0
-            max_length = 130
             
             # Filter to only future hours
             now = datetime.now()
@@ -1028,7 +1034,7 @@ class WxCommand(BaseCommand):
             self.logger.error(f"Error formatting hourly forecast: {e}")
             return f"Error formatting hourly forecast: {str(e)}"
     
-    def format_tomorrow_forecast(self, forecast: list) -> str:
+    def format_tomorrow_forecast(self, forecast: list, max_length: int = 130) -> str:
         """Format a detailed forecast for tomorrow"""
         try:
             # Find tomorrow's periods
@@ -1119,7 +1125,7 @@ class WxCommand(BaseCommand):
             self.logger.error(f"Error formatting tomorrow forecast: {e}")
             return self.translate('commands.wx.tomorrow_error')
     
-    def format_multiday_forecast(self, forecast: list, num_days: int = 7) -> str:
+    def format_multiday_forecast(self, forecast: list, num_days: int = 7, max_length: int = 130) -> str:
         """Format a less detailed multi-day forecast summary"""
         try:
             # Group periods by day
@@ -1371,6 +1377,9 @@ class WxCommand(BaseCommand):
         """Send multi-day forecast response, splitting into multiple messages if needed"""
         import asyncio
         
+        # Get max message length dynamically
+        max_length = self.get_max_message_length(message)
+        
         lines = forecast_text.split('\n')
         
         # Remove empty lines
@@ -1379,13 +1388,13 @@ class WxCommand(BaseCommand):
         if not lines:
             return
         
-        # If single line and under 130 chars, send as-is
-        if self._count_display_width(forecast_text) <= 130:
+        # If single line and under max_length chars, send as-is
+        if self._count_display_width(forecast_text) <= max_length:
             await self.send_response(message, forecast_text)
             return
         
         # Multi-line message - try to fit as many days as possible in one message
-        # Only split when necessary (message would exceed 130 chars)
+        # Only split when necessary (message would exceed max_length chars)
         current_message = ""
         message_count = 0
         
@@ -1393,14 +1402,14 @@ class WxCommand(BaseCommand):
             if not line:
                 continue
             
-            # Check if adding this line would exceed 130 characters (using display width)
+            # Check if adding this line would exceed max_length characters (using display width)
             if current_message:
                 test_message = current_message + "\n" + line
             else:
                 test_message = line
             
-            # Only split if message would exceed 130 chars (using display width)
-            if self._count_display_width(test_message) > 130:
+            # Only split if message would exceed max_length chars (using display width)
+            if self._count_display_width(test_message) > max_length:
                 # Send current message and start new one
                 if current_message:
                     await self.send_response(message, current_message)
@@ -1418,7 +1427,7 @@ class WxCommand(BaseCommand):
                         await asyncio.sleep(2.0)
                     current_message = ""
             else:
-                # Add line to current message (fits within 130 chars)
+                # Add line to current message (fits within max_length chars)
                 if current_message:
                     current_message += "\n" + line
                 else:
@@ -2121,12 +2130,13 @@ class WxCommand(BaseCommand):
             # Abbreviated format: just event type and severity
             return f"{severity_emoji}{event} {event_type_abbrev}" if event else f"{severity_emoji}{event_type_abbrev}"
     
-    def _format_alerts_compact_summary(self, alerts: list, alert_count: int) -> str:
+    def _format_alerts_compact_summary(self, alerts: list, alert_count: int, max_length: int = 130) -> str:
         """Format multiple alerts with prioritized first alert and summary of others
         
         Args:
             alerts: List of prioritized alert dicts
             alert_count: Total number of alerts
+            max_length: Maximum message length (default 130 for backwards compatibility)
         
         Returns:
             Compact formatted string: "4 alerts: 🟠High Wind Warn til 6AM | +3: 🌊Flood Watch, ❄️Freeze Adv, 🌫️Dense Fog Adv"
@@ -2186,16 +2196,16 @@ class WxCommand(BaseCommand):
         # Combine: first alert + summary
         result = f"{alert_count} alerts: {first_alert_text} | {remaining_summary}"
         
-        # Check if it fits in 130 chars, truncate if needed
-        if self._count_display_width(result) > 130:
+        # Check if it fits in max_length chars, truncate if needed
+        if self._count_display_width(result) > max_length:
             # Try shorter first alert
             first_alert_text_short = self._format_alert_compact(first_alert, include_details=False)
             result = f"{alert_count} alerts: {first_alert_text_short} | {remaining_summary}"
             
             # If still too long, truncate remaining summary
-            if self._count_display_width(result) > 130:
+            if self._count_display_width(result) > max_length:
                 max_remaining = 3
-                while max_remaining > 0 and self._count_display_width(result) > 130:
+                while max_remaining > 0 and self._count_display_width(result) > max_length:
                     if remaining_count > max_remaining:
                         remaining_summary = f"+{remaining_count}: {', '.join(remaining_parts[:max_remaining])}..."
                     else:
@@ -2371,14 +2381,17 @@ class WxCommand(BaseCommand):
         rate_limit = self.bot.config.getfloat('Bot', 'bot_tx_rate_limit_seconds', fallback=1.0)
         sleep_time = max(rate_limit + 1.0, 2.0)
         
-        # Group alerts into messages that fit within 130 chars
+        # Get max message length dynamically
+        max_length = self.get_max_message_length(message)
+        
+        # Group alerts into messages that fit within max_length chars
         current_message = f"{alert_count} alerts:"
         messages = []
         
         for line in alert_lines:
             # Check if adding this line would exceed limit
             test_message = current_message + "\n" + line if current_message else line
-            if self._count_display_width(test_message) > 130:
+            if self._count_display_width(test_message) > max_length:
                 # Current message is full, start new one
                 if current_message:
                     messages.append(current_message)

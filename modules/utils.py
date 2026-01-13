@@ -371,6 +371,208 @@ def calculate_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     return earth_radius * c
 
 
+# Optional geocoding helper libraries
+try:
+    import pycountry
+    PYCOUNTRY_AVAILABLE = True
+except ImportError:
+    PYCOUNTRY_AVAILABLE = False
+
+try:
+    import us
+    US_AVAILABLE = True
+except ImportError:
+    US_AVAILABLE = False
+
+
+def normalize_country_name(country_input: str) -> Tuple[Optional[str], Optional[str]]:
+    """Normalize country name to ISO code and standard name.
+    
+    Args:
+        country_input: Country name or code (e.g., "Sweden", "SE", "United States", "USA", "US")
+        
+    Returns:
+        tuple: (iso_code, standard_name) or (None, None) if not found
+        Example: ("SE", "Sweden") or ("US", "United States")
+    """
+    if not PYCOUNTRY_AVAILABLE:
+        return None, None
+    
+    if not country_input:
+        return None, None
+    
+    country_input = country_input.strip()
+    
+    # Try to find by alpha_2 code (e.g., "US", "SE")
+    if len(country_input) == 2:
+        try:
+            country = pycountry.countries.get(alpha_2=country_input.upper())
+            if country:
+                return country.alpha_2, country.name
+        except (KeyError, AttributeError):
+            pass
+    
+    # Try to find by alpha_3 code (e.g., "USA", "SWE")
+    if len(country_input) == 3:
+        try:
+            country = pycountry.countries.get(alpha_3=country_input.upper())
+            if country:
+                return country.alpha_2, country.name
+        except (KeyError, AttributeError):
+            pass
+    
+    # Try to find by name (case-insensitive, handles common variants)
+    country_input_lower = country_input.lower()
+    
+    # Handle common variants
+    country_variants = {
+        'usa': 'United States',
+        'u.s.a.': 'United States',
+        'u.s.': 'United States',
+        'uk': 'United Kingdom',
+        'u.k.': 'United Kingdom',
+        'great britain': 'United Kingdom',
+    }
+    
+    search_name = country_variants.get(country_input_lower, country_input)
+    
+    try:
+        # Try exact match first
+        country = pycountry.countries.get(name=search_name)
+        if country:
+            return country.alpha_2, country.name
+        
+        # Try fuzzy search
+        for country in pycountry.countries:
+            if country.name.lower() == search_name.lower():
+                return country.alpha_2, country.name
+    except (KeyError, AttributeError):
+        pass
+    
+    return None, None
+
+
+def normalize_us_state(state_input: str) -> Tuple[Optional[str], Optional[str]]:
+    """Normalize US state name to abbreviation and full name.
+    
+    Args:
+        state_input: State name or abbreviation (e.g., "Washington", "WA", "California", "CA")
+        
+    Returns:
+        tuple: (abbreviation, full_name) or (None, None) if not found
+        Example: ("WA", "Washington") or ("CA", "California")
+    """
+    if not US_AVAILABLE:
+        return None, None
+    
+    if not state_input:
+        return None, None
+    
+    state_input = state_input.strip()
+    
+    # Try to find by abbreviation
+    if len(state_input) == 2:
+        try:
+            state = us.states.lookup(state_input.upper())
+            if state:
+                return state.abbr, state.name
+        except (AttributeError, KeyError):
+            pass
+    
+    # Try to find by name
+    try:
+        state = us.states.lookup(state_input)
+        if state:
+            return state.abbr, state.name
+    except (AttributeError, KeyError):
+        pass
+    
+    return None, None
+
+
+def is_country_name(text: str) -> bool:
+    """Check if text is likely a country name.
+    
+    Args:
+        text: Text to check
+        
+    Returns:
+        bool: True if text appears to be a country name
+    """
+    if not text or len(text) <= 2:
+        return False
+    
+    if PYCOUNTRY_AVAILABLE:
+        iso_code, _ = normalize_country_name(text)
+        return iso_code is not None
+    
+    # Fallback: if it's longer than 2 chars and not a common US state, assume country
+    if US_AVAILABLE:
+        state_abbr, _ = normalize_us_state(text)
+        if state_abbr:
+            return False  # It's a US state, not a country
+    
+    # If longer than 2 chars and not a US state, likely a country
+    return len(text) > 2
+
+
+def is_us_state(text: str) -> bool:
+    """Check if text is likely a US state name or abbreviation.
+    
+    Args:
+        text: Text to check
+        
+    Returns:
+        bool: True if text appears to be a US state
+    """
+    if not text:
+        return False
+    
+    if US_AVAILABLE:
+        state_abbr, _ = normalize_us_state(text)
+        return state_abbr is not None
+    
+    return False
+
+
+def parse_location_string(location: str) -> Tuple[str, Optional[str], Optional[str]]:
+    """Parse a location string into city, state/country parts.
+    
+    Args:
+        location: Location string (e.g., "Stockholm, Sweden" or "Seattle, WA")
+        
+    Returns:
+        tuple: (city, state_or_country, type) where type is "state", "country", or None
+        Example: ("Stockholm", "Sweden", "country") or ("Seattle", "WA", "state")
+    """
+    if ',' not in location:
+        return location.strip(), None, None
+    
+    parts = [p.strip() for p in location.rsplit(',', 1)]
+    if len(parts) != 2:
+        return location.strip(), None, None
+    
+    city, second_part = parts
+    
+    # Check if it's a US state
+    if is_us_state(second_part):
+        state_abbr, _ = normalize_us_state(second_part)
+        return city, state_abbr, "state"
+    
+    # Check if it's a country
+    if is_country_name(second_part):
+        iso_code, country_name = normalize_country_name(second_part)
+        if iso_code:
+            return city, country_name, "country"
+    
+    # If 2 chars or less, assume state abbreviation
+    if len(second_part) <= 2:
+        return city, second_part.upper(), "state"
+    
+    # Otherwise, assume country
+    return city, second_part, "country"
+
+
 def get_nominatim_geocoder(user_agent: str = "meshcore-bot", timeout: int = 10) -> Any:
     """Get a Nominatim geocoder instance with proper User-Agent.
     
@@ -605,13 +807,43 @@ async def geocode_city(bot: Any, city: str, default_state: str = None,
         
         city_clean = city.strip()
         state_abbr = None
+        country_name = None
         
         # Parse city, state/country format if present
         if ',' in city_clean:
             parts = [p.strip() for p in city_clean.rsplit(',', 1)]
             if len(parts) == 2:
                 city_clean = parts[0]
-                state_abbr = parts[1].upper() if len(parts[1]) <= 2 else parts[1]
+                second_part = parts[1]
+                
+                # Use geocoding helpers to determine if it's a state or country
+                try:
+                    
+                    _, parsed_part, part_type = parse_location_string(f"{city_clean}, {second_part}")
+                    
+                    if part_type == "state":
+                        state_abbr, _ = normalize_us_state(second_part)
+                        if not state_abbr:
+                            state_abbr = second_part.upper() if len(second_part) <= 2 else None
+                    elif part_type == "country":
+                        iso_code, country_name = normalize_country_name(second_part)
+                        if iso_code:
+                            # Use the normalized country name for better geocoding
+                            country_name = country_name
+                        else:
+                            country_name = second_part
+                    else:
+                        # Fallback to original logic
+                        if len(second_part) <= 2:
+                            state_abbr = second_part.upper()
+                        else:
+                            country_name = second_part
+                except ImportError:
+                    # Fallback if helpers not available
+                    if len(second_part) <= 2:
+                        state_abbr = second_part.upper()
+                    else:
+                        country_name = second_part
         
         # Handle major cities with multiple locations (prioritize major cities)
         major_city_queries = get_major_city_queries(city_clean, state_abbr)
@@ -649,6 +881,40 @@ async def geocode_city(bot: Any, city: str, default_state: str = None,
                 
                 return lat, lon, address_info
         
+        # If country name was parsed (not a state abbreviation), try geocoding with country first
+        if country_name:
+            # Try with country name directly (e.g., "Stockholm, Sweden")
+            country_query = f"{city_clean}, {country_name}"
+            cached_lat, cached_lon = bot.db_manager.get_cached_geocoding(country_query)
+            if cached_lat and cached_lon:
+                lat, lon = cached_lat, cached_lon
+            else:
+                location = await rate_limited_nominatim_geocode(bot, country_query, timeout=timeout)
+                if location:
+                    bot.db_manager.cache_geocoding(country_query, location.latitude, location.longitude)
+                    lat, lon = location.latitude, location.longitude
+                else:
+                    lat, lon = None, None
+            
+            if lat and lon:
+                address_info = None
+                if include_address_info:
+                    # Check cache for reverse geocoding result
+                    reverse_cache_key = f"reverse_{lat}_{lon}"
+                    cached_address = bot.db_manager.get_cached_json(reverse_cache_key, "geolocation")
+                    if cached_address:
+                        address_info = cached_address
+                    else:
+                        try:
+                            reverse_location = await rate_limited_nominatim_reverse(bot, f"{lat}, {lon}", timeout=timeout)
+                            if reverse_location:
+                                address_info = reverse_location.raw.get('address', {})
+                                # Cache the reverse geocoding result
+                                bot.db_manager.cache_json(reverse_cache_key, address_info, "geolocation", cache_hours=720)
+                        except:
+                            address_info = {}
+                return lat, lon, address_info
+        
         # If state abbreviation was parsed, use it
         if state_abbr:
             state_query = f"{city_clean}, {state_abbr}, {default_country}"
@@ -682,7 +948,76 @@ async def geocode_city(bot: Any, city: str, default_state: str = None,
                             address_info = {}
                 return lat, lon, address_info
         
-        # Try with default state
+        # If no country/state specified, try city name alone first (finds most prominent international city)
+        # This handles cases like "Tokyo" -> Tokyo, Japan (not Tokyo, WA)
+        if not state_abbr and not country_name:
+            location = await rate_limited_nominatim_geocode(bot, city_clean, timeout=timeout)
+            if location:
+                # Check if result is in default country and is a small/obscure location
+                # If so, we'll try with default country/state as fallback
+                result_in_default_country = False
+                is_obscure_location = False
+                
+                # Always get address info to check the result
+                try:
+                    reverse_location = await rate_limited_nominatim_reverse(bot, f"{location.latitude}, {location.longitude}", timeout=timeout)
+                    if reverse_location:
+                        address = reverse_location.raw.get('address', {})
+                        result_country = address.get('country', '').upper()
+                        result_country_code = address.get('country_code', '').upper()
+                        
+                        # Check if result is in default country
+                        default_country_upper = default_country.upper()
+                        if (result_country == default_country_upper or 
+                            result_country_code == default_country_upper or
+                            'United States' in result_country and default_country_upper == 'US'):
+                            result_in_default_country = True
+                            
+                            # Check if it's an obscure location (county, township, small town)
+                            place_type = address.get('type', '').lower()
+                            place_name = (address.get('city') or 
+                                        address.get('town') or 
+                                        address.get('village') or 
+                                        address.get('municipality') or
+                                        address.get('county', '')).lower()
+                            
+                            # Obscure if it's a county, township, or if city name doesn't match the place name
+                            if ('county' in place_type or 
+                                'township' in place_type or
+                                (place_name and city_clean.lower() not in place_name and place_name not in city_clean.lower())):
+                                is_obscure_location = True
+                except:
+                    pass
+                
+                # If result is in default country and is obscure, skip it and try with default country/state
+                if result_in_default_country and is_obscure_location:
+                    # Fall through to try with default country/state
+                    pass
+                else:
+                    # Use the international result (either not in default country, or is a proper city match)
+                    bot.db_manager.cache_geocoding(city_clean, location.latitude, location.longitude)
+                    lat, lon = location.latitude, location.longitude
+                    
+                    address_info = None
+                    if include_address_info:
+                        # Check cache for reverse geocoding result
+                        reverse_cache_key = f"reverse_{lat}_{lon}"
+                        cached_address = bot.db_manager.get_cached_json(reverse_cache_key, "geolocation")
+                        if cached_address:
+                            address_info = cached_address
+                        else:
+                            try:
+                                if not reverse_location:
+                                    reverse_location = await rate_limited_nominatim_reverse(bot, f"{lat}, {lon}", timeout=timeout)
+                                if reverse_location:
+                                    address_info = reverse_location.raw.get('address', {})
+                                    # Cache the reverse geocoding result
+                                    bot.db_manager.cache_json(reverse_cache_key, address_info, "geolocation", cache_hours=720)
+                            except:
+                                address_info = {}
+                    return lat, lon, address_info
+        
+        # Try with default state (fallback for US cities when no country specified)
         cache_query = f"{city_clean}, {default_state}, {default_country}"
         cached_lat, cached_lon = bot.db_manager.get_cached_geocoding(cache_query)
         if cached_lat and cached_lon:
@@ -718,30 +1053,6 @@ async def geocode_city(bot: Any, city: str, default_state: str = None,
         location = await rate_limited_nominatim_geocode(bot, f"{city_clean}, {default_country}", timeout=timeout)
         if location:
             bot.db_manager.cache_geocoding(f"{city_clean}, {default_country}", location.latitude, location.longitude)
-            lat, lon = location.latitude, location.longitude
-            
-            address_info = None
-            if include_address_info:
-                # Check cache for reverse geocoding result
-                reverse_cache_key = f"reverse_{lat}_{lon}"
-                cached_address = bot.db_manager.get_cached_json(reverse_cache_key, "geolocation")
-                if cached_address:
-                    address_info = cached_address
-                else:
-                    try:
-                        reverse_location = await rate_limited_nominatim_reverse(bot, f"{lat}, {lon}", timeout=timeout)
-                        if reverse_location:
-                            address_info = reverse_location.raw.get('address', {})
-                            # Cache the reverse geocoding result
-                            bot.db_manager.cache_json(reverse_cache_key, address_info, "geolocation", cache_hours=720)
-                    except:
-                        address_info = {}
-            return lat, lon, address_info
-        
-        # Try international (no country suffix)
-        location = await rate_limited_nominatim_geocode(bot, city_clean, timeout=timeout)
-        if location:
-            bot.db_manager.cache_geocoding(city_clean, location.latitude, location.longitude)
             lat, lon = location.latitude, location.longitude
             
             address_info = None
@@ -799,11 +1110,42 @@ def geocode_city_sync(bot: Any, city: str, default_state: str = None,
         state_abbr = None
         
         # Parse city, state/country format if present
+        state_abbr = None
+        country_name = None
         if ',' in city_clean:
             parts = [p.strip() for p in city_clean.rsplit(',', 1)]
             if len(parts) == 2:
                 city_clean = parts[0]
-                state_abbr = parts[1].upper() if len(parts[1]) <= 2 else parts[1]
+                second_part = parts[1]
+                
+                # Use geocoding helpers to determine if it's a state or country
+                try:
+                    
+                    _, parsed_part, part_type = parse_location_string(f"{city_clean}, {second_part}")
+                    
+                    if part_type == "state":
+                        state_abbr, _ = normalize_us_state(second_part)
+                        if not state_abbr:
+                            state_abbr = second_part.upper() if len(second_part) <= 2 else None
+                    elif part_type == "country":
+                        iso_code, country_name = normalize_country_name(second_part)
+                        if iso_code:
+                            # Use the normalized country name for better geocoding
+                            country_name = country_name
+                        else:
+                            country_name = second_part
+                    else:
+                        # Fallback to original logic
+                        if len(second_part) <= 2:
+                            state_abbr = second_part.upper()
+                        else:
+                            country_name = second_part
+                except ImportError:
+                    # Fallback if helpers not available
+                    if len(second_part) <= 2:
+                        state_abbr = second_part.upper()
+                    else:
+                        country_name = second_part
         
         # Handle major cities with multiple locations (prioritize major cities)
         major_city_queries = get_major_city_queries(city_clean, state_abbr)
@@ -841,6 +1183,40 @@ def geocode_city_sync(bot: Any, city: str, default_state: str = None,
                 
                 return lat, lon, address_info
         
+        # If country name was parsed (not a state abbreviation), try geocoding with country first
+        if country_name:
+            # Try with country name directly (e.g., "Stockholm, Sweden")
+            country_query = f"{city_clean}, {country_name}"
+            cached_lat, cached_lon = bot.db_manager.get_cached_geocoding(country_query)
+            if cached_lat and cached_lon:
+                lat, lon = cached_lat, cached_lon
+            else:
+                location = rate_limited_nominatim_geocode_sync(bot, country_query, timeout=timeout)
+                if location:
+                    bot.db_manager.cache_geocoding(country_query, location.latitude, location.longitude)
+                    lat, lon = location.latitude, location.longitude
+                else:
+                    lat, lon = None, None
+            
+            if lat and lon:
+                address_info = None
+                if include_address_info:
+                    # Check cache for reverse geocoding result
+                    reverse_cache_key = f"reverse_{lat}_{lon}"
+                    cached_address = bot.db_manager.get_cached_json(reverse_cache_key, "geolocation")
+                    if cached_address:
+                        address_info = cached_address
+                    else:
+                        try:
+                            reverse_location = rate_limited_nominatim_reverse_sync(bot, f"{lat}, {lon}", timeout=timeout)
+                            if reverse_location:
+                                address_info = reverse_location.raw.get('address', {})
+                                # Cache the reverse geocoding result
+                                bot.db_manager.cache_json(reverse_cache_key, address_info, "geolocation", cache_hours=720)
+                        except:
+                            address_info = {}
+                return lat, lon, address_info
+        
         # If state abbreviation was parsed, use it
         if state_abbr:
             state_query = f"{city_clean}, {state_abbr}, {default_country}"
@@ -874,7 +1250,71 @@ def geocode_city_sync(bot: Any, city: str, default_state: str = None,
                             address_info = {}
                 return lat, lon, address_info
         
-        # Try with default state
+        # If no country/state specified, try city name alone first (finds most prominent international city)
+        # This handles cases like "Tokyo" -> Tokyo, Japan (not Tokyo, WA)
+        if not state_abbr and not country_name:
+            location = rate_limited_nominatim_geocode_sync(bot, city_clean, timeout=timeout)
+            if location:
+                # Check if result is in default country and is a small/obscure location
+                # If so, we'll try with default country/state as fallback
+                result_in_default_country = False
+                is_obscure_location = False
+                
+                if include_address_info:
+                    try:
+                        reverse_location = rate_limited_nominatim_reverse_sync(bot, f"{location.latitude}, {location.longitude}", timeout=timeout)
+                        if reverse_location:
+                            address = reverse_location.raw.get('address', {})
+                            result_country = address.get('country', '').upper()
+                            result_country_code = address.get('country_code', '').upper()
+                            
+                            # Check if result is in default country
+                            default_country_upper = default_country.upper()
+                            if (result_country == default_country_upper or 
+                                result_country_code == default_country_upper or
+                                'United States' in result_country and default_country_upper == 'US'):
+                                result_in_default_country = True
+                                
+                                # Check if it's an obscure location (county, township, small town)
+                                place_type = address.get('type', '').lower()
+                                place_name = address.get('city') or address.get('town') or address.get('village') or ''
+                                
+                                # Obscure if it's a county, township, or if city name doesn't match
+                                if ('county' in place_type or 
+                                    'township' in place_type or
+                                    city_clean.lower() not in place_name.lower()):
+                                    is_obscure_location = True
+                    except:
+                        pass
+                
+                # If result is in default country and is obscure, try with default country/state
+                if result_in_default_country and is_obscure_location:
+                    # Fall through to try with default country/state
+                    pass
+                else:
+                    # Use the international result
+                    bot.db_manager.cache_geocoding(city_clean, location.latitude, location.longitude)
+                    lat, lon = location.latitude, location.longitude
+                    
+                    address_info = None
+                    if include_address_info:
+                        # Check cache for reverse geocoding result
+                        reverse_cache_key = f"reverse_{lat}_{lon}"
+                        cached_address = bot.db_manager.get_cached_json(reverse_cache_key, "geolocation")
+                        if cached_address:
+                            address_info = cached_address
+                        else:
+                            try:
+                                reverse_location = rate_limited_nominatim_reverse_sync(bot, f"{lat}, {lon}", timeout=timeout)
+                                if reverse_location:
+                                    address_info = reverse_location.raw.get('address', {})
+                                    # Cache the reverse geocoding result
+                                    bot.db_manager.cache_json(reverse_cache_key, address_info, "geolocation", cache_hours=720)
+                            except:
+                                address_info = {}
+                    return lat, lon, address_info
+        
+        # Try with default state (fallback for US cities when no country specified)
         cache_query = f"{city_clean}, {default_state}, {default_country}"
         cached_lat, cached_lon = bot.db_manager.get_cached_geocoding(cache_query)
         if cached_lat and cached_lon:
@@ -910,30 +1350,6 @@ def geocode_city_sync(bot: Any, city: str, default_state: str = None,
         location = rate_limited_nominatim_geocode_sync(bot, f"{city_clean}, {default_country}", timeout=timeout)
         if location:
             bot.db_manager.cache_geocoding(f"{city_clean}, {default_country}", location.latitude, location.longitude)
-            lat, lon = location.latitude, location.longitude
-            
-            address_info = None
-            if include_address_info:
-                # Check cache for reverse geocoding result
-                reverse_cache_key = f"reverse_{lat}_{lon}"
-                cached_address = bot.db_manager.get_cached_json(reverse_cache_key, "geolocation")
-                if cached_address:
-                    address_info = cached_address
-                else:
-                    try:
-                        reverse_location = rate_limited_nominatim_reverse_sync(bot, f"{lat}, {lon}", timeout=timeout)
-                        if reverse_location:
-                            address_info = reverse_location.raw.get('address', {})
-                            # Cache the reverse geocoding result
-                            bot.db_manager.cache_json(reverse_cache_key, address_info, "geolocation", cache_hours=720)
-                    except:
-                        address_info = {}
-            return lat, lon, address_info
-        
-        # Try international (no country suffix)
-        location = rate_limited_nominatim_geocode_sync(bot, city_clean, timeout=timeout)
-        if location:
-            bot.db_manager.cache_geocoding(city_clean, location.latitude, location.longitude)
             lat, lon = location.latitude, location.longitude
             
             address_info = None

@@ -193,13 +193,17 @@ class GlobalWxCommand(BaseCommand):
             # Format location name for display
             location_display = self._format_location_display(address_info, geocode_result, location)
             
+            # Calculate the length of the location prefix (location_display + ": ")
+            location_prefix_len = len(f"{location_display}: ")
+            
             # Get weather forecast from Open-Meteo based on type
+            # Pass location_prefix_len so weather formatting can account for it
             if forecast_type == "tomorrow":
-                weather_text = self.get_open_meteo_weather(lat, lon, forecast_type="tomorrow", message=message)
+                weather_text = self.get_open_meteo_weather(lat, lon, forecast_type="tomorrow", message=message, location_prefix_len=location_prefix_len)
             elif forecast_type == "multiday":
-                weather_text = self.get_open_meteo_weather(lat, lon, forecast_type="multiday", num_days=num_days, message=message)
+                weather_text = self.get_open_meteo_weather(lat, lon, forecast_type="multiday", num_days=num_days, message=message, location_prefix_len=location_prefix_len)
             else:
-                weather_text = self.get_open_meteo_weather(lat, lon, message=message)
+                weather_text = self.get_open_meteo_weather(lat, lon, message=message, location_prefix_len=location_prefix_len)
             
             # Check if it's an error (translated error message)
             error_fetching = self.translate('commands.gwx.error_fetching')
@@ -429,7 +433,7 @@ class GlobalWxCommand(BaseCommand):
         }
         return state_map.get(state, state)
     
-    def get_open_meteo_weather(self, lat: float, lon: float, forecast_type: str = "default", num_days: int = 7, message: MeshMessage = None) -> str:
+    def get_open_meteo_weather(self, lat: float, lon: float, forecast_type: str = "default", num_days: int = 7, message: MeshMessage = None, location_prefix_len: int = 0) -> str:
         """Get weather forecast from Open-Meteo API.
         
         Args:
@@ -438,12 +442,14 @@ class GlobalWxCommand(BaseCommand):
             forecast_type: "default", "tomorrow", or "multiday".
             num_days: Number of days for multiday forecast (2-7).
             message: The MeshMessage for dynamic length calculation.
+            location_prefix_len: Length of location prefix (e.g., "City, CC: ") that will be added later.
             
         Returns:
             str: Formatted weather string or error message.
         """
-        # Get max message length dynamically
+        # Get max message length dynamically, then subtract location prefix length
         max_length = self.get_max_message_length(message) if message else 130
+        max_length = max_length - location_prefix_len  # Account for location prefix
         try:
             # Open-Meteo API endpoint with current weather and forecast
             api_url = "https://api.open-meteo.com/v1/forecast"
@@ -614,7 +620,8 @@ class GlobalWxCommand(BaseCommand):
                     tomorrow_str = f" | {tomorrow_period}: {tomorrow_emoji}{tomorrow_high}{temp_symbol}/{tomorrow_low}{temp_symbol}"
                     
                     # Only add if we have space (leave room for potential precipitation)
-                    if len(weather + tomorrow_str) < max_length - 10:  # Leave 10 chars buffer
+                    # Use display width to account for emojis
+                    if self._count_display_width(weather + tomorrow_str) <= max_length - 10:  # Leave 10 chars buffer
                         weather += tomorrow_str
                         
                         # Add precipitation probability and amount if significant and space allows
