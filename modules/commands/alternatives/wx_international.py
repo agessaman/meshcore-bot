@@ -23,6 +23,7 @@ class GlobalWxCommand(BaseCommand):
     description = "Get weather information for any global location (usage: gwx Tokyo)"
     category = "weather"
     cooldown_seconds = 5  # 5 second cooldown per user to prevent API abuse
+    requires_internet = True  # Requires internet access for Open-Meteo API and geocoding
     
     # Error constants - will use translations instead
     ERROR_FETCHING_DATA = "ERROR_FETCHING_DATA"  # Placeholder, will use translate()
@@ -85,9 +86,105 @@ class GlobalWxCommand(BaseCommand):
             content = content[1:].strip()
         content_lower = content.lower()
         for keyword in self.keywords:
-            if content_lower.startswith(keyword + ' '):
+            # Match exact keyword or keyword followed by space
+            if content_lower == keyword or content_lower.startswith(keyword + ' '):
                 return True
         return False
+    
+    def _get_companion_location(self, message: MeshMessage) -> Optional[Tuple[float, float]]:
+        """Get companion/sender location from database.
+        
+        Args:
+            message: The message object.
+            
+        Returns:
+            Optional[Tuple[float, float]]: Tuple of (latitude, longitude) or None.
+        """
+        try:
+            sender_pubkey = message.sender_pubkey
+            if not sender_pubkey:
+                self.logger.debug("No sender_pubkey in message for companion location lookup")
+                return None
+            
+            query = '''
+                SELECT latitude, longitude 
+                FROM complete_contact_tracking 
+                WHERE public_key = ? 
+                AND latitude IS NOT NULL AND longitude IS NOT NULL
+                AND latitude != 0 AND longitude != 0
+                ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
+                LIMIT 1
+            '''
+            
+            results = self.bot.db_manager.execute_query(query, (sender_pubkey,))
+            
+            if results:
+                row = results[0]
+                lat = row['latitude']
+                lon = row['longitude']
+                self.logger.debug(f"Found companion location: {lat}, {lon} for pubkey {sender_pubkey[:16]}...")
+                return (lat, lon)
+            else:
+                self.logger.debug(f"No location found in database for pubkey {sender_pubkey[:16]}...")
+            return None
+        except Exception as e:
+            self.logger.warning(f"Error getting companion location: {e}")
+            return None
+    
+    def _get_bot_location(self) -> Optional[Tuple[float, float]]:
+        """Get bot location from config.
+        
+        Returns:
+            Optional[Tuple[float, float]]: Tuple of (latitude, longitude) or None.
+        """
+        try:
+            lat = self.bot.config.getfloat('Bot', 'bot_latitude', fallback=None)
+            lon = self.bot.config.getfloat('Bot', 'bot_longitude', fallback=None)
+            
+            if lat is not None and lon is not None:
+                # Validate coordinates
+                if -90 <= lat <= 90 and -180 <= lon <= 180:
+                    return (lat, lon)
+            return None
+        except Exception as e:
+            self.logger.debug(f"Error getting bot location: {e}")
+            return None
+    
+    def _coordinates_to_location_string(self, lat: float, lon: float) -> Optional[str]:
+        """Convert coordinates to a location string (city name) using reverse geocoding.
+        
+        Args:
+            lat: Latitude.
+            lon: Longitude.
+            
+        Returns:
+            Optional[str]: Location string (city name) or None if geocoding fails.
+        """
+        try:
+            result = rate_limited_nominatim_reverse_sync(self.bot, f"{lat}, {lon}", timeout=10)
+            if result and hasattr(result, 'raw'):
+                # Extract city name from address
+                address = result.raw.get('address', {})
+                city = (address.get('city') or 
+                       address.get('town') or 
+                       address.get('village') or 
+                       address.get('municipality') or
+                       address.get('county', ''))
+                state = address.get('state', '')
+                country = address.get('country', '')
+                
+                if city:
+                    if state and country:
+                        return f"{city}, {state}, {country}"
+                    elif state:
+                        return f"{city}, {state}"
+                    elif country:
+                        return f"{city}, {country}"
+                    return city
+            return None
+        except Exception as e:
+            self.logger.debug(f"Error reverse geocoding coordinates {lat}, {lon}: {e}")
+            return None
     
     
     async def execute(self, message: MeshMessage) -> bool:
@@ -103,9 +200,27 @@ class GlobalWxCommand(BaseCommand):
         
         # Parse the command to extract location and forecast type
         parts = content.split()
+        
+        # If no location specified, try to use companion location
         if len(parts) < 2:
-            await self.send_response(message, self.translate('commands.gwx.usage'))
-            return True
+            companion_location = self._get_companion_location(message)
+            if companion_location:
+                # Convert coordinates to location string
+                location_str = self._coordinates_to_location_string(companion_location[0], companion_location[1])
+                if location_str:
+                    # Use the location string as if user provided it
+                    parts = [parts[0], location_str]
+                    self.logger.info(f"Using companion location: {location_str} ({companion_location[0]}, {companion_location[1]})")
+                else:
+                    # If reverse geocoding fails, use coordinates directly (geocode_location can handle "lat,lon" format)
+                    location_str = f"{companion_location[0]},{companion_location[1]}"
+                    parts = [parts[0], location_str]
+                    self.logger.info(f"Using companion coordinates: {location_str}")
+            else:
+                # No companion location available, show usage
+                self.logger.debug("No companion location found, showing usage")
+                await self.send_response(message, self.translate('commands.gwx.usage'))
+                return True
         
         # Check for forecast type options: "tomorrow", or a number 2-7
         forecast_type = "default"
@@ -192,6 +307,7 @@ class GlobalWxCommand(BaseCommand):
             
             # Format location name for display
             location_display = self._format_location_display(address_info, geocode_result, location)
+            self.logger.debug(f"Formatted location_display: '{location_display}' from location: '{location}'")
             
             # Calculate the length of the location prefix (location_display + ": ")
             location_prefix_len = len(f"{location_display}: ")

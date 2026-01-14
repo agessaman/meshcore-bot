@@ -11,8 +11,9 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import xml.dom.minidom
 from datetime import datetime, timedelta
+from typing import Optional, Tuple
 from geopy.geocoders import Nominatim
-from ..utils import rate_limited_nominatim_geocode_sync, rate_limited_nominatim_reverse_sync, get_nominatim_geocoder, geocode_zipcode_sync, geocode_city_sync
+from ..utils import rate_limited_nominatim_geocode_sync, rate_limited_nominatim_reverse_sync, get_nominatim_geocoder, geocode_zipcode_sync, geocode_city_sync, normalize_us_state
 import maidenhead as mh
 from .base_command import BaseCommand
 from ..models import MeshMessage
@@ -124,7 +125,8 @@ class WxCommand(BaseCommand):
             content = content[1:].strip()
         content_lower = content.lower()
         for keyword in self.keywords:
-            if content_lower.startswith(keyword + ' '):
+            # Match exact keyword or keyword followed by space
+            if content_lower == keyword or content_lower.startswith(keyword + ' '):
                 return True
         return False
     
@@ -148,6 +150,103 @@ class WxCommand(BaseCommand):
         # Use base class method
         return super().get_remaining_cooldown(user_id)
     
+    def _get_companion_location(self, message: MeshMessage) -> Optional[Tuple[float, float]]:
+        """Get companion/sender location from database.
+        
+        Args:
+            message: The message object.
+            
+        Returns:
+            Optional[Tuple[float, float]]: Tuple of (latitude, longitude) or None.
+        """
+        try:
+            sender_pubkey = message.sender_pubkey
+            if not sender_pubkey:
+                self.logger.debug("No sender_pubkey in message for companion location lookup")
+                return None
+            
+            query = '''
+                SELECT latitude, longitude 
+                FROM complete_contact_tracking 
+                WHERE public_key = ? 
+                AND latitude IS NOT NULL AND longitude IS NOT NULL
+                AND latitude != 0 AND longitude != 0
+                ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
+                LIMIT 1
+            '''
+            
+            results = self.bot.db_manager.execute_query(query, (sender_pubkey,))
+            
+            if results:
+                row = results[0]
+                lat = row['latitude']
+                lon = row['longitude']
+                self.logger.debug(f"Found companion location: {lat}, {lon} for pubkey {sender_pubkey[:16]}...")
+                return (lat, lon)
+            else:
+                self.logger.debug(f"No location found in database for pubkey {sender_pubkey[:16]}...")
+            return None
+        except Exception as e:
+            self.logger.warning(f"Error getting companion location: {e}")
+            return None
+    
+    def _get_bot_location(self) -> Optional[Tuple[float, float]]:
+        """Get bot location from config.
+        
+        Returns:
+            Optional[Tuple[float, float]]: Tuple of (latitude, longitude) or None.
+        """
+        try:
+            lat = self.bot.config.getfloat('Bot', 'bot_latitude', fallback=None)
+            lon = self.bot.config.getfloat('Bot', 'bot_longitude', fallback=None)
+            
+            if lat is not None and lon is not None:
+                # Validate coordinates
+                if -90 <= lat <= 90 and -180 <= lon <= 180:
+                    return (lat, lon)
+            return None
+        except Exception as e:
+            self.logger.debug(f"Error getting bot location: {e}")
+            return None
+    
+    def _coordinates_to_location_string(self, lat: float, lon: float) -> Optional[str]:
+        """Convert coordinates to a location string (city name) using reverse geocoding.
+        
+        Args:
+            lat: Latitude.
+            lon: Longitude.
+            
+        Returns:
+            Optional[str]: Location string (city name) or None if geocoding fails.
+        """
+        try:
+            from ..utils import rate_limited_nominatim_reverse_sync
+            result = rate_limited_nominatim_reverse_sync(self.bot, f"{lat}, {lon}", timeout=10)
+            if result and hasattr(result, 'raw'):
+                # Extract city name from address
+                address = result.raw.get('address', {})
+                city = (address.get('city') or 
+                       address.get('town') or 
+                       address.get('village') or 
+                       address.get('municipality') or
+                       address.get('county', ''))
+                state = address.get('state', '')
+                
+                # Normalize state to abbreviation
+                if state:
+                    state_abbr, _ = normalize_us_state(state)
+                    if state_abbr:
+                        state = state_abbr
+                
+                if city:
+                    if state:
+                        return f"{city}, {state}"
+                    return city
+            return None
+        except Exception as e:
+            self.logger.debug(f"Error reverse geocoding coordinates {lat}, {lon}: {e}")
+            return None
+    
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the weather command"""
         # Delegate to international command if using Open-Meteo provider
@@ -160,9 +259,29 @@ class WxCommand(BaseCommand):
         # Support formats: "wx 12345", "wx seattle", "wx paris, tx", "weather everett", "wxa bellingham"
         # New formats: "wx 12345 tomorrow", "wx 12345 7", "wx 12345 7day", "wx 12345 alerts"
         parts = content.split()
+        
+        # Track if we're using companion location (so we always show location in response)
+        using_companion_location = False
+        
+        # If no location specified, try to use companion location
         if len(parts) < 2:
-            await self.send_response(message, self.translate('commands.wx.usage'))
-            return True
+            companion_location = self._get_companion_location(message)
+            if companion_location:
+                # Use coordinates directly to avoid re-geocoding issues
+                location_str = f"{companion_location[0]},{companion_location[1]}"
+                parts = [parts[0], location_str]
+                using_companion_location = True
+                # Get city name for display
+                display_name = self._coordinates_to_location_string(companion_location[0], companion_location[1])
+                if display_name:
+                    self.logger.info(f"Using companion location: {display_name} ({companion_location[0]}, {companion_location[1]})")
+                else:
+                    self.logger.info(f"Using companion coordinates: {location_str}")
+            else:
+                # No companion location available, show usage
+                self.logger.debug("No companion location found, showing usage")
+                await self.send_response(message, self.translate('commands.wx.usage'))
+                return True
         
         # Check for "alerts" keyword first (special handling)
         show_full_alerts = False
@@ -204,8 +323,11 @@ class WxCommand(BaseCommand):
             await self.send_response(message, self.translate('commands.wx.usage'))
             return True
         
-        # Check if it's a zipcode (5 digits) or city name
-        if re.match(r'^\d{5}$', location):
+        # Check if it's coordinates, zipcode, or city name
+        if re.match(r'^\s*-?\d+\.?\d*\s*,\s*-?\d+\.?\d*\s*$', location):
+            # It's coordinates (lat,lon format)
+            location_type = "coordinates"
+        elif re.match(r'^\d{5}$', location):
             # It's a zipcode
             location_type = "zipcode"
         else:
@@ -220,7 +342,18 @@ class WxCommand(BaseCommand):
             if show_full_alerts:
                 # Get alerts only (no weather forecast)
                 lat, lon = None, None
-                if location_type == "zipcode":
+                if location_type == "coordinates":
+                    try:
+                        lat_str, lon_str = location.split(',')
+                        lat = float(lat_str.strip())
+                        lon = float(lon_str.strip())
+                        if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+                            await self.send_response(message, self.translate('commands.wx.error', error="Invalid coordinates"))
+                            return True
+                    except ValueError:
+                        await self.send_response(message, self.translate('commands.wx.error', error=f"Invalid coordinates format: {location}"))
+                        return True
+                elif location_type == "zipcode":
                     lat, lon = self.zipcode_to_lat_lon(location)
                     if lat is None or lon is None:
                         await self.send_response(message, self.translate('commands.wx.no_location_zipcode', location=location))
@@ -240,7 +373,7 @@ class WxCommand(BaseCommand):
                 return True
             
             # Get weather data for the location
-            weather_data = await self.get_weather_for_location(location, location_type, forecast_type, num_days, message)
+            weather_data = await self.get_weather_for_location(location, location_type, forecast_type, num_days, message, using_companion_location=using_companion_location)
             
             # Check if we need to send multiple messages
             if isinstance(weather_data, tuple) and weather_data[0] == "multi_message":
@@ -272,19 +405,48 @@ class WxCommand(BaseCommand):
             await self.send_response(message, self.translate('commands.wx.error', error=str(e)))
             return True
     
-    async def get_weather_for_location(self, location: str, location_type: str, forecast_type: str = "default", num_days: int = 7, message: MeshMessage = None) -> str:
-        """Get weather data for a location (zipcode or city)
+    async def get_weather_for_location(self, location: str, location_type: str, forecast_type: str = "default", num_days: int = 7, message: MeshMessage = None, using_companion_location: bool = False) -> str:
+        """Get weather data for a location (coordinates, zipcode, or city)
         
         Args:
-            location: The location (zipcode or city name)
-            location_type: "zipcode" or "city"
+            location: The location (coordinates "lat,lon", zipcode, or city name)
+            location_type: "coordinates", "zipcode", or "city"
             forecast_type: "default", "tomorrow", "multiday", or "hourly"
             num_days: Number of days for multiday forecast (2-7)
             message: The MeshMessage for dynamic length calculation
+            using_companion_location: If True, always include location prefix even if same state
         """
         try:
-            # Convert location to lat/lon
-            if location_type == "zipcode":
+            # Convert location to lat/lon based on type
+            if location_type == "coordinates":
+                # Parse coordinates from "lat,lon" format
+                try:
+                    lat_str, lon_str = location.split(',')
+                    lat = float(lat_str.strip())
+                    lon = float(lon_str.strip())
+                    
+                    # Validate coordinate ranges
+                    if not (-90 <= lat <= 90):
+                        return self.translate('commands.wx.error', error=f"Invalid latitude: {lat}")
+                    if not (-180 <= lon <= 180):
+                        return self.translate('commands.wx.error', error=f"Invalid longitude: {lon}")
+                    
+                    # Get address_info for location display via reverse geocoding
+                    location_str = self._coordinates_to_location_string(lat, lon)
+                    if location_str:
+                        # Parse the location string to get city and state for address_info
+                        parts = location_str.split(',')
+                        if len(parts) >= 2:
+                            city = parts[0].strip()
+                            state = parts[1].strip()
+                            address_info = {'city': city, 'state': state}
+                        else:
+                            address_info = {'city': location_str}
+                    else:
+                        address_info = {}
+                except ValueError:
+                    return self.translate('commands.wx.error', error=f"Invalid coordinates format: {location}")
+            elif location_type == "zipcode":
                 lat, lon = self.zipcode_to_lat_lon(location)
                 if lat is None or lon is None:
                     return self.translate('commands.wx.no_location_zipcode', location=location)
@@ -312,40 +474,46 @@ class WxCommand(BaseCommand):
                                  address_info.get('municipality') or 
                                  location)
                     actual_state = address_info.get('state', self.default_state)
-                    # Convert full state name to abbreviation if needed
+                    # Convert full state name to abbreviation if needed using the us library
                     if len(actual_state) > 2:
-                        state_abbrev_map = {
-                            'Washington': 'WA', 'California': 'CA', 'New York': 'NY', 'Texas': 'TX',
-                            'Florida': 'FL', 'Illinois': 'IL', 'Pennsylvania': 'PA', 'Ohio': 'OH',
-                            'Georgia': 'GA', 'North Carolina': 'NC', 'Michigan': 'MI', 'New Jersey': 'NJ',
-                            'Virginia': 'VA', 'Tennessee': 'TN', 'Indiana': 'IN', 'Arizona': 'AZ',
-                            'Massachusetts': 'MA', 'Missouri': 'MO', 'Maryland': 'MD', 'Wisconsin': 'WI',
-                            'Colorado': 'CO', 'Minnesota': 'MN', 'South Carolina': 'SC', 'Alabama': 'AL',
-                            'Louisiana': 'LA', 'Kentucky': 'KY', 'Oregon': 'OR', 'Oklahoma': 'OK',
-                            'Connecticut': 'CT', 'Utah': 'UT', 'Iowa': 'IA', 'Nevada': 'NV',
-                            'Arkansas': 'AR', 'Mississippi': 'MS', 'Kansas': 'KS', 'New Mexico': 'NM',
-                            'Nebraska': 'NE', 'West Virginia': 'WV', 'Idaho': 'ID', 'Hawaii': 'HI',
-                            'New Hampshire': 'NH', 'Maine': 'ME', 'Montana': 'MT', 'Rhode Island': 'RI',
-                            'Delaware': 'DE', 'South Dakota': 'SD', 'North Dakota': 'ND', 'Alaska': 'AK',
-                            'Vermont': 'VT', 'Wyoming': 'WY'
-                        }
-                        actual_state = state_abbrev_map.get(actual_state, actual_state)
+                        state_abbr, _ = normalize_us_state(actual_state)
+                        if state_abbr:
+                            actual_state = state_abbr
                     
                     # Also check if the default state needs to be converted for comparison
                     default_state_full = self.default_state
                     if len(self.default_state) == 2:
                         # Convert abbreviation to full name for comparison
-                        abbrev_to_full_map = {v: k for k, v in state_abbrev_map.items()}
-                        default_state_full = abbrev_to_full_map.get(self.default_state, self.default_state)
+                        _, default_state_full = normalize_us_state(self.default_state)
+                        if not default_state_full:
+                            default_state_full = self.default_state
             
-            # Add location info if city is in a different state than default
+            # Add location info if city is in a different state than default, or if using companion location
             location_prefix = ""
-            if location_type == "city" and address_info:
+            if location_type == "coordinates" and address_info:
+                # For coordinates, always show location if we have address info
+                city = address_info.get('city', '')
+                state = address_info.get('state', '')
+                if city and state:
+                    # Normalize state to abbreviation
+                    state_abbr, _ = normalize_us_state(state)
+                    if state_abbr:
+                        state = state_abbr
+                    location_prefix = f"{city}, {state}: "
+                elif city:
+                    location_prefix = f"{city}: "
+            elif location_type == "city" and address_info:
                 # Compare states (handle both full names and abbreviations)
                 states_different = (actual_state != self.default_state and 
                                   actual_state != default_state_full)
-                if states_different:
+                # Always show location if using companion location, or if state is different
+                if using_companion_location or states_different:
                     location_prefix = f"{actual_city}, {actual_state}: "
+            elif location_type == "zipcode" and using_companion_location:
+                # For zipcode with companion location, try to get city name from reverse geocoding
+                location_str = self._coordinates_to_location_string(lat, lon)
+                if location_str:
+                    location_prefix = f"{location_str}: "
             
             # Get max message length dynamically
             max_length = self.get_max_message_length(message) if message else 130
