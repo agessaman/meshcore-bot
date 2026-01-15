@@ -484,6 +484,28 @@ def generate_html(bot_name: str, title: str, introduction: str, commands: List[T
                 commands_html += f'        </div>\n'
             commands_html += f'      </div>\n'
             commands_html += f'      <p class="command-description">{escape_html(description)}</p>\n'
+            
+            # Get usage information including sub-commands
+            try:
+                usage_info = cmd_instance.get_usage_info()
+                subcommands = usage_info.get('subcommands', [])
+                
+                if subcommands:
+                    commands_html += f'      <div class="command-subcommands">\n'
+                    commands_html += f'        <div class="subcommands-header">Sub-commands:</div>\n'
+                    for subcmd in subcommands:
+                        subcmd_name = subcmd.get('name', '')
+                        subcmd_desc = subcmd.get('description', '')
+                        if subcmd_name and subcmd_desc:
+                            commands_html += f'        <div class="subcommand-item">\n'
+                            commands_html += f'          <span class="subcommand-name">{escape_html(subcmd_name)}</span>\n'
+                            commands_html += f'          <span class="subcommand-desc">{escape_html(subcmd_desc)}</span>\n'
+                            commands_html += f'        </div>\n'
+                    commands_html += f'      </div>\n'
+            except Exception as e:
+                # Silently fail if get_usage_info() is not available or fails
+                pass
+            
             if channel_info:
                 commands_html += f'      <div class="command-channels">{escape_html(channel_info)}</div>\n'
             commands_html += f'    </div>\n'
@@ -1043,6 +1065,43 @@ def generate_html(bot_name: str, title: str, introduction: str, commands: List[T
             line-height: 1.7;
             margin-bottom: 0.75rem;
             font-size: 0.95rem;
+        }}
+        
+        .command-subcommands {{
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-subtle);
+        }}
+        
+        .subcommands-header {{
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }}
+        
+        .subcommand-item {{
+            display: flex;
+            gap: 0.75rem;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+            align-items: flex-start;
+        }}
+        
+        .subcommand-name {{
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent-cyan);
+            font-weight: 500;
+            min-width: 100px;
+            flex-shrink: 0;
+        }}
+        
+        .subcommand-desc {{
+            color: var(--text-secondary);
+            flex: 1;
+            line-height: 1.5;
         }}
         
         .command-channels {{

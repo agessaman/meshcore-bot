@@ -51,6 +51,24 @@
     "wx": {
       "description": "Get weather information for a zip code (usage: wx 12345)",
       "usage": "Usage: wx <zipcode|city> - Example: wx 12345 or wx seattle or wx paris, tx",
+      "subcommands": [
+        {
+          "name": "tomorrow",
+          "description": "Get tomorrow's forecast"
+        },
+        {
+          "name": "7d",
+          "description": "Get 7-day forecast (also: 7-day, 2-7)"
+        },
+        {
+          "name": "hourly",
+          "description": "Get hourly forecast"
+        },
+        {
+          "name": "alerts",
+          "description": "Show full weather alerts"
+        }
+      ],
       "error_fetching": "Error fetching weather data from NOAA",
       "no_location_zipcode": "Could not find location for zipcode {location}",
       "no_location_city": "Could not find city '{location}' in {state}",
@@ -135,6 +153,20 @@
     "stats": {
       "description": "Show statistics for past 24 hours. Use 'stats messages', 'stats channels', or 'stats paths' for specific stats.",
       "help": "Show 24-hour bot statistics. Commands: 'stats' (basic), 'stats messages' (bot users), 'stats channels' (channel activity), 'stats paths' (longest paths)",
+      "subcommands": [
+        {
+          "name": "messages",
+          "description": "Show message statistics for bot users"
+        },
+        {
+          "name": "channels",
+          "description": "Show channel activity statistics"
+        },
+        {
+          "name": "paths",
+          "description": "Show longest routing paths"
+        }
+      ],
       "disabled": "Stats command is disabled",
       "unknown_subcommand": "Unknown: {subcommand}. Use 'stats', 'stats messages', 'stats channels', or 'stats paths'",
       "error": "Error getting stats: {error}",
@@ -248,6 +280,12 @@
     "airplanes": {
       "description": "Get aircraft overhead (usage: airplanes [location] [options] or overhead [lat,lon])",
       "usage": "Usage: airplanes [location] [options]\nLocation: 'here' for bot location, or lat,lon (e.g., 47.6,-122.3)\nOptions: radius=<nm>, alt=<min>-<max>, speed=<min>-<max>, type=<code>, callsign=<pattern>, military, limit=<n>",
+      "subcommands": [
+        {
+          "name": "overhead",
+          "description": "Get the single closest aircraft directly overhead (uses companion location or specified coordinates)"
+        }
+      ],
       "no_location": "No location available. Specify coordinates: airplanes 47.6,-122.3 or use 'airplanes here' for bot location",
       "overhead_no_location": "I don't know your companion location. Send 'advert' to flood advert with your location, or specify coordinates: 'overhead [lat,lon]'",
       "no_aircraft": "No aircraft found within {radius}nm",
@@ -401,6 +439,12 @@
     "channels": {
       "description": "List or manage channels",
       "help": "Lists hashtag channels with sub-categories. Use 'channels' for general, 'channels list' for all categories, 'channels <category>' for specific categories, 'channels #channel' for specific channel info.",
+      "subcommands": [
+        {
+          "name": "list",
+          "description": "List all channel categories"
+        }
+      ],
       "no_channels_for_category": "No channels configured for '{category}'. Use 'channels' for general channels.",
       "no_channels_configured": "No channels configured. Contact admin to add channels.",
       "error_retrieving_channels": "Error retrieving channels: {error}",

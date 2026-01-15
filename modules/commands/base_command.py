@@ -168,6 +168,48 @@ class BaseCommand(ABC):
         """
         return self.description or "No help available for this command."
     
+    def get_usage_info(self) -> Dict[str, Any]:
+        """Get structured usage information including sub-commands and options.
+        
+        Returns:
+            Dict with keys:
+                - 'description': Main command description
+                - 'subcommands': List of dicts with 'name' and 'description'
+                - 'usage_patterns': List of usage pattern strings
+                - 'examples': List of example strings
+        """
+        usage_info = {
+            'description': self.description or "No description available",
+            'subcommands': [],
+            'usage_patterns': [],
+            'examples': []
+        }
+        
+        # Try to get structured data from translations
+        if hasattr(self.bot, 'translator'):
+            try:
+                # Get subcommands from translations
+                subcommands_key = f"commands.{self.name}.subcommands"
+                subcommands_data = self.translate_get_value(subcommands_key)
+                if subcommands_data and isinstance(subcommands_data, list):
+                    usage_info['subcommands'] = subcommands_data
+                
+                # Get usage patterns from translations
+                usage_patterns_key = f"commands.{self.name}.usage_patterns"
+                usage_patterns_data = self.translate_get_value(usage_patterns_key)
+                if usage_patterns_data and isinstance(usage_patterns_data, list):
+                    usage_info['usage_patterns'] = usage_patterns_data
+                
+                # Get examples from translations
+                examples_key = f"commands.{self.name}.examples"
+                examples_data = self.translate_get_value(examples_key)
+                if examples_data and isinstance(examples_data, list):
+                    usage_info['examples'] = examples_data
+            except Exception as e:
+                self.logger.debug(f"Could not load usage info from translations for {self.name}: {e}")
+        
+        return usage_info
+    
     def _derive_config_section_name(self) -> str:
         """Derive config section name from command name.
         
