@@ -519,6 +519,43 @@
             font-size: 0.95rem;
         }
         
+        .command-subcommands {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-subtle);
+        }
+        
+        .subcommands-header {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .subcommand-item {
+            display: flex;
+            gap: 0.75rem;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+            align-items: flex-start;
+        }
+        
+        .subcommand-name {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent-cyan);
+            font-weight: 500;
+            min-width: 100px;
+            flex-shrink: 0;
+        }
+        
+        .subcommand-desc {
+            color: var(--text-secondary);
+            flex: 1;
+            line-height: 1.5;
+        }
+        
         .command-channels {
             color: var(--accent-cyan);
             font-size: 0.85rem;
@@ -804,6 +841,7 @@
       <li><a href="#commands-entertainment" class="nav-link nav-sublink">Entertainment</a></li>
       <li><a href="#commands-fun" class="nav-link nav-sublink">Fun Commands</a></li>
       <li><a href="#commands-games" class="nav-link nav-sublink">Games &amp; Entertainment</a></li>
+      <li><a href="#commands-general" class="nav-link nav-sublink">General Commands</a></li>
       <li><a href="#commands-meshcore-info" class="nav-link nav-sublink">Mesh Network Info</a></li>
       <li><a href="#commands-solar" class="nav-link nav-sublink">Solar &amp; Astronomical</a></li>
       <li><a href="#commands-sports" class="nav-link nav-sublink">Sports</a></li>
@@ -941,6 +979,18 @@
   <div class="commands-grid">
     <div class="command-card">
       <div class="command-header">
+        <h3 class="command-name">dadjoke</h3>
+        <div class="command-keywords">
+          <span class="keyword-badge">dad joke</span>
+          <span class="keyword-badge">dadjokes</span>
+          <span class="keyword-badge">dad jokes</span>
+        </div>
+      </div>
+      <p class="command-description">Get a random dad joke from icanhazdadjoke.com</p>
+      <div class="command-channels">Channel: #jokes</div>
+    </div>
+    <div class="command-card">
+      <div class="command-header">
         <h3 class="command-name">hacker</h3>
         <div class="command-keywords">
           <span class="keyword-badge">sudo</span>
@@ -952,18 +1002,6 @@
         </div>
       </div>
       <p class="command-description">Simulates hacking a supervillain&#x27;s mainframe with hilarious error messages</p>
-    </div>
-    <div class="command-card">
-      <div class="command-header">
-        <h3 class="command-name">dadjoke</h3>
-        <div class="command-keywords">
-          <span class="keyword-badge">dad joke</span>
-          <span class="keyword-badge">dadjokes</span>
-          <span class="keyword-badge">dad jokes</span>
-        </div>
-      </div>
-      <p class="command-description">Get a random dad joke from icanhazdadjoke.com</p>
-      <div class="command-channels">Channel: #jokes</div>
     </div>
   </div>
 </div>
@@ -987,6 +1025,23 @@
         <h3 class="command-name">roll</h3>
       </div>
       <p class="command-description">Roll a random number between 1 and X (default 100). Use &#x27;roll&#x27; for 1-100, &#x27;roll 50&#x27; for 1-50, etc.</p>
+    </div>
+  </div>
+</div>
+<div class="category-section" id="commands-general">
+  <h2 class="category-title"><a href="#commands-general" class="anchor-link">General Commands</a></h2>
+  <div class="commands-grid">
+    <div class="command-card">
+      <div class="command-header">
+        <h3 class="command-name">airplanes</h3>
+        <div class="command-keywords">
+          <span class="keyword-badge">aircraft</span>
+          <span class="keyword-badge">planes</span>
+          <span class="keyword-badge">adsb</span>
+          <span class="keyword-badge">overhead</span>
+        </div>
+      </div>
+      <p class="command-description">Get aircraft overhead (usage: airplanes [location] [options] or overhead [lat,lon])</p>
     </div>
   </div>
 </div>
@@ -1036,27 +1091,27 @@
     </div>
     <div class="command-card">
       <div class="command-header">
-        <h3 class="command-name">satpass</h3>
-      </div>
-      <p class="command-description">Get satellite pass info: satpass &lt;NORAD_number_or_shortcut&gt; [visual]</p>
-    </div>
-    <div class="command-card">
-      <div class="command-header">
         <h3 class="command-name">moon</h3>
       </div>
       <p class="command-description">Get moon phase, rise/set times and position</p>
     </div>
     <div class="command-card">
       <div class="command-header">
-        <h3 class="command-name">sun</h3>
-      </div>
-      <p class="command-description">Get sunrise/sunset times</p>
-    </div>
-    <div class="command-card">
-      <div class="command-header">
         <h3 class="command-name">solar</h3>
       </div>
       <p class="command-description">Get current solar conditions and HF band info</p>
+    </div>
+    <div class="command-card">
+      <div class="command-header">
+        <h3 class="command-name">satpass</h3>
+      </div>
+      <p class="command-description">Get satellite pass info: satpass &lt;NORAD_number_or_shortcut&gt; [visual]</p>
+    </div>
+    <div class="command-card">
+      <div class="command-header">
+        <h3 class="command-name">sun</h3>
+      </div>
+      <p class="command-description">Get sunrise/sunset times</p>
     </div>
     <div class="command-card">
       <div class="command-header">
@@ -1101,6 +1156,16 @@
     </div>
     <div class="command-card">
       <div class="command-header">
+        <h3 class="command-name">gwx</h3>
+        <div class="command-keywords">
+          <span class="keyword-badge">globalweather</span>
+          <span class="keyword-badge">gwxa</span>
+        </div>
+      </div>
+      <p class="command-description">Get weather information for any global location (usage: gwx Tokyo)</p>
+    </div>
+    <div class="command-card">
+      <div class="command-header">
         <h3 class="command-name">aqi</h3>
         <div class="command-keywords">
           <span class="keyword-badge">air</span>
@@ -1109,16 +1174,6 @@
         </div>
       </div>
       <p class="command-description">Get Air Quality Index for a location (usage: aqi seattle, aqi greenwood, aqi vancouver canada, aqi 47.6,-122.3, or aqi help)</p>
-    </div>
-    <div class="command-card">
-      <div class="command-header">
-        <h3 class="command-name">gwx</h3>
-        <div class="command-keywords">
-          <span class="keyword-badge">globalweather</span>
-          <span class="keyword-badge">gwxa</span>
-        </div>
-      </div>
-      <p class="command-description">Get weather information for any global location (usage: gwx Tokyo)</p>
     </div>
   </div>
 </div>

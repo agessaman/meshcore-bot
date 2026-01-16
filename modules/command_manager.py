@@ -294,19 +294,31 @@ class CommandManager:
         
         # Check if message starts with any help keyword
         for help_keyword in help_keywords:
-            if content_lower.startswith(help_keyword + ' '):
-                command_name = content_lower[len(help_keyword):].strip()  # Remove help keyword prefix
-                help_text = self.get_help_for_command(command_name, message)
-                # Format the help response with message data (same as other keywords)
-                help_text = self.format_keyword_response(help_text, message)
-                matches.append(('help', help_text))
-                return matches
-            elif content_lower == help_keyword:
-                help_text = self.get_general_help()
-                # Format the help response with message data (same as other keywords)
-                help_text = self.format_keyword_response(help_text, message)
-                matches.append(('help', help_text))
-                return matches
+            if content_lower.startswith(help_keyword + ' ') or content_lower == help_keyword:
+                # Check channel restrictions for help keyword (same as other keywords/commands)
+                # DMs are allowed if respond_to_dms is enabled
+                if message.is_dm:
+                    if not self.bot.config.getboolean('Channels', 'respond_to_dms', fallback=True):
+                        break  # DMs disabled, skip help keyword
+                else:
+                    # For channel messages, check if channel is in monitor_channels
+                    if message.channel not in self.monitor_channels:
+                        break  # Channel not monitored, skip help keyword
+                
+                # Channel check passed, process help request
+                if content_lower.startswith(help_keyword + ' '):
+                    command_name = content_lower[len(help_keyword):].strip()  # Remove help keyword prefix
+                    help_text = self.get_help_for_command(command_name, message)
+                    # Format the help response with message data (same as other keywords)
+                    help_text = self.format_keyword_response(help_text, message)
+                    matches.append(('help', help_text))
+                    return matches
+                elif content_lower == help_keyword:
+                    help_text = self.get_general_help()
+                    # Format the help response with message data (same as other keywords)
+                    help_text = self.format_keyword_response(help_text, message)
+                    matches.append(('help', help_text))
+                    return matches
         
         # Check all loaded plugins for matches
         for command_name, command in self.commands.items():
@@ -338,6 +350,16 @@ class CommandManager:
             # Skip if we already have a plugin handling this keyword
             if any(keyword.lower() in [k.lower() for k in cmd.keywords] for cmd in self.commands.values()):
                 continue
+            
+            # Check channel restrictions for plain keywords (same as commands)
+            # DMs are allowed if respond_to_dms is enabled
+            if message.is_dm:
+                if not self.bot.config.getboolean('Channels', 'respond_to_dms', fallback=True):
+                    continue  # DMs disabled, skip this keyword
+            else:
+                # For channel messages, check if channel is in monitor_channels
+                if message.channel not in self.monitor_channels:
+                    continue  # Channel not monitored, skip this keyword
             
             keyword_lower = keyword.lower()
             

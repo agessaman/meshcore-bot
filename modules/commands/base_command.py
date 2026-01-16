@@ -30,6 +30,11 @@ class BaseCommand(ABC):
     cooldown_seconds: int = 0
     category: str = "general"
     
+    # Documentation fields - to be overridden by subclasses for website generation
+    usage: str = ""  # Usage syntax, e.g., "wx <zipcode|city> [tomorrow|7d|hourly|alerts]"
+    examples: List[str] = []  # Example commands, e.g., ["wx 98101", "wx seattle tomorrow"]
+    parameters: List[Dict[str, str]] = []  # Parameter definitions, e.g., [{"name": "location", "description": "US zip code or city name"}]
+    
     def __init__(self, bot):
         self.bot = bot
         self.logger = bot.logger
