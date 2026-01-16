@@ -850,9 +850,9 @@ class CommandManager:
                                 for timestamp_key in range(int(current_time - 10), int(current_time + 1)):
                                     if timestamp_key in self.bot.transmission_tracker.pending_transmissions:
                                         for record in self.bot.transmission_tracker.pending_transmissions[timestamp_key]:
-                                            # Match by content (exact or substring) and recent timestamp
-                                            if (record.content == response or 
-                                                (response in record.content or record.content in response)) and \
+                                            # Match by exact content and recent timestamp to avoid false positives
+                                            # Using substring matching (e.g., "ok" in "outlook") would cause incorrect correlations
+                                            if record.content == response and \
                                                abs(record.timestamp - current_time) < 10:
                                                 record.command_id = command_id
                                                 self.logger.debug(f"Linked command {command_id} to transmission: {record.message_type} to {record.target}")
@@ -864,8 +864,8 @@ class CommandManager:
                                 # Also check confirmed transmissions
                                 if not matched:
                                     for packet_hash, record in self.bot.transmission_tracker.confirmed_transmissions.items():
-                                        if (record.content == response or 
-                                            (response in record.content or record.content in response)) and \
+                                        # Match by exact content and recent timestamp to avoid false positives
+                                        if record.content == response and \
                                            abs(record.timestamp - current_time) < 10:
                                             record.command_id = command_id
                                             self.logger.debug(f"Linked command {command_id} to confirmed transmission: {record.message_type} to {record.target}")
