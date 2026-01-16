@@ -27,6 +27,15 @@ class PrefixCommand(BaseCommand):
     cooldown_seconds = 2
     requires_internet = False  # Will be set to True in __init__ if API is configured
     
+    # Documentation
+    short_description = "Look up repeaters by two-character prefix and show their locations (if known)"
+    usage = "prefix <XX|free|refresh>"
+    examples = ["prefix 1A", "prefix free"]
+    parameters = [
+        {"name": "prefix", "description": "Two-character prefix (e.g., 1A, 2B)"},
+        {"name": "free", "description": "Show available/unused prefixes"}
+    ]
+    
     def __init__(self, bot: Any):
         """Initialize the prefix command.
         

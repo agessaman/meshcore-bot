@@ -18,6 +18,20 @@ class DiceCommand(BaseCommand):
     description = "Roll dice for D&D and tabletop games. Use 'dice' for d6, 'dice d20' for d20, 'dice 2d6' for 2d6, 'dice d10 d6' for mixed dice, 'dice decade' for decade die (00-90), etc."
     category = "games"
     
+    # Documentation
+    short_description = "Roll dice for tabletop games"
+    usage = "dice [NdX|dX|decade]"
+    examples = [
+        "dice",
+        "dice d20",
+        "dice 2d6",
+        "dice d10 d6",
+        "dice decade"
+    ]
+    parameters = [
+        {"name": "dice", "description": "Dice notation: d6, 2d8, d10 d6, decade"}
+    ]
+    
     # Standard D&D dice types
     DICE_TYPES = {
         'd4': 4,

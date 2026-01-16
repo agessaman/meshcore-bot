@@ -44,6 +44,15 @@ class SportsCommand(BaseCommand):
     cooldown_seconds = 3  # 3 second cooldown per user to prevent API abuse
     requires_internet = True  # Requires internet access for ESPN API
     
+    # Documentation
+    short_description = "Get sports scores and schedules"
+    usage = "sports [team|league]"
+    examples = ["sports", "sports seahawks", "sports nfl"]
+    parameters = [
+        {"name": "team", "description": "Team name (e.g., seahawks, mariners)"},
+        {"name": "league", "description": "League code (nfl, mlb, nba, nhl, mls)"}
+    ]
+    
     # ESPN client
     espn_client: Optional[ESPNClient] = None
     

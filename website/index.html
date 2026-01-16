@@ -21,7 +21,7 @@
             --accent-yellow: #ffd700;
             --text-primary: #e8edf4;
             --text-secondary: #8892a4;
-            --text-muted: #4a5568;
+            --text-muted: #6b7280;
             --border-subtle: rgba(255,255,255,0.06);
             --glow-blue: rgba(0, 212, 255, 0.15);
             --glow-cyan: rgba(0, 255, 200, 0.1);
@@ -519,6 +519,57 @@
             font-size: 0.95rem;
         }
         
+        .command-usage {
+            margin: 0.75rem 0;
+            padding: 0.6rem 0.9rem;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            border-left: 3px solid var(--accent-blue);
+        }
+        
+        .command-usage code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--accent-cyan);
+        }
+        
+        .command-params {
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid var(--border-subtle);
+        }
+        
+        .params-header {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .param-item {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.4rem;
+            font-size: 0.85rem;
+            align-items: flex-start;
+        }
+        
+        .param-name {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent-orange);
+            font-weight: 500;
+            min-width: 80px;
+            flex-shrink: 0;
+        }
+        
+        .param-desc {
+            color: var(--text-secondary);
+            flex: 1;
+            line-height: 1.4;
+        }
+        
         .command-subcommands {
             margin-top: 1rem;
             padding-top: 1rem;
@@ -884,7 +935,8 @@
           <span class="keyword-badge">t</span>
         </div>
       </div>
-      <p class="command-description">Responds to &#x27;test&#x27; or &#x27;t&#x27; with connection info</p>
+      <p class="command-description">Get test response with connection info</p>
+      <div class="command-usage"><code>test [phrase]</code></div>
     </div>
     <div class="command-card">
       <div class="command-header">
@@ -899,18 +951,28 @@
         </div>
       </div>
       <p class="command-description">Responds to greetings with robot-themed responses</p>
+      <div class="command-usage"><code>hello</code></div>
     </div>
     <div class="command-card">
       <div class="command-header">
         <h3 class="command-name">ping</h3>
       </div>
-      <p class="command-description">Responds to &#x27;ping&#x27; with &#x27;Pong!&#x27;</p>
+      <p class="command-description">Get a quick &#x27;pong&#x27;response from the bot</p>
+      <div class="command-usage"><code>ping</code></div>
     </div>
     <div class="command-card">
       <div class="command-header">
         <h3 class="command-name">help</h3>
       </div>
-      <p class="command-description">Shows commands. Use &#x27;help &lt;command&gt;&#x27; for details.</p>
+      <p class="command-description">Get help on available commands</p>
+      <div class="command-usage"><code>help [command]</code></div>
+      <div class="command-params">
+        <div class="params-header">Parameters:</div>
+        <div class="param-item">
+          <span class="param-name">command</span>
+          <span class="param-desc">Command name for detailed help (optional)</span>
+        </div>
+      </div>
     </div>
     <div class="command-card">
       <div class="command-header">
@@ -919,7 +981,23 @@
           <span class="keyword-badge">channel</span>
         </div>
       </div>
-      <p class="command-description">Lists hashtag channels with sub-categories. Use &#x27;channels&#x27; for general, &#x27;channels list&#x27; for all categories, &#x27;channels &lt;category&gt;&#x27; for specific categories, &#x27;channels #channel&#x27; for specific channel info.</p>
+      <p class="command-description">Lists hashtag channels with sub-categories</p>
+      <div class="command-usage"><code>channels [list|category|#channel]</code></div>
+      <div class="command-params">
+        <div class="params-header">Parameters:</div>
+        <div class="param-item">
+          <span class="param-name">list</span>
+          <span class="param-desc">Show all channel categories</span>
+        </div>
+        <div class="param-item">
+          <span class="param-name">category</span>
+          <span class="param-desc">Filter by category name</span>
+        </div>
+        <div class="param-item">
+          <span class="param-name">#channel</span>
+          <span class="param-desc">Get info on a specific channel</span>
+        </div>
+      </div>
     </div>
     <div class="command-card">
       <div class="command-header">
@@ -928,7 +1006,8 @@
           <span class="keyword-badge">commands</span>
         </div>
       </div>
-      <p class="command-description">Lists available commands in compact format</p>
+      <p class="command-description">Lists available commands</p>
+      <div class="command-usage"><code>cmd</code></div>
     </div>
   </div>
 </div>
@@ -939,7 +1018,15 @@
       <div class="command-header">
         <h3 class="command-name">stats</h3>
       </div>
-      <p class="command-description">Show statistics for past 24 hours. Use &#x27;stats messages&#x27;, &#x27;stats channels&#x27;, or &#x27;stats paths&#x27; for specific stats.</p>
+      <p class="command-description">Show bot usage statistics for past 24 hours</p>
+      <div class="command-usage"><code>stats [messages|channels|paths]</code></div>
+      <div class="command-params">
+        <div class="params-header">Parameters:</div>
+        <div class="param-item">
+          <span class="param-name">type</span>
+          <span class="param-desc">messages, channels, or paths (optional)</span>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -955,7 +1042,19 @@
           <span class="keyword-badge">incidents</span>
         </div>
       </div>
-      <p class="command-description">Get active emergency incidents (usage: alert seattle, alert 98258, alert 178th seattle, alert seattle all)</p>
+      <p class="command-description">Get active emergency incidents from PulsePoint</p>
+      <div class="command-usage"><code>alert &lt;location&gt; [all]</code></div>
+      <div class="command-params">
+        <div class="params-header">Parameters:</div>
+        <div class="param-item">
+          <span class="param-name">location</span>
+          <span class="param-desc">City, zip code, or street address</span>
+        </div>
+        <div class="param-item">
+          <span class="param-name">all</span>
+          <span class="param-desc">Show all incidents (not just nearby)</span>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -969,7 +1068,15 @@
           <span class="keyword-badge">jokes</span>
         </div>
       </div>
-      <p class="command-description">Get a random joke or joke from specific category (usage: joke [category])</p>
+      <p class="command-description">Get a random joke</p>
+      <div class="command-usage"><code>joke [category]</code></div>
+      <div class="command-params">
+        <div class="params-header">Parameters:</div>
+        <div class="param-item">
+          <span class="param-name">category</span>
+          <span class="param-desc">programming, pun, misc, dark (optional)</span>
+        </div>
+      </div>
       <div class="command-channels">Channel: #jokes</div>
     </div>
   </div>
@@ -986,7 +1093,8 @@
           <span class="keyword-badge">dad jokes</span>
         </div>
       </div>
-      <p class="command-description">Get a random dad joke from icanhazdadjoke.com</p>
+      <p class="command-description">Get a random dad joke</p>
+      <div class="command-usage"><code>dadjoke</code></div>
       <div class="command-channels">Channel: #jokes</div>
     </div>
     <div class="command-card">
@@ -1001,7 +1109,8 @@
           <span class="keyword-badge keyword-expand" data-hidden="echo $PATH,rm,rm -rf,cat,whoami,top,htop,netstat,ss,kill,killall,chmod,find,history,passwd,su,ssh,wget,curl,df -h,free,ifconfig,ip addr,uname -a" data-command="hacker">+24 more</span>
         </div>
       </div>
-      <p class="command-description">Simulates hacking a supervillain&#x27;s mainframe with hilarious error messages</p>
+      <p class="command-description">Try Linux commands and get supervillain mainframe errors</p>
+      <div class="command-usage"><code>&lt;linux_command&gt;</code></div>
     </div>
   </div>
 </div>
@@ -1012,19 +1121,36 @@
       <div class="command-header">
         <h3 class="command-name">dice</h3>
       </div>
-      <p class="command-description">Roll dice for D&amp;D and tabletop games. Use &#x27;dice&#x27; for d6, &#x27;dice d20&#x27; for d20, &#x27;dice 2d6&#x27; for 2d6, &#x27;dice d10 d6&#x27; for mixed dice, &#x27;dice decade&#x27; for decade die (00-90), etc.</p>
+      <p class="command-description">Roll dice for tabletop games</p>
+      <div class="command-usage"><code>dice [NdX|dX|decade]</code></div>
+      <div class="command-params">
+        <div class="params-header">Parameters:</div>
+        <div class="param-item">
+          <span class="param-name">dice</span>
+          <span class="param-desc">Dice notation: d6, 2d8, d10 d6, decade</span>
+        </div>
+      </div>
     </div>
     <div class="command-card">
       <div class="command-header">
         <h3 class="command-name">magic8</h3>
       </div>
-      <p class="command-description">Emulates the classic Magic 8-ball toy&#x27;</p>
+      <p class="command-description">Ask the Magic 8-Ball a yes/no question</p>
+      <div class="command-usage"><code>magic8 &lt;question&gt;</code></div>
     </div>
     <div class="command-card">
       <div class="command-header">
         <h3 class="command-name">roll</h3>
       </div>
-      <p class="command-description">Roll a random number between 1 and X (default 100). Use &#x27;roll&#x27; for 1-100, &#x27;roll 50&#x27; for 1-50, etc.</p>
+      <p class="command-description">Roll a random number between 1 and X</p>
+      <div class="command-usage"><code>roll [max]</code></div>
+      <div class="command-params">
+        <div class="params-header">Parameters:</div>
+        <div class="param-item">
+          <span class="param-name">max</span>
+          <span class="param-desc">Maximum value (default: 100, max: 10000)</span>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -1041,7 +1167,23 @@
           <span class="keyword-badge">overhead</span>
         </div>
       </div>
-      <p class="command-description">Get aircraft overhead (usage: airplanes [location] [options] or overhead [lat,lon])</p>
+      <p class="command-description">Get aircraft overhead using ADS-B data</p>
+      <div class="command-usage"><code>airplanes [lat,lon|here] [radius=N] [options]</code></div>
+      <div class="command-params">
+        <div class="params-header">Parameters:</div>
+        <div class="param-item">
+          <span class="param-name">location</span>
+          <span class="param-desc">Coordinates or here for your companion&#x27;s location if advertised</span>
+        </div>
+        <div class="param-item">
+          <span class="param-name">radius</span>
+          <span class="param-desc">Search radius in nautical miles (default: 25)</span>
+        </div>
+        <div class="param-item">
+          <span class="param-name">filters</span>
+          <span class="param-desc">alt=, type=, military, closest, etc.</span>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -1057,7 +1199,8 @@
           <span class="keyword-badge">p</span>
         </div>
       </div>
-      <p class="command-description">Decode hex path data to show which repeaters were involved in message routing</p>
+      <p class="command-description">Decode path data to show repeaters involved in message routing</p>
+      <div class="command-usage"><code>path [hex_data]</code></div>
     </div>
     <div class="command-card">
       <div class="command-header">
@@ -1067,7 +1210,19 @@
           <span class="keyword-badge">lookup</span>
         </div>
       </div>
-      <p class="command-description">Look up repeaters by two-character prefix (e.g., &#x27;prefix 1A&#x27;)</p>
+      <p class="command-description">Look up repeaters by two-character prefix and show their locations (if known)</p>
+      <div class="command-usage"><code>prefix &lt;XX|free|refresh&gt;</code></div>
+      <div class="command-params">
+        <div class="params-header">Parameters:</div>
+        <div class="param-item">
+          <span class="param-name">prefix</span>
+          <span class="param-desc">Two-character prefix (e.g., 1A, 2B)</span>
+        </div>
+        <div class="param-item">
+          <span class="param-name">free</span>
+          <span class="param-desc">Show available/unused prefixes</span>
+        </div>
+      </div>
     </div>
     <div class="command-card">
       <div class="command-header">
@@ -1076,7 +1231,8 @@
           <span class="keyword-badge">mt</span>
         </div>
       </div>
-      <p class="command-description">Listens for 6 seconds and collects all unique paths from incoming messages</p>
+      <p class="command-description">Listens for 6 seconds and collects all unique paths your incoming messages took to reach the bot</p>
+      <div class="command-usage"><code>multitest</code></div>
     </div>
   </div>
 </div>
@@ -1088,30 +1244,46 @@
         <h3 class="command-name">hfcond</h3>
       </div>
       <p class="command-description">Get HF band conditions for ham radio</p>
+      <div class="command-usage"><code>hfcond</code></div>
     </div>
     <div class="command-card">
       <div class="command-header">
         <h3 class="command-name">moon</h3>
       </div>
-      <p class="command-description">Get moon phase, rise/set times and position</p>
+      <p class="command-description">Get moon phase and rise/set times</p>
+      <div class="command-usage"><code>moon</code></div>
     </div>
     <div class="command-card">
       <div class="command-header">
         <h3 class="command-name">solar</h3>
       </div>
       <p class="command-description">Get current solar conditions and HF band info</p>
+      <div class="command-usage"><code>solar</code></div>
     </div>
     <div class="command-card">
       <div class="command-header">
         <h3 class="command-name">satpass</h3>
       </div>
-      <p class="command-description">Get satellite pass info: satpass &lt;NORAD_number_or_shortcut&gt; [visual]</p>
+      <p class="command-description">Get satellite pass predictions</p>
+      <div class="command-usage"><code>satpass &lt;NORAD_number|shortcut&gt; [visual]</code></div>
+      <div class="command-params">
+        <div class="params-header">Parameters:</div>
+        <div class="param-item">
+          <span class="param-name">satellite</span>
+          <span class="param-desc">NORAD ID or shortcut (iss, hst, starlink)</span>
+        </div>
+        <div class="param-item">
+          <span class="param-name">visual</span>
+          <span class="param-desc">Add &#x27;visual&#x27; for visible passes only</span>
+        </div>
+      </div>
     </div>
     <div class="command-card">
       <div class="command-header">
         <h3 class="command-name">sun</h3>
       </div>
-      <p class="command-description">Get sunrise/sunset times</p>
+      <p class="command-description">Get sunrise and sunset times</p>
+      <div class="command-usage"><code>sun</code></div>
     </div>
     <div class="command-card">
       <div class="command-header">
@@ -1120,7 +1292,27 @@
           <span class="keyword-badge">sf</span>
         </div>
       </div>
-      <p class="command-description">Get solar panel production forecast (usage: sf &lt;location|repeater_name|coordinates|zipcode&gt; [panel_size] [azimuth, 0=south] [angle])</p>
+      <p class="command-description">Get solar panel production forecast for a location or repeater</p>
+      <div class="command-usage"><code>sf &lt;location&gt; [watts] [azimuth] [angle]</code></div>
+      <div class="command-params">
+        <div class="params-header">Parameters:</div>
+        <div class="param-item">
+          <span class="param-name">location</span>
+          <span class="param-desc">City, coordinates, or repeater name</span>
+        </div>
+        <div class="param-item">
+          <span class="param-name">watts</span>
+          <span class="param-desc">Panel size in watts (default: 100)</span>
+        </div>
+        <div class="param-item">
+          <span class="param-name">azimuth</span>
+          <span class="param-desc">Panel direction, 0=south (default: 0)</span>
+        </div>
+        <div class="param-item">
+          <span class="param-name">angle</span>
+          <span class="param-desc">Panel tilt in degrees (default: 30)</span>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -1135,7 +1327,19 @@
           <span class="keyword-badge">scores</span>
         </div>
       </div>
-      <p class="command-description">Get sports scores and schedules (usage: sports [team/league])</p>
+      <p class="command-description">Get sports scores and schedules</p>
+      <div class="command-usage"><code>sports [team|league]</code></div>
+      <div class="command-params">
+        <div class="params-header">Parameters:</div>
+        <div class="param-item">
+          <span class="param-name">team</span>
+          <span class="param-desc">Team name (e.g., seahawks, mariners)</span>
+        </div>
+        <div class="param-item">
+          <span class="param-name">league</span>
+          <span class="param-desc">League code (nfl, mlb, nba, nhl, mls)</span>
+        </div>
+      </div>
       <div class="command-channels">Channels: #BotTest, #bot, #sounders, #seahawks</div>
     </div>
   </div>
@@ -1152,7 +1356,19 @@
           <span class="keyword-badge">wxalert</span>
         </div>
       </div>
-      <p class="command-description">Get weather information for a zip code (usage: wx 12345)</p>
+      <p class="command-description">Get weather for a US location using NOAA weather data</p>
+      <div class="command-usage"><code>wx &lt;zipcode|city&gt; [tomorrow|7d|hourly|alerts]</code></div>
+      <div class="command-params">
+        <div class="params-header">Parameters:</div>
+        <div class="param-item">
+          <span class="param-name">location</span>
+          <span class="param-desc">US zip code or city name</span>
+        </div>
+        <div class="param-item">
+          <span class="param-name">option</span>
+          <span class="param-desc">tomorrow, 7d, hourly, or alerts (optional)</span>
+        </div>
+      </div>
     </div>
     <div class="command-card">
       <div class="command-header">
@@ -1162,7 +1378,19 @@
           <span class="keyword-badge">gwxa</span>
         </div>
       </div>
-      <p class="command-description">Get weather information for any global location (usage: gwx Tokyo)</p>
+      <p class="command-description">Get weather for any global location using Open-Meteo API</p>
+      <div class="command-usage"><code>gwx &lt;location&gt; [tomorrow|7d|hourly]</code></div>
+      <div class="command-params">
+        <div class="params-header">Parameters:</div>
+        <div class="param-item">
+          <span class="param-name">location</span>
+          <span class="param-desc">City name, country, or coordinates</span>
+        </div>
+        <div class="param-item">
+          <span class="param-name">option</span>
+          <span class="param-desc">tomorrow, 7d, or hourly (optional)</span>
+        </div>
+      </div>
     </div>
     <div class="command-card">
       <div class="command-header">
@@ -1173,7 +1401,15 @@
           <span class="keyword-badge">air_quality</span>
         </div>
       </div>
-      <p class="command-description">Get Air Quality Index for a location (usage: aqi seattle, aqi greenwood, aqi vancouver canada, aqi 47.6,-122.3, or aqi help)</p>
+      <p class="command-description">Get Air Quality Index for a location</p>
+      <div class="command-usage"><code>aqi &lt;city|neighborhood|coordinates|help&gt;</code></div>
+      <div class="command-params">
+        <div class="params-header">Parameters:</div>
+        <div class="param-item">
+          <span class="param-name">location</span>
+          <span class="param-desc">City, neighborhood, lat/lon, or &#x27;help&#x27;</span>
+        </div>
+      </div>
     </div>
   </div>
 </div>

@@ -21,6 +21,11 @@ class MultitestCommand(BaseCommand):
     description = "Listens for 6 seconds and collects all unique paths from incoming messages"
     category = "meshcore_info"
     
+    # Documentation
+    short_description = "Listens for 6 seconds and collects all unique paths your incoming messages took to reach the bot"
+    usage = "multitest"
+    examples = ["multitest", "mt"]
+    
     def __init__(self, bot):
         super().__init__(bot)
         self.multitest_enabled = self.get_config_value('Multitest_Command', 'enabled', fallback=True, value_type='bool')

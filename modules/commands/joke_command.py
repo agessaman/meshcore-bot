@@ -24,6 +24,14 @@ class JokeCommand(BaseCommand):
     requires_dm = False  # Works in both channels and DMs
     requires_internet = True  # Requires internet access for API calls
     
+    # Documentation
+    short_description = "Get a random joke"
+    usage = "joke [category]"
+    examples = ["joke", "joke programming"]
+    parameters = [
+        {"name": "category", "description": "programming, pun, misc, dark (optional)"}
+    ]
+    
     # Supported categories
     SUPPORTED_CATEGORIES = {
         'programming': 'Programming',

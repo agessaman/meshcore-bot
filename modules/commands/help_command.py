@@ -25,6 +25,14 @@ class HelpCommand(BaseCommand):
     description = "Shows commands. Use 'help <command>' for details."
     category = "basic"
     
+    # Documentation
+    short_description = "Get help on available commands"
+    usage = "help [command]"
+    examples = ["help", "help wx"]
+    parameters = [
+        {"name": "command", "description": "Command name for detailed help (optional)"}
+    ]
+    
     def __init__(self, bot):
         """Initialize the help command.
         

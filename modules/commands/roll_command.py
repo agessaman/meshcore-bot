@@ -24,6 +24,14 @@ class RollCommand(BaseCommand):
     description = "Roll a random number between 1 and X (default 100). Use 'roll' for 1-100, 'roll 50' for 1-50, etc."
     category = "games"
     
+    # Documentation
+    short_description = "Roll a random number between 1 and X"
+    usage = "roll [max]"
+    examples = ["roll", "roll 50"]
+    parameters = [
+        {"name": "max", "description": "Maximum value (default: 100, max: 10000)"}
+    ]
+    
     def __init__(self, bot):
         """Initialize the roll command.
         

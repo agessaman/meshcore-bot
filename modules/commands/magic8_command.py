@@ -27,6 +27,11 @@ class Magic8Command(BaseCommand):
     description = "Emulates the classic Magic 8-ball toy'"
     category = "games"
     
+    # Documentation
+    short_description = "Ask the Magic 8-Ball a yes/no question"
+    usage = "magic8 <question>"
+    examples = ["magic8 Will it rain tomorrow?"]
+    
     def __init__(self, bot):
         """Initialize the magic8 command.
         

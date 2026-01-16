@@ -38,6 +38,15 @@ class WxCommand(BaseCommand):
     cooldown_seconds = 5  # 5 second cooldown per user to prevent API abuse
     requires_internet = True  # Requires internet access for NOAA API and geocoding
     
+    # Documentation
+    short_description = "Get weather for a US location using NOAA weather data"
+    usage = "wx <zipcode|city> [tomorrow|7d|hourly|alerts]"
+    examples = ["wx 98101", "wx seattle", "wx 90210 7d"]
+    parameters = [
+        {"name": "location", "description": "US zip code or city name"},
+        {"name": "option", "description": "tomorrow, 7d, hourly, or alerts (optional)"}
+    ]
+    
     # Error constants
     NO_DATA_NOGPS = "No GPS data available"
     ERROR_FETCHING_DATA = "Error fetching weather data"

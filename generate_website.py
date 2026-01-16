@@ -455,7 +455,6 @@ def generate_html(bot_name: str, title: str, introduction: str, commands: List[T
         
         for cmd_name, cmd_instance in category_commands:
             primary_name = cmd_instance.name if hasattr(cmd_instance, 'name') else cmd_name
-            description = getattr(cmd_instance, 'description', 'No description available')
             keywords = getattr(cmd_instance, 'keywords', [])
             
             # Filter out the primary name from keywords to avoid duplication
@@ -463,6 +462,23 @@ def generate_html(bot_name: str, title: str, introduction: str, commands: List[T
             
             # Get channel restriction info
             channel_info = get_channel_info(cmd_instance, monitor_channels)
+            
+            # Get usage information including usage syntax, examples, parameters, and sub-commands
+            try:
+                usage_info = cmd_instance.get_usage_info()
+                usage_syntax = usage_info.get('usage', '')
+                examples = usage_info.get('examples', [])
+                parameters = usage_info.get('parameters', [])
+                subcommands = usage_info.get('subcommands', [])
+                # Use short_description for website if available, otherwise fallback to description
+                short_desc = usage_info.get('short_description', '')
+                description = short_desc if short_desc else usage_info.get('description', 'No description available')
+            except Exception:
+                usage_syntax = ''
+                examples = []
+                parameters = []
+                subcommands = []
+                description = getattr(cmd_instance, 'description', 'No description available')
             
             commands_html += f'    <div class="command-card">\n'
             commands_html += f'      <div class="command-header">\n'
@@ -485,11 +501,28 @@ def generate_html(bot_name: str, title: str, introduction: str, commands: List[T
             commands_html += f'      </div>\n'
             commands_html += f'      <p class="command-description">{escape_html(description)}</p>\n'
             
-            # Get usage information including sub-commands
+            # Render usage, examples, parameters, subcommands
             try:
-                usage_info = cmd_instance.get_usage_info()
-                subcommands = usage_info.get('subcommands', [])
                 
+                # Render usage syntax
+                if usage_syntax:
+                    commands_html += f'      <div class="command-usage"><code>{escape_html(usage_syntax)}</code></div>\n'
+                
+                # Render parameters
+                if parameters:
+                    commands_html += f'      <div class="command-params">\n'
+                    commands_html += f'        <div class="params-header">Parameters:</div>\n'
+                    for param in parameters:
+                        param_name = param.get('name', '')
+                        param_desc = param.get('description', '')
+                        if param_name and param_desc:
+                            commands_html += f'        <div class="param-item">\n'
+                            commands_html += f'          <span class="param-name">{escape_html(param_name)}</span>\n'
+                            commands_html += f'          <span class="param-desc">{escape_html(param_desc)}</span>\n'
+                            commands_html += f'        </div>\n'
+                    commands_html += f'      </div>\n'
+                
+                # Render subcommands
                 if subcommands:
                     commands_html += f'      <div class="command-subcommands">\n'
                     commands_html += f'        <div class="subcommands-header">Sub-commands:</div>\n'
@@ -569,7 +602,7 @@ def generate_html(bot_name: str, title: str, introduction: str, commands: List[T
             --accent-yellow: #ffd700;
             --text-primary: #e8edf4;
             --text-secondary: #8892a4;
-            --text-muted: #4a5568;
+            --text-muted: #6b7280;
             --border-subtle: rgba(255,255,255,0.06);
             --glow-blue: rgba(0, 212, 255, 0.15);
             --glow-cyan: rgba(0, 255, 200, 0.1);
@@ -1065,6 +1098,57 @@ def generate_html(bot_name: str, title: str, introduction: str, commands: List[T
             line-height: 1.7;
             margin-bottom: 0.75rem;
             font-size: 0.95rem;
+        }}
+        
+        .command-usage {{
+            margin: 0.75rem 0;
+            padding: 0.6rem 0.9rem;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            border-left: 3px solid var(--accent-blue);
+        }}
+        
+        .command-usage code {{
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--accent-cyan);
+        }}
+        
+        .command-params {{
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid var(--border-subtle);
+        }}
+        
+        .params-header {{
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }}
+        
+        .param-item {{
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.4rem;
+            font-size: 0.85rem;
+            align-items: flex-start;
+        }}
+        
+        .param-name {{
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent-orange);
+            font-weight: 500;
+            min-width: 80px;
+            flex-shrink: 0;
+        }}
+        
+        .param-desc {{
+            color: var(--text-secondary);
+            flex: 1;
+            line-height: 1.4;
         }}
         
         .command-subcommands {{

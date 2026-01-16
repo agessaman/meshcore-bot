@@ -18,6 +18,15 @@ class SatpassCommand(BaseCommand):
     category = "solar"
     requires_internet = True  # Requires internet access for N2YO API
     
+    # Documentation
+    short_description = "Get satellite pass predictions"
+    usage = "satpass <NORAD_number|shortcut> [visual]"
+    examples = ["satpass iss", "satpass 25544 visual"]
+    parameters = [
+        {"name": "satellite", "description": "NORAD ID or shortcut (iss, hst, starlink)"},
+        {"name": "visual", "description": "Add 'visual' for visible passes only"}
+    ]
+    
     # Common satellite shortcuts
     SATELLITE_SHORTCUTS = {
     'iss': '25544',

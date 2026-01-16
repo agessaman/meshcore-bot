@@ -25,6 +25,15 @@ class GlobalWxCommand(BaseCommand):
     cooldown_seconds = 5  # 5 second cooldown per user to prevent API abuse
     requires_internet = True  # Requires internet access for Open-Meteo API and geocoding
     
+    # Documentation
+    short_description = "Get weather for any global location using Open-Meteo API"
+    usage = "gwx <location> [tomorrow|7d|hourly]"
+    examples = ["gwx Tokyo", "gwx Paris, France"]
+    parameters = [
+        {"name": "location", "description": "City name, country, or coordinates"},
+        {"name": "option", "description": "tomorrow, 7d, or hourly (optional)"}
+    ]
+    
     # Error constants - will use translations instead
     ERROR_FETCHING_DATA = "ERROR_FETCHING_DATA"  # Placeholder, will use translate()
     NO_ALERTS = "No weather alerts available"

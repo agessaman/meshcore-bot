@@ -31,6 +31,14 @@ class AqiCommand(BaseCommand):
     cooldown_seconds = 5  # 5 second cooldown per user to prevent API abuse
     requires_internet = True  # Requires internet access for OpenMeteo API and geocoding
     
+    # Documentation
+    short_description = "Get Air Quality Index for a location"
+    usage = "aqi <city|neighborhood|coordinates|help>"
+    examples = ["aqi seattle", "aqi 47.6,-122.3"]
+    parameters = [
+        {"name": "location", "description": "City, neighborhood, lat/lon, or 'help'"}
+    ]
+    
     # Error constants
     ERROR_FETCHING_DATA = "Error fetching AQI data"
     NO_DATA_AVAILABLE = "No AQI data available"

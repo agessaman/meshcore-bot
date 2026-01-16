@@ -24,6 +24,16 @@ class ChannelsCommand(BaseCommand):
     description = "Lists hashtag channels with sub-categories. Use 'channels' for general, 'channels list' for all categories, 'channels <category>' for specific categories, 'channels #channel' for specific channel info."
     category = "basic"
     
+    # Documentation
+    short_description = "Lists hashtag channels with sub-categories"
+    usage = "channels [list|category|#channel]"
+    examples = ["channels", "channels list"]
+    parameters = [
+        {"name": "list", "description": "Show all channel categories"},
+        {"name": "category", "description": "Filter by category name"},
+        {"name": "#channel", "description": "Get info on a specific channel"}
+    ]
+    
     def __init__(self, bot):
         """Initialize the channels command.
         

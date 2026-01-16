@@ -22,6 +22,11 @@ class HackerCommand(BaseCommand):
     description = "Simulates hacking a supervillain's mainframe with hilarious error messages"
     category = "fun"
     
+    # Documentation
+    short_description = "Try Linux commands and get supervillain mainframe errors"
+    usage = "<linux_command>"
+    examples = ["sudo make me a sandwich", "rm -rf /"]
+    
     def __init__(self, bot: Any):
         """Initialize the hacker command.
         

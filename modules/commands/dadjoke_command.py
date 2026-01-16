@@ -24,6 +24,11 @@ class DadJokeCommand(BaseCommand):
     cooldown_seconds = 3
     requires_internet = True  # Requires internet access for API calls
     
+    # Documentation
+    short_description = "Get a random dad joke"
+    usage = "dadjoke"
+    examples = ["dadjoke"]
+    
     # API configuration
     DAD_JOKE_API_URL = "https://icanhazdadjoke.com/"
     TIMEOUT = 10  # seconds

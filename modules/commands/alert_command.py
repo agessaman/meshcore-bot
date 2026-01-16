@@ -178,6 +178,15 @@ class AlertCommand(BaseCommand):
     description = "Get active emergency incidents (usage: alert seattle, alert 98258, alert 178th seattle, alert seattle all)"
     category = "emergency"
     cooldown_seconds = 10  # 10 second cooldown to prevent API abuse
+    
+    # Documentation
+    short_description = "Get active emergency incidents from PulsePoint"
+    usage = "alert <location> [all]"
+    examples = ["alert seattle", "alert 98101 all"]
+    parameters = [
+        {"name": "location", "description": "City, zip code, or street address"},
+        {"name": "all", "description": "Show all incidents (not just nearby)"}
+    ]
     requires_internet = True  # Requires internet access for PulsePoint API
     
     def __init__(self, bot):

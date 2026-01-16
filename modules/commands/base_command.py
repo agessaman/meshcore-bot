@@ -31,6 +31,7 @@ class BaseCommand(ABC):
     category: str = "general"
     
     # Documentation fields - to be overridden by subclasses for website generation
+    short_description: str = ""  # Brief description for website (without usage syntax)
     usage: str = ""  # Usage syntax, e.g., "wx <zipcode|city> [tomorrow|7d|hourly|alerts]"
     examples: List[str] = []  # Example commands, e.g., ["wx 98101", "wx seattle tomorrow"]
     parameters: List[Dict[str, str]] = []  # Parameter definitions, e.g., [{"name": "location", "description": "US zip code or city name"}]
@@ -176,21 +177,28 @@ class BaseCommand(ABC):
     def get_usage_info(self) -> Dict[str, Any]:
         """Get structured usage information including sub-commands and options.
         
+        Uses class attributes as defaults, with translation overrides for i18n support.
+        
         Returns:
             Dict with keys:
-                - 'description': Main command description
+                - 'description': Main command description (for help text)
+                - 'short_description': Brief description for website (without usage syntax)
+                - 'usage': Usage syntax string (e.g., "wx <zipcode|city> [option]")
                 - 'subcommands': List of dicts with 'name' and 'description'
-                - 'usage_patterns': List of usage pattern strings
                 - 'examples': List of example strings
+                - 'parameters': List of dicts with 'name' and 'description'
         """
+        # Start with class attribute defaults
         usage_info = {
             'description': self.description or "No description available",
+            'short_description': self.short_description or "",
+            'usage': self.usage or "",
             'subcommands': [],
-            'usage_patterns': [],
-            'examples': []
+            'examples': list(self.examples) if self.examples else [],
+            'parameters': list(self.parameters) if self.parameters else []
         }
         
-        # Try to get structured data from translations
+        # Try to get structured data from translations (i18n overrides)
         if hasattr(self.bot, 'translator'):
             try:
                 # Get subcommands from translations
@@ -199,17 +207,23 @@ class BaseCommand(ABC):
                 if subcommands_data and isinstance(subcommands_data, list):
                     usage_info['subcommands'] = subcommands_data
                 
-                # Get usage patterns from translations
-                usage_patterns_key = f"commands.{self.name}.usage_patterns"
-                usage_patterns_data = self.translate_get_value(usage_patterns_key)
-                if usage_patterns_data and isinstance(usage_patterns_data, list):
-                    usage_info['usage_patterns'] = usage_patterns_data
-                
-                # Get examples from translations
+                # Get examples from translations (override class attribute)
                 examples_key = f"commands.{self.name}.examples"
                 examples_data = self.translate_get_value(examples_key)
                 if examples_data and isinstance(examples_data, list):
                     usage_info['examples'] = examples_data
+                
+                # Get usage from translations (override class attribute)
+                usage_key = f"commands.{self.name}.usage_syntax"
+                usage_data = self.translate_get_value(usage_key)
+                if usage_data and isinstance(usage_data, str):
+                    usage_info['usage'] = usage_data
+                
+                # Get parameters from translations (override class attribute)
+                params_key = f"commands.{self.name}.parameters"
+                params_data = self.translate_get_value(params_key)
+                if params_data and isinstance(params_data, list):
+                    usage_info['parameters'] = params_data
             except Exception as e:
                 self.logger.debug(f"Could not load usage info from translations for {self.name}: {e}")
         

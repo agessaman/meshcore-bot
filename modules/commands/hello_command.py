@@ -19,6 +19,11 @@ class HelloCommand(BaseCommand):
     description = "Responds to greetings with robot-themed responses"
     category = "basic"
     
+    # Documentation
+    short_description = "Responds to greetings with robot-themed responses"
+    usage = "hello"
+    examples = ["hello", "hi", "hey"]
+    
     def __init__(self, bot: Any):
         """Initialize the hello command.
         

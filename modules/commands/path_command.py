@@ -24,6 +24,11 @@ class PathCommand(BaseCommand):
     cooldown_seconds = 1
     category = "meshcore_info"
     
+    # Documentation
+    short_description = "Decode path data to show repeaters involved in message routing"
+    usage = "path [hex_data]"
+    examples = ["path", "decode"]
+    
     def __init__(self, bot):
         super().__init__(bot)
         self.path_enabled = self.get_config_value('Path_Command', 'enabled', fallback=True, value_type='bool')

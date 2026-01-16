@@ -25,6 +25,14 @@ class StatsCommand(BaseCommand):
     description = "Show statistics for past 24 hours. Use 'stats messages', 'stats channels', or 'stats paths' for specific stats."
     category = "analytics"
     
+    # Documentation
+    short_description = "Show bot usage statistics for past 24 hours"
+    usage = "stats [messages|channels|paths]"
+    examples = ["stats", "stats channels"]
+    parameters = [
+        {"name": "type", "description": "messages, channels, or paths (optional)"}
+    ]
+    
     def __init__(self, bot: Any):
         """Initialize the stats command.
         

@@ -18,6 +18,11 @@ class CmdCommand(BaseCommand):
     description = "Lists available commands in compact format"
     category = "basic"
     
+    # Documentation
+    short_description = "Lists available commands"
+    usage = "cmd"
+    examples = ["cmd"]
+    
     def __init__(self, bot):
         """Initialize the cmd command.
         

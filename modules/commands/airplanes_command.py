@@ -29,6 +29,16 @@ class AirplanesCommand(BaseCommand):
     cooldown_seconds = 2  # Respect API rate limit of 1 req/sec with buffer
     requires_internet = True
     
+    # Documentation
+    short_description = "Get aircraft overhead using ADS-B data"
+    usage = "airplanes [lat,lon|here] [radius=N] [options]"
+    examples = ["airplanes", "overhead 47.6,-122.3"]
+    parameters = [
+        {"name": "location", "description": "Coordinates or here for your companion's location if advertised"},
+        {"name": "radius", "description": "Search radius in nautical miles (default: 25)"},
+        {"name": "filters", "description": "alt=, type=, military, closest, etc."}
+    ]
+    
     def __init__(self, bot):
         super().__init__(bot)
         self.airplanes_enabled = self.get_config_value('Airplanes_Command', 'enabled', fallback=True, value_type='bool')

@@ -22,6 +22,11 @@ class SolarCommand(BaseCommand):
     category = "solar"
     requires_internet = True  # Requires internet access for hamqsl.com API
     
+    # Documentation
+    short_description = "Get current solar conditions and HF band info"
+    usage = "solar"
+    examples = ["solar"]
+    
     def __init__(self, bot):
         """Initialize the solar command.
         
