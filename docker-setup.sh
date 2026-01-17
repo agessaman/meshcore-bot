@@ -71,9 +71,25 @@ echo "  ✓ Updated [Bot] db_path"
 ((UPDATED_COUNT++))
 
 # Update Logging file path
+# Ensure we use absolute path to avoid resolution issues
 update_config "Logging" "log_file" "/data/logs/meshcore_bot.log"
-echo "  ✓ Updated [Logging] log_file"
-((UPDATED_COUNT++))
+# Verify the update worked
+VERIFIED_LOG=$(grep "^log_file[[:space:]]*=" "$CONFIG_FILE" 2>/dev/null | sed 's/^log_file[[:space:]]*=[[:space:]]*//' | tr -d ' ' || echo "")
+if [[ "$VERIFIED_LOG" == "/data/logs/meshcore_bot.log" ]]; then
+    echo "  ✓ Updated [Logging] log_file to /data/logs/meshcore_bot.log"
+    ((UPDATED_COUNT++))
+else
+    echo "  ⚠️  Warning: log_file update may have failed. Current value: '$VERIFIED_LOG'"
+    echo "     Expected: '/data/logs/meshcore_bot.log'"
+    # Try to fix it
+    if [[ "$PLATFORM" == "Darwin" ]]; then
+        sed -i '' 's|^log_file[[:space:]]*=.*|log_file = /data/logs/meshcore_bot.log|' "$CONFIG_FILE"
+    else
+        sed -i 's|^log_file[[:space:]]*=.*|log_file = /data/logs/meshcore_bot.log|' "$CONFIG_FILE"
+    fi
+    echo "     Attempted to fix - please verify the config file"
+    ((UPDATED_COUNT++))
+fi
 
 # Update Web_Viewer database path (if section exists)
 if grep -q "^\[Web_Viewer\]" "$CONFIG_FILE"; then
@@ -415,19 +431,45 @@ chown -R 1000:1000 data/ 2>/dev/null || echo "Note: Could not set ownership (may
 echo ""
 echo "✓ Setup complete!"
 echo ""
+echo "Verifying critical paths in config.ini..."
+# Verify log_file is set correctly
+FINAL_LOG_FILE=$(grep "^log_file[[:space:]]*=" "$CONFIG_FILE" 2>/dev/null | sed 's/^log_file[[:space:]]*=[[:space:]]*//' | tr -d ' ' || echo "")
+if [[ "$FINAL_LOG_FILE" == "/data/logs/meshcore_bot.log" ]]; then
+    echo "  ✓ log_file is correctly set to: $FINAL_LOG_FILE"
+else
+    echo "  ⚠️  WARNING: log_file is set to: '$FINAL_LOG_FILE' (expected: '/data/logs/meshcore_bot.log')"
+    echo "     This may cause 'Read-only file system' errors. Please check data/config/config.ini"
+fi
+
+# Verify db_path is set correctly
+FINAL_DB_PATH=$(grep "^db_path[[:space:]]*=" "$CONFIG_FILE" 2>/dev/null | sed 's/^db_path[[:space:]]*=[[:space:]]*//' | tr -d ' ' || echo "")
+if [[ "$FINAL_DB_PATH" == "/data/databases/meshcore_bot.db" ]]; then
+    echo "  ✓ db_path is correctly set to: $FINAL_DB_PATH"
+else
+    echo "  ⚠️  WARNING: db_path is set to: '$FINAL_DB_PATH' (expected: '/data/databases/meshcore_bot.db')"
+fi
+
+echo ""
 echo "Next steps:"
 if [ -z "$SERIAL_DEVICE" ]; then
     echo "1. Connect your MeshCore device or configure TCP/BLE connection"
 fi
 echo "1. Review data/config/config.ini and adjust settings if needed"
-echo "2. Build the Docker image (to avoid pull warnings):"
+echo "2. If you have a running container, STOP it first:"
+echo "   docker compose down"
+echo ""
+echo "3. Build the Docker image (to avoid pull warnings):"
 echo "   docker compose build"
 echo ""
-echo "3. Start the container:"
+echo "4. Start the container:"
 echo "   docker compose up -d"
 echo ""
 echo "   Or build and start in one command:"
 echo "   docker compose up -d --build"
 echo ""
-echo "4. View logs:"
+echo "5. View logs:"
 echo "   docker compose logs -f"
+echo ""
+echo "⚠️  IMPORTANT: If you had a container running before running this script,"
+echo "   you MUST restart it (docker compose down && docker compose up -d) for"
+echo "   the config changes to take effect!"
