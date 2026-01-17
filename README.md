@@ -84,6 +84,37 @@ sudo systemctl status meshcore-bot
 
 See [SERVICE-INSTALLATION.md](SERVICE-INSTALLATION.md) for detailed service installation instructions.
 
+### Docker Deployment
+For containerized deployment using Docker:
+
+1. **Create data directories and configuration**:
+   ```bash
+   mkdir -p data/{config,databases,logs,backups}
+   cp config.ini.example data/config/config.ini
+   # Edit data/config/config.ini with your settings
+   ```
+
+2. **Update paths in config.ini** to use `/data/` directories:
+   ```ini
+   [Bot]
+   db_path = /data/databases/meshcore_bot.db
+   
+   [Logging]
+   log_file = /data/logs/meshcore_bot.log
+   ```
+
+3. **Start with Docker Compose**:
+   ```bash
+   docker-compose up -d
+   ```
+
+4. **View logs**:
+   ```bash
+   docker-compose logs -f
+   ```
+
+See [DOCKER.md](DOCKER.md) for detailed Docker deployment instructions, including serial port access, web viewer configuration, and troubleshooting.
+
 ## NixOS
 Use the Nix flake via flake.nix
 ```nix

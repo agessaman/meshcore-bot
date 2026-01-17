@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  meshcore-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: meshcore-bot:latest
+    container_name: meshcore-bot
+    restart: unless-stopped
+    
+    # Device access for serial ports
+    # NOTE: Docker Desktop on macOS does NOT support device passthrough
+    # Options for macOS:
+    #   1. Use TCP connection (if device supports it) - configure in config.ini
+    #   2. Use a serial-to-TCP bridge (e.g., socat) on the host
+    #   3. Run the bot natively on macOS instead of Docker
+    # For Linux: Uncomment and adjust device path below
+    # devices:
+    #   - /dev/ttyUSB0:/dev/ttyUSB0
+    
+    # Network mode for host access (needed for BLE and some serial setups)
+    # Uncomment if you need host network access
+    # network_mode: host
+    
+    # Environment variables (optional, can override config.ini settings)
+    environment:
+      - TZ=America/Los_Angeles  # Set your timezone
+      # - PYTHONUNBUFFERED=1  # Already set in Dockerfile
+    
+    # Volume mappings for persistent data
+    volumes:
+      # Configuration file
+      - ./data/config:/data/config:ro
+      # Databases (main bot database and web viewer database)
+      - ./data/databases:/data/databases
+      # Logs
+      - ./data/logs:/data/logs
+      # Backups (optional)
+      - ./data/backups:/data/backups
+    
+    # Port mappings (if web viewer is enabled)
+    # Uncomment and adjust if using web viewer
+    ports:
+      - "8082:8080"
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

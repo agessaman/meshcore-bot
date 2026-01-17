@@ -142,3 +142,8 @@ tests/
 test_scripts/
 dev/
 website/
+
+# Docker data directory (user-specific config, databases, logs)
+# Ignore contents but keep directory structure
+data/*
+!data/.gitkeep

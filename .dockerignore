@@ -1,0 +1,76 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+*.db
+*.db-shm
+*.db-wal
+*.log
+logs/
+backups/
+*.ini
+config.ini
+config.ini.example
+config.ini.minimal-example
+config.min.ini
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Test files
+test_scripts/
+*.test.py
+*_test.py
+
+# Development
+dev/
+flake.lock
+flake.nix
+nix/
+
+# Service files
+*.service
+*.plist
+*.sh
+!install-service.sh
+!uninstall-service.sh
+
+# Website
+website/
+
+# MQTT bridge
+mctomqtt.py
+
+# Database backups
+backup_database.py
