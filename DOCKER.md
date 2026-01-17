@@ -35,7 +35,7 @@ This guide explains how to deploy meshcore-bot using Docker and Docker Compose.
    ```
 
 4. **Update database paths in config.ini**:
-   Make sure your `config.ini` uses paths that will be mapped to `/data/databases`:
+   The setup script (`./docker-setup.sh`) will automatically update these paths, but you can also set them manually:
    ```ini
    [Bot]
    db_path = /data/databases/meshcore_bot.db
@@ -46,6 +46,8 @@ This guide explains how to deploy meshcore-bot using Docker and Docker Compose.
    [Logging]
    log_file = /data/logs/meshcore_bot.log
    ```
+   
+   **Important**: The log file path must be absolute (`/data/logs/...`), not relative. Relative paths will resolve to the config directory which is read-only.
 
 5. **Start the container**:
    ```bash

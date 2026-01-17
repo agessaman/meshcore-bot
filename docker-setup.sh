@@ -62,8 +62,60 @@ $key = $value
 # Update database and log paths for Docker
 echo ""
 echo "Updating config.ini for Docker paths..."
+
+UPDATED_COUNT=0
+
+# Update Bot database path
 update_config "Bot" "db_path" "/data/databases/meshcore_bot.db"
+echo "  ✓ Updated [Bot] db_path"
+((UPDATED_COUNT++))
+
+# Update Logging file path
 update_config "Logging" "log_file" "/data/logs/meshcore_bot.log"
+echo "  ✓ Updated [Logging] log_file"
+((UPDATED_COUNT++))
+
+# Update Web_Viewer database path (if section exists)
+if grep -q "^\[Web_Viewer\]" "$CONFIG_FILE"; then
+    update_config "Web_Viewer" "db_path" "/data/databases/bot_data.db"
+    echo "  ✓ Updated [Web_Viewer] db_path"
+    ((UPDATED_COUNT++))
+fi
+
+# Update PacketCapture paths (if section exists)
+if grep -q "^\[PacketCapture\]" "$CONFIG_FILE"; then
+    # Only update output_file if it's set to a relative path
+    CURRENT_OUTPUT=$(grep "^output_file[[:space:]]*=" "$CONFIG_FILE" 2>/dev/null | sed 's/^output_file[[:space:]]*=[[:space:]]*//' | tr -d ' ' || echo "")
+    if [ -n "$CURRENT_OUTPUT" ] && [[ ! "$CURRENT_OUTPUT" == /* ]]; then
+        # Relative path - update to logs directory
+        update_config "PacketCapture" "output_file" "/data/logs/packets.jsonl"
+        echo "  ✓ Updated [PacketCapture] output_file"
+        ((UPDATED_COUNT++))
+    fi
+    
+    # Update private_key_path if it's a relative path
+    CURRENT_KEY=$(grep "^private_key_path[[:space:]]*=" "$CONFIG_FILE" 2>/dev/null | sed 's/^private_key_path[[:space:]]*=[[:space:]]*//' | tr -d ' ' || echo "")
+    if [ -n "$CURRENT_KEY" ] && [[ ! "$CURRENT_KEY" == /* ]]; then
+        # Relative path - update to config directory (read-only is fine for keys)
+        update_config "PacketCapture" "private_key_path" "/data/config/private_key"
+        echo "  ✓ Updated [PacketCapture] private_key_path"
+        ((UPDATED_COUNT++))
+    fi
+fi
+
+# Update MapUploader private_key_path (if section exists)
+if grep -q "^\[MapUploader\]" "$CONFIG_FILE"; then
+    CURRENT_KEY=$(grep "^private_key_path[[:space:]]*=" "$CONFIG_FILE" 2>/dev/null | sed 's/^private_key_path[[:space:]]*=[[:space:]]*//' | tr -d ' ' || echo "")
+    if [ -n "$CURRENT_KEY" ] && [[ ! "$CURRENT_KEY" == /* ]]; then
+        # Relative path - update to config directory
+        update_config "MapUploader" "private_key_path" "/data/config/private_key"
+        echo "  ✓ Updated [MapUploader] private_key_path"
+        ((UPDATED_COUNT++))
+    fi
+fi
+
+echo ""
+echo "✓ Updated $UPDATED_COUNT path(s) for Docker deployment"
 
 # Try to detect serial device
 echo ""
