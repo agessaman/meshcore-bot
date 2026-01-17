@@ -1,11 +1,14 @@
 services:
   meshcore-bot:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    # Image will be built locally (not pulled from registry)
-    # To avoid pull warnings, run: docker compose build
-    image: meshcore-bot:latest
+    # Option 1: Build locally - uncomment to build from source
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    
+    # Option 2: Use pre-built image from GitHub Container Registry (default)
+    # Image tag is automatically set based on current git branch via .env file
+    # Set DOCKER_IMAGE_REGISTRY in .env to override (default: ghcr.io/agessaman/meshcore-bot)
+    image: ${DOCKER_IMAGE_REGISTRY:-ghcr.io/agessaman/meshcore-bot}:${DOCKER_IMAGE_TAG:-latest}
     container_name: meshcore-bot
     restart: unless-stopped
     
