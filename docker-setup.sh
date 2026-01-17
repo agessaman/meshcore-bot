@@ -123,6 +123,7 @@ echo "Detecting serial devices..."
 
 SERIAL_DEVICE=""
 DOCKER_DEVICE_PATH=""
+ACTUAL_DEVICE_FOR_DOCKER=""  # Will hold resolved device path for Docker
 
 if [[ "$PLATFORM" == "Linux" ]]; then
     # Linux: Prefer /dev/serial/by-id/ for stable device identification
@@ -160,47 +161,101 @@ if [[ "$PLATFORM" == "Linux" ]]; then
         done
     fi
     
-    # Update docker-compose.yml if device found (Linux only)
-    if [ -n "$SERIAL_DEVICE" ] && [ -f "docker-compose.yml" ]; then
-        echo "Updating docker-compose.yml with device mapping..."
-        
-        # Check if devices section exists (commented or uncommented)
-        if grep -qE "^    #? devices:" docker-compose.yml; then
-            # Uncomment and update existing devices section
-            if [[ "$PLATFORM" == "Darwin" ]]; then
-                # Uncomment devices line
-                sed -i '' 's/^    # devices:/    devices:/' docker-compose.yml
-                # Update device path - find commented device line and replace
-                sed -i '' "s|^    #   - /dev/.*|      - $SERIAL_DEVICE:$DOCKER_DEVICE_PATH|" docker-compose.yml
-                # Also handle if already uncommented
-                sed -i '' "s|^      - /dev/.*|      - $SERIAL_DEVICE:$DOCKER_DEVICE_PATH|" docker-compose.yml
-            else
-                # Uncomment devices line
-                sed -i 's/^    # devices:/    devices:/' docker-compose.yml
-                # Update device path - find commented device line and replace
-                sed -i "s|^    #   - /dev/.*|      - $SERIAL_DEVICE:$DOCKER_DEVICE_PATH|" docker-compose.yml
-                # Also handle if already uncommented
-                sed -i "s|^      - /dev/.*|      - $SERIAL_DEVICE:$DOCKER_DEVICE_PATH|" docker-compose.yml
-            fi
-        else
-            # Add devices section after restart line
-            if [[ "$PLATFORM" == "Darwin" ]]; then
-                sed -i '' "/^    restart: unless-stopped/a\\
-\\
-    # Device access for serial ports (Linux)\\
-    devices:\\
-      - $SERIAL_DEVICE:$DOCKER_DEVICE_PATH
-" docker-compose.yml
-            else
-                sed -i "/^    restart: unless-stopped/a\\
-\\
-    # Device access for serial ports (Linux)\\
-    devices:\\
-      - $SERIAL_DEVICE:$DOCKER_DEVICE_PATH
-" docker-compose.yml
-            fi
+    # Resolve symlink to actual device for Docker compatibility
+    # Docker containers may not resolve symlinks correctly, so use the actual device
+    ACTUAL_DEVICE_FOR_DOCKER="$SERIAL_DEVICE"
+    if [[ "$SERIAL_DEVICE" == /dev/serial/by-id/* ]]; then
+        RESOLVED=$(readlink -f "$SERIAL_DEVICE" 2>/dev/null || echo "")
+        if [ -n "$RESOLVED" ] && [ -e "$RESOLVED" ]; then
+            ACTUAL_DEVICE_FOR_DOCKER="$RESOLVED"
+            echo "  Resolved symlink: $SERIAL_DEVICE -> $ACTUAL_DEVICE_FOR_DOCKER"
         fi
-        echo "✓ Updated docker-compose.yml with device: $SERIAL_DEVICE -> $DOCKER_DEVICE_PATH"
+    fi
+    
+    # Update docker-compose files if device found (Linux only)
+    # Prefer docker-compose.override.yml if it exists, otherwise update docker-compose.yml
+    COMPOSE_FILE=""
+    if [ -f "docker-compose.override.yml" ]; then
+        COMPOSE_FILE="docker-compose.override.yml"
+        echo "Updating docker-compose.override.yml with device mapping..."
+    elif [ -f "docker-compose.yml" ]; then
+        COMPOSE_FILE="docker-compose.yml"
+        echo "Updating docker-compose.yml with device mapping..."
+    fi
+    
+    if [ -n "$SERIAL_DEVICE" ] && [ -n "$COMPOSE_FILE" ]; then
+        # Function to update devices section in a compose file
+        update_compose_devices() {
+            local file=$1
+            local device=$2
+            local container_path=$3
+            
+            # Check if devices section exists (commented or uncommented)
+            if grep -qE "^    #? devices:" "$file"; then
+                # Uncomment and update existing devices section
+                if [[ "$PLATFORM" == "Darwin" ]]; then
+                    # Uncomment devices line
+                    sed -i '' 's/^    # devices:/    devices:/' "$file"
+                    # Update device path - find commented device line and replace
+                    sed -i '' "s|^    #   - /dev/.*|      - $device:$container_path|" "$file"
+                    # Also handle if already uncommented
+                    sed -i '' "s|^      - /dev/.*|      - $device:$container_path|" "$file"
+                else
+                    # Uncomment devices line
+                    sed -i 's/^    # devices:/    devices:/' "$file"
+                    # Update device path - find commented device line and replace
+                    sed -i "s|^    #   - /dev/.*|      - $device:$container_path|" "$file"
+                    # Also handle if already uncommented
+                    sed -i "s|^      - /dev/.*|      - $device:$container_path|" "$file"
+                fi
+            else
+                # Check if we're in a services section
+                if grep -q "^services:" "$file" && grep -q "^  meshcore-bot:" "$file"; then
+                    # Add devices section after meshcore-bot service definition
+                    # Find a good insertion point (after restart, network_mode, or volumes)
+                    if grep -q "^    restart:" "$file"; then
+                        INSERT_AFTER="restart:"
+                    elif grep -q "^    network_mode:" "$file"; then
+                        INSERT_AFTER="network_mode:"
+                    elif grep -q "^    volumes:" "$file"; then
+                        INSERT_AFTER="volumes:"
+                    else
+                        # Default: after container_name
+                        INSERT_AFTER="container_name:"
+                    fi
+                    
+                    if [[ "$PLATFORM" == "Darwin" ]]; then
+                        sed -i '' "/^    $INSERT_AFTER/a\\
+\\
+    # Device access for serial ports\\
+    devices:\\
+      - $device:$container_path
+" "$file"
+                    else
+                        sed -i "/^    $INSERT_AFTER/a\\
+\\
+    # Device access for serial ports\\
+    devices:\\
+      - $device:$container_path
+" "$file"
+                    fi
+                else
+                    # File doesn't have expected structure, append at end
+                    {
+                        echo ""
+                        echo "services:"
+                        echo "  meshcore-bot:"
+                        echo "    # Device access for serial ports"
+                        echo "    devices:"
+                        echo "      - $device:$container_path"
+                    } >> "$file"
+                fi
+            fi
+        }
+        
+        # Use actual device path (not symlink) for Docker device mapping
+        update_compose_devices "$COMPOSE_FILE" "$ACTUAL_DEVICE_FOR_DOCKER" "$DOCKER_DEVICE_PATH"
+        echo "✓ Updated $COMPOSE_FILE with device: $ACTUAL_DEVICE_FOR_DOCKER -> $DOCKER_DEVICE_PATH"
     fi
     
 elif [[ "$PLATFORM" == "Darwin" ]]; then
@@ -215,30 +270,35 @@ elif [[ "$PLATFORM" == "Darwin" ]]; then
 fi
 
 # Update config.ini with serial device if found
+# Use the actual device path (resolved from symlink if needed) for Docker compatibility
 if [ -n "$SERIAL_DEVICE" ]; then
+    # Determine the device path to use in config.ini
+    CONFIG_DEVICE="$SERIAL_DEVICE"
+    
+    # On Linux, resolve symlinks to actual device for Docker compatibility
     if [[ "$PLATFORM" == "Linux" ]] && [[ "$SERIAL_DEVICE" == /dev/serial/by-id/* ]]; then
-        # On Linux with by-id path, resolve to actual device for Docker compatibility
-        # Docker containers may not resolve symlinks correctly, so use the actual device
-        ACTUAL_DEVICE=$(readlink -f "$SERIAL_DEVICE" 2>/dev/null || echo "")
-        if [ -n "$ACTUAL_DEVICE" ] && [ -e "$ACTUAL_DEVICE" ]; then
-            # Use actual device path for better Docker compatibility
-            update_config "Connection" "serial_port" "$ACTUAL_DEVICE"
-            echo "✓ Updated config.ini with serial port: $ACTUAL_DEVICE"
-            echo "  (resolved from $SERIAL_DEVICE)"
+        # Use the resolved device if we have it, otherwise resolve now
+        if [ -n "$ACTUAL_DEVICE_FOR_DOCKER" ]; then
+            CONFIG_DEVICE="$ACTUAL_DEVICE_FOR_DOCKER"
         else
-            # Fallback to by-id path if resolution fails
-            update_config "Connection" "serial_port" "$SERIAL_DEVICE"
-            echo "✓ Updated config.ini with serial port: $SERIAL_DEVICE"
-            echo "  ⚠️  Note: If Docker can't access this symlink, use the actual device path"
+            RESOLVED=$(readlink -f "$SERIAL_DEVICE" 2>/dev/null || echo "")
+            if [ -n "$RESOLVED" ] && [ -e "$RESOLVED" ]; then
+                CONFIG_DEVICE="$RESOLVED"
+            fi
         fi
-    elif [[ "$PLATFORM" == "Linux" ]]; then
-        # On Linux, use the device path directly
-        update_config "Connection" "serial_port" "$SERIAL_DEVICE"
-        echo "✓ Updated config.ini with serial port: $SERIAL_DEVICE"
+    fi
+    
+    # Update config.ini with the device path
+    update_config "Connection" "serial_port" "$CONFIG_DEVICE"
+    
+    if [ "$CONFIG_DEVICE" != "$SERIAL_DEVICE" ]; then
+        echo "✓ Updated config.ini with serial port: $CONFIG_DEVICE"
+        echo "  (resolved from $SERIAL_DEVICE for Docker compatibility)"
     else
-        # macOS: just note it, but user needs to handle differently
-        update_config "Connection" "serial_port" "$SERIAL_DEVICE"
-        echo "✓ Updated config.ini with serial port: $SERIAL_DEVICE"
+        echo "✓ Updated config.ini with serial port: $CONFIG_DEVICE"
+    fi
+    
+    if [[ "$PLATFORM" == "Darwin" ]]; then
         echo "  ⚠️  Remember: Docker Desktop on macOS can't access serial devices directly."
     fi
 else
