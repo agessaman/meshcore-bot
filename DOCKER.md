@@ -322,21 +322,27 @@ Try these solutions:
    sudo modprobe veth
    ```
 
-3. **Use host network mode for build** (temporary workaround):
+3. **Build directly with docker build** (bypasses compose networking - RECOMMENDED):
    ```bash
-   DOCKER_BUILDKIT=0 docker compose build --network=host
+   # Build the image directly
+   DOCKER_BUILDKIT=0 docker build -t meshcore-bot:latest .
+   
+   # Then use docker compose normally (it will use the existing image)
+   docker compose up -d
+   ```
+   This bypasses Docker Compose's networking setup during build, which often fails on ARM devices.
+
+4. **Use host network mode for build** (alternative):
+   ```bash
+   DOCKER_BUILDKIT=0 docker build --network=host -t meshcore-bot:latest .
+   docker compose up -d
    ```
 
-4. **Check Docker bridge configuration**:
+5. **Check Docker bridge configuration**:
    ```bash
    sudo brctl show
    ```
    If bridge doesn't exist, Docker may need to be reconfigured.
-
-5. **Try building without BuildKit**:
-   ```bash
-   DOCKER_BUILDKIT=0 docker compose build
-   ```
 
 6. **Check Docker daemon logs**:
    ```bash
