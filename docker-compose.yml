@@ -1,14 +1,15 @@
 services:
   meshcore-bot:
-    # Option 1: Build locally - uncomment to build from source
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile
-    
-    # Option 2: Use pre-built image from GitHub Container Registry (default)
+    # Build configuration - will build locally if image doesn't exist
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Pre-built image from GitHub Container Registry (used if available)
     # Image tag is automatically set based on current git branch via .env file
     # Set DOCKER_IMAGE_REGISTRY in .env to override (default: ghcr.io/agessaman/meshcore-bot)
+    # If the image doesn't exist in registry, Docker Compose will build locally
     image: ${DOCKER_IMAGE_REGISTRY:-ghcr.io/agessaman/meshcore-bot}:${DOCKER_IMAGE_TAG:-latest}
+    pull_policy: if_not_present
     container_name: meshcore-bot
     restart: unless-stopped
     
