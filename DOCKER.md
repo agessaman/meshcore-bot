@@ -295,6 +295,59 @@ If you see database locked errors:
    docker-compose run --rm meshcore-bot python3 -c "import configparser; c = configparser.ConfigParser(); c.read('/data/config/config.ini'); print('Config OK')"
    ```
 
+### Build Failures on ARM Devices (Orange Pi, Raspberry Pi, etc.)
+
+If you encounter network errors during build like:
+```
+failed to add the host (veth...) <=> sandbox (veth...) pair interfaces: operation not supported
+```
+
+Try these solutions:
+
+1. **Restart Docker daemon**:
+   ```bash
+   sudo systemctl restart docker
+   ```
+
+2. **Check kernel modules are loaded**:
+   ```bash
+   lsmod | grep bridge
+   lsmod | grep veth
+   ```
+   If missing, load them:
+   ```bash
+   sudo modprobe bridge
+   sudo modprobe veth
+   ```
+
+3. **Use host network mode for build** (temporary workaround):
+   ```bash
+   DOCKER_BUILDKIT=0 docker compose build --network=host
+   ```
+
+4. **Check Docker bridge configuration**:
+   ```bash
+   sudo brctl show
+   ```
+   If bridge doesn't exist, Docker may need to be reconfigured.
+
+5. **Try building without BuildKit**:
+   ```bash
+   DOCKER_BUILDKIT=0 docker compose build
+   ```
+
+6. **Check Docker daemon logs**:
+   ```bash
+   sudo journalctl -u docker -n 50
+   ```
+
+7. **Reinstall Docker** (if other solutions fail):
+   ```bash
+   # Backup your data first!
+   sudo apt-get remove docker docker-engine docker.io containerd runc
+   # Then reinstall Docker following Armbian/Docker official instructions
+   ```
+
 ## Production Deployment
 
 For production deployments:
