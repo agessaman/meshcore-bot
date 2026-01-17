@@ -32,8 +32,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     # Cleanup
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
-RUN useradd -m -u 1000 meshcore && \
+# Create non-root user and add to dialout group for serial port access
+RUN useradd -m -u 1000 -G dialout,tty meshcore && \
     mkdir -p /app /data/config /data/databases /data/logs /data/backups && \
     chown -R meshcore:meshcore /app /data
 

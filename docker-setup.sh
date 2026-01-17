@@ -206,6 +206,18 @@ if [[ "$PLATFORM" == "Linux" ]]; then
             local device=$2
             local container_path=$3
             
+            # First, check if device is incorrectly mapped in volumes section and remove it
+            # Look for device mappings in volumes (e.g., /dev/ttyACM0:/dev/ttyUSB0)
+            if grep -qE "^      - /dev/(tty|serial)" "$file"; then
+                echo "  Found device mapping in volumes section, moving to devices section..."
+                # Remove device mappings from volumes section
+                if [[ "$PLATFORM" == "Darwin" ]]; then
+                    sed -i '' '/^      - \/dev\/\(tty\|serial\)/d' "$file"
+                else
+                    sed -i '/^      - \/dev\/\(tty\|serial\)/d' "$file"
+                fi
+            fi
+            
             # Check if devices section exists (commented or uncommented)
             if grep -qE "^    #? devices:" "$file"; then
                 # Uncomment and update existing devices section
@@ -214,30 +226,44 @@ if [[ "$PLATFORM" == "Linux" ]]; then
                     sed -i '' 's/^    # devices:/    devices:/' "$file"
                     # Update device path - find commented device line and replace
                     sed -i '' "s|^    #   - /dev/.*|      - $device:$container_path|" "$file"
-                    # Also handle if already uncommented
-                    sed -i '' "s|^      - /dev/.*|      - $device:$container_path|" "$file"
+                    # Also handle if already uncommented - update existing device mapping
+                    if grep -qE "^      - /dev/" "$file"; then
+                        sed -i '' "s|^      - /dev/[^:]*:.*|      - $device:$container_path|" "$file"
+                    else
+                        # Add device if devices section exists but no devices listed
+                        sed -i '' "/^    devices:/a\\
+      - $device:$container_path
+" "$file"
+                    fi
                 else
                     # Uncomment devices line
                     sed -i 's/^    # devices:/    devices:/' "$file"
                     # Update device path - find commented device line and replace
                     sed -i "s|^    #   - /dev/.*|      - $device:$container_path|" "$file"
-                    # Also handle if already uncommented
-                    sed -i "s|^      - /dev/.*|      - $device:$container_path|" "$file"
+                    # Also handle if already uncommented - update existing device mapping
+                    if grep -qE "^      - /dev/" "$file"; then
+                        sed -i "s|^      - /dev/[^:]*:.*|      - $device:$container_path|" "$file"
+                    else
+                        # Add device if devices section exists but no devices listed
+                        sed -i "/^    devices:/a\\
+      - $device:$container_path
+" "$file"
+                    fi
                 fi
             else
                 # Check if we're in a services section
                 if grep -q "^services:" "$file" && grep -q "^  meshcore-bot:" "$file"; then
                     # Add devices section after meshcore-bot service definition
                     # Find a good insertion point (after restart, network_mode, or volumes)
-                    if grep -q "^    restart:" "$file"; then
-                        INSERT_AFTER="restart:"
-                    elif grep -q "^    network_mode:" "$file"; then
+                    if grep -q "^    network_mode:" "$file"; then
                         INSERT_AFTER="network_mode:"
                     elif grep -q "^    volumes:" "$file"; then
                         INSERT_AFTER="volumes:"
+                    elif grep -q "^    restart:" "$file"; then
+                        INSERT_AFTER="restart:"
                     else
-                        # Default: after container_name
-                        INSERT_AFTER="container_name:"
+                        # Default: after container_name or first line after meshcore-bot
+                        INSERT_AFTER="meshcore-bot:"
                     fi
                     
                     if [[ "$PLATFORM" == "Darwin" ]]; then
@@ -272,6 +298,7 @@ if [[ "$PLATFORM" == "Linux" ]]; then
         # Use actual device path (not symlink) for Docker device mapping
         update_compose_devices "$COMPOSE_FILE" "$ACTUAL_DEVICE_FOR_DOCKER" "$DOCKER_DEVICE_PATH"
         echo "✓ Updated $COMPOSE_FILE with device: $ACTUAL_DEVICE_FOR_DOCKER -> $DOCKER_DEVICE_PATH"
+        echo "  Note: Device mappings should be in 'devices:' section, not 'volumes:'"
     fi
     
 elif [[ "$PLATFORM" == "Darwin" ]]; then

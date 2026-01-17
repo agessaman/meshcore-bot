@@ -547,6 +547,8 @@ log_level = INFO
 
 # Log file path (leave empty for console only)
 # Bot will write logs to this file in addition to console
+# Use absolute path for Docker compatibility (e.g., /data/logs/meshcore_bot.log)
+# Relative paths will resolve relative to the config file directory
 log_file = meshcore_bot.log
 
 # Enable colored console output
@@ -744,12 +746,32 @@ use_zulu_time = false
         # File handler
         log_file = self.config.get('Logging', 'log_file', fallback='meshcore_bot.log')
         
-        # Resolve log file path (relative paths resolved from bot root, absolute paths used as-is)
-        log_file = resolve_path(log_file, self.bot_root)
+        # Strip whitespace and check if empty
+        log_file = log_file.strip() if log_file else ''
         
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setFormatter(formatter)
-        self.logger.addHandler(file_handler)
+        # If log_file is empty, skip file logging (console only)
+        if not log_file:
+            self.logger.info("No log file specified, using console logging only")
+        else:
+            # Resolve log file path (relative paths resolved from bot root, absolute paths used as-is)
+            log_file = resolve_path(log_file, self.bot_root)
+            
+            # Ensure the log directory exists
+            log_dir = Path(log_file).parent
+            if not log_dir.exists():
+                try:
+                    log_dir.mkdir(parents=True, exist_ok=True)
+                except (OSError, PermissionError) as e:
+                    self.logger.warning(f"Could not create log directory {log_dir}: {e}. Using console logging only.")
+                    log_file = None
+            
+            if log_file:
+                try:
+                    file_handler = logging.FileHandler(log_file)
+                    file_handler.setFormatter(formatter)
+                    self.logger.addHandler(file_handler)
+                except (OSError, PermissionError) as e:
+                    self.logger.warning(f"Could not open log file {log_file}: {e}. Using console logging only.")
         
         # Prevent propagation to root logger to avoid duplicate output
         self.logger.propagate = False

@@ -238,6 +238,44 @@ If you encounter permission issues with database or log files:
 
 The container runs as user ID 1000 (meshcore user).
 
+### Serial Port Permission Denied
+
+If you see `[Errno 13] Permission denied` when accessing serial devices:
+
+1. **Check device permissions** (on host):
+   ```bash
+   ls -l /dev/ttyUSB0  # or /dev/ttyACM0
+   # Should show: crw-rw---- 1 root dialout ...
+   ```
+
+2. **Ensure device has dialout group** (on host):
+   ```bash
+   # Check current group
+   ls -l /dev/ttyUSB0 | awk '{print $4}'
+   
+   # If not dialout, fix it (temporary - will reset on reboot)
+   sudo chmod 666 /dev/ttyUSB0
+   
+   # Or make it permanent with udev rules:
+   sudo nano /etc/udev/rules.d/99-serial-permissions.rules
+   # Add: KERNEL=="ttyUSB[0-9]*", MODE="0666", GROUP="dialout"
+   # Then: sudo udevadm control --reload-rules
+   ```
+
+3. **Rebuild the container** (to ensure user is in dialout group):
+   ```bash
+   docker compose build
+   docker compose up -d
+   ```
+
+4. **Alternative: Use privileged mode** (less secure, but works):
+   ```yaml
+   # In docker-compose.override.yml
+   services:
+     meshcore-bot:
+       privileged: true
+   ```
+
 ### Serial Port Not Found
 
 1. **Check device exists**:
@@ -245,13 +283,7 @@ The container runs as user ID 1000 (meshcore user).
    ls -l /dev/ttyUSB0  # or your device
    ```
 
-2. **Add user to dialout group** (on host):
-   ```bash
-   sudo usermod -a -G dialout $USER
-   # Log out and back in
-   ```
-
-3. **Use host network mode** if device mapping doesn't work:
+2. **Use host network mode** if device mapping doesn't work:
    ```yaml
    network_mode: host
    ```
