@@ -112,6 +112,22 @@ auto_manage_contacts = false
 # Default: meshcore_bot.db
 db_path = meshcore_bot.db
 
+[Channels]
+# Channels to monitor (comma-separated)
+# Bot will only respond to messages on these channels
+# Use exact channel names as configured on your MeshCore node
+monitor_channels = general,test,emergency
+
+# Enable DM responses
+# true: Bot will respond to direct messages
+# false: Bot will ignore direct messages
+respond_to_dms = true
+
+[Banned_Users]
+# List of banned user IDs (comma-separated)
+# Bot will ignore messages from these users
+banned_users = 
+
 [Localization]
 # Language code for bot responses (en, es, es-MX, es-ES, fr, de, ja, etc.)
 # Default: en (English)
@@ -275,22 +291,6 @@ help = "Bot Help: test (or t), ping, help, hello, cmd, advert, @string, wx, aqi,
 
 # Override 'cmd' command output
 # cmd = "Available commands: test (or t), ping, help, hello, cmd, advert, @string, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats"
-
-[Channels]
-# Channels to monitor (comma-separated)
-# Bot will only respond to messages on these channels
-# Use exact channel names as configured on your MeshCore node
-monitor_channels = general,test,emergency
-
-# Enable DM responses
-# true: Bot will respond to direct messages
-# false: Bot will ignore direct messages
-respond_to_dms = true
-
-[Banned_Users]
-# List of banned user IDs (comma-separated)
-# Bot will ignore messages from these users
-banned_users = 
 
 [Scheduled_Messages]
 # Scheduled message format: HHMM = channel:message

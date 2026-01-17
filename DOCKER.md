@@ -126,10 +126,22 @@ port = 8080
 
 ### Using Docker Compose
 
-The `docker-compose.yml` file will automatically build the image if it doesn't exist:
+**Important**: To avoid pull warnings, build the image first:
 ```bash
-docker-compose build
+docker compose build
 ```
+
+Then start the container:
+```bash
+docker compose up -d
+```
+
+Or build and start in one command:
+```bash
+docker compose up -d --build
+```
+
+The `--build` flag ensures the image is built locally rather than attempting to pull from a registry.
 
 ### Using Docker directly
 

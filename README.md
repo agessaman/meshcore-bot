@@ -103,9 +103,15 @@ For containerized deployment using Docker:
    log_file = /data/logs/meshcore_bot.log
    ```
 
-3. **Start with Docker Compose**:
+3. **Build and start with Docker Compose**:
    ```bash
-   docker-compose up -d
+   docker compose build
+   docker compose up -d
+   ```
+   
+   Or build and start in one command:
+   ```bash
+   docker compose up -d --build
    ```
 
 4. **View logs**:

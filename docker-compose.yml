@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    # Image will be built locally (not pulled from registry)
+    # To avoid pull warnings, run: docker compose build
     image: meshcore-bot:latest
     container_name: meshcore-bot
     restart: unless-stopped
