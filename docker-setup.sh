@@ -41,11 +41,11 @@ update_config() {
     
     # Check if key exists in section (look for key= with optional spaces)
     if grep -q "^$key[[:space:]]*=" "$CONFIG_FILE"; then
-        # Update existing key (handles both Linux and macOS sed)
+        # Update existing key (use | as delimiter to avoid issues with / in paths)
         if [[ "$PLATFORM" == "Darwin" ]]; then
-            sed -i '' "/^$key[[:space:]]*=/s/=.*/= $value/" "$CONFIG_FILE"
+            sed -i '' "s|^$key[[:space:]]*=.*|$key = $value|" "$CONFIG_FILE"
         else
-            sed -i "/^$key[[:space:]]*=/s/=.*/= $value/" "$CONFIG_FILE"
+            sed -i "s|^$key[[:space:]]*=.*|$key = $value|" "$CONFIG_FILE"
         fi
     else
         # Add new key after section header
