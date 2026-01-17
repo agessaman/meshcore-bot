@@ -16,7 +16,7 @@ import signal
 import atexit
 import sqlite3
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from dataclasses import dataclass
 
 # Import the official meshcore package
@@ -217,6 +217,139 @@ class MeshCoreBot:
             self.create_default_config()
         
         self.config.read(self.config_file)
+    
+    def _get_radio_settings(self) -> Dict[str, Any]:
+        """Get current radio/connection settings from config.
+        
+        Returns:
+            Dict[str, Any]: Dictionary containing all radio-related settings.
+        """
+        return {
+            'connection_type': self.config.get('Connection', 'connection_type', fallback='ble').lower(),
+            'serial_port': self.config.get('Connection', 'serial_port', fallback=''),
+            'ble_device_name': self.config.get('Connection', 'ble_device_name', fallback=''),
+            'hostname': self.config.get('Connection', 'hostname', fallback=''),
+            'tcp_port': self.config.getint('Connection', 'tcp_port', fallback=5000),
+            'timeout': self.config.getint('Connection', 'timeout', fallback=30),
+        }
+    
+    def reload_config(self) -> Tuple[bool, str]:
+        """Reload configuration from file without restarting the bot.
+        
+        This method reloads the configuration file and updates all components
+        that depend on it. It will reject the reload if radio/connection settings
+        have changed, as those require a full restart.
+        
+        Returns:
+            Tuple[bool, str]: (success, message) tuple indicating if reload succeeded
+                and a descriptive message.
+        """
+        try:
+            # Store current radio settings before reload
+            old_radio_settings = self._get_radio_settings()
+            
+            # Create a temporary config parser to check new settings
+            import configparser
+            new_config = configparser.ConfigParser()
+            if not Path(self.config_file).exists():
+                return (False, "Config file not found")
+            
+            new_config.read(self.config_file)
+            
+            # Get new radio settings
+            new_radio_settings = {
+                'connection_type': new_config.get('Connection', 'connection_type', fallback='ble').lower(),
+                'serial_port': new_config.get('Connection', 'serial_port', fallback=''),
+                'ble_device_name': new_config.get('Connection', 'ble_device_name', fallback=''),
+                'hostname': new_config.get('Connection', 'hostname', fallback=''),
+                'tcp_port': new_config.getint('Connection', 'tcp_port', fallback=5000),
+                'timeout': new_config.getint('Connection', 'timeout', fallback=30),
+            }
+            
+            # Check if radio settings changed
+            if old_radio_settings != new_radio_settings:
+                changed_settings = []
+                for key in old_radio_settings:
+                    if old_radio_settings[key] != new_radio_settings[key]:
+                        changed_settings.append(f"{key}: {old_radio_settings[key]} -> {new_radio_settings[key]}")
+                return (False, f"Radio settings changed. Restart required. Changes: {', '.join(changed_settings)}")
+            
+            # Radio settings unchanged, proceed with reload
+            self.logger.info("Reloading configuration (radio settings unchanged)")
+            
+            # Reload the config
+            self.config.read(self.config_file)
+            
+            # Update rate limiters
+            new_rate_limit = self.config.getint('Bot', 'rate_limit_seconds', fallback=10)
+            self.rate_limiter = RateLimiter(new_rate_limit)
+            
+            new_bot_tx_rate_limit = self.config.getfloat('Bot', 'bot_tx_rate_limit_seconds', fallback=1.0)
+            self.bot_tx_rate_limiter = BotTxRateLimiter(new_bot_tx_rate_limit)
+            
+            new_nominatim_rate_limit = self.config.getfloat('Bot', 'nominatim_rate_limit_seconds', fallback=1.1)
+            self.nominatim_rate_limiter = NominatimRateLimiter(new_nominatim_rate_limit)
+            
+            # Update transmission delay
+            self.tx_delay_ms = self.config.getint('Bot', 'tx_delay_ms', fallback=250)
+            
+            # Update translator if language changed
+            try:
+                new_language = self.config.get('Localization', 'language', fallback='en')
+                new_translation_path = self.config.get('Localization', 'translation_path', fallback='translations/')
+                if (not hasattr(self, 'translator') or 
+                    getattr(self.translator, 'language', None) != new_language or
+                    getattr(self.translator, 'translation_path', None) != new_translation_path):
+                    self.translator = Translator(new_language, new_translation_path)
+                    self.logger.info(f"Translator reloaded with language: {new_language}")
+                    
+                    # Reload translated keywords for all commands
+                    if hasattr(self, 'command_manager'):
+                        for cmd_name, cmd_instance in self.command_manager.commands.items():
+                            if hasattr(cmd_instance, '_load_translated_keywords'):
+                                cmd_instance._load_translated_keywords()
+            except (OSError, ValueError, FileNotFoundError, json.JSONDecodeError) as e:
+                self.logger.warning(f"Failed to reload translator: {e}")
+            
+            # Update solar conditions config
+            set_config(self.config)
+            
+            # Update command manager (keywords, custom syntax, banned users, monitor channels)
+            if hasattr(self, 'command_manager'):
+                self.command_manager.keywords = self.command_manager.load_keywords()
+                self.command_manager.custom_syntax = self.command_manager.load_custom_syntax()
+                self.command_manager.banned_users = self.command_manager.load_banned_users()
+                self.command_manager.monitor_channels = self.command_manager.load_monitor_channels()
+                self.logger.info("Command manager config reloaded")
+            
+            # Update scheduler (scheduled messages)
+            if hasattr(self, 'scheduler'):
+                self.scheduler.setup_scheduled_messages()
+                self.logger.info("Scheduler config reloaded")
+            
+            # Update channel manager max_channels if changed
+            if hasattr(self, 'channel_manager'):
+                new_max_channels = self.config.getint('Bot', 'max_channels', fallback=40)
+                if hasattr(self.channel_manager, 'max_channels'):
+                    old_max_channels = self.channel_manager.max_channels
+                    self.channel_manager.max_channels = new_max_channels
+                    if old_max_channels != new_max_channels:
+                        self.logger.info(f"Channel manager max_channels updated to {new_max_channels}")
+                # Note: We don't invalidate the channel cache here because channels are fetched
+                # from the device, not from config. The cache should remain valid after reload.
+            
+            # Note: Service plugins check config on-demand, so they'll pick up changes automatically
+            # Feed manager and other services that need explicit reload can be added here if needed
+            
+            self.logger.info("Configuration reloaded successfully")
+            return (True, "Configuration reloaded successfully")
+            
+        except Exception as e:
+            error_msg = f"Error reloading configuration: {e}"
+            self.logger.error(error_msg)
+            import traceback
+            self.logger.error(traceback.format_exc())
+            return (False, error_msg)
     
     def create_default_config(self) -> None:
         """Create default configuration file.

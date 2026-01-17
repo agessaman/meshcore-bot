@@ -42,6 +42,10 @@ class MessageScheduler:
     
     def setup_scheduled_messages(self):
         """Setup scheduled messages from config"""
+        # Clear existing scheduled jobs to avoid duplicates on reload
+        schedule.clear()
+        self.scheduled_messages.clear()
+        
         if self.bot.config.has_section('Scheduled_Messages'):
             self.logger.info("Found Scheduled_Messages section")
             for time_str, message_info in self.bot.config.items('Scheduled_Messages'):
