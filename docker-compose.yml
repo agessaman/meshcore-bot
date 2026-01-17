@@ -12,18 +12,15 @@ services:
     container_name: meshcore-bot
     restart: unless-stopped
     
-    # Device access for serial ports
-    # NOTE: Docker Desktop on macOS does NOT support device passthrough
-    # Options for macOS:
-    #   1. Use TCP connection (if device supports it) - configure in config.ini
-    #   2. Use a serial-to-TCP bridge (e.g., socat) on the host
-    #   3. Run the bot natively on macOS instead of Docker
-    # For Linux: Uncomment and adjust device path below
+    # Device access for serial ports (Linux)
+    # Uncomment and adjust if using serial connection
     # devices:
     #   - /dev/ttyUSB0:/dev/ttyUSB0
     
     # Network mode for host access (needed for BLE and some serial setups)
     # Uncomment if you need host network access
+    # NOTE: On some ARM devices (Orange Pi, Raspberry Pi) with Docker bridge networking issues,
+    # you may need to uncomment this to bypass bridge networking
     # network_mode: host
     
     # Environment variables (optional, can override config.ini settings)
@@ -44,8 +41,8 @@ services:
     
     # Port mappings (if web viewer is enabled)
     # Uncomment and adjust if using web viewer
-    ports:
-      - "8082:8080"
+    # ports:
+    #   - "8080:8080"
     
     # Logging configuration
     logging:

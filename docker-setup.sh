@@ -217,13 +217,24 @@ fi
 # Update config.ini with serial device if found
 if [ -n "$SERIAL_DEVICE" ]; then
     if [[ "$PLATFORM" == "Linux" ]] && [[ "$SERIAL_DEVICE" == /dev/serial/by-id/* ]]; then
-        # On Linux with by-id path, use it directly in config (more stable)
+        # On Linux with by-id path, resolve to actual device for Docker compatibility
+        # Docker containers may not resolve symlinks correctly, so use the actual device
+        ACTUAL_DEVICE=$(readlink -f "$SERIAL_DEVICE" 2>/dev/null || echo "")
+        if [ -n "$ACTUAL_DEVICE" ] && [ -e "$ACTUAL_DEVICE" ]; then
+            # Use actual device path for better Docker compatibility
+            update_config "Connection" "serial_port" "$ACTUAL_DEVICE"
+            echo "✓ Updated config.ini with serial port: $ACTUAL_DEVICE"
+            echo "  (resolved from $SERIAL_DEVICE)"
+        else
+            # Fallback to by-id path if resolution fails
+            update_config "Connection" "serial_port" "$SERIAL_DEVICE"
+            echo "✓ Updated config.ini with serial port: $SERIAL_DEVICE"
+            echo "  ⚠️  Note: If Docker can't access this symlink, use the actual device path"
+        fi
+    elif [[ "$PLATFORM" == "Linux" ]]; then
+        # On Linux, use the device path directly
         update_config "Connection" "serial_port" "$SERIAL_DEVICE"
         echo "✓ Updated config.ini with serial port: $SERIAL_DEVICE"
-    elif [[ "$PLATFORM" == "Linux" ]]; then
-        # On Linux, use the Docker mapped path in config
-        update_config "Connection" "serial_port" "$DOCKER_DEVICE_PATH"
-        echo "✓ Updated config.ini with serial port: $DOCKER_DEVICE_PATH (mapped from $SERIAL_DEVICE)"
     else
         # macOS: just note it, but user needs to handle differently
         update_config "Connection" "serial_port" "$SERIAL_DEVICE"
