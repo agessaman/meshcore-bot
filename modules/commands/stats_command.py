@@ -22,12 +22,12 @@ class StatsCommand(BaseCommand):
     # Plugin metadata
     name = "stats"
     keywords = ['stats']
-    description = "Show statistics for past 24 hours. Use 'stats messages', 'stats channels', or 'stats paths' for specific stats."
+    description = "Show statistics for past 24 hours. Use 'stats messages', 'stats channels', 'stats paths', or 'stats adverts' for specific stats."
     category = "analytics"
     
     # Documentation
     short_description = "Show bot usage statistics for past 24 hours"
-    usage = "stats [messages|channels|paths]"
+    usage = "stats [messages|channels|paths|adverts]"
     examples = ["stats", "stats channels"]
     parameters = [
         {"name": "type", "description": "messages, channels, or paths (optional)"}
@@ -349,7 +349,11 @@ class StatsCommand(BaseCommand):
                 elif subcommand in ['channels', 'channel']:
                     response = await self._get_channel_leaderboard()
                 elif subcommand in ['paths', 'path']:
-                    response = await self._get_path_leaderboard()
+                    response = await self._get_path_leaderboard(message)
+                elif subcommand in ['adverts', 'advert', 'advertisements', 'advertisement']:
+                    # Check for verbose/hash option
+                    show_hashes = len(parts) > 2 and parts[2].lower() in ['hash', 'hashes', 'verbose', 'verb']
+                    response = await self._get_adverts_leaderboard(message, show_hashes=show_hashes)
                 else:
                     response = self.translate('commands.stats.unknown_subcommand', subcommand=subcommand)
             else:
@@ -521,7 +525,7 @@ class StatsCommand(BaseCommand):
             self.logger.error(f"Error getting channel leaderboard: {e}")
             return self.translate('commands.stats.error_channels', error=str(e))
     
-    async def _get_path_leaderboard(self) -> str:
+    async def _get_path_leaderboard(self, message: Optional[MeshMessage] = None) -> str:
         """Get leaderboard for longest paths seen.
         
         Returns:
@@ -554,7 +558,7 @@ class StatsCommand(BaseCommand):
                 
                 # Build compact response with length checking
                 response = ""
-                max_length = 130  # Safe length for mesh network
+                max_length = self.get_max_message_length(message) if message else 130
                 
                 if longest_paths:
                     for i, (sender, path_len, path_str) in enumerate(longest_paths, 1):
@@ -576,6 +580,176 @@ class StatsCommand(BaseCommand):
         except Exception as e:
             self.logger.error(f"Error getting path leaderboard: {e}")
             return self.translate('commands.stats.error_paths', error=str(e))
+    
+    async def _get_adverts_leaderboard(self, message: Optional[MeshMessage] = None, show_hashes: bool = False) -> str:
+        """Get leaderboard for nodes with most unique advert packets in last 24 hours.
+        
+        Args:
+            message: Optional message for dynamic length calculation.
+            show_hashes: If True, include packet hashes in output.
+        
+        Returns:
+            str: Formatted leaderboard string.
+        """
+        try:
+            with sqlite3.connect(self.bot.db_manager.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Check if daily_stats table exists
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='daily_stats'")
+                has_daily_stats = cursor.fetchone() is not None
+                
+                if has_daily_stats:
+                    if show_hashes:
+                        # Query with packet hashes for validation
+                        # First get the top nodes, then get their hashes
+                        cursor.execute('''
+                            SELECT 
+                                c.public_key,
+                                c.name,
+                                COALESCE(
+                                    (SELECT advert_count FROM daily_stats 
+                                     WHERE date = DATE(c.last_advert_timestamp) 
+                                     AND public_key = c.public_key), 0
+                                ) as unique_adverts
+                            FROM complete_contact_tracking c
+                            WHERE c.last_advert_timestamp >= datetime('now', '-24 hours')
+                            GROUP BY c.public_key, c.name
+                            HAVING unique_adverts > 0
+                            ORDER BY unique_adverts DESC
+                            LIMIT 20
+                        ''')
+                        top_nodes = cursor.fetchall()
+                        
+                        # Now get packet hashes for each node
+                        top_adverts = []
+                        for public_key, name, count in top_nodes:
+                            # Get packet hashes for this node in the last 24 hours
+                            cursor.execute('''
+                                SELECT packet_hash 
+                                FROM unique_advert_packets 
+                                WHERE public_key = ? 
+                                AND first_seen >= datetime('now', '-24 hours')
+                                ORDER BY first_seen
+                            ''', (public_key,))
+                            hash_rows = cursor.fetchall()
+                            packet_hashes = ', '.join([row[0] for row in hash_rows]) if hash_rows else None
+                            top_adverts.append((public_key, name, count, packet_hashes))
+                    else:
+                        # Query nodes that advertised in the last 24 hours
+                        # Get advert_count from daily_stats for the day of last_advert_timestamp
+                        # This gives us the count of unique adverts for that day
+                        cursor.execute('''
+                            SELECT 
+                                c.public_key,
+                                c.name,
+                                COALESCE(
+                                    (SELECT advert_count FROM daily_stats 
+                                     WHERE date = DATE(c.last_advert_timestamp) 
+                                     AND public_key = c.public_key), 0
+                                ) as unique_adverts
+                            FROM complete_contact_tracking c
+                            WHERE c.last_advert_timestamp >= datetime('now', '-24 hours')
+                            GROUP BY c.public_key, c.name
+                            HAVING unique_adverts > 0
+                            ORDER BY unique_adverts DESC
+                            LIMIT 20
+                        ''')
+                        top_adverts = cursor.fetchall()
+                else:
+                    # Fallback: use advert_count from complete_contact_tracking
+                    # This is less accurate but works if daily_stats doesn't exist
+                    if show_hashes:
+                        # Get nodes first
+                        cursor.execute('''
+                            SELECT public_key, name, advert_count as unique_adverts
+                            FROM complete_contact_tracking
+                            WHERE last_advert_timestamp >= datetime('now', '-24 hours')
+                            ORDER BY advert_count DESC
+                            LIMIT 20
+                        ''')
+                        top_nodes = cursor.fetchall()
+                        
+                        # Get packet hashes for each node
+                        top_adverts = []
+                        for public_key, name, count in top_nodes:
+                            cursor.execute('''
+                                SELECT packet_hash 
+                                FROM unique_advert_packets 
+                                WHERE public_key = ? 
+                                AND first_seen >= datetime('now', '-24 hours')
+                                ORDER BY first_seen
+                            ''', (public_key,))
+                            hash_rows = cursor.fetchall()
+                            packet_hashes = ', '.join([row[0] for row in hash_rows]) if hash_rows else None
+                            top_adverts.append((public_key, name, count, packet_hashes))
+                    else:
+                        cursor.execute('''
+                            SELECT public_key, name, advert_count as unique_adverts
+                            FROM complete_contact_tracking
+                            WHERE last_advert_timestamp >= datetime('now', '-24 hours')
+                            ORDER BY advert_count DESC
+                            LIMIT 20
+                        ''')
+                        top_adverts = cursor.fetchall()
+                
+                # Build compact response with length checking
+                response = self.translate('commands.stats.adverts.header') + "\n"
+                max_length = self.get_max_message_length(message) if message else 130
+                
+                if top_adverts:
+                    for i, row in enumerate(top_adverts, 1):
+                        if show_hashes:
+                            public_key, name, count, packet_hashes = row
+                        else:
+                            public_key, name, count = row
+                            packet_hashes = None
+                        
+                        # Truncate name if needed
+                        display_name = name[:15] + "..." if len(name) > 18 else name
+                        # Format: "1. NodeName: 42 adverts"
+                        advert_text = self.translate('commands.stats.adverts.advert_singular') if count == 1 else self.translate('commands.stats.adverts.advert_plural')
+                        
+                        if show_hashes and packet_hashes:
+                            # Format with packet hashes: "1. NodeName: 42 adverts\n   Hashes: abc123, def456, ..."
+                            main_line = self.translate('commands.stats.adverts.format', 
+                                                     rank=i, 
+                                                     name=display_name, 
+                                                     count=count,
+                                                     advert_text=advert_text)
+                            
+                            # Split packet hashes and format them
+                            hash_list = [h.strip() for h in packet_hashes.split(',') if h.strip()]
+                            # Show first few hashes (truncate if too many)
+                            if len(hash_list) > 10:
+                                hash_display = ', '.join(hash_list[:10]) + f" ... ({len(hash_list)} total)"
+                            else:
+                                hash_display = ', '.join(hash_list)
+                            
+                            new_line = f"{main_line}\n   {self.translate('commands.stats.adverts.hashes_label', hashes=hash_display)}"
+                        else:
+                            new_line = self.translate('commands.stats.adverts.format', 
+                                                     rank=i, 
+                                                     name=display_name, 
+                                                     count=count,
+                                                     advert_text=advert_text) + "\n"
+                        
+                        # Check if adding this line would exceed the limit
+                        if len(response + new_line.rstrip('\n')) > max_length:
+                            break
+                        
+                        response += new_line
+                    
+                    # Remove trailing newline
+                    response = response.rstrip('\n')
+                else:
+                    response += self.translate('commands.stats.adverts.none')
+                
+                return response
+                
+        except Exception as e:
+            self.logger.error(f"Error getting adverts leaderboard: {e}")
+            return self.translate('commands.stats.error_adverts', error=str(e))
     
     def cleanup_old_stats(self, days_to_keep: int = 7) -> None:
         """Clean up old stats data to prevent database bloat.

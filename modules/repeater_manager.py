@@ -107,6 +107,17 @@ class RepeaterManager:
                 UNIQUE(date, public_key)
             ''')
             
+            # Create unique_advert_packets table for tracking unique packet hashes
+            # This allows us to count unique advert packets (deduplicate by packet_hash)
+            self.db_manager.create_table('unique_advert_packets', '''
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date DATE NOT NULL,
+                public_key TEXT NOT NULL,
+                packet_hash TEXT NOT NULL,
+                first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(date, public_key, packet_hash)
+            ''')
+            
             # Create purging_log table for audit trail
             self.db_manager.create_table('purging_log', '''
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,6 +143,10 @@ class RepeaterManager:
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_complete_currently_tracked ON complete_contact_tracking(is_currently_tracked)')
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_complete_location ON complete_contact_tracking(latitude, longitude)')
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_complete_role_tracked ON complete_contact_tracking(role, is_currently_tracked)')
+                
+                # Indexes for unique_advert_packets table
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_unique_advert_date_pubkey ON unique_advert_packets(date, public_key)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_unique_advert_hash ON unique_advert_packets(packet_hash)')
                 conn.commit()
             
             self.logger.info("Repeater contacts database initialized successfully")
@@ -296,9 +311,9 @@ class RepeaterManager:
             # Update the currently_tracked flag based on device contact list
             await self._update_currently_tracked_status(public_key)
             
-            # Track daily advertisement statistics
+            # Track daily advertisement statistics (with packet_hash for unique tracking)
             await self._track_daily_advertisement(public_key, name, role, device_type_str, 
-                                                location_info, signal_strength, snr, hop_count, current_time)
+                                                location_info, signal_strength, snr, hop_count, current_time, packet_hash=packet_hash)
             
             return True
             
@@ -308,39 +323,90 @@ class RepeaterManager:
     
     async def _track_daily_advertisement(self, public_key: str, name: str, role: str, device_type: str,
                                        location_info: Dict, signal_strength: float, snr: float, 
-                                       hop_count: int, timestamp: datetime):
-        """Track daily advertisement statistics for accurate time-based reporting"""
+                                       hop_count: int, timestamp: datetime, packet_hash: Optional[str] = None):
+        """Track daily advertisement statistics for accurate time-based reporting.
+        
+        Args:
+            public_key: The public key of the node
+            name: The name of the node
+            role: The role of the node
+            device_type: The device type string
+            location_info: Location information dictionary
+            signal_strength: Signal strength (RSSI)
+            snr: Signal-to-noise ratio
+            hop_count: Number of hops
+            timestamp: Timestamp of the advert
+            packet_hash: Optional packet hash for unique packet tracking
+        """
         try:
             from datetime import date
             
             # Get today's date
             today = date.today()
             
-            # Check if we already have an entry for this contact today
-            existing_daily = self.db_manager.execute_query(
-                'SELECT id, advert_count, first_advert_time FROM daily_stats WHERE date = ? AND public_key = ?',
-                (today, public_key)
-            )
-            
-            if existing_daily:
-                # Update existing daily entry
-                daily_advert_count = existing_daily[0]['advert_count'] + 1
-                self.db_manager.execute_update('''
-                    UPDATE daily_stats 
-                    SET advert_count = ?, last_advert_time = ?
-                    WHERE date = ? AND public_key = ?
-                ''', (daily_advert_count, timestamp, today, public_key))
-                
-                self.logger.debug(f"Updated daily stats for {name}: {daily_advert_count} adverts today")
+            # Track unique packet hash if provided (for deduplication)
+            is_unique_packet = False
+            if packet_hash and packet_hash != "0000000000000000":
+                try:
+                    # Check if we've already seen this packet hash today
+                    existing_packet = self.db_manager.execute_query(
+                        'SELECT id FROM unique_advert_packets WHERE date = ? AND public_key = ? AND packet_hash = ?',
+                        (today, public_key, packet_hash)
+                    )
+                    
+                    if not existing_packet:
+                        # This is a new unique packet - insert it
+                        self.db_manager.execute_update('''
+                            INSERT INTO unique_advert_packets 
+                            (date, public_key, packet_hash, first_seen)
+                            VALUES (?, ?, ?, ?)
+                        ''', (today, public_key, packet_hash, timestamp))
+                        is_unique_packet = True
+                        self.logger.debug(f"New unique advert packet for {name}: {packet_hash[:8]}...")
+                    else:
+                        # We've already seen this packet hash today - don't count it again
+                        self.logger.debug(f"Duplicate advert packet for {name}: {packet_hash[:8]}... (already counted)")
+                except Exception as e:
+                    self.logger.debug(f"Error tracking unique packet hash: {e}")
+                    # Fall through to count it anyway if unique tracking fails
+                    is_unique_packet = True
             else:
-                # Insert new daily entry
-                self.db_manager.execute_update('''
-                    INSERT INTO daily_stats 
-                    (date, public_key, advert_count, first_advert_time, last_advert_time)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (today, public_key, 1, timestamp, timestamp))
+                # No packet hash provided, count it as unique (can't deduplicate)
+                is_unique_packet = True
+            
+            # Only increment count if this is a unique packet
+            if is_unique_packet:
+                # Check if we already have an entry for this contact today
+                existing_daily = self.db_manager.execute_query(
+                    'SELECT id, advert_count, first_advert_time FROM daily_stats WHERE date = ? AND public_key = ?',
+                    (today, public_key)
+                )
                 
-                self.logger.debug(f"Added daily stats for {name}: first advert today")
+                if existing_daily:
+                    # Update existing daily entry - count unique packets only
+                    # Count distinct packet hashes for today from unique_advert_packets table
+                    unique_count = self.db_manager.execute_query(
+                        'SELECT COUNT(*) FROM unique_advert_packets WHERE date = ? AND public_key = ?',
+                        (today, public_key)
+                    )
+                    daily_advert_count = unique_count[0]['COUNT(*)'] if unique_count else existing_daily[0]['advert_count'] + 1
+                    
+                    self.db_manager.execute_update('''
+                        UPDATE daily_stats 
+                        SET advert_count = ?, last_advert_time = ?
+                        WHERE date = ? AND public_key = ?
+                    ''', (daily_advert_count, timestamp, today, public_key))
+                    
+                    self.logger.debug(f"Updated daily stats for {name}: {daily_advert_count} unique adverts today")
+                else:
+                    # Insert new daily entry
+                    self.db_manager.execute_update('''
+                        INSERT INTO daily_stats 
+                        (date, public_key, advert_count, first_advert_time, last_advert_time)
+                        VALUES (?, ?, ?, ?, ?)
+                    ''', (today, public_key, 1, timestamp, timestamp))
+                    
+                    self.logger.debug(f"Added daily stats for {name}: first unique advert today")
                 
         except Exception as e:
             self.logger.error(f"Error tracking daily advertisement: {e}")

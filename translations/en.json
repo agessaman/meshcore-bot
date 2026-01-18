@@ -151,8 +151,8 @@
       "team_not_found": "Team/League '{team}' not found. Try: seahawks, mariners, sounders, kraken, storm, chiefs, lfc, mlb, nfl, mls, wnba, epl, etc."
     },
     "stats": {
-      "description": "Show statistics for past 24 hours. Use 'stats messages', 'stats channels', or 'stats paths' for specific stats.",
-      "help": "Show 24-hour bot statistics. Commands: 'stats' (basic), 'stats messages' (bot users), 'stats channels' (channel activity), 'stats paths' (longest paths)",
+      "description": "Show statistics for past 24 hours. Use 'stats messages', 'stats channels', 'stats paths', or 'stats adverts' for specific stats.",
+      "help": "Show 24-hour bot statistics. Commands: 'stats' (basic), 'stats messages' (bot users), 'stats channels' (channel activity), 'stats paths' (longest paths), 'stats adverts' (top advert nodes)",
       "subcommands": [
         {
           "name": "messages",
@@ -165,10 +165,14 @@
         {
           "name": "paths",
           "description": "Show longest routing paths"
+        },
+        {
+          "name": "adverts",
+          "description": "Show top nodes by unique advert packets"
         }
       ],
       "disabled": "Stats command is disabled",
-      "unknown_subcommand": "Unknown: {subcommand}. Use 'stats', 'stats messages', 'stats channels', or 'stats paths'",
+      "unknown_subcommand": "Unknown: {subcommand}. Use 'stats', 'stats messages', 'stats channels', 'stats paths', or 'stats adverts'",
       "error": "Error getting stats: {error}",
       "error_bot_users": "Error getting bot user stats: {error}",
       "error_channels": "Error getting channel stats: {error}",
@@ -196,7 +200,16 @@
       "paths": {
         "none": "No path data",
         "format": "{rank} {sender} {path}"
-      }
+      },
+      "adverts": {
+        "header": "Top Advert Nodes (24h):",
+        "none": "No advert activity",
+        "advert_singular": "advert",
+        "advert_plural": "adverts",
+        "format": "{rank}. {name}: {count} {advert_text}",
+        "hashes_label": "Hashes: {hashes}"
+      },
+      "error_adverts": "Error getting advert stats: {error}"
     },
     "solarforecast": {
       "description": "Get solar panel production forecast (usage: sf <location|repeater_name|coordinates|zipcode> [panel_size] [azimuth, 0=south] [angle])",

@@ -30,6 +30,7 @@ class DBManager:
         'repeater_contacts',
         'complete_contact_tracking',  # Repeater manager
         'daily_stats',  # Repeater manager
+        'unique_advert_packets',  # Repeater manager - unique packet tracking
         'purging_log',  # Repeater manager
     }
     
