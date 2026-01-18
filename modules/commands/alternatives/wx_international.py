@@ -8,7 +8,7 @@ import re
 import requests
 from datetime import datetime, timedelta
 from geopy.geocoders import Nominatim
-from ...utils import rate_limited_nominatim_geocode_sync, rate_limited_nominatim_reverse_sync, get_nominatim_geocoder, geocode_city_sync
+from ...utils import rate_limited_nominatim_geocode_sync, rate_limited_nominatim_reverse_sync, get_nominatim_geocoder, geocode_city_sync, geocode_zipcode_sync
 from ..base_command import BaseCommand
 from ...models import MeshMessage
 from typing import Any, List, Optional, Tuple, Union
@@ -577,6 +577,30 @@ class GlobalWxCommand(BaseCommand):
                 except ValueError:
                     self.logger.warning(f"Invalid coordinates format: {location}")
                     return None, None, None, None
+            
+            # US ZIP code (5 digits): use geocode_zipcode_sync so the query is "zip, US"
+            # and we don't get non‑US matches (e.g. "98104" -> Lithuania) from Nominatim.
+            if re.match(r'^\d{5}$', location.strip()):
+                lat, lon = geocode_zipcode_sync(
+                    self.bot, location,
+                    default_country=self.default_country,
+                    timeout=10
+                )
+                if lat is not None and lon is not None:
+                    address_info = {}
+                    geocode_result = None
+                    try:
+                        reverse_location = rate_limited_nominatim_reverse_sync(
+                            self.bot, f"{lat}, {lon}", timeout=10
+                        )
+                        if reverse_location:
+                            geocode_result = reverse_location
+                            address_info = reverse_location.raw.get('address', {})
+                    except Exception as e:
+                        self.logger.debug(f"Reverse geocoding failed for zip {location}: {e}")
+                    return lat, lon, address_info or {}, geocode_result
+                # Invalid or unknown US ZIP; do not fall through to city (avoids foreign matches)
+                return None, None, None, None
             
             # Use the shared geocode_city_sync function which properly handles
             # default state and country for city disambiguation
