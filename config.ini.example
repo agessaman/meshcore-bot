@@ -476,6 +476,19 @@ wind_speed_unit = mph
 # Default: inch
 precipitation_unit = inch
 
+# Custom weather sources (extensible pattern, similar to Channels_List)
+# Format: custom.<provider>.<name> = <source_url>
+#   custom.wxsim.default = <url>  - Default source used when 'wx' is called without a location
+#   custom.wxsim.<name> = <url>   - Named source accessible via 'wx <name>'
+#
+# Example:
+# custom.wxsim.default = https://westlethbridgeweather.com/latest.txt
+# custom.wxsim.lethbridge = https://westlethbridgeweather.com/latest.txt
+# custom.wxsim.seattle = https://seattleweather.example.com/plaintext.txt
+#
+# Note: Only one 'default' source can be set per provider type.
+# Future providers (e.g., custom.pwaweather.location) will follow the same pattern.
+
 [Solar_Config]
 # URL timeout for external API calls (seconds)
 url_timeout = 10
