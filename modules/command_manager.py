@@ -57,6 +57,15 @@ class InternetStatusCache:
         return time.time() - self.timestamp < cache_duration
 
 
+@dataclass
+class QueuedCommand:
+    """Represents a queued command waiting for cooldown to expire."""
+    command: BaseCommand
+    message: MeshMessage
+    queued_at: float
+    expires_at: float  # When cooldown expires
+
+
 class CommandManager:
     """Manages all bot commands and responses using dynamic plugin loading.
     
@@ -84,7 +93,158 @@ class CommandManager:
         self._internet_cache = InternetStatusCache(has_internet=True, timestamp=0)
         self._internet_cache_duration = 30  # Cache for 30 seconds
         
+        # Command queue for near-expiring global cooldowns
+        # Key: (command_name, user_id) tuple, Value: QueuedCommand
+        self._command_queue: Dict[Tuple[str, str], QueuedCommand] = {}
+        self._queue_processor_task: Optional[asyncio.Task] = None
+        
         self.logger.info(f"CommandManager initialized with {len(self.commands)} plugins")
+    
+    def _should_queue_command(self, command: BaseCommand, message: MeshMessage) -> Tuple[bool, float]:
+        """Check if command should be queued instead of rejected.
+        
+        Only queues for global cooldowns when near expiring, and only if the user
+        didn't just execute the command themselves.
+        
+        Args:
+            command: The command to check.
+            message: The message triggering the command.
+            
+        Returns:
+            Tuple[bool, float]: (should_queue, remaining_seconds)
+                should_queue: True if command should be queued
+                remaining_seconds: Seconds until cooldown expires (0 if not queuing)
+        """
+        # Only queue for global cooldowns (not per-user)
+        if not message.sender_id:
+            return False, 0.0
+        
+        if command.cooldown_seconds <= 0:
+            return False, 0.0
+        
+        # Check global cooldown
+        can_execute, remaining = command.check_cooldown(None)  # None = global
+        if can_execute:
+            return False, 0.0
+        
+        # Don't queue if this user just executed the command
+        # Check if user has a recent per-user cooldown entry
+        if message.sender_id in command._user_cooldowns:
+            user_last_exec = command._user_cooldowns[message.sender_id]
+            time_since_user_exec = time.time() - user_last_exec
+            
+            # If user executed within last 3 seconds, they likely just triggered the global cooldown
+            # Don't queue in this case
+            if time_since_user_exec < 3.0:
+                return False, 0.0
+        
+        # Check if within queue threshold
+        threshold = command.get_queue_threshold_seconds()
+        if remaining <= threshold:
+            return True, remaining
+        
+        return False, 0.0
+    
+    def _queue_command(self, command: BaseCommand, message: MeshMessage, remaining_seconds: float) -> bool:
+        """Queue a command for execution after cooldown expires.
+        
+        Args:
+            command: The command to queue.
+            message: The message to queue.
+            remaining_seconds: Seconds until cooldown expires.
+            
+        Returns:
+            bool: True if queued, False if user already has queued command
+        """
+        user_id = message.sender_id or 'global'
+        queue_key = (command.name, user_id)
+        
+        # Max 1 command per user
+        if queue_key in self._command_queue:
+            return False
+        
+        current_time = time.time()
+        self._command_queue[queue_key] = QueuedCommand(
+            command=command,
+            message=message,
+            queued_at=current_time,
+            expires_at=current_time + remaining_seconds
+        )
+        
+        self.logger.debug(f"Queued command '{command.name}' for user {user_id}, "
+                         f"expires in {remaining_seconds:.1f}s")
+        
+        # Start processor if not running
+        if self._queue_processor_task is None or self._queue_processor_task.done():
+            self._start_queue_processor()
+        
+        return True
+    
+    def _start_queue_processor(self):
+        """Start background task to process command queue."""
+        if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop:
+            self._queue_processor_task = asyncio.create_task(self._process_command_queue())
+        else:
+            # Bot not fully started yet, will start in bot.start()
+            pass
+    
+    async def _process_command_queue(self):
+        """Background task to process queued commands when cooldown expires."""
+        while True:
+            try:
+                current_time = time.time()
+                ready_commands = []
+                
+                # Find commands ready to execute
+                for queue_key, queued_cmd in list(self._command_queue.items()):
+                    if current_time >= queued_cmd.expires_at:
+                        ready_commands.append((queue_key, queued_cmd))
+                
+                # Execute ready commands
+                for queue_key, queued_cmd in ready_commands:
+                    command = queued_cmd.command
+                    message = queued_cmd.message
+                    del self._command_queue[queue_key]
+                    
+                    self.logger.debug(f"Executing queued command '{command.name}' for user {message.sender_id}")
+                    
+                    # Record execution to prevent immediate re-queuing
+                    command.record_execution(message.sender_id if message.sender_id else None)
+                    
+                    # Execute the command (bypass normal flow)
+                    try:
+                        await self._execute_queued_command(command, message)
+                    except Exception as e:
+                        self.logger.error(f"Error executing queued command '{command.name}': {e}", 
+                                        exc_info=True)
+                
+                # Wait before next check
+                if ready_commands:
+                    await asyncio.sleep(0.1)  # Small delay between executions
+                else:
+                    await asyncio.sleep(0.5)  # Check every 500ms when idle
+                    
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(f"Error in command queue processor: {e}", exc_info=True)
+                await asyncio.sleep(1.0)
+    
+    async def _execute_queued_command(self, command: BaseCommand, message: MeshMessage):
+        """Execute a queued command (bypasses normal cooldown checks).
+        
+        Args:
+            command: The command to execute.
+            message: The queued message.
+        """
+        # Execute directly
+        success = await command.execute(message)
+        
+        # Record in stats
+        if 'stats' in self.commands:
+            stats_command = self.commands['stats']
+            if stats_command:
+                stats_command.record_command(message, command.name, success)
     
     async def _apply_tx_delay(self):
         """Apply transmission delay to prevent message collisions"""
@@ -323,6 +483,13 @@ class CommandManager:
         # Check all loaded plugins for matches
         for command_name, command in self.commands.items():
             if command.should_execute(message):
+                # Check if we should queue instead of skip (for global cooldowns near expiring)
+                should_queue, remaining = self._should_queue_command(command, message)
+                if should_queue:
+                    if self._queue_command(command, message, remaining):
+                        continue  # Silently queue, don't add to matches
+                    # Queue failed, fall through to normal check
+                
                 # Check if command can execute (includes channel access check)
                 if not command.can_execute(message):
                     continue  # Skip this command if it can't execute (wrong channel, cooldown, etc.)
@@ -759,6 +926,19 @@ class CommandManager:
                     continue
                 
                 self.logger.info(f"Command '{command_name}' matched, executing")
+                
+                # Check if we should queue instead of reject (for global cooldowns near expiring)
+                should_queue, remaining = self._should_queue_command(command, message)
+                if should_queue:
+                    if self._queue_command(command, message, remaining):
+                        # Successfully queued - silently return (no message sent)
+                        # Still record in stats as attempted
+                        if 'stats' in self.commands:
+                            stats_command = self.commands['stats']
+                            if stats_command:
+                                stats_command.record_command(message, command_name, False)
+                        return
+                    # Queue failed (user already has queued command) - fall through to normal rejection
                 
                 # Check if command can execute (cooldown, DM requirements, etc.)
                 if not command.can_execute_now(message):

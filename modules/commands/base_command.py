@@ -251,6 +251,21 @@ class BaseCommand(ABC):
         
         return f"{base_name}_Command"
     
+    def get_queue_threshold_seconds(self) -> float:
+        """Get threshold for queuing commands during global cooldown.
+        
+        Returns:
+            float: Seconds remaining on cooldown below which commands should be queued.
+        """
+        section = self._derive_config_section_name()
+        threshold = self.get_config_value(section, 'cooldown_queue_threshold_seconds',
+                                         fallback=None, value_type='float')
+        if threshold is None:
+            # Fall back to global config
+            threshold = self.bot.config.getfloat('Bot', 'cooldown_queue_threshold_seconds', 
+                                                fallback=5.0)
+        return max(0.0, min(threshold, self.cooldown_seconds))
+    
     def _load_allowed_channels(self) -> Optional[List[str]]:
         """Load allowed channels from config.
         

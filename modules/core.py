@@ -1084,6 +1084,10 @@ use_zulu_time = false
             except (OSError, AttributeError, ValueError, RuntimeError) as e:
                 self.logger.error(f"Failed to start service '{service_name}': {e}")
         
+        # Start command queue processor if needed
+        if hasattr(self.command_manager, '_start_queue_processor'):
+            self.command_manager._start_queue_processor()
+        
         # Keep running
         self.logger.info("Bot is running. Press Ctrl+C to stop.")
         try:
