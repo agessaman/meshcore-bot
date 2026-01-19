@@ -942,6 +942,9 @@
       "description": "List available commands"
     }
   },
+  "elapsed": {
+    "sync_device_clock": "Sync Device Clock"
+  },
   "errors": {
     "rate_limited": "Rate limited. Wait {seconds:.1f} seconds",
     "cooldown": "Command '{command}' is on cooldown. Wait {seconds} seconds.",

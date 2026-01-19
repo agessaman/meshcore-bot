@@ -962,6 +962,9 @@
             "description": "Verfügbare Befehle auflisten"
         }
     },
+    "elapsed": {
+        "sync_device_clock": "Geräteuhr synchronisieren"
+    },
     "errors": {
         "rate_limited": "Rate-limitiert. Warte {seconds:.1f} Sekunden",
         "cooldown": "Befehl '{command}' hat Wartezeit. Warte {seconds} Sekunden.",

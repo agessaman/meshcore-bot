@@ -939,6 +939,9 @@
             "description": "Listar comandos disponíveis"
         }
     },
+    "elapsed": {
+        "sync_device_clock": "Sincronizar relógio do dispositivo"
+    },
     "errors": {
         "rate_limited": "Limite de taxa atingido. Aguarda {seconds:.1f} segundos",
         "cooldown": "Comando '{command}' em espera. Aguarda {seconds} segundos.",

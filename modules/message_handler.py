@@ -14,7 +14,7 @@ from meshcore import EventType
 
 from .models import MeshMessage
 from .enums import PayloadType, PayloadVersion, RouteType, AdvertFlags, DeviceRole
-from .utils import calculate_packet_hash
+from .utils import calculate_packet_hash, format_elapsed_display
 from .security_utils import sanitize_input
 
 
@@ -303,17 +303,11 @@ class MessageHandler:
             message_content = payload.get('text', '')
             message_content = sanitize_input(message_content, max_length=None, strip_controls=True)
 
-            # Format timestamp
-            if timestamp and timestamp != 'unknown':
-                try:
-                    from datetime import datetime,UTC
-                    dt = datetime.fromtimestamp(message.timestamp)
-                    elapsed_str = round((datetime.now(UTC).timestamp()-message.timestamp)*1000)
-                except:
-                    elapsed_str = "Unknown"
-                else:
-                    elapsed_str = "Unknown"
-            
+            # Elapsed: "Nms" when device clock is valid, or "Sync Device Clock" when
+            # invalid (e.g. T-Deck before GPS sync: 0, future, or far in the past).
+            translator = getattr(self.bot, 'translator', None)
+            elapsed_str = format_elapsed_display(timestamp, translator)
+
             # Convert to our message format
             message = MeshMessage(
                 content=message_content,
@@ -1611,6 +1605,10 @@ class MessageHandler:
                         self.logger.debug(f"Found full public key for {sender_id}: {sender_pubkey[:16]}...")
                         break
             
+            # Elapsed: "Nms" when device clock is valid, or "Sync Device Clock" when invalid.
+            _translator = getattr(self.bot, 'translator', None)
+            _elapsed = format_elapsed_display(payload.get('sender_timestamp'), _translator)
+
             # Convert to our message format
             message = MeshMessage(
                 content=message_content,  # Use the extracted message content
@@ -1622,6 +1620,7 @@ class MessageHandler:
                 rssi=rssi,
                 hops=hops,
                 path=path_string,  # Use the path information extracted from RF data
+                elapsed=_elapsed,
                 is_dm=False
             )
             

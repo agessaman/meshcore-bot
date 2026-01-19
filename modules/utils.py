@@ -1698,6 +1698,42 @@ def _get_node_location_from_db(bot: Any, node_id: str) -> Optional[Tuple[float, 
         return None
 
 
+# Maximum plausible elapsed ms (5 minutes) for device clock validation.
+# Values above indicate device time is far in the past (e.g. epoch); negative = in the future.
+_ELAPSED_MS_MAX = 5 * 60 * 1000  # 5 minutes in milliseconds
+
+
+def format_elapsed_display(ts: Any, translator: Any = None) -> str:
+    """Format elapsed time from sender timestamp for {elapsed} placeholder.
+
+    Returns "Nms" when valid, or the i18n "Sync Device Clock" when the device
+    clock is invalid (e.g. T-Deck before GPS sync: 0, future, or far in the past).
+
+    Args:
+        ts: Sender timestamp (int, float, None, or 'unknown').
+        translator: Bot translator for i18n; uses "Sync Device Clock" if None.
+
+    Returns:
+        str: e.g. "1234ms" or translated "Sync Device Clock".
+    """
+    def _sync_str() -> str:
+        if translator:
+            return translator.translate('elapsed.sync_device_clock')
+        return "Sync Device Clock"
+
+    if ts is None or ts == 'unknown':
+        return _sync_str()
+    try:
+        ts_f = float(ts)
+    except (TypeError, ValueError):
+        return _sync_str()
+    from datetime import UTC, datetime
+    elapsed_ms = (datetime.now(UTC).timestamp() - ts_f) * 1000
+    if elapsed_ms < 0 or elapsed_ms > _ELAPSED_MS_MAX:
+        return _sync_str()
+    return f"{round(elapsed_ms)}ms"
+
+
 def format_keyword_response_with_placeholders(
     response_format: str,
     message: Any,
@@ -1728,7 +1764,12 @@ def format_keyword_response_with_placeholders(
             replacements['path'] = message.path or "Unknown"
             replacements['snr'] = message.snr or "Unknown"
             replacements['rssi'] = message.rssi or "Unknown"
-            replacements['elapsed'] = message.elapsed or "Unknown"
+            # Compute elapsed from message.timestamp (same as TestCommand) so it's available
+            # for all keywords. Using message.elapsed would miss when it's unset on some paths.
+            _translator = getattr(bot, 'translator', None)
+            replacements['elapsed'] = format_elapsed_display(
+                getattr(message, 'timestamp', None), _translator
+            )
             
             # Build connection_info
             routing_info = message.path or "Unknown routing"

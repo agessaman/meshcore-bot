@@ -942,6 +942,9 @@
             "description": "Lijst beschikbare commando's"
         }
     },
+    "elapsed": {
+        "sync_device_clock": "Synchroniseer apparaatklok"
+    },
     "errors": {
         "rate_limited": "Rate limited. Wacht {seconds:.1f} seconden",
         "cooldown": "Commando '{command}' is in cooldown. Wacht {seconds} seconden.",

@@ -933,6 +933,9 @@
             "description": "Lister commandes disponibles"
         }
     },
+    "elapsed": {
+        "sync_device_clock": "Synchroniser l'horloge du dispositif"
+    },
     "errors": {
         "rate_limited": "Limite atteinte. Attendez {seconds:.1f} secondes",
         "cooldown": "Commande '{command}' en attente. Attendez {seconds} secondes.",
