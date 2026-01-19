@@ -402,6 +402,15 @@ class CommandManager:
         banned = self.bot.config.get('Banned_Users', 'banned_users', fallback='')
         return [user.strip() for user in banned.split(',') if user.strip()]
     
+    def is_user_banned(self, sender_id: Optional[str]) -> bool:
+        """Check if sender is banned using prefix (starts-with) matching.
+        
+        A banned entry "Awful Username" matches "Awful Username" and "Awful Username 🍆".
+        """
+        if not sender_id:
+            return False
+        return any(sender_id.startswith(entry) for entry in self.banned_users)
+    
     def load_monitor_channels(self) -> List[str]:
         """Load monitored channels from config"""
         channels = self.bot.config.get('Channels', 'monitor_channels', fallback='')

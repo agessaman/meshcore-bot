@@ -1966,8 +1966,8 @@ class MessageHandler:
         if not self.bot.config.getboolean('Bot', 'enabled'):
             return False
         
-        # Check if sender is banned
-        if message.sender_id and message.sender_id in self.bot.command_manager.banned_users:
+        # Check if sender is banned (starts-with matching)
+        if self.bot.command_manager.is_user_banned(message.sender_id):
             self.logger.debug(f"Ignoring message from banned user: {message.sender_id}")
             return False
         

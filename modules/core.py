@@ -524,8 +524,8 @@ monitor_channels = general,test,emergency
 respond_to_dms = true
 
 [Banned_Users]
-# List of banned user IDs (comma-separated)
-# Bot will ignore messages from these users
+# List of banned sender names (comma-separated). Matching is prefix (starts-with):
+# "Awful Username" also matches "Awful Username 🍆". No bot responses in channels or DMs.
 banned_users = 
 
 [Scheduled_Messages]
