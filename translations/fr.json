@@ -494,6 +494,7 @@
             "header": "🛰️ Passage satellite:\n{pass_info}",
             "error": "Erreur infos passage satellite: {error}",
             "no_satellite": "Fournissez numéro NORAD satellite ou raccourci. Ex: satpass iss",
+            "usage_short": "🛰️ satpass <sat|NORAD> [visuel]. Ex: satpass iss, satpass 25544. help satpass pour raccourcis.",
             "help_header": "🛰️ Infos passage satellite\n\nUsage: satpass <numéro_NORAD_ou_raccourci>\n\nRaccourcis:\n",
             "category_weather": "🌤️ Météo: ",
             "category_stations": "🚀 Stations: ",

@@ -62,7 +62,7 @@ class GlobalWxCommand(BaseCommand):
             self.wxsim_parser = None
         
         # Get default state and country from config for city disambiguation
-        self.default_state = self.bot.config.get('Weather', 'default_state', fallback='WA')
+        self.default_state = self.bot.config.get('Weather', 'default_state', fallback='')
         self.default_country = self.bot.config.get('Weather', 'default_country', fallback='US')
         
         # Get unit preferences from config

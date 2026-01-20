@@ -370,6 +370,7 @@
             "header": "🛰️ Paso de Satélite:\n{pass_info}",
             "error": "Error al obtener información de paso de satélite: {error}",
             "no_satellite": "Por favor proporciona un número NORAD de satélite o atajo. Ejemplo: satpass iss",
+            "usage_short": "🛰️ satpass <sat|NORAD> [visual]. Ej: satpass iss, satpass 25544. help satpass para atajos.",
             "help_header": "🛰️ Info de Paso de Satélite\n\nUso: satpass <número_NORAD_o_atajo>\n\nAtajos:\n",
             "category_weather": "🌤️ Clima: ",
             "category_stations": "🚀 Estaciones: ",

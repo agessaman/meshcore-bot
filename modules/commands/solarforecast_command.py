@@ -59,7 +59,7 @@ class SolarforecastCommand(BaseCommand):
         self.forecast_cache = {}
         
         # Get default state from config for city disambiguation
-        self.default_state = self.bot.config.get('Weather', 'default_state', fallback='WA')
+        self.default_state = self.bot.config.get('Weather', 'default_state', fallback='')
         
         # Initialize geocoder (will use rate-limited helpers for actual calls)
         self.geolocator = get_nominatim_geocoder()

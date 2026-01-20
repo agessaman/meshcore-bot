@@ -90,8 +90,9 @@ class WxCommand(BaseCommand):
             self.use_metric = False  # Use imperial units by default
             self.zulu_time = False  # Use local time by default
             
-            # Get default state from config for city disambiguation
-            self.default_state = self.bot.config.get('Weather', 'default_state', fallback='WA')
+            # Get default state and country from config for city disambiguation
+            self.default_state = self.bot.config.get('Weather', 'default_state', fallback='')
+            self.default_country = self.bot.config.get('Weather', 'default_country', fallback='US')
             
             # Initialize geocoder (will use rate-limited helpers for actual calls)
             # Keep geolocator for backwards compatibility, but prefer rate-limited helpers
@@ -572,7 +573,8 @@ class WxCommand(BaseCommand):
                     else:
                         lat, lon = result
                     if lat is None or lon is None:
-                        await self.send_response(message, self.translate('commands.wx.no_location_city', location=location, state=self.default_state))
+                        region = self.default_state or self.default_country
+                        await self.send_response(message, self.translate('commands.wx.no_location_city', location=location, state=region))
                         return True
                 
                 # Get and display full alert list
@@ -667,11 +669,12 @@ class WxCommand(BaseCommand):
                     address_info = None
                 
                 if lat is None or lon is None:
-                    return self.translate('commands.wx.no_location_city', location=location, state=self.default_state)
+                    region = self.default_state or self.default_country
+                    return self.translate('commands.wx.no_location_city', location=location, state=region)
                 
                 # Check if the found city is in a different state than default
                 actual_city = location
-                actual_state = self.default_state
+                actual_state = self.default_state or self.default_country
                 if address_info:
                     # Try to get the best city name from various address fields
                     actual_city = (address_info.get('city') or 
@@ -715,7 +718,7 @@ class WxCommand(BaseCommand):
                                   actual_state != default_state_full)
                 # Always show location if using companion location, or if state is different
                 if using_companion_location or states_different:
-                    location_prefix = f"{actual_city}, {actual_state}: "
+                    location_prefix = f"{actual_city}, {actual_state}: " if actual_state else f"{actual_city}: "
             elif location_type == "zipcode" and using_companion_location:
                 # For zipcode with companion location, try to get city name from reverse geocoding
                 location_str = self._coordinates_to_location_string(lat, lon)

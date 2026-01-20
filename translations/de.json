@@ -514,6 +514,7 @@
             "header": "🛰️ Satellitenvorbeiflug:\n{pass_info}",
             "error": "Fehler beim Abruf der Satellitenvorbeiflug-Info: {error}",
             "no_satellite": "Bitte NORAD-Nummer oder Kürzel angeben. Beispiel: satpass iss",
+            "usage_short": "🛰️ satpass <sat|NORAD> [visuell]. Z.B.: satpass iss, satpass 25544. help satpass für Kürzel.",
             "help_header": "🛰️ Satellitenvorbeiflug-Info\n\nVerwendung: satpass <NORAD_Nummer_oder_Kürzel>\n\nKürzel:\n",
             "category_weather": "🌤️ Wetter: ",
             "category_stations": "🚀 Stationen: ",
