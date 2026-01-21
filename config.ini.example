@@ -112,6 +112,9 @@ auto_manage_contacts = false
 # Default: meshcore_bot.db
 db_path = meshcore_bot.db
 
+# Seconds to wait after a failed service restart before retrying (default: 300)
+service_restart_backoff_seconds = 300
+
 [Channels]
 # Channels to monitor (comma-separated)
 # Bot will only respond to messages on these channels

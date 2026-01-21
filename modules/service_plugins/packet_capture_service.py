@@ -311,7 +311,13 @@ class PacketCaptureService(BaseServicePlugin):
             MeshCore: The meshcore instance from the bot.
         """
         return self.bot.meshcore if self.bot else None
-    
+
+    def is_healthy(self) -> bool:
+        return (
+            self._running
+            and bool(self.meshcore and self.meshcore.is_connected)
+        )
+
     async def start(self) -> None:
         """Start the packet capture service.
         

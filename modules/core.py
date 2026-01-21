@@ -201,7 +201,11 @@ class MeshCoreBot:
         
         # Shutdown event for graceful shutdown
         self._shutdown_event = threading.Event()
-    
+
+        # Service plugin restart state (name -> timestamp of last failed restart)
+        self._service_restart_failures: Dict[str, float] = {}
+        self._service_restarting: set = set()
+
     @property
     def bot_root(self) -> Path:
         """Get bot root directory (where config.ini is located)"""
@@ -1081,7 +1085,7 @@ use_zulu_time = false
             try:
                 await service_instance.start()
                 self.logger.info(f"Service '{service_name}' started")
-            except (OSError, AttributeError, ValueError, RuntimeError) as e:
+            except Exception as e:
                 self.logger.error(f"Failed to start service '{service_name}': {e}")
         
         # Start command queue processor if needed
@@ -1122,7 +1126,32 @@ use_zulu_time = false
                         self._last_health_update = time.time()
                     except Exception as e:
                         self.logger.debug(f"Error updating system health: {e}")
-                
+
+                    # Service health check and restart
+                    restart_backoff = self.config.getint(
+                        'Bot', 'service_restart_backoff_seconds', fallback=300
+                    )
+                    now = time.time()
+                    for name, service in self.services.items():
+                        if not getattr(service, 'enabled', True):
+                            continue
+                        try:
+                            healthy = service.is_healthy()
+                        except Exception:
+                            healthy = False
+                        if healthy:
+                            continue
+                        if name in self._service_restarting:
+                            continue
+                        if name in self._service_restart_failures and (
+                            now - self._service_restart_failures[name]
+                        ) < restart_backoff:
+                            continue
+                        self.logger.warning(
+                            f"Service '{name}' unhealthy, attempting restart..."
+                        )
+                        asyncio.create_task(self._restart_service(name, service))
+
                 await asyncio.sleep(5)  # Check every 5 seconds
         except KeyboardInterrupt:
             self.logger.info("Received interrupt signal")
@@ -1151,7 +1180,7 @@ use_zulu_time = false
             try:
                 await service_instance.stop()
                 self.logger.info(f"Service '{service_name}' stopped")
-            except (OSError, AttributeError, RuntimeError, asyncio.CancelledError) as e:
+            except Exception as e:
                 self.logger.error(f"Failed to stop service '{service_name}': {e}")
         
         # Stop web viewer with proper shutdown sequence
@@ -1170,7 +1199,24 @@ use_zulu_time = false
             self.logger.info("Bot stopped")
         except (AttributeError, TypeError):
             print("Bot stopped")
-    
+
+    async def _restart_service(self, service_name: str, service_instance: Any) -> bool:
+        """Stop and start a service. Used when is_healthy() is False.
+        Returns True on success, False on failure. Exceptions are caught and logged.
+        """
+        self._service_restarting.add(service_name)
+        try:
+            await service_instance.stop()
+            await service_instance.start()
+            self._service_restart_failures.pop(service_name, None)
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to restart service '{service_name}': {e}")
+            self._service_restart_failures[service_name] = time.time()
+            return False
+        finally:
+            self._service_restarting.discard(service_name)
+
     async def get_system_health(self) -> Dict[str, Any]:
         """Aggregate health status from all components.
         
@@ -1212,11 +1258,10 @@ use_zulu_time = false
         if hasattr(self, 'services') and self.services:
             for name, service in self.services.items():
                 try:
-                    # Services have is_running() method, not health_check()
-                    is_running = service.is_running() if hasattr(service, 'is_running') else False
+                    is_healthy = service.is_healthy()
                     health['components'][f'service_{name}'] = {
-                        'healthy': is_running,
-                        'message': 'Running' if is_running else 'Stopped',
+                        'healthy': is_healthy,
+                        'message': 'Running' if is_healthy else 'Stopped',
                         'enabled': getattr(service, 'enabled', True)
                     }
                 except Exception as e:
