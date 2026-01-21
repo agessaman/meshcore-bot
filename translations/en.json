@@ -6,6 +6,7 @@
     "wx": ["wx", "weather", "wxa", "wxalert"],
     "gwx": ["gwx", "globalweather", "gwxa"],
     "aqi": ["aqi", "air", "airquality", "air_quality"],
+    "aurora": ["aurora", "kp"],
     "solar": ["solar"],
     "sun": ["sun"],
     "moon": ["moon"],
@@ -362,6 +363,23 @@
         "black_hole": "Black holes have no atmosphere, but the tidal forces would be a bigger problem than air quality. 🕳️",
         "asteroid": "Asteroids have no atmosphere, so AQI is perfect! Just watch out for the vacuum of space. ☄️",
         "comet": "Comets have thin atmospheres of water vapor and dust. AQI: Variable, but you'd freeze in space anyway. ☄️"
+      }
+    },
+    "aurora": {
+      "description": "Get aurora forecast (KP index and probability) for a location",
+      "usage": "Usage: aurora [city|zipcode|lat,lon]",
+      "usage_short": "Usage: aurora [city|zipcode|lat,lon]",
+      "response": "🌌 Aurora Visibility Chance: {prob_indicator} {prob}% for {location}\nGlobal Kp {kp} (as of {kp_time}) | {status}",
+      "error_fetching": "Error fetching aurora data",
+      "no_location": "Usage: aurora [city|zipcode|lat,lon]. No location: will use companion location if known, or bot location if not.",
+      "no_location_city": "Could not find city '{location}' in {state}",
+      "no_location_zipcode": "Could not find ZIP code '{location}'",
+      "error": "Error: {error}",
+      "status": {
+        "quiet": "Quiet",
+        "unsettled": "Unsettled",
+        "g1_g2": "G1/G2",
+        "g3_severe": "G3+ Severe"
       }
     },
     "solar": {

@@ -418,6 +418,10 @@ enabled = false
 # Enable or disable the solar command
 enabled = false
 
+[Aurora_Command]
+# Enable or disable the aurora command
+enabled = false
+
 [Solarforecast_Command]
 # Enable or disable the solar forecast command
 enabled = false

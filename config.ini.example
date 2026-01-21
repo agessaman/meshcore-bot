@@ -501,6 +501,13 @@ url_timeout = 10
 # false: Use 12-hour local format
 use_zulu_time = false
 
+[Aurora_Command]
+# Enable or disable the aurora command
+enabled = true
+# Optional: default coordinates when user does not specify a location
+# default_lat = 48.08
+# default_lon = -121.97
+
 [Channels_List]
 # Common hashtag channels for the region
 # Format: channel_name = description
