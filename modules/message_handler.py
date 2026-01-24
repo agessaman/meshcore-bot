@@ -9,7 +9,7 @@ import time
 import json
 import re
 import copy
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from meshcore import EventType
 
 from .models import MeshMessage
@@ -495,6 +495,11 @@ class MessageHandler:
                 if out_path_len >= 0:
                     advert_data['out_path'] = out_path
                     advert_data['out_path_len'] = out_path_len
+                
+                # Update mesh graph with edges from the advert path
+                # Create edge from advertising device to first hop in path
+                if out_path and out_path_len > 0 and hasattr(self.bot, 'mesh_graph') and self.bot.mesh_graph:
+                    self._update_mesh_graph_from_advert(advert_data, out_path, out_path_len, packet_info)
                 
                 # Track this advertisement in the complete database
                 if hasattr(self.bot, 'repeater_manager'):
@@ -1296,26 +1301,31 @@ class MessageHandler:
             # Special handling for TRACE packets
             if payload_type == PayloadType.TRACE:
                 # In TRACE packets, path field contains SNR data
-                # Real path is in the payload after tag(4) + auth(4) + flags(1)
+                # Real routing path is in the payload as pathHashes (after tag(4) + auth(4) + flags(1))
                 snr_values = []
                 for b in path_bytes:
                     # Convert SNR byte to dB (signed value)
                     snr_db = (b - 256) / 4 if b > 127 else b / 4
                     snr_values.append(snr_db)
                 
-                # For TRACE packets, we don't have a clear "real path" in the payload
-                # The path field contains SNR data, and the payload contains the message
-                # We'll use the SNR path length as the hop count, but don't extract a "real path"
-                real_path = []
-                # Note: TRACE packets have SNR data in the path field, not routing path
-                # The actual routing information is embedded in the SNR readings
+                # Decode trace payload to extract pathHashes (routing path)
+                path_hashes = []
+                if len(payload) >= 9:  # Minimum: tag(4) + auth(4) + flags(1)
+                    try:
+                        # Skip tag(4) + auth(4) + flags(1) = 9 bytes
+                        path_hashes_bytes = payload[9:]
+                        # Each byte is a node hash (1-byte prefix)
+                        path_hashes = [f"{b:02x}" for b in path_hashes_bytes]
+                    except Exception as e:
+                        self.logger.debug(f"Error extracting pathHashes from trace payload: {e}")
                 
                 return {
                     'type': 'trace',
                     'snr_data': snr_values,
                     'snr_path': path_nodes,  # SNR data as hex for reference
-                    'path': [],  # No actual routing path for TRACE packets
-                    'description': f"TRACE packet with {len(snr_values)} SNR readings (path contains SNR data, not routing info)"
+                    'path': path_hashes,  # Actual routing path from payload pathHashes
+                    'path_hashes': path_hashes,  # Explicit field for pathHashes
+                    'description': f"TRACE packet with {len(snr_values)} SNR readings and {len(path_hashes)} path nodes"
                 }
             
             # Regular packets - determine path type based on route type
@@ -1529,20 +1539,31 @@ class MessageHandler:
                 # Use payload field if available, otherwise use raw_hex
                 payload_hex = recent_rf_data.get('payload')
                 packet_info = self.decode_meshcore_packet(raw_hex, payload_hex)
+                
+                # Get packet_hash from recent_rf_data if available (for trace correlation)
+                packet_hash = recent_rf_data.get('packet_hash')
+                if packet_hash and packet_info:
+                    packet_info['packet_hash'] = packet_hash
+                
                 if packet_info and packet_info.get('path_len') is not None:
                     # Valid packet decoded - use the results even if path is empty (0 hops = direct)
                     hops = packet_info.get('path_len', 0)
                     
                     # Check if this is a TRACE packet with SNR data
                     if packet_info.get('payload_type') == 9:  # TRACE packet
-                        # For TRACE packets, we need to extract the actual routing path differently
-                        # The path_nodes field contains SNR data, not routing path
-                        path_hex = packet_info.get('path_hex', '')
-                        if path_hex and len(path_hex) >= 2:
-                            # Convert hex string to node list (every 2 characters = 1 node)
-                            path_nodes = [path_hex[i:i+2] for i in range(0, len(path_hex), 2)]
-                            path_string = ','.join(path_nodes)
-                            self.logger.info(f"🎯 EXTRACTED PATH FROM TRACE PACKET: {path_string} ({hops} hops)")
+                        # For TRACE packets, extract routing path from payload pathHashes
+                        # The path field contains SNR data, but the actual routing path is in payload
+                        path_info = packet_info.get('path_info', {})
+                        path_hashes = path_info.get('path_hashes') or path_info.get('path', [])
+                        
+                        if path_hashes:
+                            # Convert pathHashes to path string
+                            path_string = ','.join(path_hashes)
+                            self.logger.info(f"🎯 EXTRACTED PATH FROM TRACE PACKET: {path_string} ({len(path_hashes)} hops)")
+                            
+                            # Update mesh graph with trace path - bot is the destination, so we can confirm these edges
+                            # Since the bot received this trace packet, it's the destination node
+                            self._update_mesh_graph_from_trace(path_hashes, packet_info)
                         else:
                             path_string = "Direct" if hops == 0 else f"Unknown routing ({hops} hops)"
                             self.logger.info(f"🎯 EXTRACTED PATH FROM TRACE PACKET: {path_string}")
@@ -1555,6 +1576,8 @@ class MessageHandler:
                         if path_nodes:
                             path_string = ','.join(path_nodes)
                             self.logger.info(f"🎯 EXTRACTED PATH FROM PACKET: {path_string} ({hops} hops)")
+                            # Update mesh graph with path edges
+                            self._update_mesh_graph(path_nodes, packet_info)
                         else:
                             # Method 2: Try path_hex field
                             path_hex = packet_info.get('path_hex', '')
@@ -1563,12 +1586,17 @@ class MessageHandler:
                                 path_nodes = [path_hex[i:i+2] for i in range(0, len(path_hex), 2)]
                                 path_string = ','.join(path_nodes)
                                 self.logger.info(f"🎯 EXTRACTED PATH FROM PACKET HEX: {path_string} ({hops} hops)")
+                                # Update mesh graph with path edges
+                                self._update_mesh_graph(path_nodes, packet_info)
                             else:
                                 # Method 3: Try path_info.path field
                                 path_info = packet_info.get('path_info', {})
                                 if path_info and path_info.get('path'):
-                                    path_string = ','.join(path_info['path'])
+                                    path_nodes = path_info['path']
+                                    path_string = ','.join(path_nodes)
                                     self.logger.info(f"🎯 EXTRACTED PATH FROM PATH_INFO: {path_string} ({hops} hops)")
+                                    # Update mesh graph with path edges
+                                    self._update_mesh_graph(path_nodes, packet_info)
                                 else:
                                     # No path found - this is truly unknown
                                     path_string = "Direct" if hops == 0 else "Unknown routing"
@@ -1644,6 +1672,805 @@ class MessageHandler:
             self.logger.error(f"Error handling channel message: {e}")
             import traceback
             self.logger.error(traceback.format_exc())
+    
+    def _update_mesh_graph(self, path_nodes: List[str], packet_info: Dict[str, Any]):
+        """Update mesh graph with edges from a message path.
+        
+        Args:
+            path_nodes: List of node prefixes in path order.
+            packet_info: Packet information dictionary with routing data.
+        """
+        if not path_nodes or len(path_nodes) < 2:
+            self.logger.debug(f"Mesh graph: Skipping path with < 2 nodes: {path_nodes}")
+            return  # Need at least 2 nodes to form an edge
+        
+        if not hasattr(self.bot, 'mesh_graph') or not self.bot.mesh_graph:
+            self.logger.debug("Mesh graph: Graph not initialized, skipping update")
+            return  # Graph not initialized
+        
+        mesh_graph = self.bot.mesh_graph
+        self.logger.debug(f"Mesh graph: Updating graph with path: {path_nodes} ({len(path_nodes)} nodes)")
+        
+        # Get recency window from config (default 7 days)
+        recency_days = self.bot.config.getint('Path_Command', 'graph_edge_expiration_days', fallback=7)
+        
+        # Get public keys if available from database
+        # Note: We don't check device contacts because repeaters aren't stored on the device
+        # IMPORTANT: Only use database lookup if prefix is unique (to avoid wrong public key assignment)
+        # In busy meshes, prefixes are rarely unique, so we must verify uniqueness first
+        # Also filter by recency to avoid using old/stale repeaters
+        node_keys = {}
+        
+        for node_prefix in path_nodes:
+            try:
+                # First check if prefix is unique in database (within recency window)
+                count_query = f'''
+                    SELECT COUNT(DISTINCT public_key) as count
+                    FROM complete_contact_tracking 
+                    WHERE public_key LIKE ?
+                    AND role IN ('repeater', 'roomserver')
+                    AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
+                '''
+                prefix_pattern = f"{node_prefix}%"
+                count_results = self.bot.db_manager.execute_query(count_query, (prefix_pattern,))
+                
+                if count_results and count_results[0].get('count', 0) == 1:
+                    # Prefix is unique within recency window - safe to use database lookup
+                    query = f'''
+                        SELECT public_key 
+                        FROM complete_contact_tracking 
+                        WHERE public_key LIKE ?
+                        AND role IN ('repeater', 'roomserver')
+                        AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
+                        ORDER BY is_starred DESC, COALESCE(last_advert_timestamp, last_heard) DESC
+                        LIMIT 1
+                    '''
+                    results = self.bot.db_manager.execute_query(query, (prefix_pattern,))
+                    if results and results[0].get('public_key'):
+                        node_keys[node_prefix] = results[0]['public_key']
+                        self.logger.debug(f"Mesh graph: Found unique public key for prefix {node_prefix} from database: {results[0]['public_key'][:16]}...")
+                else:
+                    # Prefix collision or no recent matches - don't use database lookup (would risk wrong public key)
+                    count = count_results[0].get('count', 0) if count_results else 0
+                    self.logger.debug(f"Mesh graph: Prefix {node_prefix} has {count} recent matches in database, skipping public key lookup (not unique or stale)")
+            except Exception as e:
+                self.logger.debug(f"Error looking up public key for prefix {node_prefix}: {e}")
+        
+        # Calculate geographic distances if locations are available
+        from .utils import calculate_distance, _get_node_location_from_db
+        
+        # Extract edges from path
+        for i in range(len(path_nodes) - 1):
+            from_prefix = path_nodes[i]
+            to_prefix = path_nodes[i + 1]
+            hop_position = i + 1  # Position in path (1-indexed)
+            
+            # Get public keys if available
+            from_key = node_keys.get(from_prefix)
+            to_key = node_keys.get(to_prefix)
+            
+            # Calculate geographic distance if both nodes have locations
+            # IMPORTANT: Only use public keys that we're 100% certain of (from uniqueness check above)
+            # For location lookups, we can use distance-based selection to get better distance calculations,
+            # but we do NOT store those selected public keys - we only store keys we're certain of
+            geographic_distance = None
+            try:
+                from_location = None
+                to_location = None
+                
+                # Try to get location using full public key first (more accurate)
+                if from_key:
+                    from_location = self._get_location_by_public_key(from_key)
+                if not from_location:
+                    # For LoRa: prefer shorter edges - use to_location as reference if we have it
+                    # This helps resolve prefix collisions by preferring closer repeaters for distance calculation
+                    to_location_temp = None
+                    if to_key:
+                        to_location_temp = self._get_location_by_public_key(to_key)
+                    if not to_location_temp:
+                        # Try to get to_location first to use as reference
+                        # Use bot location as fallback reference to ensure distance-based selection
+                        bot_location_ref = self._get_bot_location_fallback()
+                        to_location_result = _get_node_location_from_db(self.bot, to_prefix, bot_location_ref, recency_days)
+                        if to_location_result:
+                            to_location_temp, temp_key = to_location_result
+                            if not to_key and temp_key:
+                                to_key = temp_key  # Store the selected public key for distance-based selection
+                    
+                    # Get from_location using to_location as reference (prefers shorter distance for LoRa)
+                    # If to_location not available, use bot location as fallback reference
+                    reference_for_from = to_location_temp if to_location_temp else self._get_bot_location_fallback()
+                    # Capture the selected public key when distance-based selection is used
+                    # Apply recency window to avoid using stale repeaters
+                    from_location_result = _get_node_location_from_db(self.bot, from_prefix, reference_for_from, recency_days)
+                    if from_location_result:
+                        from_location, selected_from_key = from_location_result
+                        if not from_key and selected_from_key:
+                            from_key = selected_from_key  # Store the selected public key
+                
+                if to_key:
+                    to_location = self._get_location_by_public_key(to_key)
+                if not to_location:
+                    # Use from_location as reference to prefer shorter distance for LoRa
+                    # If from_location not available, use bot location as fallback reference
+                    reference_for_to = from_location if from_location else self._get_bot_location_fallback()
+                    # Capture the selected public key when distance-based selection is used
+                    # Apply recency window to avoid using stale repeaters
+                    to_location_result = _get_node_location_from_db(self.bot, to_prefix, reference_for_to, recency_days)
+                    if to_location_result:
+                        to_location, selected_to_key = to_location_result
+                        if not to_key and selected_to_key:
+                            to_key = selected_to_key  # Store the selected public key
+                
+                if from_location and to_location:
+                    geographic_distance = calculate_distance(
+                        from_location[0], from_location[1],
+                        to_location[0], to_location[1]
+                    )
+            except Exception as e:
+                self.logger.debug(f"Could not calculate distance for edge {from_prefix}->{to_prefix}: {e}")
+            
+            # Add edge to graph - only use public keys we're 100% certain of (from uniqueness check)
+            # Do NOT use public keys from distance-based selection - we can't be certain they're correct
+            self.logger.debug(f"Mesh graph: Adding edge {from_prefix} -> {to_prefix} (hop {hop_position})")
+            mesh_graph.add_edge(
+                from_prefix=from_prefix,
+                to_prefix=to_prefix,
+                from_public_key=from_key,  # Only if prefix was unique (certain)
+                to_public_key=to_key,      # Only if prefix was unique (certain)
+                hop_position=hop_position,
+                geographic_distance=geographic_distance
+            )
+    
+    def _get_bot_location_fallback(self) -> Optional[Tuple[float, float]]:
+        """Get bot location from config to use as fallback reference for distance-based selection.
+        
+        Returns:
+            Optional[Tuple[float, float]]: (latitude, longitude) or None if not configured.
+        """
+        try:
+            lat = self.bot.config.getfloat('Bot', 'bot_latitude', fallback=None)
+            lon = self.bot.config.getfloat('Bot', 'bot_longitude', fallback=None)
+            
+            if lat is not None and lon is not None:
+                # Validate coordinates
+                if -90 <= lat <= 90 and -180 <= lon <= 180:
+                    return (lat, lon)
+            return None
+        except Exception as e:
+            self.logger.debug(f"Error getting bot location fallback: {e}")
+            return None
+    
+    def _get_location_by_public_key(self, public_key: str) -> Optional[Tuple[float, float]]:
+        """Get location for a full public key (more accurate than prefix lookup).
+        
+        Prefers starred repeaters if there are somehow multiple entries (shouldn't happen with full key).
+        
+        Args:
+            public_key: Full public key string.
+            
+        Returns:
+            Optional[Tuple[float, float]]: (latitude, longitude) or None.
+        """
+        try:
+            query = '''
+                SELECT latitude, longitude 
+                FROM complete_contact_tracking 
+                WHERE public_key = ?
+                AND latitude IS NOT NULL AND longitude IS NOT NULL
+                AND latitude != 0 AND longitude != 0
+                AND role IN ('repeater', 'roomserver')
+                ORDER BY is_starred DESC, COALESCE(last_advert_timestamp, last_heard) DESC
+                LIMIT 1
+            '''
+            results = self.bot.db_manager.execute_query(query, (public_key,))
+            if results:
+                row = results[0]
+                lat = row.get('latitude')
+                lon = row.get('longitude')
+                if lat is not None and lon is not None:
+                    return (float(lat), float(lon))
+        except Exception as e:
+            self.logger.debug(f"Error getting location by public key {public_key[:16]}...: {e}")
+        return None
+    
+    def _update_mesh_graph_from_advert(self, advert_data: Dict[str, Any], out_path: str, 
+                                      out_path_len: int, packet_info: Dict[str, Any]):
+        """Update mesh graph with edges from an advertisement's out_path.
+        
+        Creates an edge from the advertising device to the first hop in their out_path,
+        and edges between subsequent hops in the path.
+        
+        Args:
+            advert_data: Advertisement data dictionary with public_key.
+            out_path: Hex string of the path the advert took to reach us.
+            out_path_len: Length of the path in bytes.
+            packet_info: Packet information dictionary with routing data.
+        """
+        if not out_path or out_path_len < 2:
+            return  # Need at least 2 bytes (1 node) to form an edge
+        
+        if not hasattr(self.bot, 'mesh_graph') or not self.bot.mesh_graph:
+            return  # Graph not initialized
+        
+        mesh_graph = self.bot.mesh_graph
+        
+        # Get advertiser's public key
+        advertiser_key = advert_data.get('public_key', '')
+        if not advertiser_key:
+            self.logger.debug("Mesh graph: No public key in advert data, skipping graph update")
+            return
+        
+        advertiser_prefix = advertiser_key[:2].lower()
+        
+        # Parse path from hex string
+        path_nodes = []
+        for i in range(0, len(out_path), 2):
+            if i + 1 < len(out_path):
+                path_nodes.append(out_path[i:i+2].lower())
+        
+        if len(path_nodes) == 0:
+            return  # No valid path nodes
+        
+        self.logger.debug(f"Mesh graph: Updating graph from advert path: {advertiser_prefix} -> {path_nodes}")
+        
+        # Get recency window from config (default 7 days)
+        recency_days = self.bot.config.getint('Path_Command', 'graph_edge_expiration_days', fallback=7)
+        
+        # Calculate geographic distances if locations are available
+        from .utils import calculate_distance, _get_node_location_from_db
+        
+        # Create edge from advertiser to first hop in path
+        first_hop = path_nodes[0]
+        geographic_distance = None
+        first_hop_key = None
+        
+        # IMPORTANT: Only use public keys we're 100% certain of
+        # For the first hop, we can only be certain if the prefix is unique (and recent)
+        try:
+            # Check if first_hop prefix is unique within recency window (only then can we be certain of the public key)
+            count_query = f'''
+                SELECT COUNT(DISTINCT public_key) as count
+                FROM complete_contact_tracking 
+                WHERE public_key LIKE ?
+                AND role IN ('repeater', 'roomserver')
+                AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
+            '''
+            prefix_pattern = f"{first_hop}%"
+            count_results = self.bot.db_manager.execute_query(count_query, (prefix_pattern,))
+            
+            if count_results and count_results[0].get('count', 0) == 1:
+                # Prefix is unique within recency window - safe to use database lookup
+                query = f'''
+                    SELECT public_key 
+                    FROM complete_contact_tracking 
+                    WHERE public_key LIKE ?
+                    AND role IN ('repeater', 'roomserver')
+                    AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
+                    ORDER BY is_starred DESC, COALESCE(last_advert_timestamp, last_heard) DESC
+                    LIMIT 1
+                '''
+                results = self.bot.db_manager.execute_query(query, (prefix_pattern,))
+                if results and results[0].get('public_key'):
+                    first_hop_key = results[0]['public_key']
+                    self.logger.debug(f"Mesh graph: Found unique public key for first hop {first_hop}: {first_hop_key[:16]}...")
+            else:
+                count = count_results[0].get('count', 0) if count_results else 0
+                self.logger.debug(f"Mesh graph: First hop prefix {first_hop} has {count} recent matches, cannot be certain of public key")
+        except Exception as e:
+            self.logger.debug(f"Error checking uniqueness for first hop {first_hop}: {e}")
+        
+        try:
+            # Use full public key for advertiser (we're 100% certain - it's from the event)
+            advertiser_location = None
+            if advertiser_key:
+                advertiser_location = self._get_location_by_public_key(advertiser_key)
+            if not advertiser_location:
+                # Get first_hop location first to use as reference for LoRa distance preference
+                # Use bot location as fallback reference to ensure distance-based selection
+                bot_location_ref = self._get_bot_location_fallback()
+                first_hop_temp_result = _get_node_location_from_db(self.bot, first_hop, bot_location_ref, recency_days)
+                if first_hop_temp_result:
+                    first_hop_location_temp, _ = first_hop_temp_result
+                else:
+                    first_hop_location_temp = bot_location_ref  # Use bot location as fallback
+                
+                if first_hop_location_temp:
+                    advertiser_result = _get_node_location_from_db(self.bot, advertiser_prefix, first_hop_location_temp, recency_days)
+                    if advertiser_result:
+                        advertiser_location, _ = advertiser_result
+            
+            # Get first_hop location using advertiser location as reference for LoRa preference
+            # Capture the selected public key when distance-based selection is used
+            # Apply recency window to avoid using stale repeaters
+            first_hop_result = _get_node_location_from_db(self.bot, first_hop, advertiser_location, recency_days)
+            if first_hop_result:
+                first_hop_location, selected_first_hop_key = first_hop_result
+                if not first_hop_key and selected_first_hop_key:
+                    first_hop_key = selected_first_hop_key  # Store the selected public key
+            
+            if advertiser_location and first_hop_location:
+                geographic_distance = calculate_distance(
+                    advertiser_location[0], advertiser_location[1],
+                    first_hop_location[0], first_hop_location[1]
+                )
+        except Exception as e:
+            self.logger.debug(f"Could not calculate distance for advert edge {advertiser_prefix}->{first_hop}: {e}")
+        
+        # Add edge from advertiser to first hop
+        # from_public_key: advertiser_key (100% certain - from event)
+        # to_public_key: first_hop_key (only if prefix was unique - certain)
+        mesh_graph.add_edge(
+            from_prefix=advertiser_prefix,
+            to_prefix=first_hop,
+            from_public_key=advertiser_key,  # 100% certain - from NEW_CONTACT event
+            to_public_key=first_hop_key,     # Only if prefix was unique (certain)
+            hop_position=1,  # First hop in path
+            geographic_distance=geographic_distance
+        )
+        
+        # Create edges between subsequent hops in the path
+        # Track previous location to use as reference for better distance-based selection
+        # Start with first_hop_location (if available) or advertiser_location as reference
+        previous_location = None
+        try:
+            if 'first_hop_location' in locals() and first_hop_location:
+                previous_location = first_hop_location
+            elif advertiser_location:
+                previous_location = advertiser_location
+        except:
+            pass
+        
+        for i in range(len(path_nodes) - 1):
+            from_node = path_nodes[i]
+            to_node = path_nodes[i + 1]
+            hop_position = i + 2  # Position in path (1-indexed, advertiser is 0)
+            
+            # IMPORTANT: Only use public keys we're 100% certain of (when prefix is unique and recent)
+            from_node_key = None
+            to_node_key = None
+            
+            # Check if from_node prefix is unique within recency window
+            try:
+                count_query = f'''
+                    SELECT COUNT(DISTINCT public_key) as count
+                    FROM complete_contact_tracking 
+                    WHERE public_key LIKE ?
+                    AND role IN ('repeater', 'roomserver')
+                    AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
+                '''
+                prefix_pattern = f"{from_node}%"
+                count_results = self.bot.db_manager.execute_query(count_query, (prefix_pattern,))
+                
+                if count_results and count_results[0].get('count', 0) == 1:
+                    query = f'''
+                        SELECT public_key 
+                        FROM complete_contact_tracking 
+                        WHERE public_key LIKE ?
+                        AND role IN ('repeater', 'roomserver')
+                        AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
+                        ORDER BY is_starred DESC, COALESCE(last_advert_timestamp, last_heard) DESC
+                        LIMIT 1
+                    '''
+                    results = self.bot.db_manager.execute_query(query, (prefix_pattern,))
+                    if results and results[0].get('public_key'):
+                        from_node_key = results[0]['public_key']
+                        self.logger.debug(f"Mesh graph: Found unique public key for {from_node}: {from_node_key[:16]}...")
+            except Exception as e:
+                self.logger.debug(f"Error checking uniqueness for {from_node}: {e}")
+            
+            # Check if to_node prefix is unique within recency window
+            try:
+                count_query = f'''
+                    SELECT COUNT(DISTINCT public_key) as count
+                    FROM complete_contact_tracking 
+                    WHERE public_key LIKE ?
+                    AND role IN ('repeater', 'roomserver')
+                    AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
+                '''
+                prefix_pattern = f"{to_node}%"
+                count_results = self.bot.db_manager.execute_query(count_query, (prefix_pattern,))
+                
+                if count_results and count_results[0].get('count', 0) == 1:
+                    query = f'''
+                        SELECT public_key 
+                        FROM complete_contact_tracking 
+                        WHERE public_key LIKE ?
+                        AND role IN ('repeater', 'roomserver')
+                        AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
+                        ORDER BY is_starred DESC, COALESCE(last_advert_timestamp, last_heard) DESC
+                        LIMIT 1
+                    '''
+                    results = self.bot.db_manager.execute_query(query, (prefix_pattern,))
+                    if results and results[0].get('public_key'):
+                        to_node_key = results[0]['public_key']
+                        self.logger.debug(f"Mesh graph: Found unique public key for {to_node}: {to_node_key[:16]}...")
+            except Exception as e:
+                self.logger.debug(f"Error checking uniqueness for {to_node}: {e}")
+            
+            # Calculate geographic distance if available
+            # For LoRa, prefer shorter distances when resolving prefix collisions for location lookup
+            # IMPORTANT: Use previous_location as reference to ensure we select the closer repeater
+            # NOTE: We do NOT store public keys from distance-based selection - only use them for location
+            # Apply recency window to avoid using stale repeaters
+            geographic_distance = None
+            try:
+                from .utils import _get_node_location_from_db, calculate_distance
+                
+                # Get from_location using previous_location as reference (ensures we select closer repeater)
+                # Use bot location as fallback if previous_location not available
+                reference_for_from = previous_location if previous_location else self._get_bot_location_fallback()
+                from_result = _get_node_location_from_db(self.bot, from_node, reference_for_from, recency_days)
+                if from_result:
+                    from_location, selected_from_key = from_result
+                    if not from_node_key and selected_from_key:
+                        from_node_key = selected_from_key  # Store the selected public key
+                else:
+                    from_location = None
+                
+                # Get to_location using from_location as reference
+                # Use bot location as fallback if from_location not available
+                reference_for_to = from_location if from_location else self._get_bot_location_fallback()
+                to_result = _get_node_location_from_db(self.bot, to_node, reference_for_to, recency_days)
+                if to_result:
+                    to_location, selected_to_key = to_result
+                    if not to_node_key and selected_to_key:
+                        to_node_key = selected_to_key  # Store the selected public key
+                else:
+                    to_location = None
+                
+                # Re-get from_location with to_location as reference (for better collision resolution)
+                if to_location:
+                    from_result2 = _get_node_location_from_db(self.bot, from_node, to_location, recency_days)
+                    if from_result2:
+                        from_location, selected_from_key2 = from_result2
+                        if not from_node_key and selected_from_key2:
+                            from_node_key = selected_from_key2
+                
+                # Re-get to_location with from_location as reference
+                if from_location:
+                    to_result2 = _get_node_location_from_db(self.bot, to_node, from_location, recency_days)
+                    if to_result2:
+                        to_location, selected_to_key2 = to_result2
+                        if not to_node_key and selected_to_key2:
+                            to_node_key = selected_to_key2
+                
+                # Update previous_location for next iteration
+                previous_location = to_location if to_location else from_location
+                
+                if from_location and to_location:
+                    geographic_distance = calculate_distance(
+                        from_location[0], from_location[1],
+                        to_location[0], to_location[1]
+                    )
+            except Exception as e:
+                self.logger.debug(f"Could not calculate distance for edge {from_node}->{to_node}: {e}")
+            
+            # Add edge between path nodes - only use public keys we're 100% certain of (from uniqueness check)
+            mesh_graph.add_edge(
+                from_prefix=from_node,
+                to_prefix=to_node,
+                from_public_key=from_node_key,  # Only if prefix was unique (certain)
+                to_public_key=to_node_key,      # Only if prefix was unique (certain)
+                hop_position=hop_position,
+                geographic_distance=geographic_distance
+            )
+    
+    def _update_mesh_graph_from_trace(self, path_hashes: List[str], packet_info: Dict[str, Any]):
+        """Update mesh graph with edges from a trace packet's pathHashes.
+        
+        When the bot receives a trace packet, it's the destination, so we can confirm
+        the edges in the path. The pathHashes represent the routing path the packet took.
+        
+        Special case: If this is a trace we sent that came back through an immediate neighbor,
+        we can trust both directions (Bot -> Neighbor and Neighbor -> Bot).
+        
+        Args:
+            path_hashes: List of node hash prefixes (1-byte each, as 2-char hex strings) from trace payload.
+            packet_info: Packet information dictionary with routing data.
+        """
+        if not path_hashes or len(path_hashes) == 0:
+            self.logger.debug("Mesh graph: Trace packet has no pathHashes, skipping graph update")
+            return
+        
+        if not hasattr(self.bot, 'mesh_graph') or not self.bot.mesh_graph:
+            self.logger.debug("Mesh graph: Graph not initialized, skipping trace update")
+            return
+        
+        if not hasattr(self.bot, 'transmission_tracker') or not self.bot.transmission_tracker:
+            self.logger.debug("Mesh graph: Cannot get bot prefix, skipping trace update")
+            return
+        
+        mesh_graph = self.bot.mesh_graph
+        bot_prefix = self.bot.transmission_tracker.bot_prefix
+        
+        if not bot_prefix:
+            self.logger.debug("Mesh graph: Bot prefix not available, skipping trace update")
+            return
+        
+        bot_prefix = bot_prefix.lower()
+        
+        # Check if this is a trace we sent (by matching packet hash)
+        is_our_trace = False
+        packet_hash = packet_info.get('packet_hash')
+        if packet_hash and hasattr(self.bot, 'transmission_tracker'):
+            import time
+            record = self.bot.transmission_tracker.match_packet_hash(packet_hash, time.time())
+            if record:
+                is_our_trace = True
+                self.logger.debug(f"Mesh graph: Trace packet is one we sent (matched transmission record)")
+        
+        # Check if this came back through an immediate neighbor
+        # For a trace we sent that came back, if pathHashes has exactly one node, that's our immediate neighbor
+        is_immediate_neighbor = False
+        if is_our_trace and len(path_hashes) == 1:
+            is_immediate_neighbor = True
+            self.logger.info(f"Mesh graph: Trace came back through immediate neighbor {path_hashes[0]} - trusting both directions")
+        
+        self.logger.debug(f"Mesh graph: Updating graph from trace pathHashes: {path_hashes} (bot is destination: {bot_prefix}, is_our_trace: {is_our_trace}, immediate_neighbor: {is_immediate_neighbor})")
+        
+        # Get recency window from config (default 7 days)
+        recency_days = self.bot.config.getint('Path_Command', 'graph_edge_expiration_days', fallback=7)
+        
+        # Get bot's location for distance calculations
+        from .utils import calculate_distance, _get_node_location_from_db
+        bot_location = None
+        try:
+            bot_location_result = _get_node_location_from_db(self.bot, bot_prefix, None, recency_days)
+            if bot_location_result:
+                bot_location, _ = bot_location_result
+        except Exception as e:
+            self.logger.debug(f"Could not get bot location: {e}")
+        
+        # Create edges from pathHashes to bot
+        # Since bot is the destination, the last node in pathHashes sent directly to bot
+        if len(path_hashes) > 0:
+            last_node = path_hashes[-1].lower()
+            
+            # If this is our trace that came back through an immediate neighbor, create bidirectional edge
+            if is_immediate_neighbor:
+                # We can trust both directions:
+                # 1. Bot -> Neighbor (we sent it, so we know this edge)
+                # 2. Neighbor -> Bot (we received it back, so we know this edge)
+                neighbor_prefix = path_hashes[0].lower()
+                
+                # Get neighbor's public key if unique
+                neighbor_key = None
+                try:
+                    count_query = f'''
+                        SELECT COUNT(DISTINCT public_key) as count
+                        FROM complete_contact_tracking 
+                        WHERE public_key LIKE ?
+                        AND role IN ('repeater', 'roomserver')
+                        AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
+                    '''
+                    prefix_pattern = f"{neighbor_prefix}%"
+                    count_results = self.bot.db_manager.execute_query(count_query, (prefix_pattern,))
+                    
+                    if count_results and count_results[0].get('count', 0) == 1:
+                        query = f'''
+                            SELECT public_key 
+                            FROM complete_contact_tracking 
+                            WHERE public_key LIKE ?
+                            AND role IN ('repeater', 'roomserver')
+                            AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
+                            ORDER BY is_starred DESC, COALESCE(last_advert_timestamp, last_heard) DESC
+                            LIMIT 1
+                        '''
+                        results = self.bot.db_manager.execute_query(query, (prefix_pattern,))
+                        if results and results[0].get('public_key'):
+                            neighbor_key = results[0]['public_key']
+                except Exception as e:
+                    self.logger.debug(f"Error checking uniqueness for immediate neighbor {neighbor_prefix}: {e}")
+                
+                # Get bot's public key (100% certain - it's us)
+                bot_key = None
+                if hasattr(self.bot.meshcore, 'device') and self.bot.meshcore.device:
+                    try:
+                        device_info = self.bot.meshcore.device
+                        if hasattr(device_info, 'public_key'):
+                            pubkey = device_info.public_key
+                            if isinstance(pubkey, str):
+                                bot_key = pubkey
+                            elif isinstance(pubkey, bytes):
+                                bot_key = pubkey.hex()
+                    except Exception as e:
+                        self.logger.debug(f"Could not get bot public key: {e}")
+                
+                # Calculate distance
+                geographic_distance = None
+                try:
+                    if bot_location:
+                        neighbor_result = _get_node_location_from_db(self.bot, neighbor_prefix, bot_location, recency_days)
+                        if neighbor_result:
+                            neighbor_location, selected_neighbor_key = neighbor_result
+                            if not neighbor_key and selected_neighbor_key:
+                                neighbor_key = selected_neighbor_key
+                            
+                            if neighbor_location and bot_location:
+                                geographic_distance = calculate_distance(
+                                    neighbor_location[0], neighbor_location[1],
+                                    bot_location[0], bot_location[1]
+                                )
+                except Exception as e:
+                    self.logger.debug(f"Could not calculate distance for immediate neighbor edge: {e}")
+                
+                # Create bidirectional edge: Bot <-> Neighbor (both directions trusted)
+                # Direction 1: Bot -> Neighbor (we sent it)
+                mesh_graph.add_edge(
+                    from_prefix=bot_prefix,
+                    to_prefix=neighbor_prefix,
+                    from_public_key=bot_key,      # 100% certain - it's the bot
+                    to_public_key=neighbor_key,  # Only if prefix was unique (certain)
+                    hop_position=1,  # First hop
+                    geographic_distance=geographic_distance
+                )
+                
+                # Direction 2: Neighbor -> Bot (we received it back)
+                mesh_graph.add_edge(
+                    from_prefix=neighbor_prefix,
+                    to_prefix=bot_prefix,
+                    from_public_key=neighbor_key,  # Only if prefix was unique (certain)
+                    to_public_key=bot_key,          # 100% certain - it's the bot
+                    hop_position=1,  # First hop (return path)
+                    geographic_distance=geographic_distance
+                )
+                
+                self.logger.info(f"Mesh graph: Created trusted bidirectional edge with immediate neighbor {neighbor_prefix}")
+                return  # Done - no need to process further for immediate neighbor case
+            
+            # Regular case: trace from elsewhere, bot is destination
+            # Create edge: last_node -> bot
+            geographic_distance = None
+            last_node_key = None
+            
+            # Check if last_node prefix is unique (for public key)
+            try:
+                count_query = f'''
+                    SELECT COUNT(DISTINCT public_key) as count
+                    FROM complete_contact_tracking 
+                    WHERE public_key LIKE ?
+                    AND role IN ('repeater', 'roomserver')
+                    AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
+                '''
+                prefix_pattern = f"{last_node}%"
+                count_results = self.bot.db_manager.execute_query(count_query, (prefix_pattern,))
+                
+                if count_results and count_results[0].get('count', 0) == 1:
+                    query = f'''
+                        SELECT public_key 
+                        FROM complete_contact_tracking 
+                        WHERE public_key LIKE ?
+                        AND role IN ('repeater', 'roomserver')
+                        AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
+                        ORDER BY is_starred DESC, COALESCE(last_advert_timestamp, last_heard) DESC
+                        LIMIT 1
+                    '''
+                    results = self.bot.db_manager.execute_query(query, (prefix_pattern,))
+                    if results and results[0].get('public_key'):
+                        last_node_key = results[0]['public_key']
+            except Exception as e:
+                self.logger.debug(f"Error checking uniqueness for trace last_node {last_node}: {e}")
+            
+            # Get bot's public key (100% certain - it's us)
+            bot_key = None
+            if hasattr(self.bot.meshcore, 'device') and self.bot.meshcore.device:
+                try:
+                    device_info = self.bot.meshcore.device
+                    if hasattr(device_info, 'public_key'):
+                        pubkey = device_info.public_key
+                        if isinstance(pubkey, str):
+                            bot_key = pubkey
+                        elif isinstance(pubkey, bytes):
+                            bot_key = pubkey.hex()
+                except Exception as e:
+                    self.logger.debug(f"Could not get bot public key: {e}")
+            
+            # Calculate distance if locations available
+            try:
+                if bot_location:
+                    last_node_result = _get_node_location_from_db(self.bot, last_node, bot_location, recency_days)
+                    if last_node_result:
+                        last_node_location, selected_key = last_node_result
+                        if not last_node_key and selected_key:
+                            last_node_key = selected_key
+                        
+                        if last_node_location and bot_location:
+                            geographic_distance = calculate_distance(
+                                last_node_location[0], last_node_location[1],
+                                bot_location[0], bot_location[1]
+                            )
+            except Exception as e:
+                self.logger.debug(f"Could not calculate distance for trace edge {last_node}->{bot_prefix}: {e}")
+            
+            # Add edge: last_node -> bot (100% certain - bot received the packet)
+            mesh_graph.add_edge(
+                from_prefix=last_node,
+                to_prefix=bot_prefix,
+                from_public_key=last_node_key,  # Only if prefix was unique (certain)
+                to_public_key=bot_key,          # 100% certain - it's the bot
+                hop_position=len(path_hashes),  # Position in path
+                geographic_distance=geographic_distance
+            )
+            
+            # Create edges between nodes in the pathHashes (if more than one)
+            # These represent intermediate hops
+            previous_location = bot_location
+            for i in range(len(path_hashes) - 1, 0, -1):  # Go backwards from bot
+                from_node = path_hashes[i-1].lower()
+                to_node = path_hashes[i].lower()
+                hop_position = len(path_hashes) - i  # Position from bot
+                
+                # Get public keys if unique
+                from_node_key = None
+                to_node_key = None
+                
+                # Check uniqueness for both nodes
+                for node, key_var in [(from_node, 'from_node_key'), (to_node, 'to_node_key')]:
+                    try:
+                        count_query = f'''
+                            SELECT COUNT(DISTINCT public_key) as count
+                            FROM complete_contact_tracking 
+                            WHERE public_key LIKE ?
+                            AND role IN ('repeater', 'roomserver')
+                            AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
+                        '''
+                        prefix_pattern = f"{node}%"
+                        count_results = self.bot.db_manager.execute_query(count_query, (prefix_pattern,))
+                        
+                        if count_results and count_results[0].get('count', 0) == 1:
+                            query = f'''
+                                SELECT public_key 
+                                FROM complete_contact_tracking 
+                                WHERE public_key LIKE ?
+                                AND role IN ('repeater', 'roomserver')
+                                AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
+                                ORDER BY is_starred DESC, COALESCE(last_advert_timestamp, last_heard) DESC
+                                LIMIT 1
+                            '''
+                            results = self.bot.db_manager.execute_query(query, (prefix_pattern,))
+                            if results and results[0].get('public_key'):
+                                if key_var == 'from_node_key':
+                                    from_node_key = results[0]['public_key']
+                                else:
+                                    to_node_key = results[0]['public_key']
+                    except Exception as e:
+                        self.logger.debug(f"Error checking uniqueness for trace node {node}: {e}")
+                
+                # Calculate distance
+                geographic_distance = None
+                try:
+                    if previous_location:
+                        from_result = _get_node_location_from_db(self.bot, from_node, previous_location, recency_days)
+                        if from_result:
+                            from_location, selected_from_key = from_result
+                            if not from_node_key and selected_from_key:
+                                from_node_key = selected_from_key
+                            
+                            to_result = _get_node_location_from_db(self.bot, to_node, from_location, recency_days)
+                            if to_result:
+                                to_location, selected_to_key = to_result
+                                if not to_node_key and selected_to_key:
+                                    to_node_key = selected_to_key
+                                
+                                if from_location and to_location:
+                                    geographic_distance = calculate_distance(
+                                        from_location[0], from_location[1],
+                                        to_location[0], to_location[1]
+                                    )
+                                    previous_location = from_location
+                except Exception as e:
+                    self.logger.debug(f"Could not calculate distance for trace edge {from_node}->{to_node}: {e}")
+                
+                # Add edge between path nodes
+                mesh_graph.add_edge(
+                    from_prefix=from_node,
+                    to_prefix=to_node,
+                    from_public_key=from_node_key,  # Only if prefix was unique (certain)
+                    to_public_key=to_node_key,      # Only if prefix was unique (certain)
+                    hop_position=hop_position,
+                    geographic_distance=geographic_distance
+                )
     
     async def discover_message_path(self, sender_id: str, rf_data: dict) -> tuple[int, str]:
         """
@@ -2053,6 +2880,19 @@ class MessageHandler:
                                     contact_data['out_path'] = ''
                                     contact_data['out_path_len'] = 0
                             
+                            # Update mesh graph with this NEW_CONTACT event's path information
+                            # This captures public keys for edges that we might not see in regular message paths
+                            if path_hex and path_length > 0 and public_key:
+                                try:
+                                    packet_info = {
+                                        'routing_info': routing_info,
+                                        'packet_hash': packet_hash
+                                    }
+                                    self._update_mesh_graph_from_advert(contact_data, path_hex, path_length, packet_info)
+                                    self.logger.debug(f"Mesh graph: Updated from NEW_CONTACT event for {contact_name} (key: {public_key[:16]}...)")
+                                except Exception as e:
+                                    self.logger.debug(f"Error updating mesh graph from NEW_CONTACT: {e}")
+                            
                             # Only collect signal data for direct (zero-hop) advertisements
                             if path_length == 0:
                                 # Direct advertisement - collect signal data
@@ -2086,6 +2926,21 @@ class MessageHandler:
                     
                     # Track repeater in complete database with signal info
                     await self.bot.repeater_manager.track_contact_advertisement(contact_data, signal_info, packet_hash=packet_hash)
+                    
+                    # Notify web viewer of new node
+                    if (hasattr(self.bot, 'web_viewer_integration') and 
+                        self.bot.web_viewer_integration and 
+                        self.bot.web_viewer_integration.bot_integration):
+                        try:
+                            node_data = {
+                                'public_key': public_key,
+                                'prefix': public_key[:2].lower() if public_key else '',
+                                'name': contact_name,
+                                'role': 'repeater'
+                            }
+                            self.bot.web_viewer_integration.bot_integration.send_mesh_node_update(node_data)
+                        except Exception as e:
+                            self.logger.debug(f"Failed to notify web viewer of new node: {e}")
                     
                     # Check if auto-purge is needed (run after tracking to ensure data is captured)
                     await self.bot.repeater_manager.check_and_auto_purge()

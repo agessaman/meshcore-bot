@@ -26,3 +26,9 @@ flask>=2.3.0
 flask-socketio>=5.3.0
 meshcore-cli
 feedparser>=6.0.10
+
+# Testing dependencies
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pytest-mock>=3.10.0
+pytest-cov>=4.0.0

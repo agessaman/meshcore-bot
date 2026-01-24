@@ -128,6 +128,21 @@ class RepeaterManager:
                 reason TEXT
             ''')
             
+            # Create mesh_connections table for graph-based path validation
+            self.db_manager.create_table('mesh_connections', '''
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                from_prefix TEXT NOT NULL,
+                to_prefix TEXT NOT NULL,
+                from_public_key TEXT,
+                to_public_key TEXT,
+                observation_count INTEGER DEFAULT 1,
+                first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                avg_hop_position REAL,
+                geographic_distance REAL,
+                UNIQUE(from_prefix, to_prefix)
+            ''')
+            
             # Create indexes for better performance
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
@@ -147,6 +162,11 @@ class RepeaterManager:
                 # Indexes for unique_advert_packets table
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_unique_advert_date_pubkey ON unique_advert_packets(date, public_key)')
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_unique_advert_hash ON unique_advert_packets(packet_hash)')
+                
+                # Indexes for mesh_connections table
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_from_prefix ON mesh_connections(from_prefix)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_to_prefix ON mesh_connections(to_prefix)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_last_seen ON mesh_connections(last_seen)')
                 conn.commit()
             
             self.logger.info("Repeater contacts database initialized successfully")

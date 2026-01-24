@@ -165,6 +165,20 @@ class MeshCoreBot:
             self.logger.error(f"Failed to initialize repeater manager: {e}")
             raise
         
+        # Initialize mesh graph for path validation
+        self.logger.info("Initializing mesh graph")
+        try:
+            from .mesh_graph import MeshGraph
+            self.mesh_graph = MeshGraph(self)
+            self.logger.info("Mesh graph initialized successfully")
+            
+            # Register cleanup handler for mesh graph (independent of web viewer)
+            # This ensures pending graph writes are flushed during shutdown
+            atexit.register(self._cleanup_mesh_graph)
+        except (OSError, ValueError, AttributeError, ImportError) as e:
+            self.logger.warning(f"Failed to initialize mesh graph: {e}")
+            self.mesh_graph = None
+        
         # Initialize service plugin loader and load all services
         self.logger.info("Initializing service plugin loader")
         try:
@@ -1171,6 +1185,13 @@ use_zulu_time = false
         
         self.connected = False
         
+        # Shutdown mesh graph first to flush pending writes
+        if hasattr(self, 'mesh_graph') and self.mesh_graph:
+            try:
+                self.mesh_graph.shutdown()
+            except Exception as e:
+                self.logger.warning(f"Error shutting down mesh graph: {e}")
+        
         # Stop feed manager
         if self.feed_manager:
             await self.feed_manager.stop()
@@ -1326,6 +1347,25 @@ use_zulu_time = false
                 self.logger.error(f"Error during web viewer cleanup: {e}")
             except (AttributeError, TypeError):
                 print(f"Error during web viewer cleanup: {e}")
+    
+    def _cleanup_mesh_graph(self) -> None:
+        """Cleanup mesh graph resources on exit.
+        
+        Called by atexit handler to ensure graph state is persisted
+        properly when the bot shuts down.
+        """
+        try:
+            if hasattr(self, 'mesh_graph') and self.mesh_graph:
+                self.mesh_graph.shutdown()
+                try:
+                    self.logger.info("Mesh graph cleanup completed")
+                except (AttributeError, TypeError):
+                    print("Mesh graph cleanup completed")
+        except (OSError, AttributeError, TypeError) as e:
+            try:
+                self.logger.error(f"Error during mesh graph cleanup: {e}")
+            except (AttributeError, TypeError):
+                print(f"Error during mesh graph cleanup: {e}")
     
     async def send_startup_advert(self) -> None:
         """Send a startup advertisement if configured.

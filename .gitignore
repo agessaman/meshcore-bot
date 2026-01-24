@@ -142,6 +142,7 @@ tests/
 test_scripts/
 dev/
 website/
+pytest.ini
 
 # Docker data directory (user-specific config, databases, logs)
 # Ignore contents but keep directory structure

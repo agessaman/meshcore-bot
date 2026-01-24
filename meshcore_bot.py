@@ -64,13 +64,20 @@ def main():
                     except asyncio.CancelledError:
                         pass
                 
-                # If shutdown triggered, cancel bot task
-                if shutdown_event.is_set() and bot_task and not bot_task.done():
-                    bot_task.cancel()
-                    try:
-                        await bot_task
-                    except asyncio.CancelledError:
-                        pass
+                # Handle bot task completion
+                if bot_task:
+                    if shutdown_event.is_set() and not bot_task.done():
+                        # Shutdown triggered: cancel if still running
+                        bot_task.cancel()
+                    
+                    # Always await bot_task if done to surface any exceptions
+                    # (whether it completed normally or was cancelled)
+                    if bot_task.done():
+                        try:
+                            await bot_task
+                        except asyncio.CancelledError:
+                            # Expected when cancelled, ignore
+                            pass
             finally:
                 # Always ensure cleanup happens
                 await bot.stop()

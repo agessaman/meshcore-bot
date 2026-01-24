@@ -1591,10 +1591,15 @@ def calculate_path_distances(bot: Any, path_str: str) -> Tuple[str, str]:
             return "locally (1 hop)", "N/A (1 hop)"
         
         # Look up locations for each node ID
+        # _get_node_location_from_db returns ((lat, lon), public_key) or None
         node_locations = []
         for node_id in node_ids:
-            location = _get_node_location_from_db(bot, node_id)
-            node_locations.append(location)
+            result = _get_node_location_from_db(bot, node_id)
+            if result:
+                location, _ = result  # Extract location tuple, ignore public_key
+                node_locations.append(location)
+            else:
+                node_locations.append(None)
         
         # Calculate total path distance (sum of all segments)
         total_distance = 0.0
@@ -1663,46 +1668,236 @@ def calculate_path_distances(bot: Any, path_str: str) -> Tuple[str, str]:
         return "", ""
 
 
-def _get_node_location_from_db(bot: Any, node_id: str) -> Optional[Tuple[float, float]]:
+def _get_node_location_from_db(bot: Any, node_id: str, reference_location: Optional[Tuple[float, float]] = None, recency_days: Optional[int] = None) -> Optional[Tuple[Tuple[float, float], Optional[str]]]:
     """Get location for a node ID from the database.
+    
+    For LoRa networks, prefers shorter distances when there are prefix collisions,
+    as LoRa range is limited by the curve of the earth.
     
     Args:
         bot: Bot instance (must have db_manager).
         node_id: 2-character hex node ID (e.g., "01", "5f").
+        reference_location: Optional (lat, lon) to calculate distance from for LoRa preference.
+        recency_days: Optional number of days to filter by recency (only use repeaters heard within this window).
         
     Returns:
-        Optional[Tuple[float, float]]: Tuple of (latitude, longitude) or None if not found.
+        Optional[Tuple[Tuple[float, float], Optional[str]]]:
+        - ((latitude, longitude), public_key) if found, where public_key may be None
+        - None if not found
     """
     if not hasattr(bot, 'db_manager'):
         return None
     
     try:
         # Look up node by public key prefix (first 2 characters)
-        query = '''
-            SELECT latitude, longitude 
-            FROM complete_contact_tracking 
-            WHERE public_key LIKE ? 
-            AND latitude IS NOT NULL AND longitude IS NOT NULL
-            AND latitude != 0 AND longitude != 0
-            AND role IN ('repeater', 'roomserver')
-            ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
-            LIMIT 1
-        '''
-        
         prefix_pattern = f"{node_id}%"
-        results = bot.db_manager.execute_query(query, (prefix_pattern,))
         
-        if results:
-            row = results[0]
-            lat = row.get('latitude')
-            lon = row.get('longitude')
-            if lat is not None and lon is not None:
-                return (float(lat), float(lon))
+        # Get all candidates with locations, optionally filtered by recency
+        # Include public_key so we can return it when distance-based selection is used
+        if recency_days is not None:
+            query = f'''
+                SELECT latitude, longitude, is_starred, public_key,
+                       COALESCE(last_advert_timestamp, last_heard) as last_seen
+                FROM complete_contact_tracking 
+                WHERE public_key LIKE ? 
+                AND latitude IS NOT NULL AND longitude IS NOT NULL
+                AND latitude != 0 AND longitude != 0
+                AND role IN ('repeater', 'roomserver')
+                AND COALESCE(last_advert_timestamp, last_heard) >= datetime('now', '-{recency_days} days')
+            '''
+            results = bot.db_manager.execute_query(query, (prefix_pattern,))
+        else:
+            query = '''
+                SELECT latitude, longitude, is_starred, public_key,
+                       COALESCE(last_advert_timestamp, last_heard) as last_seen
+                FROM complete_contact_tracking 
+                WHERE public_key LIKE ? 
+                AND latitude IS NOT NULL AND longitude IS NOT NULL
+                AND latitude != 0 AND longitude != 0
+                AND role IN ('repeater', 'roomserver')
+            '''
+            results = bot.db_manager.execute_query(query, (prefix_pattern,))
+        
+        if not results:
+            return None
+        
+            # If we have a reference location, prefer shorter distances (LoRa range limitation)
+        if reference_location and len(results) > 1:
+            ref_lat, ref_lon = reference_location
+            
+            # Calculate distances and sort by distance (shorter first)
+            candidates_with_distance = []
+            for row in results:
+                lat = row.get('latitude')
+                lon = row.get('longitude')
+                if lat is not None and lon is not None:
+                    distance = calculate_distance(ref_lat, ref_lon, float(lat), float(lon))
+                    is_starred = row.get('is_starred', False)
+                    last_seen = row.get('last_seen', '')
+                    candidates_with_distance.append((distance, is_starred, last_seen, row))
+            
+            if candidates_with_distance:
+                # Sort by: starred first, then distance (shorter = better for LoRa), then recency (newer first)
+                # For recency, we need newer timestamps to sort first. Use a two-pass stable sort:
+                # First sort by starred and distance, then stable sort by recency in reverse
+                from datetime import datetime
+                
+                def get_timestamp_key(ts_str):
+                    """Convert timestamp string to sortable key (newer = smaller key for reverse sort)"""
+                    if not ts_str:
+                        return float('inf')  # Empty timestamps sort last
+                    try:
+                        # Parse timestamp and return negative timestamp for descending sort
+                        dt = datetime.fromisoformat(ts_str.replace(' ', 'T'))
+                        return -dt.timestamp()  # Negate: newer timestamps have larger timestamps, so -timestamp is smaller
+                    except:
+                        # Fallback: use string comparison (newer strings are lexicographically greater)
+                        # To reverse, we'll use a large value minus a hash
+                        return -len(ts_str) * 1000000 - hash(ts_str)
+                
+                # Sort by: starred first, then distance (shorter = better for LoRa), then recency (newer first)
+                # IMPORTANT: Distance takes priority over recency when we have a reference location
+                # Use a single sort with all three criteria to ensure proper ordering
+                candidates_with_distance.sort(key=lambda x: (
+                    not x[1],  # Starred first (False < True, so starred=True comes before starred=False)
+                    x[0],  # Distance (shorter first) - THIS IS THE PRIMARY FACTOR for LoRa
+                    get_timestamp_key(x[2])  # Recency (newer first) - only as tiebreaker
+                ))
+                
+                # Get the best candidate
+                best_row = candidates_with_distance[0][3]
+                lat = best_row.get('latitude')
+                lon = best_row.get('longitude')
+                if lat is not None and lon is not None:
+                    # Return location and also the public key of the selected node (for distance-based selection)
+                    # This allows us to store which specific node was selected when there's a prefix collision
+                    # Always return a tuple: (location, public_key or None)
+                    public_key = best_row.get('public_key')
+                    return ((float(lat), float(lon)), public_key)
+        
+        # No reference location or single result - use standard ordering
+        # Prefer starred, then most recent
+        # For recency, parse timestamps properly to ensure newer comes first
+        from datetime import datetime
+        
+        def get_timestamp_key_no_ref(ts_str):
+            """Convert timestamp string to sortable key (newer = smaller key)"""
+            if not ts_str:
+                return float('inf')  # Empty timestamps sort last
+            try:
+                dt = datetime.fromisoformat(ts_str.replace(' ', 'T'))
+                return -dt.timestamp()  # Negate: newer timestamps have larger timestamps, so -timestamp is smaller
+            except:
+                return -len(ts_str) * 1000000 - hash(ts_str)
+        
+        results.sort(key=lambda x: (
+            not x.get('is_starred', False),  # Starred first (False < True)
+            get_timestamp_key_no_ref(x.get('last_seen', ''))  # More recent first (newer = smaller key)
+        ))
+        
+        row = results[0]
+        lat = row.get('latitude')
+        lon = row.get('longitude')
+        if lat is not None and lon is not None:
+            # Return location and also the public key if available (for distance-based selection)
+            # Always return a tuple: (location, public_key or None)
+            public_key = row.get('public_key')
+            return ((float(lat), float(lon)), public_key)
         
         return None
     except Exception as e:
         if hasattr(bot, 'logger'):
             bot.logger.debug(f"Error getting node location for {node_id}: {e}")
+        return None
+
+def _get_node_location_and_key_from_db(bot: Any, node_id: str, reference_location: Optional[Tuple[float, float]] = None) -> Optional[Tuple[Tuple[float, float], str]]:
+    """Get location and public key for a node ID from the database.
+    
+    For LoRa networks, prefers shorter distances when there are prefix collisions,
+    as LoRa range is limited by the curve of the earth.
+    
+    Args:
+        bot: Bot instance (must have db_manager).
+        node_id: 2-character hex node ID (e.g., "01", "5f").
+        reference_location: Optional (lat, lon) to calculate distance from for LoRa preference.
+        
+    Returns:
+        Optional[Tuple[Tuple[float, float], str]]: Tuple of ((latitude, longitude), public_key) or None if not found.
+    """
+    if not hasattr(bot, 'db_manager'):
+        return None
+    
+    try:
+        # Look up node by public key prefix (first 2 characters)
+        prefix_pattern = f"{node_id}%"
+        
+        # Get all candidates with locations
+        query = '''
+            SELECT latitude, longitude, is_starred, public_key,
+                   COALESCE(last_advert_timestamp, last_heard) as last_seen
+            FROM complete_contact_tracking 
+            WHERE public_key LIKE ? 
+            AND latitude IS NOT NULL AND longitude IS NOT NULL
+            AND latitude != 0 AND longitude != 0
+            AND role IN ('repeater', 'roomserver')
+        '''
+        
+        results = bot.db_manager.execute_query(query, (prefix_pattern,))
+        
+        if not results:
+            return None
+        
+        # If we have a reference location, prefer shorter distances (LoRa range limitation)
+        if reference_location and len(results) > 1:
+            ref_lat, ref_lon = reference_location
+            
+            # Calculate distances and sort by distance (shorter first)
+            # For LoRa networks, shorter distances are more likely to be correct single-hop connections
+            candidates_with_distance = []
+            for row in results:
+                lat = row.get('latitude')
+                lon = row.get('longitude')
+                if lat is not None and lon is not None:
+                    distance = calculate_distance(ref_lat, ref_lon, float(lat), float(lon))
+                    is_starred = row.get('is_starred', False)
+                    last_seen = row.get('last_seen', '')
+                    public_key = row.get('public_key', '')
+                    candidates_with_distance.append((distance, is_starred, last_seen, public_key, row))
+            
+            if candidates_with_distance:
+                # Sort by: starred first (False < True), then distance (shorter = better for LoRa), then recency
+                candidates_with_distance.sort(key=lambda x: (
+                    not x[1],  # Starred first (False < True, so starred=True comes before starred=False)
+                    x[0],  # Distance (shorter first - important for LoRa range limitations)
+                    x[2] if x[2] else ''  # More recent first (newer timestamps sort later in string comparison)
+                ))
+                
+                # Get the best candidate
+                best_row = candidates_with_distance[0][4]
+                lat = best_row.get('latitude')
+                lon = best_row.get('longitude')
+                public_key = candidates_with_distance[0][3]
+                if lat is not None and lon is not None and public_key:
+                    return ((float(lat), float(lon)), public_key)
+        
+        # No reference location or single result - use standard ordering
+        # Prefer starred, then most recent
+        results.sort(key=lambda x: (
+            not x.get('is_starred', False),  # Starred first (False < True)
+            x.get('last_seen', '') if x.get('last_seen') else ''  # More recent first
+        ))
+        
+        row = results[0]
+        lat = row.get('latitude')
+        lon = row.get('longitude')
+        public_key = row.get('public_key', '')
+        if lat is not None and lon is not None and public_key:
+            return ((float(lat), float(lon)), public_key)
+        
+        return None
+    except Exception as e:
+        if hasattr(bot, 'logger'):
+            bot.logger.debug(f"Error getting node location and key for {node_id}: {e}")
         return None
 
 

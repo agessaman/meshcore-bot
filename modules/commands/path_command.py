@@ -50,6 +50,23 @@ class PathCommand(BaseCommand):
         self.recency_weight = max(0.0, min(1.0, recency_weight))  # Clamp to 0.0-1.0
         self.proximity_weight = 1.0 - self.recency_weight
         
+        # Get recency decay half-life for longer advert intervals (default: 12 hours, suggested: 36-48 for 48-72 hour intervals)
+        self.recency_decay_half_life_hours = bot.config.getfloat('Path_Command', 'recency_decay_half_life_hours', fallback=12.0)
+        
+        # Graph-based validation settings
+        self.graph_based_validation = bot.config.getboolean('Path_Command', 'graph_based_validation', fallback=True)
+        self.min_edge_observations = bot.config.getint('Path_Command', 'min_edge_observations', fallback=3)
+        
+        # Enhanced graph features
+        self.graph_use_bidirectional = bot.config.getboolean('Path_Command', 'graph_use_bidirectional', fallback=True)
+        self.graph_use_hop_position = bot.config.getboolean('Path_Command', 'graph_use_hop_position', fallback=True)
+        self.graph_multi_hop_enabled = bot.config.getboolean('Path_Command', 'graph_multi_hop_enabled', fallback=True)
+        self.graph_multi_hop_max_hops = bot.config.getint('Path_Command', 'graph_multi_hop_max_hops', fallback=2)
+        self.graph_geographic_combined = bot.config.getboolean('Path_Command', 'graph_geographic_combined', fallback=False)
+        self.graph_geographic_weight = bot.config.getfloat('Path_Command', 'graph_geographic_weight', fallback=0.7)
+        self.graph_geographic_weight = max(0.0, min(1.0, self.graph_geographic_weight))  # Clamp to 0.0-1.0
+        self.graph_prefer_stored_keys = bot.config.getboolean('Path_Command', 'graph_prefer_stored_keys', fallback=True)
+        
         # Get star bias multiplier (how much to boost starred repeaters' scores)
         # Default 2.5 means starred repeaters get 2.5x their normal score
         self.star_bias_multiplier = bot.config.getfloat('Path_Command', 'star_bias_multiplier', fallback=2.5)
@@ -311,37 +328,88 @@ class PathCommand(BaseCommand):
                     
                     # Check for ID collisions (multiple repeaters with same prefix) AFTER filtering
                     if len(recent_repeaters) > 1:
-                        # Multiple recent matches - try geographic proximity selection
-                        # Only attempt if geographic guessing is enabled
+                        # Multiple recent matches - try graph-based validation first, then geographic proximity
+                        selected_repeater = None
+                        confidence = 0.0
+                        selection_method = None
+                        graph_repeater = None
+                        graph_confidence = 0.0
+                        geo_repeater = None
+                        geo_confidence = 0.0
+                        
+                        # Try graph-based selection if enabled
+                        if self.graph_based_validation and hasattr(self.bot, 'mesh_graph') and self.bot.mesh_graph:
+                            graph_repeater, graph_confidence, selection_method = self._select_repeater_by_graph(
+                                recent_repeaters, node_id, node_ids
+                            )
+                        
+                        # Get geographic proximity selection
                         if self.geographic_guessing_enabled:
                             # Get sender location if available (for first repeater selection)
                             sender_location = self._get_sender_location()
-                            selected_repeater, confidence = self._select_repeater_by_proximity(recent_repeaters, node_id, node_ids, sender_location)
+                            geo_repeater, geo_confidence = self._select_repeater_by_proximity(
+                                recent_repeaters, node_id, node_ids, sender_location
+                            )
+                        
+                        # Combine or choose between graph and geographic based on config
+                        if self.graph_geographic_combined and graph_repeater and geo_repeater:
+                            # Only combine if both methods selected the same repeater
+                            graph_pubkey = graph_repeater.get('public_key', '')
+                            geo_pubkey = geo_repeater.get('public_key', '')
                             
-                            if selected_repeater and confidence >= 0.5:
-                                # High confidence geographic selection
-                                repeater_info[node_id] = {
-                                    'name': selected_repeater['name'],
-                                    'public_key': selected_repeater['public_key'],
-                                    'device_type': selected_repeater['device_type'],
-                                    'last_seen': selected_repeater['last_seen'],
-                                    'is_active': selected_repeater['is_active'],
-                                    'found': True,
-                                    'collision': False,
-                                    'geographic_guess': True,
-                                    'confidence': confidence
-                                }
+                            if graph_pubkey and geo_pubkey and graph_pubkey == geo_pubkey:
+                                # Same repeater - combine scores with weighted average
+                                combined_confidence = (
+                                    graph_confidence * self.graph_geographic_weight +
+                                    geo_confidence * (1.0 - self.graph_geographic_weight)
+                                )
+                                selected_repeater = graph_repeater
+                                confidence = combined_confidence
+                                selection_method = 'graph_geographic_combined'
                             else:
-                                # Low confidence or no geographic data - show collision warning
-                                repeater_info[node_id] = {
-                                    'found': True,
-                                    'collision': True,
-                                    'matches': len(recent_repeaters),
-                                    'node_id': node_id,
-                                    'repeaters': recent_repeaters
-                                }
+                                # Different repeaters - prefer the one with higher confidence
+                                if graph_confidence > geo_confidence:
+                                    selected_repeater = graph_repeater
+                                    confidence = graph_confidence
+                                    selection_method = selection_method or 'graph'
+                                else:
+                                    selected_repeater = geo_repeater
+                                    confidence = geo_confidence
+                                    selection_method = 'geographic'
                         else:
-                            # Geographic guessing disabled - show collision warning
+                            # Default behavior: prefer graph, fall back to geographic
+                            if graph_repeater and graph_confidence >= 0.7:
+                                selected_repeater = graph_repeater
+                                confidence = graph_confidence
+                                selection_method = selection_method or 'graph'
+                            elif not graph_repeater or graph_confidence < 0.7:
+                                # Fall back to geographic proximity if graph didn't provide high confidence
+                                if geo_repeater and (not graph_repeater or geo_confidence > graph_confidence):
+                                    selected_repeater = geo_repeater
+                                    confidence = geo_confidence
+                                    selection_method = 'geographic'
+                                elif graph_repeater:
+                                    # Use graph even if confidence is lower (better than nothing)
+                                    selected_repeater = graph_repeater
+                                    confidence = graph_confidence
+                                    selection_method = selection_method or 'graph'
+                        
+                        if selected_repeater and confidence >= 0.5:
+                            # High confidence selection (graph or geographic)
+                            repeater_info[node_id] = {
+                                'name': selected_repeater['name'],
+                                'public_key': selected_repeater['public_key'],
+                                'device_type': selected_repeater['device_type'],
+                                'last_seen': selected_repeater['last_seen'],
+                                'is_active': selected_repeater['is_active'],
+                                'found': True,
+                                'collision': False,
+                                'geographic_guess': (selection_method == 'geographic'),
+                                'graph_guess': (selection_method == 'graph'),
+                                'confidence': confidence
+                            }
+                        else:
+                            # Low confidence or no selection method - show collision warning
                             repeater_info[node_id] = {
                                 'found': True,
                                 'collision': True,
@@ -668,15 +736,19 @@ class PathCommand(BaseCommand):
                 hours_ago = (now - most_recent_time).total_seconds() / 3600.0
                 
                 # Strong recency bias: recent devices get high scores, older devices get exponentially lower scores
-                # Score = e^(-hours/12) - this gives:
+                # Score = e^(-hours/half_life) - configurable half-life for longer advert intervals
+                # With default 12-hour half-life:
                 # - 1 hour ago: ~0.92
                 # - 6 hours ago: ~0.61
                 # - 12 hours ago: ~0.37
                 # - 24 hours ago: ~0.14
                 # - 48 hours ago: ~0.02
                 # - 72 hours ago: ~0.002
+                # With 36-hour half-life (for 48-72 hour advert intervals):
+                # - 48 hours ago: ~0.26
+                # - 72 hours ago: ~0.14
                 import math
-                recency_score = math.exp(-hours_ago / 12.0)
+                recency_score = math.exp(-hours_ago / self.recency_decay_half_life_hours)
                 
                 # Ensure score is between 0.0 and 1.0
                 recency_score = max(0.0, min(1.0, recency_score))
@@ -1055,6 +1127,127 @@ class PathCommand(BaseCommand):
         
         return None, 0.0
     
+    def _select_repeater_by_graph(self, repeaters: List[Dict[str, Any]], node_id: str, 
+                                  path_context: List[str]) -> Tuple[Optional[Dict[str, Any]], float, str]:
+        """Select repeater based on graph evidence.
+        
+        Uses enhanced direct-edge validation and multi-hop path inference.
+        
+        Args:
+            repeaters: List of repeaters to choose from
+            node_id: The current node ID being processed
+            path_context: Full path for context
+        
+        Returns:
+            Tuple of (selected_repeater, confidence_score, method_name)
+            confidence_score: 0.0 to 1.0, where 1.0 is very confident
+            method_name: 'graph' or 'graph_multihop' if selected, None otherwise
+        """
+        if not self.graph_based_validation or not hasattr(self.bot, 'mesh_graph') or not self.bot.mesh_graph:
+            return None, 0.0, None
+        
+        mesh_graph = self.bot.mesh_graph
+        
+        # Find current node position in path
+        try:
+            current_index = path_context.index(node_id) if node_id in path_context else -1
+        except:
+            current_index = -1
+        
+        if current_index == -1:
+            return None, 0.0, None
+        
+        # Get previous and next node IDs
+        prev_node_id = path_context[current_index - 1] if current_index > 0 else None
+        next_node_id = path_context[current_index + 1] if current_index < len(path_context) - 1 else None
+        
+        # Score each candidate based on enhanced graph evidence
+        best_repeater = None
+        best_score = 0.0
+        best_method = None
+        
+        for repeater in repeaters:
+            candidate_prefix = repeater.get('public_key', '')[:2].lower() if repeater.get('public_key') else None
+            candidate_public_key = repeater.get('public_key', '').lower() if repeater.get('public_key') else None
+            if not candidate_prefix:
+                continue
+            
+            # First attempt: Enhanced direct-edge validation
+            graph_score = mesh_graph.get_candidate_score(
+                candidate_prefix, prev_node_id, next_node_id, self.min_edge_observations,
+                hop_position=current_index if self.graph_use_hop_position else None,
+                use_bidirectional=self.graph_use_bidirectional,
+                use_hop_position=self.graph_use_hop_position
+            )
+            
+            # Check if edges have stored public keys that match this candidate
+            # This indicates high confidence in the edge and should be prioritized
+            stored_key_bonus = 0.0
+            if self.graph_prefer_stored_keys and candidate_public_key:
+                # Check edge from previous node to candidate
+                if prev_node_id:
+                    prev_to_candidate_edge = mesh_graph.get_edge(prev_node_id, candidate_prefix)
+                    if prev_to_candidate_edge:
+                        stored_to_key = prev_to_candidate_edge.get('to_public_key', '').lower() if prev_to_candidate_edge.get('to_public_key') else None
+                        if stored_to_key and stored_to_key == candidate_public_key:
+                            stored_key_bonus = max(stored_key_bonus, 0.4)  # Strong bonus for matching stored key
+                            self.logger.debug(f"Found stored public key match for {repeater.get('name', 'unknown')} in edge {prev_node_id}->{candidate_prefix}")
+                
+                # Check edge from candidate to next node
+                if next_node_id:
+                    candidate_to_next_edge = mesh_graph.get_edge(candidate_prefix, next_node_id)
+                    if candidate_to_next_edge:
+                        stored_from_key = candidate_to_next_edge.get('from_public_key', '').lower() if candidate_to_next_edge.get('from_public_key') else None
+                        if stored_from_key and stored_from_key == candidate_public_key:
+                            stored_key_bonus = max(stored_key_bonus, 0.4)  # Strong bonus for matching stored key
+                            self.logger.debug(f"Found stored public key match for {repeater.get('name', 'unknown')} in edge {candidate_prefix}->{next_node_id}")
+            
+            # Add stored key bonus to graph score
+            graph_score_with_bonus = min(1.0, graph_score + stored_key_bonus)
+            
+            # Second attempt: Multi-hop inference if direct edges have low confidence
+            multi_hop_score = 0.0
+            if self.graph_multi_hop_enabled and graph_score_with_bonus < 0.6 and prev_node_id and next_node_id:
+                # Try to find intermediate nodes that connect prev to next
+                intermediate_candidates = mesh_graph.find_intermediate_nodes(
+                    prev_node_id, next_node_id, self.min_edge_observations,
+                    max_hops=self.graph_multi_hop_max_hops
+                )
+                
+                # Check if our candidate appears in the intermediate nodes list
+                for intermediate_prefix, intermediate_score in intermediate_candidates:
+                    if intermediate_prefix == candidate_prefix:
+                        multi_hop_score = intermediate_score
+                        break
+            
+            # Use the best score (direct edge with bonus or multi-hop)
+            candidate_score = max(graph_score_with_bonus, multi_hop_score)
+            method = 'graph_multihop' if multi_hop_score > graph_score_with_bonus else 'graph'
+            
+            # Apply star bias multiplier if repeater is starred
+            # Starred repeaters should get significant advantage in graph selection
+            is_starred = repeater.get('is_starred', False)
+            if is_starred:
+                # Apply star bias to boost the score
+                candidate_score *= self.star_bias_multiplier
+                # Cap at 1.0 but allow it to exceed temporarily for comparison
+                # We'll normalize later when converting to confidence
+                self.logger.debug(f"Applied star bias ({self.star_bias_multiplier}x) to {repeater.get('name', 'unknown')} in graph selection (score: {candidate_score:.3f})")
+            
+            if candidate_score > best_score:
+                best_score = candidate_score
+                best_repeater = repeater
+                best_method = method
+        
+        if best_repeater and best_score > 0.0:
+            # Convert graph score to confidence (graph scores are already 0.0-1.0)
+            # If star bias was applied, the score may exceed 1.0, so cap it appropriately
+            # Higher scores from star bias indicate stronger preference
+            confidence = min(1.0, best_score) if best_score <= 1.0 else 0.95 + (min(0.05, (best_score - 1.0) / self.star_bias_multiplier))
+            return best_repeater, confidence, best_method or 'graph'
+        
+        return None, 0.0, None
+    
     def _format_path_response(self, node_ids: List[str], repeater_info: Dict[str, Dict[str, Any]]) -> str:
         """Format the path decode response
         
@@ -1072,10 +1265,11 @@ class PathCommand(BaseCommand):
                     # Multiple repeaters with same prefix
                     matches = info.get('matches', 0)
                     line = self.translate('commands.path.node_collision', node_id=node_id, matches=matches)
-                elif info.get('geographic_guess', False):
-                    # Geographic proximity selection
+                elif info.get('geographic_guess', False) or info.get('graph_guess', False):
+                    # Geographic or graph-based selection
                     name = info['name']
                     confidence = info.get('confidence', 0.0)
+                    is_graph = info.get('graph_guess', False)
                     
                     # Truncate name if too long
                     truncation = self.translate('commands.path.truncation')
@@ -1090,6 +1284,7 @@ class PathCommand(BaseCommand):
                     else:
                         confidence_indicator = self.low_confidence_symbol
                     
+                    # Use geographic translation key for backward compatibility, or add graph-specific if needed
                     line = self.translate('commands.path.node_geographic', node_id=node_id, name=name, confidence=confidence_indicator)
                 else:
                     # Single repeater found

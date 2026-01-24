@@ -24,7 +24,7 @@ sys.path.insert(0, project_root)
 
 from modules.db_manager import DBManager
 from modules.repeater_manager import RepeaterManager
-from modules.utils import resolve_path
+from modules.utils import resolve_path, calculate_distance
 
 class BotDataViewer:
     """Complete web interface using Flask-SocketIO 5.x best practices"""
@@ -178,6 +178,11 @@ class BotDataViewer:
             # Initialize repeater manager for geocoding functionality
             self.repeater_manager = RepeaterManager(minimal_bot)
             
+            # Initialize mesh graph for path resolution (uses same logic as path command)
+            from modules.mesh_graph import MeshGraph
+            minimal_bot.mesh_graph = MeshGraph(minimal_bot)
+            self.mesh_graph = minimal_bot.mesh_graph
+            
             # Initialize packet_stream table for real-time monitoring
             self._init_packet_stream_table()
             
@@ -243,6 +248,549 @@ class BotDataViewer:
             self.logger.error(f"Failed to create database connection: {e}")
             raise
     
+    def _resolve_path(self, path_input: str) -> Dict[str, Any]:
+        """Resolve a hex path to repeater names and locations using the same algorithm as PathCommand.
+        
+        This method replicates the path command's logic to ensure consistency between
+        the bot's path command and the web viewer's path resolution.
+        
+        Args:
+            path_input: Hex path string (e.g., "7e,01,86" or "7e 01 86")
+            
+        Returns:
+            Dictionary with node_ids, repeaters list, and valid flag
+        """
+        import re
+        import math
+        from datetime import datetime
+        
+        # Check if db_manager is available
+        if not hasattr(self, 'db_manager') or not self.db_manager:
+            return {
+                'node_ids': [],
+                'repeaters': [],
+                'valid': False,
+                'error': 'Database manager not initialized'
+            }
+        
+        # Parse hex input - same logic as PathCommand._decode_path
+        # Handle both comma/space-separated and continuous hex strings (e.g., "8601a5")
+        # First, try to parse as continuous hex string
+        path_input_clean = path_input.replace(',', '').replace(':', '').replace(' ', '')
+        if re.match(r'^[0-9a-fA-F]{4,}$', path_input_clean):
+            # Continuous hex string - split into pairs
+            hex_matches = [path_input_clean[i:i+2] for i in range(0, len(path_input_clean), 2)]
+        else:
+            # Space/comma-separated format
+            path_input = path_input.replace(',', ' ').replace(':', ' ')
+            hex_pattern = r'[0-9a-fA-F]{2}'
+            hex_matches = re.findall(hex_pattern, path_input)
+        
+        if not hex_matches:
+            return {
+                'node_ids': [],
+                'repeaters': [],
+                'valid': False,
+                'error': 'No valid hex values found'
+            }
+        
+        node_ids = [match.upper() for match in hex_matches]
+        
+        # Load all Path_Command config values (same as PathCommand.__init__)
+        # Geographic guessing
+        geographic_guessing_enabled = False
+        bot_latitude = None
+        bot_longitude = None
+        
+        try:
+            if self.config.has_section('Bot'):
+                lat = self.config.getfloat('Bot', 'bot_latitude', fallback=None)
+                lon = self.config.getfloat('Bot', 'bot_longitude', fallback=None)
+                if lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180:
+                    bot_latitude = lat
+                    bot_longitude = lon
+                    geographic_guessing_enabled = True
+        except Exception:
+            pass
+        
+        # Path command settings
+        proximity_method = self.config.get('Path_Command', 'proximity_method', fallback='simple')
+        path_proximity_fallback = self.config.getboolean('Path_Command', 'path_proximity_fallback', fallback=True)
+        max_proximity_range = self.config.getfloat('Path_Command', 'max_proximity_range', fallback=200.0)
+        max_repeater_age_days = self.config.getint('Path_Command', 'max_repeater_age_days', fallback=14)
+        
+        recency_weight = self.config.getfloat('Path_Command', 'recency_weight', fallback=0.4)
+        recency_weight = max(0.0, min(1.0, recency_weight))
+        proximity_weight = 1.0 - recency_weight
+        
+        recency_decay_half_life_hours = self.config.getfloat('Path_Command', 'recency_decay_half_life_hours', fallback=12.0)
+        
+        graph_based_validation = self.config.getboolean('Path_Command', 'graph_based_validation', fallback=True)
+        min_edge_observations = self.config.getint('Path_Command', 'min_edge_observations', fallback=3)
+        
+        graph_use_bidirectional = self.config.getboolean('Path_Command', 'graph_use_bidirectional', fallback=True)
+        graph_use_hop_position = self.config.getboolean('Path_Command', 'graph_use_hop_position', fallback=True)
+        graph_multi_hop_enabled = self.config.getboolean('Path_Command', 'graph_multi_hop_enabled', fallback=True)
+        graph_multi_hop_max_hops = self.config.getint('Path_Command', 'graph_multi_hop_max_hops', fallback=2)
+        graph_geographic_combined = self.config.getboolean('Path_Command', 'graph_geographic_combined', fallback=False)
+        graph_geographic_weight = self.config.getfloat('Path_Command', 'graph_geographic_weight', fallback=0.7)
+        graph_geographic_weight = max(0.0, min(1.0, graph_geographic_weight))
+        graph_prefer_stored_keys = self.config.getboolean('Path_Command', 'graph_prefer_stored_keys', fallback=True)
+        
+        star_bias_multiplier = self.config.getfloat('Path_Command', 'star_bias_multiplier', fallback=2.5)
+        star_bias_multiplier = max(1.0, star_bias_multiplier)
+        
+        # Helper method to calculate recency scores (same as PathCommand._calculate_recency_weighted_scores)
+        def calculate_recency_weighted_scores(repeaters):
+            scored_repeaters = []
+            now = datetime.now()
+            
+            for repeater in repeaters:
+                most_recent_time = None
+                
+                for field in ['last_heard', 'last_advert_timestamp', 'last_seen']:
+                    value = repeater.get(field)
+                    if value:
+                        try:
+                            if isinstance(value, str):
+                                dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+                            else:
+                                dt = value
+                            if most_recent_time is None or dt > most_recent_time:
+                                most_recent_time = dt
+                        except:
+                            pass
+                
+                if most_recent_time is None:
+                    recency_score = 0.1
+                else:
+                    hours_ago = (now - most_recent_time).total_seconds() / 3600.0
+                    recency_score = math.exp(-hours_ago / recency_decay_half_life_hours)
+                    recency_score = max(0.0, min(1.0, recency_score))
+                
+                scored_repeaters.append((repeater, recency_score))
+            
+            scored_repeaters.sort(key=lambda x: x[1], reverse=True)
+            return scored_repeaters
+        
+        # Helper to get node location (same as PathCommand._get_node_location)
+        def get_node_location(node_id):
+            try:
+                if max_repeater_age_days > 0:
+                    query = '''
+                        SELECT latitude, longitude FROM complete_contact_tracking 
+                        WHERE public_key LIKE ? AND latitude IS NOT NULL AND longitude IS NOT NULL
+                        AND latitude != 0 AND longitude != 0 AND role IN ('repeater', 'roomserver')
+                        AND (
+                            (last_advert_timestamp IS NOT NULL AND last_advert_timestamp >= datetime('now', '-{} days'))
+                            OR (last_advert_timestamp IS NULL AND last_heard >= datetime('now', '-{} days'))
+                        )
+                        ORDER BY is_starred DESC, COALESCE(last_advert_timestamp, last_heard) DESC
+                        LIMIT 1
+                    '''.format(max_repeater_age_days, max_repeater_age_days)
+                else:
+                    query = '''
+                        SELECT latitude, longitude FROM complete_contact_tracking 
+                        WHERE public_key LIKE ? AND latitude IS NOT NULL AND longitude IS NOT NULL
+                        AND latitude != 0 AND longitude != 0 AND role IN ('repeater', 'roomserver')
+                        ORDER BY is_starred DESC, COALESCE(last_advert_timestamp, last_heard) DESC
+                        LIMIT 1
+                    '''
+                
+                results = self.db_manager.execute_query(query, (f"{node_id}%",))
+                if results:
+                    return (results[0]['latitude'], results[0]['longitude'])
+                return None
+            except Exception:
+                return None
+        
+        # Helper for simple proximity selection (same as PathCommand._select_by_simple_proximity)
+        def select_by_simple_proximity(repeaters_with_location):
+            scored_repeaters = calculate_recency_weighted_scores(repeaters_with_location)
+            min_recency_threshold = 0.01
+            scored_repeaters = [(r, score) for r, score in scored_repeaters if score >= min_recency_threshold]
+            
+            if not scored_repeaters:
+                return None, 0.0
+            
+            if len(scored_repeaters) == 1:
+                repeater, recency_score = scored_repeaters[0]
+                distance = calculate_distance(bot_latitude, bot_longitude, repeater['latitude'], repeater['longitude'])
+                if max_proximity_range > 0 and distance > max_proximity_range:
+                    return None, 0.0
+                base_confidence = 0.4 + (recency_score * 0.5)
+                return repeater, base_confidence
+            
+            combined_scores = []
+            for repeater, recency_score in scored_repeaters:
+                distance = calculate_distance(bot_latitude, bot_longitude, repeater['latitude'], repeater['longitude'])
+                if max_proximity_range > 0 and distance > max_proximity_range:
+                    continue
+                
+                normalized_distance = min(distance / 1000.0, 1.0)
+                proximity_score = 1.0 - normalized_distance
+                combined_score = (recency_score * recency_weight) + (proximity_score * proximity_weight)
+                
+                if repeater.get('is_starred', False):
+                    combined_score *= star_bias_multiplier
+                
+                combined_scores.append((combined_score, distance, repeater))
+            
+            if not combined_scores:
+                return None, 0.0
+            
+            combined_scores.sort(key=lambda x: x[0], reverse=True)
+            best_score, best_distance, best_repeater = combined_scores[0]
+            
+            if len(combined_scores) == 1:
+                confidence = 0.4 + (best_score * 0.5)
+            else:
+                second_best_score = combined_scores[1][0]
+                score_ratio = best_score / second_best_score if second_best_score > 0 else 1.0
+                if score_ratio > 1.5:
+                    confidence = 0.9
+                elif score_ratio > 1.2:
+                    confidence = 0.8
+                elif score_ratio > 1.1:
+                    confidence = 0.7
+                else:
+                    confidence = 0.5
+            
+            return best_repeater, confidence
+        
+        # Helper for path proximity (simplified - for web viewer we'll use simple proximity)
+        def select_by_path_proximity(repeaters_with_location, node_id, path_context, sender_location):
+            scored_repeaters = calculate_recency_weighted_scores(repeaters_with_location)
+            min_recency_threshold = 0.01
+            recent_repeaters = [r for r, score in scored_repeaters if score >= min_recency_threshold]
+            
+            if not recent_repeaters:
+                return None, 0.0
+            
+            current_index = path_context.index(node_id) if node_id in path_context else -1
+            if current_index == -1:
+                return None, 0.0
+            
+            is_last_repeater = (current_index == len(path_context) - 1)
+            if is_last_repeater and geographic_guessing_enabled and bot_latitude and bot_longitude:
+                bot_location = (bot_latitude, bot_longitude)
+                return select_by_single_proximity(recent_repeaters, bot_location, "bot")
+            
+            # For other positions, use simple proximity
+            return select_by_simple_proximity(recent_repeaters)
+        
+        # Helper for single proximity (same as PathCommand._select_by_single_proximity)
+        def select_by_single_proximity(repeaters, reference_location, direction):
+            scored_repeaters = calculate_recency_weighted_scores(repeaters)
+            min_recency_threshold = 0.01
+            scored_repeaters = [(r, score) for r, score in scored_repeaters if score >= min_recency_threshold]
+            
+            if not scored_repeaters:
+                return None, 0.0
+            
+            if direction == "bot" or direction == "sender":
+                proximity_weight_local = 1.0
+                recency_weight_local = 0.0
+            else:
+                proximity_weight_local = proximity_weight
+                recency_weight_local = recency_weight
+            
+            best_repeater = None
+            best_combined_score = 0.0
+            
+            for repeater, recency_score in scored_repeaters:
+                distance = calculate_distance(reference_location[0], reference_location[1],
+                                            repeater['latitude'], repeater['longitude'])
+                
+                if max_proximity_range > 0 and distance > max_proximity_range:
+                    continue
+                
+                normalized_distance = min(distance / 1000.0, 1.0)
+                proximity_score = 1.0 - normalized_distance
+                combined_score = (recency_score * recency_weight_local) + (proximity_score * proximity_weight_local)
+                
+                if repeater.get('is_starred', False):
+                    combined_score *= star_bias_multiplier
+                
+                if combined_score > best_combined_score:
+                    best_combined_score = combined_score
+                    best_repeater = repeater
+            
+            if best_repeater:
+                confidence = 0.4 + (best_combined_score * 0.5)
+                return best_repeater, confidence
+            
+            return None, 0.0
+        
+        # Helper for graph-based selection (same as PathCommand._select_repeater_by_graph)
+        def select_repeater_by_graph(repeaters, node_id, path_context):
+            if not graph_based_validation or not hasattr(self, 'mesh_graph') or not self.mesh_graph:
+                return None, 0.0, None
+            
+            mesh_graph = self.mesh_graph
+            
+            try:
+                current_index = path_context.index(node_id) if node_id in path_context else -1
+            except:
+                current_index = -1
+            
+            if current_index == -1:
+                return None, 0.0, None
+            
+            prev_node_id = path_context[current_index - 1] if current_index > 0 else None
+            next_node_id = path_context[current_index + 1] if current_index < len(path_context) - 1 else None
+            
+            best_repeater = None
+            best_score = 0.0
+            best_method = None
+            
+            for repeater in repeaters:
+                candidate_prefix = repeater.get('public_key', '')[:2].lower() if repeater.get('public_key') else None
+                candidate_public_key = repeater.get('public_key', '').lower() if repeater.get('public_key') else None
+                if not candidate_prefix:
+                    continue
+                
+                graph_score = mesh_graph.get_candidate_score(
+                    candidate_prefix, prev_node_id, next_node_id, min_edge_observations,
+                    hop_position=current_index if graph_use_hop_position else None,
+                    use_bidirectional=graph_use_bidirectional,
+                    use_hop_position=graph_use_hop_position
+                )
+                
+                stored_key_bonus = 0.0
+                if graph_prefer_stored_keys and candidate_public_key:
+                    if prev_node_id:
+                        prev_to_candidate_edge = mesh_graph.get_edge(prev_node_id, candidate_prefix)
+                        if prev_to_candidate_edge:
+                            stored_to_key = prev_to_candidate_edge.get('to_public_key', '').lower() if prev_to_candidate_edge.get('to_public_key') else None
+                            if stored_to_key and stored_to_key == candidate_public_key:
+                                stored_key_bonus = max(stored_key_bonus, 0.4)
+                    
+                    if next_node_id:
+                        candidate_to_next_edge = mesh_graph.get_edge(candidate_prefix, next_node_id)
+                        if candidate_to_next_edge:
+                            stored_from_key = candidate_to_next_edge.get('from_public_key', '').lower() if candidate_to_next_edge.get('from_public_key') else None
+                            if stored_from_key and stored_from_key == candidate_public_key:
+                                stored_key_bonus = max(stored_key_bonus, 0.4)
+                
+                graph_score_with_bonus = min(1.0, graph_score + stored_key_bonus)
+                
+                multi_hop_score = 0.0
+                if graph_multi_hop_enabled and graph_score_with_bonus < 0.6 and prev_node_id and next_node_id:
+                    intermediate_candidates = mesh_graph.find_intermediate_nodes(
+                        prev_node_id, next_node_id, min_edge_observations,
+                        max_hops=graph_multi_hop_max_hops
+                    )
+                    
+                    for intermediate_prefix, intermediate_score in intermediate_candidates:
+                        if intermediate_prefix == candidate_prefix:
+                            multi_hop_score = intermediate_score
+                            break
+                
+                candidate_score = max(graph_score_with_bonus, multi_hop_score)
+                method = 'graph_multihop' if multi_hop_score > graph_score_with_bonus else 'graph'
+                
+                if repeater.get('is_starred', False):
+                    candidate_score *= star_bias_multiplier
+                
+                if candidate_score > best_score:
+                    best_score = candidate_score
+                    best_repeater = repeater
+                    best_method = method
+            
+            if best_repeater and best_score > 0.0:
+                confidence = min(1.0, best_score) if best_score <= 1.0 else 0.95 + (min(0.05, (best_score - 1.0) / star_bias_multiplier))
+                return best_repeater, confidence, best_method or 'graph'
+            
+            return None, 0.0, None
+        
+        # Main resolution logic (same as PathCommand._lookup_repeater_names)
+        repeater_info = {}
+        
+        try:
+            for node_id in node_ids:
+                # Query database for matching repeaters
+                if max_repeater_age_days > 0:
+                    query = '''
+                        SELECT name, public_key, device_type, last_heard, last_heard as last_seen, 
+                               last_advert_timestamp, latitude, longitude, city, state, country,
+                               advert_count, signal_strength, hop_count, role, is_starred
+                        FROM complete_contact_tracking 
+                        WHERE public_key LIKE ? AND role IN ('repeater', 'roomserver')
+                        AND (
+                            (last_advert_timestamp IS NOT NULL AND last_advert_timestamp >= datetime('now', '-{} days'))
+                            OR (last_advert_timestamp IS NULL AND last_heard >= datetime('now', '-{} days'))
+                        )
+                        ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
+                    '''.format(max_repeater_age_days, max_repeater_age_days)
+                else:
+                    query = '''
+                        SELECT name, public_key, device_type, last_heard, last_heard as last_seen, 
+                               last_advert_timestamp, latitude, longitude, city, state, country,
+                               advert_count, signal_strength, hop_count, role, is_starred
+                        FROM complete_contact_tracking 
+                        WHERE public_key LIKE ? AND role IN ('repeater', 'roomserver')
+                        ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
+                    '''
+                
+                prefix_pattern = f"{node_id}%"
+                results = self.db_manager.execute_query(query, (prefix_pattern,))
+                
+                if results:
+                    repeaters_data = [
+                        {
+                            'name': row['name'],
+                            'public_key': row['public_key'],
+                            'device_type': row['device_type'],
+                            'last_seen': row['last_seen'],
+                            'last_heard': row.get('last_heard', row['last_seen']),
+                            'last_advert_timestamp': row.get('last_advert_timestamp'),
+                            'is_active': True,
+                            'latitude': row['latitude'],
+                            'longitude': row['longitude'],
+                            'city': row['city'],
+                            'state': row['state'],
+                            'country': row['country'],
+                            'is_starred': bool(row.get('is_starred', 0))
+                        } for row in results
+                    ]
+                    
+                    scored_repeaters = calculate_recency_weighted_scores(repeaters_data)
+                    min_recency_threshold = 0.01
+                    recent_repeaters = [r for r, score in scored_repeaters if score >= min_recency_threshold]
+                    
+                    if len(recent_repeaters) > 1:
+                        # Multiple matches - use graph and geographic selection
+                        graph_repeater = None
+                        graph_confidence = 0.0
+                        selection_method = None
+                        geo_repeater = None
+                        geo_confidence = 0.0
+                        
+                        if graph_based_validation and hasattr(self, 'mesh_graph') and self.mesh_graph:
+                            graph_repeater, graph_confidence, selection_method = select_repeater_by_graph(
+                                recent_repeaters, node_id, node_ids
+                            )
+                        
+                        if geographic_guessing_enabled:
+                            if proximity_method == 'path':
+                                geo_repeater, geo_confidence = select_by_path_proximity(
+                                    recent_repeaters, node_id, node_ids, None
+                                )
+                            else:
+                                geo_repeater, geo_confidence = select_by_simple_proximity(recent_repeaters)
+                        
+                        # Combine or choose
+                        selected_repeater = None
+                        confidence = 0.0
+                        final_method = None
+                        
+                        if graph_geographic_combined and graph_repeater and geo_repeater:
+                            graph_pubkey = graph_repeater.get('public_key', '')
+                            geo_pubkey = geo_repeater.get('public_key', '')
+                            
+                            if graph_pubkey and geo_pubkey and graph_pubkey == geo_pubkey:
+                                combined_confidence = (
+                                    graph_confidence * graph_geographic_weight +
+                                    geo_confidence * (1.0 - graph_geographic_weight)
+                                )
+                                selected_repeater = graph_repeater
+                                confidence = combined_confidence
+                                final_method = 'graph_geographic_combined'
+                            else:
+                                if graph_confidence > geo_confidence:
+                                    selected_repeater = graph_repeater
+                                    confidence = graph_confidence
+                                    final_method = selection_method or 'graph'
+                                else:
+                                    selected_repeater = geo_repeater
+                                    confidence = geo_confidence
+                                    final_method = 'geographic'
+                        else:
+                            if graph_repeater and graph_confidence >= 0.7:
+                                selected_repeater = graph_repeater
+                                confidence = graph_confidence
+                                final_method = selection_method or 'graph'
+                            elif not graph_repeater or graph_confidence < 0.7:
+                                if geo_repeater and (not graph_repeater or geo_confidence > graph_confidence):
+                                    selected_repeater = geo_repeater
+                                    confidence = geo_confidence
+                                    final_method = 'geographic'
+                                elif graph_repeater:
+                                    selected_repeater = graph_repeater
+                                    confidence = graph_confidence
+                                    final_method = selection_method or 'graph'
+                        
+                        if selected_repeater and confidence >= 0.5:
+                            repeater_info[node_id] = {
+                                'name': selected_repeater['name'],
+                                'public_key': selected_repeater['public_key'],
+                                'device_type': selected_repeater['device_type'],
+                                'last_seen': selected_repeater['last_seen'],
+                                'is_active': selected_repeater['is_active'],
+                                'found': True,
+                                'collision': False,
+                                'geographic_guess': (final_method == 'geographic'),
+                                'graph_guess': (final_method == 'graph' or final_method == 'graph_multihop'),
+                                'confidence': confidence,
+                                'selection_method': final_method,
+                                'latitude': selected_repeater.get('latitude'),
+                                'longitude': selected_repeater.get('longitude')
+                            }
+                        else:
+                            repeater_info[node_id] = {
+                                'found': True,
+                                'collision': True,
+                                'matches': len(recent_repeaters),
+                                'node_id': node_id
+                            }
+                    elif len(recent_repeaters) == 1:
+                        repeater = recent_repeaters[0]
+                        repeater_info[node_id] = {
+                            'name': repeater['name'],
+                            'public_key': repeater['public_key'],
+                            'device_type': repeater['device_type'],
+                            'last_seen': repeater['last_seen'],
+                            'is_active': repeater['is_active'],
+                            'found': True,
+                            'collision': False,
+                            'latitude': repeater.get('latitude'),
+                            'longitude': repeater.get('longitude')
+                        }
+                    else:
+                        repeater_info[node_id] = {
+                            'found': False,
+                            'node_id': node_id
+                        }
+                else:
+                    repeater_info[node_id] = {
+                        'found': False,
+                        'node_id': node_id
+                    }
+        except Exception as e:
+            self.logger.error(f"Error resolving path: {e}")
+            return {
+                'node_ids': node_ids,
+                'repeaters': [],
+                'valid': False,
+                'error': str(e)
+            }
+        
+        # Format response
+        repeaters_list = []
+        for node_id in node_ids:
+            info = repeater_info.get(node_id, {'found': False, 'node_id': node_id})
+            repeaters_list.append({
+                'node_id': node_id,
+                **info
+            })
+        
+        return {
+            'node_ids': node_ids,
+            'repeaters': repeaters_list,
+            'valid': True
+        }
+    
     def _setup_routes(self):
         """Setup all Flask routes - complete feature parity"""
         
@@ -286,6 +834,11 @@ class BotDataViewer:
         def radio():
             """Radio settings page"""
             return render_template('radio.html')
+        
+        @self.app.route('/mesh')
+        def mesh():
+            """Mesh graph visualization page"""
+            return render_template('mesh.html')
         
         # Favicon routes
         @self.app.route('/apple-touch-icon.png')
@@ -446,6 +999,242 @@ class BotDataViewer:
                 self.logger.error(f"Error optimizing database: {e}")
                 return jsonify({'success': False, 'error': str(e)}), 500
         
+        @self.app.route('/api/mesh/nodes')
+        def api_mesh_nodes():
+            """Get all repeater nodes with locations and metadata"""
+            conn = None
+            try:
+                conn = self._get_db_connection()
+                cursor = conn.cursor()
+                
+                query = '''
+                    SELECT 
+                        public_key,
+                        SUBSTR(public_key, 1, 2) as prefix,
+                        name,
+                        latitude,
+                        longitude,
+                        role,
+                        is_starred,
+                        last_heard,
+                        last_advert_timestamp
+                    FROM complete_contact_tracking
+                    WHERE role IN ('repeater', 'roomserver')
+                    AND latitude IS NOT NULL 
+                    AND longitude IS NOT NULL
+                    AND latitude != 0 
+                    AND longitude != 0
+                    ORDER BY name
+                '''
+                
+                cursor.execute(query)
+                rows = cursor.fetchall()
+                
+                nodes = []
+                for row in rows:
+                    nodes.append({
+                        'public_key': row['public_key'],
+                        'prefix': row['prefix'].lower(),
+                        'name': row['name'] or f"Node {row['prefix']}",
+                        'latitude': float(row['latitude']),
+                        'longitude': float(row['longitude']),
+                        'role': row['role'],
+                        'is_starred': bool(row['is_starred']),
+                        'last_heard': row['last_heard'],
+                        'last_advert_timestamp': row['last_advert_timestamp']
+                    })
+                
+                return jsonify({'nodes': nodes})
+            except Exception as e:
+                self.logger.error(f"Error getting mesh nodes: {e}")
+                return jsonify({'error': str(e)}), 500
+            finally:
+                if conn:
+                    conn.close()
+        
+        @self.app.route('/api/mesh/edges')
+        def api_mesh_edges():
+            """Get all graph edges with metadata"""
+            conn = None
+            try:
+                # Get optional query parameters
+                min_observations = request.args.get('min_observations', type=int)
+                days = request.args.get('days', type=int)
+                min_distance = request.args.get('min_distance', type=float)
+                max_distance = request.args.get('max_distance', type=float)
+                
+                conn = self._get_db_connection()
+                cursor = conn.cursor()
+                
+                query = '''
+                    SELECT 
+                        from_prefix,
+                        to_prefix,
+                        from_public_key,
+                        to_public_key,
+                        observation_count,
+                        first_seen,
+                        last_seen,
+                        avg_hop_position,
+                        geographic_distance
+                    FROM mesh_connections
+                    WHERE 1=1
+                '''
+                params = []
+                
+                if min_observations is not None:
+                    query += ' AND observation_count >= ?'
+                    params.append(min_observations)
+                
+                if days is not None:
+                    query += ' AND last_seen >= datetime("now", "-" || ? || " days")'
+                    params.append(days)
+                
+                if min_distance is not None:
+                    query += ' AND geographic_distance >= ?'
+                    params.append(min_distance)
+                
+                if max_distance is not None:
+                    query += ' AND geographic_distance <= ?'
+                    params.append(max_distance)
+                
+                query += ' ORDER BY last_seen DESC'
+                
+                cursor.execute(query, params)
+                rows = cursor.fetchall()
+                
+                edges = []
+                for row in rows:
+                    edges.append({
+                        'from_prefix': row['from_prefix'].lower(),
+                        'to_prefix': row['to_prefix'].lower(),
+                        'from_public_key': row['from_public_key'],
+                        'to_public_key': row['to_public_key'],
+                        'observation_count': row['observation_count'],
+                        'first_seen': row['first_seen'],
+                        'last_seen': row['last_seen'],
+                        'avg_hop_position': row['avg_hop_position'],
+                        'geographic_distance': row['geographic_distance']
+                    })
+                
+                return jsonify({'edges': edges})
+            except Exception as e:
+                self.logger.error(f"Error getting mesh edges: {e}")
+                return jsonify({'error': str(e)}), 500
+            finally:
+                if conn:
+                    conn.close()
+        
+        @self.app.route('/api/mesh/stats')
+        def api_mesh_stats():
+            """Get graph statistics"""
+            conn = None
+            try:
+                conn = self._get_db_connection()
+                cursor = conn.cursor()
+                
+                # Get node count
+                cursor.execute('''
+                    SELECT COUNT(*) as count
+                    FROM complete_contact_tracking
+                    WHERE role IN ('repeater', 'roomserver')
+                    AND latitude IS NOT NULL 
+                    AND longitude IS NOT NULL
+                    AND latitude != 0 
+                    AND longitude != 0
+                ''')
+                node_count = cursor.fetchone()['count']
+                
+                # Get edge statistics
+                cursor.execute('''
+                    SELECT 
+                        COUNT(*) as total_edges,
+                        SUM(observation_count) as total_observations,
+                        AVG(observation_count) as avg_observations,
+                        AVG(geographic_distance) as avg_distance,
+                        MIN(geographic_distance) as min_distance,
+                        MAX(geographic_distance) as max_distance,
+                        COUNT(CASE WHEN from_public_key IS NOT NULL THEN 1 END) as edges_with_from_key,
+                        COUNT(CASE WHEN to_public_key IS NOT NULL THEN 1 END) as edges_with_to_key,
+                        COUNT(CASE WHEN from_public_key IS NOT NULL AND to_public_key IS NOT NULL THEN 1 END) as edges_with_both_keys
+                    FROM mesh_connections
+                ''')
+                edge_stats = cursor.fetchone()
+                
+                # Get most connected nodes
+                cursor.execute('''
+                    SELECT 
+                        from_prefix as prefix,
+                        COUNT(*) as connection_count
+                    FROM mesh_connections
+                    GROUP BY from_prefix
+                    UNION ALL
+                    SELECT 
+                        to_prefix as prefix,
+                        COUNT(*) as connection_count
+                    FROM mesh_connections
+                    GROUP BY to_prefix
+                ''')
+                connection_counts = {}
+                for row in cursor.fetchall():
+                    prefix = row['prefix'].lower()
+                    connection_counts[prefix] = connection_counts.get(prefix, 0) + row['connection_count']
+                
+                # Get top 10 most connected
+                top_connected = sorted(connection_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+                
+                # Get recent edges count (last 24 hours)
+                cursor.execute('''
+                    SELECT COUNT(*) as count
+                    FROM mesh_connections
+                    WHERE last_seen >= datetime("now", "-1 days")
+                ''')
+                recent_edges = cursor.fetchone()['count']
+                
+                stats = {
+                    'node_count': node_count,
+                    'total_edges': edge_stats['total_edges'] or 0,
+                    'total_observations': edge_stats['total_observations'] or 0,
+                    'avg_observations': round(edge_stats['avg_observations'] or 0, 2),
+                    'avg_distance': round(edge_stats['avg_distance'] or 0, 2) if edge_stats['avg_distance'] else None,
+                    'min_distance': round(edge_stats['min_distance'] or 0, 2) if edge_stats['min_distance'] else None,
+                    'max_distance': round(edge_stats['max_distance'] or 0, 2) if edge_stats['max_distance'] else None,
+                    'edges_with_from_key': edge_stats['edges_with_from_key'] or 0,
+                    'edges_with_to_key': edge_stats['edges_with_to_key'] or 0,
+                    'edges_with_both_keys': edge_stats['edges_with_both_keys'] or 0,
+                    'top_connected': [{'prefix': prefix, 'count': count} for prefix, count in top_connected],
+                    'recent_edges_24h': recent_edges
+                }
+                
+                return jsonify(stats)
+            except Exception as e:
+                self.logger.error(f"Error getting mesh stats: {e}")
+                return jsonify({'error': str(e)}), 500
+        
+        @self.app.route('/api/mesh/resolve-path', methods=['POST'])
+        def api_resolve_path():
+            """Resolve a hex path to repeater names and locations using the same algorithm as path command"""
+            try:
+                data = request.get_json()
+                if not data:
+                    return jsonify({'error': 'JSON body required'}), 400
+                
+                path_input = data.get('path', '').strip()
+                if not path_input:
+                    return jsonify({'error': 'Path input required'}), 400
+                
+                # Check if db_manager is initialized
+                if not hasattr(self, 'db_manager') or not self.db_manager:
+                    self.logger.error("db_manager not initialized")
+                    return jsonify({'error': 'Database not initialized'}), 500
+                
+                resolved_path = self._resolve_path(path_input)
+                return jsonify(resolved_path)
+            except Exception as e:
+                import traceback
+                error_trace = traceback.format_exc()
+                self.logger.error(f"Error resolving path: {e}\n{error_trace}")
+                return jsonify({'error': str(e), 'traceback': error_trace}), 500
         
         @self.app.route('/api/stream_data', methods=['POST'])
         def api_stream_data():
@@ -460,6 +1249,10 @@ class BotDataViewer:
                     self._handle_command_data(data.get('data', {}))
                 elif data_type == 'packet':
                     self._handle_packet_data(data.get('data', {}))
+                elif data_type == 'mesh_edge':
+                    self._handle_mesh_edge_data(data.get('data', {}))
+                elif data_type == 'mesh_node':
+                    self._handle_mesh_node_data(data.get('data', {}))
                 else:
                     return jsonify({'error': 'Invalid data type'}), 400
                 
@@ -1428,7 +2221,8 @@ class BotDataViewer:
                         'connected_at': time.time(),
                         'last_activity': time.time(),
                         'subscribed_commands': False,
-                        'subscribed_packets': False
+                        'subscribed_packets': False,
+                        'subscribed_mesh': False
                     }
                     
                     # Connection status is shown via the green indicator in the navbar, no toast needed
@@ -1482,6 +2276,19 @@ class BotDataViewer:
                 self.logger.debug(f"Client {client_id} subscribed to packets")
             except Exception as e:
                 self.logger.error(f"Error in handle_subscribe_packets: {e}", exc_info=True)
+        
+        @self.socketio.on('subscribe_mesh')
+        def handle_subscribe_mesh():
+            """Handle mesh graph stream subscription"""
+            try:
+                client_id = getattr(request, 'sid', None)
+                with self._clients_lock:
+                    if client_id and client_id in self.connected_clients:
+                        self.connected_clients[client_id]['subscribed_mesh'] = True
+                emit('status', {'message': 'Subscribed to mesh graph stream'})
+                self.logger.debug(f"Client {client_id} subscribed to mesh graph")
+            except Exception as e:
+                self.logger.error(f"Error in handle_subscribe_mesh: {e}", exc_info=True)
         
         @self.socketio.on('ping')
         def handle_ping():
@@ -1538,6 +2345,37 @@ class BotDataViewer:
                 self.logger.debug(f"Broadcasted packet data to {len(subscribed_clients)} clients")
         except Exception as e:
             self.logger.error(f"Error handling packet data: {e}")
+    
+    def _handle_mesh_edge_data(self, edge_data):
+        """Handle incoming mesh edge data from bot"""
+        try:
+            # Broadcast to subscribed clients
+            with self._clients_lock:
+                subscribed_clients = [
+                    client_id for client_id, client_info in self.connected_clients.items()
+                    if client_info.get('subscribed_mesh', False)
+                ]
+            
+            if subscribed_clients:
+                event_type = 'mesh_edge_added' if edge_data.get('is_new', False) else 'mesh_edge_updated'
+                self.socketio.emit(event_type, edge_data, room=None)
+        except Exception as e:
+            self.logger.error(f"Error handling mesh edge data: {e}", exc_info=True)
+    
+    def _handle_mesh_node_data(self, node_data):
+        """Handle incoming mesh node data from bot"""
+        try:
+            # Broadcast to subscribed clients
+            with self._clients_lock:
+                subscribed_clients = [
+                    client_id for client_id, client_info in self.connected_clients.items()
+                    if client_info.get('subscribed_mesh', False)
+                ]
+            
+            if subscribed_clients:
+                self.socketio.emit('mesh_node_added', node_data, room=None)
+        except Exception as e:
+            self.logger.error(f"Error handling mesh node data: {e}", exc_info=True)
     
     def _start_database_polling(self):
         """Start background thread to poll database for new data"""

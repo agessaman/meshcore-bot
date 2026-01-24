@@ -609,6 +609,78 @@ track_command_details = true
 anonymize_users = false
 
 [Path_Command]
+# Recency decay half-life in hours (for longer advert intervals)
+# Default: 12 hours. For 48-72 hour advert intervals, use 36-48 hours.
+# This adjusts how quickly recency scores decay for older repeaters.
+# With 12-hour half-life: 48h ago = ~0.02 score, 72h ago = ~0.002 score
+# With 36-hour half-life: 48h ago = ~0.26 score, 72h ago = ~0.14 score
+recency_decay_half_life_hours = 36
+
+# Enable graph-based path validation
+# When enabled, uses observed mesh connections to improve path guessing accuracy
+# The graph learns from message paths to validate repeater selections
+graph_based_validation = true
+
+# Minimum edge observations required for graph confidence
+# Edges with fewer observations are not considered for path validation
+# Higher values = more conservative (requires more evidence)
+min_edge_observations = 3
+
+# Graph edge expiration (days without observation)
+# Edges not observed for this many days will be ignored
+# Helps filter out stale routing information
+graph_edge_expiration_days = 7
+
+# Graph persistence write strategy: 'immediate', 'batched', or 'hybrid'
+# - immediate: Write each edge update to database immediately (safer for frequent restarts, higher I/O)
+# - batched: Accumulate updates, flush periodically (better performance, risk of data loss on crash)
+# - hybrid: Immediate for new edges, batched for observation count increments (balanced)
+# Recommended: 'hybrid' for development (frequent restarts), 'batched' for production
+graph_write_strategy = hybrid
+
+# Batch write interval in seconds (only used if strategy is 'batched' or 'hybrid')
+# How often to flush pending edge updates to database
+# Lower values = more frequent writes (safer but more I/O)
+# For frequent restarts during development, use 5-10 seconds
+graph_batch_interval_seconds = 30
+
+# Maximum pending updates before forcing a flush (only used if strategy is 'batched' or 'hybrid')
+# If this many updates are pending, flush immediately even if interval hasn't elapsed
+# Prevents unbounded memory growth during high message volume
+graph_batch_max_pending = 100
+
+# Enhanced graph features for improved path accuracy
+# Enable bidirectional edge bonus (check if reverse edges exist for higher confidence)
+graph_use_bidirectional = true
+
+# Enable hop position validation (validate candidate appears in expected position based on avg_hop_position)
+graph_use_hop_position = true
+
+# Enable multi-hop path inference (find intermediate nodes when direct edges don't exist)
+graph_multi_hop_enabled = true
+
+# Maximum hops for multi-hop path inference (default: 2, can be increased to 3 for fallback)
+graph_multi_hop_max_hops = 2
+
+# Combine graph and geographic scores into weighted average (default: false, uses graph-first fallback)
+# When enabled, combines graph and geographic scores instead of choosing one or the other
+graph_geographic_combined = false
+
+# Weight for graph score when combining with geographic (0.0-1.0, default: 0.7)
+# Higher values give more weight to graph evidence, lower values favor geographic proximity
+graph_geographic_weight = 0.7
+
+# Prefer candidates that match stored public keys in graph edges (default: true)
+# When enabled, candidates whose public key matches the stored public key in an edge
+# get a significant confidence boost, as stored keys indicate high confidence in the edge
+# This aligns path command selection with what the graph visualization shows
+graph_prefer_stored_keys = true
+
+# Load only recent edges on startup (days, 0 = load all)
+# Useful for large graphs. Set to 0 to load all edges, or N to load only edges seen in last N days.
+# For development with frequent restarts, 0 (load all) is recommended to maintain graph quality
+graph_startup_load_days = 0
+
 # Geographic proximity calculation method
 # simple: Use proximity to bot location (default)
 # path: Use proximity to previous/next nodes in the path for more realistic routing

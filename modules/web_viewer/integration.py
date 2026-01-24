@@ -22,8 +22,59 @@ class BotIntegration:
         self.circuit_breaker_open = False
         self.circuit_breaker_failures = 0
         self.is_shutting_down = False
+        # Initialize HTTP session with connection pooling for efficient reuse
+        self._init_http_session()
         # Initialize the packet_stream table
         self._init_packet_stream_table()
+    
+    def _init_http_session(self):
+        """Initialize a requests.Session with connection pooling and keep-alive"""
+        try:
+            import requests
+            from requests.adapters import HTTPAdapter
+            from urllib3.util.retry import Retry
+            import urllib3
+            import logging
+            
+            # Suppress urllib3 connection pool debug messages
+            # "Resetting dropped connection" is expected behavior when connections are idle
+            # and the connection pool is working correctly
+            urllib3_logger = logging.getLogger('urllib3.connectionpool')
+            urllib3_logger.setLevel(logging.INFO)  # Suppress DEBUG messages
+            
+            # Also disable other urllib3 warnings
+            urllib3.disable_warnings(urllib3.exceptions.NotOpenSSLWarning)
+            
+            self.http_session = requests.Session()
+            
+            # Configure retry strategy
+            retry_strategy = Retry(
+                total=2,
+                backoff_factor=0.1,
+                status_forcelist=[429, 500, 502, 503, 504],
+            )
+            
+            # Mount adapter with connection pooling
+            # pool_block=False allows non-blocking behavior if pool is full
+            adapter = HTTPAdapter(
+                pool_connections=1,  # Single connection pool for web viewer
+                pool_maxsize=5,      # Allow up to 5 connections in the pool
+                max_retries=retry_strategy,
+                pool_block=False     # Don't block if pool is full
+            )
+            self.http_session.mount("http://", adapter)
+            self.http_session.mount("https://", adapter)
+            
+            # Set default headers for keep-alive (though urllib3 handles this automatically)
+            self.http_session.headers.update({
+                'Connection': 'keep-alive',
+            })
+        except ImportError:
+            # Fallback if requests is not available
+            self.http_session = None
+        except Exception as e:
+            self.bot.logger.debug(f"Error initializing HTTP session: {e}")
+            self.http_session = None
     
     def reset_circuit_breaker(self):
         """Reset the circuit breaker"""
@@ -276,9 +327,71 @@ class BotIntegration:
         else:
             return str(obj)
     
+    def send_mesh_edge_update(self, edge_data):
+        """Send mesh edge update to web viewer via HTTP API"""
+        try:
+            # Get web viewer URL from config
+            host = self.bot.config.get('Web_Viewer', 'host', fallback='127.0.0.1')
+            port = self.bot.config.getint('Web_Viewer', 'port', fallback=8080)
+            url = f"http://{host}:{port}/api/stream_data"
+            
+            payload = {
+                'type': 'mesh_edge',
+                'data': edge_data
+            }
+            
+            # Use session with connection pooling if available, otherwise fallback to requests.post
+            if self.http_session:
+                try:
+                    # Use a slightly longer timeout to allow connection reuse
+                    self.http_session.post(url, json=payload, timeout=1.0)
+                except Exception:
+                    # Silently fail - web viewer might not be running
+                    pass
+            else:
+                # Fallback if session not initialized
+                import requests
+                try:
+                    requests.post(url, json=payload, timeout=1.0)
+                except Exception:
+                    pass
+        except Exception as e:
+            self.bot.logger.debug(f"Error sending mesh edge update to web viewer: {e}")
+    
+    def send_mesh_node_update(self, node_data):
+        """Send mesh node update to web viewer via HTTP API"""
+        try:
+            import requests
+            import json
+            
+            # Get web viewer URL from config
+            host = self.bot.config.get('Web_Viewer', 'host', fallback='127.0.0.1')
+            port = self.bot.config.getint('Web_Viewer', 'port', fallback=8080)
+            url = f"http://{host}:{port}/api/stream_data"
+            
+            payload = {
+                'type': 'mesh_node',
+                'data': node_data
+            }
+            
+            # Send asynchronously (don't block)
+            try:
+                requests.post(url, json=payload, timeout=0.5)
+            except Exception:
+                # Silently fail - web viewer might not be running
+                pass
+        except Exception as e:
+            self.bot.logger.debug(f"Error sending mesh node update to web viewer: {e}")
+    
     def shutdown(self):
-        """Mark as shutting down"""
+        """Mark as shutting down and close HTTP session"""
         self.is_shutting_down = True
+        # Close HTTP session to clean up connections
+        if hasattr(self, 'http_session') and self.http_session:
+            try:
+                self.http_session.close()
+            except Exception:
+                pass
 
 class WebViewerIntegration:
     """Integration class for starting/stopping the web viewer with the bot"""

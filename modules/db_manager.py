@@ -32,6 +32,7 @@ class DBManager:
         'daily_stats',  # Repeater manager
         'unique_advert_packets',  # Repeater manager - unique packet tracking
         'purging_log',  # Repeater manager
+        'mesh_connections',  # Mesh graph for path validation
     }
     
     def __init__(self, bot: Any, db_path: str = "meshcore_bot.db"):
