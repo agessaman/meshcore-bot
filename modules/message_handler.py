@@ -501,6 +501,10 @@ class MessageHandler:
                 if out_path and out_path_len > 0 and hasattr(self.bot, 'mesh_graph') and self.bot.mesh_graph:
                     self._update_mesh_graph_from_advert(advert_data, out_path, out_path_len, packet_info)
                 
+                # Store complete path in observed_paths table
+                if out_path and out_path_len > 0:
+                    self._store_observed_path(advert_data, out_path, out_path_len, 'advert', packet_hash=packet_hash)
+                
                 # Track this advertisement in the complete database
                 if hasattr(self.bot, 'repeater_manager'):
                     # Track all advertisements regardless of type
@@ -1822,6 +1826,95 @@ class MessageHandler:
                 geographic_distance=geographic_distance
             )
     
+    def _store_observed_path(self, advert_data: Dict[str, Any], path_hex: str, path_length: int, packet_type: str, packet_hash: Optional[str] = None):
+        """Store a complete path in the observed_paths table.
+        
+        Args:
+            advert_data: Advertisement data dictionary with public_key (for adverts).
+            path_hex: Hex string of the complete path.
+            path_length: Length of the path in bytes.
+            packet_type: Type of packet ('advert', 'message', etc.).
+            packet_hash: Optional packet hash to group paths from the same packet.
+        """
+        if not path_hex or path_length < 2:
+            return  # Need at least 2 bytes (1 node) to form a path
+        
+        try:
+            # Parse path to extract from_prefix and to_prefix
+            path_nodes = []
+            for i in range(0, len(path_hex), 2):
+                if i + 1 < len(path_hex):
+                    path_nodes.append(path_hex[i:i+2].lower())
+            
+            if len(path_nodes) < 1:
+                return  # No valid path nodes
+            
+            from_prefix = path_nodes[0]
+            to_prefix = path_nodes[-1]  # Last hop in path (last repeater that forwarded to bot)
+            
+            # Get public_key for adverts (NULL for messages)
+            public_key = advert_data.get('public_key', '') if packet_type == 'advert' else None
+            
+            # Check if path already exists
+            if public_key:
+                # For adverts: check by public_key, path_hex, packet_type
+                query = '''
+                    SELECT id, observation_count, last_seen
+                    FROM observed_paths
+                    WHERE public_key = ? AND path_hex = ? AND packet_type = ?
+                '''
+                existing = self.bot.db_manager.execute_query(query, (public_key, path_hex, packet_type))
+            else:
+                # For messages: check by from_prefix, to_prefix, path_hex, packet_type
+                query = '''
+                    SELECT id, observation_count, last_seen
+                    FROM observed_paths
+                    WHERE from_prefix = ? AND to_prefix = ? AND path_hex = ? AND packet_type = ?
+                    AND public_key IS NULL
+                '''
+                existing = self.bot.db_manager.execute_query(query, (from_prefix, to_prefix, path_hex, packet_type))
+            
+            from datetime import datetime
+            now = datetime.now()
+            
+            if existing and len(existing) > 0:
+                # Path exists - update observation count and last_seen
+                path_id = existing[0]['id']
+                current_count = existing[0].get('observation_count', 1)
+                update_query = '''
+                    UPDATE observed_paths
+                    SET observation_count = ?, last_seen = ?
+                    WHERE id = ?
+                '''
+                self.bot.db_manager.execute_update(update_query, (current_count + 1, now.isoformat(), path_id))
+                self.logger.debug(f"Updated observed_paths entry for {packet_type} path {path_hex[:20]}... (count: {current_count + 1})")
+            else:
+                # New path - insert
+                insert_query = '''
+                    INSERT INTO observed_paths
+                    (public_key, packet_hash, from_prefix, to_prefix, path_hex, path_length, packet_type, first_seen, last_seen, observation_count)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                '''
+                # Only store packet_hash if it's valid (not None and not the default invalid hash)
+                stored_packet_hash = packet_hash if (packet_hash and packet_hash != "0000000000000000") else None
+                self.bot.db_manager.execute_update(insert_query, (
+                    public_key,
+                    stored_packet_hash,
+                    from_prefix,
+                    to_prefix,
+                    path_hex,
+                    path_length,
+                    packet_type,
+                    now.isoformat(),
+                    now.isoformat()
+                ))
+                self.logger.debug(f"Stored new {packet_type} path in observed_paths: {from_prefix}->{to_prefix} ({path_length} bytes)")
+        
+        except Exception as e:
+            self.logger.warning(f"Error storing observed path: {e}")
+            import traceback
+            self.logger.debug(traceback.format_exc())
+    
     def _get_bot_location_fallback(self) -> Optional[Tuple[float, float]]:
         """Get bot location from config to use as fallback reference for distance-based selection.
         
@@ -2890,6 +2983,8 @@ class MessageHandler:
                                     }
                                     self._update_mesh_graph_from_advert(contact_data, path_hex, path_length, packet_info)
                                     self.logger.debug(f"Mesh graph: Updated from NEW_CONTACT event for {contact_name} (key: {public_key[:16]}...)")
+                                    # Store complete path in observed_paths table
+                                    self._store_observed_path(contact_data, path_hex, path_length, 'advert', packet_hash=packet_hash)
                                 except Exception as e:
                                     self.logger.debug(f"Error updating mesh graph from NEW_CONTACT: {e}")
                             

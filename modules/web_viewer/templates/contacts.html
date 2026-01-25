@@ -875,22 +875,27 @@ class ModernContactsManager {
         const hopCount = contact.hop_count || 0;
         const outPath = contact.out_path || '';
         const outPathLen = contact.out_path_len || -1;
+        const allPaths = contact.all_paths || [];
+        const hasMultiplePaths = allPaths.length > 1;
         
         // Escape the path for use in HTML attributes
         const escapedPath = outPath.replace(/"/g, '&quot;');
         const escapedUserId = contact.user_id.replace(/"/g, '&quot;');
         
-        // If we have path data, add tooltip functionality
+        // If we have path data, add tooltip and click functionality
         if (outPath && outPathLen > 0) {
             // Create a unique ID for this tooltip
             const tooltipId = `hops-tooltip-${contact.user_id.substring(0, 16).replace(/[^a-zA-Z0-9]/g, '_')}`;
+            const pathCountText = hasMultiplePaths ? ` <small>(${allPaths.length} paths)</small>` : '';
             return `<span class="badge bg-primary path-badge" 
                           id="${tooltipId}" 
                           data-path-hex="${escapedPath}"
                           data-path-len="${outPathLen}"
                           data-user-id="${escapedUserId}"
-                          style="cursor: help; position: relative;">
-                      ${hopCount}
+                          onclick="contactsManager.showPathsModal('${escapedUserId}')"
+                          style="cursor: pointer; position: relative;" 
+                          title="${hasMultiplePaths ? 'Click to view all paths' : 'Click to view path'}">
+                      ${hopCount}${pathCountText}
                     </span>`;
         } else if (outPathLen === 0) {
             // Direct connection
@@ -927,7 +932,7 @@ class ModernContactsManager {
             
             badge.dataset.tooltipSetup = 'true';
             
-            // Load path data on first hover
+            // Load path data on first hover (for tooltip)
             let pathLoaded = false;
             let pathContent = 'Loading path...';
             
@@ -955,73 +960,77 @@ class ModernContactsManager {
                 customTooltip.style.display = 'none';
             };
             
+            // Only show tooltip on hover, click opens modal
             badge.addEventListener('mouseenter', async (event) => {
-                showTooltip(event);
-                
-                // If path is already loaded, we're done
-                if (pathLoaded) {
-                    return;
-                }
-                
-                // If we're already loading, don't start another request
-                if (badge.dataset.loading === 'true') {
-                    return;
-                }
-                
-                try {
-                    badge.dataset.loading = 'true';
+                // Don't show tooltip if user is clicking (will open modal)
+                if (event.target === badge && event.type === 'mouseenter') {
+                    showTooltip(event);
                     
-                    // Fetch decoded path from API
-                    const response = await fetch('/api/decode-path', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            path_hex: pathHex
-                        })
-                    });
-                    
-                    const data = await response.json();
-                    
-                    if (!response.ok || !data.success) {
-                        throw new Error(data.error || 'Failed to decode path');
+                    // If path is already loaded, we're done
+                    if (pathLoaded) {
+                        return;
                     }
                     
-                    if (!data.path || !Array.isArray(data.path)) {
-                        throw new Error('Invalid path data format');
+                    // If we're already loading, don't start another request
+                    if (badge.dataset.loading === 'true') {
+                        return;
                     }
                     
-                    // Format the path response
-                    const pathLines = data.path.map(node => {
-                        if (node.found) {
-                            // Escape HTML to prevent XSS
-                            const name = this.escapeHtml(node.name);
-                            // Add ❓ emoji if this is a geographic guess (collision)
-                            const guessIndicator = node.geographic_guess ? ' ❓' : '';
-                            return `${node.node_id}: ${name}${guessIndicator}`;
-                        } else {
-                            return `${node.node_id}: Unknown`;
+                    try {
+                        badge.dataset.loading = 'true';
+                        
+                        // Fetch decoded path from API
+                        const response = await fetch('/api/decode-path', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                path_hex: pathHex
+                            })
+                        });
+                        
+                        const data = await response.json();
+                        
+                        if (!response.ok || !data.success) {
+                            throw new Error(data.error || 'Failed to decode path');
                         }
-                    });
-                    
-                    pathContent = pathLines.length > 0 ? pathLines.join('<br>') : 'No path data';
-                    pathLoaded = true;
-                    badge.dataset.loading = 'false';
-                    
-                    // Update tooltip content if still hovering
-                    if (badge.matches(':hover')) {
-                        showTooltip(event);
-                    }
-                    
-                } catch (error) {
-                    console.error('Error loading path tooltip:', error);
-                    pathContent = 'Error loading path: ' + error.message;
-                    badge.dataset.loading = 'false';
-                    
-                    // Update tooltip content if still hovering
-                    if (badge.matches(':hover')) {
-                        showTooltip(event);
+                        
+                        if (!data.path || !Array.isArray(data.path)) {
+                            throw new Error('Invalid path data format');
+                        }
+                        
+                        // Format the path response
+                        const pathLines = data.path.map(node => {
+                            if (node.found) {
+                                // Escape HTML to prevent XSS
+                                const name = this.escapeHtml(node.name);
+                                // Add ❓ emoji if this is a geographic guess (collision)
+                                const guessIndicator = node.geographic_guess ? ' ❓' : '';
+                                return `${node.node_id}: ${name}${guessIndicator}`;
+                            } else {
+                                return `${node.node_id}: Unknown`;
+                            }
+                        });
+                        
+                        pathContent = pathLines.length > 0 ? pathLines.join('<br>') : 'No path data';
+                        pathLoaded = true;
+                        badge.dataset.loading = 'false';
+                        
+                        // Update tooltip content if still hovering
+                        if (badge.matches(':hover')) {
+                            showTooltip(event);
+                        }
+                        
+                    } catch (error) {
+                        console.error('Error loading path tooltip:', error);
+                        pathContent = 'Error loading path: ' + error.message;
+                        badge.dataset.loading = 'false';
+                        
+                        // Update tooltip content if still hovering
+                        if (badge.matches(':hover')) {
+                            showTooltip(event);
+                        }
                     }
                 }
             });
@@ -1033,6 +1042,166 @@ class ModernContactsManager {
                 }
             });
         });
+    }
+    
+    formatPathHex(pathHex) {
+        // Break hex string into two-character chunks with spaces for readability
+        if (!pathHex) return '';
+        // Match every 1-2 characters (handles odd-length strings gracefully)
+        return pathHex.match(/.{1,2}/g)?.join(' ') || pathHex;
+    }
+    
+    async showPathsModal(userId) {
+        // Find the contact data
+        const contact = this.filteredData.find(c => c.user_id === userId) || 
+                      this.contactsData.tracking_data.find(c => c.user_id === userId);
+        if (!contact) {
+            this.showError('Contact data not found');
+            return;
+        }
+        
+        const allPaths = contact.all_paths || [];
+        const primaryPath = contact.out_path || '';
+        
+        // Build modal content
+        let pathsHtml = '';
+        if (allPaths.length === 0) {
+            pathsHtml = '<p class="text-muted">No path data available for this contact.</p>';
+        } else {
+            pathsHtml = '<div class="list-group paths-list-group">';
+            for (let i = 0; i < allPaths.length; i++) {
+                const path = allPaths[i];
+                const isPrimary = path.path_hex === primaryPath;
+                const primaryBadge = isPrimary ? '<span class="badge bg-success ms-2">Primary</span>' : '';
+                const formattedPathHex = this.formatPathHex(path.path_hex);
+                
+                pathsHtml += `
+                    <div class="list-group-item path-list-item ${isPrimary ? 'border-success' : ''}" id="path-item-${i}">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1">
+                                <h6 class="mb-1">
+                                    Path ${i + 1} ${primaryBadge}
+                                    <small class="text-muted">(${path.path_length} bytes, ${path.observation_count} observations)</small>
+                                </h6>
+                                <p class="mb-1"><code class="path-hex-code">${this.escapeHtml(formattedPathHex)}</code></p>
+                                <small class="text-muted">Last seen: ${this.formatTimeAgo(path.last_seen)}</small>
+                            </div>
+                            <button class="btn btn-sm btn-outline-primary" onclick="contactsManager.decodePathInModal('${path.path_hex}', ${i})">
+                                <i class="fas fa-code"></i> Decode
+                            </button>
+                        </div>
+                        <div id="decoded-path-${i}" class="mt-2" style="display: none;"></div>
+                    </div>
+                `;
+            }
+            pathsHtml += '</div>';
+        }
+        
+        // Create modal HTML with dark mode support
+        const modalHtml = `
+            <div class="modal fade" id="pathsModal" tabindex="-1">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content paths-modal-content">
+                        <div class="modal-header paths-modal-header">
+                            <h5 class="modal-title">
+                                <i class="fas fa-route"></i> Paths for ${this.escapeHtml(contact.username || 'Unknown')}
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body paths-modal-body">
+                            <p class="text-muted">Showing ${allPaths.length} path${allPaths.length !== 1 ? 's' : ''} from observed_paths table.</p>
+                            ${pathsHtml}
+                        </div>
+                        <div class="modal-footer paths-modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Remove existing modal if any
+        const existingModal = document.getElementById('pathsModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+        
+        // Add modal to page
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        // Show modal
+        const modal = new bootstrap.Modal(document.getElementById('pathsModal'));
+        modal.show();
+        
+        // Clean up modal when hidden
+        document.getElementById('pathsModal').addEventListener('hidden.bs.modal', () => {
+            document.getElementById('pathsModal').remove();
+        });
+    }
+    
+    async decodePathInModal(pathHex, pathIndex) {
+        const decodedDiv = document.getElementById(`decoded-path-${pathIndex}`);
+        const button = document.querySelector(`#path-item-${pathIndex} button`);
+        
+        if (!decodedDiv || !button) return;
+        
+        // Show loading state
+        const originalHtml = button.innerHTML;
+        button.disabled = true;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Decoding...';
+        decodedDiv.style.display = 'block';
+        decodedDiv.innerHTML = '<div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Decoding path...</div>';
+        
+        try {
+            const response = await fetch('/api/decode-path', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    path_hex: pathHex
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Failed to decode path');
+            }
+            
+            if (!data.path || !Array.isArray(data.path)) {
+                throw new Error('Invalid path data format');
+            }
+            
+            // Format the decoded path
+            const pathLines = data.path.map(node => {
+                if (node.found) {
+                    const name = this.escapeHtml(node.name);
+                    const guessIndicator = node.geographic_guess ? ' <span class="badge bg-warning">Guess</span>' : '';
+                    return `<div class="mb-1"><strong>${node.node_id}:</strong> ${name}${guessIndicator}</div>`;
+                } else {
+                    return `<div class="mb-1 text-muted"><strong>${node.node_id}:</strong> Unknown</div>`;
+                }
+            });
+            
+            decodedDiv.innerHTML = `
+                <div class="alert alert-info decoded-path-alert mb-0">
+                    <strong>Decoded Path:</strong>
+                    <div class="mt-2 decoded-path-content">${pathLines.join('')}</div>
+                </div>
+            `;
+            
+        } catch (error) {
+            console.error('Error decoding path:', error);
+            decodedDiv.innerHTML = `
+                <div class="alert alert-danger mb-0">
+                    <strong>Error:</strong> ${this.escapeHtml(error.message)}
+                </div>
+            `;
+        } finally {
+            button.disabled = false;
+            button.innerHTML = originalHtml;
+        }
     }
     
     formatTimestamp(timestamp) {
@@ -1552,6 +1721,57 @@ document.addEventListener('DOMContentLoaded', () => {
     background-color: rgba(40, 40, 40, 0.95) !important;
     color: var(--text-color) !important;
     border: 1px solid var(--border-color);
+}
+
+/* Path modal dark mode styling */
+[data-theme="dark"] .paths-modal-content {
+    background-color: var(--card-bg);
+    color: var(--text-color);
+}
+
+[data-theme="dark"] .paths-modal-header {
+    background-color: var(--card-header-bg);
+    border-bottom-color: var(--border-color);
+    color: var(--text-color);
+}
+
+[data-theme="dark"] .paths-modal-body {
+    background-color: var(--card-bg);
+    color: var(--text-color);
+}
+
+[data-theme="dark"] .paths-modal-footer {
+    background-color: var(--card-header-bg);
+    border-top-color: var(--border-color);
+}
+
+[data-theme="dark"] .paths-list-group .path-list-item {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color);
+    color: var(--text-color);
+}
+
+[data-theme="dark"] .paths-list-group .path-list-item:hover {
+    background-color: var(--bg-tertiary);
+}
+
+[data-theme="dark"] .path-hex-code {
+    background-color: var(--bg-tertiary);
+    color: var(--text-color);
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+}
+
+[data-theme="dark"] .decoded-path-alert {
+    background-color: rgba(13, 110, 253, 0.2) !important;
+    border-color: rgba(13, 110, 253, 0.3) !important;
+    color: var(--text-color) !important;
+}
+
+[data-theme="dark"] .decoded-path-content {
+    color: var(--text-color);
 }
 </style>
 {% endblock %}

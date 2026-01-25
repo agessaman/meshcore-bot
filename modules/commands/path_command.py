@@ -53,6 +53,29 @@ class PathCommand(BaseCommand):
         # Get recency decay half-life for longer advert intervals (default: 12 hours, suggested: 36-48 for 48-72 hour intervals)
         self.recency_decay_half_life_hours = bot.config.getfloat('Path_Command', 'recency_decay_half_life_hours', fallback=12.0)
         
+        # Check for preset first, then apply individual settings (preset can be overridden)
+        preset = bot.config.get('Path_Command', 'path_selection_preset', fallback='balanced').lower()
+        
+        # Apply preset defaults, then individual settings override
+        if preset == 'geographic':
+            # Prioritize geographic proximity
+            preset_graph_confidence_threshold = 0.5
+            preset_distance_threshold = 30.0
+            preset_distance_penalty = 0.5
+            preset_final_hop_weight = 0.4
+        elif preset == 'graph':
+            # Prioritize graph evidence
+            preset_graph_confidence_threshold = 0.9
+            preset_distance_threshold = 50.0
+            preset_distance_penalty = 0.2
+            preset_final_hop_weight = 0.15
+        else:  # 'balanced' (default)
+            # Balanced approach
+            preset_graph_confidence_threshold = 0.7
+            preset_distance_threshold = 30.0
+            preset_distance_penalty = 0.3
+            preset_final_hop_weight = 0.25
+        
         # Graph-based validation settings
         self.graph_based_validation = bot.config.getboolean('Path_Command', 'graph_based_validation', fallback=True)
         self.min_edge_observations = bot.config.getint('Path_Command', 'min_edge_observations', fallback=3)
@@ -65,7 +88,32 @@ class PathCommand(BaseCommand):
         self.graph_geographic_combined = bot.config.getboolean('Path_Command', 'graph_geographic_combined', fallback=False)
         self.graph_geographic_weight = bot.config.getfloat('Path_Command', 'graph_geographic_weight', fallback=0.7)
         self.graph_geographic_weight = max(0.0, min(1.0, self.graph_geographic_weight))  # Clamp to 0.0-1.0
+        # Apply preset for confidence threshold, but allow override
+        self.graph_confidence_override_threshold = bot.config.getfloat('Path_Command', 'graph_confidence_override_threshold', fallback=preset_graph_confidence_threshold)
+        self.graph_confidence_override_threshold = max(0.0, min(1.0, self.graph_confidence_override_threshold))  # Clamp to 0.0-1.0
+        self.graph_distance_penalty_enabled = bot.config.getboolean('Path_Command', 'graph_distance_penalty_enabled', fallback=True)
+        
+        self.graph_max_reasonable_hop_distance_km = bot.config.getfloat('Path_Command', 'graph_max_reasonable_hop_distance_km', fallback=preset_distance_threshold)
+        self.graph_distance_penalty_strength = bot.config.getfloat('Path_Command', 'graph_distance_penalty_strength', fallback=preset_distance_penalty)
+        self.graph_distance_penalty_strength = max(0.0, min(1.0, self.graph_distance_penalty_strength))  # Clamp to 0.0-1.0
+        self.graph_zero_hop_bonus = bot.config.getfloat('Path_Command', 'graph_zero_hop_bonus', fallback=0.4)
+        self.graph_zero_hop_bonus = max(0.0, min(1.0, self.graph_zero_hop_bonus))  # Clamp to 0.0-1.0
         self.graph_prefer_stored_keys = bot.config.getboolean('Path_Command', 'graph_prefer_stored_keys', fallback=True)
+        
+        # Final hop proximity settings for graph selection
+        # Defaults based on LoRa ranges: typical < 30km, long up to 200km, very close < 10km
+        self.graph_final_hop_proximity_enabled = bot.config.getboolean('Path_Command', 'graph_final_hop_proximity_enabled', fallback=True)
+        self.graph_final_hop_proximity_weight = bot.config.getfloat('Path_Command', 'graph_final_hop_proximity_weight', fallback=preset_final_hop_weight)
+        self.graph_final_hop_proximity_weight = max(0.0, min(1.0, self.graph_final_hop_proximity_weight))  # Clamp to 0.0-1.0
+        self.graph_final_hop_max_distance = bot.config.getfloat('Path_Command', 'graph_final_hop_max_distance', fallback=0.0)
+        self.graph_final_hop_proximity_normalization_km = bot.config.getfloat('Path_Command', 'graph_final_hop_proximity_normalization_km', fallback=200.0)  # Long LoRa range
+        self.graph_final_hop_very_close_threshold_km = bot.config.getfloat('Path_Command', 'graph_final_hop_very_close_threshold_km', fallback=10.0)
+        self.graph_final_hop_close_threshold_km = bot.config.getfloat('Path_Command', 'graph_final_hop_close_threshold_km', fallback=30.0)  # Typical LoRa range
+        self.graph_final_hop_max_proximity_weight = bot.config.getfloat('Path_Command', 'graph_final_hop_max_proximity_weight', fallback=0.6)
+        self.graph_final_hop_max_proximity_weight = max(0.0, min(1.0, self.graph_final_hop_max_proximity_weight))  # Clamp to 0.0-1.0
+        self.graph_path_validation_max_bonus = bot.config.getfloat('Path_Command', 'graph_path_validation_max_bonus', fallback=0.3)
+        self.graph_path_validation_max_bonus = max(0.0, min(1.0, self.graph_path_validation_max_bonus))  # Clamp to 0.0-1.0
+        self.graph_path_validation_obs_divisor = bot.config.getfloat('Path_Command', 'graph_path_validation_obs_divisor', fallback=50.0)
         
         # Get star bias multiplier (how much to boost starred repeaters' scores)
         # Default 2.5 means starred repeaters get 2.5x their normal score
@@ -378,11 +426,12 @@ class PathCommand(BaseCommand):
                                     selection_method = 'geographic'
                         else:
                             # Default behavior: prefer graph, fall back to geographic
-                            if graph_repeater and graph_confidence >= 0.7:
+                            # Use configurable threshold instead of hardcoded 0.7
+                            if graph_repeater and graph_confidence >= self.graph_confidence_override_threshold:
                                 selected_repeater = graph_repeater
                                 confidence = graph_confidence
                                 selection_method = selection_method or 'graph'
-                            elif not graph_repeater or graph_confidence < 0.7:
+                            elif not graph_repeater or graph_confidence < self.graph_confidence_override_threshold:
                                 # Fall back to geographic proximity if graph didn't provide high confidence
                                 if geo_repeater and (not graph_repeater or geo_confidence > graph_confidence):
                                     selected_repeater = geo_repeater
@@ -1202,8 +1251,76 @@ class PathCommand(BaseCommand):
                             stored_key_bonus = max(stored_key_bonus, 0.4)  # Strong bonus for matching stored key
                             self.logger.debug(f"Found stored public key match for {repeater.get('name', 'unknown')} in edge {candidate_prefix}->{next_node_id}")
             
-            # Add stored key bonus to graph score
-            graph_score_with_bonus = min(1.0, graph_score + stored_key_bonus)
+            # Zero-hop bonus: If this repeater has been heard directly by the bot (zero-hop advert),
+            # it's strong evidence it's close and should be preferred, even for intermediate hops
+            zero_hop_bonus = 0.0
+            hop_count = repeater.get('hop_count')
+            if hop_count is not None and hop_count == 0:
+                # This repeater has been heard directly - strong evidence it's close to bot
+                zero_hop_bonus = self.graph_zero_hop_bonus
+                self.logger.debug(f"Zero-hop bonus for {repeater.get('name', 'unknown')}: {zero_hop_bonus:.2%} (heard directly by bot)")
+            
+            # Add stored key bonus and zero-hop bonus to graph score
+            graph_score_with_bonus = min(1.0, graph_score + stored_key_bonus + zero_hop_bonus)
+            
+            # Path validation bonus: Check if candidate's stored paths match the current path context
+            # This helps resolve prefix collisions by matching path patterns
+            # For prefix collision resolution: if multiple repeaters share the same prefix,
+            # check which one has stored paths that match the path we're decoding
+            path_validation_bonus = 0.0
+            if candidate_public_key and len(path_context) > 1:
+                try:
+                    # Query stored paths from this repeater
+                    query = '''
+                        SELECT path_hex, observation_count, last_seen, from_prefix, to_prefix
+                        FROM observed_paths
+                        WHERE public_key = ? AND packet_type = 'advert'
+                        ORDER BY observation_count DESC, last_seen DESC
+                        LIMIT 10
+                    '''
+                    stored_paths = self.bot.db_manager.execute_query(query, (candidate_public_key,))
+                    
+                    if stored_paths:
+                        # Build the path we're decoding (full path context)
+                        decoded_path_hex = ''.join([node.lower() for node in path_context])
+                        
+                        # Check if any stored path shares common segments with decoded path
+                        # This is useful for prefix collision resolution
+                        for stored_path in stored_paths:
+                            stored_hex = stored_path.get('path_hex', '').lower()
+                            obs_count = stored_path.get('observation_count', 1)
+                            
+                            if stored_hex:
+                                # Check for shared path segments (helps identify which repeater in prefix collision)
+                                # Look for common intermediate hops between stored path and decoded path
+                                stored_nodes = [stored_hex[i:i+2] for i in range(0, len(stored_hex), 2)]
+                                decoded_nodes = [decoded_path_hex[i:i+2] for i in range(0, len(decoded_path_hex), 2)]
+                                
+                                # Count how many nodes appear in both paths (in order)
+                                common_segments = 0
+                                min_len = min(len(stored_nodes), len(decoded_nodes))
+                                for i in range(min_len):
+                                    if stored_nodes[i] == decoded_nodes[i]:
+                                        common_segments += 1
+                                    else:
+                                        break
+                                
+                                # Bonus based on common segments and observation count
+                                if common_segments >= 2:
+                                    # At least 2 common segments - significant match
+                                    segment_bonus = min(0.2, 0.05 * common_segments)
+                                    obs_bonus = min(0.15, obs_count / self.graph_path_validation_obs_divisor)
+                                    path_validation_bonus = max(path_validation_bonus, segment_bonus + obs_bonus)
+                                    # Cap at max bonus
+                                    path_validation_bonus = min(self.graph_path_validation_max_bonus, path_validation_bonus)
+                                    self.logger.debug(f"Path validation match for {repeater.get('name', 'unknown')}: {common_segments} common segments (obs: {obs_count})")
+                                    if path_validation_bonus >= self.graph_path_validation_max_bonus * 0.9:
+                                        break  # Strong match found
+                except Exception as e:
+                    self.logger.debug(f"Error checking path validation for {candidate_prefix}: {e}")
+            
+            # Add path validation bonus to graph score
+            graph_score_with_bonus = min(1.0, graph_score_with_bonus + path_validation_bonus)
             
             # Second attempt: Multi-hop inference if direct edges have low confidence
             multi_hop_score = 0.0
@@ -1223,6 +1340,91 @@ class PathCommand(BaseCommand):
             # Use the best score (direct edge with bonus or multi-hop)
             candidate_score = max(graph_score_with_bonus, multi_hop_score)
             method = 'graph_multihop' if multi_hop_score > graph_score_with_bonus else 'graph'
+            
+            # Apply distance penalty for intermediate hops (prevents selecting very distant repeaters)
+            # This is especially important when graph has strong evidence for long-distance links
+            if self.graph_distance_penalty_enabled and next_node_id is not None:  # Not final hop
+                repeater_lat = repeater.get('latitude')
+                repeater_lon = repeater.get('longitude')
+                
+                if repeater_lat is not None and repeater_lon is not None:
+                    max_distance = 0.0
+                    
+                    # Check distance from previous node to candidate (use stored edge distance if available)
+                    if prev_node_id:
+                        prev_to_candidate_edge = mesh_graph.get_edge(prev_node_id, candidate_prefix)
+                        if prev_to_candidate_edge and prev_to_candidate_edge.get('geographic_distance'):
+                            # Use stored geographic distance from edge (most accurate)
+                            distance = prev_to_candidate_edge.get('geographic_distance')
+                            max_distance = max(max_distance, distance)
+                        else:
+                            # Fall back to calculating from repeater locations if available
+                            # Try to find previous repeater in the candidates list (from earlier in path)
+                            # Note: This is a limitation - we'd need to track previous selections
+                            # For now, we'll rely on edge distances which are stored when paths are observed
+                            pass
+                    
+                    # Check distance from candidate to next node (use stored edge distance if available)
+                    if next_node_id:
+                        candidate_to_next_edge = mesh_graph.get_edge(candidate_prefix, next_node_id)
+                        if candidate_to_next_edge and candidate_to_next_edge.get('geographic_distance'):
+                            distance = candidate_to_next_edge.get('geographic_distance')
+                            max_distance = max(max_distance, distance)
+                    
+                    # Apply penalty if distance exceeds reasonable hop distance
+                    if max_distance > self.graph_max_reasonable_hop_distance_km:
+                        # Calculate penalty: stronger penalty for longer distances
+                        excess_distance = max_distance - self.graph_max_reasonable_hop_distance_km
+                        # Normalize excess distance (penalty increases up to 2x the max reasonable distance)
+                        normalized_excess = min(excess_distance / self.graph_max_reasonable_hop_distance_km, 1.0)
+                        # Apply penalty: up to penalty_strength reduction
+                        penalty = normalized_excess * self.graph_distance_penalty_strength
+                        candidate_score = candidate_score * (1.0 - penalty)
+                        self.logger.debug(f"Applied distance penalty to {repeater.get('name', 'unknown')}: {max_distance:.1f}km hop (penalty: {penalty:.2%}, score: {candidate_score:.3f})")
+                    elif max_distance > 0:
+                        # Even if under threshold, very long hops should get a small penalty
+                        # This helps prefer shorter hops when graph evidence is similar
+                        if max_distance > self.graph_max_reasonable_hop_distance_km * 0.8:  # 80% of threshold
+                            small_penalty = (max_distance - self.graph_max_reasonable_hop_distance_km * 0.8) / (self.graph_max_reasonable_hop_distance_km * 0.2) * self.graph_distance_penalty_strength * 0.5
+                            candidate_score = candidate_score * (1.0 - small_penalty)
+            
+            # For final hop (next_node_id is None), add bot location proximity bonus
+            if next_node_id is None and self.graph_final_hop_proximity_enabled:
+                if self.bot_latitude is not None and self.bot_longitude is not None:
+                    repeater_lat = repeater.get('latitude')
+                    repeater_lon = repeater.get('longitude')
+                    
+                    if repeater_lat is not None and repeater_lon is not None:
+                        # Calculate distance to bot
+                        distance = calculate_distance(
+                            self.bot_latitude, self.bot_longitude,
+                            repeater_lat, repeater_lon
+                        )
+                        
+                        # Apply max distance threshold if configured
+                        if self.graph_final_hop_max_distance > 0 and distance > self.graph_final_hop_max_distance:
+                            # Beyond max distance - skip proximity bonus
+                            self.logger.debug(f"Final hop candidate {repeater.get('name', 'unknown')} is {distance:.1f}km from bot, beyond max distance {self.graph_final_hop_max_distance:.1f}km")
+                        else:
+                            # Normalize distance to 0-1 score (inverse: closer = higher score)
+                            # Use configurable normalization distance (default 500km for more aggressive scoring)
+                            normalized_distance = min(distance / self.graph_final_hop_proximity_normalization_km, 1.0)
+                            proximity_score = 1.0 - normalized_distance
+                            
+                            # For final hop, use a higher effective weight to ensure proximity matters more
+                            # The configured weight is a minimum; we boost it for very close repeaters
+                            effective_weight = self.graph_final_hop_proximity_weight
+                            if distance < self.graph_final_hop_very_close_threshold_km:
+                                # Very close - boost weight up to max
+                                effective_weight = min(self.graph_final_hop_max_proximity_weight, self.graph_final_hop_proximity_weight * 2.0)
+                            elif distance < self.graph_final_hop_close_threshold_km:
+                                # Close - moderate boost
+                                effective_weight = min(0.5, self.graph_final_hop_proximity_weight * 1.5)
+                            
+                            # Combine with graph score using effective weight
+                            candidate_score = candidate_score * (1.0 - effective_weight) + proximity_score * effective_weight
+                            
+                            self.logger.debug(f"Final hop proximity for {repeater.get('name', 'unknown')}: distance={distance:.1f}km, proximity_score={proximity_score:.3f}, effective_weight={effective_weight:.3f}, combined_score={candidate_score:.3f}")
             
             # Apply star bias multiplier if repeater is starred
             # Starred repeaters should get significant advantage in graph selection

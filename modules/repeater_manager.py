@@ -27,11 +27,11 @@ class RepeaterManager:
         # Use the shared database manager
         self.db_manager = bot.db_manager
         
+        # Check for and handle database schema migration FIRST (before creating indexes)
+        self._migrate_database_schema()
+        
         # Initialize repeater-specific tables
         self._init_repeater_tables()
-        
-        # Check for and handle database schema migration
-        self._migrate_database_schema()
         
         # Initialize auto-purge monitoring
         self.contact_limit = 300  # MeshCore device limit (will be updated from device info)
@@ -143,6 +143,21 @@ class RepeaterManager:
                 UNIQUE(from_prefix, to_prefix)
             ''')
             
+            # Create observed_paths table for storing complete paths from adverts and messages
+            self.db_manager.create_table('observed_paths', '''
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                public_key TEXT,
+                packet_hash TEXT,
+                from_prefix TEXT NOT NULL,
+                to_prefix TEXT NOT NULL,
+                path_hex TEXT NOT NULL,
+                path_length INTEGER NOT NULL,
+                packet_type TEXT NOT NULL,
+                first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                observation_count INTEGER DEFAULT 1
+            ''')
+            
             # Create indexes for better performance
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
@@ -167,6 +182,26 @@ class RepeaterManager:
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_from_prefix ON mesh_connections(from_prefix)')
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_to_prefix ON mesh_connections(to_prefix)')
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_last_seen ON mesh_connections(last_seen)')
+                
+                # Indexes for observed_paths table
+                # Index for advert path lookups by repeater (where public_key IS NOT NULL)
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_observed_paths_public_key ON observed_paths(public_key, packet_type)')
+                # Index for grouping paths by packet hash (same packet via different paths)
+                # Only create if packet_hash column exists (migration may have just added it)
+                cursor.execute("PRAGMA table_info(observed_paths)")
+                observed_paths_columns = [row[1] for row in cursor.fetchall()]
+                if 'packet_hash' in observed_paths_columns:
+                    cursor.execute('CREATE INDEX IF NOT EXISTS idx_observed_paths_packet_hash ON observed_paths(packet_hash) WHERE packet_hash IS NOT NULL')
+                # Unique index for adverts: one entry per repeater per unique path
+                cursor.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_observed_paths_advert_unique ON observed_paths(public_key, path_hex, packet_type) WHERE public_key IS NOT NULL')
+                # Index for general path lookups by endpoints
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_observed_paths_endpoints ON observed_paths(from_prefix, to_prefix, packet_type)')
+                # Unique index for messages: one entry per unique path between endpoints
+                cursor.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_observed_paths_message_unique ON observed_paths(from_prefix, to_prefix, path_hex, packet_type) WHERE public_key IS NULL')
+                # Index for recency filtering
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_observed_paths_last_seen ON observed_paths(last_seen)')
+                # Index for type-specific queries
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_observed_paths_type_seen ON observed_paths(packet_type, last_seen)')
                 conn.commit()
             
             self.logger.info("Repeater contacts database initialized successfully")
@@ -222,6 +257,18 @@ class RepeaterManager:
                     cursor.execute("ALTER TABLE complete_contact_tracking ADD COLUMN is_starred BOOLEAN DEFAULT 0")
                     conn.commit()
                 
+                # Check if observed_paths table exists and add packet_hash column if needed
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='observed_paths'")
+                if cursor.fetchone():
+                    cursor.execute("PRAGMA table_info(observed_paths)")
+                    observed_paths_columns = [row[1] for row in cursor.fetchall()]
+                    
+                    if 'packet_hash' not in observed_paths_columns:
+                        self.logger.info("Adding packet_hash column to observed_paths")
+                        cursor.execute("ALTER TABLE observed_paths ADD COLUMN packet_hash TEXT")
+                        conn.commit()
+                        # Index will be created in _init_repeater_tables() after migration completes
+                
                 self.logger.info("Database schema migration completed")
                 
         except Exception as e:
@@ -263,9 +310,21 @@ class RepeaterManager:
             out_path = advert_data.get('out_path', '')
             out_path_len = advert_data.get('out_path_len', -1)
             
+            # Check if this packet_hash was already processed for this contact
+            # This prevents duplicate writes of the same advert packet
+            if packet_hash and packet_hash != "0000000000000000":
+                existing_packet = self.db_manager.execute_query(
+                    'SELECT id FROM unique_advert_packets WHERE public_key = ? AND packet_hash = ?',
+                    (public_key, packet_hash)
+                )
+                if existing_packet:
+                    # This packet_hash was already processed - skip contact update
+                    self.logger.debug(f"Skipping duplicate advert packet for {name}: {packet_hash[:8]}... (already processed)")
+                    return True  # Return True since packet was already tracked (not an error)
+            
             # Check if this contact is already in our complete tracking
             existing = self.db_manager.execute_query(
-                'SELECT id, advert_count, last_heard, latitude, longitude, city, state, country FROM complete_contact_tracking WHERE public_key = ?',
+                'SELECT id, advert_count, last_heard, latitude, longitude, city, state, country, out_path, out_path_len FROM complete_contact_tracking WHERE public_key = ?',
                 (public_key,)
             )
             
@@ -294,6 +353,14 @@ class RepeaterManager:
             if existing:
                 # Update existing entry
                 advert_count = existing[0]['advert_count'] + 1
+                existing_out_path = existing[0].get('out_path')
+                existing_out_path_len = existing[0].get('out_path_len')
+                
+                # Only update out_path and out_path_len if they are NULL/empty (first-seen path)
+                # This preserves the first (shortest) path and doesn't overwrite it
+                final_out_path = out_path if (not existing_out_path or existing_out_path == '') else existing_out_path
+                final_out_path_len = out_path_len if (existing_out_path_len is None or existing_out_path_len == -1) else existing_out_path_len
+                
                 self.db_manager.execute_update('''
                     UPDATE complete_contact_tracking 
                     SET name = ?, last_heard = ?, advert_count = ?, role = ?, device_type = ?,
@@ -306,7 +373,7 @@ class RepeaterManager:
                     location_info['latitude'], location_info['longitude'], 
                     location_info['city'], location_info['state'], location_info['country'],
                     json.dumps(advert_data), signal_strength, snr, hop_count,
-                    current_time, out_path, out_path_len, public_key
+                    current_time, final_out_path, final_out_path_len, public_key
                 ))
                 
                 self.logger.debug(f"Updated contact tracking: {name} ({role}) - count: {advert_count}")

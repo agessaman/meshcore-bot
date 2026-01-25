@@ -609,12 +609,43 @@ track_command_details = true
 anonymize_users = false
 
 [Path_Command]
+# Path Selection Preset
+# Choose a preset that configures multiple related settings:
+# - balanced: Balanced approach using both graph evidence and geographic proximity (default)
+# - geographic: Prioritize geographic proximity over graph evidence (better for local networks)
+# - graph: Prioritize graph evidence over geographic proximity (better for well-connected networks)
+# Individual settings below can override preset values
+# See docs/PATH_COMMAND_CONFIG.md for detailed documentation
+path_selection_preset = balanced
+
+# Basic Settings
+# Geographic proximity calculation method
+# simple: Use proximity to bot location (default)
+# path: Use proximity to previous/next nodes in the path for more realistic routing
+proximity_method = simple
+
+# Enable path proximity fallback
+# When path proximity can't be calculated (missing location data), fall back to simple proximity
+path_proximity_fallback = true
+
+# Maximum range for geographic proximity guessing (kilometers, 0 = disabled)
+# Typical LoRa transmission: < 30km, Long LoRa transmission: up to 200km
+# Repeaters beyond this distance will have reduced confidence or be rejected
+max_proximity_range = 200
+
+# Maximum age for repeater data in path matching (days, 0 = disabled)
+# Only include repeaters that have been heard within this many days
+max_repeater_age_days = 14
+
+# Recency vs Proximity weighting (0.0 to 1.0)
+# 0.0 = 100% proximity (only distance matters)
+# 1.0 = 100% recency (only when last heard matters)
+# 0.4 = 40% recency, 60% proximity (balanced)
+recency_weight = 0.4
+
 # Recency decay half-life in hours (for longer advert intervals)
 # Default: 12 hours. For 48-72 hour advert intervals, use 36-48 hours.
-# This adjusts how quickly recency scores decay for older repeaters.
-# With 12-hour half-life: 48h ago = ~0.02 score, 72h ago = ~0.002 score
-# With 36-hour half-life: 48h ago = ~0.26 score, 72h ago = ~0.14 score
-recency_decay_half_life_hours = 36
+recency_decay_half_life_hours = 12
 
 # Enable graph-based path validation
 # When enabled, uses observed mesh connections to improve path guessing accuracy
@@ -670,11 +701,80 @@ graph_geographic_combined = false
 # Higher values give more weight to graph evidence, lower values favor geographic proximity
 graph_geographic_weight = 0.7
 
+# Minimum graph confidence threshold to override geographic selection (0.0-1.0, default: 0.7)
+# When graph confidence >= this value, graph selection overrides geographic even if geographic prefers closer repeaters
+# Lower values (e.g., 0.5) = geographic gets more consideration, higher values (e.g., 0.9) = graph gets more priority
+# Set to 1.0 to always prefer geographic when available, or 0.0 to always prefer graph
+graph_confidence_override_threshold = 0.7
+
+# Enable distance penalties for intermediate hops in graph selection (default: true)
+# When enabled, graph scores are penalized for candidates that create long-distance hops (>50km)
+# This prevents graph from selecting very distant repeaters even if they have strong graph evidence
+graph_distance_penalty_enabled = true
+
+# Maximum reasonable hop distance in km before applying penalty (default: 50)
+# Hops longer than this distance will have their graph score penalized
+# Lower values = more aggressive penalty for long hops
+graph_max_reasonable_hop_distance_km = 50
+
+# Distance penalty strength (0.0-1.0, default: 0.3)
+# How much to penalize graph scores for long-distance hops
+# 0.3 = 30% penalty for hops beyond max_reasonable_hop_distance
+# Higher values = stronger penalty, lower values = weaker penalty
+graph_distance_penalty_strength = 0.3
+
+# Zero-hop advert bonus for graph selection (0.0-1.0, default: 0.4)
+# Repeaters that have been heard directly by the bot (zero-hop adverts) get this bonus
+# This is strong evidence the repeater is close, even for intermediate hops
+# Higher values = stronger preference for repeaters heard directly
+graph_zero_hop_bonus = 0.4
+
 # Prefer candidates that match stored public keys in graph edges (default: true)
 # When enabled, candidates whose public key matches the stored public key in an edge
 # get a significant confidence boost, as stored keys indicate high confidence in the edge
 # This aligns path command selection with what the graph visualization shows
 graph_prefer_stored_keys = true
+
+# Enable bot location proximity consideration for final hop in graph selection (default: true)
+# When enabled, for the final hop (last repeater before bot), candidates closer to bot location
+# get a proximity bonus added to their graph score
+graph_final_hop_proximity_enabled = true
+
+# Weight for proximity score when combining with graph score for final hop (0.0-1.0, default: 0.25)
+# Higher values give more weight to proximity, lower values favor graph evidence
+# 0.25 means 25% proximity, 75% graph score
+graph_final_hop_proximity_weight = 0.25
+
+# Maximum distance in km for final hop proximity consideration (default: 0 = no limit)
+# Repeaters beyond this distance from bot will not receive proximity bonus
+# Set to 0 to disable distance limiting
+graph_final_hop_max_distance = 0
+
+# Distance normalization for final hop proximity scoring (km, default: 500)
+# Closer repeaters get higher proximity scores. Lower values = more aggressive scoring
+# 500km means repeaters within 500km get full scoring range, beyond that scores decrease
+graph_final_hop_proximity_normalization_km = 500
+
+# Very close distance threshold for boosted proximity weight (km, default: 50)
+# Repeaters within this distance get 2x proximity weight (up to 0.6 max)
+graph_final_hop_very_close_threshold_km = 50
+
+# Close distance threshold for boosted proximity weight (km, default: 100)
+# Repeaters within this distance get 1.5x proximity weight (up to 0.5 max)
+graph_final_hop_close_threshold_km = 100
+
+# Maximum proximity weight for very close repeaters (0.0-1.0, default: 0.6)
+# When a repeater is within very_close_threshold_km, proximity weight is boosted up to this value
+graph_final_hop_max_proximity_weight = 0.6
+
+# Path validation bonus settings
+# Maximum bonus for path validation matches (0.0-1.0, default: 0.3)
+# Higher values give more weight to stored path matches when resolving prefix collisions
+graph_path_validation_max_bonus = 0.3
+
+# Observation count divisor for path validation bonus (default: 50.0)
+# Lower values = stronger bonus from observation count. 50.0 means 50 observations = 0.15 bonus
+graph_path_validation_obs_divisor = 50.0
 
 # Load only recent edges on startup (days, 0 = load all)
 # Useful for large graphs. Set to 0 to load all edges, or N to load only edges seen in last N days.
@@ -701,7 +801,7 @@ max_proximity_range = 200
 # Only include repeaters that have been heard within this many days
 # Helps filter out stale or inactive repeaters from path decoding
 # Set to 0 to disable age filtering
-max_repeater_age_days = 14
+max_repeater_age_days = 7
 
 # Star bias multiplier for path command
 # When a contact is starred in the web viewer, multiply its selection score by this value
@@ -718,20 +818,6 @@ star_bias_multiplier = 2.5
 # Lower values favor closer repeaters, higher values favor recently heard repeaters
 recency_weight = 0.4
 
-# Confidence indicator symbols for path command
-# High confidence (>= 0.9): Shows when path decoding is very reliable
-high_confidence_symbol = 🎯
-
-# Medium confidence (>= 0.8): Shows when path decoding is reasonably reliable
-medium_confidence_symbol = 📍
-
-# Low confidence (< 0.8): Shows when path decoding has uncertainty
-low_confidence_symbol = ❓
-
-# Enable "p" shortcut for path command (similar to "t" for test command)
-# true: Respond to just "p" or "p <path_data>" as a shortcut for "path"
-# false: Only respond to "path", "decode", or "route" keywords (default)
-enable_p_shortcut = false
 
 [Hacker_Command]
 # Enable or disable the hacker command
