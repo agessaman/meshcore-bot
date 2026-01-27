@@ -316,16 +316,26 @@ class BaseCommand(ABC):
         if message.is_dm:
             return True
         
+        if not message.channel:
+            return False
+        
+        # Normalize channel name for comparison (case-insensitive, preserve # prefix)
+        message_channel_normalized = message.channel.lower().strip()
+        
         # If no channel override, use global monitor_channels
         if self.allowed_channels is None:
-            return message.channel in self.bot.command_manager.monitor_channels
+            monitor_normalized = {ch.lower().strip() for ch in self.bot.command_manager.monitor_channels}
+            return message_channel_normalized in monitor_normalized
         
         # If empty list, command is disabled for channels (DM only)
         if self.allowed_channels == []:
             return False
         
-        # Check if channel is in allowed list
-        return message.channel in self.allowed_channels
+        # Normalize allowed channels for comparison (case-insensitive, preserve # prefix)
+        allowed_normalized = {ch.lower().strip() for ch in self.allowed_channels}
+        
+        # Check if channel matches allowed list
+        return message_channel_normalized in allowed_normalized
     
     def can_execute(self, message: MeshMessage) -> bool:
         """Check if this command can be executed with the given message.
