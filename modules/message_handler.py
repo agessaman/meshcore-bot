@@ -59,6 +59,39 @@ class MessageHandler:
         
         self.logger.info(f"RF Data Correlation: timeout={self.rf_data_timeout}s, enhanced={self.enhanced_correlation}")
     
+    def _is_old_cached_message(self, timestamp: Any) -> bool:
+        """Check if a message timestamp indicates it's from before bot connection.
+        
+        Args:
+            timestamp: Message sender timestamp (int, float, None, or 'unknown').
+            
+        Returns:
+            bool: True if message is from before connection, False otherwise.
+        """
+        # If no connection time tracked, process all messages (backward compatibility)
+        if not hasattr(self.bot, 'connection_time') or self.bot.connection_time is None:
+            return False
+        
+        # Handle invalid/unknown timestamps - process them (they might be current)
+        if timestamp is None or timestamp == 'unknown':
+            return False
+        
+        try:
+            # Convert timestamp to float for comparison
+            msg_time = float(timestamp)
+            
+            # If timestamp is invalid (0, negative, or far in future), process it
+            # (might be device clock sync issue, not necessarily old)
+            if msg_time <= 0 or msg_time > time.time() + 3600:  # More than 1 hour in future
+                return False
+            
+            # Check if message timestamp is before connection time
+            # Allow small buffer (5 seconds) to account for clock differences
+            return msg_time < (self.bot.connection_time - 5)
+        except (TypeError, ValueError):
+            # If we can't parse timestamp, process the message (safer to process than skip)
+            return False
+    
     async def handle_contact_message(self, event, metadata=None):
         """Handle incoming contact message (DM).
         
@@ -345,6 +378,11 @@ class MessageHandler:
             
             # Always attempt packet decoding and log the results for debugging
             await self._debug_decode_packet_for_message(message, sender_id, recent_rf_data)
+            
+            # Check if this is an old cached message from before bot connection
+            if self._is_old_cached_message(timestamp):
+                self.logger.debug(f"Skipping old cached message from {sender_name} (timestamp: {timestamp}, connection: {self.bot.connection_time})")
+                return  # Read the message to clear cache, but don't process it
             
             await self.process_message(message)
             
@@ -1668,6 +1706,12 @@ class MessageHandler:
             
             # Always attempt packet decoding and log the results for debugging
             await self._debug_decode_packet_for_message(message, sender_id, recent_rf_data)
+            
+            # Check if this is an old cached message from before bot connection
+            timestamp = payload.get('sender_timestamp', 0)
+            if self._is_old_cached_message(timestamp):
+                self.logger.debug(f"Skipping old cached channel message from {sender_id} (timestamp: {timestamp}, connection: {self.bot.connection_time})")
+                return  # Read the message to clear cache, but don't process it
             
             # Process the message
             await self.process_message(message)

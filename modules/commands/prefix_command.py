@@ -9,10 +9,15 @@ import aiohttp
 import time
 import json
 import random
-from typing import Dict, List, Optional, Any, Tuple
+import re
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Any, Tuple, Set
 from .base_command import BaseCommand
 from ..models import MeshMessage
-from ..utils import abbreviate_location, format_location_for_display, calculate_distance
+from ..utils import (
+    abbreviate_location, format_location_for_display, calculate_distance,
+    geocode_zipcode, geocode_city
+)
 
 
 class PrefixCommand(BaseCommand):
@@ -76,6 +81,29 @@ class PrefixCommand(BaseCommand):
             self.bot_longitude is not None and
             self.max_prefix_range > 0
         )
+        
+        # Prefix best location feature configuration
+        try:
+            self.prefix_best_enabled = self.get_config_value('Prefix_Command', 'prefix_best_enabled', fallback=True, value_type='bool')
+            self.prefix_best_min_edge_observations = self.get_config_value('Prefix_Command', 'prefix_best_min_edge_observations', fallback=2, value_type='int')
+            self.prefix_best_max_edge_age_days = self.get_config_value('Prefix_Command', 'prefix_best_max_edge_age_days', fallback=30, value_type='int')
+            self.prefix_best_location_radius_km = self.get_config_value('Prefix_Command', 'prefix_best_location_radius_km', fallback=50.0, value_type='float')
+            
+            # Parse do_not_suggest list from config
+            do_not_suggest_str = self.get_config_value('Prefix_Command', 'prefix_best_do_not_suggest', fallback='', value_type='str')
+            if do_not_suggest_str and isinstance(do_not_suggest_str, str):
+                # Split by comma, strip whitespace, convert to uppercase, filter empty strings
+                self.prefix_best_do_not_suggest = [p.strip().upper() for p in do_not_suggest_str.split(',') if p.strip()]
+            else:
+                self.prefix_best_do_not_suggest = []
+        except Exception as e:
+            # Fallback to safe defaults if config parsing fails
+            self.logger.warning(f"Error loading prefix_best configuration, using defaults: {e}")
+            self.prefix_best_enabled = True
+            self.prefix_best_min_edge_observations = 2
+            self.prefix_best_max_edge_age_days = 30
+            self.prefix_best_location_radius_km = 50.0
+            self.prefix_best_do_not_suggest = []
     
     def can_execute(self, message: MeshMessage) -> bool:
         """Check if this command can be executed with the given message.
@@ -112,6 +140,579 @@ class PrefixCommand(BaseCommand):
         # Check if message starts with 'prefix' (with or without space)
         content_lower = content.lower()
         return content_lower == 'prefix' or content_lower.startswith('prefix ')
+    
+    async def _parse_location_to_lat_lon(self, location: str) -> Tuple[Optional[float], Optional[float], Optional[str]]:
+        """Parse location string to latitude/longitude coordinates.
+        
+        Supports: coordinates (lat,lon), zipcode, city name, repeater name.
+        
+        Args:
+            location: Location string to parse.
+            
+        Returns:
+            Tuple of (latitude, longitude, location_type) or (None, None, None) if not found.
+            location_type can be: "coordinates", "zipcode", "city", "repeater", or None.
+        """
+        location = location.strip()
+        
+        # First, check if it's a repeater name
+        lat, lon = await self._repeater_name_to_lat_lon(location)
+        if lat is not None and lon is not None:
+            return lat, lon, "repeater"
+        
+        # Check if it's coordinates (lat,lon)
+        if re.match(r'^\s*-?\d+\.?\d*\s*,\s*-?\d+\.?\d*\s*$', location):
+            try:
+                lat_str, lon_str = location.split(',')
+                lat = float(lat_str.strip())
+                lon = float(lon_str.strip())
+                if -90 <= lat <= 90 and -180 <= lon <= 180:
+                    return lat, lon, "coordinates"
+            except ValueError:
+                pass
+        
+        # Check if it's a zipcode (5 digits)
+        if re.match(r'^\s*\d{5}\s*$', location):
+            lat, lon = await geocode_zipcode(self.bot, location)
+            if lat and lon:
+                return lat, lon, "zipcode"
+        
+        # Otherwise, treat as city name
+        lat, lon, _ = await geocode_city(self.bot, location)
+        if lat and lon:
+            return lat, lon, "city"
+        
+        return None, None, None
+    
+    async def _repeater_name_to_lat_lon(self, repeater_name: str) -> Tuple[Optional[float], Optional[float]]:
+        """Look up repeater by name and return its lat/lon.
+        
+        Args:
+            repeater_name: Name of the repeater to look up.
+            
+        Returns:
+            Tuple of (latitude, longitude) or (None, None) if not found.
+        """
+        try:
+            if not hasattr(self.bot, 'db_manager'):
+                return None, None
+            
+            # Query complete_contact_tracking table for matching name
+            # Use case-insensitive matching and allow partial matches
+            # Filter for repeaters and roomservers only
+            query = '''
+                SELECT latitude, longitude, name 
+                FROM complete_contact_tracking 
+                WHERE role IN ('repeater', 'roomserver')
+                AND latitude IS NOT NULL 
+                AND longitude IS NOT NULL
+                AND latitude != 0 
+                AND longitude != 0
+                AND LOWER(name) LIKE LOWER(?)
+                ORDER BY 
+                    CASE 
+                        WHEN LOWER(name) = LOWER(?) THEN 1
+                        WHEN LOWER(name) LIKE LOWER(?) THEN 2
+                        ELSE 3
+                    END,
+                    COALESCE(last_advert_timestamp, last_heard) DESC
+                LIMIT 1
+            '''
+            
+            # Try exact match first, then partial match
+            exact_pattern = repeater_name.strip()
+            partial_pattern = f"%{exact_pattern}%"
+            
+            results = self.bot.db_manager.execute_query(
+                query, 
+                (partial_pattern, exact_pattern, f"{exact_pattern}%")
+            )
+            
+            if results:
+                row = results[0]
+                lat = row.get('latitude')
+                lon = row.get('longitude')
+                if lat is not None and lon is not None:
+                    return float(lat), float(lon)
+        except Exception as e:
+            self.logger.debug(f"Error looking up repeater '{repeater_name}': {e}")
+        
+        return None, None
+    
+    def _find_repeaters_near_location(self, latitude: float, longitude: float, radius_km: float) -> List[Dict[str, Any]]:
+        """Find all repeaters within a specified radius of a location.
+        
+        Args:
+            latitude: Target latitude.
+            longitude: Target longitude.
+            radius_km: Search radius in kilometers.
+            
+        Returns:
+            List of repeater dictionaries with prefix, public_key, name, latitude, longitude, distance.
+        """
+        try:
+            # Query all repeaters with valid coordinates
+            query = '''
+                SELECT SUBSTR(public_key, 1, 2) as prefix, public_key, name, 
+                       latitude, longitude,
+                       COALESCE(last_advert_timestamp, last_heard) as last_seen
+                FROM complete_contact_tracking 
+                WHERE role IN ('repeater', 'roomserver')
+                AND latitude IS NOT NULL 
+                AND longitude IS NOT NULL
+                AND latitude != 0 
+                AND longitude != 0
+            '''
+            
+            results = self.bot.db_manager.execute_query(query)
+            
+            repeaters = []
+            for row in results:
+                lat = row.get('latitude')
+                lon = row.get('longitude')
+                if lat is None or lon is None:
+                    continue
+                
+                # Calculate distance
+                distance = calculate_distance(latitude, longitude, float(lat), float(lon))
+                
+                if distance <= radius_km:
+                    repeaters.append({
+                        'prefix': row['prefix'].upper(),
+                        'public_key': row.get('public_key'),
+                        'name': row.get('name'),
+                        'latitude': float(lat),
+                        'longitude': float(lon),
+                        'distance': distance,
+                        'last_seen': row.get('last_seen')
+                    })
+            
+            return repeaters
+        except Exception as e:
+            self.logger.error(f"Error finding repeaters near location: {e}")
+            return []
+    
+    def _collect_neighbor_prefixes(self, repeaters: List[Dict[str, Any]]) -> Set[str]:
+        """Collect all first and second-hop neighbor prefixes for repeaters at a location.
+        
+        Args:
+            repeaters: List of repeater dictionaries from _find_repeaters_near_location.
+            
+        Returns:
+            Set of neighbor prefixes (first and second hop).
+        """
+        neighbor_prefixes: Set[str] = set()
+        
+        if not hasattr(self.bot, 'mesh_graph') or not self.bot.mesh_graph:
+            self.logger.debug("Mesh graph not available, cannot collect neighbor prefixes")
+            return neighbor_prefixes
+        
+        mesh_graph = self.bot.mesh_graph
+        cutoff_date = datetime.now() - timedelta(days=self.prefix_best_max_edge_age_days)
+        
+        # Track prefixes we've already processed to avoid duplicate work
+        processed_prefixes: Set[str] = set()
+        
+        for repeater in repeaters:
+            prefix = repeater['prefix'].lower()
+            
+            # Skip if we've already processed this prefix
+            if prefix in processed_prefixes:
+                continue
+            processed_prefixes.add(prefix)
+            
+            # Get first-hop neighbors
+            outgoing_edges = mesh_graph.get_outgoing_edges(prefix)
+            
+            for edge in outgoing_edges:
+                # Filter by observation count and recency
+                if edge['observation_count'] < self.prefix_best_min_edge_observations:
+                    continue
+                
+                # Check last_seen timestamp
+                last_seen = edge.get('last_seen')
+                if last_seen:
+                    if isinstance(last_seen, str):
+                        try:
+                            last_seen = datetime.fromisoformat(last_seen.replace('Z', '+00:00'))
+                        except ValueError:
+                            continue
+                    if last_seen < cutoff_date:
+                        continue
+                
+                neighbor_prefix = edge['to_prefix'].lower()
+                neighbor_prefixes.add(neighbor_prefix)
+                
+                # Get second-hop neighbors (only if we haven't processed this prefix yet)
+                if neighbor_prefix not in processed_prefixes:
+                    second_hop_edges = mesh_graph.get_outgoing_edges(neighbor_prefix)
+                    for second_edge in second_hop_edges:
+                        if second_edge['observation_count'] < self.prefix_best_min_edge_observations:
+                            continue
+                        
+                        second_last_seen = second_edge.get('last_seen')
+                        if second_last_seen:
+                            if isinstance(second_last_seen, str):
+                                try:
+                                    second_last_seen = datetime.fromisoformat(second_last_seen.replace('Z', '+00:00'))
+                                except ValueError:
+                                    continue
+                            if second_last_seen < cutoff_date:
+                                continue
+                        
+                        second_hop_prefix = second_edge['to_prefix'].lower()
+                        neighbor_prefixes.add(second_hop_prefix)
+        
+        return neighbor_prefixes
+    
+    def _find_candidate_prefixes(self, neighbor_prefixes: Set[str], location_lat: float, location_lon: float) -> List[Dict[str, Any]]:
+        """Find candidate prefixes that are not neighbors and not in do_not_suggest list.
+        
+        Args:
+            neighbor_prefixes: Set of neighbor prefixes to exclude.
+            location_lat: Target location latitude.
+            location_lon: Target location longitude.
+            
+        Returns:
+            List of candidate prefix dictionaries with prefix, repeater_count, avg_distance, etc.
+        """
+        try:
+            # Get all known prefixes from database
+            query = '''
+                SELECT SUBSTR(public_key, 1, 2) as prefix, 
+                       COUNT(*) as repeater_count,
+                       AVG(latitude) as avg_lat,
+                       AVG(longitude) as avg_lon,
+                       MAX(COALESCE(last_advert_timestamp, last_heard)) as most_recent
+                FROM complete_contact_tracking 
+                WHERE role IN ('repeater', 'roomserver')
+                AND LENGTH(public_key) >= 2
+                GROUP BY prefix
+            '''
+            
+            results = self.bot.db_manager.execute_query(query)
+            
+            candidates = []
+            for row in results:
+                prefix = row['prefix'].upper()
+                prefix_lower = prefix.lower()
+                
+                # Exclude if it's a neighbor
+                if prefix_lower in neighbor_prefixes:
+                    continue
+                
+                # Exclude if in do_not_suggest list
+                if prefix in self.prefix_best_do_not_suggest:
+                    continue
+                
+                # Calculate average distance from location
+                avg_lat = row.get('avg_lat')
+                avg_lon = row.get('avg_lon')
+                avg_distance = None
+                if avg_lat is not None and avg_lon is not None:
+                    avg_distance = calculate_distance(location_lat, location_lon, float(avg_lat), float(avg_lon))
+                
+                # Check if prefix is already used at/near the location
+                # Query for repeaters with this prefix and calculate distances
+                nearby_query = '''
+                    SELECT latitude, longitude
+                    FROM complete_contact_tracking 
+                    WHERE role IN ('repeater', 'roomserver')
+                    AND public_key LIKE ?
+                    AND latitude IS NOT NULL 
+                    AND longitude IS NOT NULL
+                    AND latitude != 0 
+                    AND longitude != 0
+                '''
+                nearby_results = self.bot.db_manager.execute_query(nearby_query, (f"{prefix}%",))
+                nearby_count = 0
+                if nearby_results:
+                    for nearby_row in nearby_results:
+                        nearby_lat = nearby_row.get('latitude')
+                        nearby_lon = nearby_row.get('longitude')
+                        if nearby_lat is not None and nearby_lon is not None:
+                            nearby_distance = calculate_distance(location_lat, location_lon, float(nearby_lat), float(nearby_lon))
+                            if nearby_distance <= self.prefix_best_location_radius_km:
+                                nearby_count += 1
+                
+                candidates.append({
+                    'prefix': prefix,
+                    'repeater_count': row.get('repeater_count', 0),
+                    'avg_distance': avg_distance,
+                    'nearby_count': nearby_count,
+                    'most_recent': row.get('most_recent')
+                })
+            
+            return candidates
+        except Exception as e:
+            self.logger.error(f"Error finding candidate prefixes: {e}")
+            return []
+    
+    def _score_prefix_candidates(self, candidates: List[Dict[str, Any]]) -> List[Tuple[Dict[str, Any], float]]:
+        """Score and rank candidate prefixes.
+        
+        Args:
+            candidates: List of candidate prefix dictionaries.
+            
+        Returns:
+            List of (candidate_dict, score) tuples sorted by score (highest first).
+        """
+        scored = []
+        
+        for candidate in candidates:
+            score = 0.0
+            
+            # Availability score: Prefixes with fewer existing repeaters score higher
+            # Normalize: 0 repeaters = 1.0, 10+ repeaters = 0.0
+            repeater_count = candidate.get('repeater_count', 0)
+            availability_score = max(0.0, 1.0 - (repeater_count / 10.0))
+            score += availability_score * 0.4  # 40% weight
+            
+            # Distance score: Prefixes with repeaters far from location score higher
+            # Normalize: 0km = 0.0, 200km+ = 1.0
+            avg_distance = candidate.get('avg_distance')
+            if avg_distance is not None:
+                distance_score = min(1.0, avg_distance / 200.0)
+            else:
+                distance_score = 0.5  # Unknown distance gets neutral score
+            score += distance_score * 0.3  # 30% weight
+            
+            # Recency score: Prefixes with stale repeaters score higher (likely available)
+            # Normalize: very recent = 0.0, 90+ days old = 1.0
+            most_recent = candidate.get('most_recent')
+            recency_score = 0.5  # Default neutral
+            if most_recent:
+                try:
+                    if isinstance(most_recent, str):
+                        most_recent_dt = datetime.fromisoformat(most_recent.replace('Z', '+00:00'))
+                    else:
+                        most_recent_dt = most_recent
+                    
+                    days_ago = (datetime.now() - most_recent_dt).days
+                    recency_score = min(1.0, days_ago / 90.0)
+                except (ValueError, TypeError):
+                    pass
+            score += recency_score * 0.2  # 20% weight
+            
+            # Nearby count penalty: Prefixes already used nearby get penalty
+            # Normalize: 0 nearby = 1.0, 3+ nearby = 0.0
+            nearby_count = candidate.get('nearby_count', 0)
+            nearby_penalty = max(0.0, 1.0 - (nearby_count / 3.0))
+            score *= nearby_penalty  # Multiplicative penalty (10% weight effect)
+            
+            scored.append((candidate, score))
+        
+        # Sort by score (highest first)
+        scored.sort(key=lambda x: x[1], reverse=True)
+        
+        return scored
+    
+    async def find_best_prefix_for_location(self, location: str) -> Optional[Dict[str, Any]]:
+        """Find the best prefix for a given location.
+        
+        Args:
+            location: Location string (coordinates, zipcode, city name, or repeater name).
+            
+        Returns:
+            Dictionary with best prefix and metadata, or None if not found.
+        """
+        # Parse location
+        lat, lon, location_type = await self._parse_location_to_lat_lon(location)
+        if lat is None or lon is None:
+            return {
+                'success': False,
+                'reason': 'location_not_found',
+                'error': f"Could not parse location: {location}"
+            }
+        
+        # Find repeaters at location
+        repeaters = self._find_repeaters_near_location(lat, lon, self.prefix_best_location_radius_km)
+        
+        # If no repeaters at location, try expanding search radius
+        expanded_radius = False
+        if not repeaters:
+            expanded_radius_km = self.prefix_best_location_radius_km * 2
+            repeaters = self._find_repeaters_near_location(lat, lon, expanded_radius_km)
+            if repeaters:
+                expanded_radius = True
+                self.logger.debug(f"No repeaters found within {self.prefix_best_location_radius_km}km, expanded to {expanded_radius_km}km")
+        
+        # Collect neighbor prefixes (with fallback if no graph data)
+        neighbor_prefixes = self._collect_neighbor_prefixes(repeaters)
+        has_graph_data = hasattr(self.bot, 'mesh_graph') and self.bot.mesh_graph is not None
+        
+        # If no graph data, fall back to geographic-only suggestions
+        if not has_graph_data:
+            self.logger.debug("Mesh graph not available, using geographic-only suggestions")
+            # Still exclude prefixes already used nearby
+            neighbor_prefixes = set()  # Clear neighbor prefixes since we can't determine them
+        
+        # Find candidate prefixes
+        candidates = self._find_candidate_prefixes(neighbor_prefixes, lat, lon)
+        
+        if not candidates:
+            # No candidates found - all prefixes are neighbors or in do_not_suggest
+            # Try geographic-only fallback if we were using graph data
+            if has_graph_data and neighbor_prefixes:
+                self.logger.debug("All prefixes are neighbors, trying geographic-only fallback")
+                candidates = self._find_candidate_prefixes(set(), lat, lon)  # Empty neighbor set
+            
+            if not candidates:
+                return {
+                    'success': False,
+                    'reason': 'all_neighbors' if neighbor_prefixes else 'no_candidates',
+                    'neighbor_count': len(neighbor_prefixes),
+                    'repeaters_at_location': len(repeaters),
+                    'has_graph_data': has_graph_data
+                }
+        
+        # Score and rank candidates
+        scored_candidates = self._score_prefix_candidates(candidates)
+        
+        if not scored_candidates:
+            return {
+                'success': False,
+                'reason': 'scoring_failed',
+                'candidate_count': len(candidates)
+            }
+        
+        # Get top 3 candidates
+        top_candidates = scored_candidates[:3]
+        
+        best = top_candidates[0][0]
+        best_score = top_candidates[0][1]
+        
+        return {
+            'success': True,
+            'best_prefix': best['prefix'],
+            'best_score': best_score,
+            'best_repeater_count': best.get('repeater_count', 0),
+            'best_avg_distance': best.get('avg_distance'),
+            'best_nearby_count': best.get('nearby_count', 0),
+            'alternatives': [
+                {
+                    'prefix': cand[0]['prefix'],
+                    'score': cand[1]
+                }
+                for cand in top_candidates[1:]
+            ],
+            'repeaters_at_location': len(repeaters),
+            'neighbor_count': len(neighbor_prefixes),
+            'location_type': location_type,
+            'has_graph_data': has_graph_data,
+            'expanded_radius': expanded_radius
+        }
+    
+    def format_best_prefix_response(self, result: Dict[str, Any], message: Optional[MeshMessage] = None) -> str:
+        """Format the best prefix response.
+        
+        Args:
+            result: Result dictionary from find_best_prefix_for_location.
+            message: Optional message to calculate max length for.
+            
+        Returns:
+            Formatted response string (fits within max message length).
+        """
+        if not result.get('success'):
+            reason = result.get('reason', 'unknown')
+            
+            if reason == 'all_neighbors':
+                neighbor_count = result.get('neighbor_count', 0)
+                has_graph_data = result.get('has_graph_data', True)
+                if has_graph_data:
+                    return (f"No suitable prefix. All prefixes are neighbors "
+                           f"({neighbor_count} found). High conflict area.")
+                else:
+                    return (f"No suitable prefix. All prefixes in use nearby. "
+                           f"High usage area.")
+            
+            elif reason == 'location_not_found':
+                error = result.get('error', 'Unknown error')
+                return f"Error: {error}"
+            
+            elif reason == 'no_candidates':
+                return ("No suitable prefix. All are neighbors, excluded, or in use.")
+            
+            elif reason == 'scoring_failed':
+                candidate_count = result.get('candidate_count', 0)
+                return f"Error: {candidate_count} candidates but scoring failed."
+            
+            else:
+                return f"Could not find suitable prefix."
+        
+        # Get max message length if message provided
+        max_length = self.get_max_message_length(message) if message else 150
+        
+        # Build concise response
+        best_prefix = result['best_prefix']
+        score = result.get('best_score', 0.0)
+        
+        # Confidence level (abbreviated)
+        if score >= 0.8:
+            conf = "High"
+        elif score >= 0.6:
+            conf = "Med"
+        else:
+            conf = "Low"
+        
+        # Start with essential info
+        response = f"Best: {best_prefix} ({conf} {score:.0%})\n"
+        
+        # Add neighbor info (concise)
+        neighbor_count = result.get('neighbor_count', 0)
+        has_graph_data = result.get('has_graph_data', True)
+        if has_graph_data:
+            response += f"Not neighbor ({neighbor_count} found)\n"
+        else:
+            response += "Geo-only (no graph data)\n"
+        
+        # Add usage info (concise)
+        repeater_count = result.get('best_repeater_count', 0)
+        nearby_count = result.get('best_nearby_count', 0)
+        if repeater_count > 0:
+            if nearby_count > 0:
+                response += f"Used: {repeater_count} ({nearby_count} nearby)\n"
+            else:
+                response += f"Used: {repeater_count}\n"
+        else:
+            response += "Not in use\n"
+        
+        # Add alternatives (compact, only if space allows)
+        alternatives = result.get('alternatives', [])
+        if alternatives:
+            # Calculate space remaining
+            current_length = len(response)
+            space_remaining = max_length - current_length
+            
+            # Build alternatives line
+            alt_prefixes = [alt['prefix'] for alt in alternatives]
+            alt_line = f"Alt: {', '.join(alt_prefixes)}"
+            
+            # Only add if it fits
+            if len(alt_line) <= space_remaining:
+                response += alt_line
+            elif space_remaining > 10:
+                # Try to fit at least one alternative
+                if len(alt_prefixes) > 0:
+                    single_alt = f"Alt: {alt_prefixes[0]}"
+                    if len(single_alt) <= space_remaining:
+                        response += single_alt
+        
+        # Ensure response fits within max_length
+        if len(response) > max_length:
+            # Truncate at last complete line before limit
+            lines = response.split('\n')
+            truncated = []
+            current_len = 0
+            for line in lines:
+                test_len = current_len + len(line) + (1 if truncated else 0)  # +1 for newline
+                if test_len > max_length:
+                    break
+                truncated.append(line)
+                current_len = test_len
+            response = '\n'.join(truncated)
+        
+        return response
     
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the prefix command.
@@ -155,6 +756,28 @@ class PrefixCommand(BaseCommand):
                 response = self.format_free_prefixes_response(free_prefixes, total_free)
                 await self._send_prefix_response(message, response)
                 return True
+        
+        # Handle best command: "prefix best <location>"
+        if command == "BEST":
+            if not self.prefix_best_enabled:
+                response = "Prefix best command is disabled."
+                return await self.send_response(message, response)
+            
+            if len(parts) < 3:
+                response = ("Usage: prefix best <location>\n"
+                           "Location can be: coordinates (lat,lon), zipcode, city name, or repeater name")
+                return await self.send_response(message, response)
+            
+            location_str = ' '.join(parts[2:])
+            result = await self.find_best_prefix_for_location(location_str)
+            
+            if not result:
+                response = f"Could not find suitable prefix for location: {location_str}"
+                return await self.send_response(message, response)
+            
+            # Format response with suggested prefix and reasoning
+            response = self.format_best_prefix_response(result, message)
+            return await self.send_response(message, response)
         
         # Check for "all" modifier
         include_all = False

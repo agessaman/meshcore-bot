@@ -61,6 +61,7 @@ class MeshCoreBot:
         # Connection
         self.meshcore = None
         self.connected = False
+        self.connection_time = None  # Track when connection was established to skip old cached messages
         
         # Bot start time for uptime tracking
         self.start_time = time.time()
@@ -900,7 +901,9 @@ use_zulu_time = false
             
             if self.meshcore.is_connected:
                 self.connected = True
-                self.logger.info(f"Connected to: {self.meshcore.self_info}")
+                # Track connection time to skip processing old cached messages
+                self.connection_time = time.time()
+                self.logger.info(f"Connected to: {self.meshcore.self_info} at {self.connection_time}")
                 
                 # Wait for contacts to load
                 await self.wait_for_contacts()

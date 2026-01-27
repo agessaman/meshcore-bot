@@ -445,6 +445,37 @@ prefix_free_days = 7
 # Set to 0 to disable range limiting
 max_prefix_range = 200
 
+# Prefix best location feature
+# Enable or disable the "prefix best <location>" command
+# true: Command is available to suggest best prefix for a location
+# false: Command is disabled
+prefix_best_enabled = true
+
+# Minimum edge observations for neighbor detection
+# Edges in the mesh graph must have at least this many observations to be considered
+# Higher values = more conservative (requires more evidence of neighbor relationship)
+# Default: 2
+prefix_best_min_edge_observations = 2
+
+# Maximum edge age for neighbor detection (days)
+# Edges not observed within this many days are ignored when finding neighbors
+# Helps filter out stale connections from repeaters that may have moved or gone offline
+# Default: 30
+prefix_best_max_edge_age_days = 30
+
+# Location search radius (kilometers)
+# When finding repeaters at a location, search within this radius
+# Larger radius = more repeaters considered, but may include distant repeaters
+# Default: 50
+prefix_best_location_radius_km = 50
+
+# Prefixes to never suggest (comma-separated)
+# List of prefixes that should never be suggested by the "prefix best" command
+# Useful for excluding major infrastructure repeaters or reserved prefixes
+# Example: prefix_best_do_not_suggest = 00,FF,01,02
+# Leave empty to allow all prefixes
+prefix_best_do_not_suggest = 
+
 [Weather]
 # NOTE: Unit settings are used by both the wx and gwx commands and Weather_Service plugin
 
