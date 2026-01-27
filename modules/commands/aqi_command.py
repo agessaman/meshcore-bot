@@ -97,7 +97,7 @@ class AqiCommand(BaseCommand):
     
     def get_help_text(self) -> str:
         region = self.default_state or self.default_country
-        return f"Usage: aqi <city|neighborhood|city country|lat,lon|help> - Get AQI for city/neighborhood in {region}, international cities, coordinates, or pollutant help"
+        return f"Usage: aqi <city|neighborhood|city country|lat,lon|help> - Get AQI for city/neighborhood in {region}, intl cities, coordinates, or help"
     
     def can_execute(self, message: MeshMessage) -> bool:
         """Check if this command can be executed with the given message.

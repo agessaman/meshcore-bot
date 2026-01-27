@@ -243,7 +243,7 @@
     },
     "sports": {
       "description": "Get sports scores and schedules (usage: sports [team/league])",
-      "help": "Get sports scores & schedules. Use 'sports' for default teams, 'sports [team]' for specific team, or 'sports [league]' for league games.",
+      "help": "Get sports scores & schedules. Use 'sports' for default teams, 'sports [team]' for specific team, or 'sports [league]' for games.",
       "error_fetching": "Error fetching sports data",
       "error_fetching_league": "Error fetching {sport} data",
       "error_fetching_team": "Error fetching data for {team}",
@@ -257,7 +257,7 @@
     },
     "stats": {
       "description": "Show statistics for past 24 hours. Use 'stats messages', 'stats channels', or 'stats paths' for specific stats.",
-      "help": "Show 24-hour bot statistics. Commands: 'stats' (basic), 'stats messages' (bot users), 'stats channels' (channel activity), 'stats paths' (longest paths)",
+      "help": "Show 24h bot stats. Use 'stats' (basic), 'stats messages' (users), 'stats channels' (activity), 'stats paths' (paths)",
       "disabled": "Stats command is disabled",
       "unknown_subcommand": "Unknown: {subcommand}. Use 'stats', 'stats messages', 'stats channels', or 'stats paths'",
       "error": "Error getting stats: {error}",
@@ -509,7 +509,7 @@
     },
     "channels": {
       "description": "List or manage channels",
-      "help": "Lists hashtag channels with sub-categories. Use 'channels' for general, 'channels list' for all categories, 'channels <category>' for specific categories, 'channels #channel' for specific channel info.",
+      "help": "Lists hashtag channels. Use 'channels' for general, 'channels list' for all, 'channels <category>' for specific",
       "no_channels_for_category": "No channels configured for '{category}'. Use 'channels' for general channels.",
       "no_channels_configured": "No channels configured. Contact admin to add channels.",
       "error_retrieving_channels": "Error retrieving channels: {error}",

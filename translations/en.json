@@ -139,7 +139,7 @@
     },
     "sports": {
       "description": "Get sports scores and schedules (usage: sports [team/league])",
-      "help": "Get sports scores & schedules. Use 'sports' for default teams, 'sports [team]' for specific team, or 'sports [league]' for league games.",
+      "help": "Get sports scores & schedules. Use 'sports' for default teams, 'sports [team]' for specific team, or 'sports [league]' for games.",
       "error_fetching": "Error fetching sports data",
       "error_fetching_league": "Error fetching {sport} data",
       "error_fetching_team": "Error fetching data for {team}",
@@ -153,7 +153,7 @@
     },
     "stats": {
       "description": "Show statistics for past 24 hours. Use 'stats messages', 'stats channels', 'stats paths', or 'stats adverts' for specific stats.",
-      "help": "Show 24-hour bot statistics. Commands: 'stats' (basic), 'stats messages' (bot users), 'stats channels' (channel activity), 'stats paths' (longest paths), 'stats adverts' (top advert nodes)",
+      "help": "Show 24h bot stats. Use 'stats' (basic), 'stats messages' (users), 'stats channels' (activity), 'stats paths', 'stats adverts'",
       "subcommands": [
         {
           "name": "messages",
@@ -470,11 +470,11 @@
     },
     "channels": {
       "description": "List or manage channels",
-      "help": "Lists hashtag channels with sub-categories. Use 'channels' for general, 'channels list' for all categories, 'channels <category>' for specific categories, 'channels #channel' for specific channel info.",
+      "help": "Lists hashtag channels. Use 'channels' for general, 'channels list' for category lists, 'channels <category>' for specific category",
       "subcommands": [
         {
           "name": "list",
-          "description": "List all channel categories"
+          "description": "List all channels in a category"
         }
       ],
       "no_channels_for_category": "No channels configured for '{category}'. Use 'channels' for general channels.",
@@ -498,7 +498,7 @@
     },
     "dice": {
       "description": "Roll dice (usage: dice [sides] or dice [count]d[sides] or dice d10 d6 for mixed dice or dice decade for decade die)",
-      "help": "Roll dice. Use 'dice' for d6, 'dice d20' for d20, 'dice 2d6' for 2d6, 'dice d10 d6' for mixed dice, 'dice decade' for decade die (00-90), etc.",
+      "help": "Roll dice. Use 'dice' for d6, 'dice d20' for d20, 'dice 2d6' for 2d6, 'dice d10 d6' for mixed, 'dice decade' for decade (00-90).",
       "invalid_dice_type": "Invalid dice type.",
       "single_die": "🎲 d{sides}: {result}",
       "multiple_dice": "🎲 {count}d{sides}: [{results}] = {total}"
