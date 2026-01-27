@@ -368,6 +368,8 @@ class PrefixCommand(BaseCommand):
     def _find_candidate_prefixes(self, neighbor_prefixes: Set[str], location_lat: float, location_lon: float) -> List[Dict[str, Any]]:
         """Find candidate prefixes that are not neighbors and not in do_not_suggest list.
         
+        Includes both prefixes that exist in the database AND free prefixes that have never been used.
+        
         Args:
             neighbor_prefixes: Set of neighbor prefixes to exclude.
             location_lat: Target location latitude.
@@ -392,10 +394,14 @@ class PrefixCommand(BaseCommand):
             
             results = self.bot.db_manager.execute_query(query)
             
+            # Build set of prefixes found in database
+            prefixes_in_db = set()
             candidates = []
+            
             for row in results:
                 prefix = row['prefix'].upper()
                 prefix_lower = prefix.lower()
+                prefixes_in_db.add(prefix_lower)
                 
                 # Exclude if it's a neighbor
                 if prefix_lower in neighbor_prefixes:
@@ -441,6 +447,55 @@ class PrefixCommand(BaseCommand):
                     'avg_distance': avg_distance,
                     'nearby_count': nearby_count,
                     'most_recent': row.get('most_recent')
+                })
+            
+            # Also include free prefixes (not in database) that aren't neighbors or excluded
+            # Generate all valid hex prefixes (01-FE, excluding 00 and FF)
+            for i in range(1, 255):  # 1 to 254 (exclude 0 and 255)
+                prefix = f"{i:02X}"
+                prefix_lower = prefix.lower()
+                
+                # Skip if already in database (already processed above)
+                if prefix_lower in prefixes_in_db:
+                    continue
+                
+                # Exclude if it's a neighbor
+                if prefix_lower in neighbor_prefixes:
+                    continue
+                
+                # Exclude if in do_not_suggest list
+                if prefix in self.prefix_best_do_not_suggest:
+                    continue
+                
+                # Check if prefix is used nearby (even if not in main query)
+                nearby_query = '''
+                    SELECT latitude, longitude
+                    FROM complete_contact_tracking 
+                    WHERE role IN ('repeater', 'roomserver')
+                    AND public_key LIKE ?
+                    AND latitude IS NOT NULL 
+                    AND longitude IS NOT NULL
+                    AND latitude != 0 
+                    AND longitude != 0
+                '''
+                nearby_results = self.bot.db_manager.execute_query(nearby_query, (f"{prefix}%",))
+                nearby_count = 0
+                if nearby_results:
+                    for nearby_row in nearby_results:
+                        nearby_lat = nearby_row.get('latitude')
+                        nearby_lon = nearby_row.get('longitude')
+                        if nearby_lat is not None and nearby_lon is not None:
+                            nearby_distance = calculate_distance(location_lat, location_lon, float(nearby_lat), float(nearby_lon))
+                            if nearby_distance <= self.prefix_best_location_radius_km:
+                                nearby_count += 1
+                
+                # Free prefix (not in database) - no repeaters, no location, never seen
+                candidates.append({
+                    'prefix': prefix,
+                    'repeater_count': 0,  # Never used
+                    'avg_distance': None,  # No location data
+                    'nearby_count': nearby_count,
+                    'most_recent': None  # Never seen
                 })
             
             return candidates

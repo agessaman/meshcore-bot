@@ -282,6 +282,7 @@ class PathCommand(BaseCommand):
                                     'country': row['country'],
                                     'advert_count': row['advert_count'],
                                     'signal_strength': row['signal_strength'],
+                                    'snr': row.get('snr'),  # Include SNR for zero-hop bonus
                                     'hop_count': row['hop_count'],
                                     'role': row['role'],
                                     'is_starred': bool(row.get('is_starred', 0))  # Include star status for bias
@@ -299,7 +300,7 @@ class PathCommand(BaseCommand):
                             query = '''
                                 SELECT name, public_key, device_type, last_heard, last_heard as last_seen, 
                                        last_advert_timestamp, latitude, longitude, city, state, country,
-                                       advert_count, signal_strength, hop_count, role, is_starred
+                                       advert_count, signal_strength, snr, hop_count, role, is_starred
                                 FROM complete_contact_tracking 
                                 WHERE public_key LIKE ? AND role IN ('repeater', 'roomserver')
                                 AND (
@@ -312,7 +313,7 @@ class PathCommand(BaseCommand):
                             query = '''
                                 SELECT name, public_key, device_type, last_heard, last_heard as last_seen, 
                                        last_advert_timestamp, latitude, longitude, city, state, country,
-                                       advert_count, signal_strength, hop_count, role, is_starred
+                                       advert_count, signal_strength, snr, hop_count, role, is_starred
                                 FROM complete_contact_tracking 
                                 WHERE public_key LIKE ? AND role IN ('repeater', 'roomserver')
                                 ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
@@ -339,6 +340,7 @@ class PathCommand(BaseCommand):
                                     'country': row['country'],
                                     'advert_count': row.get('advert_count', 0),
                                     'signal_strength': row.get('signal_strength'),
+                                    'snr': row.get('snr'),  # Include SNR for zero-hop bonus
                                     'hop_count': row.get('hop_count'),
                                     'role': row.get('role'),
                                     'is_starred': bool(row.get('is_starred', 0))  # Include star status for bias
@@ -364,6 +366,7 @@ class PathCommand(BaseCommand):
                             'city': row['city'],
                             'state': row['state'],
                             'country': row['country'],
+                            'snr': row.get('snr'),  # Include SNR for zero-hop bonus
                             'is_starred': row.get('is_starred', False)  # Include star status for bias
                         } for row in results
                     ]
@@ -399,6 +402,16 @@ class PathCommand(BaseCommand):
                                 recent_repeaters, node_id, node_ids, sender_location
                             )
                         
+                        # Helper function to check if repeater has valid location data
+                        def has_valid_location(repeater):
+                            lat = repeater.get('latitude')
+                            lon = repeater.get('longitude')
+                            return (lat is not None and lon is not None and 
+                                   not (lat == 0.0 and lon == 0.0))
+                        
+                        # Check if this is the final hop (last node in path)
+                        is_final_hop = (node_id == node_ids[-1] if node_ids else False)
+                        
                         # Combine or choose between graph and geographic based on config
                         if self.graph_geographic_combined and graph_repeater and geo_repeater:
                             # Only combine if both methods selected the same repeater
@@ -415,8 +428,13 @@ class PathCommand(BaseCommand):
                                 confidence = combined_confidence
                                 selection_method = 'graph_geographic_combined'
                             else:
-                                # Different repeaters - prefer the one with higher confidence
-                                if graph_confidence > geo_confidence:
+                                # Different repeaters - for final hop, prefer geographic if graph has no location
+                                if is_final_hop and graph_repeater and not has_valid_location(graph_repeater) and geo_repeater:
+                                    # Final hop: prefer geographic selection if graph selection has no location
+                                    selected_repeater = geo_repeater
+                                    confidence = geo_confidence
+                                    selection_method = 'geographic'
+                                elif graph_confidence > geo_confidence:
                                     selected_repeater = graph_repeater
                                     confidence = graph_confidence
                                     selection_method = selection_method or 'graph'
@@ -428,9 +446,16 @@ class PathCommand(BaseCommand):
                             # Default behavior: prefer graph, fall back to geographic
                             # Use configurable threshold instead of hardcoded 0.7
                             if graph_repeater and graph_confidence >= self.graph_confidence_override_threshold:
-                                selected_repeater = graph_repeater
-                                confidence = graph_confidence
-                                selection_method = selection_method or 'graph'
+                                # For final hop, check if graph selection has valid location
+                                if is_final_hop and not has_valid_location(graph_repeater) and geo_repeater:
+                                    # Final hop: prefer geographic selection if graph selection has no location
+                                    selected_repeater = geo_repeater
+                                    confidence = geo_confidence
+                                    selection_method = 'geographic'
+                                else:
+                                    selected_repeater = graph_repeater
+                                    confidence = graph_confidence
+                                    selection_method = selection_method or 'graph'
                             elif not graph_repeater or graph_confidence < self.graph_confidence_override_threshold:
                                 # Fall back to geographic proximity if graph didn't provide high confidence
                                 if geo_repeater and (not graph_repeater or geo_confidence > graph_confidence):
@@ -439,9 +464,15 @@ class PathCommand(BaseCommand):
                                     selection_method = 'geographic'
                                 elif graph_repeater:
                                     # Use graph even if confidence is lower (better than nothing)
-                                    selected_repeater = graph_repeater
-                                    confidence = graph_confidence
-                                    selection_method = selection_method or 'graph'
+                                    # But for final hop, still prefer geographic if it has location
+                                    if is_final_hop and not has_valid_location(graph_repeater) and geo_repeater:
+                                        selected_repeater = geo_repeater
+                                        confidence = geo_confidence
+                                        selection_method = 'geographic'
+                                    else:
+                                        selected_repeater = graph_repeater
+                                        confidence = graph_confidence
+                                        selection_method = selection_method or 'graph'
                         
                         if selected_repeater and confidence >= 0.5:
                             # High confidence selection (graph or geographic)
@@ -693,6 +724,15 @@ class PathCommand(BaseCommand):
             if repeater.get('is_starred', False):
                 combined_score *= self.star_bias_multiplier
                 self.logger.debug(f"Applied star bias ({self.star_bias_multiplier}x) to {repeater.get('name', 'unknown')}")
+            
+            # SNR bonus: If repeater has SNR data, it's a zero-hop repeater (direct neighbor)
+            # This is strong evidence it's close and should be preferred
+            snr = repeater.get('snr')
+            if snr is not None:
+                # Add bonus proportional to zero-hop bonus (20% of combined score)
+                snr_bonus = combined_score * 0.2
+                combined_score += snr_bonus
+                self.logger.debug(f"SNR bonus for {repeater.get('name', 'unknown')}: +{snr_bonus:.3f} (has SNR data, confirmed zero-hop)")
             
             combined_scores.append((combined_score, distance, repeater))
         
@@ -1083,6 +1123,15 @@ class PathCommand(BaseCommand):
                 combined_score *= self.star_bias_multiplier
                 self.logger.debug(f"Applied star bias ({self.star_bias_multiplier}x) to {repeater.get('name', 'unknown')}")
             
+            # SNR bonus: If repeater has SNR data, it's a zero-hop repeater (direct neighbor)
+            # This is strong evidence it's close and should be preferred
+            snr = repeater.get('snr')
+            if snr is not None:
+                # Add bonus proportional to zero-hop bonus (20% of combined score)
+                snr_bonus = combined_score * 0.2
+                combined_score += snr_bonus
+                self.logger.debug(f"SNR bonus for {repeater.get('name', 'unknown')}: +{snr_bonus:.3f} (has SNR data, confirmed zero-hop)")
+            
             if combined_score > best_combined_score:
                 best_combined_score = combined_score
                 best_repeater = repeater
@@ -1156,6 +1205,15 @@ class PathCommand(BaseCommand):
             if repeater.get('is_starred', False):
                 combined_score *= self.star_bias_multiplier
                 self.logger.debug(f"Applied star bias ({self.star_bias_multiplier}x) to {repeater.get('name', 'unknown')}")
+            
+            # SNR bonus: If repeater has SNR data, it's a zero-hop repeater (direct neighbor)
+            # This is strong evidence it's close and should be preferred
+            snr = repeater.get('snr')
+            if snr is not None:
+                # Add bonus proportional to zero-hop bonus (20% of combined score)
+                snr_bonus = combined_score * 0.2
+                combined_score += snr_bonus
+                self.logger.debug(f"SNR bonus for {repeater.get('name', 'unknown')}: +{snr_bonus:.3f} (has SNR data, confirmed zero-hop)")
             
             all_scores.append((repeater.get('name', 'unknown'), distance, recency_score, proximity_score, combined_score))
             
@@ -1260,8 +1318,18 @@ class PathCommand(BaseCommand):
                 zero_hop_bonus = self.graph_zero_hop_bonus
                 self.logger.debug(f"Zero-hop bonus for {repeater.get('name', 'unknown')}: {zero_hop_bonus:.2%} (heard directly by bot)")
             
-            # Add stored key bonus and zero-hop bonus to graph score
-            graph_score_with_bonus = min(1.0, graph_score + stored_key_bonus + zero_hop_bonus)
+            # SNR bonus: If this repeater has SNR data, it's a zero-hop repeater (direct neighbor)
+            # This is even stronger evidence than just hop_count == 0, as it means we have actual signal quality data
+            snr_bonus = 0.0
+            snr = repeater.get('snr')
+            if snr is not None:
+                # SNR presence indicates zero-hop connection with signal quality data
+                # Use same bonus as zero-hop, but this is more definitive
+                snr_bonus = self.graph_zero_hop_bonus * 1.2  # 20% stronger than zero-hop bonus alone
+                self.logger.debug(f"SNR bonus for {repeater.get('name', 'unknown')}: {snr_bonus:.2%} (has SNR data, confirmed zero-hop)")
+            
+            # Add stored key bonus, zero-hop bonus, and SNR bonus to graph score
+            graph_score_with_bonus = min(1.0, graph_score + stored_key_bonus + zero_hop_bonus + snr_bonus)
             
             # Path validation bonus: Check if candidate's stored paths match the current path context
             # This helps resolve prefix collisions by matching path patterns
@@ -1394,7 +1462,11 @@ class PathCommand(BaseCommand):
                     repeater_lat = repeater.get('latitude')
                     repeater_lon = repeater.get('longitude')
                     
-                    if repeater_lat is not None and repeater_lon is not None:
+                    # Check if repeater has valid location data (not 0,0)
+                    has_valid_location = (repeater_lat is not None and repeater_lon is not None and 
+                                        not (repeater_lat == 0.0 and repeater_lon == 0.0))
+                    
+                    if has_valid_location:
                         # Calculate distance to bot
                         distance = calculate_distance(
                             self.bot_latitude, self.bot_longitude,
@@ -1425,6 +1497,13 @@ class PathCommand(BaseCommand):
                             candidate_score = candidate_score * (1.0 - effective_weight) + proximity_score * effective_weight
                             
                             self.logger.debug(f"Final hop proximity for {repeater.get('name', 'unknown')}: distance={distance:.1f}km, proximity_score={proximity_score:.3f}, effective_weight={effective_weight:.3f}, combined_score={candidate_score:.3f}")
+                    else:
+                        # Repeater without valid location data - apply significant penalty for final hop
+                        # This ensures we prefer repeaters with known locations, especially direct neighbors
+                        # Penalty: reduce score by 50% (repeaters with location data will have proximity bonus, so this creates strong preference)
+                        location_penalty = 0.5
+                        candidate_score = candidate_score * (1.0 - location_penalty)
+                        self.logger.debug(f"Final hop candidate {repeater.get('name', 'unknown')} has no valid location data - applying {location_penalty:.0%} penalty (score: {candidate_score:.3f})")
             
             # Apply star bias multiplier if repeater is starred
             # Starred repeaters should get significant advantage in graph selection
