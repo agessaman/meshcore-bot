@@ -38,6 +38,12 @@ enable_enhanced_correlation = true
 # Bot node ID (leave empty for auto-assignment)
 node_id = 
 
+# Command prefix (optional)
+# If set, all commands must start with this prefix (e.g., "!", ".", "b", "abc")
+# Examples: "!" for !ping, "." for .ping, "b" for bping, "abc" for abcping
+# Leave empty or unset to allow commands without prefix (backward compatible)
+#command_prefix = 
+
 # Enable/disable bot responses
 # true: Bot will respond to keywords and commands
 # false: Bot will only listen and log messages

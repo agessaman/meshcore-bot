@@ -83,6 +83,7 @@ class CommandManager:
         self.custom_syntax = self.load_custom_syntax()
         self.banned_users = self.load_banned_users()
         self.monitor_channels = self.load_monitor_channels()
+        self.command_prefix = self.load_command_prefix()
         
         # Initialize plugin loader and load all plugins
         self.plugin_loader = PluginLoader(bot)
@@ -416,6 +417,15 @@ class CommandManager:
         channels = self.bot.config.get('Channels', 'monitor_channels', fallback='')
         return [channel.strip() for channel in channels.split(',') if channel.strip()]
     
+    def load_command_prefix(self) -> str:
+        """Load command prefix from config.
+        
+        Returns:
+            str: The command prefix, or empty string if not configured.
+        """
+        prefix = self.bot.config.get('Bot', 'command_prefix', fallback='')
+        return prefix.strip() if prefix else ''
+    
     def format_keyword_response(self, response_format: str, message: MeshMessage) -> str:
         """Format a keyword response string with message data.
         
@@ -447,10 +457,20 @@ class CommandManager:
             List[tuple]: List of (trigger, response) tuples for matched keywords.
         """
         matches = []
-        # Strip exclamation mark if present (for command-style messages)
         content = message.content.strip()
-        if content.startswith('!'):
-            content = content[1:].strip()
+        
+        # Check for command prefix if configured
+        if self.command_prefix:
+            # If prefix is configured, message must start with it
+            if not content.startswith(self.command_prefix):
+                return matches  # No prefix, no match
+            # Strip the prefix
+            content = content[len(self.command_prefix):].strip()
+        else:
+            # If no prefix configured, strip legacy "!" prefix for backward compatibility
+            if content.startswith('!'):
+                content = content[1:].strip()
+        
         content_lower = content.lower()
         
         # Check for help requests first (special handling)
@@ -919,10 +939,20 @@ class CommandManager:
         Args:
             message: The message triggering the command execution.
         """
-        # Strip exclamation mark if present (for command-style messages)
         content = message.content.strip()
-        if content.startswith('!'):
-            content = content[1:].strip()
+        
+        # Check for command prefix if configured
+        if self.command_prefix:
+            # If prefix is configured, message must start with it
+            if not content.startswith(self.command_prefix):
+                return  # No prefix, no match
+            # Strip the prefix
+            content = content[len(self.command_prefix):].strip()
+        else:
+            # If no prefix configured, strip legacy "!" prefix for backward compatibility
+            if content.startswith('!'):
+                content = content[1:].strip()
+        
         content_lower = content.lower()
         
         # Check each command to see if it should execute

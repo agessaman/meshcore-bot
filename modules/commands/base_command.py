@@ -50,6 +50,9 @@ class BaseCommand(ABC):
     
         # Load translated keywords after initialization
         self._load_translated_keywords()
+        
+        # Cache command prefix from config
+        self._command_prefix = self._load_command_prefix()
     
     def translate(self, key: str, **kwargs) -> str:
         """Translate a key using the bot's translator.
@@ -545,15 +548,153 @@ class BaseCommand(ABC):
             # Log the error for debugging
             self.logger.debug(f"Could not load translated keywords for {self.name}: {e}")
     
+    def _load_command_prefix(self) -> str:
+        """Load command prefix from config.
+        
+        Returns:
+            str: The command prefix, or empty string if not configured.
+        """
+        prefix = self.bot.config.get('Bot', 'command_prefix', fallback='')
+        return prefix.strip() if prefix else ''
+    
+    def _get_bot_name(self) -> str:
+        """Get bot name from device or config.
+        
+        Returns:
+            str: The name of the bot/device.
+        """
+        # Try to get name from device first (actual radio username)
+        if hasattr(self.bot, 'meshcore') and self.bot.meshcore:
+            try:
+                if hasattr(self.bot.meshcore, 'self_info') and self.bot.meshcore.self_info:
+                    self_info = self.bot.meshcore.self_info
+                    # Try to get name from self_info (could be dict or object)
+                    if isinstance(self_info, dict):
+                        device_name = self_info.get('name') or self_info.get('adv_name')
+                        if device_name:
+                            return device_name
+                    elif hasattr(self_info, 'name'):
+                        if self_info.name:
+                            return self_info.name
+                    elif hasattr(self_info, 'adv_name'):
+                        if self_info.adv_name:
+                            return self_info.adv_name
+            except Exception as e:
+                self.logger.debug(f"Could not get name from device: {e}")
+        
+        # Fallback to config
+        bot_name = self.bot.config.get('Bot', 'bot_name', fallback='Bot')
+        return bot_name
+    
+    def _extract_mentions(self, text: str) -> List[str]:
+        """Extract all @[username] mentions from message content.
+        
+        Args:
+            text: The message text to process.
+            
+        Returns:
+            List[str]: List of mentioned usernames (without @[] brackets).
+        """
+        # Pattern to match @[username] - username can contain spaces, emojis, special chars
+        pattern = r'@\[([^\]]+)\]'
+        mentions = re.findall(pattern, text)
+        return mentions
+    
+    def _is_bot_mentioned(self, text: str) -> bool:
+        """Check if the bot is mentioned in the message.
+        
+        Args:
+            text: The message text to check.
+            
+        Returns:
+            bool: True if the bot is mentioned, False otherwise.
+        """
+        mentions = self._extract_mentions(text)
+        if not mentions:
+            return False
+        
+        bot_name = self._get_bot_name()
+        bot_name_lower = bot_name.lower()
+        
+        # Check if any mention matches the bot name (case-insensitive)
+        for mention in mentions:
+            if mention.lower() == bot_name_lower:
+                return True
+        
+        return False
+    
+    def _check_mentions_ok(self, text: str) -> bool:
+        """Check if mentions are valid (bot is mentioned if any mentions exist).
+        
+        Args:
+            text: The message text to check.
+            
+        Returns:
+            bool: True if mentions are OK (no mentions, or bot is mentioned), False otherwise.
+        """
+        mentions = self._extract_mentions(text)
+        if not mentions:
+            # No mentions - always OK
+            return True
+        
+        # If there are mentions, bot must be mentioned
+        return self._is_bot_mentioned(text)
+    
+    def _strip_mentions(self, text: str) -> str:
+        """Strip @[username] mentions from message content.
+        
+        Args:
+            text: The message text to process.
+            
+        Returns:
+            str: The text with mentions removed.
+        """
+        # Pattern to match @[username] - username can contain spaces, emojis, special chars
+        # Match @[ followed by any characters until ]
+        pattern = r'@\[([^\]]+)\]'
+        # Remove all mentions and clean up extra whitespace
+        cleaned = re.sub(pattern, '', text)
+        # Clean up multiple spaces and strip
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+        return cleaned
+    
     def matches_keyword(self, message: MeshMessage) -> bool:
-        """Check if this command matches the message content based on keywords"""
+        """Check if this command matches the message content based on keywords.
+        
+        Handles @[username] mentions: only responds if the bot is mentioned (if any mentions exist).
+        If other users are mentioned but not the bot, returns False.
+        
+        Handles command prefix: if a prefix is configured, the message must start with it.
+        
+        Args:
+            message: The message to check.
+            
+        Returns:
+            bool: True if message matches a keyword and bot is mentioned (if any mentions exist), False otherwise.
+        """
         if not self.keywords:
             return False
         
-        # Strip exclamation mark if present (for command-style messages)
         content = message.content.strip()
-        if content.startswith('!'):
-            content = content[1:].strip()
+        
+        # Check for command prefix if configured
+        if self._command_prefix:
+            # If prefix is configured, message must start with it
+            if not content.startswith(self._command_prefix):
+                return False
+            # Strip the prefix
+            content = content[len(self._command_prefix):].strip()
+        else:
+            # If no prefix configured, strip legacy "!" prefix for backward compatibility
+            if content.startswith('!'):
+                content = content[1:].strip()
+        
+        # Check if mentions are valid (bot must be mentioned if any mentions exist)
+        if not self._check_mentions_ok(content):
+            return False
+        
+        # Strip @[username] mentions before checking keywords
+        content = self._strip_mentions(content)
         content_lower = content.lower()
         
         for keyword in self.keywords:
@@ -573,8 +714,25 @@ class BaseCommand(ABC):
         return False
     
     def matches_custom_syntax(self, message: MeshMessage) -> bool:
-        """Check if this command matches custom syntax patterns"""
-        # Override in subclasses for custom syntax matching
+        """Check if this command matches custom syntax patterns.
+        
+        Handles @[username] mentions: only responds if the bot is mentioned (if any mentions exist).
+        Subclasses should call super().matches_custom_syntax() first if they override this method.
+        
+        Args:
+            message: The message to check.
+            
+        Returns:
+            bool: True if custom syntax matches and bot is mentioned (if any mentions exist), False otherwise.
+        """
+        content = message.content.strip()
+        
+        # Check if mentions are valid (bot must be mentioned if any mentions exist)
+        if not self._check_mentions_ok(content):
+            return False
+        
+        # Subclasses should override this method for custom syntax matching
+        # This base implementation just checks mentions
         return False
     
     def should_execute(self, message: MeshMessage) -> bool:
