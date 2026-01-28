@@ -25,6 +25,11 @@ timeout = 30
 # Bot name for identification and logging
 bot_name = MeshCoreBot
 
+# Automatically update device name to match bot_name on startup
+# true: Device name will be updated to match bot_name if they differ (default)
+# false: Device name will not be updated, keep device name separate from config
+auto_update_device_name = true
+
 # RF Data Correlation Settings
 # Time window for correlating RF data with messages (seconds)
 rf_data_timeout = 15.0

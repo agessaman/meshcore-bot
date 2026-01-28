@@ -70,14 +70,17 @@ def main():
                         # Shutdown triggered: cancel if still running
                         bot_task.cancel()
                     
-                    # Always await bot_task if done to surface any exceptions
-                    # (whether it completed normally or was cancelled)
-                    if bot_task.done():
-                        try:
-                            await bot_task
-                        except asyncio.CancelledError:
-                            # Expected when cancelled, ignore
-                            pass
+                    # Always await bot_task to ensure proper cleanup
+                    # This is necessary because:
+                    # 1. If the task completed normally, we need to await to surface exceptions
+                    # 2. If the task was cancelled, it only becomes "done" after being awaited
+                    #    (cancellation is not immediate - the task must be awaited for the
+                    #     CancelledError to be raised and the task to fully terminate)
+                    try:
+                        await bot_task
+                    except asyncio.CancelledError:
+                        # Expected when cancelled, ignore
+                        pass
             finally:
                 # Always ensure cleanup happens
                 await bot.stop()
