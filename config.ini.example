@@ -823,43 +823,12 @@ graph_path_validation_obs_divisor = 50.0
 # For development with frequent restarts, 0 (load all) is recommended to maintain graph quality
 graph_startup_load_days = 0
 
-# Geographic proximity calculation method
-# simple: Use proximity to bot location (default)
-# path: Use proximity to previous/next nodes in the path for more realistic routing
-proximity_method = simple
-
-# Enable path proximity fallback
-# When path proximity can't be calculated (missing location data), fall back to simple proximity
-# true: Fall back to bot location proximity when path data unavailable
-# false: Show collision warning when path proximity unavailable
-path_proximity_fallback = true
-
-# Maximum range for geographic proximity guessing (kilometers)
-# Repeaters beyond this distance will have reduced confidence or be rejected
-# Set to 0 to disable range limiting
-max_proximity_range = 200
-
-# Maximum age for repeater data in path matching (days)
-# Only include repeaters that have been heard within this many days
-# Helps filter out stale or inactive repeaters from path decoding
-# Set to 0 to disable age filtering
-max_repeater_age_days = 7
-
 # Star bias multiplier for path command
 # When a contact is starred in the web viewer, multiply its selection score by this value
 # Higher values = stronger preference for starred repeaters
 # Default: 2.5 (starred repeaters get 2.5x their normal score)
 # Set to 1.0 to disable star bias
 star_bias_multiplier = 2.5
-
-# Recency vs Proximity weighting (0.0 to 1.0)
-# Controls how much recency (when last heard) vs proximity (distance) matters
-# 0.0 = 100% proximity (only distance matters)
-# 1.0 = 100% recency (only when last heard matters)
-# 0.4 = 40% recency, 60% proximity (default - balanced for path routing)
-# Lower values favor closer repeaters, higher values favor recently heard repeaters
-recency_weight = 0.4
-
 
 [Hacker_Command]
 # Enable or disable the hacker command
