@@ -1051,6 +1051,82 @@ class ModernContactsManager {
         return pathHex.match(/.{1,2}/g)?.join(' ') || pathHex;
     }
     
+    sortPaths(paths, sortOrder) {
+        // Create a copy to avoid mutating the original array
+        const sortedPaths = [...paths];
+        
+        switch (sortOrder) {
+            case 'length':
+                // Sort by path_length ascending (shortest first)
+                sortedPaths.sort((a, b) => {
+                    const aLength = a.path_length || 0;
+                    const bLength = b.path_length || 0;
+                    return aLength - bLength;
+                });
+                break;
+            case 'recency':
+                // Sort by last_seen descending (most recent first)
+                sortedPaths.sort((a, b) => {
+                    const aDate = a.last_seen ? new Date(a.last_seen) : new Date(0);
+                    const bDate = b.last_seen ? new Date(b.last_seen) : new Date(0);
+                    return bDate - aDate;
+                });
+                break;
+            case 'frequency':
+                // Sort by observation_count descending (most observations first)
+                sortedPaths.sort((a, b) => {
+                    const aCount = a.observation_count || 0;
+                    const bCount = b.observation_count || 0;
+                    return bCount - aCount;
+                });
+                break;
+            default:
+                // Default to length sorting (shortest first)
+                sortedPaths.sort((a, b) => {
+                    const aLength = a.path_length || 0;
+                    const bLength = b.path_length || 0;
+                    return aLength - bLength;
+                });
+        }
+        
+        return sortedPaths;
+    }
+    
+    renderPathsInModal(paths, primaryPath) {
+        if (paths.length === 0) {
+            return '<p class="text-muted">No path data available for this contact.</p>';
+        }
+        
+        let pathsHtml = '<div class="list-group paths-list-group">';
+        for (let i = 0; i < paths.length; i++) {
+            const path = paths[i];
+            const isPrimary = path.path_hex === primaryPath;
+            const primaryBadge = isPrimary ? '<span class="badge bg-success ms-2">Primary</span>' : '';
+            const formattedPathHex = this.formatPathHex(path.path_hex);
+            
+            pathsHtml += `
+                <div class="list-group-item path-list-item ${isPrimary ? 'border-success' : ''}" id="path-item-${i}">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <h6 class="mb-1">
+                                Path ${i + 1} ${primaryBadge}
+                                <small class="text-muted">(${path.path_length} bytes, ${path.observation_count} observations)</small>
+                            </h6>
+                            <p class="mb-1"><code class="path-hex-code">${this.escapeHtml(formattedPathHex)}</code></p>
+                            <small class="text-muted">Last seen: ${this.formatTimeAgo(path.last_seen)}</small>
+                        </div>
+                        <button class="btn btn-sm btn-outline-primary" onclick="contactsManager.decodePathInModal('${path.path_hex}', ${i})">
+                            <i class="fas fa-code"></i> Decode
+                        </button>
+                    </div>
+                    <div id="decoded-path-${i}" class="mt-2" style="display: none;"></div>
+                </div>
+            `;
+        }
+        pathsHtml += '</div>';
+        return pathsHtml;
+    }
+    
     async showPathsModal(userId) {
         // Find the contact data
         const contact = this.filteredData.find(c => c.user_id === userId) || 
@@ -1060,42 +1136,19 @@ class ModernContactsManager {
             return;
         }
         
-        const allPaths = contact.all_paths || [];
+        // Store contact and paths for re-rendering
+        this.currentModalContact = contact;
+        this.currentModalPaths = contact.all_paths || [];
         const primaryPath = contact.out_path || '';
         
+        // Load sort preference from localStorage (default to 'length')
+        const sortOrder = localStorage.getItem('contactsPathSortOrder') || 'length';
+        
+        // Sort paths according to preference
+        const sortedPaths = this.sortPaths(this.currentModalPaths, sortOrder);
+        
         // Build modal content
-        let pathsHtml = '';
-        if (allPaths.length === 0) {
-            pathsHtml = '<p class="text-muted">No path data available for this contact.</p>';
-        } else {
-            pathsHtml = '<div class="list-group paths-list-group">';
-            for (let i = 0; i < allPaths.length; i++) {
-                const path = allPaths[i];
-                const isPrimary = path.path_hex === primaryPath;
-                const primaryBadge = isPrimary ? '<span class="badge bg-success ms-2">Primary</span>' : '';
-                const formattedPathHex = this.formatPathHex(path.path_hex);
-                
-                pathsHtml += `
-                    <div class="list-group-item path-list-item ${isPrimary ? 'border-success' : ''}" id="path-item-${i}">
-                        <div class="d-flex justify-content-between align-items-start">
-                            <div class="flex-grow-1">
-                                <h6 class="mb-1">
-                                    Path ${i + 1} ${primaryBadge}
-                                    <small class="text-muted">(${path.path_length} bytes, ${path.observation_count} observations)</small>
-                                </h6>
-                                <p class="mb-1"><code class="path-hex-code">${this.escapeHtml(formattedPathHex)}</code></p>
-                                <small class="text-muted">Last seen: ${this.formatTimeAgo(path.last_seen)}</small>
-                            </div>
-                            <button class="btn btn-sm btn-outline-primary" onclick="contactsManager.decodePathInModal('${path.path_hex}', ${i})">
-                                <i class="fas fa-code"></i> Decode
-                            </button>
-                        </div>
-                        <div id="decoded-path-${i}" class="mt-2" style="display: none;"></div>
-                    </div>
-                `;
-            }
-            pathsHtml += '</div>';
-        }
+        const pathsHtml = this.renderPathsInModal(sortedPaths, primaryPath);
         
         // Create modal HTML with dark mode support
         const modalHtml = `
@@ -1109,8 +1162,20 @@ class ModernContactsManager {
                             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                         </div>
                         <div class="modal-body paths-modal-body">
-                            <p class="text-muted">Showing ${allPaths.length} path${allPaths.length !== 1 ? 's' : ''} from observed_paths table.</p>
-                            ${pathsHtml}
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <p class="text-muted mb-0">Showing ${sortedPaths.length} path${sortedPaths.length !== 1 ? 's' : ''} from observed_paths table.</p>
+                                <div class="d-flex align-items-center gap-2">
+                                    <label for="pathSortOrder" class="mb-0 small text-muted">Sort by:</label>
+                                    <select class="form-select form-select-sm" id="pathSortOrder" style="width: auto;">
+                                        <option value="length" ${sortOrder === 'length' ? 'selected' : ''}>Length</option>
+                                        <option value="recency" ${sortOrder === 'recency' ? 'selected' : ''}>Recency</option>
+                                        <option value="frequency" ${sortOrder === 'frequency' ? 'selected' : ''}>Frequency</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div id="paths-list-container">
+                                ${pathsHtml}
+                            </div>
                         </div>
                         <div class="modal-footer paths-modal-footer">
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -1129,6 +1194,25 @@ class ModernContactsManager {
         // Add modal to page
         document.body.insertAdjacentHTML('beforeend', modalHtml);
         
+        // Setup sort dropdown event handler
+        const sortSelect = document.getElementById('pathSortOrder');
+        if (sortSelect) {
+            sortSelect.addEventListener('change', (e) => {
+                const newSortOrder = e.target.value;
+                // Save preference to localStorage
+                localStorage.setItem('contactsPathSortOrder', newSortOrder);
+                
+                // Re-sort paths
+                const reSortedPaths = this.sortPaths(this.currentModalPaths, newSortOrder);
+                
+                // Re-render paths
+                const pathsContainer = document.getElementById('paths-list-container');
+                if (pathsContainer) {
+                    pathsContainer.innerHTML = this.renderPathsInModal(reSortedPaths, primaryPath);
+                }
+            });
+        }
+        
         // Show modal
         const modal = new bootstrap.Modal(document.getElementById('pathsModal'));
         modal.show();
@@ -1136,6 +1220,9 @@ class ModernContactsManager {
         // Clean up modal when hidden
         document.getElementById('pathsModal').addEventListener('hidden.bs.modal', () => {
             document.getElementById('pathsModal').remove();
+            // Clear stored data
+            this.currentModalContact = null;
+            this.currentModalPaths = null;
         });
     }
     
