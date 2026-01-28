@@ -360,6 +360,7 @@
     let highlightedNodeObject = null; // The actual node object that's highlighted
     let highlightedEdges = new Map(); // Map of edge keys to their original styles
     let allEdgeStyles = new Map(); // Map of all edge keys to their original styles (for dimming)
+    let allNodeStyles = new Map(); // Map of node identifiers to their original styles (for shrinking)
     let nodeMarkers = new Map(); // Map of node identifier to marker for easy access
     let nodeMarkersByPrefix = new Map(); // Map of prefix to array of markers (for multiple nodes with same prefix)
     let edgeLines = new Map(); // Map of "from-to" to polyline for easy access
@@ -715,13 +716,21 @@
             const nodeId = getNodeId(node);
             const marker = nodeMarkers.get(nodeId);
             if (marker) {
-                const normalSize = getNodeSize(node);
-                const normalBorderWeight = getBorderWeight(normalSize, node.is_starred);
-                marker.setStyle({
-                    radius: normalSize,
-                    weight: normalBorderWeight,
-                    color: node.is_starred ? '#ffc107' : '#ffffff'
-                });
+                const originalStyle = allNodeStyles.get(nodeId);
+                if (originalStyle) {
+                    // Restore original size and style
+                    marker.setStyle(originalStyle);
+                } else {
+                    // Fallback: restore based on node properties
+                    const normalSize = getNodeSize(node);
+                    const normalBorderWeight = getBorderWeight(normalSize, node.is_starred);
+                    marker.setStyle({
+                        radius: normalSize,
+                        weight: normalBorderWeight,
+                        color: node.is_starred ? '#ffc107' : '#ffffff',
+                        fillOpacity: 0.8
+                    });
+                }
             }
         });
     }
@@ -1017,7 +1026,11 @@
             try {
                 map = L.map('map-view', {
                     zoomControl: true,
-                    preferCanvas: false
+                    preferCanvas: false,
+                    zoomAnimation: true, // Enable smooth zooming
+                    zoomAnimationThreshold: 4, // Only animate if zoom difference is >= 4
+                    fadeAnimation: true, // Enable fade animation for markers
+                    markerZoomAnimation: true // Enable zoom animation for markers
                 }).setView([0, 0], 2);
                 
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -1129,6 +1142,7 @@
         edgeLines.clear();
         edgeToNodes.clear();
         allEdgeStyles.clear();
+        allNodeStyles.clear();
         highlightedEdges.clear();
         // Note: Don't clear highlightedPath here - it will be re-applied after rendering if preservedPath exists
         
@@ -1642,6 +1656,21 @@
             });
         });
         
+        // Store original styles for all nodes (for shrinking non-highlighted ones)
+        allNodeStyles.clear();
+        filteredNodes.forEach(node => {
+            const nodeId = getNodeId(node);
+            const marker = nodeMarkers.get(nodeId);
+            if (marker) {
+                allNodeStyles.set(nodeId, {
+                    radius: marker.options.radius,
+                    weight: marker.options.weight,
+                    color: marker.options.color,
+                    fillOpacity: marker.options.fillOpacity
+                });
+            }
+        });
+        
         // Create a unique identifier for the clicked node using prefix + location
         const clickedNodeId = getNodeId(clickedNode);
         
@@ -1696,7 +1725,6 @@
                 
                 // Determine edge direction and color by checking actual node objects
                 const edgeNodes = edgeToNodes.get(edgeKey);
-                const clickedNodeId = getNodeId(clickedNode);
                 let highlightColor;
                 if (bidirectionalEdges.has(edgeKey) || bidirectionalEdges.has(`${edge.to_prefix}-${edge.from_prefix}`)) {
                     // Bidirectional - purple
@@ -1740,18 +1768,67 @@
             }
         });
         
-        // Highlight the node itself
-        const nodeId = getNodeId(clickedNode);
-        const marker = nodeMarkers.get(nodeId);
-        if (marker) {
-            const highlightSize = getNodeSize(clickedNode) + 3;
-            const highlightBorderWeight = getBorderWeight(highlightSize, clickedNode.is_starred);
-            marker.setStyle({
-                radius: highlightSize,
-                weight: highlightBorderWeight,
-                color: '#ffc107'
-            });
-        }
+        // Build a set of connected node IDs (clicked node + all neighbors)
+        const connectedNodeIds = new Set([clickedNodeId]);
+        edgeToNodes.forEach((nodes, edgeKey) => {
+            if (highlightedEdgeKeys.has(edgeKey)) {
+                // This edge is connected to the clicked node, so both endpoints are connected
+                if (nodes.fromNode) {
+                    connectedNodeIds.add(getNodeId(nodes.fromNode));
+                }
+                if (nodes.toNode) {
+                    connectedNodeIds.add(getNodeId(nodes.toNode));
+                }
+            }
+        });
+        
+        // Highlight the clicked node, keep connected nodes at regular size, shrink all others
+        filteredNodes.forEach(node => {
+            const nodeId = getNodeId(node);
+            const marker = nodeMarkers.get(nodeId);
+            if (!marker) return;
+            
+            if (nodeId === clickedNodeId) {
+                // Highlight the clicked node - make it larger
+                const highlightSize = getNodeSize(node) + 3;
+                const highlightBorderWeight = getBorderWeight(highlightSize, node.is_starred);
+                marker.setStyle({
+                    radius: highlightSize,
+                    weight: highlightBorderWeight,
+                    color: '#ffc107',
+                    fillOpacity: 1.0
+                });
+            } else if (connectedNodeIds.has(nodeId)) {
+                // Keep connected nodes at regular size
+                const originalStyle = allNodeStyles.get(nodeId);
+                if (originalStyle) {
+                    marker.setStyle(originalStyle);
+                } else {
+                    // Fallback: restore based on node properties
+                    const nodeSize = getNodeSize(node);
+                    const borderWeight = getBorderWeight(nodeSize, node.is_starred);
+                    marker.setStyle({
+                        radius: nodeSize,
+                        weight: borderWeight,
+                        color: node.is_starred ? '#ffc107' : '#fff',
+                        fillOpacity: 0.8
+                    });
+                }
+            } else {
+                // Shrink all other nodes significantly for visibility
+                const originalStyle = allNodeStyles.get(nodeId);
+                if (originalStyle) {
+                    const shrunkSize = Math.max(2, originalStyle.radius * 0.3); // Shrink to 30% of original size, minimum 2px
+                    const shrunkWeight = Math.max(0.5, originalStyle.weight * 0.3);
+                    marker.setStyle({
+                        radius: shrunkSize,
+                        weight: shrunkWeight,
+                        color: originalStyle.color,
+                        fillOpacity: 0.4 // Reduce opacity for dimmed nodes
+                    });
+                }
+            }
+        });
     }
     
     // Backward compatibility wrapper - converts prefix to node object
@@ -1897,22 +1974,28 @@
             clearPathHighlight();
         }
         
-        // Clear map view highlights
-        if (highlightedNode) {
-            // Find all markers with this prefix and restore their styles
-            const markersWithPrefix = nodeMarkersByPrefix.get(highlightedNode);
-            if (markersWithPrefix) {
-                markersWithPrefix.forEach(({ marker, node }) => {
+        // Clear map view highlights - restore all node styles
+        filteredNodes.forEach(node => {
+            const nodeId = getNodeId(node);
+            const marker = nodeMarkers.get(nodeId);
+            if (marker) {
+                const originalStyle = allNodeStyles.get(nodeId);
+                if (originalStyle) {
+                    // Restore original size and style
+                    marker.setStyle(originalStyle);
+                } else {
+                    // Fallback: restore based on node properties
                     const nodeSize = getNodeSize(node);
                     const borderWeight = getBorderWeight(nodeSize, node.is_starred);
                     marker.setStyle({
                         radius: nodeSize,
                         weight: borderWeight,
-                        color: node.is_starred ? '#ffc107' : '#fff'
+                        color: node.is_starred ? '#ffc107' : '#fff',
+                        fillOpacity: 0.8
                     });
-                });
+                }
             }
-        }
+        });
         
         // Restore original edge styles for all edges
         allEdgeStyles.forEach((originalStyle, edgeKey) => {
@@ -1924,6 +2007,7 @@
         
         highlightedEdges.clear();
         allEdgeStyles.clear();
+        allNodeStyles.clear();
         highlightedNode = null;
         highlightedNodeObject = null;
         
