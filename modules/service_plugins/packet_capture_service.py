@@ -803,8 +803,8 @@ class PacketCaptureService(BaseServicePlugin):
                     self.logger.debug(f"Calling publish_packet_mqtt for packet {self.packet_count}")
                 publish_metrics = await self.publish_packet_mqtt(formatted_packet)
             
-            # Log INFO level line for each packet (matches original script)
-            self.logger.info(f"📦 Captured packet #{self.packet_count}: {formatted_packet['route']} type {formatted_packet['packet_type']}, {formatted_packet['len']} bytes, SNR: {formatted_packet['SNR']}, RSSI: {formatted_packet['RSSI']}, hash: {formatted_packet['hash']} (MQTT: {publish_metrics['succeeded']}/{publish_metrics['attempted']})")
+            # Log DEBUG level for each packet (verbose; use INFO only for service lifecycle)
+            self.logger.debug(f"📦 Captured packet #{self.packet_count}: {formatted_packet['route']} type {formatted_packet['packet_type']}, {formatted_packet['len']} bytes, SNR: {formatted_packet['SNR']}, RSSI: {formatted_packet['RSSI']}, hash: {formatted_packet['hash']} (MQTT: {publish_metrics['succeeded']}/{publish_metrics['attempted']})")
             
             # Output full packet data structure in debug mode only (matches original script)
             if self.debug:
