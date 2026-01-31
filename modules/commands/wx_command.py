@@ -161,7 +161,11 @@ class WxCommand(BaseCommand):
             return False
         
         if self.delegate_command:
-            return self.delegate_command.can_execute(message)
+            # Enforce [Wx_Command] channels first; delegate uses skip_channel_check
+            # so [Wx_Command] channels override is honored when using Open-Meteo
+            if not self.is_channel_allowed(message):
+                return False
+            return self.delegate_command.can_execute(message, skip_channel_check=True)
         
         # Use base class for cooldown and other checks
         return super().can_execute(message)
