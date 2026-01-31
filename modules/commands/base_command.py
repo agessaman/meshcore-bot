@@ -102,6 +102,7 @@ class BaseCommand(ABC):
             'Hacker': 'Hacker_Command',
             'Sports': 'Sports_Command',
             'Stats': 'Stats_Command',
+            'Weather': 'Wx_Command',  # wx command reads from [Wx_Command]; [Weather] is legacy
         }
         
         # Determine old and new section names
