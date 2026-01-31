@@ -755,6 +755,18 @@
         await loadStats();
         // Then load data (which will apply filters)
         await loadData();
+        // Open graph tab if URL has #graph (e.g. /mesh#graph)
+        if (window.location.hash === '#graph') {
+            switchView('graph');
+        }
+        // Keep view in sync with URL hash (back/forward, direct link)
+        window.addEventListener('hashchange', function() {
+            if (window.location.hash === '#graph' && currentView !== 'graph') {
+                switchView('graph');
+            } else if (window.location.hash !== '#graph' && currentView === 'graph') {
+                switchView('map');
+            }
+        });
     });
     
     // Load statistics
@@ -789,9 +801,10 @@
     }
     
     // Load nodes and edges
-    async function loadData() {
-        // Preserve path highlight state before reloading
-        const preservedPath = highlightedPath;
+    // Options: { skipRender: true } - refresh allNodes/allEdges but do not call applyFilters().
+    // Used by socket handlers so graph view is not re-rendered on live updates (avoids chaotic re-stabilization).
+    async function loadData(options) {
+        const skipRender = options && options.skipRender === true;
         
         try {
             // Load nodes
@@ -821,9 +834,11 @@
                 edgeMap[key] = edge;
             });
             
-            // Apply filters (will use the min observations value set by loadStats)
-            // Note: applyFilters() will preserve and re-apply path highlights via renderMap()
-            applyFilters();
+            if (!skipRender) {
+                // Apply filters (will use the min observations value set by loadStats)
+                // Note: applyFilters() will preserve and re-apply path highlights via renderMap()
+                applyFilters();
+            }
         } catch (error) {
             console.error('Error loading data:', error);
             throw error; // Re-throw so callers can handle it
@@ -936,10 +951,8 @@
             // Highlights are re-applied inside renderMap() if preservedHighlightedNode or preservedPath exists
         } else {
             renderGraph();
-            // Re-apply highlights in graph view if we had a highlighted node
-            if (preservedHighlightedNode && nodeMap[preservedHighlightedNode] &&
-                filteredNodes.some(n => n.prefix === preservedHighlightedNode)) {
-                // Use requestAnimationFrame for smoother transition
+            // Re-apply highlights in graph view if we had a highlighted node (preservedHighlightedNode is the node object)
+            if (preservedHighlightedNode && filteredNodes.some(n => getNodeId(n) === getNodeId(preservedHighlightedNode))) {
                 requestAnimationFrame(() => {
                     highlightNodeConnectionsGraph(preservedHighlightedNode);
                 });
@@ -957,6 +970,16 @@
     // Switch between views
     function switchView(view) {
         currentView = view;
+        // Update URL hash so /mesh#graph links open directly to graph tab
+        if (view === 'graph') {
+            if (window.location.hash !== '#graph') {
+                history.replaceState(null, '', window.location.pathname + '#graph');
+            }
+        } else {
+            if (window.location.hash) {
+                history.replaceState(null, '', window.location.pathname);
+            }
+        }
         
         if (view === 'map') {
             document.getElementById('btn-view-map').classList.add('active');
@@ -1455,8 +1478,12 @@
                         background: node.role === 'roomserver' ? '#198754' : '#0d6efd',
                         border: node.is_starred ? '#ffc107' : '#fff',
                         highlight: {
-                            background: node.role === 'roomserver' ? '#20c997' : '#0dcaf0',
-                            border: '#ffc107'
+                            background: node.role === 'roomserver' ? '#10b981' : '#f59e0b',
+                            border: '#d97706'
+                        },
+                        hover: {
+                            background: node.role === 'roomserver' ? '#10b981' : '#f59e0b',
+                            border: '#d97706'
                         }
                     },
                     size: getNodeSize(node),
@@ -1526,10 +1553,21 @@
                 labelHighlightBold: true,
                 // Reduce label overlap by adjusting label distance
                 margin: 8,
+                // Global fallback so hover/highlight are never default gray (#848484)
+                color: {
+                    highlight: { border: '#d97706', background: '#f59e0b' },
+                    hover: { border: '#d97706', background: '#f59e0b' }
+                },
                 chosen: {
                     node: function(values, id, selected, hovering) {
                         if (hovering || selected) {
-                            values.font = { size: 15, color: '#ffc107', strokeWidth: 3, strokeColor: '#000000' };
+                            values.color = {
+                                background: '#f59e0b',
+                                border: '#d97706',
+                                highlight: { background: '#f59e0b', border: '#d97706' },
+                                hover: { background: '#f59e0b', border: '#d97706' }
+                            };
+                            values.font = { size: 15, color: '#fef3c7', strokeWidth: 3, strokeColor: '#92400e' };
                             values.size = values.size * 1.2; // Slightly enlarge on hover/select
                         }
                     }
@@ -1540,20 +1578,22 @@
                     type: 'continuous',
                     roundness: 0.5
                 }
+                // No global highlight/hover so our direction colors (blue/green/purple) show when a node is selected
             },
             physics: {
                 enabled: true,
+                solver: 'forceAtlas2Based',
                 stabilization: {
-                    iterations: 200,
+                    iterations: 600,
                     fit: true
                 },
-                barnesHut: {
-                    gravitationalConstant: -4000,
-                    centralGravity: 0.15,
-                    springLength: 150,
-                    springConstant: 0.025,
-                    damping: 0.12,
-                    avoidOverlap: 1.2 // Add more spacing to avoid node and label overlap
+                forceAtlas2Based: {
+                    gravitationalConstant: -1200,
+                    centralGravity: 0.005,
+                    springLength: 220,
+                    springConstant: 0.08,
+                    damping: 0.4,
+                    avoidOverlap: 1.0
                 }
             },
             interaction: {
@@ -1561,6 +1601,7 @@
                 tooltipDelay: 200,
                 zoomView: true,
                 dragView: true,
+                dragNodes: false,
                 selectConnectedEdges: false
             },
             layout: {
@@ -1576,13 +1617,12 @@
         
         // Instead of destroying and recreating, update the existing network to prevent flashing
         if (graphNetwork) {
-            // Update data without recreating the network
+            // Update data and re-enable physics so the new graph runs stabilization again
             graphNetwork.setData(data);
-            // Only update non-physics options to avoid disrupting layout
-            // Skip physics options to prevent layout reset and flashing
             const updateOptions = {
                 nodes: options.nodes,
                 edges: options.edges,
+                physics: options.physics,
                 interaction: options.interaction,
                 layout: options.layout
             };
@@ -1591,15 +1631,127 @@
             // Only create new network if it doesn't exist
             graphNetwork = new vis.Network(container, data, options);
             
+            // Freeze layout after stabilization so the graph settles instead of drifting
+            graphNetwork.on('stabilizationIterationsDone', () => {
+                graphNetwork.setOptions({ physics: false });
+            });
+            
+            // Apply direction colors to edges connected to a node (for hover and click)
+            function applyEdgeHighlightForNodeId(focusNodeId) {
+                if (!graphNetwork || !focusNodeId) return;
+                const edgeIdsToHighlight = [];
+                const edgeStyles = {};
+                const bidirectionalEdgeIds = new Set();
+                filteredEdges.forEach(edge => {
+                    let fromNode = null;
+                    if (edge.from_public_key && nodeMapByKey[edge.from_public_key]) {
+                        fromNode = nodeMapByKey[edge.from_public_key];
+                    } else {
+                        fromNode = nodeMap[edge.from_prefix];
+                    }
+                    let toNode = null;
+                    if (edge.to_public_key && nodeMapByKey[edge.to_public_key]) {
+                        toNode = nodeMapByKey[edge.to_public_key];
+                    } else {
+                        toNode = nodeMap[edge.to_prefix];
+                    }
+                    if (!fromNode || !toNode) return;
+                    const fromNodeId = getNodeId(fromNode);
+                    const toNodeId = getNodeId(toNode);
+                    const edgeId = `${fromNodeId}-${toNodeId}`;
+                    if (fromNodeId === focusNodeId || toNodeId === focusNodeId) {
+                        edgeIdsToHighlight.push(edgeId);
+                        const reverseEdgeId = `${toNodeId}-${fromNodeId}`;
+                        if (filteredEdges.some(e => {
+                            let revFromNode = (e.from_public_key && nodeMapByKey[e.from_public_key]) ? nodeMapByKey[e.from_public_key] : nodeMap[e.from_prefix];
+                            let revToNode = (e.to_public_key && nodeMapByKey[e.to_public_key]) ? nodeMapByKey[e.to_public_key] : nodeMap[e.to_prefix];
+                            if (!revFromNode || !revToNode) return false;
+                            return getNodeId(revFromNode) === toNodeId && getNodeId(revToNode) === fromNodeId;
+                        })) {
+                            bidirectionalEdgeIds.add(edgeId);
+                            bidirectionalEdgeIds.add(reverseEdgeId);
+                        }
+                        let highlightColor;
+                        if (bidirectionalEdgeIds.has(edgeId)) {
+                            highlightColor = '#9333ea';
+                        } else if (fromNodeId === focusNodeId) {
+                            highlightColor = '#3b82f6';
+                        } else {
+                            highlightColor = '#10b981';
+                        }
+                        const baseWidth = Math.max(1, Math.log10(edge.observation_count) * 2);
+                        edgeStyles[edgeId] = {
+                            color: {
+                                color: highlightColor,
+                                opacity: 1.0,
+                                highlight: highlightColor,
+                                hover: highlightColor
+                            },
+                            width: Math.max(3, baseWidth + 2)
+                        };
+                    }
+                });
+                const currentEdges = graphNetwork.body.data.edges.get();
+                const edgeUpdates = currentEdges.map(edge => {
+                    const edgeId = edge.id;
+                    if (edgeIdsToHighlight.includes(edgeId)) {
+                        return { id: edgeId, ...edgeStyles[edgeId] };
+                    }
+                    return {
+                        id: edgeId,
+                        color: { color: '#848484', opacity: 0.2 },
+                        width: 1
+                    };
+                });
+                graphNetwork.body.data.edges.update(edgeUpdates);
+            }
+            
+            // Restore edges after hover ends: re-apply selected node state or default edge colors
+            function restoreGraphEdgesAfterHover() {
+                if (!graphNetwork || currentView !== 'graph') return;
+                if (highlightedNodeObject) {
+                    highlightNodeConnectionsGraph(highlightedNodeObject);
+                } else {
+                    const currentEdges = graphNetwork.body.data.edges.get();
+                    const edgeUpdates = [];
+                    for (const edge of currentEdges) {
+                        const edgeId = edge.id;
+                        const originalEdge = filteredEdges.find(e => {
+                            let fromNode = (e.from_public_key && nodeMapByKey[e.from_public_key]) ? nodeMapByKey[e.from_public_key] : nodeMap[e.from_prefix];
+                            let toNode = (e.to_public_key && nodeMapByKey[e.to_public_key]) ? nodeMapByKey[e.to_public_key] : nodeMap[e.to_prefix];
+                            if (!fromNode || !toNode) return false;
+                            return `${getNodeId(fromNode)}-${getNodeId(toNode)}` === edgeId;
+                        });
+                        if (originalEdge) {
+                            edgeUpdates.push({
+                                id: edgeId,
+                                color: { color: getEdgeColor(originalEdge), opacity: getEdgeOpacity(originalEdge) },
+                                width: Math.max(1, Math.log10(originalEdge.observation_count) * 2)
+                            });
+                        }
+                    }
+                    if (edgeUpdates.length) graphNetwork.body.data.edges.update(edgeUpdates);
+                }
+            }
+            
             // Event handlers - only set up once when network is first created
+            graphNetwork.on('hoverNode', (params) => {
+                if (params.node) applyEdgeHighlightForNodeId(params.node);
+            });
+            graphNetwork.on('blurNode', () => {
+                restoreGraphEdgesAfterHover();
+            });
             graphNetwork.on('click', (params) => {
                 if (params.nodes.length > 0) {
-                    const nodeId = params.nodes[0]; // This is now the unique ID (prefix-lat-lon)
-                    // Find node by matching the unique ID
+                    const nodeId = params.nodes[0];
                     const node = filteredNodes.find(n => getNodeId(n) === nodeId);
                     if (node) {
-                        highlightNodeConnectionsGraph(node.prefix);
-                        // For graph view, still show modal since there's no popup equivalent
+                        // Click on the currently highlighted node = clear (fixes two-click-to-clear)
+                        if (highlightedNodeObject && getNodeId(highlightedNodeObject) === nodeId) {
+                            clearHighlights();
+                            return;
+                        }
+                        highlightNodeConnectionsGraph(node);
                         showNodeDetails(node);
                     }
                 } else if (params.edges.length > 0) {
@@ -1841,21 +1993,29 @@
         }
     }
     
-        // Highlight node connections in graph view
-        function highlightNodeConnectionsGraph(nodePrefix) {
-        if (!graphNetwork || !nodePrefix) return;
+        // Highlight node connections in graph view.
+        // nodeOrIdOrPrefix: node object (preferred), unique node id string (getNodeId), or prefix string (fallback).
+        function highlightNodeConnectionsGraph(nodeOrIdOrPrefix) {
+        if (!graphNetwork || nodeOrIdOrPrefix == null) return;
         
-        // Get the actual node object(s) with this prefix
-        const nodesWithPrefix = filteredNodes.filter(n => n.prefix === nodePrefix);
-        if (nodesWithPrefix.length === 0) return;
+        let clickedNode = null;
+        if (typeof nodeOrIdOrPrefix === 'object' && nodeOrIdOrPrefix !== null && 'prefix' in nodeOrIdOrPrefix && 'latitude' in nodeOrIdOrPrefix) {
+            clickedNode = nodeOrIdOrPrefix;
+        } else if (typeof nodeOrIdOrPrefix === 'string') {
+            const byId = filteredNodes.find(n => getNodeId(n) === nodeOrIdOrPrefix);
+            if (byId) {
+                clickedNode = byId;
+            } else {
+                const nodesWithPrefix = filteredNodes.filter(n => n.prefix === nodeOrIdOrPrefix);
+                if (nodesWithPrefix.length > 0) clickedNode = nodesWithPrefix[0];
+            }
+        }
+        if (!clickedNode) return;
         
-        // For now, highlight the first node with this prefix (could be enhanced to highlight all)
-        const clickedNode = nodesWithPrefix[0];
         const clickedNodeId = getNodeId(clickedNode);
         
-        // Clear previous highlights
-        clearHighlights();
-        highlightedNode = nodePrefix;
+        // Don't call clearHighlights() so switching to another node works (direct state transition)
+        highlightedNode = clickedNode.prefix;
         highlightedNodeObject = clickedNode;
         
         // Show legend
@@ -1868,6 +2028,7 @@
         const edgeIdsToHighlight = [];
         const edgeStyles = {};
         const bidirectionalEdgeIds = new Set();
+        const connectedNodeIds = new Set([clickedNodeId]);
         
         filteredEdges.forEach(edge => {
             // Resolve nodes for this edge
@@ -1893,6 +2054,8 @@
             // Check if this edge connects to the clicked node
             if (fromNodeId === clickedNodeId || toNodeId === clickedNodeId) {
                 edgeIdsToHighlight.push(edgeId);
+                connectedNodeIds.add(fromNodeId);
+                connectedNodeIds.add(toNodeId);
                 
                 // Check for bidirectional
                 const reverseEdgeId = `${toNodeId}-${fromNodeId}`;
@@ -1916,7 +2079,7 @@
                     bidirectionalEdgeIds.add(reverseEdgeId);
                 }
                 
-                // Determine color based on direction
+                // Use connection direction colors: blue outgoing, green incoming, purple bidirectional
                 let highlightColor;
                 if (bidirectionalEdgeIds.has(edgeId)) {
                     highlightColor = '#9333ea'; // Purple for bidirectional
@@ -1925,40 +2088,68 @@
                 } else {
                     highlightColor = '#10b981'; // Green for incoming
                 }
-                
+                const baseWidth = Math.max(1, Math.log10(edge.observation_count) * 2);
                 edgeStyles[edgeId] = {
-                    color: { color: highlightColor, opacity: 1.0 },
-                    width: Math.max(3, Math.log10(edge.observation_count) * 2 + 2)
+                    color: {
+                        color: highlightColor,
+                        opacity: 1.0,
+                        highlight: highlightColor,
+                        hover: highlightColor
+                    },
+                    width: Math.max(3, baseWidth + 2)
                 };
             }
         });
         
-        // Update edges individually using vis-network's updateEdge method
+        // Batch all edge updates in one call to avoid per-item redraws (was ~18s for large graphs)
         const currentEdges = graphNetwork.body.data.edges.get();
-        
-        currentEdges.forEach(edge => {
+        const edgeUpdates = currentEdges.map(edge => {
             const edgeId = edge.id;
             if (edgeIdsToHighlight.includes(edgeId)) {
-                // Highlight this edge
-                graphNetwork.updateEdge(edgeId, edgeStyles[edgeId]);
-            } else {
-                // Dim non-highlighted edges
-                graphNetwork.updateEdge(edgeId, {
-                    color: { color: '#848484', opacity: 0.2 },
-                    width: 1
-                });
+                return { id: edgeId, ...edgeStyles[edgeId] };
             }
+            return {
+                id: edgeId,
+                color: { color: '#848484', opacity: 0.2 },
+                width: 1
+            };
         });
+        graphNetwork.body.data.edges.update(edgeUpdates);
         
-        // Highlight the node with a border
         graphNetwork.selectNodes([clickedNodeId]);
         
-        // Update node style to make it stand out
-        graphNetwork.updateNode(clickedNodeId, {
-            borderWidth: 4,
-            borderColor: '#ffc107',
-            size: getNodeSize(clickedNode) + 2
+        // Update all nodes in one batch: one update per graph node so labels aren't overwritten by duplicates
+        const nodeHighlightColor = clickedNode.role === 'roomserver' ? '#10b981' : '#f59e0b';
+        const graphNodeIds = graphNetwork.body.data.nodes.getIds();
+        const nodeUpdates = graphNodeIds.map(nid => {
+            const n = filteredNodes.find(fn => getNodeId(fn) === nid);
+            if (!n) return { id: nid, label: '', title: '' };
+            const isClicked = nid === clickedNodeId;
+            const isLinked = connectedNodeIds.has(nid);
+            const bg = n.role === 'roomserver' ? '#198754' : '#0d6efd';
+            const border = n.is_starred ? '#ffc107' : '#fff';
+            const hlBg = n.role === 'roomserver' ? '#10b981' : '#f59e0b';
+            const label = isLinked
+                ? (n.name.length > 22 ? n.name.substring(0, 22) + '... (' + n.prefix + ')' : n.name + ' (' + n.prefix + ')')
+                : '';
+            const title = n.name + ' (' + n.prefix + ')';
+            const update = {
+                id: nid,
+                label: label,
+                title: title,
+                color: isClicked
+                    ? { border: '#d97706', background: nodeHighlightColor, highlight: { border: '#d97706', background: nodeHighlightColor }, hover: { border: '#d97706', background: nodeHighlightColor } }
+                    : { background: bg, border: border, highlight: { background: hlBg, border: '#d97706' }, hover: { background: hlBg, border: '#d97706' } },
+                borderWidth: isClicked ? 4 : getBorderWeight(getNodeSize(n), n.is_starred),
+                size: isClicked ? getNodeSize(clickedNode) + 2 : getNodeSize(n)
+            };
+            // Force label to render for linked nodes (vis-network can skip if font not set on update)
+            if (isLinked) {
+                update.font = { size: 13, color: '#ffffff', strokeWidth: 2, strokeColor: '#000000' };
+            }
+            return update;
         });
+        graphNetwork.body.data.nodes.update(nodeUpdates);
     }
     
     // Clear all highlights
@@ -2015,11 +2206,11 @@
         if (graphNetwork && currentView === 'graph') {
             graphNetwork.unselectAll();
             
-            // Restore all edges to original colors
+            // Batch edge and node restores in single update() calls to avoid per-item redraws
             const currentEdges = graphNetwork.body.data.edges.get();
-            currentEdges.forEach(edge => {
-                const edgeId = edge.id; // This is now fromNodeId-toNodeId format
-                // Find the edge by matching unique node IDs
+            const edgeUpdates = [];
+            for (const edge of currentEdges) {
+                const edgeId = edge.id;
                 const originalEdge = filteredEdges.find(e => {
                     let fromNode = null;
                     if (e.from_public_key && nodeMapByKey[e.from_public_key]) {
@@ -2038,28 +2229,40 @@
                     return expectedEdgeId === edgeId;
                 });
                 if (originalEdge) {
-                    const originalColor = getEdgeColor(originalEdge);
-                    const originalOpacity = getEdgeOpacity(originalEdge);
-                    const originalWidth = Math.max(1, Math.log10(originalEdge.observation_count) * 2);
-                    graphNetwork.updateEdge(edgeId, {
-                        color: { color: originalColor, opacity: originalOpacity },
-                        width: originalWidth
+                    edgeUpdates.push({
+                        id: edgeId,
+                        color: { color: getEdgeColor(originalEdge), opacity: getEdgeOpacity(originalEdge) },
+                        width: Math.max(1, Math.log10(originalEdge.observation_count) * 2)
                     });
                 }
-            });
+            }
+            if (edgeUpdates.length) graphNetwork.body.data.edges.update(edgeUpdates);
             
-            // Restore node styles - use unique node IDs
-            filteredNodes.forEach(node => {
-                const nodeId = getNodeId(node);
+            const graphNodeIds = graphNetwork.body.data.nodes.getIds();
+            const nodeUpdates = graphNodeIds.map(nodeId => {
+                const node = filteredNodes.find(fn => getNodeId(fn) === nodeId);
+                if (!node) return { id: nodeId, label: '', font: { size: 12 } };
                 const nodeSize = getNodeSize(node);
-                // Scale border width proportionally with node size for graph view too
                 const borderWidth = getBorderWeight(nodeSize, node.is_starred);
-                graphNetwork.updateNode(nodeId, {
+                const bg = node.role === 'roomserver' ? '#198754' : '#0d6efd';
+                const border = node.is_starred ? '#ffc107' : '#fff';
+                const hlBg = node.role === 'roomserver' ? '#10b981' : '#f59e0b';
+                return {
+                    id: nodeId,
+                    label: getDefaultNodeLabel(node),
+                    title: node.name + ' (' + node.prefix + ')',
+                    font: { size: 12 },
+                    color: {
+                        background: bg,
+                        border: border,
+                        highlight: { background: hlBg, border: '#d97706' },
+                        hover: { background: hlBg, border: '#d97706' }
+                    },
                     borderWidth: borderWidth,
-                    borderColor: node.is_starred ? '#ffc107' : '#fff',
                     size: nodeSize
-                });
+                };
             });
+            graphNetwork.body.data.nodes.update(nodeUpdates);
         }
     }
     
@@ -2070,9 +2273,8 @@
         const degree = filteredEdges.filter(e => 
             e.from_prefix === node.prefix || e.to_prefix === node.prefix
         ).length;
-        // Smaller base size and less aggressive scaling
-        // Returns a value between 4 and 12 based on connection count
-        return Math.max(4, Math.min(12, 4 + degree * 0.5));
+        // Base size 6, scale with degree, cap at 16
+        return Math.max(6, Math.min(16, 6 + degree * 0.5));
     }
     
     // Helper function to calculate border weight based on node size
@@ -2081,6 +2283,17 @@
         // For small nodes (4px), use ~0.8px border; for large nodes (12px), use ~2.4px border
         const baseWeight = Math.max(0.8, nodeSize * 0.2);
         return isStarred ? baseWeight * 1.5 : baseWeight;
+    }
+    
+    // Default label for a node (matches renderGraph shortLabel logic) for restore on clear
+    function getDefaultNodeLabel(node) {
+        if (node.name.length > 25) {
+            return node.prefix.toUpperCase() + ': ' + (node.name.length > 15 ? node.name.substring(0, 15) + '...' : node.name);
+        }
+        if (node.name.length > 20) {
+            return node.name.substring(0, 20) + '...';
+        }
+        return node.name;
     }
     
     function getEdgeColor(edge) {
@@ -2180,53 +2393,28 @@
     }
     
     // Socket.IO setup for real-time updates
+    // Live updates are applied only when the map view is active. When the graph view is active,
+    // we refresh data in the background but do not re-render the graph, to avoid the chaotic
+    // re-stabilization layout (nodes clumping, edges tangling) that occurs when vis-network
+    // runs physics again. User can refresh or switch to map and back to see updated graph.
     function setupSocketIO() {
         const socket = io();
         
-        // Subscribe to mesh graph updates
         socket.emit('subscribe_mesh');
         
-        socket.on('mesh_edge_added', (data) => {
-            console.log('New edge added:', data);
-            // Preserve highlighted path and node before reloading
-            const preservedPath = highlightedPath;
-            const preservedNode = highlightedNodeObject;
-            loadStats(); // Update stats first
-            loadData().then(() => {
-                // Re-apply path highlight after data loads to keep edges dimmed
-                // renderMap() will handle re-applying the highlight, but we need to ensure it happens
-                // The highlight will be re-applied by renderMap() via preservedPath
-                // No need for additional setTimeout here - renderMap() handles it
+        function onMeshUpdate(data, label) {
+            console.log(label, data);
+            loadStats();
+            loadData({ skipRender: true }).then(() => {
+                if (currentView === 'map') {
+                    applyFilters();
+                }
             });
-        });
+        }
         
-        socket.on('mesh_edge_updated', (data) => {
-            console.log('Edge updated:', data);
-            // Preserve highlighted path and node before reloading
-            const preservedPath = highlightedPath;
-            const preservedNode = highlightedNodeObject;
-            loadStats(); // Update stats first
-            loadData().then(() => {
-                // Re-apply path highlight after data loads to keep edges dimmed
-                // renderMap() will handle re-applying the highlight, but we need to ensure it happens
-                // The highlight will be re-applied by renderMap() via preservedPath
-                // No need for additional setTimeout here - renderMap() handles it
-            });
-        });
-        
-        socket.on('mesh_node_added', (data) => {
-            console.log('New node added:', data);
-            // Preserve highlighted path and node before reloading
-            const preservedPath = highlightedPath;
-            const preservedNode = highlightedNodeObject;
-            loadStats(); // Update stats first
-            loadData().then(() => {
-                // Re-apply path highlight after data loads to keep edges dimmed
-                // renderMap() will handle re-applying the highlight, but we need to ensure it happens
-                // The highlight will be re-applied by renderMap() via preservedPath
-                // No need for additional setTimeout here - renderMap() handles it
-            });
-        });
+        socket.on('mesh_edge_added', (data) => onMeshUpdate(data, 'New edge added:'));
+        socket.on('mesh_edge_updated', (data) => onMeshUpdate(data, 'Edge updated:'));
+        socket.on('mesh_node_added', (data) => onMeshUpdate(data, 'New node added:'));
     }
 </script>
 
