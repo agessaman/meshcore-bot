@@ -337,19 +337,21 @@ class BaseCommand(ABC):
         # Check if channel matches allowed list
         return message_channel_normalized in allowed_normalized
     
-    def can_execute(self, message: MeshMessage) -> bool:
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Check if this command can be executed with the given message.
         
         Checks channel permissions, DM requirements, cooldowns, and admin access.
         
         Args:
             message: The message to check execution for.
+            skip_channel_check: If True, skip channel check (used when a parent
+                command has already enforced its own channel override, e.g. wx delegating to gwx).
             
         Returns:
             bool: True if the command can be executed, False otherwise.
         """
         # Check channel access (standardized channel override)
-        if not self.is_channel_allowed(message):
+        if not skip_channel_check and not self.is_channel_allowed(message):
             return False
         
         # Check if command requires DM and message is not DM

@@ -224,45 +224,58 @@ class MeshGraph:
         except Exception as e:
             self.logger.debug(f"Error notifying web viewer of edge update: {e}")
     
-    def _recalculate_distance_if_needed(self, edge: Dict) -> Optional[float]:
+    def _recalculate_distance_if_needed(
+        self,
+        edge: Dict,
+        conn: Optional[sqlite3.Connection] = None,
+        location_cache: Optional[Dict[str, Tuple[float, float]]] = None,
+    ) -> Optional[float]:
         """Recalculate geographic distance using full public keys if available.
         
         This ensures we get the correct location when there are prefix collisions.
         
         Args:
             edge: Edge dictionary with prefix and optional public keys.
+            conn: Optional existing DB connection for batch operations.
+            location_cache: Optional cache for location lookups within a flush (keyed by pk: or prefix:).
             
         Returns:
             Optional[float]: Recalculated distance in km, or None if can't calculate.
         """
         from .utils import calculate_distance
         
-        # Try to get locations using full public keys first (more accurate)
-        from_location = None
-        to_location = None
-        
-        # Get location for 'from' node
+        # Get location for 'from' node (conn optional for single-connection batch flush)
         if edge.get('from_public_key'):
-            # Use full public key for precise lookup
-            from_location = self._get_location_by_public_key(edge['from_public_key'])
-        
+            from_location = self._get_location_by_public_key(
+                edge['from_public_key'], conn=conn, location_cache=location_cache
+            )
+        else:
+            from_location = None
         if not from_location:
-            # Fallback to prefix lookup - use to_location as reference for LoRa distance preference
             to_location_temp = None
             if edge.get('to_public_key'):
-                to_location_temp = self._get_location_by_public_key(edge['to_public_key'])
+                to_location_temp = self._get_location_by_public_key(
+                    edge['to_public_key'], conn=conn, location_cache=location_cache
+                )
             if not to_location_temp:
-                to_location_temp = self._get_location_by_prefix(edge['to_prefix'])
-            from_location = self._get_location_by_prefix(edge['from_prefix'], to_location_temp)
+                to_location_temp = self._get_location_by_prefix(
+                    edge['to_prefix'], conn=conn, location_cache=location_cache
+                )
+            from_location = self._get_location_by_prefix(
+                edge['from_prefix'], to_location_temp, conn=conn, location_cache=location_cache
+            )
         
         # Get location for 'to' node
         if edge.get('to_public_key'):
-            # Use full public key for precise lookup
-            to_location = self._get_location_by_public_key(edge['to_public_key'])
-        
+            to_location = self._get_location_by_public_key(
+                edge['to_public_key'], conn=conn, location_cache=location_cache
+            )
+        else:
+            to_location = None
         if not to_location:
-            # Fallback to prefix lookup - use from_location as reference for LoRa distance preference
-            to_location = self._get_location_by_prefix(edge['to_prefix'], from_location)
+            to_location = self._get_location_by_prefix(
+                edge['to_prefix'], from_location, conn=conn, location_cache=location_cache
+            )
         
         # Calculate distance if we have both locations
         if from_location and to_location:
@@ -273,11 +286,19 @@ class MeshGraph:
         
         return None
     
-    def _get_location_by_public_key(self, public_key: str) -> Optional[Tuple[float, float]]:
+    def _get_location_by_public_key(
+        self,
+        public_key: str,
+        conn: Optional[sqlite3.Connection] = None,
+        location_cache: Optional[Dict[str, Tuple[float, float]]] = None,
+    ) -> Optional[Tuple[float, float]]:
         """Get location for a full public key (more accurate than prefix lookup).
         
         Prefers starred repeaters if there are somehow multiple entries (shouldn't happen with full key).
         """
+        cache_key = f"pk:{public_key}" if location_cache is not None else None
+        if cache_key is not None and cache_key in location_cache:
+            return location_cache[cache_key]
         try:
             query = '''
                 SELECT latitude, longitude 
@@ -289,18 +310,30 @@ class MeshGraph:
                 ORDER BY is_starred DESC, COALESCE(last_advert_timestamp, last_heard) DESC
                 LIMIT 1
             '''
-            results = self.db_manager.execute_query(query, (public_key,))
+            if conn is not None:
+                results = self.db_manager.execute_query_on_connection(conn, query, (public_key,))
+            else:
+                results = self.db_manager.execute_query(query, (public_key,))
             if results:
                 row = results[0]
                 lat = row.get('latitude')
                 lon = row.get('longitude')
                 if lat is not None and lon is not None:
-                    return (float(lat), float(lon))
+                    result = (float(lat), float(lon))
+                    if cache_key is not None:
+                        location_cache[cache_key] = result
+                    return result
         except Exception as e:
             self.logger.debug(f"Error getting location by public key {public_key[:16]}...: {e}")
         return None
     
-    def _get_location_by_prefix(self, prefix: str, reference_location: Optional[Tuple[float, float]] = None) -> Optional[Tuple[float, float]]:
+    def _get_location_by_prefix(
+        self,
+        prefix: str,
+        reference_location: Optional[Tuple[float, float]] = None,
+        conn: Optional[sqlite3.Connection] = None,
+        location_cache: Optional[Dict[str, Tuple[float, float]]] = None,
+    ) -> Optional[Tuple[float, float]]:
         """Get location for a prefix (fallback when full public key not available).
         
         For LoRa networks, prefers shorter distances when there are prefix collisions,
@@ -309,7 +342,16 @@ class MeshGraph:
         Args:
             prefix: 2-character hex prefix.
             reference_location: Optional (lat, lon) to calculate distance from for LoRa preference.
+            conn: Optional existing DB connection for batch operations.
+            location_cache: Optional cache for location lookups within a flush.
         """
+        if location_cache is not None:
+            if reference_location is not None:
+                cache_key = f"prefix:{prefix}:{reference_location[0]}:{reference_location[1]}"
+            else:
+                cache_key = f"prefix:{prefix}"
+            if cache_key in location_cache:
+                return location_cache[cache_key]
         try:
             prefix_pattern = f"{prefix}%"
             
@@ -323,8 +365,10 @@ class MeshGraph:
                 AND latitude != 0 AND longitude != 0
                 AND role IN ('repeater', 'roomserver')
             '''
-            
-            results = self.db_manager.execute_query(query, (prefix_pattern,))
+            if conn is not None:
+                results = self.db_manager.execute_query_on_connection(conn, query, (prefix_pattern,))
+            else:
+                results = self.db_manager.execute_query(query, (prefix_pattern,))
             
             if not results:
                 return None
@@ -358,7 +402,11 @@ class MeshGraph:
                     lat = best_row.get('latitude')
                     lon = best_row.get('longitude')
                     if lat is not None and lon is not None:
-                        return (float(lat), float(lon))
+                        result = (float(lat), float(lon))
+                        if location_cache is not None and reference_location is not None:
+                            cache_key = f"prefix:{prefix}:{reference_location[0]}:{reference_location[1]}"
+                            location_cache[cache_key] = result
+                        return result
             
             # No reference location or single result - use standard ordering
             # Prefer starred, then most recent
@@ -371,17 +419,29 @@ class MeshGraph:
             lat = row.get('latitude')
             lon = row.get('longitude')
             if lat is not None and lon is not None:
-                return (float(lat), float(lon))
+                result = (float(lat), float(lon))
+                if location_cache is not None:
+                    cache_key = f"prefix:{prefix}" if reference_location is None else f"prefix:{prefix}:{reference_location[0]}:{reference_location[1]}"
+                    location_cache[cache_key] = result
+                return result
         except Exception as e:
             self.logger.debug(f"Error getting location by prefix {prefix}: {e}")
         return None
     
-    def _write_edge_to_db(self, edge_key: Tuple[str, str], is_new: bool):
+    def _write_edge_to_db(
+        self,
+        edge_key: Tuple[str, str],
+        is_new: bool,
+        conn: Optional[sqlite3.Connection] = None,
+        location_cache: Optional[Dict[str, Tuple[float, float]]] = None,
+    ):
         """Write a single edge to the database.
         
         Args:
             edge_key: (from_prefix, to_prefix) tuple.
             is_new: True if this is a new edge, False if updating existing.
+            conn: Optional existing DB connection for batch operations (caller commits).
+            location_cache: Optional cache for location lookups within a flush.
         """
         if edge_key not in self.edges:
             return
@@ -391,7 +451,9 @@ class MeshGraph:
         # Recalculate distance using full public keys if available (more accurate)
         # This fixes issues where prefix collisions cause wrong locations to be used
         if edge.get('from_public_key') or edge.get('to_public_key'):
-            recalculated_distance = self._recalculate_distance_if_needed(edge)
+            recalculated_distance = self._recalculate_distance_if_needed(
+                edge, conn=conn, location_cache=location_cache
+            )
             if recalculated_distance is not None:
                 edge['geographic_distance'] = recalculated_distance
                 self.logger.debug(f"Mesh graph: Recalculated distance for {edge_key} using public keys: {recalculated_distance:.1f} km")
@@ -422,7 +484,9 @@ class MeshGraph:
                 # Only update distance if we have at least one public key and current distance seems wrong
                 current_distance = edge.get('geographic_distance')
                 if (edge.get('from_public_key') or edge.get('to_public_key')) and current_distance:
-                    recalculated = self._recalculate_distance_if_needed(edge)
+                    recalculated = self._recalculate_distance_if_needed(
+                        edge, conn=conn, location_cache=location_cache
+                    )
                     if recalculated is not None:
                         # Update if recalculated distance is significantly different (more than 20% difference)
                         if abs(recalculated - current_distance) / max(current_distance, 1.0) > 0.2:
@@ -433,14 +497,7 @@ class MeshGraph:
                 # Always update public keys if provided (allows filling in missing keys on existing edges)
                 from_key = edge.get('from_public_key')
                 to_key = edge.get('to_public_key')
-                query = '''
-                    UPDATE mesh_connections
-                    SET observation_count = ?, last_seen = ?,
-                        avg_hop_position = ?, geographic_distance = ?,
-                        from_public_key = CASE WHEN ? IS NOT NULL THEN ? ELSE from_public_key END,
-                        to_public_key = CASE WHEN ? IS NOT NULL THEN ? ELSE to_public_key END
-                    WHERE from_prefix = ? AND to_prefix = ?
-                '''
+                query = self._MESH_EDGE_UPDATE_QUERY
                 params = (
                     edge['observation_count'],
                     edge['last_seen'].isoformat() if isinstance(edge['last_seen'], datetime) else edge['last_seen'],
@@ -454,8 +511,10 @@ class MeshGraph:
                     edge['to_prefix']
                 )
             
-            # Use execute_update for INSERT/UPDATE operations (handles commit automatically)
-            rows_affected = self.db_manager.execute_update(query, params)
+            if conn is not None:
+                rows_affected = self.db_manager.execute_update_on_connection(conn, query, params)
+            else:
+                rows_affected = self.db_manager.execute_update(query, params)
             if rows_affected > 0:
                 self.logger.debug(f"Mesh graph: Successfully wrote edge {edge_key} to database ({'INSERT' if is_new else 'UPDATE'}, {rows_affected} rows)")
             else:
@@ -465,6 +524,62 @@ class MeshGraph:
             self.logger.warning(f"Error writing edge to database: {e}")
             import traceback
             self.logger.debug(traceback.format_exc())
+    
+    # UPDATE statement used for both single-edge writes and batch executemany
+    _MESH_EDGE_UPDATE_QUERY = '''
+        UPDATE mesh_connections
+        SET observation_count = ?, last_seen = ?,
+            avg_hop_position = ?, geographic_distance = ?,
+            from_public_key = CASE WHEN ? IS NOT NULL THEN ? ELSE from_public_key END,
+            to_public_key = CASE WHEN ? IS NOT NULL THEN ? ELSE to_public_key END
+        WHERE from_prefix = ? AND to_prefix = ?
+    '''
+    
+    def _build_update_params_for_edge(
+        self,
+        edge_key: Tuple[str, str],
+        conn: Optional[sqlite3.Connection],
+        location_cache: Optional[Dict[str, Tuple[float, float]]],
+    ) -> Optional[Tuple]:
+        """Build UPDATE params for an edge (for batch executemany). Returns None to skip."""
+        if edge_key not in self.edges:
+            return None
+        try:
+            edge = self.edges[edge_key]
+            # Recalculate distance if we have public keys (same logic as _write_edge_to_db)
+            if edge.get('from_public_key') or edge.get('to_public_key'):
+                recalculated_distance = self._recalculate_distance_if_needed(
+                    edge, conn=conn, location_cache=location_cache
+                )
+                if recalculated_distance is not None:
+                    edge['geographic_distance'] = recalculated_distance
+            current_distance = edge.get('geographic_distance')
+            if (edge.get('from_public_key') or edge.get('to_public_key')) and current_distance:
+                recalculated = self._recalculate_distance_if_needed(
+                    edge, conn=conn, location_cache=location_cache
+                )
+                if recalculated is not None and abs(recalculated - current_distance) / max(current_distance, 1.0) > 0.2:
+                    edge['geographic_distance'] = recalculated
+            from_key = edge.get('from_public_key')
+            to_key = edge.get('to_public_key')
+            last_seen = edge['last_seen']
+            if isinstance(last_seen, datetime):
+                last_seen = last_seen.isoformat()
+            return (
+                edge['observation_count'],
+                last_seen,
+                edge.get('avg_hop_position'),
+                edge.get('geographic_distance'),
+                from_key,
+                from_key,
+                to_key,
+                to_key,
+                edge['from_prefix'],
+                edge['to_prefix'],
+            )
+        except Exception as e:
+            self.logger.debug(f"Error building update params for {edge_key}: {e}")
+            return None
     
     def _start_batch_writer(self):
         """Start background task for batched writes."""
@@ -481,7 +596,10 @@ class MeshGraph:
         self._batch_thread = batch_thread
     
     def _flush_pending_updates_sync(self):
-        """Flush all pending edge updates to database (synchronous version)."""
+        """Flush all pending edge updates to database (synchronous version).
+        Uses a single connection for the entire batch to avoid 'unable to open database file'
+        when many edges are written in quick succession.
+        """
         with self.pending_lock:
             if not self.pending_updates:
                 return
@@ -489,10 +607,33 @@ class MeshGraph:
             updates = list(self.pending_updates)
             self.pending_updates.clear()
         
-        # Write all pending updates
-        for edge_key in updates:
-            if edge_key in self.edges:
-                self._write_edge_to_db(edge_key, False)
+        conn = None
+        location_cache: Dict[str, Tuple[float, float]] = {}
+        try:
+            conn = self.db_manager.get_connection()
+            params_list: List[Tuple] = []
+            for edge_key in updates:
+                params_tuple = self._build_update_params_for_edge(edge_key, conn, location_cache)
+                if params_tuple is not None:
+                    params_list.append(params_tuple)
+            if params_list:
+                cursor = conn.cursor()
+                cursor.executemany(self._MESH_EDGE_UPDATE_QUERY, params_list)
+            if conn:
+                conn.commit()
+        except Exception as e:
+            self.logger.warning(f"Error flushing graph updates: {e}")
+            if conn:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
         
         if updates:
             self.logger.debug(f"Flushed {len(updates)} pending graph edge updates")
