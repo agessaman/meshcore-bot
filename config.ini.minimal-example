@@ -25,9 +25,11 @@
 ####################################################################################################
 
 [Connection]
-# Connection type: serial, ble, or tcp
-# serial: Connect via USB serial port
-# ble: Connect via Bluetooth Low Energy
+# Connection type: serial, ble, tcp, or pymc
+# serial: Connect via USB serial port to MeshCore companion radio
+# ble: Connect via Bluetooth Low Energy to MeshCore companion radio
+# tcp: Connect via TCP/IP to MeshCore companion radio
+# pymc: Connect via pyMC_core to KISS TNC (MeshTNC) - unlimited contact storage
 # tcp: Connect via TCP/IP
 connection_type = serial
 

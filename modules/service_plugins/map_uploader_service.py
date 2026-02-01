@@ -15,7 +15,11 @@ from typing import Optional, Dict, Any
 
 # Import meshcore
 import meshcore
-from meshcore import EventType
+# Import EventType from meshcore if available, else from pymc_connection
+try:
+    from meshcore import EventType
+except ImportError:
+    from ..pymc_connection import EventType
 
 # Import bot's enums
 from ..enums import AdvertFlags, PayloadType

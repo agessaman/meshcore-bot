@@ -1,8 +1,9 @@
 [Connection]
-# Connection type: serial, ble, or tcp
-# serial: Connect via USB serial port
-# ble: Connect via Bluetooth Low Energy
-# tcp: Connect via TCP/IP
+# Connection type: serial, ble, tcp, or pymc
+# serial: Connect via USB serial port to MeshCore companion radio
+# ble: Connect via Bluetooth Low Energy to MeshCore companion radio
+# tcp: Connect via TCP/IP to MeshCore companion radio
+# pymc: Connect via pyMC_core to KISS TNC (MeshTNC) - unlimited contact storage
 connection_type = serial
 
 # Serial port (for serial connection)
@@ -20,6 +21,45 @@ serial_port = /dev/ttyUSB0
 
 # Connection timeout in seconds
 timeout = 30
+
+# ============================================================================
+# pyMC_core Connection Settings (for connection_type = pymc)
+# Use this with a MeshTNC-flashed radio for unlimited contact storage
+# ============================================================================
+
+# Serial port for KISS TNC (MeshTNC radio)
+pymc_serial_port = /dev/ttyUSB0
+
+# Serial baud rate for KISS TNC
+pymc_baudrate = 115200
+
+# Identity file path (stores Ed25519 keypair)
+# If file doesn't exist, a new identity will be generated
+# Relative paths are resolved from bot root directory
+pymc_identity_file = pymc_identity.key
+
+# Radio frequency in Hz
+# EU: 869618000 (869.618 MHz), 869525000 (869.525 MHz)
+# US: 910525000 (910.525 MHz), 915000000 (915 MHz)
+pymc_frequency = 869618000
+
+# LoRa bandwidth in Hz
+# Common: 62500 (62.5 kHz), 125000 (125 kHz), 250000 (250 kHz)
+pymc_bandwidth = 62500
+
+# LoRa spreading factor (7-12)
+# Lower = faster but shorter range, Higher = slower but longer range
+pymc_spreading_factor = 8
+
+# LoRa coding rate (5=4/5, 6=4/6, 7=4/7, 8=4/8)
+pymc_coding_rate = 8
+
+# Transmit power in dBm (max 22)
+pymc_tx_power = 22
+
+# Sync word (must match other nodes on the mesh)
+# Default MeshCore sync word is 0x12
+pymc_sync_word = 18
 
 [Bot]
 # Bot name for identification and logging

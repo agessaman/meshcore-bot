@@ -18,14 +18,20 @@ pytz>=2023.3
 aiohttp>=3.8.0
 cryptography>=41.0.0
 pynacl>=1.5.0
-meshcore>=2.1.6
 openmeteo-requests>=1.7.2
 requests-cache>=1.1.1
 retry-requests>=1.0.0
 flask>=2.3.0
 flask-socketio>=5.3.0
-meshcore-cli
 feedparser>=6.0.10
+
+# Connection backends - install one or both based on your setup:
+# Option 1: Standard MeshCore companion radio (install for serial/BLE/TCP connections)
+# meshcore>=2.1.6
+# meshcore-cli
+
+# Option 2: pyMC_core with KISS TNC (MeshTNC) - unlimited contact storage
+pymc-core[radio]>=1.0.7
 
 # Testing dependencies
 pytest>=7.0.0

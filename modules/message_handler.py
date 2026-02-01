@@ -10,7 +10,12 @@ import json
 import re
 import copy
 from typing import List, Optional, Dict, Any, Tuple
-from meshcore import EventType
+
+# Import EventType from meshcore if available, else from pymc_connection
+try:
+    from meshcore import EventType
+except ImportError:
+    from .pymc_connection import EventType
 
 from .models import MeshMessage
 from .enums import PayloadType, PayloadVersion, RouteType, AdvertFlags, DeviceRole

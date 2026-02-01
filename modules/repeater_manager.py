@@ -11,7 +11,11 @@ import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
-from meshcore import EventType
+# Import EventType from meshcore if available, else from pymc_connection
+try:
+    from meshcore import EventType
+except ImportError:
+    from .pymc_connection import EventType
 from .utils import rate_limited_nominatim_reverse_sync
 
 

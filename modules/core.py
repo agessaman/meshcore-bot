@@ -19,12 +19,38 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
 from dataclasses import dataclass
 
-# Import the official meshcore package
-import meshcore
-from meshcore import EventType
+# Import connection modules - meshcore is optional when using pymc
+try:
+    import meshcore
+    from meshcore import EventType as MeshcoreEventType
+    from meshcore_cli.meshcore_cli import send_cmd, send_chan_msg
+    MESHCORE_AVAILABLE = True
+except ImportError:
+    MESHCORE_AVAILABLE = False
+    meshcore = None
+    MeshcoreEventType = None
+    send_cmd = None
+    send_chan_msg = None
 
-# Import command functions from meshcore-cli
-from meshcore_cli.meshcore_cli import send_cmd, send_chan_msg
+# Import pymc connection module
+try:
+    from .pymc_connection import PyMCConnection, EventType as PyMCEventType
+    PYMC_AVAILABLE = True
+except ImportError:
+    PYMC_AVAILABLE = False
+    PyMCConnection = None
+    PyMCEventType = None
+
+# Create unified EventType - prefer meshcore if available, else use pymc
+if MESHCORE_AVAILABLE:
+    EventType = MeshcoreEventType
+elif PYMC_AVAILABLE:
+    EventType = PyMCEventType
+else:
+    # Define minimal EventType for error handling
+    from enum import IntEnum
+    class EventType(IntEnum):
+        ERROR = 8
 
 # Import our modules
 from .rate_limiter import RateLimiter, BotTxRateLimiter, NominatimRateLimiter
@@ -864,10 +890,10 @@ use_zulu_time = false
         signal.signal(signal.SIGINT, signal_handler)
     
     async def connect(self) -> bool:
-        """Connect to MeshCore node using official package.
+        """Connect to MeshCore node using official package or pyMC_core.
         
-        Establishes a connection to the mesh node via Serial, TCP, or BLE
-        based on the configuration.
+        Establishes a connection to the mesh node via Serial, TCP, BLE,
+        or pyMC (KISS TNC) based on the configuration.
         
         Returns:
             bool: True if connection was successful, False otherwise.
@@ -878,6 +904,16 @@ use_zulu_time = false
             # Get connection type from config
             connection_type = self.config.get('Connection', 'connection_type', fallback='ble').lower()
             self.logger.info(f"Using connection type: {connection_type}")
+            
+            # Check if using pyMC connection
+            if connection_type == 'pymc':
+                return await self._connect_pymc()
+            
+            # Standard meshcore connections require meshcore package
+            if not MESHCORE_AVAILABLE:
+                self.logger.error("meshcore package not available. Install with: pip install meshcore")
+                self.logger.error("For pyMC_core connection, set connection_type = pymc in config")
+                return False
             
             if connection_type == 'serial':
                 # Create serial connection
@@ -929,11 +965,73 @@ use_zulu_time = false
             self.logger.error(f"Connection failed: {e}")
             return False
     
+    async def _connect_pymc(self) -> bool:
+        """Connect using pyMC_core with KISS TNC (MeshTNC).
+        
+        This connection method uses pyMC_core to handle MeshCore protocol
+        in Python, sending raw packets via a KISS TNC radio (MeshTNC).
+        Contacts are stored in the database (unlimited) rather than on
+        the radio firmware.
+        
+        Returns:
+            bool: True if connection was successful, False otherwise.
+        """
+        if not PYMC_AVAILABLE:
+            self.logger.error("pymc-core package not available. Install with: pip install pymc-core[radio]")
+            return False
+        
+        try:
+            self.logger.info("Connecting via pyMC_core (KISS TNC)...")
+            
+            # Build config dict from ini settings
+            pymc_config = {
+                'pymc_serial_port': self.config.get('Connection', 'pymc_serial_port', fallback='/dev/ttyUSB0'),
+                'pymc_baudrate': self.config.getint('Connection', 'pymc_baudrate', fallback=115200),
+                'pymc_frequency': self.config.getint('Connection', 'pymc_frequency', fallback=869618000),
+                'pymc_bandwidth': self.config.getint('Connection', 'pymc_bandwidth', fallback=62500),
+                'pymc_spreading_factor': self.config.getint('Connection', 'pymc_spreading_factor', fallback=8),
+                'pymc_coding_rate': self.config.getint('Connection', 'pymc_coding_rate', fallback=8),
+                'pymc_tx_power': self.config.getint('Connection', 'pymc_tx_power', fallback=22),
+                'pymc_sync_word': self.config.getint('Connection', 'pymc_sync_word', fallback=0x12),
+                'bot_name': self.config.get('Bot', 'bot_name', fallback='MeshCoreBot'),
+            }
+            
+            # Create pyMC connection
+            self.meshcore = PyMCConnection(self, pymc_config)
+            
+            # Connect to radio
+            if not await self.meshcore.connect():
+                self.logger.error("Failed to connect via pyMC_core")
+                return False
+            
+            self.connected = True
+            self.logger.info(f"Connected via pyMC_core: {self.meshcore.self_info}")
+            
+            # For pyMC, contacts are loaded from database (already done in connect)
+            self.logger.info(f"Contacts loaded from database: {len(self.meshcore.contacts)}")
+            
+            # Setup message event handlers (pyMC compatible)
+            await self.setup_message_handlers()
+            
+            # Start auto message fetching
+            await self.meshcore.start_auto_message_fetching()
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"pyMC connection failed: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+            return False
+    
     async def set_radio_clock(self) -> bool:
         """Set radio clock if device time is earlier than system time.
         
         Checks the connected device's time and updates it to match the system
         time if the device is lagging behind.
+        
+        For pyMC connections, time is handled locally and this returns True
+        without device interaction.
         
         Returns:
             bool: True if check/update was successful (or not needed), False on error.
@@ -942,6 +1040,13 @@ use_zulu_time = false
             if not self.meshcore or not self.meshcore.is_connected:
                 self.logger.warning("Cannot set radio clock - not connected to device")
                 return False
+            
+            # For pyMC, time is handled locally - no device clock to sync
+            is_pymc = isinstance(self.meshcore, PyMCConnection) if PYMC_AVAILABLE else False
+            if is_pymc:
+                self.logger.info("pyMC connection - time handled locally, no device clock sync needed")
+                self.last_clock_sync_time = int(time.time())
+                return True
             
             # Get current device time
             self.logger.info("Checking device time...")
@@ -1050,17 +1155,26 @@ use_zulu_time = false
         
         Polls the device for contact list or waits for automatic loading.
         Times out after 30 seconds if contacts are not loaded.
+        
+        For pyMC connections, contacts are loaded from the database and
+        this method returns immediately.
         """
+        # Check if using pyMC connection (contacts already loaded from database)
+        if isinstance(self.meshcore, PyMCConnection) if PYMC_AVAILABLE else False:
+            self.logger.info(f"Using pyMC - contacts loaded from database: {len(self.meshcore.contacts)}")
+            return
+        
         self.logger.info("Waiting for contacts to load...")
         
-        # Try to manually load contacts first
-        try:
-            from meshcore_cli.meshcore_cli import next_cmd
-            self.logger.info("Manually requesting contacts from device...")
-            result = await next_cmd(self.meshcore, ["contacts"])
-            self.logger.info(f"Contacts command result: {len(result) if result else 0} contacts")
-        except (OSError, AttributeError, ValueError) as e:
-            self.logger.warning(f"Error manually loading contacts: {e}")
+        # Try to manually load contacts first (meshcore only)
+        if MESHCORE_AVAILABLE:
+            try:
+                from meshcore_cli.meshcore_cli import next_cmd
+                self.logger.info("Manually requesting contacts from device...")
+                result = await next_cmd(self.meshcore, ["contacts"])
+                self.logger.info(f"Contacts command result: {len(result) if result else 0} contacts")
+            except (OSError, AttributeError, ValueError) as e:
+                self.logger.warning(f"Error manually loading contacts: {e}")
         
         # Check if contacts are loaded (even if empty list)
         if hasattr(self.meshcore, 'contacts'):
@@ -1085,7 +1199,8 @@ use_zulu_time = false
         """Setup event handlers for messages.
         
         Registers callbacks for various meshcore events including contact messages,
-        channel messages, RF data, and raw data packets.
+        channel messages, RF data, and raw data packets. Works with both
+        meshcore and pyMC connections.
         """
         # Handle contact messages (DMs)
         async def on_contact_message(event, metadata=None):
@@ -1107,26 +1222,38 @@ use_zulu_time = false
         async def on_new_contact(event, metadata=None):
             await self.message_handler.handle_new_contact(event, metadata)
         
-        # Subscribe to events
-        self.meshcore.subscribe(EventType.CONTACT_MSG_RECV, on_contact_message)
-        self.meshcore.subscribe(EventType.CHANNEL_MSG_RECV, on_channel_message)
-        self.meshcore.subscribe(EventType.RX_LOG_DATA, on_rf_data)
+        # Determine which EventType enum to use based on connection type
+        is_pymc = isinstance(self.meshcore, PyMCConnection) if PYMC_AVAILABLE else False
+        
+        if is_pymc:
+            # pyMC connection uses PyMCEventType
+            event_type = PyMCEventType
+        else:
+            # meshcore connection uses MeshcoreEventType
+            event_type = EventType
+        
+        # Subscribe to events (both meshcore and pyMC support subscribe())
+        self.meshcore.subscribe(event_type.CONTACT_MSG_RECV, on_contact_message)
+        self.meshcore.subscribe(event_type.CHANNEL_MSG_RECV, on_channel_message)
+        self.meshcore.subscribe(event_type.RX_LOG_DATA, on_rf_data)
         
         # Subscribe to RAW_DATA events for full packet data
-        self.meshcore.subscribe(EventType.RAW_DATA, on_raw_data)
+        self.meshcore.subscribe(event_type.RAW_DATA, on_raw_data)
         
-        # Note: Debug mode commands are not available in current meshcore-cli version
-        # The meshcore library handles debug output automatically when needed
-        
-        # Start auto message fetching
-        await self.meshcore.start_auto_message_fetching()
+        # For standard meshcore connections, start auto message fetching here
+        if not is_pymc:
+            # Note: Debug mode commands are not available in current meshcore-cli version
+            # The meshcore library handles debug output automatically when needed
+            
+            # Start auto message fetching
+            await self.meshcore.start_auto_message_fetching()
         
         # Delay NEW_CONTACT subscription to ensure device is fully ready
         self.logger.info("Delaying NEW_CONTACT subscription to ensure device readiness...")
         await asyncio.sleep(5)  # Wait 5 seconds for device to be fully ready
         
         # Subscribe to NEW_CONTACT events for automatic contact management
-        self.meshcore.subscribe(EventType.NEW_CONTACT, on_new_contact)
+        self.meshcore.subscribe(event_type.NEW_CONTACT, on_new_contact)
         self.logger.info("NEW_CONTACT subscription active - ready to receive new contact events")
         
         self.logger.info("Message handlers setup complete")

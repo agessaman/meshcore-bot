@@ -10,7 +10,11 @@ import os
 import hashlib
 import copy
 from typing import Dict, Any, List, Optional
-from meshcore import EventType
+# Import EventType from meshcore if available, else from pymc_connection
+try:
+    from meshcore import EventType
+except ImportError:
+    from .pymc_connection import EventType
 
 
 class ChannelManager:

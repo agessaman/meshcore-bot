@@ -11,7 +11,11 @@ from dataclasses import dataclass
 from typing import List, Dict, Tuple, Optional, Any
 from datetime import datetime
 import pytz
-from meshcore import EventType
+# Import EventType from meshcore if available, else from pymc_connection
+try:
+    from meshcore import EventType
+except ImportError:
+    from .pymc_connection import EventType
 
 from .models import MeshMessage
 from .plugin_loader import PluginLoader
