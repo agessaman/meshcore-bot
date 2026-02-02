@@ -143,8 +143,11 @@ test_scripts/
 dev/
 website/
 pytest.ini
+pymc-test/*
+config-pymc.ini
 
 # Docker data directory (user-specific config, databases, logs)
 # Ignore contents but keep directory structure
 data/*
 !data/.gitkeep
+
