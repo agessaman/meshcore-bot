@@ -20,14 +20,15 @@ try:
     from pymc_core import LocalIdentity
     from pymc_core.node.node import MeshNode
     from pymc_core.hardware.kiss_serial_wrapper import KissSerialWrapper
-    from pymc_core.protocol.constants import PayloadType as PymcPayloadType
+    # Import payload type constants (not an enum in pymc_core)
+    from pymc_core.protocol import constants as pymc_constants
     PYMC_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     PYMC_AVAILABLE = False
     LocalIdentity = None
     MeshNode = None
     KissSerialWrapper = None
-    PymcPayloadType = None
+    pymc_constants = None
 
 
 class EventType(IntEnum):

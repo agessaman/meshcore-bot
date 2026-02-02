@@ -92,9 +92,12 @@ class IdentityManager:
         
         if identity:
             # Save the new identity
-            await self._save_identity(identity)
+            saved = await self._save_identity(identity)
             self._identity = identity
-            self.logger.info(f"New identity created and saved to {self.identity_file}")
+            if saved:
+                self.logger.info(f"New identity created and saved to {self.identity_file}")
+            else:
+                self.logger.warning(f"New identity created but could not be persisted")
         
         return identity
     
@@ -265,18 +268,32 @@ class IdentityManager:
             32-byte seed or None
         """
         try:
-            # Try various attributes that might hold the private key
-            for attr in ['_private_key', 'private_key', '_seed', 'seed', '_signing_key']:
+            # pymc_core's LocalIdentity has a signing_key attribute (nacl.signing.SigningKey)
+            # The seed can be extracted via signing_key.encode() or signing_key._seed
+            if hasattr(identity, 'signing_key'):
+                signing_key = identity.signing_key
+                if signing_key is not None:
+                    # Use encode() to get the 32-byte seed
+                    if hasattr(signing_key, 'encode'):
+                        seed = signing_key.encode()
+                        if isinstance(seed, bytes) and len(seed) == 32:
+                            return seed
+                    # Fallback to _seed attribute
+                    if hasattr(signing_key, '_seed'):
+                        seed = signing_key._seed
+                        if isinstance(seed, bytes) and len(seed) == 32:
+                            return seed
+            
+            # Try other common attribute names as fallback
+            for attr in ['_private_key', 'private_key', '_seed', 'seed']:
                 if hasattr(identity, attr):
                     key = getattr(identity, attr)
                     if key is not None:
-                        # If it's a SigningKey, get the seed
                         if hasattr(key, 'encode'):
                             return key.encode()
                         elif isinstance(key, bytes) and len(key) == 32:
                             return key
                         elif isinstance(key, bytes) and len(key) == 64:
-                            # Ed25519 expanded key, first 32 bytes is seed
                             return key[:32]
             
             self.logger.warning("Could not find private key attribute in identity")

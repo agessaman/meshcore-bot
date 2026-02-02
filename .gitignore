@@ -148,3 +148,7 @@ pytest.ini
 # Ignore contents but keep directory structure
 data/*
 !data/.gitkeep
+
+# pyMC test data directory
+pymc-test/
+config-pymc.ini
