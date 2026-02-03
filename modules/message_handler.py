@@ -1472,10 +1472,16 @@ class MessageHandler:
             
             # Always strip trailing whitespace/newlines from message content to handle cases like "Wx 98104\n"
             message_content = message_content.strip()
-            
-            # Get channel name from channel number
-            channel_name = self.bot.channel_manager.get_channel_name(channel_idx)
-            
+
+            # Get channel name - prefer the one from payload (pymc mode), fall back to channel_manager lookup
+            channel_name = payload.get('channel_name') or payload.get('channel', '')
+            if not channel_name and hasattr(self.bot, 'channel_manager') and self.bot.channel_manager:
+                channel_name = self.bot.channel_manager.get_channel_name(channel_idx)
+
+            # Get sender name from payload if available (pymc mode provides this directly)
+            if payload.get('sender_name') and payload.get('sender_name') != 'Unknown':
+                sender_id = payload.get('sender_name')
+
             self.logger.info(f"Received channel message ({channel_name}) from {sender_id}: {text}")
             
             # Get SNR and RSSI using the same logic as contact messages
@@ -1529,147 +1535,157 @@ class MessageHandler:
             message_packet_prefix = message_raw_hex[:32] if message_raw_hex else None
             message_pubkey = payload.get('pubkey_prefix', '')  # Keep for contact lookup
             self.logger.debug(f"Processing channel message from packet prefix: {message_packet_prefix}, pubkey: {message_pubkey}")
-            
-            # Enhanced RF data correlation with multiple strategies
-            recent_rf_data = None
-            
-            # Strategy 1: Try immediate correlation using packet prefix
-            if message_packet_prefix:
-                recent_rf_data = self.find_recent_rf_data(message_packet_prefix)
-            elif message_pubkey:
-                # Fallback to pubkey correlation
-                recent_rf_data = self.find_recent_rf_data(message_pubkey)
-            
-            # Strategy 2: If no immediate match and enhanced correlation is enabled, store message and wait briefly
-            if not recent_rf_data and self.enhanced_correlation:
-                import time
-                correlation_key = message_packet_prefix or message_pubkey
-                message_id = f"{correlation_key}_{int(time.time() * 1000)}"
-                self.store_message_for_correlation(message_id, payload)
-                
-                # Wait a short time for RF data to arrive (non-blocking)
-                await asyncio.sleep(0.1)  # 100ms wait
-                recent_rf_data = self.correlate_message_with_rf_data(message_id)
-            
-            # Strategy 3: Try with extended timeout if still no match
-            if not recent_rf_data:
-                extended_timeout = self.rf_data_timeout * 2  # Double the normal timeout
+
+            # Check if we already have path info from the payload (pymc mode)
+            # In pymc mode, path info comes directly from the packet, no RF correlation needed
+            if payload.get('path') is not None:
+                # pymc mode - use data directly from payload
+                path_string = payload.get('path')
+                hops = payload.get('path_len', 0)
+                self.logger.debug(f"Using path from payload (pymc mode): {path_string} ({hops} hops)")
+                recent_rf_data = None  # Skip RF correlation
+            else:
+                # meshcore mode - need RF data correlation
+                # Enhanced RF data correlation with multiple strategies
+                recent_rf_data = None
+
+                # Strategy 1: Try immediate correlation using packet prefix
                 if message_packet_prefix:
-                    recent_rf_data = self.find_recent_rf_data(message_packet_prefix, max_age_seconds=extended_timeout)
+                    recent_rf_data = self.find_recent_rf_data(message_packet_prefix)
                 elif message_pubkey:
-                    recent_rf_data = self.find_recent_rf_data(message_pubkey, max_age_seconds=extended_timeout)
+                    # Fallback to pubkey correlation
+                    recent_rf_data = self.find_recent_rf_data(message_pubkey)
             
-            # Strategy 4: Use most recent RF data as last resort
-            if not recent_rf_data:
-                extended_timeout = self.rf_data_timeout * 2  # Double the normal timeout
-                recent_rf_data = self.find_recent_rf_data(max_age_seconds=extended_timeout)
+                # Strategy 2: If no immediate match and enhanced correlation is enabled, store message and wait briefly
+                if not recent_rf_data and self.enhanced_correlation:
+                    import time
+                    correlation_key = message_packet_prefix or message_pubkey
+                    message_id = f"{correlation_key}_{int(time.time() * 1000)}"
+                    self.store_message_for_correlation(message_id, payload)
+
+                    # Wait a short time for RF data to arrive (non-blocking)
+                    await asyncio.sleep(0.1)  # 100ms wait
+                    recent_rf_data = self.correlate_message_with_rf_data(message_id)
+
+                # Strategy 3: Try with extended timeout if still no match
+                if not recent_rf_data:
+                    extended_timeout = self.rf_data_timeout * 2  # Double the normal timeout
+                    if message_packet_prefix:
+                        recent_rf_data = self.find_recent_rf_data(message_packet_prefix, max_age_seconds=extended_timeout)
+                    elif message_pubkey:
+                        recent_rf_data = self.find_recent_rf_data(message_pubkey, max_age_seconds=extended_timeout)
+
+                # Strategy 4: Use most recent RF data as last resort
+                if not recent_rf_data:
+                    extended_timeout = self.rf_data_timeout * 2  # Double the normal timeout
+                    recent_rf_data = self.find_recent_rf_data(max_age_seconds=extended_timeout)
             
-            if recent_rf_data and recent_rf_data.get('raw_hex'):
-                raw_hex = recent_rf_data['raw_hex']
-                self.logger.info(f"🔍 FOUND RF DATA: {len(raw_hex)} chars, starts with: {raw_hex[:32]}...")
-                self.logger.debug(f"Full RF data: {raw_hex}")
-                
-                # Extract SNR/RSSI from the RF data
-                if recent_rf_data.get('snr'):
-                    snr = recent_rf_data['snr']
-                    self.logger.debug(f"Using SNR from RF data: {snr}")
-                
-                if recent_rf_data.get('rssi'):
-                    rssi = recent_rf_data['rssi']
-                    self.logger.debug(f"Using RSSI from RF data: {rssi}")
-                
-                # Try to extract path information from raw hex directly
-                path_string = None
-                hops = payload.get('path_len', 255)
-                
-                # First try the packet decoder
-                # Use payload field if available, otherwise use raw_hex
-                payload_hex = recent_rf_data.get('payload')
-                packet_info = self.decode_meshcore_packet(raw_hex, payload_hex)
-                
-                # Get packet_hash from recent_rf_data if available (for trace correlation)
-                packet_hash = recent_rf_data.get('packet_hash')
-                if packet_hash and packet_info:
-                    packet_info['packet_hash'] = packet_hash
-                
-                if packet_info and packet_info.get('path_len') is not None:
-                    # Valid packet decoded - use the results even if path is empty (0 hops = direct)
-                    hops = packet_info.get('path_len', 0)
-                    
-                    # Check if this is a TRACE packet with SNR data
-                    if packet_info.get('payload_type') == 9:  # TRACE packet
-                        # For TRACE packets, extract routing path from payload pathHashes
-                        # The path field contains SNR data, but the actual routing path is in payload
-                        path_info = packet_info.get('path_info', {})
-                        path_hashes = path_info.get('path_hashes') or path_info.get('path', [])
-                        
-                        if path_hashes:
-                            # Convert pathHashes to path string
-                            path_string = ','.join(path_hashes)
-                            self.logger.info(f"🎯 EXTRACTED PATH FROM TRACE PACKET: {path_string} ({len(path_hashes)} hops)")
-                            
-                            # Update mesh graph with trace path - bot is the destination, so we can confirm these edges
-                            # Since the bot received this trace packet, it's the destination node
-                            self._update_mesh_graph_from_trace(path_hashes, packet_info)
+                    if recent_rf_data and recent_rf_data.get('raw_hex'):
+                    raw_hex = recent_rf_data['raw_hex']
+                    self.logger.info(f"🔍 FOUND RF DATA: {len(raw_hex)} chars, starts with: {raw_hex[:32]}...")
+                    self.logger.debug(f"Full RF data: {raw_hex}")
+
+                    # Extract SNR/RSSI from the RF data
+                    if recent_rf_data.get('snr'):
+                        snr = recent_rf_data['snr']
+                        self.logger.debug(f"Using SNR from RF data: {snr}")
+
+                    if recent_rf_data.get('rssi'):
+                        rssi = recent_rf_data['rssi']
+                        self.logger.debug(f"Using RSSI from RF data: {rssi}")
+
+                    # Try to extract path information from raw hex directly
+                    path_string = None
+                    hops = payload.get('path_len', 255)
+
+                    # First try the packet decoder
+                    # Use payload field if available, otherwise use raw_hex
+                    payload_hex = recent_rf_data.get('payload')
+                    packet_info = self.decode_meshcore_packet(raw_hex, payload_hex)
+
+                    # Get packet_hash from recent_rf_data if available (for trace correlation)
+                    packet_hash = recent_rf_data.get('packet_hash')
+                    if packet_hash and packet_info:
+                        packet_info['packet_hash'] = packet_hash
+
+                    if packet_info and packet_info.get('path_len') is not None:
+                        # Valid packet decoded - use the results even if path is empty (0 hops = direct)
+                        hops = packet_info.get('path_len', 0)
+
+                        # Check if this is a TRACE packet with SNR data
+                        if packet_info.get('payload_type') == 9:  # TRACE packet
+                            # For TRACE packets, extract routing path from payload pathHashes
+                            # The path field contains SNR data, but the actual routing path is in payload
+                            path_info = packet_info.get('path_info', {})
+                            path_hashes = path_info.get('path_hashes') or path_info.get('path', [])
+
+                            if path_hashes:
+                                # Convert pathHashes to path string
+                                path_string = ','.join(path_hashes)
+                                self.logger.info(f"🎯 EXTRACTED PATH FROM TRACE PACKET: {path_string} ({len(path_hashes)} hops)")
+
+                                # Update mesh graph with trace path - bot is the destination, so we can confirm these edges
+                                # Since the bot received this trace packet, it's the destination node
+                                self._update_mesh_graph_from_trace(path_hashes, packet_info)
+                            else:
+                                path_string = "Direct" if hops == 0 else f"Unknown routing ({hops} hops)"
+                                self.logger.info(f"🎯 EXTRACTED PATH FROM TRACE PACKET: {path_string}")
                         else:
-                            path_string = "Direct" if hops == 0 else f"Unknown routing ({hops} hops)"
-                            self.logger.info(f"🎯 EXTRACTED PATH FROM TRACE PACKET: {path_string}")
-                    else:
-                        # For all other packet types, try multiple methods to get the path
-                        path_string = None
-                        
-                        # Method 1: Try path_nodes field first
-                        path_nodes = packet_info.get('path_nodes', [])
-                        if path_nodes:
-                            path_string = ','.join(path_nodes)
-                            self.logger.info(f"🎯 EXTRACTED PATH FROM PACKET: {path_string} ({hops} hops)")
-                            # Update mesh graph with path edges
-                            self._update_mesh_graph(path_nodes, packet_info)
-                        else:
-                            # Method 2: Try path_hex field
-                            path_hex = packet_info.get('path_hex', '')
-                            if path_hex and len(path_hex) >= 2:
-                                # Convert hex string to node list (every 2 characters = 1 node)
-                                path_nodes = [path_hex[i:i+2] for i in range(0, len(path_hex), 2)]
+                            # For all other packet types, try multiple methods to get the path
+                            path_string = None
+
+                            # Method 1: Try path_nodes field first
+                            path_nodes = packet_info.get('path_nodes', [])
+                            if path_nodes:
                                 path_string = ','.join(path_nodes)
-                                self.logger.info(f"🎯 EXTRACTED PATH FROM PACKET HEX: {path_string} ({hops} hops)")
+                                self.logger.info(f"🎯 EXTRACTED PATH FROM PACKET: {path_string} ({hops} hops)")
                                 # Update mesh graph with path edges
                                 self._update_mesh_graph(path_nodes, packet_info)
                             else:
-                                # Method 3: Try path_info.path field
-                                path_info = packet_info.get('path_info', {})
-                                if path_info and path_info.get('path'):
-                                    path_nodes = path_info['path']
+                                # Method 2: Try path_hex field
+                                path_hex = packet_info.get('path_hex', '')
+                                if path_hex and len(path_hex) >= 2:
+                                    # Convert hex string to node list (every 2 characters = 1 node)
+                                    path_nodes = [path_hex[i:i+2] for i in range(0, len(path_hex), 2)]
                                     path_string = ','.join(path_nodes)
-                                    self.logger.info(f"🎯 EXTRACTED PATH FROM PATH_INFO: {path_string} ({hops} hops)")
+                                    self.logger.info(f"🎯 EXTRACTED PATH FROM PACKET HEX: {path_string} ({hops} hops)")
                                     # Update mesh graph with path edges
                                     self._update_mesh_graph(path_nodes, packet_info)
                                 else:
-                                    # No path found - this is truly unknown
-                                    path_string = "Direct" if hops == 0 else "Unknown routing"
-                                    self.logger.info(f"🎯 EXTRACTED PATH FROM PACKET: {path_string} ({hops} hops)")
-                else:
-                    # Packet decoding failed - try to extract path directly from raw hex
-                    self.logger.debug("Packet decoding failed, trying direct hex parsing")
-                    path_string = self.extract_path_from_raw_hex(raw_hex, hops)
-                    if path_string:
-                        self.logger.info(f"🎯 EXTRACTED PATH FROM RAW HEX: {path_string} ({hops} hops)")
+                                    # Method 3: Try path_info.path field
+                                    path_info = packet_info.get('path_info', {})
+                                    if path_info and path_info.get('path'):
+                                        path_nodes = path_info['path']
+                                        path_string = ','.join(path_nodes)
+                                        self.logger.info(f"🎯 EXTRACTED PATH FROM PATH_INFO: {path_string} ({hops} hops)")
+                                        # Update mesh graph with path edges
+                                        self._update_mesh_graph(path_nodes, packet_info)
+                                    else:
+                                        # No path found - this is truly unknown
+                                        path_string = "Direct" if hops == 0 else "Unknown routing"
+                                        self.logger.info(f"🎯 EXTRACTED PATH FROM PACKET: {path_string} ({hops} hops)")
                     else:
-                        # Try to use routing info from RF data as fallback
-                        if recent_rf_data.get('routing_info') and recent_rf_data['routing_info'].get('path_nodes'):
-                            routing_info = recent_rf_data['routing_info']
-                            hops = len(routing_info['path_nodes'])
-                            path_string = ','.join(routing_info['path_nodes'])
-                            self.logger.info(f"🎯 EXTRACTED PATH FROM RF ROUTING INFO: {path_string} ({hops} hops)")
+                        # Packet decoding failed - try to extract path directly from raw hex
+                        self.logger.debug("Packet decoding failed, trying direct hex parsing")
+                        path_string = self.extract_path_from_raw_hex(raw_hex, hops)
+                        if path_string:
+                            self.logger.info(f"🎯 EXTRACTED PATH FROM RAW HEX: {path_string} ({hops} hops)")
                         else:
-                            # Final fallback to basic path info
-                            self.logger.debug("No path info available, using basic path info")
-                            path_string = None
-            else:
-                self.logger.warning("❌ NO RF DATA found for channel message after all correlation attempts")
-                hops = payload.get('path_len', 255)
-                path_string = None
-            
+                            # Try to use routing info from RF data as fallback
+                            if recent_rf_data.get('routing_info') and recent_rf_data['routing_info'].get('path_nodes'):
+                                routing_info = recent_rf_data['routing_info']
+                                hops = len(routing_info['path_nodes'])
+                                path_string = ','.join(routing_info['path_nodes'])
+                                self.logger.info(f"🎯 EXTRACTED PATH FROM RF ROUTING INFO: {path_string} ({hops} hops)")
+                            else:
+                                # Final fallback to basic path info
+                                self.logger.debug("No path info available, using basic path info")
+                                path_string = None
+                else:
+                    self.logger.warning("❌ NO RF DATA found for channel message after all correlation attempts")
+                    hops = payload.get('path_len', 255)
+                    path_string = None
+
             # Get the full public key from contacts if available
             sender_pubkey = payload.get('pubkey_prefix', '')
             if hasattr(self.bot.meshcore, 'contacts') and self.bot.meshcore.contacts:

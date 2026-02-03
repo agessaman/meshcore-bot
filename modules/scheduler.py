@@ -382,10 +382,13 @@ class MessageScheduler:
             # Process pending channel operations from web viewer (every 5 seconds)
             if not hasattr(self, 'last_channel_ops_check_time'):
                 self.last_channel_ops_check_time = 0
-            
+
             if time.time() - self.last_channel_ops_check_time >= 5:  # Every 5 seconds
-                if (hasattr(self.bot, 'channel_manager') and self.bot.channel_manager and 
-                    hasattr(self.bot, 'connected') and self.bot.connected):
+                # Process if connected - works for both meshcore (channel_manager) and pymc modes
+                can_process = (hasattr(self.bot, 'connected') and self.bot.connected and
+                               (hasattr(self.bot, 'channel_manager') and self.bot.channel_manager or
+                                self._is_pymc_connection()))
+                if can_process:
                     import asyncio
                     if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
                         # Schedule coroutine in the running main event loop
@@ -508,16 +511,24 @@ class MessageScheduler:
         except Exception as e:
             self.logger.error(f"Error sending interval-based advert: {e}")
     
+    def _is_pymc_connection(self) -> bool:
+        """Check if we're using pymc connection mode"""
+        try:
+            from .pymc_connection import PyMCConnection
+            return isinstance(self.bot.meshcore, PyMCConnection)
+        except ImportError:
+            return False
+
     async def _process_channel_operations(self):
         """Process pending channel operations from the web viewer"""
         try:
             db_path = str(self.bot.db_manager.db_path)  # Ensure string, not Path object
-            
+
             # Get pending operations
             with sqlite3.connect(db_path, timeout=30.0) as conn:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
-                
+
                 cursor.execute('''
                     SELECT id, operation_type, channel_idx, channel_name, channel_key_hex
                     FROM channel_operations
@@ -525,52 +536,63 @@ class MessageScheduler:
                     ORDER BY created_at ASC
                     LIMIT 10
                 ''')
-                
+
                 operations = cursor.fetchall()
-            
+
             if not operations:
                 return
-            
+
             self.logger.info(f"Processing {len(operations)} pending channel operation(s)")
-            
+
+            # Check if using pymc connection (channels stored in DB only, no radio)
+            is_pymc = self._is_pymc_connection()
+
             for op in operations:
                 op_id = op['id']
                 op_type = op['operation_type']
                 channel_idx = op['channel_idx']
                 channel_name = op['channel_name']
                 channel_key_hex = op['channel_key_hex']
-                
+
                 try:
                     success = False
                     error_msg = None
-                    
-                    if op_type == 'add':
-                        # Add channel
-                        if channel_key_hex:
-                            # Custom channel with key
-                            channel_secret = bytes.fromhex(channel_key_hex)
-                            success = await self.bot.channel_manager.add_channel(
-                                channel_idx, channel_name, channel_secret=channel_secret
-                            )
-                        else:
-                            # Hashtag channel (firmware generates key)
-                            success = await self.bot.channel_manager.add_channel(
-                                channel_idx, channel_name
-                            )
-                        
-                        if success:
-                            self.logger.info(f"Successfully processed channel add operation: {channel_name} at index {channel_idx}")
-                        else:
-                            error_msg = "Failed to add channel"
-                    
-                    elif op_type == 'remove':
-                        # Remove channel
-                        success = await self.bot.channel_manager.remove_channel(channel_idx)
-                        
-                        if success:
-                            self.logger.info(f"Successfully processed channel remove operation: index {channel_idx}")
-                        else:
-                            error_msg = "Failed to remove channel"
+
+                    if is_pymc:
+                        # For pymc mode, store directly in database
+                        # The ChannelDatabaseAdapter will pick up channels from the DB
+                        success, error_msg = await self._process_pymc_channel_operation(
+                            op_type, channel_idx, channel_name, channel_key_hex
+                        )
+                    else:
+                        # Standard meshcore mode - use channel_manager to talk to radio
+                        if op_type == 'add':
+                            # Add channel
+                            if channel_key_hex:
+                                # Custom channel with key
+                                channel_secret = bytes.fromhex(channel_key_hex)
+                                success = await self.bot.channel_manager.add_channel(
+                                    channel_idx, channel_name, channel_secret=channel_secret
+                                )
+                            else:
+                                # Hashtag channel (firmware generates key)
+                                success = await self.bot.channel_manager.add_channel(
+                                    channel_idx, channel_name
+                                )
+
+                            if success:
+                                self.logger.info(f"Successfully processed channel add operation: {channel_name} at index {channel_idx}")
+                            else:
+                                error_msg = "Failed to add channel"
+
+                        elif op_type == 'remove':
+                            # Remove channel
+                            success = await self.bot.channel_manager.remove_channel(channel_idx)
+
+                            if success:
+                                self.logger.info(f"Successfully processed channel remove operation: index {channel_idx}")
+                            else:
+                                error_msg = "Failed to remove channel"
                     
                     # Update operation status
                     with sqlite3.connect(db_path, timeout=30.0) as conn:
@@ -623,3 +645,73 @@ class MessageScheduler:
                     self.logger.error(f"Parent directory: {parent} (exists: {parent.exists()}, writable: {os.access(str(parent), os.W_OK) if parent.exists() else False})")
             else:
                 self.logger.error(f"Database path: {db_path_str}")
+
+    async def _process_pymc_channel_operation(self, op_type: str, channel_idx: int,
+                                               channel_name: str, channel_key_hex: str) -> tuple:
+        """
+        Process channel operation for pymc mode by storing directly in database.
+
+        For pymc mode, channels are stored in the database and the ChannelDatabaseAdapter
+        reads from there. There's no radio firmware to configure.
+
+        Args:
+            op_type: 'add' or 'remove'
+            channel_idx: Channel index
+            channel_name: Channel name
+            channel_key_hex: Channel key as hex string (for private channels)
+
+        Returns:
+            Tuple of (success: bool, error_msg: str or None)
+        """
+        import hashlib
+
+        try:
+            db_path = str(self.bot.db_manager.db_path)
+
+            if op_type == 'add':
+                # Derive key if not provided (hashtag channel)
+                if not channel_key_hex and channel_name:
+                    # Derive key from channel name using SHA256
+                    key_bytes = hashlib.sha256(channel_name.encode('utf-8')).digest()
+                    channel_key_hex = key_bytes.hex()
+
+                # Determine channel type
+                channel_type = 'hashtag' if channel_name.startswith('#') else 'custom'
+
+                # Insert/update channel in database
+                with sqlite3.connect(db_path, timeout=30.0) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        INSERT OR REPLACE INTO channels
+                        (channel_idx, channel_name, channel_type, channel_key_hex, last_updated)
+                        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ''', (channel_idx, channel_name, channel_type, channel_key_hex))
+                    conn.commit()
+
+                # Invalidate channel cache in the adapter
+                if hasattr(self.bot.meshcore, '_channel_db'):
+                    self.bot.meshcore._channel_db._cache_time = 0
+
+                self.logger.info(f"[pymc] Added channel {channel_idx}: {channel_name} (type={channel_type})")
+                return True, None
+
+            elif op_type == 'remove':
+                # Remove channel from database
+                with sqlite3.connect(db_path, timeout=30.0) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('DELETE FROM channels WHERE channel_idx = ?', (channel_idx,))
+                    conn.commit()
+
+                # Invalidate channel cache in the adapter
+                if hasattr(self.bot.meshcore, '_channel_db'):
+                    self.bot.meshcore._channel_db._cache_time = 0
+
+                self.logger.info(f"[pymc] Removed channel {channel_idx}")
+                return True, None
+
+            else:
+                return False, f"Unknown operation type: {op_type}"
+
+        except Exception as e:
+            self.logger.error(f"Error in pymc channel operation: {e}")
+            return False, str(e)

@@ -291,13 +291,13 @@ class CommandManager:
     
     def _handle_send_result(self, result, operation_name: str, target: str, used_retry_method: bool = False) -> bool:
         """Handle result from message send operations.
-        
+
         Args:
             result: Result object from meshcore send operation.
             operation_name: Name of the operation ("DM" or "Channel message").
             target: Recipient name or channel name for logging.
             used_retry_method: True if send_msg_with_retry was used (affects logging).
-        
+
         Returns:
             bool: True if send succeeded (ACK received or sent successfully), False otherwise.
         """
@@ -307,14 +307,17 @@ class CommandManager:
             else:
                 self.logger.error(f"❌ {operation_name} to {target} failed - no result returned")
             return False
-        
+
         if hasattr(result, 'type'):
-            if result.type == EventType.ERROR:
+            # Get event type name for comparison (handles different EventType enums)
+            event_type_name = getattr(result.type, 'name', str(result.type)).upper()
+
+            if event_type_name == 'ERROR':
                 error_payload = result.payload if hasattr(result, 'payload') else {}
                 self.logger.error(f"❌ {operation_name} failed to {target}: {error_payload if error_payload else 'Unknown error'}")
                 return False
-            
-            if result.type in (EventType.MSG_SENT, EventType.OK):
+
+            if event_type_name in ('MSG_SENT', 'OK', 'MESSAGE_SENT'):
                 if used_retry_method and operation_name == "DM":
                     self.logger.info(f"✅ {operation_name} sent and ACK received from {target}")
                 else:
@@ -732,16 +735,8 @@ class CommandManager:
             return False
         
         try:
-            # Get channel number from channel name
-            channel_num = self.bot.channel_manager.get_channel_number(channel)
-            
-            # Check if channel was found (None indicates channel name not found)
-            if channel_num is None:
-                self.logger.error(f"Channel '{channel}' not found. Cannot send message.")
-                return False
-            
-            self.logger.info(f"Sending channel message to {channel} (channel {channel_num}): {content}")
-            
+            self.logger.info(f"Sending channel message to {channel}: {content}")
+
             # Record transmission for repeat tracking (don't let this block sending)
             try:
                 if hasattr(self.bot, 'transmission_tracker') and self.bot.transmission_tracker:
@@ -756,13 +751,27 @@ class CommandManager:
             except Exception as e:
                 self.logger.debug(f"Error recording transmission for repeat tracking: {e}")
                 # Don't fail the send if transmission tracking fails
-            
-            # Use meshcore-cli send_chan_msg function
-            from meshcore_cli.meshcore_cli import send_chan_msg
-            result = await send_chan_msg(self.bot.meshcore, channel_num, content)
-            
+
+            # Check if using pymc mode (has send_channel_msg on commands)
+            if hasattr(self.bot.meshcore, 'commands') and hasattr(self.bot.meshcore.commands, 'send_channel_msg'):
+                # pymc mode - use channel name directly
+                result = await self.bot.meshcore.commands.send_channel_msg(channel, content)
+                target = channel
+            else:
+                # Standard meshcore mode - need channel number
+                channel_num = self.bot.channel_manager.get_channel_number(channel)
+
+                # Check if channel was found (None indicates channel name not found)
+                if channel_num is None:
+                    self.logger.error(f"Channel '{channel}' not found. Cannot send message.")
+                    return False
+
+                # Use meshcore-cli send_chan_msg function
+                from meshcore_cli.meshcore_cli import send_chan_msg
+                result = await send_chan_msg(self.bot.meshcore, channel_num, content)
+                target = f"{channel} (channel {channel_num})"
+
             # Handle result using unified handler
-            target = f"{channel} (channel {channel_num})"
             return self._handle_send_result(result, "Channel message", target)
                 
         except Exception as e:

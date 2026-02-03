@@ -161,9 +161,6 @@ class ChannelDatabaseAdapter:
     # Well-known Public channel secret (from MeshCore spec)
     PUBLIC_CHANNEL_SECRET = "d8ee687c9be53be08d24a7f7aede4dac5de3168dea03c12e7b9c96c5511e807f"
 
-    # Common hashtag channels to always include
-    COMMON_HASHTAG_CHANNELS = ['#Public', '#general', '#test']
-
     def __init__(self, bot):
         self.bot = bot
         self.logger = logging.getLogger("ChannelDatabaseAdapter")
@@ -171,24 +168,33 @@ class ChannelDatabaseAdapter:
         self._cache_time = 0
         self._cache_ttl = 30  # Refresh cache every 30 seconds
 
+        # Pre-load channels and log what we have
+        self.logger.info("ChannelDatabaseAdapter initialized - loading channels...")
+        channels = self.get_channels()
+        self.logger.info(f"Initialized with {len(channels)} channels:")
+        for ch in channels:
+            ch_hash = self.get_channel_hash(ch['secret'])
+            self.logger.info(f"  - {ch['name']}: hash=0x{ch_hash:02X}")
+
     @staticmethod
     def derive_hashtag_key(channel_name: str) -> str:
         """
         Derive channel key from a hashtag channel name.
 
-        For channels starting with #, the key is derived by SHA256 hashing
-        the channel name (including the #).
+        MeshCore uses the first 16 bytes of SHA256(channel_name) as the
+        encryption key for hashtag channels.
 
         Args:
             channel_name: Channel name (e.g., "#howltest")
 
         Returns:
-            Hex string of the 32-byte derived key
+            Hex string of the 16-byte derived key (32 hex chars)
         """
         import hashlib
-        # Hash the channel name (including #) to get the key
-        key = hashlib.sha256(channel_name.encode('utf-8')).digest()
-        return key.hex()
+        # Hash the channel name, take first 16 bytes as the key
+        full_hash = hashlib.sha256(channel_name.encode('utf-8')).digest()
+        key_16 = full_hash[:16]
+        return key_16.hex()
 
     @staticmethod
     def get_channel_hash(secret_hex: str) -> int:
@@ -211,7 +217,12 @@ class ChannelDatabaseAdapter:
         Includes:
         - Public channel (well-known key)
         - Hashtag channels from config (derived keys)
+        - Private channels from config (name:key pairs)
         - Custom channels from database
+
+        Config format in [Channels] section:
+            monitor_channels = #howltest, #mychannel
+            private_channels = mynet:abc123..., othernet:def456...
 
         Returns:
             List of channel dicts with 'name' and 'secret' keys
@@ -236,27 +247,16 @@ class ChannelDatabaseAdapter:
         })
         self.logger.info(f"Added Public channel with hash 0x{public_hash:02X}")
 
-        # Add common hashtag channels
-        for ch_name in self.COMMON_HASHTAG_CHANNELS:
-            derived_key = self.derive_hashtag_key(ch_name)
-            ch_hash = self.get_channel_hash(derived_key)
-            if not any(c['name'] == ch_name for c in channels):
-                channels.append({
-                    'name': ch_name,
-                    'secret': derived_key,
-                    'idx': len(channels)
-                })
-                self.logger.info(f"Added common channel {ch_name} with hash 0x{ch_hash:02X}")
-
-        # Add hashtag channels from config
+        # Add channels from config
         try:
             if hasattr(self.bot, 'config'):
+                # Hashtag channels (key derived from name)
                 monitor_channels = self.bot.config.get('Channels', 'monitor_channels', fallback='')
                 if monitor_channels:
                     for ch_name in monitor_channels.split(','):
                         ch_name = ch_name.strip()
-                        if ch_name.startswith('#') and not any(c['name'] == ch_name for c in channels):
-                            # Derive key for hashtag channel
+                        if ch_name and not any(c['name'] == ch_name for c in channels):
+                            # Derive key from channel name
                             derived_key = self.derive_hashtag_key(ch_name)
                             ch_hash = self.get_channel_hash(derived_key)
                             channels.append({
@@ -264,11 +264,29 @@ class ChannelDatabaseAdapter:
                                 'secret': derived_key,
                                 'idx': len(channels)
                             })
-                            self.logger.debug(f"Added config channel {ch_name} with hash 0x{ch_hash:02X}")
-        except Exception as e:
-            self.logger.warning(f"Error loading hashtag channels from config: {e}")
+                            self.logger.info(f"Added channel {ch_name} with hash 0x{ch_hash:02X}")
 
-        # Add channels from database
+                # Private channels (explicit name:key pairs)
+                private_channels = self.bot.config.get('Channels', 'private_channels', fallback='')
+                if private_channels:
+                    for pair in private_channels.split(','):
+                        pair = pair.strip()
+                        if ':' in pair:
+                            ch_name, ch_key = pair.split(':', 1)
+                            ch_name = ch_name.strip()
+                            ch_key = ch_key.strip()
+                            if ch_name and ch_key and not any(c['name'] == ch_name for c in channels):
+                                ch_hash = self.get_channel_hash(ch_key)
+                                channels.append({
+                                    'name': ch_name,
+                                    'secret': ch_key,
+                                    'idx': len(channels)
+                                })
+                                self.logger.info(f"Added private channel {ch_name} with hash 0x{ch_hash:02X}")
+        except Exception as e:
+            self.logger.warning(f"Error loading channels from config: {e}")
+
+        # Add channels from database (added via web viewer)
         try:
             if hasattr(self.bot, 'db_manager'):
                 query = """
@@ -284,13 +302,15 @@ class ChannelDatabaseAdapter:
                     channel_key_hex = row.get('channel_key_hex', '')
 
                     if channel_name and channel_key_hex:
-                        # Don't duplicate if already added
+                        # Don't duplicate if already added from config
                         if not any(c['name'] == channel_name for c in channels):
+                            ch_hash = self.get_channel_hash(channel_key_hex)
                             channels.append({
                                 'name': channel_name,
                                 'secret': channel_key_hex,
                                 'idx': row.get('channel_idx', 0)
                             })
+                            self.logger.info(f"Added database channel {channel_name} with hash 0x{ch_hash:02X}")
         except Exception as e:
             self.logger.warning(f"Error loading channels from database: {e}")
 
@@ -737,30 +757,38 @@ class PyMCConnection:
     async def _handle_advert_packet(self, pkt, snr: float, rssi: float) -> None:
         """Handle advertisement packet from dispatcher."""
         try:
-            # Extract advertisement info from packet
-            # The advert handler in pymc_core parses this
+            # Use pymc_core's advert parsing utilities
+            from pymc_core.protocol.utils import parse_advert_payload, decode_appdata
+
             payload = pkt.payload if hasattr(pkt, 'payload') else b''
 
-            # Basic info we can extract
+            # Default event payload
             event_payload = {
-                'public_key': payload[2:34].hex() if len(payload) >= 34 else '',
-                'name': '',  # Name is in the advert data after pubkey
+                'public_key': '',
+                'name': '',
                 'latitude': None,
                 'longitude': None,
-                'flags': payload[1] if len(payload) > 1 else 0,
+                'flags': 0,
                 'SNR': snr,
                 'RSSI': rssi,
                 'raw_hex': payload.hex() if payload else ''
             }
 
-            # Try to extract name from advert
-            if len(payload) > 34:
-                try:
-                    name_end = payload.find(b'\x00', 34)
-                    if name_end > 34:
-                        event_payload['name'] = payload[34:name_end].decode('utf-8', errors='ignore')
-                except Exception:
-                    pass
+            # Parse the advert packet properly
+            try:
+                parsed = parse_advert_payload(payload)
+                event_payload['public_key'] = parsed.get('pubkey', '')
+
+                # Decode the appdata to get name, location, flags
+                appdata = parsed.get('appdata', b'')
+                if appdata:
+                    decoded = decode_appdata(appdata)
+                    event_payload['name'] = decoded.get('node_name', '') or decoded.get('name', '')
+                    event_payload['latitude'] = decoded.get('latitude')
+                    event_payload['longitude'] = decoded.get('longitude')
+                    event_payload['flags'] = decoded.get('flags', 0)
+            except Exception as e:
+                self.logger.warning(f"Error parsing advert payload: {e}")
 
             self.logger.info(f"Advertisement from {event_payload.get('name', 'unknown')}")
 
@@ -806,14 +834,34 @@ class PyMCConnection:
             # The GroupTextHandler in pymc_core stores decrypted data in pkt.decrypted
             group_data = getattr(pkt, 'decrypted', {}).get('group_text_data', {})
 
-            text = group_data.get('text', '')
+            # Strip null bytes from text (padding from decryption)
+            text = group_data.get('text', '').rstrip('\x00')
             channel_name = group_data.get('channel_name', '')
             sender_name = group_data.get('sender_name', 'Unknown')
             channel_hash = group_data.get('channel_hash', 0)
 
             # If group_data is empty, the message wasn't decrypted (missing channel key)
             if not group_data:
-                self.logger.warning(f"Channel message not decrypted - missing channel key? hash=0x{payload[0]:02X}")
+                ch_hash = payload[0] if payload else 0
+                self.logger.warning(f"Channel message not decrypted - unknown channel hash=0x{ch_hash:02X}")
+                # Log what channels we DO know about for debugging
+                if hasattr(self, '_channel_db') and self._channel_db:
+                    known_hashes = []
+                    for ch in self._channel_db.get_channels():
+                        h = self._channel_db.get_channel_hash(ch['secret'])
+                        known_hashes.append(f"{ch['name']}=0x{h:02X}")
+                    self.logger.debug(f"Known channels: {', '.join(known_hashes)}")
+
+            # Extract path information from the packet
+            path_len = getattr(pkt, 'path_len', 0)
+            path_bytes = getattr(pkt, 'path', b'')
+            path_string = None
+            if path_len > 0 and path_bytes:
+                # Convert path bytes to hex string (each byte is a node hash)
+                path_nodes = [f"{b:02x}" for b in path_bytes[:path_len]]
+                path_string = f"{','.join(path_nodes)} ({path_len} hops)"
+            elif path_len == 0:
+                path_string = "Direct"
 
             event_payload = {
                 'text': text,
@@ -824,6 +872,8 @@ class PyMCConnection:
                 'sender_name': sender_name,
                 'SNR': snr,
                 'RSSI': rssi,
+                'path': path_string,
+                'path_len': path_len,
                 'raw_hex': payload.hex() if payload else ''
             }
 
@@ -930,7 +980,41 @@ class PyMCCommands:
         except Exception as e:
             self.logger.error(f"Error sending advertisement: {e}")
             return Event(type=EventType.ERROR, payload={'error': str(e)})
-    
+
+    async def send_channel_msg(self, channel_name: str, content: str) -> Event:
+        """
+        Send a message to a channel.
+
+        Args:
+            channel_name: Name of the channel (e.g., "#howltest")
+            content: Message content to send
+
+        Returns:
+            Event indicating success or failure
+        """
+        try:
+            if not self.connection._mesh_node:
+                return Event(type=EventType.ERROR, payload={'error': 'Not connected'})
+
+            self.logger.info(f"Sending channel message to {channel_name}: {content[:50]}...")
+
+            # Use pymc_core's send_group_text method
+            result = await self.connection._mesh_node.send_group_text(channel_name, content)
+
+            if result.get('success'):
+                self.logger.info(f"Channel message sent to {channel_name}")
+                return Event(type=EventType.MSG_SENT, payload={'sent': True, 'channel': channel_name})
+            else:
+                error = result.get('error', 'Unknown error')
+                self.logger.error(f"Failed to send channel message: {error}")
+                return Event(type=EventType.ERROR, payload={'error': error})
+
+        except Exception as e:
+            self.logger.error(f"Error sending channel message: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+            return Event(type=EventType.ERROR, payload={'error': str(e)})
+
     async def get_time(self) -> Event:
         """
         Get device time (not applicable for pyMC, return current time).
