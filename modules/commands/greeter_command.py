@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List, Tuple
 from .base_command import BaseCommand
 from ..models import MeshMessage
+from ..utils import decode_escape_sequences
 
 
 class GreeterCommand(BaseCommand):
@@ -119,39 +120,13 @@ class GreeterCommand(BaseCommand):
                 import traceback
                 self.logger.error(traceback.format_exc())
     
-    def _decode_escape_sequences(self, text: str) -> str:
-        """Decode escape sequences in config strings.
-        
-        Processes common escape sequences like \\n (newline), \\t (tab), \\\\ (backslash).
-        This allows users to add newlines in greeting messages using \n (single backslash).
-        
-        Behavior:
-        - \n in config file → newline character
-        - \\n in config file → literal backslash + n
-        
-        Args:
-            text: The text string to process.
-            
-        Returns:
-            str: The text with escape sequences decoded.
-        """
-        # Replace escape sequences
-        # Order matters: \\ must be processed first to avoid double-processing
-        # This preserves literal backslashes (\\n becomes \n, not a newline)
-        text = text.replace('\\\\', '\x00')  # Temporary placeholder for backslash
-        text = text.replace('\\n', '\n')     # Newline
-        text = text.replace('\\t', '\t')     # Tab
-        text = text.replace('\\r', '\r')     # Carriage return
-        text = text.replace('\x00', '\\')    # Restore backslash
-        return text
-    
     def _load_config(self) -> None:
         """Load configuration for greeter command."""
         self.enabled = self.get_config_value('Greeter_Command', 'enabled', fallback=False, value_type='bool')
         self.greeting_message = self.get_config_value('Greeter_Command', 'greeting_message', 
                                                       fallback='Welcome to the mesh, {sender}!')
-        # Decode escape sequences (e.g., \\n for newlines)
-        self.greeting_message = self._decode_escape_sequences(self.greeting_message)
+        # Decode escape sequences (e.g., \n for newlines)
+        self.greeting_message = decode_escape_sequences(self.greeting_message)
         
         self.rollout_days = self.get_config_value('Greeter_Command', 'rollout_days', fallback=7, value_type='int')
         self.include_mesh_info = self.get_config_value('Greeter_Command', 'include_mesh_info', 
@@ -159,7 +134,7 @@ class GreeterCommand(BaseCommand):
         self.mesh_info_format = self.get_config_value('Greeter_Command', 'mesh_info_format',
                                                       fallback='\n\nMesh Info: {total_contacts} contacts, {repeaters} repeaters')
         # Decode escape sequences (e.g., \n for newlines)
-        self.mesh_info_format = self._decode_escape_sequences(self.mesh_info_format)
+        self.mesh_info_format = decode_escape_sequences(self.mesh_info_format)
         
         # Log configuration for debugging
         self.logger.debug(f"Greeter config loaded: include_mesh_info={self.include_mesh_info}, "
@@ -199,8 +174,8 @@ class GreeterCommand(BaseCommand):
                     channel_name, greeting = entry.split(':', 1)
                     channel_name = channel_name.strip()
                     greeting = greeting.strip()
-                    # Decode escape sequences (e.g., \\n for newlines)
-                    greeting = self._decode_escape_sequences(greeting)
+                    # Decode escape sequences (e.g., \n for newlines)
+                    greeting = decode_escape_sequences(greeting)
                     # Store both original and lowercase channel name for case-insensitive matching
                     self.channel_greetings[channel_name.lower()] = {
                         'channel': channel_name,

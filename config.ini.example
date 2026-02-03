@@ -311,6 +311,9 @@ help = "Bot Help: test (or t), ping, help, hello, cmd, advert, @string, wx, aqi,
 # Time format: HHMM (24-hour, no colon)
 # Bot will send these messages at the specified times daily
 # Example: 0800 = general:Good morning! Weather update coming soon.
+#
+# Newlines: use \n in the message for a line break (e.g. general:Line one\nLine two).
+# Literal backslash: use \\n for backslash+n; \\t for tab.
 # 
 # Available placeholders for mesh network information:
 # 

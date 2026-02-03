@@ -133,6 +133,28 @@ def truncate_string(text: str, max_length: int, ellipsis: str = '...') -> str:
     return text[:max_length - len(ellipsis)] + ellipsis
 
 
+def decode_escape_sequences(text: str) -> str:
+    """Decode escape sequences in config strings (e.g. Keywords, Scheduled_Messages).
+
+    Processes \\n (newline), \\t (tab), \\r (carriage return), \\\\ (literal backslash).
+    Use a single backslash in config: \\n for newline; \\\\n for literal backslash + n.
+
+    Args:
+        text: The text string to process.
+
+    Returns:
+        str: The text with escape sequences decoded.
+    """
+    if not text:
+        return text
+    text = text.replace('\\\\', '\x00')  # Temporary placeholder for backslash
+    text = text.replace('\\n', '\n')     # Newline
+    text = text.replace('\\t', '\t')    # Tab
+    text = text.replace('\\r', '\r')    # Carriage return
+    text = text.replace('\x00', '\\')   # Restore backslash
+    return text
+
+
 def format_location_for_display(city: Optional[str], state: Optional[str] = None, 
                                country: Optional[str] = None, max_length: int = 20) -> Optional[str]:
     """Format location data for display with intelligent abbreviation.

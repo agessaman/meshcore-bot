@@ -14,7 +14,7 @@ import json
 import os
 from typing import Dict, Tuple, Any
 from pathlib import Path
-from .utils import format_keyword_response_with_placeholders
+from .utils import decode_escape_sequences, format_keyword_response_with_placeholders
 
 
 class MessageScheduler:
@@ -57,15 +57,17 @@ class MessageScheduler:
                         continue
                     
                     channel, message = message_info.split(':', 1)
+                    channel = channel.strip()
+                    message = decode_escape_sequences(message.strip())
                     # Convert HHMM to HH:MM for scheduler
                     hour = int(time_str[:2])
                     minute = int(time_str[2:])
                     schedule_time = f"{hour:02d}:{minute:02d}"
                     
                     schedule.every().day.at(schedule_time).do(
-                        self.send_scheduled_message, channel.strip(), message.strip()
+                        self.send_scheduled_message, channel, message
                     )
-                    self.scheduled_messages[time_str] = (channel.strip(), message.strip())
+                    self.scheduled_messages[time_str] = (channel, message)
                     self.logger.info(f"Scheduled message: {schedule_time} -> {channel}: {message}")
                 except ValueError:
                     self.logger.warning(f"Invalid scheduled message format: {message_info}")
