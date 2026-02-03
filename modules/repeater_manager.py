@@ -19,6 +19,24 @@ except ImportError:
 from .utils import rate_limited_nominatim_reverse_sync
 
 
+def _contact_to_json_serializable(contact) -> dict:
+    """Convert a contact (ContactInfo, dict, or object) to a JSON-serializable dict."""
+    if contact is None:
+        return {}
+    if isinstance(contact, dict):
+        return contact
+    try:
+        from dataclasses import asdict
+        if hasattr(contact, '__dataclass_fields__'):
+            return asdict(contact)
+    except Exception:
+        pass
+    return {
+        'public_key': getattr(contact, 'public_key', ''),
+        'name': getattr(contact, 'name', ''),
+        'adv_name': getattr(contact, 'adv_name', getattr(contact, 'name', '')),
+    }
+
 
 class RepeaterManager:
     """Manages repeater contacts database and purging operations"""
@@ -736,7 +754,11 @@ class RepeaterManager:
         try:
             if not self.auto_purge_enabled:
                 return False
-                
+            # pyMC mode: no device contact limit, nothing to purge from radio
+            connection_type = self.bot.config.get('Connection', 'connection_type', fallback='').lower()
+            if connection_type == 'pymc':
+                return False
+
             # Get current contact count
             current_count = len(self.bot.meshcore.contacts)
             
@@ -1992,7 +2014,7 @@ class RepeaterManager:
                             public_key,
                             name,
                             device_type,
-                            json.dumps(contact_data),
+                            json.dumps(_contact_to_json_serializable(contact_data)),
                             location_info['latitude'],
                             location_info['longitude'],
                             location_info['city'],
@@ -2089,6 +2111,9 @@ class RepeaterManager:
 
     async def purge_repeater_from_contacts(self, public_key: str, reason: str = "Manual purge") -> bool:
         """Remove a specific repeater from the device's contact list using proper MeshCore API"""
+        if self.bot.config.get('Connection', 'connection_type', fallback='').lower() == 'pymc':
+            self.logger.debug("Purge from radio not applicable in pyMC mode (unlimited contact storage)")
+            return False
         self.logger.info(f"Starting purge process for public_key: {public_key}")
         self.logger.debug(f"Purge reason: {reason}")
         
@@ -2148,7 +2173,7 @@ class RepeaterManager:
                     public_key,
                     contact_name,
                     device_type,
-                    json.dumps(contact_to_remove)
+                    json.dumps(_contact_to_json_serializable(contact_to_remove))
                 ))
                 
                 self.logger.info(f"Added repeater {contact_name} to database before purging")
@@ -2269,6 +2294,9 @@ class RepeaterManager:
     
     async def purge_companion_from_contacts(self, public_key: str, reason: str = "Manual purge") -> bool:
         """Remove a companion contact from the device's contact list"""
+        if self.bot.config.get('Connection', 'connection_type', fallback='').lower() == 'pymc':
+            self.logger.debug("Purge from radio not applicable in pyMC mode (unlimited contact storage)")
+            return False
         self.logger.info(f"Starting companion purge process for public_key: {public_key}")
         self.logger.debug(f"Purge reason: {reason}")
         
@@ -2603,6 +2631,9 @@ class RepeaterManager:
     
     async def purge_repeater_by_contact_key(self, contact_key: str, reason: str = "Manual purge") -> bool:
         """Remove a repeater using the contact key from the device's contact list"""
+        if self.bot.config.get('Connection', 'connection_type', fallback='').lower() == 'pymc':
+            self.logger.debug("Purge from radio not applicable in pyMC mode (unlimited contact storage)")
+            return False
         self.logger.info(f"Starting purge process for contact_key: {contact_key}")
         self.logger.debug(f"Purge reason: {reason}")
         
@@ -2640,7 +2671,7 @@ class RepeaterManager:
                     public_key,
                     contact_name,
                     device_type,
-                    json.dumps(contact_data)
+                    json.dumps(_contact_to_json_serializable(contact_data))
                 ))
                 
                 self.logger.info(f"Added repeater {contact_name} to database before purging")
@@ -2862,6 +2893,9 @@ class RepeaterManager:
     
     async def force_purge_repeater_from_contacts(self, public_key: str, reason: str = "Force purge") -> bool:
         """Force remove a repeater from device contacts using multiple methods"""
+        if self.bot.config.get('Connection', 'connection_type', fallback='').lower() == 'pymc':
+            self.logger.debug("Purge from radio not applicable in pyMC mode (unlimited contact storage)")
+            return False
         self.logger.info(f"Starting FORCE purge process for public_key: {public_key}")
         self.logger.debug(f"Force purge reason: {reason}")
         
@@ -2989,6 +3023,9 @@ class RepeaterManager:
     
     async def purge_old_repeaters(self, days_old: int = 30, reason: str = "Automatic purge - old contacts") -> int:
         """Purge repeaters that haven't been seen in specified days"""
+        if self.bot.config.get('Connection', 'connection_type', fallback='').lower() == 'pymc':
+            self.logger.debug("Purge from radio not applicable in pyMC mode (unlimited contact storage)")
+            return 0
         try:
             cutoff_date = datetime.now() - timedelta(days=days_old)
             

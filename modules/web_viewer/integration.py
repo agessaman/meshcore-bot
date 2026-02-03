@@ -82,12 +82,12 @@ class BotIntegration:
         self.circuit_breaker_failures = 0
     
     def _init_packet_stream_table(self):
-        """Initialize the packet_stream table in bot_data.db"""
+        """Initialize the packet_stream table in the configured database."""
         try:
             import sqlite3
             
             # Get database path from config
-            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
+            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
             
             # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
             base_dir = self.bot.bot_root if hasattr(self.bot, 'bot_root') else '.'
@@ -160,7 +160,7 @@ class BotIntegration:
             serializable_data = self._make_json_serializable(packet_data)
             
             # Store in database for web viewer to read
-            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
+            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
             # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
             base_dir = self.bot.bot_root if hasattr(self.bot, 'bot_root') else '.'
             db_path = resolve_path(db_path, base_dir)
@@ -225,7 +225,7 @@ class BotIntegration:
             serializable_data = self._make_json_serializable(command_data)
             
             # Store in database for web viewer to read
-            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
+            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
             # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
             base_dir = self.bot.bot_root if hasattr(self.bot, 'bot_root') else '.'
             db_path = resolve_path(db_path, base_dir)
@@ -255,7 +255,7 @@ class BotIntegration:
             serializable_data = self._make_json_serializable(routing_data)
             
             # Store in database for web viewer to read
-            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
+            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
             # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
             base_dir = self.bot.bot_root if hasattr(self.bot, 'bot_root') else '.'
             db_path = resolve_path(db_path, base_dir)
@@ -282,7 +282,7 @@ class BotIntegration:
             
             cutoff_time = time.time() - (days_to_keep * 24 * 60 * 60)
             
-            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
+            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
             # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
             base_dir = self.bot.bot_root if hasattr(self.bot, 'bot_root') else '.'
             db_path = resolve_path(db_path, base_dir)
@@ -416,6 +416,10 @@ class WebViewerIntegration:
         self.port = bot.config.getint('Web_Viewer', 'port', fallback=8080)  # Web viewer uses 8080
         self.debug = bot.config.getboolean('Web_Viewer', 'debug', fallback=False)
         self.auto_start = bot.config.getboolean('Web_Viewer', 'auto_start', fallback=False)
+
+        # Store config path to pass to subprocess
+        # Bot uses 'config_file' attribute to store the config path
+        self.config_path = getattr(bot, 'config_file', 'config.ini')
         
         # Validate configuration for security
         self._validate_config()
@@ -570,9 +574,10 @@ class WebViewerIntegration:
                 sys.executable,
                 str(viewer_script),
                 "--host", self.host,
-                "--port", str(self.port)
+                "--port", str(self.port),
+                "--config", self.config_path
             ]
-            
+
             if self.debug:
                 cmd.append("--debug")
             

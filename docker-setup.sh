@@ -93,8 +93,8 @@ fi
 
 # Update Web_Viewer database path (if section exists)
 if grep -q "^\[Web_Viewer\]" "$CONFIG_FILE"; then
-    update_config "Web_Viewer" "db_path" "/data/databases/bot_data.db"
-    echo "  ✓ Updated [Web_Viewer] db_path"
+    update_config "Web_Viewer" "db_path" "/data/databases/meshcore_bot.db"
+    echo "  ✓ Updated [Web_Viewer] db_path (same as [Bot] for shared data)"
     ((UPDATED_COUNT++))
 fi
 

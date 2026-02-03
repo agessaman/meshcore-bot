@@ -73,7 +73,17 @@ class BotDataViewer:
         
         # Load configuration
         self.config = self._load_config(config_path)
-        
+
+        # Resolve config file directory so relative paths match the bot (bot uses config file's parent)
+        self._config_dir = Path(config_path).parent.resolve() if config_path else self.bot_root
+
+        # Override db_path from config if specified (allows config-driven database selection)
+        # Resolve relative to config file directory so viewer and bot use the same DB when paths match
+        config_db_path = self.config.get('Web_Viewer', 'db_path', fallback=None)
+        if config_db_path:
+            self.db_path = resolve_path(config_db_path, self._config_dir)
+            self.logger.info(f"Using database from config: {self.db_path}")
+
         # Setup template context processor for global template variables
         self._setup_template_context()
         
@@ -195,16 +205,12 @@ class BotDataViewer:
             raise
     
     def _init_packet_stream_table(self):
-        """Initialize the packet_stream table in bot_data.db"""
+        """Initialize the packet_stream table in the configured database."""
         conn = None
         try:
             # Get database path from config
-            db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
-            
-            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
-            db_path = resolve_path(db_path, self.bot_root)
-            
-            # Connect to database and create table if it doesn't exist
+            db_path = self.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
+            db_path = resolve_path(db_path, self._config_dir)
             with sqlite3.connect(db_path, timeout=30) as conn:
                 cursor = conn.cursor()
                 
@@ -1480,10 +1486,8 @@ class BotDataViewer:
                 cutoff_time = time.time() - (60 * 60)  # 60 minutes ago
                 
                 # Get database path
-                db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
-                
-                # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
-                db_path = resolve_path(db_path, self.bot_root)
+                db_path = self.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
+                db_path = resolve_path(db_path, self._config_dir)
                 
                 with sqlite3.connect(db_path, timeout=30) as conn:
                     cursor = conn.cursor()
@@ -2601,10 +2605,8 @@ class BotDataViewer:
                     import json
                     
                     # Get database path (re-resolve on each iteration in case config changed)
-                    db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
-                    
-                    # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
-                    db_path = resolve_path(db_path, self.bot_root)
+                    db_path = self.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
+                    db_path = resolve_path(db_path, self._config_dir)
                     
                     # Check if database file exists and is accessible
                     db_file = Path(db_path)
@@ -2787,11 +2789,8 @@ class BotDataViewer:
             cutoff_time = time.time() - (days_to_keep * 24 * 60 * 60)
             
             # Get database path
-            db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
-            
-            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
-            db_path = resolve_path(db_path, self.bot_root)
-            
+            db_path = self.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
+            db_path = resolve_path(db_path, self._config_dir)
             # Use shorter timeout and isolation_level for better concurrency
             conn = sqlite3.connect(db_path, timeout=10, isolation_level='DEFERRED')
             cursor = conn.cursor()
@@ -3298,9 +3297,8 @@ class BotDataViewer:
             
             # Get database file size
             import os
-            db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
-            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
-            db_path = resolve_path(db_path, self.bot_root)
+            db_path = self.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
+            db_path = resolve_path(db_path, self._config_dir)
             try:
                 db_size_bytes = os.path.getsize(db_path)
                 if db_size_bytes < 1024:
@@ -3356,9 +3354,8 @@ class BotDataViewer:
             
             # Get initial database size
             import os
-            db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
-            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
-            db_path = resolve_path(db_path, self.bot_root)
+            db_path = self.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
+            db_path = resolve_path(db_path, self._config_dir)
             initial_size = os.path.getsize(db_path)
             
             # Perform VACUUM to reclaim unused space

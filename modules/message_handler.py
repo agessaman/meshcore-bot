@@ -1579,8 +1579,8 @@ class MessageHandler:
                 if not recent_rf_data:
                     extended_timeout = self.rf_data_timeout * 2  # Double the normal timeout
                     recent_rf_data = self.find_recent_rf_data(max_age_seconds=extended_timeout)
-            
-                    if recent_rf_data and recent_rf_data.get('raw_hex'):
+
+                if recent_rf_data and recent_rf_data.get('raw_hex'):
                     raw_hex = recent_rf_data['raw_hex']
                     self.logger.info(f"🔍 FOUND RF DATA: {len(raw_hex)} chars, starts with: {raw_hex[:32]}...")
                     self.logger.debug(f"Full RF data: {raw_hex}")
@@ -3070,6 +3070,24 @@ class MessageHandler:
             except Exception as e:
                 self.logger.debug(f"Could not correlate RF data: {e}")
             
+            # If path info came from the event (e.g. pyMC) but we didn't correlate with RF, ensure it's used
+            if ('out_path_len' in contact_data or 'path_len' in contact_data) and 'hops' not in signal_info:
+                path_len = contact_data.get('out_path_len', contact_data.get('path_len', 0))
+                if path_len is not None and path_len >= 0:
+                    signal_info['hops'] = path_len
+            if 'out_path' not in contact_data and 'out_path_len' in contact_data and contact_data.get('out_path_len', -1) == 0:
+                contact_data['out_path'] = ''
+
+            # For zero-hop adverts (e.g. pyMC), SNR/RSSI may be in the event payload rather than RF cache
+            path_len = contact_data.get('out_path_len', contact_data.get('path_len', -1))
+            if path_len == 0 and ('SNR' in contact_data or 'RSSI' in contact_data):
+                if 'snr' not in signal_info and ('SNR' in contact_data or 'snr' in contact_data):
+                    signal_info['snr'] = contact_data.get('SNR', contact_data.get('snr'))
+                if 'rssi' not in signal_info and ('RSSI' in contact_data or 'rssi' in contact_data):
+                    signal_info['rssi'] = contact_data.get('RSSI', contact_data.get('rssi'))
+                if 'hops' not in signal_info:
+                    signal_info['hops'] = 0
+
             # Log captured signal information
             if signal_info:
                 self.logger.info(f"📡 Signal data: {signal_info}")

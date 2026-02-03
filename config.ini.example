@@ -1072,8 +1072,9 @@ debug = false
 auto_start = false
 
 # Database path for web viewer data
-# Default: bot_data.db
-db_path = bot_data.db
+# Use the same path as [Bot] db_path so the viewer shows contacts, stats, and history.
+# Default: meshcore_bot.db (same as bot)
+db_path = meshcore_bot.db
 
 # Additional hashtag channels to decode in the packet stream
 # The web viewer can decrypt GroupText messages from hashtag channels
