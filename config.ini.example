@@ -61,6 +61,10 @@ pymc_tx_power = 22
 # Default MeshCore sync word is 0x12
 pymc_sync_word = 18
 
+# Delay (seconds) before sending a DM reply so pyMC_core's ACK is sent first.
+# Set to 0 to disable. Default 5.0 matches typical pyMC_core ACK delay.
+# pymc_dm_reply_delay_seconds = 1.0
+
 [Bot]
 # Bot name for identification and logging
 bot_name = MeshCoreBot

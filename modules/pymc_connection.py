@@ -23,14 +23,22 @@ try:
     # Import payload type constants (not an enum in pymc_core)
     from pymc_core.protocol import constants as pymc_constants
     PYMC_AVAILABLE = True
-except ImportError as e:
+except ImportError:
     PYMC_AVAILABLE = False
     LocalIdentity = None
     MeshNode = None
     KissSerialWrapper = None
     pymc_constants = None
 
-# Import MeshCore KISS modem interface
+# Prefer pyMC_core Meshcore KISS modem wrapper when available (no adapter needed)
+try:
+    from pymc_core.hardware import KissModemWrapper as PyMCKissModemWrapper
+    PYMC_KISS_MODEM_AVAILABLE = True
+except ImportError:
+    PyMCKissModemWrapper = None
+    PYMC_KISS_MODEM_AVAILABLE = False
+
+# Import local MeshCore KISS modem (fallback when pyMC_core wrapper not used)
 try:
     from modules.kiss_modem import KISSModem
     KISS_MODEM_AVAILABLE = True
@@ -45,6 +53,35 @@ try:
 except ImportError:
     MeshTNCSerial = None
     MESHTNC_SERIAL_AVAILABLE = False
+
+
+def _normalize_public_key_hex(value: Any) -> Optional[str]:
+    """Normalize public_key from DB to 64-char lowercase hex for pyMC_core (src_hash lookup, send_msg).
+    Handles bytes, hex str (with/without 0x), and Python repr of bytes. Returns None if invalid.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bytes):
+        if len(value) != 32:
+            return None
+        return value.hex().lower()
+    if isinstance(value, str):
+        s = value.strip()
+        if not s or len(s) < 32:
+            return None
+        s = s.removeprefix('0x').lower()
+        if len(s) == 64 and all(c in '0123456789abcdef' for c in s):
+            return s
+        # Python repr of bytes stored as string
+        if (s.startswith("b'") or s.startswith('b"')) and '\\x' in s:
+            import ast
+            try:
+                binary = ast.literal_eval(value.strip())
+                if isinstance(binary, bytes) and len(binary) == 32:
+                    return binary.hex().lower()
+            except Exception:
+                pass
+    return None
 
 
 class EventType(IntEnum):
@@ -169,19 +206,25 @@ class ContactBookAdapter:
                 self.logger.debug("Database manager not available for contacts")
                 return contacts
 
-            # Query contacts from database
+            # Only companion contacts: pyMC_core's mac_then_decrypt handler matches by src_hash
+            # (first byte of public key); one contact per src_hash avoids Invalid HMAC.
             query = """
                 SELECT public_key, name, role, device_type
                 FROM complete_contact_tracking
                 WHERE public_key IS NOT NULL AND public_key != ''
+                  AND role = 'companion'
             """
 
             rows = self.bot.db_manager.execute_query(query)
 
             for row in rows:
-                # Create a simple object that pymc_core can use
+                pk_raw = row.get('public_key', '')
+                pk_hex = _normalize_public_key_hex(pk_raw)
+                if not pk_hex:
+                    continue  # Skip invalid keys so pyMC_core src_hash lookup works
+                # pymc_core expects contact.public_key as 64-char lowercase hex (for bytes.fromhex(pk); pk_bytes[0] == src_hash)
                 contact = type('Contact', (), {
-                    'public_key': row.get('public_key', ''),
+                    'public_key': pk_hex,
                     'name': row.get('name', ''),
                     'role': row.get('role', 'companion'),
                 })()
@@ -198,9 +241,12 @@ class ContactBookAdapter:
         return contacts
 
     def get_contact_by_public_key(self, public_key: str):
-        """Find a contact by public key."""
+        """Find a contact by public key (accepts any format; comparison uses normalized hex)."""
+        want = _normalize_public_key_hex(public_key)
+        if not want:
+            return None
         for contact in self.contacts:
-            if contact.public_key == public_key:
+            if getattr(contact, 'public_key', None) == want:
                 return contact
         return None
 
@@ -401,7 +447,7 @@ class PyMCConnection:
         # Connection state
         self._connected = False
         self._mesh_node: Optional[MeshNode] = None
-        self._radio: Optional[KissSerialWrapper] = None
+        self._radio: Optional[Any] = None  # KissModemWrapper, KISSModem, MeshTNCSerial, or KissSerialWrapper
         self._identity: Optional[LocalIdentity] = None
         
         # Event subscribers
@@ -419,6 +465,12 @@ class PyMCConnection:
         # Used to ignore duplicate messages received via different mesh paths
         self._seen_messages: Dict[str, float] = {}
         self._seen_messages_ttl = 30.0  # Ignore duplicates within 30 seconds
+
+        # Logical DM dedup: (sender_pubkey_hex, timestamp_uint32) -> time
+        # MeshCore: same logical message across retries shares 32-bit timestamp; only attempt (0..3) changes.
+        # We only emit CONTACT_MSG_RECV once per (sender, timestamp); we still send ACK for every attempt.
+        self._seen_logical_dm: Dict[str, float] = {}
+        self._seen_logical_dm_ttl = 60.0  # One reply per logical message within 60s
 
         # Commands interface
         self.commands = PyMCCommands(self)
@@ -462,7 +514,7 @@ class PyMCConnection:
             
             self.logger.info(f"Connecting to KISS modem via serial: {serial_port}")
 
-            # Configure radio parameters
+            # Configure radio parameters (sync_word omitted for pyMC wrapper; local/legacy use it)
             radio_config = {
                 "frequency": frequency,
                 "bandwidth": bandwidth,
@@ -474,9 +526,18 @@ class PyMCConnection:
 
             self.logger.info(f"Radio config: freq={frequency/1e6:.3f}MHz, BW={bandwidth/1000}kHz, SF={spreading_factor}")
 
-            # Use MeshCore KISS modem (preferred) or fall back to legacy options
-            if KISS_MODEM_AVAILABLE:
-                self.logger.info("Using MeshCore KISS modem")
+            # Prefer pyMC_core KissModemWrapper, then local KISS modem, then legacy options
+            if PYMC_KISS_MODEM_AVAILABLE and PyMCKissModemWrapper is not None:
+                self.logger.info("Using pyMC_core KissModemWrapper (Meshcore KISS modem)")
+                self._radio = PyMCKissModemWrapper(
+                    port=serial_port,
+                    baudrate=baudrate,
+                    on_frame_received=None,
+                    radio_config=radio_config,
+                    auto_configure=True,
+                )
+            elif KISS_MODEM_AVAILABLE:
+                self.logger.info("Using MeshCore KISS modem (local wrapper)")
                 self._radio = KISSModem(
                     port=serial_port,
                     baudrate=baudrate,
@@ -667,6 +728,39 @@ class PyMCConnection:
         self._seen_messages[msg_hash] = now
         return False
 
+    def _is_duplicate_logical_dm(self, sender_pubkey_hex: str, timestamp_int: int) -> bool:
+        """
+        Check if we have already processed this logical DM (same sender + timestamp).
+        MeshCore retries use the same 32-bit timestamp and different attempt (0..3);
+        we only reply once per logical message.
+
+        Returns True if already seen (skip emitting CONTACT_MSG_RECV), False if new (emit and mark seen).
+        """
+        key = f"{sender_pubkey_hex}:{timestamp_int}"
+        now = time.time()
+        expired = [k for k, ts in self._seen_logical_dm.items() if now - ts > self._seen_logical_dm_ttl]
+        for k in expired:
+            del self._seen_logical_dm[k]
+        if key in self._seen_logical_dm:
+            return True
+        self._seen_logical_dm[key] = now
+        return False
+
+    def _is_duplicate_logical_dm_by_sender_text(self, sender_pubkey_hex: str, text: str) -> bool:
+        """
+        Fallback dedup for dispatcher path where we don't have decrypted timestamp.
+        Same sender + same text within TTL = one reply (catches retries).
+        """
+        key = f"t:{sender_pubkey_hex}:{text}"
+        now = time.time()
+        expired = [k for k, ts in self._seen_logical_dm.items() if now - ts > self._seen_logical_dm_ttl]
+        for k in expired:
+            del self._seen_logical_dm[k]
+        if key in self._seen_logical_dm:
+            return True
+        self._seen_logical_dm[key] = now
+        return False
+
     def _setup_event_handlers(self) -> None:
         """Setup handlers for pyMC_core events via dispatcher callbacks."""
         if not self._mesh_node:
@@ -705,8 +799,12 @@ class PyMCConnection:
             
             self._contacts.clear()
             for row in rows:
+                pk_raw = row.get('public_key', '')
+                pk_hex = _normalize_public_key_hex(pk_raw)
+                if not pk_hex:
+                    continue  # Skip invalid keys; DMs need 32-byte hex for PacketBuilder
                 contact = ContactInfo(
-                    public_key=row['public_key'],
+                    public_key=pk_hex,
                     name=row['name'],
                     role=row.get('role', 'companion'),
                     device_type=row.get('device_type', 'unknown'),
@@ -717,7 +815,7 @@ class PyMCConnection:
                     last_heard=row.get('last_heard')
                 )
                 # Use public key prefix as key for quick lookup
-                key = row['public_key'][:12] if row['public_key'] else row['name']
+                key = pk_hex[:12]
                 self._contacts[key] = contact
             
             self.logger.info(f"Loaded {len(self._contacts)} contacts from database")
@@ -754,6 +852,19 @@ class PyMCConnection:
         prefix_lower = prefix.lower()
         for key, contact in self._contacts.items():
             if contact.public_key.lower().startswith(prefix_lower):
+                return contact
+        return None
+
+    def get_contact_by_public_key(self, public_key: str) -> Optional[ContactInfo]:
+        """
+        Find a contact by full public key (64-char hex). Use this for DM replies
+        so the correct recipient is used when multiple contacts share a prefix.
+        """
+        pk_hex = _normalize_public_key_hex(public_key)
+        if not pk_hex:
+            return None
+        for contact in self._contacts.values():
+            if (contact.public_key or '').strip().lower().removeprefix('0x') == pk_hex:
                 return contact
         return None
     
@@ -819,13 +930,9 @@ class PyMCConnection:
                 }
             )
 
-            # Handle TXT_MSG (DM) with KISS modem: decrypt via modem key_exchange + decrypt_data
-            # (pymc_core's handler would call get_private_key() which the modem does not expose)
-            if (
-                KISS_MODEM_AVAILABLE
-                and isinstance(self._radio, KISSModem)
-                and isinstance(self._identity, KISSModemIdentity)
-            ):
+            # Handle TXT_MSG (DM) with any KISS modem that exposes key_exchange + decrypt_data
+            # (pyMC_core's dispatcher handler uses one contact per src_hash → Invalid HMAC when multiple contacts share prefix)
+            if isinstance(self._identity, KISSModemIdentity) and hasattr(self._radio, 'key_exchange') and hasattr(self._radio, 'decrypt_data'):
                 from pymc_core.protocol.constants import (
                     PAYLOAD_TYPE_TXT_MSG,
                     PH_TYPE_SHIFT,
@@ -852,24 +959,13 @@ class PyMCConnection:
                 self.logger.debug("TXT_MSG payload too short")
                 return
 
-            # Deduplicate by packet hash (same DM can arrive via multiple paths)
-            if raw_data and len(raw_data) > 0:
-                from .utils import calculate_packet_hash
-                pkt_hash = calculate_packet_hash(raw_data.hex(), PAYLOAD_TYPE_TXT_MSG)
-            else:
-                import hashlib
-                pkt_hash = hashlib.sha256(payload).hexdigest()[:16].upper()
-            if self._is_duplicate_message(pkt_hash):
-                self.logger.debug(f"Ignoring duplicate TXT_MSG (hash: {pkt_hash[:8]})")
-                return
-
             dest_hash = payload[0]
             src_hash = payload[1]
             mac = payload[2:4]
             ciphertext = payload[4:]
 
-            # Resolve sender public key from contacts (first byte of pubkey = src_hash)
-            sender_pubkey = None
+            # Collect all contacts whose public key first byte matches src_hash (multiple can share same prefix, e.g. 0x08)
+            candidates = []
             contacts_adapter = getattr(self._mesh_node, 'contacts', None)
             if contacts_adapter is not None:
                 contacts_list = getattr(contacts_adapter, 'contacts', None) or []
@@ -880,59 +976,54 @@ class PyMCConnection:
                     try:
                         pk_bytes = bytes.fromhex(pk) if isinstance(pk, str) else pk
                         if len(pk_bytes) == 32 and pk_bytes[0] == src_hash:
-                            sender_pubkey = pk_bytes
-                            break
+                            candidates.append(pk_bytes)
                     except (ValueError, TypeError):
                         continue
-            if sender_pubkey is None:
+            if not candidates:
                 self.logger.debug(f"TXT_MSG from unknown sender (src_hash=0x{src_hash:02x}), cannot decrypt")
                 return
 
-            shared = self._radio.key_exchange(sender_pubkey)
-            if not shared:
-                self.logger.warning("KISS modem key_exchange failed for TXT_MSG")
-                return
-            plaintext = self._radio.decrypt_data(shared, mac, ciphertext)
-            if not plaintext:
-                self.logger.warning("KISS modem decrypt_data failed for TXT_MSG")
+            # Try each candidate until one decrypts successfully (HMAC valid); first match wins
+            sender_pubkey = None
+            plaintext = None
+            for pk_bytes in candidates:
+                shared = self._radio.key_exchange(pk_bytes)
+                if not shared:
+                    continue
+                plaintext = self._radio.decrypt_data(shared, mac, ciphertext)
+                if plaintext:
+                    sender_pubkey = pk_bytes
+                    break
+            if not sender_pubkey or not plaintext:
+                self.logger.debug(f"TXT_MSG decryption failed for src_hash=0x{src_hash:02x} (tried {len(candidates)} contact(s), Invalid HMAC)")
                 return
 
-            # Plaintext: timestamp (4), flags (1), message (rest)
+            # Plaintext per MeshCore: bytes 0-3 = timestamp (same for all retries), byte 4 = txt_type + (attempt & 3)
             if len(plaintext) < 5:
                 self.logger.debug("TXT_MSG plaintext too short")
                 return
+            timestamp_bytes = plaintext[:4]
+            timestamp_int = int.from_bytes(timestamp_bytes, 'little')
+            txt_type_attempt = plaintext[4]  # low 2 bits = attempt (0..3)
             msg_text = plaintext[5:].decode('utf-8', errors='replace').rstrip('\x00').strip()
             if not msg_text:
                 self.logger.debug("TXT_MSG empty message")
                 return
 
-            timestamp_bytes = plaintext[:4]
-
-            event_payload = {
-                'text': msg_text,
-                'pubkey_prefix': f'{src_hash:02x}',
-                'SNR': snr,
-                'RSSI': rssi,
-                'path_len': 0,
-                'raw_hex': payload.hex() if payload else '',
-            }
-            self.logger.info(f"DM from {event_payload['pubkey_prefix']}: {msg_text[:50]}...")
-            await self._emit_event(EventType.CONTACT_MSG_RECV, event_payload)
-
-            # Send ACK per MeshCore: dest_hash (1) + src_hash (1) + checksum (4) = CRC of timestamp, text, sender pubkey.
-            # Wait for TX complete so the modem is free for the reply DM and the ACK is on air.
+            # Send ACK for this attempt so the client stops retrying. ACK is per attempt (checksum includes attempt).
+            # MeshCore expected ACK: sha256(timestamp, attempt, text, sender_pub_key) — we use CRC32 of same inputs.
             try:
                 import zlib
                 from pymc_core.protocol.packet import Packet
                 from pymc_core.protocol.constants import PAYLOAD_TYPE_ACK, PAYLOAD_VER_1
                 from pymc_core.protocol.packet_utils import PacketHeaderUtils, RouteTypeUtils
 
-                checksum_input = timestamp_bytes + msg_text.encode('utf-8') + sender_pubkey
+                checksum_input = timestamp_bytes + bytes([txt_type_attempt]) + msg_text.encode('utf-8') + sender_pubkey
                 checksum = zlib.crc32(checksum_input) & 0xFFFFFFFF
                 our_pubkey = self._identity.get_public_key()
-                dest_hash = src_hash  # ACK recipient = DM sender
+                ack_dest_hash = src_hash  # ACK recipient = DM sender
                 src_hash_ack = our_pubkey[0]
-                ack_payload = bytes([dest_hash, src_hash_ack]) + checksum.to_bytes(4, 'little')
+                ack_payload = bytes([ack_dest_hash, src_hash_ack]) + checksum.to_bytes(4, 'little')
 
                 route_value = RouteTypeUtils.get_route_type_value("direct", has_routing_path=False)
                 header = PacketHeaderUtils.create_header(PAYLOAD_TYPE_ACK, route_value, PAYLOAD_VER_1)
@@ -941,13 +1032,51 @@ class PyMCConnection:
                 ack_pkt.payload = ack_payload
                 ack_pkt.payload_len = len(ack_payload)
                 ack_bytes = ack_pkt.write_to()
+
+                # Use async send and wait for TX complete before proceeding
                 if hasattr(self._radio, 'send') and asyncio.iscoroutinefunction(self._radio.send):
                     await self._radio.send(ack_bytes)
                 else:
                     self._radio.send_frame(ack_bytes)
+                    # Wait for TX to complete before emitting event
+                    await asyncio.sleep(0.5)
+
                 self.logger.debug("Sent ACK for DM")
             except Exception as ack_err:
                 self.logger.warning(f"Failed to send DM ACK: {ack_err}")
+
+            # Extract path from incoming packet for reply routing
+            # The path shows how the packet reached us; reverse it for the reply
+            incoming_path = getattr(pkt, 'path', b'') or b''
+            incoming_path_len = getattr(pkt, 'path_len', 0) or 0
+
+            # Build return path (reverse of incoming path)
+            reply_path = []
+            if incoming_path_len > 0 and incoming_path:
+                path_bytes = incoming_path[:incoming_path_len]
+                # Reverse the path for the reply
+                reply_path = list(reversed(path_bytes))
+                self.logger.debug(f"DM incoming path: {[f'{b:02x}' for b in path_bytes]}, reply path: {[f'{b:02x}' for b in reply_path]}")
+
+            # Only emit once per logical message (sender + timestamp). Retries share timestamp; we already sent ACK.
+            if self._is_duplicate_logical_dm(sender_pubkey.hex(), timestamp_int):
+                self.logger.debug(f"Ignoring duplicate logical DM (sender={sender_pubkey.hex()[:16]}..., ts={timestamp_int})")
+                return
+
+            # Now emit the event for processing (after ACK is sent)
+            event_payload = {
+                'text': msg_text,
+                'pubkey_prefix': f'{src_hash:02x}',
+                'sender_pubkey': sender_pubkey.hex(),  # Full public key for reply
+                'sender_timestamp': timestamp_int,  # 32-bit MeshCore timestamp (identifies logical message)
+                'SNR': snr,
+                'RSSI': rssi,
+                'path_len': incoming_path_len,
+                'out_path': reply_path,  # Path to use for reply DM
+                'raw_hex': payload.hex() if payload else '',
+            }
+            self.logger.info(f"DM from {event_payload['pubkey_prefix']}: {msg_text[:50]}...")
+            await self._emit_event(EventType.CONTACT_MSG_RECV, event_payload)
         except Exception as e:
             self.logger.error(f"Error handling TXT_MSG with KISS modem: {e}")
 
@@ -977,13 +1106,9 @@ class PyMCConnection:
             if payload_type == PAYLOAD_TYPE_ADVERT:
                 await self._handle_advert_packet(pkt, snr, rssi)
             elif payload_type == PAYLOAD_TYPE_TXT_MSG:
-                # TXT_MSG already handled in raw callback when using KISS modem (decrypt + emit)
-                # Skip here to avoid double CONTACT_MSG_RECV and duplicate execution
-                if not (
-                    KISS_MODEM_AVAILABLE
-                    and isinstance(self._radio, KISSModem)
-                    and isinstance(self._identity, KISSModemIdentity)
-                ):
+                # TXT_MSG already handled in raw callback when using any KISS modem (decrypt + emit)
+                # Skip here to avoid double CONTACT_MSG_RECV (we try-all-contacts there for correct sender)
+                if not (isinstance(self._identity, KISSModemIdentity) and hasattr(self._radio, 'key_exchange') and hasattr(self._radio, 'decrypt_data')):
                     await self._handle_text_packet(pkt, snr, rssi)
             elif payload_type == PAYLOAD_TYPE_GRP_TXT:
                 await self._handle_group_text_packet(pkt, snr, rssi)
@@ -1017,7 +1142,14 @@ class PyMCConnection:
             # Parse the advert packet properly
             try:
                 parsed = parse_advert_payload(payload)
-                event_payload['public_key'] = parsed.get('pubkey', '')
+                pubkey_raw = parsed.get('pubkey', '')
+                # Normalize to hex string so prefix command and DB queries (SUBSTR(public_key,1,2)) match
+                if isinstance(pubkey_raw, bytes):
+                    event_payload['public_key'] = pubkey_raw.hex()
+                elif isinstance(pubkey_raw, str):
+                    event_payload['public_key'] = pubkey_raw.removeprefix('0x').lower()
+                else:
+                    event_payload['public_key'] = ''
 
                 # Decode the appdata to get name, location, flags
                 appdata = parsed.get('appdata', b'')
@@ -1027,6 +1159,15 @@ class PyMCConnection:
                     event_payload['latitude'] = decoded.get('latitude')
                     event_payload['longitude'] = decoded.get('longitude')
                     event_payload['flags'] = decoded.get('flags', 0)
+                    # Set mode/type from flags so prefix command and repeater_manager see repeaters (role IN ('repeater','roomserver'))
+                    # MeshCore AdvertFlags: low nibble = type (0x02=Repeater, 0x03=RoomServer)
+                    adv_type = event_payload['flags'] & 0x0F if isinstance(event_payload['flags'], int) else 0
+                    if adv_type == 2:
+                        event_payload['mode'] = 'Repeater'
+                        event_payload['type'] = 2
+                    elif adv_type == 3:
+                        event_payload['mode'] = 'RoomServer'
+                        event_payload['type'] = 3
             except Exception as e:
                 self.logger.warning(f"Error parsing advert payload: {e}")
 
@@ -1055,25 +1196,75 @@ class PyMCConnection:
     async def _handle_text_packet(self, pkt, snr: float, rssi: float) -> None:
         """Handle text message packet from dispatcher."""
         try:
-            # The text handler in pymc_core decrypts and parses the message
-            # We need to extract the relevant info
-            payload = pkt.payload if hasattr(pkt, 'payload') else b''
+            # The text handler in pymc_core runs before us and sets pkt.decrypted on success.
+            # If decryption failed (e.g. Invalid HMAC), decrypted is not set - skip emitting
+            # so we don't trigger "Received DM" with empty text and no reply.
+            decrypted = getattr(pkt, 'decrypted', None)
+            if not decrypted or not isinstance(decrypted, dict):
+                self.logger.debug("TXT_MSG not decrypted (handler failed or not run), skipping CONTACT_MSG_RECV")
+                return
+            text = decrypted.get('text', '') or ''
+            if isinstance(text, str):
+                text = text.rstrip('\x00').strip()
 
-            # Get source hash from payload
+            payload = pkt.payload if hasattr(pkt, 'payload') else b''
             src_hash = payload[1] if len(payload) > 1 else 0
 
+            # Resolve sender's full public key so replies go to the correct contact.
+            # Contact book has companion-only contacts, so at most one contact per src_hash.
+            sender_pubkey_hex = None
+            contacts_adapter = getattr(self._mesh_node, 'contacts', None)
+            if contacts_adapter is not None:
+                contacts_list = getattr(contacts_adapter, 'contacts', None) or []
+                for contact in contacts_list:
+                    pk = getattr(contact, 'public_key', None)
+                    if not pk:
+                        continue
+                    try:
+                        pk_bytes = bytes.fromhex(pk) if isinstance(pk, str) else pk
+                        if len(pk_bytes) == 32 and pk_bytes[0] == src_hash:
+                            sender_pubkey_hex = pk if isinstance(pk, str) else pk_bytes.hex()
+                            break
+                    except (ValueError, TypeError):
+                        continue
+
+            # Deduplicate by logical message: dispatcher path has no timestamp, use (sender, text).
+            # Retries send same text; we only reply once per (sender, text) within TTL.
+            sender_key = sender_pubkey_hex or f"{src_hash:02x}"
+            if self._is_duplicate_logical_dm_by_sender_text(sender_key, text):
+                self.logger.debug(f"Ignoring duplicate logical DM (dispatcher path, sender={sender_key[:16]}...)")
+                return
+
+            # Extract path from packet so DMs get path/hops like channel messages
+            path_len = getattr(pkt, 'path_len', 0) or 0
+            path_bytes = getattr(pkt, 'path', b'') or b''
+            path_string = None
+            reply_path = []
+            if path_len > 0 and path_bytes:
+                path_nodes = [f"{b:02x}" for b in path_bytes[:path_len]]
+                path_string = f"{','.join(path_nodes)} ({path_len} hops)"
+                reply_path = list(reversed(path_bytes[:path_len]))
+            elif path_len == 0:
+                path_string = "Direct"
+
             event_payload = {
-                'text': '',  # Will need decryption via handler
+                'text': text,
                 'pubkey_prefix': f'{src_hash:02x}',
                 'SNR': snr,
                 'RSSI': rssi,
-                'path_len': 0,
+                'path_len': path_len,
                 'raw_hex': payload.hex() if payload else ''
             }
+            if path_string is not None:
+                event_payload['path'] = path_string
+            if reply_path:
+                event_payload['out_path'] = reply_path
+            if sender_pubkey_hex:
+                event_payload['sender_pubkey'] = sender_pubkey_hex
 
             self.logger.info(f"Text message from {event_payload['pubkey_prefix']}")
 
-            # Emit contact message event
+            # Emit contact message event (only when we have decrypted text)
             await self._emit_event(EventType.CONTACT_MSG_RECV, event_payload)
 
         except Exception as e:
@@ -1154,11 +1345,16 @@ class PyMCCommands:
         self.connection = connection
         self.logger = connection.logger
     
-    async def send_msg(self, contact: ContactInfo, content: str) -> Event:
+    async def send_msg(self, contact: ContactInfo, content: str, out_path: list = None) -> Event:
         """
         Send a direct message to a contact.
         Uses pyMC_core PacketBuilder.create_text_message + dispatcher.send_packet(wait_for_ack=True)
         when the identity supports it; falls back to KISS modem key_exchange + encrypt_data when not.
+
+        Args:
+            contact: Contact to send message to
+            content: Message content
+            out_path: Optional routing path (list of node hash bytes) for multi-hop delivery
         """
         try:
             if not self.connection._mesh_node:
@@ -1166,9 +1362,10 @@ class PyMCCommands:
             if not self.connection._identity:
                 return Event(type=EventType.ERROR, payload={'error': 'No identity'})
 
-            pub_key_hex = contact.public_key if isinstance(contact, ContactInfo) else contact.get('public_key', '')
+            pub_key_raw = contact.public_key if isinstance(contact, ContactInfo) else contact.get('public_key', '')
+            pub_key_hex = _normalize_public_key_hex(pub_key_raw) if pub_key_raw else None
             if not pub_key_hex:
-                return Event(type=EventType.ERROR, payload={'error': 'Contact has no public key'})
+                return Event(type=EventType.ERROR, payload={'error': 'Contact has no valid public key (need 64-char hex)'})
 
             try:
                 recipient_pubkey = bytes.fromhex(pub_key_hex)
@@ -1178,16 +1375,17 @@ class PyMCCommands:
                 return Event(type=EventType.ERROR, payload={'error': 'Contact public key must be 32 bytes'})
 
             contact_name = contact.name if isinstance(contact, ContactInfo) else contact.get('name', '')
-            self.logger.info(f"Sending DM to {contact_name}: {content[:50]}...")
+            path_info = f" via path {[f'{b:02x}' for b in out_path]}" if out_path else ""
+            self.logger.info(f"Sending DM to {contact_name}{path_info}: {content[:50]}...")
 
             # Contact-like object for PacketBuilder.create_text_message (name, public_key hex, out_path)
             class _ContactAdapter:
-                def __init__(self, name: str, public_key_hex: str):
+                def __init__(self, name: str, public_key_hex: str, path: list = None):
                     self.name = name
                     self.public_key = public_key_hex
-                    self.out_path = []
+                    self.out_path = path or []
 
-            contact_adapter = _ContactAdapter(contact_name or "Contact", pub_key_hex)
+            contact_adapter = _ContactAdapter(contact_name or "Contact", pub_key_hex, out_path or [])
 
             # Prefer pyMC_core PacketBuilder.create_text_message + dispatcher.send_packet (like send_text_message example)
             try:
@@ -1197,7 +1395,7 @@ class PyMCCommands:
                     local_identity=self.connection._identity,
                     message=content,
                     attempt=0,
-                    message_type="direct",
+                    message_type="flood",  # Use flood routing to propagate through mesh
                 )
                 success = await self.connection._mesh_node.dispatcher.send_packet(packet, wait_for_ack=True)
                 if success:
@@ -1221,7 +1419,7 @@ class PyMCCommands:
                 and isinstance(self.connection._radio, KISSModem)
                 and isinstance(self.connection._identity, KISSModemIdentity)
             ):
-                return await self._send_msg_kiss(recipient_pubkey, content, contact_name)
+                return await self._send_msg_kiss(recipient_pubkey, content, contact_name, out_path)
             self.logger.warning("DM send not implemented for this identity")
             return Event(type=EventType.ERROR, payload={'error': 'DM send not implemented for this identity'})
         except Exception as e:
@@ -1229,9 +1427,16 @@ class PyMCCommands:
             return Event(type=EventType.ERROR, payload={'error': str(e)})
 
     async def _send_msg_kiss(
-        self, recipient_pubkey: bytes, content: str, contact_name: str = ""
+        self, recipient_pubkey: bytes, content: str, contact_name: str = "", out_path: list = None
     ) -> Event:
-        """Build encrypted TXT_MSG via KISS modem key_exchange + encrypt_data; send via dispatcher (wait_for_ack) when possible."""
+        """Build encrypted TXT_MSG via KISS modem key_exchange + encrypt_data; send via dispatcher (wait_for_ack) when possible.
+
+        Args:
+            recipient_pubkey: 32-byte recipient public key
+            content: Message content
+            contact_name: Display name for logging
+            out_path: Optional routing path (list of node hash bytes) for multi-hop delivery
+        """
         try:
             from pymc_core.protocol.packet import Packet
             from pymc_core.protocol.constants import PAYLOAD_TYPE_TXT_MSG, PAYLOAD_VER_1
@@ -1256,7 +1461,10 @@ class PyMCCommands:
             mac, ciphertext = result
 
             payload = bytes([dest_hash, src_hash]) + mac + ciphertext
-            route_value = RouteTypeUtils.get_route_type_value("direct", has_routing_path=False)
+
+            # Use flood routing for DMs (like pymc example) - this allows repeaters to forward
+            # Even for "direct" contacts, flood ensures the message reaches through the mesh
+            route_value = RouteTypeUtils.get_route_type_value("flood", has_routing_path=False)
             header = PacketHeaderUtils.create_header(
                 PAYLOAD_TYPE_TXT_MSG, route_value, PAYLOAD_VER_1
             )
@@ -1264,6 +1472,12 @@ class PyMCCommands:
             pkt.header = header
             pkt.payload = payload
             pkt.payload_len = len(payload)
+
+            # Set path if provided (for routed delivery through specific nodes)
+            if out_path and len(out_path) > 0:
+                pkt.path = bytes(out_path)
+                pkt.path_len = len(out_path)
+                self.logger.debug(f"DM using path: {[f'{b:02x}' for b in out_path]}")
 
             # Prefer dispatcher.send_packet(packet, wait_for_ack=True) like pyMC_core send_text_message example
             dispatcher = getattr(self.connection._mesh_node, "dispatcher", None)
@@ -1290,10 +1504,11 @@ class PyMCCommands:
                                    max_attempts: int = 3,
                                    max_flood_attempts: int = 2,
                                    flood_after: int = 2,
-                                   timeout: int = 0) -> Event:
+                                   timeout: int = 0,
+                                   out_path: list = None) -> Event:
         """
         Send a direct message with retry logic.
-        
+
         Args:
             contact: Contact to send message to
             content: Message content
@@ -1301,13 +1516,14 @@ class PyMCCommands:
             max_flood_attempts: Max flood mode attempts
             flood_after: Switch to flood after N attempts
             timeout: Timeout in seconds (0 = use default)
-            
+            out_path: Optional routing path (list of node hash bytes) for multi-hop delivery
+
         Returns:
             Event indicating success or failure
         """
-        # For initial implementation, just call send_msg
+        # For initial implementation, just call send_msg with out_path
         # Full retry logic can be added later
-        return await self.send_msg(contact, content)
+        return await self.send_msg(contact, content, out_path=out_path)
     
     async def send_advert(self, flood: bool = False) -> Event:
         """
@@ -1406,10 +1622,19 @@ class PyMCCommands:
                 PAYLOAD_TYPE_GRP_TXT, route_value, PAYLOAD_VER_1
             )
 
+            # Send via dispatcher (same path as flood DMs) so the packet propagates; no ACK for channel msgs
+            dispatcher = getattr(self.connection._mesh_node, "dispatcher", None)
+            if dispatcher is not None and hasattr(dispatcher, "send_packet"):
+                success = await dispatcher.send_packet(pkt, wait_for_ack=False)
+                if success:
+                    self.logger.info(f"Channel message sent to {channel_name} (via dispatcher)")
+                    return Event(type=EventType.MSG_SENT, payload={'sent': True, 'channel': channel_name})
+                self.logger.warning("Channel message send via dispatcher returned False")
+
+            # Fallback: send raw frame
             packet_bytes = pkt.write_to()
             self.connection._radio.send_frame(packet_bytes)
-
-            self.logger.info(f"Channel message sent to {channel_name} ({len(packet_bytes)} bytes)")
+            self.logger.info(f"Channel message sent to {channel_name} ({len(packet_bytes)} bytes, raw)")
             return Event(type=EventType.MSG_SENT, payload={'sent': True, 'channel': channel_name})
 
         except ValueError as e:

@@ -301,39 +301,47 @@ class MessageHandler:
                         rssi = recent_rf_data['rssi']
                         self.logger.debug(f"Using RSSI from recent RF data: {rssi}")
             
-            # For DMs, we can't determine the actual routing path from encrypted data
-            # Use the path_len from the payload (255 means unknown/direct)
+            # Use path from payload when provided (pyMC_core dispatcher path); else derive from path_len
             path_len = payload.get('path_len', 255)
-            if path_len == 255:
+            if payload.get('path') is not None:
+                path_info = payload.get('path')
+                if path_len == 255 and path_info == "Direct":
+                    path_len = 0
+            elif path_len == 255 or path_len == 0:
                 path_info = "Direct (0 hops)"
+                path_len = 0
             else:
                 path_info = f"Routed through {path_len} hops"
-            
+
             self.logger.debug(f"DM path info: {path_info}")
             
             timestamp = payload.get('sender_timestamp', 'unknown')
             
-            # Look up contact name from pubkey prefix
+            # Prefer full sender public key from payload (pyMC_core provides this for correct reply routing)
+            sender_pubkey = payload.get('sender_pubkey', '') or payload.get('pubkey_prefix', '')
             sender_id = payload.get('pubkey_prefix', '')
-            sender_name = sender_id  # Default to sender_id
+            sender_name = sender_id  # Default to 2-char prefix
             if hasattr(self.bot.meshcore, 'contacts') and self.bot.meshcore.contacts:
-                for contact_key, contact_data in self.bot.meshcore.contacts.items():
-                    if contact_data.get('public_key', '').startswith(sender_id):
-                        # Use the contact name if available, otherwise use adv_name
-                        contact_name = contact_data.get('name', contact_data.get('adv_name', sender_id))
-                        sender_name = contact_name
-                        break
-            
-            # Get the full public key from contacts if available
-            sender_pubkey = payload.get('pubkey_prefix', '')
-            sender_pubkey = sender_id  # Default to sender_id
-            if hasattr(self.bot.meshcore, 'contacts') and self.bot.meshcore.contacts:
-                for contact_key, contact_data in self.bot.meshcore.contacts.items():
-                    if contact_data.get('public_key', '').startswith(sender_id):
-                        # Use the full public key from the contact
-                        sender_pubkey = contact_data.get('public_key', sender_id)
-                        self.logger.debug(f"Found full public key for {sender_name}: {sender_pubkey[:16]}...")
-                        break
+                # Match by full public key first (64-char hex) so we don't confuse different contacts with same prefix (e.g. da...)
+                pk_normalized = sender_pubkey.strip().lower().removeprefix('0x') if isinstance(sender_pubkey, str) and len(sender_pubkey) >= 64 else None
+                if pk_normalized and len(pk_normalized) == 64:
+                    for contact_key, contact_data in self.bot.meshcore.contacts.items():
+                        cpk = (contact_data.get('public_key') or '').strip().lower().removeprefix('0x')
+                        if cpk == pk_normalized:
+                            sender_name = contact_data.get('name', contact_data.get('adv_name', sender_id))
+                            sender_pubkey = contact_data.get('public_key', sender_pubkey)
+                            self.logger.debug(f"Resolved DM sender by full key: {sender_name} ({sender_pubkey[:16]}...)")
+                            break
+                # Fallback: match by prefix (first contact whose key starts with pubkey_prefix)
+                if sender_name == sender_id:
+                    for contact_key, contact_data in self.bot.meshcore.contacts.items():
+                        if contact_data.get('public_key', '').startswith(sender_id):
+                            sender_name = contact_data.get('name', contact_data.get('adv_name', sender_id))
+                            sender_pubkey = contact_data.get('public_key', sender_pubkey)
+                            self.logger.debug(f"Resolved DM sender by prefix: {sender_name} ({sender_pubkey[:16]}...)")
+                            break
+            if not sender_pubkey or len(sender_pubkey) < 64:
+                sender_pubkey = sender_id
             
             # Sanitize message content to prevent injection attacks
             # Note: Firmware enforces 150-char limit at hardware level, so we disable length check

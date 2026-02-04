@@ -873,12 +873,15 @@ class PrefixCommand(BaseCommand):
             if current_time - self.cache_timestamp > self.cache_duration:
                 await self.refresh_cache()
         
-        # Get API data first (prioritize comprehensive repeater data)
+        # Get API data first (prioritize comprehensive repeater data when non-empty)
         api_data = None
         if self.api_url and self.api_url.strip() and prefix in self.cache_data:
-            api_data = self.cache_data.get(prefix)
+            raw = self.cache_data.get(prefix)
+            # Only use API data when it has at least one repeater; otherwise DB may have local/pyMC data
+            if raw and (raw.get('node_count', 0) or (raw.get('node_names') or [])):
+                api_data = raw
         
-        # Get local database data for location enhancement
+        # Get local database data for location enhancement (and fallback when API is empty)
         db_data = await self.get_prefix_data_from_db(prefix, include_all=include_all)
         
         # If we have API data, enhance it with local location data

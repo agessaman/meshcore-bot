@@ -623,10 +623,11 @@ class CommandManager:
     async def send_dm(self, recipient_id: str, content: str, command_id: Optional[str] = None, skip_user_rate_limit: bool = False) -> bool:
         """Send a direct message using meshcore-cli command.
         
-        Handles contact lookup, rate limiting, and uses retry logic if available.
+        Handles contact lookup by name or by full public key (64-char hex). Prefer sender_pubkey
+        for DM replies so the correct contact is used (pyMC_core addresses by full key).
         
         Args:
-            recipient_id: The recipient's name or ID.
+            recipient_id: The recipient's name, or 64-char hex public key for direct addressing.
             content: The message content to send.
             command_id: Optional command_id for repeat tracking (if not provided, one will be generated).
             
@@ -644,10 +645,26 @@ class CommandManager:
             return False
         
         try:
-            # Find the contact by name (since recipient_id is the contact name)
-            contact = self.bot.meshcore.get_contact_by_name(recipient_id)
+            # Resolve contact: by full public key (64-char hex) first, then by name
+            contact = None
+            recipient_id_stripped = (recipient_id or '').strip().lower().removeprefix('0x')
+            if len(recipient_id_stripped) == 64 and all(c in '0123456789abcdef' for c in recipient_id_stripped):
+                if hasattr(self.bot.meshcore, 'get_contact_by_public_key'):
+                    contact = self.bot.meshcore.get_contact_by_public_key(recipient_id)
+                if not contact:
+                    # Unknown contact or not in DB: build minimal contact so we can send (pyMC_core uses full key)
+                    from types import SimpleNamespace
+                    display_name = recipient_id_stripped[:8] + '…'
+                    contact = SimpleNamespace(
+                        public_key=recipient_id_stripped,
+                        name=display_name,
+                        get=lambda k, d=None: {'public_key': recipient_id_stripped, 'name': display_name, 'out_path': '', 'out_path_len': 0}.get(k, d),
+                        out_path='', out_path_len=0
+                    )
             if not contact:
-                self.logger.error(f"Contact not found for name: {recipient_id}")
+                contact = self.bot.meshcore.get_contact_by_name(recipient_id)
+            if not contact:
+                self.logger.error(f"Contact not found for name or key: {recipient_id[:20]}…")
                 return False
             
             # Use the contact name for logging
@@ -669,36 +686,50 @@ class CommandManager:
                 self.logger.debug(f"Error recording transmission for repeat tracking: {e}")
                 # Don't fail the send if transmission tracking fails
             
+            # Extract out_path from contact for routed delivery
+            out_path = None
+            out_path_hex = contact.get('out_path', '')
+            out_path_len = contact.get('out_path_len', 0)
+            if out_path_hex and out_path_len > 0:
+                try:
+                    # Convert hex string to list of bytes
+                    out_path = [int(out_path_hex[i:i+2], 16) for i in range(0, len(out_path_hex), 2)]
+                    self.logger.debug(f"Using out_path for DM: {[f'{b:02x}' for b in out_path]}")
+                except (ValueError, IndexError):
+                    self.logger.debug(f"Could not parse out_path: {out_path_hex}")
+                    out_path = None
+
             # Try to use send_msg_with_retry if available (meshcore-2.1.6+)
             try:
                 # Use the meshcore commands interface for send_msg_with_retry
                 if hasattr(self.bot.meshcore, 'commands') and hasattr(self.bot.meshcore.commands, 'send_msg_with_retry'):
                     self.logger.debug("Using send_msg_with_retry for improved reliability")
-                    
+
                     # Use send_msg_with_retry with configurable retry parameters
                     max_attempts = self.bot.config.getint('Bot', 'dm_max_retries', fallback=3)
                     max_flood_attempts = self.bot.config.getint('Bot', 'dm_max_flood_attempts', fallback=2)
                     flood_after = self.bot.config.getint('Bot', 'dm_flood_after', fallback=2)
                     timeout = 0  # Use suggested timeout from meshcore
-                    
+
                     self.logger.debug(f"Attempting DM send with {max_attempts} max attempts")
                     result = await self.bot.meshcore.commands.send_msg_with_retry(
-                        contact, 
+                        contact,
                         content,
                         max_attempts=max_attempts,
                         max_flood_attempts=max_flood_attempts,
                         flood_after=flood_after,
-                        timeout=timeout
+                        timeout=timeout,
+                        out_path=out_path
                     )
                 else:
                     # Fallback to regular send_msg for older meshcore versions
                     self.logger.debug("send_msg_with_retry not available, using send_msg")
-                    result = await self.bot.meshcore.commands.send_msg(contact, content)
-                    
+                    result = await self.bot.meshcore.commands.send_msg(contact, content, out_path=out_path)
+
             except AttributeError:
                 # Fallback to regular send_msg for older meshcore versions
                 self.logger.debug("send_msg_with_retry not available, using send_msg")
-                result = await self.bot.meshcore.commands.send_msg(contact, content)
+                result = await self.bot.meshcore.commands.send_msg(contact, content, out_path=out_path)
             
             # Check if send_msg_with_retry was used
             used_retry_method = (hasattr(self.bot.meshcore, 'commands') and 
@@ -920,6 +951,9 @@ class CommandManager:
         Automatically determines whether to send a DM or channel message based
         on the incoming message type.
         
+        When using pyMC connection, delays DM replies so pyMC_core's delayed ACK
+        is sent first (reply-after-ACK ordering).
+        
         Args:
             message: The original message being responded to.
             content: The response content.
@@ -936,7 +970,17 @@ class CommandManager:
                 self._last_response = content
             
             if message.is_dm:
-                return await self.send_dm(message.sender_id, content, skip_user_rate_limit=skip_user_rate_limit)
+                # With pyMC connection, pyMC_core sends the ACK after a delay; delay our reply
+                # so the ACK goes out first (configurable, default 5s >= typical ACK delay).
+                connection_type = self.bot.config.get('Connection', 'connection_type', fallback='').lower()
+                if connection_type == 'pymc':
+                    delay = self.bot.config.getfloat('Connection', 'pymc_dm_reply_delay_seconds', fallback=1.0)
+                    if delay > 0:
+                        self.logger.debug(f"Delaying DM reply by {delay}s so ACK is sent first")
+                        await asyncio.sleep(delay)
+                # Prefer sender's full public key for DM reply so we address the actual sender (pyMC_core uses full key)
+                recipient = getattr(message, 'sender_pubkey', None) or message.sender_id
+                return await self.send_dm(recipient, content, skip_user_rate_limit=skip_user_rate_limit)
             else:
                 return await self.send_channel_message(message.channel, content, skip_user_rate_limit=skip_user_rate_limit)
         except Exception as e:
