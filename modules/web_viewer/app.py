@@ -57,7 +57,6 @@ class BotDataViewer:
             async_mode='threading'        # Use threading for better stability
         )
         
-        self.db_path = db_path
         self.repeater_db_path = repeater_db_path
         
         # Connection management using Flask-SocketIO built-ins
@@ -73,6 +72,8 @@ class BotDataViewer:
         
         # Load configuration
         self.config = self._load_config(config_path)
+        
+        self.db_path = self.config.get('Web_Viewer', 'db_path', fallback=db_path)
         
         # Setup template context processor for global template variables
         self._setup_template_context()
