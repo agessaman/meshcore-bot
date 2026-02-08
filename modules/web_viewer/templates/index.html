@@ -646,17 +646,24 @@ class ModernDashboard {
     
     formatUptime(uptimeSeconds) {
         const uptimeElement = document.getElementById('uptime');
-        const hours = Math.floor(uptimeSeconds / 3600);
+        const totalMinutes = Math.floor(uptimeSeconds / 60);
+        const totalHours = Math.floor(uptimeSeconds / 3600);
+        const totalDays = Math.floor(uptimeSeconds / 86400);
+        const months = Math.floor(totalDays / 30);
+        const days = totalDays % 30;
+        const hours = Math.floor((uptimeSeconds % 86400) / 3600);
         const minutes = Math.floor((uptimeSeconds % 3600) / 60);
-        const seconds = uptimeSeconds % 60;
-        
-        if (hours > 0) {
-            uptimeElement.textContent = `${hours}h ${minutes}m`;
-        } else if (minutes > 0) {
-            uptimeElement.textContent = `${minutes}m ${seconds}s`;
-        } else {
-            uptimeElement.textContent = `${seconds}s`;
+        const seconds = Math.floor(uptimeSeconds % 60);
+
+        const parts = [];
+        if (months > 0) parts.push(`${months}mo`);
+        if (days > 0) parts.push(`${days}d`);
+        if (hours > 0) parts.push(`${hours}h`);
+        if (minutes > 0) parts.push(`${minutes}m`);
+        if (parts.length === 0 || totalHours < 1) {
+            if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
         }
+        uptimeElement.textContent = parts.length > 0 ? parts.join(' ') : '0s';
     }
     
     startLiveUptime() {

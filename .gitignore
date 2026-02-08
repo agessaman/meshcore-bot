@@ -145,6 +145,7 @@ website/
 pytest.ini
 pymc-test/*
 config-pymc.ini
+*.key
 
 # Docker data directory (user-specific config, databases, logs)
 # Ignore contents but keep directory structure

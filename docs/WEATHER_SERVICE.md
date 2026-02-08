@@ -1,3 +1,8 @@
+---
+layout: default
+title: Weather Service
+---
+
 # Weather Service
 
 Provides scheduled weather forecasts, weather alerts, and lightning detection.

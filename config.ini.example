@@ -1036,7 +1036,7 @@ auto_start = false
 
 # Database path for web viewer data
 # Default: bot_data.db
-db_path = bot_data.db
+db_path = meshcore_bot.db
 
 # Additional hashtag channels to decode in the packet stream
 # The web viewer can decrypt GroupText messages from hashtag channels

@@ -1,3 +1,8 @@
+---
+layout: default
+title: Packet Capture Service
+---
+
 # Packet Capture Service
 
 Captures packets from the MeshCore network and publishes them to MQTT brokers.
