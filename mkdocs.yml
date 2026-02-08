@@ -1,0 +1,62 @@
+# Material for MkDocs - meshcore-bot documentation
+site_name: Meshcore Bot Documentation
+site_description: Documentation for the MeshCore bot and its services
+site_url: https://agessaman.github.io/meshcore-bot/
+
+repo_name: meshcore-bot
+repo_url: https://github.com/agessaman/meshcore-bot
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  language: en
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - toc.integrate
+    - content.code.copy
+
+plugins:
+  - search
+
+markdown_extensions:
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - attr_list
+  - md_in_html
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - FAQ: faq.md
+  - Command Reference: COMMANDS.md
+  - Configuration:
+    - Overview: configuration.md
+    - Path Command: PATH_COMMAND_CONFIG.md
+  - Web Viewer: WEB_VIEWER.md
+  - Service Plugins:
+    - Overview: service-plugins.md
+    - Discord Bridge: DISCORD_BRIDGE.md
+    - Packet Capture: PACKET_CAPTURE.md
+    - Map Uploader: MAP_UPLOADER.md
+    - Weather Service: WEATHER_SERVICE.md
+    - Feed Management: FEEDS.md

@@ -1,8 +1,3 @@
----
-layout: default
-title: Path Command Configuration
----
-
 # Path Command Configuration Guide
 
 This document explains all configuration parameters for the Path Command, which decodes hex path data to identify repeaters in message routing paths.

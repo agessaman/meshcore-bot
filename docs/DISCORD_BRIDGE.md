@@ -1,8 +1,3 @@
----
-layout: default
-title: Discord Bridge Service
----
-
 # Discord Bridge Service
 
 The Discord Bridge service posts MeshCore channel messages to Discord channels via webhooks. This is a **one-way, read-only bridge** - messages only flow from MeshCore to Discord.

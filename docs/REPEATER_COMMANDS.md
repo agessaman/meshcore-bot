@@ -1,8 +1,3 @@
----
-layout: default
-title: Repeater Management Commands
----
-
 # Repeater Management DM Commands
 
 This document provides comprehensive documentation for all repeater management commands available via direct message (DM) to the bot.

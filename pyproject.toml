@@ -37,6 +37,9 @@ dependencies = [
     "pynacl>=1.5.0",
 ]
 
+[project.optional-dependencies]
+docs = ["mkdocs-material>=9.0.0"]
+
 [project.scripts]
 meshcore-bot = "meshcore_bot:main"
 meshcore-viewer = "modules.web_viewer.app:main"

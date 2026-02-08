@@ -1,8 +1,3 @@
----
-layout: default
-title: Map Uploader Service
----
-
 # Map Uploader Service
 
 Uploads node advertisements to [map.meshcore.dev](https://map.meshcore.dev) for network visualization.

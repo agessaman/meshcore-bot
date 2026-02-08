@@ -11,7 +11,7 @@ This document provides a comprehensive list of all available commands in the Mes
 - [Entertainment Commands](#entertainment-commands)
 - [Sports Commands](#sports-commands)
 - [MeshCore Utility Commands](#meshcore-utility-commands)
-- [Management Commands](#management-commands)
+- [Admin Commands](#admin-commands)
 
 ---
 
@@ -663,9 +663,77 @@ mt
 
 ---
 
-## Management Commands
+## Command Syntax
 
-**Note:** Management commands are only available via Direct Message (DM) and may require ACL permissions.
+### Prefix
+
+Commands can be used with or without the `!` prefix:
+- `test` or `!test` - Both work
+- `wx 98101` or `!wx 98101` - Both work
+
+### Direct Messages
+
+Some commands work in both public channels and direct messages, while admin commands typically require direct messages for security.
+
+### Rate Limiting
+
+The bot implements rate limiting to prevent spam. If you send commands too quickly, you may receive a rate limit message. Wait a few seconds before trying again.
+
+### Case Sensitivity
+
+Most commands are case-insensitive:
+- `TEST` and `test` work the same
+- `WX 98101` and `wx 98101` work the same
+
+### Getting Help
+
+Use the `help` command to get more information:
+- `help` - List all commands
+- `help <command>` - Get detailed help for a specific command
+
+---
+
+## Additional Notes
+
+### Location Requirements
+
+Some commands use location data:
+- **`sun` and `moon`** - Use the bot's configured default location (`bot_latitude` and `bot_longitude` in config.ini), not the user's location from their advert
+- **`solar`** - Does not require location (provides global solar conditions)
+- **`solarforecast`** - Requires a location parameter (location name, repeater name, coordinates, or zipcode)
+- **`wx`** - Requires a zipcode parameter
+- **`gwx`** - Requires a location parameter
+- **`aqi`** - Requires a location parameter
+
+### API Keys
+
+Some commands require API keys to be configured in `config.ini`:
+- `satpass` - Requires `n2yo_api_key`
+- `aqi` - Requires `airnow_api_key` (optional, uses fallback if not configured)
+
+### Weather Data
+
+- `wx` uses NOAA API (US locations only)
+- `gwx` uses Open-Meteo API (global locations)
+- Both provide current conditions and forecasts
+
+### Command Categories
+
+Commands are organized into categories for easier discovery:
+- **Basic** - Essential commands for testing and help
+- **Information** - Weather, astronomy, and data queries
+- **Emergency** - Emergency and safety information
+- **Gaming** - Fun commands for games and random numbers
+- **Entertainment** - Jokes and humorous responses
+- **Sports** - Sports scores and information
+- **MeshCore Utility** - Network-specific utilities
+- **Admin** - Administrative commands (DM only)
+
+---
+
+## Admin Commands
+
+**Note:** Admin commands are only available via Direct Message (DM) and may require ACL permissions.
 
 ### `repeater` or `repeaters` or `rp`
 
@@ -789,74 +857,6 @@ feed test https://example.com/feed.xml
 **Response:** Confirmation of the action or list of subscriptions.
 
 **Note:** Admin access required. Feeds are automatically checked and posted to the specified channel.
-
----
-
-## Command Syntax
-
-### Prefix
-
-Commands can be used with or without the `!` prefix:
-- `test` or `!test` - Both work
-- `wx 98101` or `!wx 98101` - Both work
-
-### Direct Messages
-
-Some commands work in both public channels and direct messages, while management commands typically require direct messages for security.
-
-### Rate Limiting
-
-The bot implements rate limiting to prevent spam. If you send commands too quickly, you may receive a rate limit message. Wait a few seconds before trying again.
-
-### Case Sensitivity
-
-Most commands are case-insensitive:
-- `TEST` and `test` work the same
-- `WX 98101` and `wx 98101` work the same
-
-### Getting Help
-
-Use the `help` command to get more information:
-- `help` - List all commands
-- `help <command>` - Get detailed help for a specific command
-
----
-
-## Additional Notes
-
-### Location Requirements
-
-Some commands use location data:
-- **`sun` and `moon`** - Use the bot's configured default location (`bot_latitude` and `bot_longitude` in config.ini), not the user's location from their advert
-- **`solar`** - Does not require location (provides global solar conditions)
-- **`solarforecast`** - Requires a location parameter (location name, repeater name, coordinates, or zipcode)
-- **`wx`** - Requires a zipcode parameter
-- **`gwx`** - Requires a location parameter
-- **`aqi`** - Requires a location parameter
-
-### API Keys
-
-Some commands require API keys to be configured in `config.ini`:
-- `satpass` - Requires `n2yo_api_key`
-- `aqi` - Requires `airnow_api_key` (optional, uses fallback if not configured)
-
-### Weather Data
-
-- `wx` uses NOAA API (US locations only)
-- `gwx` uses Open-Meteo API (global locations)
-- Both provide current conditions and forecasts
-
-### Command Categories
-
-Commands are organized into categories for easier discovery:
-- **Basic** - Essential commands for testing and help
-- **Information** - Weather, astronomy, and data queries
-- **Emergency** - Emergency and safety information
-- **Gaming** - Fun commands for games and random numbers
-- **Entertainment** - Jokes and humorous responses
-- **Sports** - Sports scores and information
-- **MeshCore Utility** - Network-specific utilities
-- **Management** - Administrative commands (DM only)
 
 ---
 

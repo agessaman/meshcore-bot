@@ -1,8 +1,3 @@
----
-layout: default
-title: Feed Management
----
-
 # Feed Management
 
 The Feed Management system allows the bot to subscribe to RSS feeds and REST APIs, automatically polling for new content and posting updates to specified mesh channels.

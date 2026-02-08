@@ -119,7 +119,7 @@ For containerized deployment using Docker:
    docker-compose logs -f
    ```
 
-See [DOCKER.md](DOCKER.md) for detailed Docker deployment instructions, including serial port access, web viewer configuration, and troubleshooting.
+See [DOCKER.md](docs/DOCKER.md) for detailed Docker deployment instructions, including serial port access, web viewer configuration, and troubleshooting.
 
 ## NixOS
 Use the Nix flake via flake.nix
@@ -220,7 +220,7 @@ python meshcore_bot.py
 
 ### Available Commands
 
-For a comprehensive list of all available commands with examples and detailed explanations, see [COMMANDS.md](COMMANDS.md).
+For a comprehensive list of all available commands with examples and detailed explanations, see [COMMANDS.md](docs/COMMANDS.md).
 
 Quick reference:
 - **Basic:** `test`, `ping`, `help`, `hello`, `cmd`
