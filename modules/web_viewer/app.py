@@ -76,7 +76,14 @@ class BotDataViewer:
         # Load configuration
         self.config = self._load_config(config_path)
         
-        self.db_path = self.config.get('Web_Viewer', 'db_path', fallback=db_path)
+        # Use [Bot] db_path when [Web_Viewer] db_path is unset
+        bot_db = self.config.get('Bot', 'db_path', fallback='meshcore_bot.db')
+        if (self.config.has_section('Web_Viewer') and self.config.has_option('Web_Viewer', 'db_path')
+                and self.config.get('Web_Viewer', 'db_path', fallback='').strip()):
+            use_db = self.config.get('Web_Viewer', 'db_path').strip()
+        else:
+            use_db = bot_db
+        self.db_path = str(resolve_path(use_db, self.bot_root))
         
         # Setup template context processor for global template variables
         self._setup_template_context()
@@ -202,14 +209,7 @@ class BotDataViewer:
         """Initialize the packet_stream table in the web viewer database (same as [Bot] db_path by default)."""
         conn = None
         try:
-            # Get database path from config
-            db_path = self.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
-            
-            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
-            db_path = resolve_path(db_path, self.bot_root)
-            
-            # Connect to database and create table if it doesn't exist
-            with sqlite3.connect(db_path, timeout=30) as conn:
+            with sqlite3.connect(self.db_path, timeout=30) as conn:
                 cursor = conn.cursor()
                 
                 # Create packet_stream table with schema matching the INSERT statements
@@ -236,7 +236,7 @@ class BotDataViewer:
                 
                 conn.commit()
                 
-                self.logger.info(f"Initialized packet_stream table in {db_path}")
+                self.logger.info(f"Initialized packet_stream table in {self.db_path}")
             
         except Exception as e:
             self.logger.error(f"Failed to initialize packet_stream table: {e}")
@@ -1491,13 +1491,7 @@ class BotDataViewer:
                 # Get commands from last 60 minutes
                 cutoff_time = time.time() - (60 * 60)  # 60 minutes ago
                 
-                # Get database path
-                db_path = self.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
-                
-                # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
-                db_path = resolve_path(db_path, self.bot_root)
-                
-                with sqlite3.connect(db_path, timeout=30) as conn:
+                with sqlite3.connect(self.db_path, timeout=30) as conn:
                     cursor = conn.cursor()
                     
                     cursor.execute('''
@@ -2604,7 +2598,6 @@ class BotDataViewer:
             last_timestamp = 0
             consecutive_errors = 0
             max_consecutive_errors = 10
-            db_path = None
             
             while True:
                 try:
@@ -2612,39 +2605,33 @@ class BotDataViewer:
                     import sqlite3
                     import json
                     
-                    # Get database path (re-resolve on each iteration in case config changed)
-                    db_path = self.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
-                    
-                    # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
-                    db_path = resolve_path(db_path, self.bot_root)
-                    
                     # Check if database file exists and is accessible
-                    db_file = Path(db_path)
+                    db_file = Path(self.db_path)
                     if not db_file.exists():
                         consecutive_errors += 1
                         if consecutive_errors == 1 or consecutive_errors % 10 == 0:
-                            self.logger.warning(f"Database file does not exist: {db_path}")
+                            self.logger.warning(f"Database file does not exist: {self.db_path}")
                         time.sleep(5)
                         continue
                     
-                    if not os.access(db_path, os.R_OK):
+                    if not os.access(self.db_path, os.R_OK):
                         consecutive_errors += 1
                         if consecutive_errors == 1 or consecutive_errors % 10 == 0:
-                            self.logger.warning(f"Database file is not readable: {db_path}")
+                            self.logger.warning(f"Database file is not readable: {self.db_path}")
                         time.sleep(5)
                         continue
                     
                     # Connect to database with timeout to prevent hanging
                     # Use check_same_thread=False for thread safety, but be careful
                     try:
-                        conn = sqlite3.connect(db_path, timeout=30, check_same_thread=False)
+                        conn = sqlite3.connect(self.db_path, timeout=30, check_same_thread=False)
                         conn.row_factory = sqlite3.Row
                     except sqlite3.OperationalError as conn_error:
                         error_msg = str(conn_error)
                         if "locked" in error_msg.lower() or "database is locked" in error_msg.lower():
                             consecutive_errors += 1
                             if consecutive_errors == 1 or consecutive_errors % 10 == 0:
-                                self.logger.warning(f"Database is locked, waiting: {db_path}")
+                                self.logger.warning(f"Database is locked, waiting: {self.db_path}")
                             time.sleep(2)
                             continue
                         else:
@@ -2699,20 +2686,17 @@ class BotDataViewer:
                     
                     # Provide more diagnostic information on first error or periodic errors
                     if consecutive_errors == 1 or consecutive_errors % 10 == 0:
-                        if db_path:
-                            db_file = Path(db_path)
-                            exists = db_file.exists()
-                            readable = os.access(db_path, os.R_OK) if exists else False
-                            writable = os.access(db_path, os.W_OK) if exists else False
-                            self.logger.error(
-                                f"Database polling error (attempt {consecutive_errors}): {error_msg}\n"
-                                f"  Path: {db_path}\n"
-                                f"  Exists: {exists}\n"
-                                f"  Readable: {readable}\n"
-                                f"  Writable: {writable}"
-                            )
-                        else:
-                            self.logger.error(f"Database polling error (attempt {consecutive_errors}): {error_msg}")
+                        db_file = Path(self.db_path)
+                        exists = db_file.exists()
+                        readable = os.access(self.db_path, os.R_OK) if exists else False
+                        writable = os.access(self.db_path, os.W_OK) if exists else False
+                        self.logger.error(
+                            f"Database polling error (attempt {consecutive_errors}): {error_msg}\n"
+                            f"  Path: {self.db_path}\n"
+                            f"  Exists: {exists}\n"
+                            f"  Readable: {readable}\n"
+                            f"  Writable: {writable}"
+                        )
                     
                     # Log at appropriate level based on error frequency
                     if consecutive_errors >= max_consecutive_errors:
@@ -2798,14 +2782,8 @@ class BotDataViewer:
             
             cutoff_time = time.time() - (days_to_keep * 24 * 60 * 60)
             
-            # Get database path
-            db_path = self.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
-            
-            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
-            db_path = resolve_path(db_path, self.bot_root)
-            
             # Use shorter timeout and isolation_level for better concurrency
-            conn = sqlite3.connect(db_path, timeout=10, isolation_level='DEFERRED')
+            conn = sqlite3.connect(self.db_path, timeout=10, isolation_level='DEFERRED')
             cursor = conn.cursor()
             
             # Use WAL mode for better concurrent access (if not already set)
@@ -3310,11 +3288,8 @@ class BotDataViewer:
             
             # Get database file size
             import os
-            db_path = self.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
-            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
-            db_path = resolve_path(db_path, self.bot_root)
             try:
-                db_size_bytes = os.path.getsize(db_path)
+                db_size_bytes = os.path.getsize(self.db_path)
                 if db_size_bytes < 1024:
                     db_size = f"{db_size_bytes} bytes"
                 elif db_size_bytes < 1024 * 1024:
@@ -3368,15 +3343,12 @@ class BotDataViewer:
             
             # Get initial database size
             import os
-            db_path = self.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
-            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
-            db_path = resolve_path(db_path, self.bot_root)
-            initial_size = os.path.getsize(db_path)
+            initial_size = os.path.getsize(self.db_path)
             
             # Perform VACUUM to reclaim unused space
             self.logger.info("Starting database VACUUM...")
             cursor.execute("VACUUM")
-            vacuum_size = os.path.getsize(db_path)
+            vacuum_size = os.path.getsize(self.db_path)
             vacuum_saved = initial_size - vacuum_size
             
             # Perform ANALYZE to update table statistics
@@ -3399,7 +3371,7 @@ class BotDataViewer:
                         self.logger.debug(f"Could not reindex table {table}: {e}")
             
             # Get final database size
-            final_size = os.path.getsize(db_path)
+            final_size = os.path.getsize(self.db_path)
             total_saved = initial_size - final_size
             
             # Format size information

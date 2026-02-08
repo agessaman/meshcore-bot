@@ -87,6 +87,19 @@ class MeshCoreBot:
         except (OSError, sqlite3.Error, AttributeError) as e:
             self.logger.warning(f"Could not store start time in database: {e}")
         
+        # Notify if Web_Viewer uses a different database (split-DB setup)
+        if self.config.has_section('Web_Viewer') and self.config.has_option('Web_Viewer', 'db_path'):
+            wv_raw = self.config.get('Web_Viewer', 'db_path').strip()
+            if wv_raw:
+                wv_path = Path(resolve_path(wv_raw, self.bot_root)).resolve()
+                bot_path = Path(self.db_manager.db_path).resolve()
+                if wv_path != bot_path:
+                    self.logger.warning(
+                        "Web viewer database path differs from bot database: viewer=%s, bot=%s. "
+                        "For shared repeater/graph and packet stream data, set [Web_Viewer] db_path to the same as [Bot] db_path or remove it to use the bot database. See docs/WEB_VIEWER.md (migrating from a separate database).",
+                        wv_path, bot_path
+                    )
+        
         # Initialize web viewer integration (after database manager)
         try:
             self.web_viewer_integration = WebViewerIntegration(self)

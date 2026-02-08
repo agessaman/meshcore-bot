@@ -189,10 +189,14 @@ class TransmissionTracker:
             if not record.command_id:
                 return
             
-            # Get database path
-            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
+            # Get database path (use [Bot] db_path when [Web_Viewer] db_path is unset)
             base_dir = self.bot.bot_root if hasattr(self.bot, 'bot_root') else '.'
-            db_path = resolve_path(db_path, base_dir)
+            if (self.bot.config.has_section('Web_Viewer') and self.bot.config.has_option('Web_Viewer', 'db_path')
+                    and self.bot.config.get('Web_Viewer', 'db_path', fallback='').strip()):
+                db_path = resolve_path(self.bot.config.get('Web_Viewer', 'db_path').strip(), base_dir)
+            else:
+                from pathlib import Path
+                db_path = Path(self.bot.db_manager.db_path).resolve()
             
             with sqlite3.connect(str(db_path), timeout=30.0) as conn:
                 cursor = conn.cursor()
