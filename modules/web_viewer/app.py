@@ -196,11 +196,11 @@ class BotDataViewer:
             raise
     
     def _init_packet_stream_table(self):
-        """Initialize the packet_stream table in bot_data.db"""
+        """Initialize the packet_stream table in the web viewer database (same as [Bot] db_path by default)."""
         conn = None
         try:
             # Get database path from config
-            db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
+            db_path = self.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
             
             # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
             db_path = resolve_path(db_path, self.bot_root)
@@ -1481,7 +1481,7 @@ class BotDataViewer:
                 cutoff_time = time.time() - (60 * 60)  # 60 minutes ago
                 
                 # Get database path
-                db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
+                db_path = self.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
                 
                 # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
                 db_path = resolve_path(db_path, self.bot_root)
@@ -2602,7 +2602,7 @@ class BotDataViewer:
                     import json
                     
                     # Get database path (re-resolve on each iteration in case config changed)
-                    db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
+                    db_path = self.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
                     
                     # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
                     db_path = resolve_path(db_path, self.bot_root)
@@ -2788,7 +2788,7 @@ class BotDataViewer:
             cutoff_time = time.time() - (days_to_keep * 24 * 60 * 60)
             
             # Get database path
-            db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
+            db_path = self.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
             
             # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
             db_path = resolve_path(db_path, self.bot_root)
@@ -3299,7 +3299,7 @@ class BotDataViewer:
             
             # Get database file size
             import os
-            db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
+            db_path = self.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
             # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
             db_path = resolve_path(db_path, self.bot_root)
             try:
@@ -3357,7 +3357,7 @@ class BotDataViewer:
             
             # Get initial database size
             import os
-            db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
+            db_path = self.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
             # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
             db_path = resolve_path(db_path, self.bot_root)
             initial_size = os.path.getsize(db_path)

@@ -41,7 +41,7 @@ This guide explains how to deploy meshcore-bot using Docker and Docker Compose.
    db_path = /data/databases/meshcore_bot.db
    
    [Web_Viewer]
-   db_path = /data/databases/bot_data.db
+   db_path = /data/databases/meshcore_bot.db
    
    [Logging]
    log_file = /data/logs/meshcore_bot.log

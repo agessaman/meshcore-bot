@@ -190,7 +190,7 @@ class TransmissionTracker:
                 return
             
             # Get database path
-            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
+            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
             base_dir = self.bot.bot_root if hasattr(self.bot, 'bot_root') else '.'
             db_path = resolve_path(db_path, base_dir)
             

@@ -795,18 +795,18 @@ graph_final_hop_proximity_weight = 0.25
 # Set to 0 to disable distance limiting
 graph_final_hop_max_distance = 0
 
-# Distance normalization for final hop proximity scoring (km, default: 500)
+# Distance normalization for final hop proximity scoring (km, default: 200)
 # Closer repeaters get higher proximity scores. Lower values = more aggressive scoring
-# 500km means repeaters within 500km get full scoring range, beyond that scores decrease
-graph_final_hop_proximity_normalization_km = 500
+# 200km (long LoRa range) means repeaters within 200km get full scoring range, beyond that scores decrease
+graph_final_hop_proximity_normalization_km = 200
 
-# Very close distance threshold for boosted proximity weight (km, default: 50)
+# Very close distance threshold for boosted proximity weight (km, default: 10)
 # Repeaters within this distance get 2x proximity weight (up to 0.6 max)
-graph_final_hop_very_close_threshold_km = 50
+graph_final_hop_very_close_threshold_km = 10
 
-# Close distance threshold for boosted proximity weight (km, default: 100)
-# Repeaters within this distance get 1.5x proximity weight (up to 0.5 max)
-graph_final_hop_close_threshold_km = 100
+# Close distance threshold for boosted proximity weight (km, default: 30)
+# Repeaters within this distance get 1.5x proximity weight (up to 0.5 max). Typical LoRa range.
+graph_final_hop_close_threshold_km = 30
 
 # Maximum proximity weight for very close repeaters (0.0-1.0, default: 0.6)
 # When a repeater is within very_close_threshold_km, proximity weight is boosted up to this value
@@ -1034,8 +1034,8 @@ debug = false
 # false: Start web viewer manually (recommended)
 auto_start = false
 
-# Database path for web viewer data
-# Default: bot_data.db
+# Database path for web viewer (same as [Bot] db_path so viewer can show repeater/graph data and packet stream)
+# Default: meshcore_bot.db
 db_path = meshcore_bot.db
 
 # Additional hashtag channels to decode in the packet stream

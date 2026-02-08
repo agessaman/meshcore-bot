@@ -74,7 +74,7 @@ echo "  ✓ Updated [Bot] db_path"
 # Ensure we use absolute path to avoid resolution issues
 update_config "Logging" "log_file" "/data/logs/meshcore_bot.log"
 # Verify the update worked
-VERIFIED_LOG=$(grep "^log_file[[:space:]]*=" "$CONFIG_FILE" 2>/dev/null | sed 's/^log_file[[:space:]]*=[[:space:]]*//' | tr -d ' ' || echo "")
+VERIFIED_LOG=$(grep "^log_file[[:space:]]*=" "$CONFIG_FILE" 2>/dev/null | sed 's/^log_file[[:space:]]*=[[:space:]]*//;s/^[[:space:]]*//;s/[[:space:]]*$//' || echo "")
 if [[ "$VERIFIED_LOG" == "/data/logs/meshcore_bot.log" ]]; then
     echo "  ✓ Updated [Logging] log_file to /data/logs/meshcore_bot.log"
     ((UPDATED_COUNT++))
@@ -93,7 +93,7 @@ fi
 
 # Update Web_Viewer database path (if section exists)
 if grep -q "^\[Web_Viewer\]" "$CONFIG_FILE"; then
-    update_config "Web_Viewer" "db_path" "/data/databases/bot_data.db"
+    update_config "Web_Viewer" "db_path" "/data/databases/meshcore_bot.db"
     echo "  ✓ Updated [Web_Viewer] db_path"
     ((UPDATED_COUNT++))
 fi
@@ -101,7 +101,7 @@ fi
 # Update PacketCapture paths (if section exists)
 if grep -q "^\[PacketCapture\]" "$CONFIG_FILE"; then
     # Only update output_file if it's set to a relative path
-    CURRENT_OUTPUT=$(grep "^output_file[[:space:]]*=" "$CONFIG_FILE" 2>/dev/null | sed 's/^output_file[[:space:]]*=[[:space:]]*//' | tr -d ' ' || echo "")
+    CURRENT_OUTPUT=$(grep "^output_file[[:space:]]*=" "$CONFIG_FILE" 2>/dev/null | sed 's/^output_file[[:space:]]*=[[:space:]]*//;s/^[[:space:]]*//;s/[[:space:]]*$//' || echo "")
     if [ -n "$CURRENT_OUTPUT" ] && [[ ! "$CURRENT_OUTPUT" == /* ]]; then
         # Relative path - update to logs directory
         update_config "PacketCapture" "output_file" "/data/logs/packets.jsonl"
@@ -110,7 +110,7 @@ if grep -q "^\[PacketCapture\]" "$CONFIG_FILE"; then
     fi
     
     # Update private_key_path if it's a relative path
-    CURRENT_KEY=$(grep "^private_key_path[[:space:]]*=" "$CONFIG_FILE" 2>/dev/null | sed 's/^private_key_path[[:space:]]*=[[:space:]]*//' | tr -d ' ' || echo "")
+    CURRENT_KEY=$(grep "^private_key_path[[:space:]]*=" "$CONFIG_FILE" 2>/dev/null | sed 's/^private_key_path[[:space:]]*=[[:space:]]*//;s/^[[:space:]]*//;s/[[:space:]]*$//' || echo "")
     if [ -n "$CURRENT_KEY" ] && [[ ! "$CURRENT_KEY" == /* ]]; then
         # Relative path - update to config directory (read-only is fine for keys)
         update_config "PacketCapture" "private_key_path" "/data/config/private_key"
@@ -121,7 +121,7 @@ fi
 
 # Update MapUploader private_key_path (if section exists)
 if grep -q "^\[MapUploader\]" "$CONFIG_FILE"; then
-    CURRENT_KEY=$(grep "^private_key_path[[:space:]]*=" "$CONFIG_FILE" 2>/dev/null | sed 's/^private_key_path[[:space:]]*=[[:space:]]*//' | tr -d ' ' || echo "")
+    CURRENT_KEY=$(grep "^private_key_path[[:space:]]*=" "$CONFIG_FILE" 2>/dev/null | sed 's/^private_key_path[[:space:]]*=[[:space:]]*//;s/^[[:space:]]*//;s/[[:space:]]*$//' || echo "")
     if [ -n "$CURRENT_KEY" ] && [[ ! "$CURRENT_KEY" == /* ]]; then
         # Relative path - update to config directory
         update_config "MapUploader" "private_key_path" "/data/config/private_key"

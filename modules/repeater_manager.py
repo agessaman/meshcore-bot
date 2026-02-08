@@ -159,7 +159,7 @@ class RepeaterManager:
             ''')
             
             # Create indexes for better performance
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(self.db_path, timeout=30.0) as conn:
                 cursor = conn.cursor()
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_public_key ON repeater_contacts(public_key)')
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_device_type ON repeater_contacts(device_type)')
@@ -214,7 +214,7 @@ class RepeaterManager:
         """Handle database schema migration for existing installations"""
         try:
             # Check if the new location columns exist in repeater_contacts
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(self.db_path, timeout=30.0) as conn:
                 cursor = conn.cursor()
                 cursor.execute("PRAGMA table_info(repeater_contacts)")
                 columns = [row[1] for row in cursor.fetchall()]
