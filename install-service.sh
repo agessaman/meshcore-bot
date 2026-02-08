@@ -405,7 +405,43 @@ copy_files_smart "$SCRIPT_DIR" "$INSTALL_DIR" || {
     exit 1
 }
 
-print_section "Step 4: Setting File Permissions"
+# Create venv and install dependencies before chown so the service user ends up
+# owning a complete, working venv (avoids partial root-owned venv and import errors).
+print_section "Step 4: Setting Up Python Virtual Environment"
+if [ -d "$INSTALL_DIR/venv" ]; then
+    print_info "Virtual environment already exists at $INSTALL_DIR/venv"
+    print_info "Preserving existing virtual environment"
+    if [[ "$UPGRADE_MODE" == true ]]; then
+        print_info "Upgrade mode: will update dependencies"
+    else
+        print_info "Will update dependencies if requirements.txt changed"
+    fi
+else
+    print_info "Creating an isolated Python environment for the bot"
+    print_info "This ensures dependencies don't conflict with system Python packages"
+    python3 -m venv "$INSTALL_DIR/venv"
+    print_success "Created virtual environment at $INSTALL_DIR/venv"
+fi
+
+# Upgrade pip first
+print_info "Upgrading pip to latest version"
+"$INSTALL_DIR/venv/bin/pip" install --quiet --upgrade pip >/dev/null 2>&1 || true
+
+# Install dependencies in venv
+print_info "Installing Python dependencies from requirements.txt"
+print_info "This may take a few minutes depending on your internet connection..."
+if [ ! -f "$INSTALL_DIR/requirements.txt" ]; then
+    print_error "requirements.txt not found in installation directory"
+    exit 1
+fi
+"$INSTALL_DIR/venv/bin/pip" install --quiet -r "$INSTALL_DIR/requirements.txt" || {
+    print_error "Failed to install Python dependencies"
+    print_info "You may need to check your internet connection or Python version"
+    exit 1
+}
+print_success "Installed all Python dependencies"
+
+print_section "Step 5: Setting File Permissions"
 print_info "Configuring file ownership and permissions for security"
 print_info "The service user will own all files, with appropriate read/write permissions"
 # Set ownership
@@ -425,7 +461,7 @@ find "$INSTALL_DIR" -type d -exec chmod 755 {} \; 2>/dev/null || true
 chmod 755 "$INSTALL_DIR/meshcore_bot.py"
 print_success "Configured file permissions"
 
-print_section "Step 5: Installing Service"
+print_section "Step 6: Installing Service"
 if [[ "$IS_MACOS" == true ]]; then
     print_info "Installing launchd plist file to enable automatic startup"
     print_info "The service will be configured to start on boot and restart on failure"
@@ -462,7 +498,7 @@ with open('$LAUNCHD_DIR/$SERVICE_FILE', 'w') as f:
     chmod 644 "$LAUNCHD_DIR/$SERVICE_FILE"
     print_success "Set plist permissions"
     
-    print_section "Step 6: Loading Service"
+    print_section "Step 7: Loading Service"
     # Check if service is already loaded
     if launchctl list "$PLIST_NAME" &>/dev/null; then
         if [[ "$UPGRADE_MODE" == true ]]; then
@@ -508,7 +544,7 @@ else
         print_success "Systemd configuration reloaded"
     fi
     
-    print_section "Step 6: Enabling Service"
+    print_section "Step 7: Enabling Service"
     # Check if service is already enabled
     if systemctl is-enabled "$SERVICE_NAME" &>/dev/null; then
         print_info "Service '$SERVICE_NAME' is already enabled for automatic startup"
@@ -519,44 +555,6 @@ else
     fi
     print_info "Note: The service is enabled but not started yet. You'll start it after configuration."
 fi
-
-print_section "Step 7: Setting Up Python Virtual Environment"
-if [ -d "$INSTALL_DIR/venv" ]; then
-    print_info "Virtual environment already exists at $INSTALL_DIR/venv"
-    print_info "Preserving existing virtual environment"
-    if [[ "$UPGRADE_MODE" == true ]]; then
-        print_info "Upgrade mode: will update dependencies"
-    else
-        print_info "Will update dependencies if requirements.txt changed"
-    fi
-else
-    print_info "Creating an isolated Python environment for the bot"
-    print_info "This ensures dependencies don't conflict with system Python packages"
-    python3 -m venv "$INSTALL_DIR/venv"
-    print_success "Created virtual environment at $INSTALL_DIR/venv"
-fi
-
-# Upgrade pip first
-print_info "Upgrading pip to latest version"
-"$INSTALL_DIR/venv/bin/pip" install --quiet --upgrade pip >/dev/null 2>&1 || true
-
-# Install dependencies in venv
-print_info "Installing Python dependencies from requirements.txt"
-print_info "This may take a few minutes depending on your internet connection..."
-if [ ! -f "$INSTALL_DIR/requirements.txt" ]; then
-    print_error "requirements.txt not found in installation directory"
-    exit 1
-fi
-"$INSTALL_DIR/venv/bin/pip" install --quiet -r "$INSTALL_DIR/requirements.txt" || {
-    print_error "Failed to install Python dependencies"
-    print_info "You may need to check your internet connection or Python version"
-    exit 1
-}
-print_success "Installed all Python dependencies"
-
-# Update ownership of venv
-chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR/venv"
-print_success "Set ownership of virtual environment"
 
 if [[ "$UPGRADE_MODE" == true ]]; then
     print_section "Upgrade Complete!"
