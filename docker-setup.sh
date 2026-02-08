@@ -27,35 +27,38 @@ fi
 PLATFORM=$(uname -s)
 CONFIG_FILE="data/config/config.ini"
 
-# Function to update config.ini using sed (works with both existing and new configs)
+# Function to update config.ini (section-aware: only matches key within the given section)
 update_config() {
     local section=$1
     local key=$2
     local value=$3
-    
-    # Check if section exists
+    local tmp_file="${CONFIG_FILE}.tmp.$$"
+
+    awk -v section="$section" -v key="$key" -v value="$value" '
+        /^\[/ {
+            in_section = ($0 == "[" section "]")
+            need_add = in_section
+        }
+        in_section && $0 ~ "^" key "[[:space:]]*=" {
+            print key " = " value
+            need_add = 0
+            next
+        }
+        need_add && in_section && $0 !~ /^\[/ {
+            print key " = " value
+            need_add = 0
+        }
+        { print }
+        END {
+            if (need_add && in_section) { print key " = " value }
+        }
+    ' "$CONFIG_FILE" > "$tmp_file" && mv "$tmp_file" "$CONFIG_FILE"
+
+    # Ensure section exists if key was not present (file had no such section)
     if ! grep -q "^\[$section\]" "$CONFIG_FILE"; then
         echo "" >> "$CONFIG_FILE"
         echo "[$section]" >> "$CONFIG_FILE"
-    fi
-    
-    # Check if key exists in section (look for key= with optional spaces)
-    if grep -q "^$key[[:space:]]*=" "$CONFIG_FILE"; then
-        # Update existing key (use | as delimiter to avoid issues with / in paths)
-        if [[ "$PLATFORM" == "Darwin" ]]; then
-            sed -i '' "s|^$key[[:space:]]*=.*|$key = $value|" "$CONFIG_FILE"
-        else
-            sed -i "s|^$key[[:space:]]*=.*|$key = $value|" "$CONFIG_FILE"
-        fi
-    else
-        # Add new key after section header
-        if [[ "$PLATFORM" == "Darwin" ]]; then
-            sed -i '' "/^\[$section\]/a\\
-$key = $value
-" "$CONFIG_FILE"
-        else
-            sed -i "/^\[$section\]/a $key = $value" "$CONFIG_FILE"
-        fi
+        echo "$key = $value" >> "$CONFIG_FILE"
     fi
 }
 
@@ -91,12 +94,8 @@ else
     ((UPDATED_COUNT++))
 fi
 
-# Update Web_Viewer database path (if section exists)
-if grep -q "^\[Web_Viewer\]" "$CONFIG_FILE"; then
-    update_config "Web_Viewer" "db_path" "/data/databases/meshcore_bot.db"
-    echo "  ✓ Updated [Web_Viewer] db_path"
-    ((UPDATED_COUNT++))
-fi
+# [Web_Viewer] db_path is intentionally not set: when unset, the viewer uses [Bot] db_path.
+# See config.ini.example and docs/WEB_VIEWER.md.
 
 # Update PacketCapture paths (if section exists)
 if grep -q "^\[PacketCapture\]" "$CONFIG_FILE"; then

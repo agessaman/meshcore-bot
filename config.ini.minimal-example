@@ -171,7 +171,8 @@ admin_pubkeys =
 
 # Commands that require admin access (comma-separated)
 # These commands will only work for users in the admin_pubkeys list
-admin_commands = repeater,webviewer
+# reload: Reload configuration without restarting (radio settings cannot be changed)
+admin_commands = repeater,webviewer,reload
 
 [Keywords]
 # Available placeholders (message-based):
