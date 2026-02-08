@@ -108,9 +108,18 @@
 <div class="row">
     <div class="col-12">
         <div class="card">
-            <div class="card-header">
-                <i class="fas fa-list"></i> Contact Activity
-                <div class="float-end d-flex gap-2">
+            <div class="card-body">
+                <div class="d-flex gap-2 align-items-center flex-wrap mb-3 justify-content-end">
+                    <label class="mb-0 text-nowrap" for="contacts-timespan">
+                        <i class="fas fa-clock"></i> Heard in:
+                    </label>
+                    <select class="form-select form-select-sm" id="contacts-timespan" style="width: auto;">
+                        <option value="24h">Last 24 hours</option>
+                        <option value="7d">Last 7 days</option>
+                        <option value="30d" selected>Last 30 days</option>
+                        <option value="90d">Last 90 days</option>
+                        <option value="all">All time</option>
+                    </select>
                     <div class="input-group" style="width: 300px;">
                         <span class="input-group-text">
                             <i class="fas fa-search"></i>
@@ -121,8 +130,6 @@
                         <i class="fas fa-sync"></i> Refresh
                     </button>
                 </div>
-            </div>
-            <div class="card-body">
             <div class="table-responsive">
                 <table class="table table-striped table-hover">
                         <thead class="table-dark">
@@ -186,6 +193,12 @@ class ModernContactsManager {
     }
     
     async initializeContacts() {
+        const savedTimespan = localStorage.getItem('contactsTimespan');
+        const valid = ['24h', '7d', '30d', '90d', 'all'];
+        if (savedTimespan && valid.includes(savedTimespan)) {
+            const el = document.getElementById('contacts-timespan');
+            if (el) el.value = savedTimespan;
+        }
         await this.loadContactsData();
         this.setupEventHandlers();
         this.applySort();
@@ -196,7 +209,8 @@ class ModernContactsManager {
     
     async loadContactsData() {
         try {
-            const response = await fetch('/api/contacts');
+            const since = document.getElementById('contacts-timespan').value || '30d';
+            const response = await fetch('/api/contacts?since=' + encodeURIComponent(since));
             const data = await response.json();
             
             if (data.error) {
@@ -232,6 +246,17 @@ class ModernContactsManager {
             this.applySort();
             this.renderContactsData();
             this.updateStatistics();
+        });
+        
+        document.getElementById('contacts-timespan').addEventListener('change', () => {
+            const since = document.getElementById('contacts-timespan').value;
+            localStorage.setItem('contactsTimespan', since);
+            this.loadContactsData().then(() => {
+                this.applySearch();
+                this.applySort();
+                this.renderContactsData();
+                this.updateStatistics();
+            });
         });
         
         // Add click handlers for sortable columns

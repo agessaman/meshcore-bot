@@ -1169,9 +1169,12 @@ class BotDataViewer:
         
         @self.app.route('/api/contacts')
         def api_contacts():
-            """Get contact data"""
+            """Get contact data. Optional query param: since=24h|7d|30d|90d|all (default 30d)."""
             try:
-                contacts = self._get_tracking_data()
+                since = request.args.get('since', '30d')
+                if since not in ('24h', '7d', '30d', '90d', 'all'):
+                    since = '30d'
+                contacts = self._get_tracking_data(since=since)
                 return jsonify(contacts)
             except Exception as e:
                 self.logger.error(f"Error getting contacts: {e}")
@@ -3422,8 +3425,8 @@ class BotDataViewer:
             if conn:
                 conn.close()
     
-    def _get_tracking_data(self):
-        """Get contact tracking data"""
+    def _get_tracking_data(self, since='30d'):
+        """Get contact tracking data. since: 24h, 7d, 30d, 90d, or all (heard in that window)."""
         conn = None
         try:
             conn = self._get_db_connection()
@@ -3432,6 +3435,21 @@ class BotDataViewer:
             # Get bot location from config
             bot_lat = self.config.getfloat('Bot', 'bot_latitude', fallback=None)
             bot_lon = self.config.getfloat('Bot', 'bot_longitude', fallback=None)
+            
+            # Filter by last_heard for performance (default: last 30 days)
+            if since == 'all':
+                where_clause = ''
+                params = ()
+            else:
+                if since == '24h':
+                    where_clause = " WHERE c.last_heard >= datetime('now', '-24 hours')"
+                elif since == '7d':
+                    where_clause = " WHERE c.last_heard >= datetime('now', '-7 days')"
+                elif since == '30d':
+                    where_clause = " WHERE c.last_heard >= datetime('now', '-30 days')"
+                else:  # 90d
+                    where_clause = " WHERE c.last_heard >= datetime('now', '-90 days')"
+                params = ()
             
             # Query with LEFT JOIN to get all paths from observed_paths
             cursor.execute("""
@@ -3451,6 +3469,7 @@ class BotDataViewer:
                 FROM complete_contact_tracking c
                 LEFT JOIN observed_paths op ON c.public_key = op.public_key 
                     AND op.packet_type = 'advert'
+                """ + where_clause + """
                 GROUP BY c.public_key, c.name, c.role, c.device_type, 
                          c.latitude, c.longitude, c.city, c.state, c.country,
                          c.snr, c.hop_count, c.first_heard, c.last_heard,
@@ -3458,7 +3477,7 @@ class BotDataViewer:
                          c.raw_advert_data, c.signal_strength, c.is_starred,
                          c.out_path, c.out_path_len
                 ORDER BY c.last_heard DESC
-            """)
+            """, params)
             
             tracking = []
             for row in cursor.fetchall():
