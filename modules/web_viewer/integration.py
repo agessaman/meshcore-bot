@@ -564,11 +564,15 @@ class WebViewerIntegration:
         try:
             # Get the path to the web viewer script
             viewer_script = Path(__file__).parent / "app.py"
+            # Use same config as bot so viewer finds db_path, Greeter_Command, etc.
+            config_path = getattr(self.bot, 'config_file', 'config.ini')
+            config_path = str(Path(config_path).resolve()) if config_path else 'config.ini'
             
             # Build command
             cmd = [
                 sys.executable,
                 str(viewer_script),
+                "--config", config_path,
                 "--host", self.host,
                 "--port", str(self.port)
             ]

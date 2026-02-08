@@ -11,7 +11,7 @@ import configparser
 import logging
 import threading
 from datetime import datetime, timedelta, date
-from flask import Flask, render_template, jsonify, request, send_from_directory
+from flask import Flask, render_template, jsonify, request, send_from_directory, make_response
 from flask_socketio import SocketIO, emit, join_room, leave_room, disconnect
 from pathlib import Path
 import os
@@ -36,6 +36,9 @@ class BotDataViewer:
         # Set bot root directory (project root) for path validation
         # This is the directory containing the modules folder
         self.bot_root = Path(os.path.join(os.path.dirname(__file__), '..', '..')).resolve()
+        # Resolve relative config path so viewer finds config when started as subprocess (cwd may differ)
+        if not os.path.isabs(config_path):
+            config_path = str(self.bot_root / config_path)
         
         self.app = Flask(
             __name__, 
@@ -142,20 +145,20 @@ class BotDataViewer:
         """Setup template context processor to inject global variables"""
         @self.app.context_processor
         def inject_template_vars():
-            """Inject variables available to all templates"""
-            # Check if greeter is enabled, defaulting to False if section doesn't exist
+            """Inject variables available to all templates. Never raises so templates always render."""
             try:
-                greeter_enabled = self.config.getboolean('Greeter_Command', 'enabled', fallback=False)
-            except (configparser.NoSectionError, configparser.NoOptionError):
-                greeter_enabled = False
-            
-            # Check if feed manager is enabled, defaulting to False if section doesn't exist
-            try:
-                feed_manager_enabled = self.config.getboolean('Feed_Manager', 'feed_manager_enabled', fallback=False)
-            except (configparser.NoSectionError, configparser.NoOptionError):
-                feed_manager_enabled = False
-            
-            return dict(greeter_enabled=greeter_enabled, feed_manager_enabled=feed_manager_enabled)
+                try:
+                    greeter_enabled = self.config.getboolean('Greeter_Command', 'enabled', fallback=False)
+                except (configparser.NoSectionError, configparser.NoOptionError, ValueError, TypeError):
+                    greeter_enabled = False
+                try:
+                    feed_manager_enabled = self.config.getboolean('Feed_Manager', 'feed_manager_enabled', fallback=False)
+                except (configparser.NoSectionError, configparser.NoOptionError, ValueError, TypeError):
+                    feed_manager_enabled = False
+                return dict(greeter_enabled=greeter_enabled, feed_manager_enabled=feed_manager_enabled)
+            except Exception as e:
+                self.logger.exception("Template context processor failed: %s", e)
+                return dict(greeter_enabled=False, feed_manager_enabled=False)
     
     def _init_databases(self):
         """Initialize database connections"""
@@ -1001,7 +1004,12 @@ class BotDataViewer:
     
     def _setup_routes(self):
         """Setup all Flask routes - complete feature parity"""
-        
+        # Log full traceback for 500 errors so service logs show the real cause
+        @self.app.errorhandler(500)
+        def internal_error(e):
+            self.logger.exception("Unhandled exception (500): %s", e)
+            return make_response(("Internal Server Error", 500))
+
         @self.app.route('/')
         def index():
             """Main dashboard"""
