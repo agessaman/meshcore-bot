@@ -160,7 +160,9 @@
                         <select class="form-select" id="filter-edge-days" onchange="applyFilters(); saveFilters();">
                             <option value="">All Time</option>
                             <option value="1">Last 24 Hours</option>
-                            <option value="7" selected>Last 7 Days</option>
+                            <option value="2">Last 48 Hours</option>
+                            <option value="3" selected>Last 72 Hours</option>
+                            <option value="7">Last 7 Days</option>
                             <option value="30">Last 30 Days</option>
                             <option value="90">Last 90 Days</option>
                         </select>
@@ -170,16 +172,21 @@
                         <select class="form-select" id="filter-node-days" onchange="applyFilters(); saveFilters();">
                             <option value="">All Time</option>
                             <option value="1">Last 24 Hours</option>
-                            <option value="7" selected>Last 7 Days</option>
+                            <option value="2">Last 48 Hours</option>
+                            <option value="3" selected>Last 72 Hours</option>
+                            <option value="7">Last 7 Days</option>
                             <option value="30">Last 30 Days</option>
                             <option value="90">Last 90 Days</option>
                         </select>
                     </div>
                     <div class="col-md-2">
-                        <label for="filter-starred" class="form-label">
-                            <input type="checkbox" class="form-check-input me-2" id="filter-starred" onchange="applyFilters(); saveFilters();">
-                            Show Only Starred
-                        </label>
+                        <label for="filter-starred" class="form-label">&nbsp;</label>
+                        <div class="d-flex align-items-center" style="min-height: 38px;">
+                            <div class="form-check mb-0">
+                                <input type="checkbox" class="form-check-input" id="filter-starred" onchange="applyFilters(); saveFilters();">
+                                <label class="form-check-label" for="filter-starred">Show Only Starred</label>
+                            </div>
+                        </div>
                     </div>
                     <div class="col-md-4">
                         <label for="filter-search" class="form-label">Search Node</label>
@@ -352,8 +359,10 @@
     let allEdges = [];
     let filteredNodes = [];
     let filteredEdges = [];
-    let nodeMap = {}; // prefix -> node data
-    let nodeMapByKey = {}; // public_key -> node data (for resolving prefix collisions)
+    let nodeMap = {}; // prefix -> node data (all nodes, for path resolution)
+    let nodeMapByKey = {}; // public_key -> node data (all nodes, for path resolution)
+    let filteredNodeMap = {}; // prefix -> node (filtered set only, for edge drawing)
+    let filteredNodeMapByKey = {}; // public_key -> node (filtered set only, for edge drawing)
     let edgeMap = {}; // "from-to" -> edge data
     let mapViewState = null; // Store map center and zoom for preservation
     let highlightedNode = null; // Currently highlighted node prefix
@@ -945,6 +954,14 @@
             return true;
         });
         
+        // Build filtered node maps for O(1) edge endpoint resolution (only draw edges when both endpoints are in filtered set)
+        filteredNodeMap = {};
+        filteredNodeMapByKey = {};
+        filteredNodes.forEach(node => {
+            filteredNodeMap[node.prefix] = node;
+            if (node.public_key) filteredNodeMapByKey[node.public_key] = node;
+        });
+        
         // Re-render current view
         if (currentView === 'map') {
             renderMap();
@@ -1181,22 +1198,9 @@
         
         // Add edges FIRST (so they appear below nodes)
         filteredEdges.forEach(edge => {
-            // Use public key to resolve node if available (handles prefix collisions)
-            // Otherwise fall back to prefix lookup
-            let fromNode = null;
-            if (edge.from_public_key && nodeMapByKey[edge.from_public_key]) {
-                fromNode = nodeMapByKey[edge.from_public_key];
-            } else {
-                fromNode = nodeMap[edge.from_prefix];
-            }
-            
-            let toNode = null;
-            if (edge.to_public_key && nodeMapByKey[edge.to_public_key]) {
-                toNode = nodeMapByKey[edge.to_public_key];
-            } else {
-                toNode = nodeMap[edge.to_prefix];
-            }
-            
+            // Resolve endpoints from filtered set only (so we don't draw edges to nodes outside node timeframe)
+            let fromNode = (edge.from_public_key && filteredNodeMapByKey[edge.from_public_key]) ? filteredNodeMapByKey[edge.from_public_key] : filteredNodeMap[edge.from_prefix];
+            let toNode = (edge.to_public_key && filteredNodeMapByKey[edge.to_public_key]) ? filteredNodeMapByKey[edge.to_public_key] : filteredNodeMap[edge.to_prefix];
             if (!fromNode || !toNode) return;
             
             const color = getEdgeColor(edge);
@@ -1497,21 +1501,9 @@
         // Remove duplicate edges by using a Set keyed by edge ID
         const edgeMapById = new Map();
         filteredEdges.forEach(edge => {
-            // Use public key to resolve node if available (handles prefix collisions)
-            let fromNode = null;
-            if (edge.from_public_key && nodeMapByKey[edge.from_public_key]) {
-                fromNode = nodeMapByKey[edge.from_public_key];
-            } else {
-                fromNode = nodeMap[edge.from_prefix];
-            }
-            
-            let toNode = null;
-            if (edge.to_public_key && nodeMapByKey[edge.to_public_key]) {
-                toNode = nodeMapByKey[edge.to_public_key];
-            } else {
-                toNode = nodeMap[edge.to_prefix];
-            }
-            
+            // Resolve endpoints from filtered set only (so we don't draw edges to nodes outside node timeframe)
+            let fromNode = (edge.from_public_key && filteredNodeMapByKey[edge.from_public_key]) ? filteredNodeMapByKey[edge.from_public_key] : filteredNodeMap[edge.from_prefix];
+            let toNode = (edge.to_public_key && filteredNodeMapByKey[edge.to_public_key]) ? filteredNodeMapByKey[edge.to_public_key] : filteredNodeMap[edge.to_prefix];
             if (!fromNode || !toNode) return;
             
             // Use unique node IDs for from/to to handle prefix collisions
@@ -1643,18 +1635,8 @@
                 const edgeStyles = {};
                 const bidirectionalEdgeIds = new Set();
                 filteredEdges.forEach(edge => {
-                    let fromNode = null;
-                    if (edge.from_public_key && nodeMapByKey[edge.from_public_key]) {
-                        fromNode = nodeMapByKey[edge.from_public_key];
-                    } else {
-                        fromNode = nodeMap[edge.from_prefix];
-                    }
-                    let toNode = null;
-                    if (edge.to_public_key && nodeMapByKey[edge.to_public_key]) {
-                        toNode = nodeMapByKey[edge.to_public_key];
-                    } else {
-                        toNode = nodeMap[edge.to_prefix];
-                    }
+                    let fromNode = (edge.from_public_key && filteredNodeMapByKey[edge.from_public_key]) ? filteredNodeMapByKey[edge.from_public_key] : filteredNodeMap[edge.from_prefix];
+                    let toNode = (edge.to_public_key && filteredNodeMapByKey[edge.to_public_key]) ? filteredNodeMapByKey[edge.to_public_key] : filteredNodeMap[edge.to_prefix];
                     if (!fromNode || !toNode) return;
                     const fromNodeId = getNodeId(fromNode);
                     const toNodeId = getNodeId(toNode);
@@ -1663,8 +1645,8 @@
                         edgeIdsToHighlight.push(edgeId);
                         const reverseEdgeId = `${toNodeId}-${fromNodeId}`;
                         if (filteredEdges.some(e => {
-                            let revFromNode = (e.from_public_key && nodeMapByKey[e.from_public_key]) ? nodeMapByKey[e.from_public_key] : nodeMap[e.from_prefix];
-                            let revToNode = (e.to_public_key && nodeMapByKey[e.to_public_key]) ? nodeMapByKey[e.to_public_key] : nodeMap[e.to_prefix];
+                            let revFromNode = (e.from_public_key && filteredNodeMapByKey[e.from_public_key]) ? filteredNodeMapByKey[e.from_public_key] : filteredNodeMap[e.from_prefix];
+                            let revToNode = (e.to_public_key && filteredNodeMapByKey[e.to_public_key]) ? filteredNodeMapByKey[e.to_public_key] : filteredNodeMap[e.to_prefix];
                             if (!revFromNode || !revToNode) return false;
                             return getNodeId(revFromNode) === toNodeId && getNodeId(revToNode) === fromNodeId;
                         })) {
@@ -1717,8 +1699,8 @@
                     for (const edge of currentEdges) {
                         const edgeId = edge.id;
                         const originalEdge = filteredEdges.find(e => {
-                            let fromNode = (e.from_public_key && nodeMapByKey[e.from_public_key]) ? nodeMapByKey[e.from_public_key] : nodeMap[e.from_prefix];
-                            let toNode = (e.to_public_key && nodeMapByKey[e.to_public_key]) ? nodeMapByKey[e.to_public_key] : nodeMap[e.to_prefix];
+                            let fromNode = (e.from_public_key && filteredNodeMapByKey[e.from_public_key]) ? filteredNodeMapByKey[e.from_public_key] : filteredNodeMap[e.from_prefix];
+                            let toNode = (e.to_public_key && filteredNodeMapByKey[e.to_public_key]) ? filteredNodeMapByKey[e.to_public_key] : filteredNodeMap[e.to_prefix];
                             if (!fromNode || !toNode) return false;
                             return `${getNodeId(fromNode)}-${getNodeId(toNode)}` === edgeId;
                         });
@@ -1758,18 +1740,8 @@
                     const edgeId = params.edges[0]; // This is now fromNodeId-toNodeId format
                     // Find edge by matching the unique node IDs
                     const edge = filteredEdges.find(e => {
-                        let fromNode = null;
-                        if (e.from_public_key && nodeMapByKey[e.from_public_key]) {
-                            fromNode = nodeMapByKey[e.from_public_key];
-                        } else {
-                            fromNode = nodeMap[e.from_prefix];
-                        }
-                        let toNode = null;
-                        if (e.to_public_key && nodeMapByKey[e.to_public_key]) {
-                            toNode = nodeMapByKey[e.to_public_key];
-                        } else {
-                            toNode = nodeMap[e.to_prefix];
-                        }
+                        let fromNode = (e.from_public_key && filteredNodeMapByKey[e.from_public_key]) ? filteredNodeMapByKey[e.from_public_key] : filteredNodeMap[e.from_prefix];
+                        let toNode = (e.to_public_key && filteredNodeMapByKey[e.to_public_key]) ? filteredNodeMapByKey[e.to_public_key] : filteredNodeMap[e.to_prefix];
                         if (!fromNode || !toNode) return false;
                         const expectedEdgeId = `${getNodeId(fromNode)}-${getNodeId(toNode)}`;
                         return expectedEdgeId === edgeId;
@@ -1985,9 +1957,8 @@
     
     // Backward compatibility wrapper - converts prefix to node object
     function highlightNodeConnections(nodePrefix) {
-        // Try to find the node - if multiple nodes with same prefix, use first one
-        // But ideally callers should use highlightNodeConnectionsForNode instead
-        const node = nodeMap[nodePrefix];
+        // Resolve from filtered set so we only highlight nodes that are currently visible
+        const node = filteredNodeMap[nodePrefix];
         if (node) {
             highlightNodeConnectionsForNode(node);
         }
@@ -2031,20 +2002,8 @@
         const connectedNodeIds = new Set([clickedNodeId]);
         
         filteredEdges.forEach(edge => {
-            // Resolve nodes for this edge
-            let fromNode = null;
-            if (edge.from_public_key && nodeMapByKey[edge.from_public_key]) {
-                fromNode = nodeMapByKey[edge.from_public_key];
-            } else {
-                fromNode = nodeMap[edge.from_prefix];
-            }
-            let toNode = null;
-            if (edge.to_public_key && nodeMapByKey[edge.to_public_key]) {
-                toNode = nodeMapByKey[edge.to_public_key];
-            } else {
-                toNode = nodeMap[edge.to_prefix];
-            }
-            
+            let fromNode = (edge.from_public_key && filteredNodeMapByKey[edge.from_public_key]) ? filteredNodeMapByKey[edge.from_public_key] : filteredNodeMap[edge.from_prefix];
+            let toNode = (edge.to_public_key && filteredNodeMapByKey[edge.to_public_key]) ? filteredNodeMapByKey[edge.to_public_key] : filteredNodeMap[edge.to_prefix];
             if (!fromNode || !toNode) return;
             
             const fromNodeId = getNodeId(fromNode);
@@ -2060,18 +2019,8 @@
                 // Check for bidirectional
                 const reverseEdgeId = `${toNodeId}-${fromNodeId}`;
                 if (filteredEdges.some(e => {
-                    let revFromNode = null;
-                    if (e.from_public_key && nodeMapByKey[e.from_public_key]) {
-                        revFromNode = nodeMapByKey[e.from_public_key];
-                    } else {
-                        revFromNode = nodeMap[e.from_prefix];
-                    }
-                    let revToNode = null;
-                    if (e.to_public_key && nodeMapByKey[e.to_public_key]) {
-                        revToNode = nodeMapByKey[e.to_public_key];
-                    } else {
-                        revToNode = nodeMap[e.to_prefix];
-                    }
+                    let revFromNode = (e.from_public_key && filteredNodeMapByKey[e.from_public_key]) ? filteredNodeMapByKey[e.from_public_key] : filteredNodeMap[e.from_prefix];
+                    let revToNode = (e.to_public_key && filteredNodeMapByKey[e.to_public_key]) ? filteredNodeMapByKey[e.to_public_key] : filteredNodeMap[e.to_prefix];
                     if (!revFromNode || !revToNode) return false;
                     return getNodeId(revFromNode) === toNodeId && getNodeId(revToNode) === fromNodeId;
                 })) {
@@ -2212,18 +2161,8 @@
             for (const edge of currentEdges) {
                 const edgeId = edge.id;
                 const originalEdge = filteredEdges.find(e => {
-                    let fromNode = null;
-                    if (e.from_public_key && nodeMapByKey[e.from_public_key]) {
-                        fromNode = nodeMapByKey[e.from_public_key];
-                    } else {
-                        fromNode = nodeMap[e.from_prefix];
-                    }
-                    let toNode = null;
-                    if (e.to_public_key && nodeMapByKey[e.to_public_key]) {
-                        toNode = nodeMapByKey[e.to_public_key];
-                    } else {
-                        toNode = nodeMap[e.to_prefix];
-                    }
+                    let fromNode = (e.from_public_key && filteredNodeMapByKey[e.from_public_key]) ? filteredNodeMapByKey[e.from_public_key] : filteredNodeMap[e.from_prefix];
+                    let toNode = (e.to_public_key && filteredNodeMapByKey[e.to_public_key]) ? filteredNodeMapByKey[e.to_public_key] : filteredNodeMap[e.to_prefix];
                     if (!fromNode || !toNode) return false;
                     const expectedEdgeId = `${getNodeId(fromNode)}-${getNodeId(toNode)}`;
                     return expectedEdgeId === edgeId;
