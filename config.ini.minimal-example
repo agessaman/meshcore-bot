@@ -199,6 +199,10 @@ monitor_channels = general,test,emergency
 # false: Bot will ignore direct messages
 respond_to_dms = true
 
+# Optional: limit channel responses to certain keywords (e.g. help,ping,test).
+# When set, only these triggers work in channels; DMs get all triggers.
+# channel_keywords =
+
 [Banned_Users]
 # List of banned sender names (comma-separated). Matching is prefix (starts-with):
 # "Awful Username" also matches "Awful Username 🍆". No bot responses in channels or DMs.

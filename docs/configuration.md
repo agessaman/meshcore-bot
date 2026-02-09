@@ -14,11 +14,19 @@ The main sections include:
 |--------|---------|
 | `[Bot]` | Bot name, database path, response toggles, command prefix |
 | `[Connection]` | Serial, BLE, or TCP connection to the MeshCore device |
-| `[Channels]` | Channels to monitor, DM behavior |
+| `[Channels]` | Channels to monitor, DM behavior, optional channel keyword whitelist |
 | `[Admin_ACL]` | Admin public keys and admin-only commands |
 | `[Keywords]` | Keyword → response pairs |
 | `[Weather]` | Units and settings shared by `wx` / `gwx` and Weather Service |
 | `[Logging]` | Log file path and level |
+
+## Channels section
+
+`[Channels]` controls where the bot responds:
+
+- **`monitor_channels`** – Comma-separated channel names. The bot only responds to messages on these channels (and in DMs if enabled).
+- **`respond_to_dms`** – If `true`, the bot responds to direct messages; if `false`, it ignores DMs.
+- **`channel_keywords`** – Optional. When set (comma-separated command/keyword names), only those triggers are answered **in channels**; DMs always get all triggers. Use this to reduce channel traffic by making heavy triggers (e.g. `wx`, `satpass`, `joke`) DM-only. Leave empty or omit to allow all triggers in monitored channels. Per-command **`channels = `** (empty) in a command’s section also forces that command to be DM-only; see `config.ini.example` for examples (e.g. `[Joke_Command]`).
 
 ## Command and feature sections
 

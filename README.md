@@ -182,6 +182,8 @@ help = "Bot Help: test, ping, help, hello, cmd, wx, aqi, sun, moon, solar, hfcon
 [Channels]
 monitor_channels = general,test,emergency  # Channels to monitor
 respond_to_dms = true                      # Enable DM responses
+# Optional: limit channel responses to certain keywords (DM gets all triggers)
+# channel_keywords = help,ping,test,hello
 ```
 
 ### External Data APIs

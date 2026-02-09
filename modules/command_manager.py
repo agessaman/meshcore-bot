@@ -83,6 +83,7 @@ class CommandManager:
         self.custom_syntax = self.load_custom_syntax()
         self.banned_users = self.load_banned_users()
         self.monitor_channels = self.load_monitor_channels()
+        self.channel_keywords = self.load_channel_keywords()
         self.command_prefix = self.load_command_prefix()
         
         # Initialize plugin loader and load all plugins
@@ -391,6 +392,27 @@ class CommandManager:
         channels = self.bot.config.get('Channels', 'monitor_channels', fallback='')
         return [channel.strip() for channel in channels.split(',') if channel.strip()]
     
+    def load_channel_keywords(self) -> Optional[List[str]]:
+        """Load channel keyword whitelist from config.
+        
+        When set, only these triggers (command/keyword names) are answered in channels;
+        DMs always get all triggers. Use to reduce channel floods by making heavy
+        triggers DM-only. Names are case-insensitive.
+        """
+        raw = self.bot.config.get('Channels', 'channel_keywords', fallback='').strip()
+        if not raw:
+            return None
+        return [k.strip().lower() for k in raw.split(',') if k.strip()]
+    
+    def _is_channel_trigger_allowed(self, trigger: str, message: MeshMessage) -> bool:
+        """Return True if this trigger is allowed for the message context.
+        When channel_keywords is set, channel messages only allow listed triggers."""
+        if message.is_dm:
+            return True
+        if self.channel_keywords is None:
+            return True
+        return trigger.lower() in self.channel_keywords
+    
     def load_command_prefix(self) -> str:
         """Load command prefix from config.
         
@@ -467,6 +489,9 @@ class CommandManager:
                     # For channel messages, check if channel is in monitor_channels
                     if message.channel not in self.monitor_channels:
                         break  # Channel not monitored, skip help keyword
+                    # When channel_keywords is set, only allow listed triggers in channel
+                    if not self._is_channel_trigger_allowed('help', message):
+                        break
                 
                 # Channel check passed, process help request
                 if content_lower.startswith(help_keyword + ' '):
@@ -505,6 +530,10 @@ class CommandManager:
                         # Skip this command - don't add to matches
                         continue
                 
+                # When channel_keywords is set, only allow listed triggers in channel
+                if not self._is_channel_trigger_allowed(command_name, message):
+                    continue
+                
                 # Get response format and generate response
                 response_format = command.get_response_format()
                 if response_format:
@@ -530,6 +559,9 @@ class CommandManager:
                 # For channel messages, check if channel is in monitor_channels
                 if message.channel not in self.monitor_channels:
                     continue  # Channel not monitored, skip this keyword
+                # When channel_keywords is set, only allow listed triggers in channel
+                if not self._is_channel_trigger_allowed(keyword, message):
+                    continue
             
             keyword_lower = keyword.lower()
             

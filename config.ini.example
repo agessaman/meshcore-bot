@@ -137,6 +137,16 @@ monitor_channels = general,test,emergency
 # false: Bot will ignore direct messages
 respond_to_dms = true
 
+# Limit channel responses to certain keywords (optional)
+# When set, only these triggers (command/keyword names) are answered in channels;
+# DMs always get all triggers. Use to reduce channel floods by making heavy
+# triggers (wx, satpass, joke, etc.) DM-only. Names are case-insensitive.
+# Leave empty or omit to allow all triggers in monitored channels.
+# Interaction: Commands with per-command "channels = " (empty) are already DM-only;
+# channel_keywords is a global whitelist for channel. Both can be used together.
+# Example: channel_keywords = help,ping,test,hello
+# channel_keywords =
+
 [Banned_Users]
 # List of banned sender names (comma-separated). Matching is prefix (starts-with):
 # "Awful Username" also matches "Awful Username 🍆". No bot responses in channels or DMs.

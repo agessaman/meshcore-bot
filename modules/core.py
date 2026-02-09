@@ -352,6 +352,7 @@ class MeshCoreBot:
                 self.command_manager.custom_syntax = self.command_manager.load_custom_syntax()
                 self.command_manager.banned_users = self.command_manager.load_banned_users()
                 self.command_manager.monitor_channels = self.command_manager.load_monitor_channels()
+                self.command_manager.channel_keywords = self.command_manager.load_channel_keywords()
                 self.logger.info("Command manager config reloaded")
             
             # Update scheduler (scheduled messages)
