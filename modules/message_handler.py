@@ -2895,10 +2895,15 @@ class MessageHandler:
                 
                 # Send response (pass command_id so transmission record uses it directly)
                 try:
+                    rate_limit_key = self.bot.command_manager.get_rate_limit_key(message)
                     if message.is_dm:
-                        success = await self.bot.command_manager.send_dm(message.sender_id, response, command_id)
+                        success = await self.bot.command_manager.send_dm(
+                            message.sender_id, response, command_id, rate_limit_key=rate_limit_key
+                        )
                     else:
-                        success = await self.bot.command_manager.send_channel_message(message.channel, response, command_id)
+                        success = await self.bot.command_manager.send_channel_message(
+                            message.channel, response, command_id, rate_limit_key=rate_limit_key
+                        )
                     
                     if not success:
                         self.logger.warning(f"Failed to send keyword response for '{keyword}' to {message.sender_id if message.is_dm else message.channel}")

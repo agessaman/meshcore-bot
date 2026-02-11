@@ -7,7 +7,7 @@ A Python bot that connects to MeshCore mesh networks via serial port, BLE, or TC
 - **Connection Methods**: Serial port, BLE (Bluetooth Low Energy), or TCP/IP
 - **Keyword Responses**: Configurable keyword-response pairs with template variables
 - **Command System**: Plugin-based command architecture with built-in commands
-- **Rate Limiting**: Configurable rate limiting to prevent network spam
+- **Rate Limiting**: Global, per-user (by pubkey or name), and bot transmission rate limits to prevent spam
 - **User Management**: Ban/unban users with persistent storage
 - **Scheduled Messages**: Send messages at configured times
 - **Direct Message Support**: Respond to private messages
@@ -164,7 +164,10 @@ timeout = 30                      # Connection timeout
 [Bot]
 bot_name = MeshCoreBot            # Bot identification name
 enabled = true                    # Enable/disable bot
-rate_limit_seconds = 2            # Rate limiting interval
+rate_limit_seconds = 2            # Global: min seconds between any bot reply
+bot_tx_rate_limit_seconds = 1.0   # Min seconds between bot transmissions
+per_user_rate_limit_seconds = 5   # Per-user: min seconds between replies to same user (pubkey or name)
+per_user_rate_limit_enabled = true
 startup_advert = flood            # Send advert on startup
 ```
 
@@ -333,7 +336,9 @@ help = "Bot Help: test, ping, help, hello, cmd, wx, gwx, aqi, sun, moon, solar, 
    - Check meshcore library documentation for protocol details
 
 5. **Rate Limiting**:
-   - Adjust `rate_limit_seconds` in config
+   - **Global**: `rate_limit_seconds` — minimum time between any two bot replies
+   - **Per-user**: `per_user_rate_limit_seconds` and `per_user_rate_limit_enabled` — minimum time between replies to the same user (user identified by public key when available, else sender name; channel senders often matched by name)
+   - **Bot TX**: `bot_tx_rate_limit_seconds` — minimum time between bot transmissions on the mesh
    - Check logs for rate limiting messages
 
 ### Debug Mode

@@ -6,7 +6,55 @@ Controls how often messages can be sent to prevent spam
 
 import time
 import asyncio
-from typing import Optional
+from typing import Optional, Dict, List
+
+
+class PerUserRateLimiter:
+    """Per-user rate limiting: minimum seconds between bot replies to the same user.
+
+    User identity is keyed by rate_limit_key (pubkey when available, else sender name).
+    The key map is bounded by max_entries; eviction of oldest entries may allow a
+    previously rate-limited user to send again slightly earlier.
+    """
+
+    def __init__(self, seconds: float, max_entries: int = 1000):
+        self.seconds = seconds
+        self.max_entries = max_entries
+        self._last_send: Dict[str, float] = {}
+        self._order: List[str] = []  # keys in insertion order for oldest-first eviction
+
+    def _evict_if_needed(self, new_key: str) -> None:
+        """Evict oldest entry if at capacity and new_key is not already present."""
+        if new_key in self._last_send:
+            return
+        while len(self._last_send) >= self.max_entries and self._order:
+            oldest = self._order.pop(0)
+            self._last_send.pop(oldest, None)
+
+    def can_send(self, key: str) -> bool:
+        """Check if we can send a message to this user (key)."""
+        if not key:
+            return True
+        last = self._last_send.get(key, 0)
+        return time.time() - last >= self.seconds
+
+    def time_until_next(self, key: str) -> float:
+        """Get time until next allowed send for this user."""
+        if not key:
+            return 0.0
+        last = self._last_send.get(key, 0)
+        elapsed = time.time() - last
+        return max(0.0, self.seconds - elapsed)
+
+    def record_send(self, key: str) -> None:
+        """Record that we sent a message to this user."""
+        if not key:
+            return
+        self._evict_if_needed(key)
+        self._last_send[key] = time.time()
+        if key in self._order:
+            self._order.remove(key)
+        self._order.append(key)
 
 
 class RateLimiter:

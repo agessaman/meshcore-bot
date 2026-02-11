@@ -254,7 +254,13 @@ class CommandManager:
             self.logger.debug(f"Applying {self.bot.tx_delay_ms}ms transmission delay")
             await asyncio.sleep(self.bot.tx_delay_ms / 1000.0)
     
-    async def _check_rate_limits(self, skip_user_rate_limit: bool = False) -> Tuple[bool, str]:
+    def get_rate_limit_key(self, message: MeshMessage) -> Optional[str]:
+        """Return the key used for per-user rate limiting (pubkey when available, else sender name)."""
+        return message.sender_pubkey or message.sender_id or None
+    
+    async def _check_rate_limits(
+        self, skip_user_rate_limit: bool = False, rate_limit_key: Optional[str] = None
+    ) -> Tuple[bool, str]:
         """Check all rate limits before sending.
         
         Checks both the user-specific rate limits and the global bot transmission
@@ -262,21 +268,28 @@ class CommandManager:
         
         Args:
             skip_user_rate_limit: If True, skip the user rate limiter check (for automated responses).
+            rate_limit_key: Optional key for per-user rate limit (e.g. from get_rate_limit_key(message)).
         
         Returns:
             Tuple[bool, str]: A tuple containing:
                 - can_send: True if the message can be sent, False otherwise.
                 - reason: Reason string if rate limited, empty string otherwise.
         """
-        # Check user rate limiter (unless skipped for automated responses)
+        # Check global user rate limiter (unless skipped for automated responses)
         if not skip_user_rate_limit:
             if not self.bot.rate_limiter.can_send():
                 wait_time = self.bot.rate_limiter.time_until_next()
-                # Only log warning if there's a meaningful wait time (> 0.1 seconds)
-                # This avoids misleading "Wait 0.0 seconds" messages from timing edge cases
                 if wait_time > 0.1:
                     return False, f"Rate limited. Wait {wait_time:.1f} seconds"
-                return False, ""  # Still rate limited, just don't log for very short waits
+                return False, ""
+            # Per-user rate limit when enabled and key present
+            if getattr(self.bot, 'per_user_rate_limit_enabled', False) and rate_limit_key:
+                per_user = getattr(self.bot, 'per_user_rate_limiter', None)
+                if per_user and not per_user.can_send(rate_limit_key):
+                    wait_time = per_user.time_until_next(rate_limit_key)
+                    if wait_time > 0.1:
+                        return False, f"Rate limited. Wait {wait_time:.1f} seconds"
+                    return False, ""
         
         # Wait for bot TX rate limiter
         await self.bot.bot_tx_rate_limiter.wait_for_tx()
@@ -286,7 +299,14 @@ class CommandManager:
         
         return True, ""
     
-    def _handle_send_result(self, result, operation_name: str, target: str, used_retry_method: bool = False) -> bool:
+    def _handle_send_result(
+        self,
+        result,
+        operation_name: str,
+        target: str,
+        used_retry_method: bool = False,
+        rate_limit_key: Optional[str] = None,
+    ) -> bool:
         """Handle result from message send operations.
         
         Args:
@@ -294,6 +314,7 @@ class CommandManager:
             operation_name: Name of the operation ("DM" or "Channel message").
             target: Recipient name or channel name for logging.
             used_retry_method: True if send_msg_with_retry was used (affects logging).
+            rate_limit_key: Optional key for per-user rate limit recording.
         
         Returns:
             bool: True if send succeeded (ACK received or sent successfully), False otherwise.
@@ -318,6 +339,10 @@ class CommandManager:
                     self.logger.info(f"✅ {operation_name} sent to {target}")
                 self.bot.rate_limiter.record_send()
                 self.bot.bot_tx_rate_limiter.record_tx()
+                if getattr(self.bot, 'per_user_rate_limit_enabled', False) and rate_limit_key:
+                    per_user = getattr(self.bot, 'per_user_rate_limiter', None)
+                    if per_user:
+                        per_user.record_send(rate_limit_key)
                 return True
             
             # Handle unexpected event types
@@ -331,6 +356,10 @@ class CommandManager:
                     self.logger.warning(f"Channel message sent to {target} but confirmation event not received (message may have been sent)")
                     self.bot.rate_limiter.record_send()
                     self.bot.bot_tx_rate_limiter.record_tx()
+                    if getattr(self.bot, 'per_user_rate_limit_enabled', False) and rate_limit_key:
+                        per_user = getattr(self.bot, 'per_user_rate_limiter', None)
+                        if per_user:
+                            per_user.record_send(rate_limit_key)
                     return True
             
             # Unknown event type - log warning
@@ -341,6 +370,10 @@ class CommandManager:
         self.logger.info(f"✅ {operation_name} sent to {target} (result: {result})")
         self.bot.rate_limiter.record_send()
         self.bot.bot_tx_rate_limiter.record_tx()
+        if getattr(self.bot, 'per_user_rate_limit_enabled', False) and rate_limit_key:
+            per_user = getattr(self.bot, 'per_user_rate_limiter', None)
+            if per_user:
+                per_user.record_send(rate_limit_key)
         return True
     
     def load_keywords(self) -> Dict[str, str]:
@@ -619,7 +652,14 @@ class CommandManager:
             if stats_command:
                 stats_command.record_command(message, 'advert', response_sent)
     
-    async def send_dm(self, recipient_id: str, content: str, command_id: Optional[str] = None, skip_user_rate_limit: bool = False) -> bool:
+    async def send_dm(
+        self,
+        recipient_id: str,
+        content: str,
+        command_id: Optional[str] = None,
+        skip_user_rate_limit: bool = False,
+        rate_limit_key: Optional[str] = None,
+    ) -> bool:
         """Send a direct message using meshcore-cli command.
         
         Handles contact lookup, rate limiting, and uses retry logic if available.
@@ -628,6 +668,8 @@ class CommandManager:
             recipient_id: The recipient's name or ID.
             content: The message content to send.
             command_id: Optional command_id for repeat tracking (if not provided, one will be generated).
+            skip_user_rate_limit: If True, skip user rate limiter checks (for automated responses).
+            rate_limit_key: Optional key for per-user rate limiting (e.g. from get_rate_limit_key(message)).
             
         Returns:
             bool: True if sent successfully, False otherwise.
@@ -636,7 +678,9 @@ class CommandManager:
             return False
         
         # Check all rate limits
-        can_send, reason = await self._check_rate_limits(skip_user_rate_limit=skip_user_rate_limit)
+        can_send, reason = await self._check_rate_limits(
+            skip_user_rate_limit=skip_user_rate_limit, rate_limit_key=rate_limit_key
+        )
         if not can_send:
             if reason:
                 self.logger.warning(reason)
@@ -704,13 +748,22 @@ class CommandManager:
                                hasattr(self.bot.meshcore.commands, 'send_msg_with_retry'))
             
             # Handle result using unified handler
-            return self._handle_send_result(result, "DM", contact_name, used_retry_method)
+            return self._handle_send_result(
+                result, "DM", contact_name, used_retry_method, rate_limit_key=rate_limit_key
+            )
                 
         except Exception as e:
             self.logger.error(f"Failed to send DM: {e}")
             return False
     
-    async def send_channel_message(self, channel: str, content: str, command_id: Optional[str] = None, skip_user_rate_limit: bool = False) -> bool:
+    async def send_channel_message(
+        self,
+        channel: str,
+        content: str,
+        command_id: Optional[str] = None,
+        skip_user_rate_limit: bool = False,
+        rate_limit_key: Optional[str] = None,
+    ) -> bool:
         """Send a channel message using meshcore-cli command.
         
         Resolves channel names to numbers and handles rate limiting.
@@ -719,6 +772,8 @@ class CommandManager:
             channel: The channel name (e.g., "LongFast").
             content: The message content to send.
             command_id: Optional command_id for repeat tracking (if not provided, one will be generated).
+            skip_user_rate_limit: If True, skip user rate limiter checks (for automated responses).
+            rate_limit_key: Optional key for per-user rate limiting (e.g. from get_rate_limit_key(message)).
             
         Returns:
             bool: True if sent successfully, False otherwise.
@@ -727,7 +782,9 @@ class CommandManager:
             return False
         
         # Check all rate limits
-        can_send, reason = await self._check_rate_limits(skip_user_rate_limit=skip_user_rate_limit)
+        can_send, reason = await self._check_rate_limits(
+            skip_user_rate_limit=skip_user_rate_limit, rate_limit_key=rate_limit_key
+        )
         if not can_send:
             if reason:
                 self.logger.warning(reason)
@@ -765,7 +822,9 @@ class CommandManager:
             
             # Handle result using unified handler
             target = f"{channel} (channel {channel_num})"
-            return self._handle_send_result(result, "Channel message", target)
+            return self._handle_send_result(
+                result, "Channel message", target, rate_limit_key=rate_limit_key
+            )
                 
         except Exception as e:
             self.logger.error(f"Failed to send channel message: {e}")
@@ -928,10 +987,19 @@ class CommandManager:
             else:
                 self._last_response = content
             
+            rate_limit_key = self.get_rate_limit_key(message)
             if message.is_dm:
-                return await self.send_dm(message.sender_id, content, skip_user_rate_limit=skip_user_rate_limit)
+                return await self.send_dm(
+                    message.sender_id, content,
+                    skip_user_rate_limit=skip_user_rate_limit,
+                    rate_limit_key=rate_limit_key,
+                )
             else:
-                return await self.send_channel_message(message.channel, content, skip_user_rate_limit=skip_user_rate_limit)
+                return await self.send_channel_message(
+                    message.channel, content,
+                    skip_user_rate_limit=skip_user_rate_limit,
+                    rate_limit_key=rate_limit_key,
+                )
         except Exception as e:
             self.logger.error(f"Failed to send response: {e}")
             return False

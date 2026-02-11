@@ -67,6 +67,13 @@ rate_limit_seconds = 10
 # Prevents bot from overwhelming the mesh network
 bot_tx_rate_limit_seconds = 1.0
 
+# Per-user rate limit: minimum seconds between bot replies to the same user
+# User is identified by public key when available (DMs and channel when provided), else sender name
+# Channel senders are often matched by name only. Set to 0 or disable to effectively turn off per-user limiting
+per_user_rate_limit_seconds = 5
+# Enable or disable per-user rate limiting (true/false)
+per_user_rate_limit_enabled = true
+
 # Transmission delay in milliseconds before sending messages
 # Helps prevent message collisions on the mesh network
 # Recommended: 100-500ms for busy networks, 0 for quiet networks

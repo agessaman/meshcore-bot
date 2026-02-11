@@ -27,7 +27,7 @@ from meshcore import EventType
 from meshcore_cli.meshcore_cli import send_cmd, send_chan_msg
 
 # Import our modules
-from .rate_limiter import RateLimiter, BotTxRateLimiter, NominatimRateLimiter
+from .rate_limiter import RateLimiter, BotTxRateLimiter, PerUserRateLimiter, NominatimRateLimiter
 from .message_handler import MessageHandler
 from .command_manager import CommandManager
 from .channel_manager import ChannelManager
@@ -117,6 +117,14 @@ class MeshCoreBot:
         )
         self.bot_tx_rate_limiter = BotTxRateLimiter(
             self.config.getfloat('Bot', 'bot_tx_rate_limit_seconds', fallback=1.0)
+        )
+        # Per-user rate limiter: minimum seconds between replies to the same user (key = pubkey or name)
+        self.per_user_rate_limit_enabled = self.config.getboolean(
+            'Bot', 'per_user_rate_limit_enabled', fallback=True
+        )
+        self.per_user_rate_limiter = PerUserRateLimiter(
+            seconds=self.config.getfloat('Bot', 'per_user_rate_limit_seconds', fallback=5.0),
+            max_entries=1000
         )
         # Nominatim rate limiter: 1.1 seconds between requests (Nominatim policy: max 1 req/sec)
         self.nominatim_rate_limiter = NominatimRateLimiter(
@@ -318,6 +326,12 @@ class MeshCoreBot:
             
             new_bot_tx_rate_limit = self.config.getfloat('Bot', 'bot_tx_rate_limit_seconds', fallback=1.0)
             self.bot_tx_rate_limiter = BotTxRateLimiter(new_bot_tx_rate_limit)
+            
+            self.per_user_rate_limit_enabled = self.config.getboolean(
+                'Bot', 'per_user_rate_limit_enabled', fallback=True
+            )
+            new_per_user_seconds = self.config.getfloat('Bot', 'per_user_rate_limit_seconds', fallback=5.0)
+            self.per_user_rate_limiter = PerUserRateLimiter(seconds=new_per_user_seconds, max_entries=1000)
             
             new_nominatim_rate_limit = self.config.getfloat('Bot', 'nominatim_rate_limit_seconds', fallback=1.1)
             self.nominatim_rate_limiter = NominatimRateLimiter(new_nominatim_rate_limit)
