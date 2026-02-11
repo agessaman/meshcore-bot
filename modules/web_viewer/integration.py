@@ -30,17 +30,26 @@ class BotIntegration:
         self.circuit_breaker_open = False
         self.circuit_breaker_failures = 0
     
+    def _get_web_viewer_db_path(self):
+        """Get the web viewer database path, falling back to [Bot] db_path if [Web_Viewer] db_path is unset"""
+        # Use [Bot] db_path when [Web_Viewer] db_path is unset
+        bot_db = self.bot.config.get('Bot', 'db_path', fallback='meshcore_bot.db')
+        if (self.bot.config.has_section('Web_Viewer') and self.bot.config.has_option('Web_Viewer', 'db_path')
+                and self.bot.config.get('Web_Viewer', 'db_path', fallback='').strip()):
+            use_db = self.bot.config.get('Web_Viewer', 'db_path').strip()
+        else:
+            use_db = bot_db
+        # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
+        base_dir = self.bot.bot_root if hasattr(self.bot, 'bot_root') else '.'
+        return str(resolve_path(use_db, base_dir))
+    
     def _init_packet_stream_table(self):
-        """Initialize the packet_stream table in bot_data.db"""
+        """Initialize the packet_stream table in the database"""
         try:
             import sqlite3
             
-            # Get database path from config
-            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
-            
-            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
-            base_dir = self.bot.bot_root if hasattr(self.bot, 'bot_root') else '.'
-            db_path = resolve_path(db_path, base_dir)
+            # Get database path (falls back to [Bot] db_path if [Web_Viewer] db_path is unset)
+            db_path = self._get_web_viewer_db_path()
             
             # Connect to database and create table if it doesn't exist
             conn = sqlite3.connect(str(db_path), timeout=30.0)
@@ -109,10 +118,8 @@ class BotIntegration:
             serializable_data = self._make_json_serializable(packet_data)
             
             # Store in database for web viewer to read
-            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
-            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
-            base_dir = self.bot.bot_root if hasattr(self.bot, 'bot_root') else '.'
-            db_path = resolve_path(db_path, base_dir)
+            # Get database path (falls back to [Bot] db_path if [Web_Viewer] db_path is unset)
+            db_path = self._get_web_viewer_db_path()
             conn = sqlite3.connect(str(db_path), timeout=30.0)
             cursor = conn.cursor()
             
@@ -158,10 +165,8 @@ class BotIntegration:
             serializable_data = self._make_json_serializable(command_data)
             
             # Store in database for web viewer to read
-            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
-            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
-            base_dir = self.bot.bot_root if hasattr(self.bot, 'bot_root') else '.'
-            db_path = resolve_path(db_path, base_dir)
+            # Get database path (falls back to [Bot] db_path if [Web_Viewer] db_path is unset)
+            db_path = self._get_web_viewer_db_path()
             conn = sqlite3.connect(str(db_path), timeout=30.0)
             cursor = conn.cursor()
             
@@ -188,10 +193,8 @@ class BotIntegration:
             serializable_data = self._make_json_serializable(routing_data)
             
             # Store in database for web viewer to read
-            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
-            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
-            base_dir = self.bot.bot_root if hasattr(self.bot, 'bot_root') else '.'
-            db_path = resolve_path(db_path, base_dir)
+            # Get database path (falls back to [Bot] db_path if [Web_Viewer] db_path is unset)
+            db_path = self._get_web_viewer_db_path()
             conn = sqlite3.connect(str(db_path), timeout=30.0)
             cursor = conn.cursor()
             
@@ -215,10 +218,8 @@ class BotIntegration:
             
             cutoff_time = time.time() - (days_to_keep * 24 * 60 * 60)
             
-            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
-            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
-            base_dir = self.bot.bot_root if hasattr(self.bot, 'bot_root') else '.'
-            db_path = resolve_path(db_path, base_dir)
+            # Get database path (falls back to [Bot] db_path if [Web_Viewer] db_path is unset)
+            db_path = self._get_web_viewer_db_path()
             conn = sqlite3.connect(str(db_path), timeout=30.0)
             cursor = conn.cursor()
             

@@ -164,6 +164,17 @@ class BotDataViewer:
             
             return dict(greeter_enabled=greeter_enabled, feed_manager_enabled=feed_manager_enabled)
     
+    def _get_db_path(self):
+        """Get the database path, falling back to [Bot] db_path if [Web_Viewer] db_path is unset"""
+        # Use [Bot] db_path when [Web_Viewer] db_path is unset
+        bot_db = self.config.get('Bot', 'db_path', fallback='meshcore_bot.db')
+        if (self.config.has_section('Web_Viewer') and self.config.has_option('Web_Viewer', 'db_path')
+                and self.config.get('Web_Viewer', 'db_path', fallback='').strip()):
+            use_db = self.config.get('Web_Viewer', 'db_path').strip()
+        else:
+            use_db = bot_db
+        return str(resolve_path(use_db, self.bot_root))
+    
     def _init_databases(self):
         """Initialize database connections"""
         try:
@@ -442,11 +453,8 @@ class BotDataViewer:
                 # Get commands from last 60 minutes
                 cutoff_time = time.time() - (60 * 60)  # 60 minutes ago
                 
-                # Get database path
-                db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
-                
-                # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
-                db_path = resolve_path(db_path, self.bot_root)
+                # Get database path (falls back to [Bot] db_path if [Web_Viewer] db_path is unset)
+                db_path = self._get_db_path()
                 
                 with sqlite3.connect(db_path, timeout=30) as conn:
                     cursor = conn.cursor()
@@ -1519,10 +1527,8 @@ class BotDataViewer:
                     import json
                     
                     # Get database path (re-resolve on each iteration in case config changed)
-                    db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
-                    
-                    # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
-                    db_path = resolve_path(db_path, self.bot_root)
+                    # Falls back to [Bot] db_path if [Web_Viewer] db_path is unset
+                    db_path = self._get_db_path()
                     
                     # Check if database file exists and is accessible
                     db_file = Path(db_path)
@@ -1704,11 +1710,8 @@ class BotDataViewer:
             
             cutoff_time = time.time() - (days_to_keep * 24 * 60 * 60)
             
-            # Get database path
-            db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
-            
-            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
-            db_path = resolve_path(db_path, self.bot_root)
+            # Get database path (falls back to [Bot] db_path if [Web_Viewer] db_path is unset)
+            db_path = self._get_db_path()
             
             # Use shorter timeout and isolation_level for better concurrency
             conn = sqlite3.connect(db_path, timeout=10, isolation_level='DEFERRED')
@@ -2216,9 +2219,8 @@ class BotDataViewer:
             
             # Get database file size
             import os
-            db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
-            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
-            db_path = resolve_path(db_path, self.bot_root)
+            # Get database path (falls back to [Bot] db_path if [Web_Viewer] db_path is unset)
+            db_path = self._get_db_path()
             try:
                 db_size_bytes = os.path.getsize(db_path)
                 if db_size_bytes < 1024:
@@ -2274,9 +2276,8 @@ class BotDataViewer:
             
             # Get initial database size
             import os
-            db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
-            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
-            db_path = resolve_path(db_path, self.bot_root)
+            # Get database path (falls back to [Bot] db_path if [Web_Viewer] db_path is unset)
+            db_path = self._get_db_path()
             initial_size = os.path.getsize(db_path)
             
             # Perform VACUUM to reclaim unused space
