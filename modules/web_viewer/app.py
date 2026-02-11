@@ -73,7 +73,14 @@ class BotDataViewer:
         # Load configuration
         self.config = self._load_config(config_path)
         
-        self.db_path = self.config.get('Web_Viewer', 'db_path', fallback=db_path)
+        # Use [Bot] db_path when [Web_Viewer] db_path is unset
+        bot_db = self.config.get('Bot', 'db_path', fallback='meshcore_bot.db')
+        if (self.config.has_section('Web_Viewer') and self.config.has_option('Web_Viewer', 'db_path')
+                and self.config.get('Web_Viewer', 'db_path', fallback='').strip()):
+            use_db = self.config.get('Web_Viewer', 'db_path').strip()
+        else:
+            use_db = bot_db
+        self.db_path = str(resolve_path(use_db, self.bot_root))
 
         # Setup template context processor for global template variables
         self._setup_template_context()
@@ -191,14 +198,11 @@ class BotDataViewer:
             raise
     
     def _init_packet_stream_table(self):
-        """Initialize the packet_stream table in bot_data.db"""
+        """Initialize the packet_stream table in the database"""
         conn = None
         try:
-            # Get database path from config
-            db_path = self.config.get('Web_Viewer', 'db_path', fallback='bot_data.db')
-            
-            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
-            db_path = resolve_path(db_path, self.bot_root)
+            # Use the same database path that was set in __init__
+            db_path = self.db_path
             
             # Connect to database and create table if it doesn't exist
             with sqlite3.connect(db_path, timeout=30) as conn:
