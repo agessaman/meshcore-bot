@@ -380,9 +380,9 @@ class ModernDashboard {
             
             document.getElementById('connected-clients').textContent = healthData.connected_clients || 0;
             
-            // Store bot uptime for display
-            this.botStartTime = healthData.bot_uptime || 0;
-            
+            // Store bot uptime for display (null when bot not running / no start time in DB)
+            const rawUptime = healthData.bot_uptime;
+            this.botStartTime = (rawUptime != null && rawUptime > 0) ? rawUptime : null;
             // Update uptime display and restart live counter with fresh data
             this.updateUptime();
             this.startLiveUptime();
@@ -633,14 +633,12 @@ class ModernDashboard {
     
     updateUptime() {
         const uptimeElement = document.getElementById('uptime');
-        
-        if (this.botStartTime !== null) {
-            // Use bot uptime from API
-            const uptime = this.botStartTime;
-            this.formatUptime(uptime);
+        if (!uptimeElement) return;
+        if (this.botStartTime != null && this.botStartTime > 0) {
+            this.formatUptime(this.botStartTime);
         } else {
-            // Fallback to loading state
-            uptimeElement.textContent = 'Loading...';
+            // Bot not running or no start time in DB (e.g. viewer run standalone)
+            uptimeElement.textContent = 'Bot Down?';
         }
     }
     
@@ -670,15 +668,18 @@ class ModernDashboard {
         // Clear any existing uptime interval
         if (this.uptimeInterval) {
             clearInterval(this.uptimeInterval);
+            this.uptimeInterval = null;
         }
         
-        // Start live uptime counter that increments every second
-        this.uptimeInterval = setInterval(() => {
-            if (this.botStartTime !== null) {
-                this.botStartTime += 1; // Increment by 1 second
-                this.formatUptime(this.botStartTime);
-            }
-        }, 1000); // Update every second
+        // Only run live counter when we have a valid bot uptime (bot is running)
+        if (this.botStartTime != null && this.botStartTime > 0) {
+            this.uptimeInterval = setInterval(() => {
+                if (this.botStartTime != null) {
+                    this.botStartTime += 1;
+                    this.formatUptime(this.botStartTime);
+                }
+            }, 1000);
+        }
     }
     
     updateTimestamp() {
