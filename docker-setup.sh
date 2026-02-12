@@ -36,17 +36,16 @@ update_config() {
 
     awk -v section="$section" -v key="$key" -v value="$value" '
         /^\[/ {
+            # Emit missing key at end of target section before we update state
+            leaving_target = (in_section && need_add)
             in_section = ($0 == "[" section "]")
             need_add = in_section
+            if (leaving_target) { print key " = " value }
         }
         in_section && $0 ~ "^" key "[[:space:]]*=" {
             print key " = " value
             need_add = 0
             next
-        }
-        need_add && in_section && $0 !~ /^\[/ {
-            print key " = " value
-            need_add = 0
         }
         { print }
         END {

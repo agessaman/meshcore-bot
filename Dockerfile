@@ -54,9 +54,9 @@ ENV PATH=/home/meshcore/.local/bin:$PATH \
 # Switch to non-root user
 USER meshcore
 
-# Health check
+# Health check: verify the main process (PID 1, the bot) is still running
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python3 -c "import sys; sys.exit(0)" || exit 1
+    CMD ["sh", "-c", "kill -0 1"]
 
 # Default command
 CMD ["python3", "meshcore_bot.py", "--config", "/data/config/config.ini"]

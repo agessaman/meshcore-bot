@@ -211,68 +211,82 @@ class RepeaterManager:
             raise
     
     def _migrate_database_schema(self):
-        """Handle database schema migration for existing installations"""
-        try:
-            # Check if the new location columns exist in repeater_contacts
-            with sqlite3.connect(self.db_path, timeout=30.0) as conn:
-                cursor = conn.cursor()
-                cursor.execute("PRAGMA table_info(repeater_contacts)")
-                columns = [row[1] for row in cursor.fetchall()]
-                
-                # Add missing location columns if they don't exist
-                new_columns = [
-                    ('latitude', 'REAL'),
-                    ('longitude', 'REAL'),
-                    ('city', 'TEXT'),
-                    ('state', 'TEXT'),
-                    ('country', 'TEXT')
-                ]
-                
-                for column_name, column_type in new_columns:
-                    if column_name not in columns:
-                        self.logger.info(f"Adding missing column to repeater_contacts: {column_name}")
-                        cursor.execute(f"ALTER TABLE repeater_contacts ADD COLUMN {column_name} {column_type}")
+        """Handle database schema migration for existing installations.
+        Each table is migrated in isolation so one missing table or error does not block the rest.
+        Important for web viewer: migration runs when RepeaterManager is created, so contacts page
+        works for users who open the viewer without having started the bot after upgrade.
+        """
+        with sqlite3.connect(self.db_path, timeout=30.0) as conn:
+            cursor = conn.cursor()
+
+            # repeater_contacts: add location columns only if table exists
+            try:
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='repeater_contacts'")
+                if cursor.fetchone():
+                    cursor.execute("PRAGMA table_info(repeater_contacts)")
+                    columns = [row[1] for row in cursor.fetchall()]
+                    for column_name, column_type in [
+                        ('latitude', 'REAL'), ('longitude', 'REAL'), ('city', 'TEXT'),
+                        ('state', 'TEXT'), ('country', 'TEXT')
+                    ]:
+                        if column_name not in columns:
+                            self.logger.info(f"Adding missing column to repeater_contacts: {column_name}")
+                            cursor.execute(f"ALTER TABLE repeater_contacts ADD COLUMN {column_name} {column_type}")
+                            conn.commit()
+            except Exception as e:
+                self.logger.warning(f"Migration repeater_contacts: {e}")
+
+            # complete_contact_tracking: path columns and is_starred (required for contacts page)
+            try:
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='complete_contact_tracking'")
+                if cursor.fetchone():
+                    cursor.execute("PRAGMA table_info(complete_contact_tracking)")
+                    tracking_columns = [row[1] for row in cursor.fetchall()]
+                    for column_name, column_type in [
+                        ('out_path', 'TEXT'), ('out_path_len', 'INTEGER'), ('snr', 'REAL')
+                    ]:
+                        if column_name not in tracking_columns:
+                            self.logger.info(f"Adding missing column to complete_contact_tracking: {column_name}")
+                            cursor.execute(f"ALTER TABLE complete_contact_tracking ADD COLUMN {column_name} {column_type}")
+                            conn.commit()
+                    if 'is_starred' not in tracking_columns:
+                        self.logger.info("Adding is_starred column to complete_contact_tracking")
+                        cursor.execute("ALTER TABLE complete_contact_tracking ADD COLUMN is_starred BOOLEAN DEFAULT 0")
                         conn.commit()
-                
-                # Check if the new path columns exist in complete_contact_tracking
-                cursor.execute("PRAGMA table_info(complete_contact_tracking)")
-                tracking_columns = [row[1] for row in cursor.fetchall()]
-                
-                # Add missing path columns if they don't exist
-                path_columns = [
-                    ('out_path', 'TEXT'),
-                    ('out_path_len', 'INTEGER'),
-                    ('snr', 'REAL')
-                ]
-                
-                for column_name, column_type in path_columns:
-                    if column_name not in tracking_columns:
-                        self.logger.info(f"Adding missing column to complete_contact_tracking: {column_name}")
-                        cursor.execute(f"ALTER TABLE complete_contact_tracking ADD COLUMN {column_name} {column_type}")
-                        conn.commit()
-                
-                # Add is_starred column for path command bias
-                if 'is_starred' not in tracking_columns:
-                    self.logger.info("Adding is_starred column to complete_contact_tracking")
-                    cursor.execute("ALTER TABLE complete_contact_tracking ADD COLUMN is_starred BOOLEAN DEFAULT 0")
-                    conn.commit()
-                
-                # Check if observed_paths table exists and add packet_hash column if needed
+            except Exception as e:
+                self.logger.warning(f"Migration complete_contact_tracking: {e}")
+
+            # observed_paths: packet_hash
+            try:
                 cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='observed_paths'")
                 if cursor.fetchone():
                     cursor.execute("PRAGMA table_info(observed_paths)")
                     observed_paths_columns = [row[1] for row in cursor.fetchall()]
-                    
                     if 'packet_hash' not in observed_paths_columns:
                         self.logger.info("Adding packet_hash column to observed_paths")
                         cursor.execute("ALTER TABLE observed_paths ADD COLUMN packet_hash TEXT")
                         conn.commit()
-                        # Index will be created in _init_repeater_tables() after migration completes
-                
-                self.logger.info("Database schema migration completed")
-                
-        except Exception as e:
-            self.logger.error(f"Error during database schema migration: {e}")
+            except Exception as e:
+                self.logger.warning(f"Migration observed_paths: {e}")
+
+            # mesh_connections: graph/viewer columns
+            try:
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='mesh_connections'")
+                if cursor.fetchone():
+                    cursor.execute("PRAGMA table_info(mesh_connections)")
+                    mc_columns = [row[1] for row in cursor.fetchall()]
+                    for col_name, col_type in [
+                        ('from_public_key', 'TEXT'), ('to_public_key', 'TEXT'),
+                        ('avg_hop_position', 'REAL'), ('geographic_distance', 'REAL'),
+                    ]:
+                        if col_name not in mc_columns:
+                            self.logger.info(f"Adding missing column to mesh_connections: {col_name}")
+                            cursor.execute(f"ALTER TABLE mesh_connections ADD COLUMN {col_name} {col_type}")
+                            conn.commit()
+            except Exception as e:
+                self.logger.warning(f"Migration mesh_connections: {e}")
+
+        self.logger.info("Database schema migration completed")
     
     async def track_contact_advertisement(self, advert_data: Dict, signal_info: Dict = None, packet_hash: Optional[str] = None) -> bool:
         """Track any contact advertisement in the complete tracking database"""
