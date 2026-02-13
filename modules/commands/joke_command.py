@@ -56,8 +56,10 @@ class JokeCommand(BaseCommand):
         """
         super().__init__(bot)
         
-        # Load configuration (Joke_Command; legacy [Jokes] supported via get_config_value)
-        self.joke_enabled = self.get_config_value('Joke_Command', 'joke_enabled', fallback=True, value_type='bool')
+        # Load configuration (enabled standard; joke_enabled legacy from [Joke_Command] or [Jokes])
+        self.joke_enabled = self.get_config_value('Joke_Command', 'enabled', fallback=None, value_type='bool')
+        if self.joke_enabled is None:
+            self.joke_enabled = self.get_config_value('Joke_Command', 'joke_enabled', fallback=True, value_type='bool')
         self.seasonal_jokes = self.get_config_value('Joke_Command', 'seasonal_jokes', fallback=True, value_type='bool')
         self.long_jokes = self.get_config_value('Joke_Command', 'long_jokes', fallback=False, value_type='bool')
     

@@ -213,10 +213,20 @@ def validate_config(config_path: str) -> List[Tuple[str, str]]:
         # Check typo map for known non-standard names
         if section_stripped in SECTION_TYPO_MAP:
             suggestion = SECTION_TYPO_MAP[section_stripped]
-            results.append((
-                SEVERITY_WARNING,
-                f"Non-standard section [{section_stripped}]; did you mean [{suggestion}]?",
-            ))
+            # Special case: [Jokes] + [Joke_Command]/[DadJoke_Command] overlap
+            if section_stripped == "Jokes" and (
+                "Joke_Command" in sections_present or "DadJoke_Command" in sections_present
+            ):
+                results.append((
+                    SEVERITY_WARNING,
+                    "Both [Jokes] and [Joke_Command]/[DadJoke_Command] are present; "
+                    "the *_Command sections take precedence. Consider removing [Jokes] to avoid confusion.",
+                ))
+            else:
+                results.append((
+                    SEVERITY_WARNING,
+                    f"Non-standard section [{section_stripped}]; did you mean [{suggestion}]?",
+                ))
         else:
             # Check if section looks like a command name (e.g. [Stats] -> [Stats_Command])
             if prefix_to_section is None:

@@ -41,8 +41,10 @@ class DadJokeCommand(BaseCommand):
         """
         super().__init__(bot)
         
-        # Load configuration (DadJoke_Command; legacy [Jokes] supported via get_config_value)
-        self.dadjoke_enabled = self.get_config_value('DadJoke_Command', 'dadjoke_enabled', fallback=True, value_type='bool')
+        # Load configuration (enabled standard; dadjoke_enabled legacy from [DadJoke_Command] or [Jokes])
+        self.dadjoke_enabled = self.get_config_value('DadJoke_Command', 'enabled', fallback=None, value_type='bool')
+        if self.dadjoke_enabled is None:
+            self.dadjoke_enabled = self.get_config_value('DadJoke_Command', 'dadjoke_enabled', fallback=True, value_type='bool')
         self.long_jokes = self.get_config_value('DadJoke_Command', 'long_jokes', fallback=False, value_type='bool')
     
     def get_help_text(self) -> str:

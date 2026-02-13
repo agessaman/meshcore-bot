@@ -119,6 +119,37 @@ enabled = true
         infos = [r for r in results if r[0] == SEVERITY_INFO]
         assert any("Stats" in r[1] and "Stats_Command" in r[1] for r in infos)
 
+    def test_jokes_overlap_suggests_removal(self, tmp_path):
+        """When both [Jokes] and [Joke_Command]/[DadJoke_Command] exist, suggest removing [Jokes]."""
+        config = tmp_path / "config.ini"
+        config.write_text("""[Connection]
+connection_type = serial
+serial_port = /dev/ttyUSB0
+
+[Bot]
+bot_name = TestBot
+db_path = {db_path}
+
+[Channels]
+monitor_channels = general
+respond_to_dms = true
+
+[Jokes]
+joke_enabled = true
+
+[Joke_Command]
+enabled = true
+
+[Keywords]
+test = ack
+""".format(db_path=str(tmp_path / "meshcore_bot.db")))
+        results = validate_config(str(config))
+        warnings = [r for r in results if r[0] == SEVERITY_WARNING]
+        assert any(
+            "Both [Jokes]" in r[1] and "Consider removing [Jokes]" in r[1]
+            for r in warnings
+        )
+
 
 class TestPathValidation:
     """Tests for path writability validation."""

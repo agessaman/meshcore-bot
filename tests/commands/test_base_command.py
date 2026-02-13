@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 from modules.commands.base_command import BaseCommand
 from modules.commands.ping_command import PingCommand
 from modules.commands.dadjoke_command import DadJokeCommand
+from modules.commands.joke_command import JokeCommand
 from modules.models import MeshMessage
 from tests.conftest import mock_message
 
@@ -87,6 +88,41 @@ class TestGetConfigValue:
         cmd = _TestCommand(command_mock_bot)
         val = cmd.get_config_value("Hacker_Command", "enabled", fallback=False, value_type="bool")
         assert val is True
+
+    def test_joke_command_enabled_standard(self, command_mock_bot):
+        """Joke_Command uses enabled (standard) when present."""
+        command_mock_bot.config.add_section("Joke_Command")
+        command_mock_bot.config.set("Joke_Command", "enabled", "false")
+        cmd = JokeCommand(command_mock_bot)
+        assert cmd.joke_enabled is False
+
+    def test_joke_command_joke_enabled_legacy(self, command_mock_bot):
+        """Joke_Command falls back to joke_enabled when enabled absent."""
+        command_mock_bot.config.add_section("Joke_Command")
+        command_mock_bot.config.set("Joke_Command", "joke_enabled", "false")
+        cmd = JokeCommand(command_mock_bot)
+        assert cmd.joke_enabled is False
+
+    def test_joke_command_legacy_jokes_section(self, command_mock_bot):
+        """Joke_Command reads joke_enabled from legacy [Jokes] when enabled absent."""
+        command_mock_bot.config.add_section("Jokes")
+        command_mock_bot.config.set("Jokes", "joke_enabled", "false")
+        cmd = JokeCommand(command_mock_bot)
+        assert cmd.joke_enabled is False
+
+    def test_dadjoke_command_enabled_standard(self, command_mock_bot):
+        """DadJoke_Command uses enabled (standard) when present."""
+        command_mock_bot.config.add_section("DadJoke_Command")
+        command_mock_bot.config.set("DadJoke_Command", "enabled", "false")
+        cmd = DadJokeCommand(command_mock_bot)
+        assert cmd.dadjoke_enabled is False
+
+    def test_dadjoke_command_dadjoke_enabled_legacy(self, command_mock_bot):
+        """DadJoke_Command falls back to dadjoke_enabled when enabled absent."""
+        command_mock_bot.config.add_section("DadJoke_Command")
+        command_mock_bot.config.set("DadJoke_Command", "dadjoke_enabled", "false")
+        cmd = DadJokeCommand(command_mock_bot)
+        assert cmd.dadjoke_enabled is False
 
 
 class TestCanExecute:

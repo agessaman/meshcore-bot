@@ -232,7 +232,7 @@ companion_min_inactive_days = 30
 # Enable or disable the joke command
 # true: Joke command is available (default)
 # false: Joke command is disabled
-joke_enabled = true
+enabled = true
 
 # Enable seasonal joke defaults (October: spooky, December: Christmas)
 # true: Seasonal defaults are applied (default)
@@ -245,13 +245,13 @@ seasonal_jokes = true
 long_jokes = false
 
 # Channels where joke command is allowed (omit to use global monitor_channels)
-# channels = general,#bot,#jokes
+# channels = #bot,#jokes
 
 [DadJoke_Command]
 # Enable or disable the dad joke command
 # true: Dad joke command is available (default)
 # false: Dad joke command is disabled
-dadjoke_enabled = true
+enabled = true
 
 # Handle long jokes (over 130 characters)
 # false: Fetch new jokes until we get a short one (default)
@@ -259,7 +259,7 @@ dadjoke_enabled = true
 long_jokes = false
 
 # Channels where dadjoke command is allowed (omit to use global monitor_channels)
-# channels = general,#bot,#jokes
+# channels = #bot,#jokes
 
 [Keywords]
 # Available placeholders (message-based):
@@ -548,95 +548,6 @@ precipitation_unit = inch
 #
 # Note: Only one 'default' source can be set per provider type.
 # Future providers (e.g., custom.pwaweather.location) will follow the same pattern.
-
-# Command stubs (enable/channels only; omit to use global monitor_channels)
-[Wx_Command]
-enabled = true
-# channels =
-
-[WebViewer_Command]
-enabled = true
-# channels =
-
-[Sun_Command]
-enabled = true
-# channels =
-
-[Solar_Command]
-enabled = true
-# channels =
-
-[Solarforecast_Command]
-enabled = true
-# channels =
-
-[Satpass_Command]
-enabled = true
-# channels =
-
-[Roll_Command]
-enabled = true
-# channels =
-
-[Repeater_Command]
-enabled = true
-# channels =
-
-[Ping_Command]
-enabled = true
-# channels =
-
-[Moon_Command]
-enabled = true
-# channels =
-
-[Magic8_Command]
-enabled = true
-# channels =
-
-[Hfcond_Command]
-enabled = true
-# channels =
-
-[Help_Command]
-enabled = true
-# channels =
-
-[Hello_Command]
-enabled = true
-# channels =
-
-[Dice_Command]
-enabled = true
-# channels =
-
-[Cmd_Command]
-enabled = true
-# channels =
-
-[Channels_Command]
-enabled = true
-# channels =
-
-[Catfact_Command]
-enabled = true
-# channels =
-
-[Aqi_Command]
-enabled = true
-# channels =
-
-[Advert_Command]
-enabled = true
-# channels =
-
-[Test_Command]
-enabled = true
-# channels =
-
-[Feed_Command]
-enabled = true
-# channels =
 
 [Solar_Config]
 # URL timeout for external API calls (seconds)
@@ -1097,6 +1008,104 @@ max_results = 10
 
 # API request timeout in seconds
 url_timeout = 10
+
+# Command stubs (enable/channels only; omit to use global monitor_channels)
+[Wx_Command]
+enabled = true
+# channels =
+
+[WebViewer_Command]
+enabled = true
+# channels =
+
+[Sun_Command]
+enabled = true
+# channels =
+
+[Solar_Command]
+enabled = true
+# channels =
+
+[Solarforecast_Command]
+enabled = true
+# channels =
+
+[Satpass_Command]
+enabled = true
+# channels =
+
+[Roll_Command]
+enabled = true
+# channels =
+
+[Repeater_Command]
+enabled = true
+# channels =
+
+[Ping_Command]
+enabled = true
+# channels =
+
+[Moon_Command]
+enabled = true
+# channels =
+
+[Magic8_Command]
+enabled = true
+# channels =
+
+[Hfcond_Command]
+enabled = true
+# channels =
+
+[Help_Command]
+enabled = true
+# channels =
+
+[Hello_Command]
+enabled = true
+# channels =
+
+[Dice_Command]
+enabled = true
+# channels =
+
+[Cmd_Command]
+enabled = true
+# channels =
+
+[Channels_Command]
+enabled = true
+# channels =
+
+[Catfact_Command]
+enabled = true
+# channels =
+
+[Aqi_Command]
+enabled = true
+# channels =
+
+[Advert_Command]
+enabled = true
+# channels =
+
+[Test_Command]
+enabled = true
+# channels =
+
+[Feed_Command]
+enabled = false
+# channels =
+
+####################################################################################################
+#                                                                                                  #
+#                                       Web Viewer Configuration                                   #
+#                                                                                                  #
+#                             Settings for web administration backend                              #
+#                                                                                                  #
+####################################################################################################
+
 
 [Web_Viewer]
 # Enable or disable the web data viewer

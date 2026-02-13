@@ -373,10 +373,11 @@ enabled = false
 # Enable or disable the cmd command
 enabled = false
 
-[Jokes]
-# Enable or disable joke commands
-joke_enabled = false
-dadjoke_enabled = false
+[Joke_Command]
+enabled = false
+
+[DadJoke_Command]
+enabled = false
 
 [Sports_Command]
 # Enable or disable the sports command

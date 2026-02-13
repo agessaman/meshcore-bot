@@ -105,6 +105,11 @@ class BaseCommand(ABC):
             'Weather': 'Wx_Command',  # wx command reads from [Wx_Command]; [Weather] is legacy
         }
         # Legacy [Jokes] -> [Joke_Command] / [DadJoke_Command]: (requested_section, key) -> legacy section
+        # For 'enabled', also try legacy key in [Jokes]: (section, key) -> (legacy_section, legacy_key)
+        legacy_key_alias = {
+            ('Joke_Command', 'enabled'): ('Jokes', 'joke_enabled'),
+            ('DadJoke_Command', 'enabled'): ('Jokes', 'dadjoke_enabled'),
+        }
         legacy_section_fallback = {
             ('Joke_Command', 'joke_enabled'): 'Jokes',
             ('Joke_Command', 'seasonal_jokes'): 'Jokes',
@@ -169,6 +174,27 @@ class BaseCommand(ABC):
                 except Exception as e:
                     self.logger.debug(f"Error reading config {sec}.{key}: {e}")
                     continue
+        
+        # Try legacy key alias (e.g. [Jokes] joke_enabled when requesting Joke_Command enabled)
+        alias = legacy_key_alias.get((section, key))
+        if alias:
+            legacy_sec, legacy_key = alias
+            if self.bot.config.has_section(legacy_sec) and self.bot.config.has_option(legacy_sec, legacy_key):
+                try:
+                    if value_type == 'bool':
+                        value = self.bot.config.getboolean(legacy_sec, legacy_key, fallback=fallback)
+                    elif value_type == 'int':
+                        value = self.bot.config.getint(legacy_sec, legacy_key, fallback=fallback)
+                    elif value_type == 'float':
+                        value = self.bot.config.getfloat(legacy_sec, legacy_key, fallback=fallback)
+                    elif value_type == 'list':
+                        raw = self.bot.config.get(legacy_sec, legacy_key)
+                        value = [item.strip() for item in raw.split(',') if item.strip()]
+                    else:
+                        value = self.bot.config.get(legacy_sec, legacy_key)
+                    return value
+                except (ValueError, TypeError) as e:
+                    self.logger.debug(f"Config conversion error for {legacy_sec}.{legacy_key}: {e}")
         
         return fallback
     
