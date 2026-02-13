@@ -56,10 +56,10 @@ class JokeCommand(BaseCommand):
         """
         super().__init__(bot)
         
-        # Load configuration
-        self.joke_enabled = bot.config.getboolean('Jokes', 'joke_enabled', fallback=True)
-        self.seasonal_jokes = bot.config.getboolean('Jokes', 'seasonal_jokes', fallback=True)
-        self.long_jokes = bot.config.getboolean('Jokes', 'long_jokes', fallback=False)
+        # Load configuration (Joke_Command; legacy [Jokes] supported via get_config_value)
+        self.joke_enabled = self.get_config_value('Joke_Command', 'joke_enabled', fallback=True, value_type='bool')
+        self.seasonal_jokes = self.get_config_value('Joke_Command', 'seasonal_jokes', fallback=True, value_type='bool')
+        self.long_jokes = self.get_config_value('Joke_Command', 'long_jokes', fallback=False, value_type='bool')
     
     def get_help_text(self, message: MeshMessage = None) -> str:
         """Get help text, excluding dark category if not in DM"""

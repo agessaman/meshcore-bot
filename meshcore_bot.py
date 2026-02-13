@@ -9,9 +9,6 @@ import asyncio
 import signal
 import sys
 
-# Import the modular bot
-from modules.core import MeshCoreBot
-
 
 def main():
     parser = argparse.ArgumentParser(
@@ -22,9 +19,34 @@ def main():
         default="config.ini",
         help="Path to configuration file (default: config.ini)",
     )
+    parser.add_argument(
+        "--validate-config",
+        action="store_true",
+        help="Validate config section names and exit before starting the bot (exit 1 on errors)",
+    )
 
     args = parser.parse_args()
 
+    if args.validate_config:
+        from modules.config_validation import (
+            SEVERITY_ERROR,
+            SEVERITY_INFO,
+            SEVERITY_WARNING,
+            validate_config,
+        )
+        results = validate_config(args.config)
+        has_error = False
+        for severity, message in results:
+            if severity == SEVERITY_ERROR:
+                print(f"Error: {message}", file=sys.stderr)
+                has_error = True
+            elif severity == SEVERITY_WARNING:
+                print(f"Warning: {message}", file=sys.stderr)
+            else:
+                print(f"Info: {message}", file=sys.stderr)
+        sys.exit(1 if has_error else 0)
+
+    from modules.core import MeshCoreBot
     bot = MeshCoreBot(config_file=args.config)
     
     # Use asyncio.run() which handles KeyboardInterrupt properly

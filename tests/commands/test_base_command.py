@@ -1,0 +1,105 @@
+"""Tests for modules.commands.base_command."""
+
+import pytest
+from unittest.mock import MagicMock
+
+from modules.commands.base_command import BaseCommand
+from modules.commands.ping_command import PingCommand
+from modules.commands.dadjoke_command import DadJokeCommand
+from modules.models import MeshMessage
+from tests.conftest import mock_message
+
+
+class _TestCommand(BaseCommand):
+    """Minimal concrete command for testing BaseCommand behavior."""
+    name = "testcmd"
+    keywords = ["testcmd"]
+    description = "Test"
+    short_description = "Test"
+    usage = "testcmd"
+    examples = ["testcmd"]
+
+    def can_execute(self, message: MeshMessage) -> bool:
+        return super().can_execute(message)
+
+    def get_help_text(self) -> str:
+        return "Help"
+
+    async def execute(self, message: MeshMessage) -> bool:
+        return await self.send_response(message, "ok")
+
+
+class TestDeriveConfigSectionName:
+    """Tests for _derive_config_section_name()."""
+
+    def test_regular_name(self, command_mock_bot):
+        cmd = _TestCommand(command_mock_bot)
+        cmd.name = "dice"
+        assert cmd._derive_config_section_name() == "Dice_Command"
+
+    def test_camel_case_dadjoke(self, command_mock_bot):
+        cmd = DadJokeCommand(command_mock_bot)
+        assert cmd._derive_config_section_name() == "DadJoke_Command"
+
+    def test_camel_case_webviewer(self, command_mock_bot):
+        cmd = _TestCommand(command_mock_bot)
+        cmd.name = "webviewer"
+        assert cmd._derive_config_section_name() == "WebViewer_Command"
+
+
+class TestIsChannelAllowed:
+    """Tests for is_channel_allowed()."""
+
+    def test_dm_always_allowed(self, command_mock_bot):
+        cmd = PingCommand(command_mock_bot)
+        msg = mock_message(channel=None, is_dm=True)
+        assert cmd.is_channel_allowed(msg) is True
+
+    def test_channel_in_monitor_list_allowed(self, command_mock_bot):
+        cmd = PingCommand(command_mock_bot)
+        msg = mock_message(channel="general", is_dm=False)
+        assert cmd.is_channel_allowed(msg) is True
+
+    def test_channel_not_in_monitor_list_rejected(self, command_mock_bot):
+        cmd = PingCommand(command_mock_bot)
+        msg = mock_message(channel="unknown_channel", is_dm=False)
+        assert cmd.is_channel_allowed(msg) is False
+
+    def test_no_channel_rejected(self, command_mock_bot):
+        cmd = PingCommand(command_mock_bot)
+        msg = mock_message(channel=None, is_dm=False)
+        assert cmd.is_channel_allowed(msg) is False
+
+
+class TestGetConfigValue:
+    """Tests for get_config_value() section migration."""
+
+    def test_new_section_used_first(self, command_mock_bot):
+        command_mock_bot.config.add_section("Ping_Command")
+        command_mock_bot.config.set("Ping_Command", "enabled", "true")
+        cmd = PingCommand(command_mock_bot)
+        assert cmd.get_config_value("Ping_Command", "enabled", fallback=False, value_type="bool") is True
+
+    def test_legacy_section_migration(self, command_mock_bot):
+        # Old [Hacker] section used when [Hacker_Command] not present
+        command_mock_bot.config.add_section("Hacker")
+        command_mock_bot.config.set("Hacker", "enabled", "true")
+        cmd = _TestCommand(command_mock_bot)
+        val = cmd.get_config_value("Hacker_Command", "enabled", fallback=False, value_type="bool")
+        assert val is True
+
+
+class TestCanExecute:
+    """Tests for can_execute()."""
+
+    def test_channel_check_blocks_unknown_channel(self, command_mock_bot):
+        cmd = PingCommand(command_mock_bot)
+        msg = mock_message(content="ping", channel="other", is_dm=False)
+        assert cmd.can_execute(msg) is False
+
+    def test_dm_allowed(self, command_mock_bot):
+        command_mock_bot.config.add_section("Ping_Command")
+        command_mock_bot.config.set("Ping_Command", "enabled", "true")
+        cmd = PingCommand(command_mock_bot)
+        msg = mock_message(content="ping", is_dm=True)
+        assert cmd.can_execute(msg) is True

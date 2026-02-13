@@ -39,6 +39,7 @@ dependencies = [
 
 [project.optional-dependencies]
 docs = ["mkdocs-material>=9.0.0"]
+test = ["pytest>=7.0", "pytest-asyncio>=0.21"]
 
 [project.scripts]
 meshcore-bot = "meshcore_bot:main"

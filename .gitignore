@@ -129,20 +129,22 @@ mctomqtt.py
 bot_cli.py
 bot_start_time.txt
 
-# Test files and development artifacts
+# Test files and development artifacts (root level)
 test_*.py
 test_*.db
 test_*.log
 *_test.py
 *_test.db
+# Allow tests/ directory (pytest convention)
+!tests/
+!tests/**/*.py
 
 # Local documentation and development files
 docs/local/
-tests/
 test_scripts/
 dev/
 website/
-pytest.ini
+# pytest.ini committed for asyncio_mode and test discovery
 pymc-test/*
 config-pymc.ini
 *.key

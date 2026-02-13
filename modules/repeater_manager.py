@@ -1774,7 +1774,7 @@ class RepeaterManager:
     def _is_in_acl(self, public_key: str) -> bool:
         """Check if a public key is in the bot's admin ACL (should never be purged)"""
         try:
-            if not hasattr(self.bot, 'config'):
+            if not hasattr(self.bot, 'config') or not self.bot.config.has_section('Admin_ACL'):
                 return False
             
             # Get admin pubkeys from config

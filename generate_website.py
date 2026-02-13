@@ -933,6 +933,8 @@ def get_bot_name(config: configparser.ConfigParser) -> str:
 
 def get_admin_commands(config: configparser.ConfigParser) -> List[str]:
     """Extract admin commands from config"""
+    if not config.has_section('Admin_ACL'):
+        return []
     admin_commands_str = config.get('Admin_ACL', 'admin_commands', fallback='')
     if not admin_commands_str:
         return []
