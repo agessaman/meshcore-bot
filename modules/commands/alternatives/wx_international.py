@@ -62,6 +62,7 @@ class GlobalWxCommand(BaseCommand):
             self.wxsim_parser = None
         
         # Get default state and country from config for city disambiguation
+        self.default_city = self.bot.config.get('Weather', 'default_city', fallback='')
         self.default_state = self.bot.config.get('Weather', 'default_state', fallback='')
         self.default_country = self.bot.config.get('Weather', 'default_country', fallback='US')
         
@@ -388,10 +389,27 @@ class GlobalWxCommand(BaseCommand):
                     parts = [parts[0], location_str]
                     self.logger.info(f"Using companion coordinates: {location_str}")
             else:
-                # No companion location available, show usage
-                self.logger.debug("No companion location found, showing usage")
-                await self.send_response(message, self.translate('commands.gwx.usage'))
-                return True
+                # No companion location, try default city from config
+                if self.default_city:
+                    # Build location string from defaults
+                    location_parts = [self.default_city]
+
+                    if self.default_state:
+                        location_parts.append(self.default_state)
+                    if self.default_country:
+                        location_parts.append(self.default_country)
+
+                    location_str = ", ".join(location_parts)
+
+                    parts = [parts[0], location_str]
+                    self.logger.info(
+                        f"Using default location from config: {location_str}"
+                    )
+                else:
+                    # No defaults configured, show usage
+                    self.logger.debug("No companion location and no default_city, showing usage")
+                    await self.send_response(message, self.translate('commands.gwx.usage'))
+                    return True
         
         # Check for forecast type options: "tomorrow", or a number 2-7
         forecast_type = "default"

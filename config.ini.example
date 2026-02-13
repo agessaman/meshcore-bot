@@ -506,6 +506,10 @@ prefix_best_do_not_suggest =
 # Default: noaa
 weather_provider = noaa
 
+# Default city name
+# Use english names of cities
+#default_city = 
+
 # Default state for city name disambiguation
 # When users type "wx seattle", it will search for "seattle, WA, USA"
 # Use 2-letter state abbreviation (e.g., WA, CA, NY, TX)
