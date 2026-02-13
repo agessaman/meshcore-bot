@@ -1,3 +1,0 @@
-# This file ensures the data directory structure is tracked in git
-# User-specific files (config.ini, databases, logs) should not be committed
-# See DOCKER.md for setup instructions
