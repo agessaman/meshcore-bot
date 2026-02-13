@@ -125,8 +125,8 @@ class PathCommand(BaseCommand):
         self.medium_confidence_symbol = bot.config.get('Path_Command', 'medium_confidence_symbol', fallback='📍')
         self.low_confidence_symbol = bot.config.get('Path_Command', 'low_confidence_symbol', fallback='❓')
         
-        # Check if "p" shortcut is enabled (off by default)
-        self.enable_p_shortcut = bot.config.getboolean('Path_Command', 'enable_p_shortcut', fallback=False)
+        # Check if "p" shortcut is enabled (on by default)
+        self.enable_p_shortcut = bot.config.getboolean('Path_Command', 'enable_p_shortcut', fallback=True)
         if self.enable_p_shortcut:
             # Add "p" to keywords if enabled
             if "p" not in self.keywords:

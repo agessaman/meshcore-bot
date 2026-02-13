@@ -178,7 +178,7 @@ class MeshCoreBot:
         try:
             self.feed_manager = FeedManager(self)
             self.logger.info("Feed manager initialized successfully")
-        except (OSError, ValueError, AttributeError, ImportError) as e:
+        except (OSError, ValueError, AttributeError, ImportError, configparser.NoSectionError) as e:
             self.logger.warning(f"Failed to initialize feed manager: {e}")
             self.feed_manager = None
         
@@ -517,25 +517,26 @@ startup_advert = false
 # false: Manual mode - no automatic actions, use !repeater commands to manage contacts (default)
 auto_manage_contacts = false
 
-[Jokes]
-# Enable or disable the joke command
-# true: Joke command is available
-# false: Joke command is disabled
-joke_enabled = true
+[Joke_Command]
+# Enable or disable the joke command (true/false)
+enabled = true
 
-# Enable seasonal joke defaults
-# When enabled, October defaults to spooky jokes, December defaults to Christmas jokes
-# true: Seasonal defaults are applied
+# Enable seasonal joke defaults (October: spooky, December: Christmas)
+# true: Seasonal defaults are applied (default)
 # false: No seasonal defaults (always random)
 seasonal_jokes = true
 
-# Enable or disable the dad joke command
-# true: Dad joke command is available
-# false: Dad joke command is disabled
-dadjoke_enabled = true
+# Handle long jokes (over 130 characters)
+# false: Fetch new jokes until we get a short one (default)
+# true: Split long jokes into multiple messages
+long_jokes = false
+
+[DadJoke_Command]
+# Enable or disable the dad joke command (true/false)
+enabled = true
 
 # Handle long jokes (over 130 characters)
-# false: Fetch new jokes until we get a short one
+# false: Fetch new jokes until we get a short one (default)
 # true: Split long jokes into multiple messages
 long_jokes = false
 
@@ -582,6 +583,12 @@ respond_to_dms = true
 # List of banned sender names (comma-separated). Matching is prefix (starts-with):
 # "Awful Username" also matches "Awful Username 🍆". No bot responses in channels or DMs.
 banned_users = 
+
+[Feed_Manager]
+# Enable or disable RSS/API feed subscriptions
+# true: Feed manager polls configured feeds and sends updates to channels
+# false: Feed manager disabled (default)
+feed_manager_enabled = false
 
 [Scheduled_Messages]
 # Scheduled message format: HHMM = channel:message

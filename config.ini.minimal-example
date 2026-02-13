@@ -213,6 +213,10 @@ respond_to_dms = true
 # "Awful Username" also matches "Awful Username 🍆". No bot responses in channels or DMs.
 banned_users = 
 
+[Feed_Manager]
+# Enable or disable RSS/API feed subscriptions (disabled by default)
+feed_manager_enabled = false
+
 [Logging]
 # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
 # DEBUG: Most verbose, shows all details
