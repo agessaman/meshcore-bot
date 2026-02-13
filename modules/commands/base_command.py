@@ -858,7 +858,7 @@ class BaseCommand(ABC):
     
     def requires_admin_access(self) -> bool:
         """Check if this command requires admin access"""
-        if not hasattr(self.bot, 'config'):
+        if not hasattr(self.bot, 'config') or not self.bot.config.has_section('Admin_ACL'):
             return False
         
         try:
@@ -886,7 +886,7 @@ class BaseCommand(ABC):
         - Uses centralized validate_pubkey_format() function
         """
         import re # This import is needed for re.match
-        if not hasattr(self.bot, 'config'):
+        if not hasattr(self.bot, 'config') or not self.bot.config.has_section('Admin_ACL'):
             return False
         
         try:

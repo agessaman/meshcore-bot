@@ -7,7 +7,7 @@ Decodes hex path data to show which repeaters were involved in message routing
 import re
 import time
 import asyncio
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Dict, Any, Tuple, Callable
 from .base_command import BaseCommand
 from ..models import MeshMessage
 from ..utils import calculate_distance
@@ -246,109 +246,148 @@ class PathCommand(BaseCommand):
             self.logger.error(f"Error decoding path: {e}")
             return self.translate('commands.path.error_decoding', error=str(e))
     
-    async def _lookup_repeater_names(self, node_ids: List[str]) -> Dict[str, Dict[str, Any]]:
-        """Look up repeater names for given node IDs"""
+    async def _lookup_repeater_names(
+        self,
+        node_ids: List[str],
+        lookup_func: Optional[Callable[[str], List[Dict[str, Any]]]] = None,
+    ) -> Dict[str, Dict[str, Any]]:
+        """Look up repeater names for given node IDs.
+
+        Args:
+            node_ids: List of node prefixes to look up.
+            lookup_func: Optional test hook. When provided, used instead of
+                repeater_manager/db_manager. Callable(node_id) -> list of repeater dicts.
+        """
         repeater_info = {}
-        
+
         try:
             # Skip API cache for path decoding - use database with improved proximity logic
             # API cache doesn't have recency-based proximity selection needed for path decoding
             api_data = None
-            
+
             # Query the database for repeaters with matching prefixes
             # Node IDs are typically the first 2 characters of the public key
             for node_id in node_ids:
-                # First try complete tracking database (all heard contacts, filtered by role)
-                if hasattr(self.bot, 'repeater_manager'):
-                    try:
-                        # Get repeater devices from complete database (repeaters and roomservers)
-                        complete_db = await self.bot.repeater_manager.get_repeater_devices(include_historical=True)
-                        
-                        results = []
-                        for row in complete_db:
-                            if row['public_key'].startswith(node_id):
-                                results.append({
-                                    'name': row['name'],
-                                    'public_key': row['public_key'],
-                                    'device_type': row['device_type'],
-                                    'last_seen': row['last_heard'],
-                                    'last_heard': row['last_heard'],  # Include last_heard for recency calculation
-                                    'last_advert_timestamp': row.get('last_advert_timestamp'),  # Include last_advert_timestamp for recency calculation
-                                    'is_active': row['is_currently_tracked'],
-                                    'latitude': row['latitude'],
-                                    'longitude': row['longitude'],
-                                    'city': row['city'],
-                                    'state': row['state'],
-                                    'country': row['country'],
-                                    'advert_count': row['advert_count'],
-                                    'signal_strength': row['signal_strength'],
-                                    'snr': row.get('snr'),  # Include SNR for zero-hop bonus
-                                    'hop_count': row['hop_count'],
-                                    'role': row['role'],
-                                    'is_starred': bool(row.get('is_starred', 0))  # Include star status for bias
-                                })
-                    except Exception as e:
-                        self.logger.debug(f"Error getting complete database: {e}")
-                        results = []
-                
-                # If complete tracking database failed, try direct query to complete_contact_tracking
-                if not results:
-                    try:
-                        # Build query with age filtering if configured
-                        # Use last_advert_timestamp if available, otherwise fall back to last_heard
-                        if self.max_repeater_age_days > 0:
-                            query = '''
-                                SELECT name, public_key, device_type, last_heard, last_heard as last_seen, 
-                                       last_advert_timestamp, latitude, longitude, city, state, country,
-                                       advert_count, signal_strength, snr, hop_count, role, is_starred
-                                FROM complete_contact_tracking 
-                                WHERE public_key LIKE ? AND role IN ('repeater', 'roomserver')
-                                AND (
-                                    (last_advert_timestamp IS NOT NULL AND last_advert_timestamp >= datetime('now', '-{} days'))
-                                    OR (last_advert_timestamp IS NULL AND last_heard >= datetime('now', '-{} days'))
-                                )
-                                ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
-                            '''.format(self.max_repeater_age_days, self.max_repeater_age_days)
-                        else:
-                            query = '''
-                                SELECT name, public_key, device_type, last_heard, last_heard as last_seen, 
-                                       last_advert_timestamp, latitude, longitude, city, state, country,
-                                       advert_count, signal_strength, snr, hop_count, role, is_starred
-                                FROM complete_contact_tracking 
-                                WHERE public_key LIKE ? AND role IN ('repeater', 'roomserver')
-                                ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
-                            '''
-                        
-                        prefix_pattern = f"{node_id}%"
-                        results = self.bot.db_manager.execute_query(query, (prefix_pattern,))
-                        
-                        # Convert results to expected format
-                        if results:
-                            results = [
-                                {
-                                    'name': row['name'],
-                                    'public_key': row['public_key'],
-                                    'device_type': row['device_type'],
-                                    'last_seen': row['last_seen'],
-                                    'last_heard': row.get('last_heard', row['last_seen']),  # Include last_heard for recency calculation
-                                    'last_advert_timestamp': row.get('last_advert_timestamp'),  # Include last_advert_timestamp for recency calculation
-                                    'is_active': True,  # Assume active for path purposes
-                                    'latitude': row['latitude'],
-                                    'longitude': row['longitude'],
-                                    'city': row['city'],
-                                    'state': row['state'],
-                                    'country': row['country'],
-                                    'advert_count': row.get('advert_count', 0),
-                                    'signal_strength': row.get('signal_strength'),
-                                    'snr': row.get('snr'),  # Include SNR for zero-hop bonus
-                                    'hop_count': row.get('hop_count'),
-                                    'role': row.get('role'),
-                                    'is_starred': bool(row.get('is_starred', 0))  # Include star status for bias
-                                } for row in results
-                            ]
-                    except Exception as e:
-                        self.logger.debug(f"Error querying complete_contact_tracking directly: {e}")
-                        results = []
+                # Test dependency injection: use provided lookup when available
+                if lookup_func is not None:
+                    results = lookup_func(node_id)
+                    # Normalize to expected format (create_test_repeater already matches)
+                    if results:
+                        results = [
+                            {
+                                'name': r['name'],
+                                'public_key': r['public_key'],
+                                'device_type': r.get('device_type', 'repeater'),
+                                'last_seen': r.get('last_seen', r.get('last_heard')),
+                                'last_heard': r.get('last_heard', r.get('last_seen')),
+                                'last_advert_timestamp': r.get('last_advert_timestamp'),
+                                'is_active': r.get('is_active', True),
+                                'latitude': r.get('latitude'),
+                                'longitude': r.get('longitude'),
+                                'city': r.get('city'),
+                                'state': r.get('state'),
+                                'country': r.get('country'),
+                                'advert_count': r.get('advert_count', 1),
+                                'signal_strength': r.get('signal_strength'),
+                                'snr': r.get('snr'),
+                                'hop_count': r.get('hop_count'),
+                                'role': r.get('role', 'repeater'),
+                                'is_starred': bool(r.get('is_starred', False)),
+                            }
+                            for r in results
+                        ]
+                else:
+                    # First try complete tracking database (all heard contacts, filtered by role)
+                    results = []
+                    if hasattr(self.bot, 'repeater_manager'):
+                        try:
+                            # Get repeater devices from complete database (repeaters and roomservers)
+                            complete_db = await self.bot.repeater_manager.get_repeater_devices(include_historical=True)
+                            
+                            for row in complete_db:
+                                if row['public_key'].startswith(node_id):
+                                    results.append({
+                                        'name': row['name'],
+                                        'public_key': row['public_key'],
+                                        'device_type': row['device_type'],
+                                        'last_seen': row['last_heard'],
+                                        'last_heard': row['last_heard'],  # Include last_heard for recency calculation
+                                        'last_advert_timestamp': row.get('last_advert_timestamp'),  # Include last_advert_timestamp for recency calculation
+                                        'is_active': row['is_currently_tracked'],
+                                        'latitude': row['latitude'],
+                                        'longitude': row['longitude'],
+                                        'city': row['city'],
+                                        'state': row['state'],
+                                        'country': row['country'],
+                                        'advert_count': row['advert_count'],
+                                        'signal_strength': row['signal_strength'],
+                                        'snr': row.get('snr'),  # Include SNR for zero-hop bonus
+                                        'hop_count': row['hop_count'],
+                                        'role': row['role'],
+                                        'is_starred': bool(row.get('is_starred', 0))  # Include star status for bias
+                                    })
+                        except Exception as e:
+                            self.logger.debug(f"Error getting complete database: {e}")
+                            results = []
+                    
+                    # If complete tracking database failed, try direct query to complete_contact_tracking
+                    if not results:
+                        try:
+                            # Build query with age filtering if configured
+                            # Use last_advert_timestamp if available, otherwise fall back to last_heard
+                            if self.max_repeater_age_days > 0:
+                                query = '''
+                                    SELECT name, public_key, device_type, last_heard, last_heard as last_seen,
+                                           last_advert_timestamp, latitude, longitude, city, state, country,
+                                           advert_count, signal_strength, snr, hop_count, role, is_starred
+                                    FROM complete_contact_tracking
+                                    WHERE public_key LIKE ? AND role IN ('repeater', 'roomserver')
+                                    AND (
+                                        (last_advert_timestamp IS NOT NULL AND last_advert_timestamp >= datetime('now', '-{} days'))
+                                        OR (last_advert_timestamp IS NULL AND last_heard >= datetime('now', '-{} days'))
+                                    )
+                                    ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
+                                '''.format(self.max_repeater_age_days, self.max_repeater_age_days)
+                            else:
+                                query = '''
+                                    SELECT name, public_key, device_type, last_heard, last_heard as last_seen,
+                                           last_advert_timestamp, latitude, longitude, city, state, country,
+                                           advert_count, signal_strength, snr, hop_count, role, is_starred
+                                    FROM complete_contact_tracking
+                                    WHERE public_key LIKE ? AND role IN ('repeater', 'roomserver')
+                                    ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
+                                '''
+                            
+                            prefix_pattern = f"{node_id}%"
+                            results = self.bot.db_manager.execute_query(query, (prefix_pattern,))
+                            
+                            # Convert results to expected format
+                            if results:
+                                results = [
+                                    {
+                                        'name': row['name'],
+                                        'public_key': row['public_key'],
+                                        'device_type': row['device_type'],
+                                        'last_seen': row['last_seen'],
+                                        'last_heard': row.get('last_heard', row['last_seen']),
+                                        'last_advert_timestamp': row.get('last_advert_timestamp'),
+                                        'is_active': True,
+                                        'latitude': row['latitude'],
+                                        'longitude': row['longitude'],
+                                        'city': row['city'],
+                                        'state': row['state'],
+                                        'country': row['country'],
+                                        'advert_count': row.get('advert_count', 0),
+                                        'signal_strength': row.get('signal_strength'),
+                                        'snr': row.get('snr'),
+                                        'hop_count': row.get('hop_count'),
+                                        'role': row.get('role'),
+                                        'is_starred': bool(row.get('is_starred', 0))
+                                    } for row in results
+                                ]
+                        except Exception as e:
+                            self.logger.debug(f"Error querying complete_contact_tracking directly: {e}")
+                            results = []
                 
                 if results:
                     # Build repeaters_data with all necessary fields
@@ -1310,19 +1349,22 @@ class PathCommand(BaseCommand):
                             self.logger.debug(f"Found stored public key match for {repeater.get('name', 'unknown')} in edge {candidate_prefix}->{next_node_id}")
             
             # Zero-hop bonus: If this repeater has been heard directly by the bot (zero-hop advert),
-            # it's strong evidence it's close and should be preferred, even for intermediate hops
+            # it's strong evidence it's close and should be preferred, even for intermediate hops.
+            # Only apply when graph_score > 0 (we have graph evidence); otherwise zero-hop alone
+            # would select candidates with no graph edges.
             zero_hop_bonus = 0.0
             hop_count = repeater.get('hop_count')
-            if hop_count is not None and hop_count == 0:
+            if hop_count is not None and hop_count == 0 and graph_score > 0:
                 # This repeater has been heard directly - strong evidence it's close to bot
                 zero_hop_bonus = self.graph_zero_hop_bonus
                 self.logger.debug(f"Zero-hop bonus for {repeater.get('name', 'unknown')}: {zero_hop_bonus:.2%} (heard directly by bot)")
             
             # SNR bonus: If this repeater has SNR data, it's a zero-hop repeater (direct neighbor)
-            # This is even stronger evidence than just hop_count == 0, as it means we have actual signal quality data
+            # This is even stronger evidence than just hop_count == 0, as it means we have actual signal quality data.
+            # Only apply when graph_score > 0 (same rationale as zero_hop_bonus).
             snr_bonus = 0.0
             snr = repeater.get('snr')
-            if snr is not None:
+            if snr is not None and graph_score > 0:
                 # SNR presence indicates zero-hop connection with signal quality data
                 # Use same bonus as zero-hop, but this is more definitive
                 snr_bonus = self.graph_zero_hop_bonus * 1.2  # 20% stronger than zero-hop bonus alone

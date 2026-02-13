@@ -135,8 +135,12 @@ class MeshCoreBot:
         # Initialize translator for localization BEFORE CommandManager
         # This ensures translated keywords are available when commands are loaded
         try:
-            language = self.config.get('Localization', 'language', fallback='en')
-            translation_path = self.config.get('Localization', 'translation_path', fallback='translations/')
+            if self.config.has_section('Localization'):
+                language = self.config.get('Localization', 'language', fallback='en')
+                translation_path = self.config.get('Localization', 'translation_path', fallback='translations/')
+            else:
+                language = 'en'
+                translation_path = 'translations/'
             self.translator = Translator(language, translation_path)
             self.logger.info(f"Localization initialized: {language}")
         except (OSError, ValueError, FileNotFoundError, json.JSONDecodeError) as e:
@@ -341,8 +345,12 @@ class MeshCoreBot:
             
             # Update translator if language changed
             try:
-                new_language = self.config.get('Localization', 'language', fallback='en')
-                new_translation_path = self.config.get('Localization', 'translation_path', fallback='translations/')
+                if self.config.has_section('Localization'):
+                    new_language = self.config.get('Localization', 'language', fallback='en')
+                    new_translation_path = self.config.get('Localization', 'translation_path', fallback='translations/')
+                else:
+                    new_language = 'en'
+                    new_translation_path = 'translations/'
                 if (not hasattr(self, 'translator') or 
                     getattr(self.translator, 'language', None) != new_language or
                     getattr(self.translator, 'translation_path', None) != new_translation_path):

@@ -408,6 +408,8 @@ class CommandManager:
     
     def load_banned_users(self) -> List[str]:
         """Load banned users from config"""
+        if not self.bot.config.has_section('Banned_Users'):
+            return []
         banned = self.bot.config.get('Banned_Users', 'banned_users', fallback='')
         return [user.strip() for user in banned.split(',') if user.strip()]
     

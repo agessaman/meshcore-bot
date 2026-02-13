@@ -599,26 +599,38 @@ class MeshGraph:
         """Flush all pending edge updates to database (synchronous version).
         Uses a single connection for the entire batch to avoid 'unable to open database file'
         when many edges are written in quick succession.
+        Handles both new edges (INSERT) and existing edges (UPDATE).
         """
         with self.pending_lock:
             if not self.pending_updates:
                 return
-            
+
             updates = list(self.pending_updates)
             self.pending_updates.clear()
-        
+
         conn = None
         location_cache: Dict[str, Tuple[float, float]] = {}
         try:
             conn = self.db_manager.get_connection()
-            params_list: List[Tuple] = []
+            cursor = conn.cursor()
             for edge_key in updates:
-                params_tuple = self._build_update_params_for_edge(edge_key, conn, location_cache)
-                if params_tuple is not None:
-                    params_list.append(params_tuple)
-            if params_list:
-                cursor = conn.cursor()
-                cursor.executemany(self._MESH_EDGE_UPDATE_QUERY, params_list)
+                if edge_key not in self.edges:
+                    continue
+                edge = self.edges[edge_key]
+                # Recalculate distance if we have public keys
+                if edge.get('from_public_key') or edge.get('to_public_key'):
+                    recalculated = self._recalculate_distance_if_needed(
+                        edge, conn=conn, location_cache=location_cache
+                    )
+                    if recalculated is not None:
+                        edge['geographic_distance'] = recalculated
+                # Check if edge exists in DB
+                cursor.execute(
+                    'SELECT 1 FROM mesh_connections WHERE from_prefix = ? AND to_prefix = ?',
+                    (edge_key[0], edge_key[1]),
+                )
+                is_new = cursor.fetchone() is None
+                self._write_edge_to_db(edge_key, is_new, conn=conn, location_cache=location_cache)
             if conn:
                 conn.commit()
         except Exception as e:
