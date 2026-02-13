@@ -120,7 +120,7 @@ class HelpCommand(BaseCommand):
                 help_text = self.translate('commands.help.no_help')
             return self.translate('commands.help.specific', command=command_name, help_text=help_text)
         else:
-            available = self.get_available_commands_list()
+            available = self.get_available_commands_list(message)
             return self.translate('commands.help.unknown', command=command_name, available=available)
     
     def get_general_help(self) -> str:
@@ -137,11 +137,29 @@ class HelpCommand(BaseCommand):
         help_text += self.translate('commands.help.custom_syntax')
         return help_text
     
-    def get_available_commands_list(self) -> str:
+    def _is_command_valid_for_channel(self, cmd_name: str, cmd_instance: Any, message: Optional[MeshMessage]) -> bool:
+        """Return True if this command is valid in the message's channel context."""
+        if message is None:
+            return True
+        if hasattr(cmd_instance, 'is_channel_allowed') and callable(cmd_instance.is_channel_allowed):
+            if not cmd_instance.is_channel_allowed(message):
+                return False
+        if hasattr(self.bot.command_manager, '_is_channel_trigger_allowed'):
+            if not self.bot.command_manager._is_channel_trigger_allowed(cmd_name, message):
+                return False
+        return True
+
+    def get_available_commands_list(self, message: Optional[MeshMessage] = None) -> str:
         """Get a list of most popular commands in descending order.
         
         Queries usage statistics to order commands by popularity. Ensures each
-        command is listed only once using its primary name.
+        command is listed only once using its primary name. When message is
+        provided, only returns commands valid for the message's channel (respects
+        per-command channel overrides and channel_keywords).
+        
+        Args:
+            message: Optional message for context filtering. When provided, only
+                commands that can execute in this channel are included.
         
         Returns:
             str: Comma-separated list of command names.
@@ -152,8 +170,11 @@ class HelpCommand(BaseCommand):
             keyword_mappings = plugin_loader.keyword_mappings.copy() if hasattr(plugin_loader, 'keyword_mappings') else {}
             
             # Build a set of all primary command names and ensure they map to themselves
+            # Filter by channel when message is provided
             primary_names = set()
             for cmd_name, cmd_instance in self.bot.command_manager.commands.items():
+                if not self._is_command_valid_for_channel(cmd_name, cmd_instance, message):
+                    continue
                 primary_name = cmd_instance.name if hasattr(cmd_instance, 'name') else cmd_name
                 primary_names.add(primary_name)
                 # Ensure primary name maps to itself in keyword_mappings
@@ -205,7 +226,8 @@ class HelpCommand(BaseCommand):
                                     if primary_name is None:
                                         primary_name = command_name
                             
-                            command_counts[primary_name] += count
+                            if primary_name in primary_names:
+                                command_counts[primary_name] += count
             except Exception as e:
                 self.logger.debug(f"Error querying command stats: {e}")
                 # If stats table doesn't exist or query fails, fall back to all commands
@@ -223,10 +245,11 @@ class HelpCommand(BaseCommand):
                 # Extract just the command names (only primary names, no aliases)
                 command_names = [name for name, _ in sorted_commands]
             else:
-                # Fallback: use all primary command names
+                # Fallback: use all primary command names (filtered by channel)
                 command_names = sorted([
                     cmd.name if hasattr(cmd, 'name') else name
                     for name, cmd in self.bot.command_manager.commands.items()
+                    if self._is_command_valid_for_channel(name, cmd, message)
                 ])
             
             # Return comma-separated list
@@ -234,10 +257,11 @@ class HelpCommand(BaseCommand):
             
         except Exception as e:
             self.logger.error(f"Error getting available commands list: {e}")
-            # Fallback to simple list of all command names
+            # Fallback to simple list of all command names (filtered by channel)
             command_names = sorted([
                 cmd.name if hasattr(cmd, 'name') else name
                 for name, cmd in self.bot.command_manager.commands.items()
+                if self._is_command_valid_for_channel(name, cmd, message)
             ])
             return ', '.join(command_names)
     

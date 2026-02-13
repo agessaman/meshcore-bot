@@ -537,7 +537,7 @@ class CommandManager:
                     matches.append(('help', help_text))
                     return matches
                 elif content_lower == help_keyword:
-                    help_text = self.get_general_help()
+                    help_text = self.get_general_help(message)
                     # Format the help response with message data (same as other keywords)
                     help_text = self.format_keyword_response(help_text, message)
                     matches.append(('help', help_text))
@@ -845,7 +845,7 @@ class CommandManager:
         # Special handling for common help requests
         if command_name.lower() in ['commands', 'list', 'all']:
             # User is asking for a list of commands, show general help
-            return self.get_general_help()
+            return self.get_general_help(message)
         
         # Map command aliases to their actual command names
         command_aliases = {
@@ -894,7 +894,7 @@ class CommandManager:
         if 'help' in self.commands:
             help_command = self.commands['help']
             if hasattr(help_command, 'get_available_commands_list'):
-                available_str = help_command.get_available_commands_list()
+                available_str = help_command.get_available_commands_list(message)
         
         # Fallback if help command doesn't have the method
         if not available_str:
@@ -909,10 +909,34 @@ class CommandManager:
             return self.bot.translator.translate('commands.help.unknown', command=command_name, available=available_str)
         return f"Unknown: {command_name}. Available: {available_str}. Try 'help' for command list."
     
-    def get_general_help(self) -> str:
-        """Get general help text from config (LoRa-friendly compact format)"""
-        # Get the help response from the keywords config
-        return self.keywords.get('help', 'Help not configured')
+    def get_general_help(self, message: MeshMessage = None) -> str:
+        """Get general help text from config (LoRa-friendly compact format).
+        
+        When message is provided, only lists commands valid for the message's channel.
+        """
+        # Prefer keywords config if user has customized help
+        if 'help' in self.keywords:
+            return self.keywords['help']
+        # Fallback: build compact list from available commands (filtered by channel)
+        if 'help' in self.commands:
+            help_command = self.commands['help']
+            if hasattr(help_command, 'get_available_commands_list'):
+                available_str = help_command.get_available_commands_list(message)
+                return f"Bot Help: {available_str} | More: 'help <command>'"
+        # Last resort: simple list of command names (filtered by channel when message provided)
+        help_cmd = self.commands.get('help')
+        if help_cmd and hasattr(help_cmd, '_is_command_valid_for_channel') and message:
+            primary_names = sorted([
+                cmd.name if hasattr(cmd, 'name') else name
+                for name, cmd in self.commands.items()
+                if help_cmd._is_command_valid_for_channel(name, cmd, message)
+            ])
+        else:
+            primary_names = sorted([
+                cmd.name if hasattr(cmd, 'name') else name
+                for name, cmd in self.commands.items()
+            ])
+        return f"Bot Help: {', '.join(primary_names)} | More: 'help <command>'"
     
     def get_available_commands_list(self) -> str:
         """Get a formatted list of available commands"""
