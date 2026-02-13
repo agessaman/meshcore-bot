@@ -214,7 +214,6 @@ class BaseCommand(ABC):
         return fallback
     
     @abstractmethod
-    @abstractmethod
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the command with the given message.
         

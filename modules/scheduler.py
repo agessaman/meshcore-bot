@@ -25,6 +25,8 @@ class MessageScheduler:
         self.logger = bot.logger
         self.scheduled_messages = {}
         self.scheduler_thread = None
+        self.last_channel_ops_check_time = 0
+        self.last_message_queue_check_time = 0
     
     def get_current_time(self):
         """Get current time in configured timezone"""
@@ -382,9 +384,6 @@ class MessageScheduler:
             # This prevents losing channels during incomplete updates
             
             # Process pending channel operations from web viewer (every 5 seconds)
-            if not hasattr(self, 'last_channel_ops_check_time'):
-                self.last_channel_ops_check_time = 0
-            
             if time.time() - self.last_channel_ops_check_time >= 5:  # Every 5 seconds
                 if (hasattr(self.bot, 'channel_manager') and self.bot.channel_manager and 
                     hasattr(self.bot, 'connected') and self.bot.connected):
@@ -411,9 +410,6 @@ class MessageScheduler:
                     self.last_channel_ops_check_time = time.time()
             
             # Process feed message queue (every 2 seconds)
-            if not hasattr(self, 'last_message_queue_check_time'):
-                self.last_message_queue_check_time = 0
-            
             if time.time() - self.last_message_queue_check_time >= 2:  # Every 2 seconds
                 if (hasattr(self.bot, 'feed_manager') and self.bot.feed_manager and 
                     hasattr(self.bot, 'connected') and self.bot.connected):

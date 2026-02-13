@@ -849,7 +849,6 @@ class FeedManager:
         body = item.get('description', '') or item.get('body', '')
         # Clean HTML from body if present
         if body:
-            import html
             body = html.unescape(body)
             # Convert line break tags to newlines before stripping other HTML
             # Handle <br>, <br/>, <br />, <BR>, etc.
