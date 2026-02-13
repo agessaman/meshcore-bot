@@ -83,7 +83,9 @@ class PacketCaptureService(BaseServicePlugin):
             if not bot_formatter:
                 try:
                     import colorlog
-                    if bot.config.getboolean('Logging', 'colored_output', fallback=True):
+                    colored = (bot.config.getboolean('Logging', 'colored_output', fallback=True)
+                               if bot.config.has_section('Logging') else True)
+                    if colored:
                         bot_formatter = colorlog.ColoredFormatter(
                             '%(log_color)s%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                             datefmt='%Y-%m-%d %H:%M:%S',

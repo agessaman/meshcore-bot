@@ -756,11 +756,21 @@ use_zulu_time = false
         Configures the logging system based on settings in the config file.
         Sets up console and file handlers, formatters, and log levels for
         both the bot and the underlying meshcore library.
+        If [Logging] section is missing, uses defaults (console/journal only, no file).
         """
-        log_level = getattr(logging, self.config.get('Logging', 'log_level', fallback='INFO'))
-        
+        if self.config.has_section('Logging'):
+            log_level = getattr(logging, self.config.get('Logging', 'log_level', fallback='INFO'))
+            colored_output = self.config.getboolean('Logging', 'colored_output', fallback=True)
+            log_file = self.config.get('Logging', 'log_file', fallback='meshcore_bot.log')
+            meshcore_log_level = getattr(logging, self.config.get('Logging', 'meshcore_log_level', fallback='INFO'))
+        else:
+            log_level = logging.INFO
+            colored_output = True
+            log_file = ''  # Console/journal only when no [Logging] section
+            meshcore_log_level = logging.INFO
+
         # Create formatter
-        if self.config.getboolean('Logging', 'colored_output', fallback=True):
+        if colored_output:
             formatter = colorlog.ColoredFormatter(
                 '%(log_color)s%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                 datefmt='%Y-%m-%d %H:%M:%S',
@@ -791,8 +801,6 @@ use_zulu_time = false
         self.logger.addHandler(console_handler)
         
         # File handler
-        log_file = self.config.get('Logging', 'log_file', fallback='meshcore_bot.log')
-        
         # Strip whitespace and check if empty
         log_file = log_file.strip() if log_file else ''
         
@@ -824,8 +832,6 @@ use_zulu_time = false
         self.logger.propagate = False
         
         # Configure meshcore library logging (separate from bot logging)
-        meshcore_log_level = getattr(logging, self.config.get('Logging', 'meshcore_log_level', fallback='INFO'))
-        
         # Configure all possible meshcore-related loggers
         meshcore_loggers = [
             'meshcore',
