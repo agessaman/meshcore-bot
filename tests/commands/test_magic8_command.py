@@ -32,6 +32,7 @@ class TestMagic8Command:
         result = await cmd.execute(msg)
         assert result is True
         call_args = command_mock_bot.command_manager.send_response.call_args
+        assert call_args is not None
         response = call_args[0][1]
         assert "🎱" in response
         assert any(r in response for r in magic8_responses)
@@ -45,5 +46,6 @@ class TestMagic8Command:
         result = await cmd.execute(msg)
         assert result is True
         call_args = command_mock_bot.command_manager.send_response.call_args
+        assert call_args is not None
         response = call_args[0][1]
         assert "Alice" in response or "@[" in response

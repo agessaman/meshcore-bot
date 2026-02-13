@@ -43,8 +43,7 @@ class TestHelloCommand:
         cmd = HelloCommand(command_mock_bot)
         with patch("modules.commands.hello_command.random.choice", side_effect=lambda x: x[0]):
             result = cmd.get_random_greeting()
-        assert result
-        assert isinstance(result, str)
+        assert isinstance(result, str) and len(result) > 0
 
     def test_get_emoji_response_vulcan(self, command_mock_bot):
         command_mock_bot.config.add_section("Hello_Command")
@@ -78,5 +77,6 @@ class TestHelloCommand:
             result = await cmd.execute(msg)
         assert result is True
         call_args = command_mock_bot.command_manager.send_response.call_args
+        assert call_args is not None
         response = call_args[0][1]
-        assert response
+        assert isinstance(response, str) and len(response) > 0

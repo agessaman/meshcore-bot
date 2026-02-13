@@ -31,3 +31,5 @@ class TestHelpCommand:
         msg = mock_message(content="help", is_dm=True)
         result = await cmd.execute(msg)
         assert result is True
+        # Note: HelpCommand.execute() is a placeholder; actual help logic is in
+        # CommandManager.check_keywords(). Response sending is tested there.
