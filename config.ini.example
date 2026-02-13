@@ -229,9 +229,7 @@ companion_advert_threshold_days = 30
 companion_min_inactive_days = 30
 
 [Joke_Command]
-# Enable or disable the joke command
-# true: Joke command is available (default)
-# false: Joke command is disabled
+# Enable or disable the joke command (true/false)
 enabled = true
 
 # Enable seasonal joke defaults (October: spooky, December: Christmas)
@@ -248,9 +246,7 @@ long_jokes = false
 # channels = #bot,#jokes
 
 [DadJoke_Command]
-# Enable or disable the dad joke command
-# true: Dad joke command is available (default)
-# false: Dad joke command is disabled
+# Enable or disable the dad joke command (true/false)
 enabled = true
 
 # Handle long jokes (over 130 characters)
@@ -472,9 +468,7 @@ prefix_free_days = 7
 max_prefix_range = 200
 
 # Prefix best location feature
-# Enable or disable the "prefix best <location>" command
-# true: Command is available to suggest best prefix for a location
-# false: Command is disabled
+# Enable "prefix best <location>" to suggest best prefix (true/false)
 prefix_best_enabled = true
 
 # Minimum edge observations for neighbor detection
@@ -607,9 +601,7 @@ emergency.traffic = Traffic updates and road conditions
 emergency.hamradio = Amateur radio emergency net
 
 [Sports_Command]
-# Enable or disable the sports command
-# true: Sports command is available
-# false: Sports command is disabled
+# Enable or disable the sports command (true/false)
 enabled = true
 
 # Default teams to show when 'sports' command is used without arguments
@@ -633,9 +625,7 @@ channel_override = #sounders=sounders,#seahawks=seahawks,#kraken=kraken,#mariner
 api_timeout = 10
 
 [Stats_Command]
-# Enable or disable the stats command
-# true: Stats command is available
-# false: Stats command is disabled
+# Enable or disable the stats command (true/false)
 enabled = true
 
 # Data retention settings
@@ -666,6 +656,14 @@ track_command_details = true
 anonymize_users = false
 
 [Path_Command]
+# Enable or disable the path command
+enabled = true
+
+# Enable "p" shortcut for path command (similar to "t" for test command)
+# true: Respond to just "p" or "p <path_data>" as a shortcut for "path"  (default)
+# false: Only respond to "path", "decode", or "route" keywords
+enable_p_shortcut = true
+
 # Path Selection Preset
 # Choose a preset that configures multiple related settings:
 # - balanced: Balanced approach using both graph evidence and geographic proximity (default)
@@ -846,9 +844,7 @@ graph_startup_load_days = 0
 star_bias_multiplier = 2.5
 
 [Hacker_Command]
-# Enable or disable the hacker command
-# true: Hacker command is available (responds to Linux commands with supervillain mainframe errors)
-# false: Hacker command is disabled
+# Enable or disable the hacker command (true/false; responds to Linux commands with supervillain mainframe errors)
 enabled = false
 
 [Multitest_Command]
@@ -863,9 +859,7 @@ enabled = false
 response_format = 
 
 [Greeter_Command]
-# Enable or disable the greeter command
-# true: Bot will greet users on their first public channel message
-# false: Greeter is disabled
+# Enable greeter to greet users on first channel message (true/false)
 enabled = false
 
 # Channels where greetings should occur (comma-separated)
@@ -930,9 +924,7 @@ auto_backfill = false
 backfill_lookback_days = 30
 
 [Alert_Command]
-# Enable or disable the alert command
-# true: Alert command is available
-# false: Alert command is disabled
+# Enable or disable the alert command (true/false)
 enabled = false
 
 # PulsePoint agency IDs by county/region
@@ -952,9 +944,7 @@ enabled = false
 # agency.region_all = 
 
 [Announcements_Command]
-# Enable or disable the announcements command
-# true: Announcements command is available
-# false: Announcements command is disabled (default)
+# Enable or disable the announcements command (true/false)
 enabled = false
 
 # Announcements Access Control List (ACL)
@@ -984,9 +974,7 @@ announce.bots = This is an announcement with the list of bots.
 announce.other = This is a different announcement on another topic.
 
 [Airplanes_Command]
-# Enable or disable the airplanes command
-# true: Airplanes command is available (default)
-# false: Airplanes command is disabled
+# Enable or disable the airplanes command (true/false)
 enabled = true
 
 # API endpoint URL for ADS-B aircraft data
@@ -1110,9 +1098,7 @@ enabled = false
 [Web_Viewer]
 # Enable or disable the web data viewer
 # SECURITY NOTE: Web viewer has NO AUTHENTICATION built-in
-# Only enable if you understand the security implications
-# true: web viewer is available for viewing bot data
-# false: web viewer is disabled (RECOMMENDED for production)
+# Enable web viewer (true/false). SECURITY: only enable if you understand implications; false recommended for production
 enabled = false
 
 # Web viewer host address
@@ -1170,9 +1156,7 @@ decode_hashtag_channels =
 ####################################################################################################
 
 [PacketCapture]
-# Enable packet capture service
-# true: Capture packets and publish to MQTT/file
-# false: Packet capture service disabled
+# Enable packet capture service (true/false)
 enabled = false
 
 # Output file for packet data (optional)
@@ -1289,13 +1273,8 @@ health_check_interval = 30
 health_check_grace_period = 2
 
 [MapUploader]
-# Enable map uploader service
-# Uploads node adverts (repeaters, room servers, sensors) to map.meshcore.dev
-# CHAT adverts are skipped (only non-CHAT adverts are uploaded)
-# Adverts without GPS coordinates or with any coordinate exactly 0.0 are skipped
-# Uses your device's radio parameters (freq, cr, sf, bw) for all uploads
-# true: Enable map uploader service
-# false: Map uploader disabled (default)
+# Enable map uploader (true/false). Uploads node adverts (repeaters, room servers, sensors) to map.meshcore.dev
+# CHAT adverts skipped; adverts without GPS or with 0.0 coords skipped. Uses device radio parameters
 enabled = false
 
 # API endpoint URL
@@ -1323,9 +1302,7 @@ min_reupload_interval = 3600
 verbose = false
 
 [Weather_Service]
-# Enable weather service
-# true: Enable scheduled weather forecasts and alert monitoring
-# false: Weather service disabled
+# Enable weather service for scheduled forecasts and alert monitoring (true/false)
 enabled = false
 
 # Daily weather forecast time
@@ -1374,9 +1351,7 @@ blitz_collection_interval = 600000
 
 [DiscordBridge]
 # Enable Discord bridge service
-# Posts MeshCore channel messages to Discord via webhooks (one-way, read-only)
-# true: Enable Discord bridge
-# false: Discord bridge disabled (default)
+# Enable Discord bridge (true/false). One-way, read-only webhooks
 enabled = false
 
 # IMPORTANT: Direct messages (DMs) are NEVER bridged to Discord

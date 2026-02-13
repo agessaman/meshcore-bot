@@ -1,0 +1,58 @@
+# MeshCore Bot - Easy Start Config
+# 1. Copy to config.ini
+# 2. Set serial_port (or hostname for TCP), bot_name, bot_latitude, bot_longitude
+# 3. Run: python3 meshcore_bot.py
+
+[Connection]
+connection_type = serial
+serial_port = /dev/ttyUSB0
+timeout = 30
+
+[Bot]
+bot_name = MeshCoreBot
+enabled = true
+bot_latitude = 40.7128
+bot_longitude = -74.0060
+db_path = meshcore_bot.db
+
+[Channels]
+monitor_channels = general,test,emergency
+respond_to_dms = true
+
+[Banned_Users]
+banned_users = 
+
+[Admin_ACL]
+# 64-char hex public keys (comma-separated). Leave blank to disable admin commands.
+admin_pubkeys = 
+admin_commands = repeater,webviewer,reload
+
+[Keywords]
+test = "ack @[{sender}]{phrase_part} | {connection_info} | Received at: {timestamp}"
+ping = "Pong!"
+pong = "Ping!"
+help = "Bot Help: test (or t), ping, help, hello, cmd, advert, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats | More: 'help <command>'"
+
+[Logging]
+log_level = INFO
+log_file = meshcore_bot.log
+
+# Weather (for wx command) - set default_state to your region
+[Weather]
+default_state = WA
+default_country = US
+
+# Path command - "p" shortcut for quick path decoding
+[Path_Command]
+enable_p_shortcut = true
+
+# Sports - teams shown when user says "sports" with no args
+[Sports_Command]
+teams = seahawks,mariners,sounders,kraken
+
+# Optional: Web viewer - uncomment to enable. SECURITY: no auth; use host=127.0.0.1 for localhost only.
+# [Web_Viewer]
+# enabled = true
+# host = 127.0.0.1
+# port = 8080
+# auto_start = true
