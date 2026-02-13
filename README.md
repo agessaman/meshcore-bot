@@ -200,7 +200,7 @@ airnow_api_key =                  # Air quality data
 ### Alert Command
 ```ini
 [Alert_Command]
-alert_enabled = true                    # Enable/disable alert command
+enabled = true                           # Enable/disable alert command
 max_incident_age_hours = 24             # Maximum age for incidents (hours)
 max_distance_km = 20.0                  # Maximum distance for proximity queries (km)
 agency.city.<city_name> = <agency_ids>   # City-specific agency IDs (e.g., agency.city.seattle = 17D20,17M15)

@@ -7,6 +7,10 @@ from modules.commands.base_command import BaseCommand
 from modules.commands.ping_command import PingCommand
 from modules.commands.dadjoke_command import DadJokeCommand
 from modules.commands.joke_command import JokeCommand
+from modules.commands.stats_command import StatsCommand
+from modules.commands.hacker_command import HackerCommand
+from modules.commands.sports_command import SportsCommand
+from modules.commands.alert_command import AlertCommand
 from modules.models import MeshMessage
 from tests.conftest import mock_message
 
@@ -123,6 +127,62 @@ class TestGetConfigValue:
         command_mock_bot.config.set("DadJoke_Command", "dadjoke_enabled", "false")
         cmd = DadJokeCommand(command_mock_bot)
         assert cmd.dadjoke_enabled is False
+
+    def test_stats_command_enabled_standard(self, command_mock_bot_with_db):
+        """Stats_Command uses enabled (standard) when present."""
+        command_mock_bot_with_db.config.add_section("Stats_Command")
+        command_mock_bot_with_db.config.set("Stats_Command", "enabled", "false")
+        cmd = StatsCommand(command_mock_bot_with_db)
+        assert cmd.stats_enabled is False
+
+    def test_stats_command_stats_enabled_legacy(self, command_mock_bot_with_db):
+        """Stats_Command falls back to stats_enabled when enabled absent."""
+        command_mock_bot_with_db.config.add_section("Stats_Command")
+        command_mock_bot_with_db.config.set("Stats_Command", "stats_enabled", "false")
+        cmd = StatsCommand(command_mock_bot_with_db)
+        assert cmd.stats_enabled is False
+
+    def test_hacker_command_enabled_standard(self, command_mock_bot):
+        """Hacker_Command uses enabled (standard) when present."""
+        command_mock_bot.config.add_section("Hacker_Command")
+        command_mock_bot.config.set("Hacker_Command", "enabled", "true")
+        cmd = HackerCommand(command_mock_bot)
+        assert cmd.enabled is True
+
+    def test_hacker_command_hacker_enabled_legacy(self, command_mock_bot):
+        """Hacker_Command falls back to hacker_enabled when enabled absent."""
+        command_mock_bot.config.add_section("Hacker_Command")
+        command_mock_bot.config.set("Hacker_Command", "hacker_enabled", "true")
+        cmd = HackerCommand(command_mock_bot)
+        assert cmd.enabled is True
+
+    def test_sports_command_enabled_standard(self, command_mock_bot):
+        """Sports_Command uses enabled (standard) when present."""
+        command_mock_bot.config.add_section("Sports_Command")
+        command_mock_bot.config.set("Sports_Command", "enabled", "false")
+        cmd = SportsCommand(command_mock_bot)
+        assert cmd.sports_enabled is False
+
+    def test_sports_command_sports_enabled_legacy(self, command_mock_bot):
+        """Sports_Command falls back to sports_enabled when enabled absent."""
+        command_mock_bot.config.add_section("Sports_Command")
+        command_mock_bot.config.set("Sports_Command", "sports_enabled", "false")
+        cmd = SportsCommand(command_mock_bot)
+        assert cmd.sports_enabled is False
+
+    def test_alert_command_enabled_standard(self, command_mock_bot):
+        """Alert_Command uses enabled (standard) when present."""
+        command_mock_bot.config.add_section("Alert_Command")
+        command_mock_bot.config.set("Alert_Command", "enabled", "false")
+        cmd = AlertCommand(command_mock_bot)
+        assert cmd.alert_enabled is False
+
+    def test_alert_command_alert_enabled_legacy(self, command_mock_bot):
+        """Alert_Command falls back to alert_enabled when enabled absent."""
+        command_mock_bot.config.add_section("Alert_Command")
+        command_mock_bot.config.set("Alert_Command", "alert_enabled", "false")
+        cmd = AlertCommand(command_mock_bot)
+        assert cmd.alert_enabled is False
 
 
 class TestCanExecute:

@@ -45,7 +45,9 @@ class StatsCommand(BaseCommand):
     
     def _load_config(self) -> None:
         """Load configuration settings for stats command."""
-        self.stats_enabled = self.get_config_value('Stats_Command', 'stats_enabled', fallback=True, value_type='bool')
+        self.stats_enabled = self.get_config_value('Stats_Command', 'enabled', fallback=None, value_type='bool')
+        if self.stats_enabled is None:
+            self.stats_enabled = self.get_config_value('Stats_Command', 'stats_enabled', fallback=True, value_type='bool')
         self.data_retention_days = self.get_config_value('Stats_Command', 'data_retention_days', fallback=7, value_type='int')
         self.auto_cleanup = self.get_config_value('Stats_Command', 'auto_cleanup', fallback=True, value_type='bool')
         self.track_all_messages = self.get_config_value('Stats_Command', 'track_all_messages', fallback=True, value_type='bool')

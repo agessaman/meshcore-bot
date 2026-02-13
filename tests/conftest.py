@@ -76,6 +76,29 @@ def command_mock_bot(mock_logger, minimal_config):
 
 
 @pytest.fixture
+def command_mock_bot_with_db(mock_logger, minimal_config, tmp_path):
+    """Command mock bot with db_manager for commands that need DB (e.g. StatsCommand)."""
+    bot = MagicMock()
+    bot.logger = mock_logger
+    bot.config = minimal_config
+    bot.translator = MagicMock()
+
+    def _mock_translate(key, **kwargs):
+        if kwargs:
+            return key + " " + " ".join(f"{k}={v}" for k, v in sorted(kwargs.items()))
+        return key
+
+    bot.translator.translate = Mock(side_effect=_mock_translate)
+    bot.translator.get_value = Mock(return_value=None)
+    bot.command_manager = MagicMock()
+    bot.command_manager.monitor_channels = ["general", "test", "emergency"]
+    bot.command_manager.send_response = AsyncMock(return_value=True)
+    bot.db_manager = MagicMock()
+    bot.db_manager.db_path = str(tmp_path / "test.db")
+    return bot
+
+
+@pytest.fixture
 def mock_logger():
     """Create a mock logger for testing."""
     logger = Mock()

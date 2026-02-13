@@ -380,24 +380,20 @@ enabled = false
 enabled = false
 
 [Sports_Command]
-# Enable or disable the sports command
-sports_enabled = false
+enabled = false
 
 [Stats_Command]
-# Enable or disable the stats command
-stats_enabled = false
+enabled = false
 
 [Hacker_Command]
-# Enable or disable the hacker command
-hacker_enabled = false
+enabled = false
 
 [Greeter_Command]
 # Enable or disable the greeter command
 enabled = false
 
 [Alert_Command]
-# Enable or disable the alert command
-alert_enabled = false
+enabled = false
 
 [Announcements_Command]
 # Enable or disable the announcements command

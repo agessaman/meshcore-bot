@@ -610,7 +610,7 @@ emergency.hamradio = Amateur radio emergency net
 # Enable or disable the sports command
 # true: Sports command is available
 # false: Sports command is disabled
-sports_enabled = true
+enabled = true
 
 # Default teams to show when 'sports' command is used without arguments
 # Comma-separated list of team names (use lowercase)
@@ -636,7 +636,7 @@ api_timeout = 10
 # Enable or disable the stats command
 # true: Stats command is available
 # false: Stats command is disabled
-stats_enabled = true
+enabled = true
 
 # Data retention settings
 # Number of days to keep stats data (older data will be automatically cleaned up)
@@ -849,7 +849,7 @@ star_bias_multiplier = 2.5
 # Enable or disable the hacker command
 # true: Hacker command is available (responds to Linux commands with supervillain mainframe errors)
 # false: Hacker command is disabled
-hacker_enabled = false
+enabled = false
 
 [Multitest_Command]
 # Response format for multitest command results
@@ -933,7 +933,7 @@ backfill_lookback_days = 30
 # Enable or disable the alert command
 # true: Alert command is available
 # false: Alert command is disabled
-alert_enabled = false
+enabled = false
 
 # PulsePoint agency IDs by county/region
 # Format: agency.<county_name> = comma-separated agency IDs

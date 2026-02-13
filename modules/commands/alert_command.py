@@ -202,7 +202,12 @@ class AlertCommand(BaseCommand):
         
         # Get max incident age in hours (default 24 hours) - filter out incidents older than this
         self.max_incident_age_hours = self.get_config_value('Alert_Command', 'max_incident_age_hours', fallback=24.0, value_type='float')
-    
+
+        # Load enabled (standard enabled; alert_enabled legacy)
+        self.alert_enabled = self.get_config_value('Alert_Command', 'enabled', fallback=None, value_type='bool')
+        if self.alert_enabled is None:
+            self.alert_enabled = self.get_config_value('Alert_Command', 'alert_enabled', fallback=True, value_type='bool')
+
     def can_execute(self, message: MeshMessage) -> bool:
         """Check if this command can be executed with the given message.
         
@@ -212,9 +217,7 @@ class AlertCommand(BaseCommand):
         Returns:
             bool: True if command is enabled and checks pass, False otherwise.
         """
-        # Check if alert command is enabled
-        alert_enabled = self.get_config_value('Alert_Command', 'alert_enabled', fallback=True, value_type='bool')
-        if not alert_enabled:
+        if not self.alert_enabled:
             return False
         
         # Call parent can_execute() which includes channel checking, cooldown, etc.

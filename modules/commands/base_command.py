@@ -105,10 +105,24 @@ class BaseCommand(ABC):
             'Weather': 'Wx_Command',  # wx command reads from [Wx_Command]; [Weather] is legacy
         }
         # Legacy [Jokes] -> [Joke_Command] / [DadJoke_Command]: (requested_section, key) -> legacy section
-        # For 'enabled', also try legacy key in [Jokes]: (section, key) -> (legacy_section, legacy_key)
+        # For 'enabled', also try legacy key: (section, key) -> (legacy_section, legacy_key) or list of same
         legacy_key_alias = {
             ('Joke_Command', 'enabled'): ('Jokes', 'joke_enabled'),
             ('DadJoke_Command', 'enabled'): ('Jokes', 'dadjoke_enabled'),
+            # Standard enabled with *_enabled fallback (same section, then old section)
+            ('Stats_Command', 'enabled'): [
+                ('Stats_Command', 'stats_enabled'),
+                ('Stats', 'stats_enabled'),
+            ],
+            ('Sports_Command', 'enabled'): [
+                ('Sports_Command', 'sports_enabled'),
+                ('Sports', 'sports_enabled'),
+            ],
+            ('Hacker_Command', 'enabled'): [
+                ('Hacker_Command', 'hacker_enabled'),
+                ('Hacker', 'hacker_enabled'),
+            ],
+            ('Alert_Command', 'enabled'): [('Alert_Command', 'alert_enabled')],
         }
         legacy_section_fallback = {
             ('Joke_Command', 'joke_enabled'): 'Jokes',
@@ -178,23 +192,24 @@ class BaseCommand(ABC):
         # Try legacy key alias (e.g. [Jokes] joke_enabled when requesting Joke_Command enabled)
         alias = legacy_key_alias.get((section, key))
         if alias:
-            legacy_sec, legacy_key = alias
-            if self.bot.config.has_section(legacy_sec) and self.bot.config.has_option(legacy_sec, legacy_key):
-                try:
-                    if value_type == 'bool':
-                        value = self.bot.config.getboolean(legacy_sec, legacy_key, fallback=fallback)
-                    elif value_type == 'int':
-                        value = self.bot.config.getint(legacy_sec, legacy_key, fallback=fallback)
-                    elif value_type == 'float':
-                        value = self.bot.config.getfloat(legacy_sec, legacy_key, fallback=fallback)
-                    elif value_type == 'list':
-                        raw = self.bot.config.get(legacy_sec, legacy_key)
-                        value = [item.strip() for item in raw.split(',') if item.strip()]
-                    else:
-                        value = self.bot.config.get(legacy_sec, legacy_key)
-                    return value
-                except (ValueError, TypeError) as e:
-                    self.logger.debug(f"Config conversion error for {legacy_sec}.{legacy_key}: {e}")
+            aliases = [alias] if isinstance(alias, tuple) else alias
+            for legacy_sec, legacy_key in aliases:
+                if self.bot.config.has_section(legacy_sec) and self.bot.config.has_option(legacy_sec, legacy_key):
+                    try:
+                        if value_type == 'bool':
+                            value = self.bot.config.getboolean(legacy_sec, legacy_key, fallback=fallback)
+                        elif value_type == 'int':
+                            value = self.bot.config.getint(legacy_sec, legacy_key, fallback=fallback)
+                        elif value_type == 'float':
+                            value = self.bot.config.getfloat(legacy_sec, legacy_key, fallback=fallback)
+                        elif value_type == 'list':
+                            raw = self.bot.config.get(legacy_sec, legacy_key)
+                            value = [item.strip() for item in raw.split(',') if item.strip()]
+                        else:
+                            value = self.bot.config.get(legacy_sec, legacy_key)
+                        return value
+                    except (ValueError, TypeError) as e:
+                        self.logger.debug(f"Config conversion error for {legacy_sec}.{legacy_key}: {e}")
         
         return fallback
     

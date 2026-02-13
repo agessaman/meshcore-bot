@@ -69,6 +69,11 @@ class SportsCommand(BaseCommand):
         super().__init__(bot)
         self.url_timeout = 10  # seconds
 
+        # Load enabled (standard enabled; sports_enabled legacy)
+        self.sports_enabled = self.get_config_value('Sports_Command', 'enabled', fallback=None, value_type='bool')
+        if self.sports_enabled is None:
+            self.sports_enabled = self.get_config_value('Sports_Command', 'sports_enabled', fallback=True, value_type='bool')
+
         # Initialize API clients
         self.espn_client = ESPNClient(logger=self.logger, timeout=self.url_timeout)
         self.thesportsdb_client = TheSportsDBClient(logger=self.logger)
@@ -128,9 +133,7 @@ class SportsCommand(BaseCommand):
     
     def can_execute(self, message: MeshMessage) -> bool:
         """Check if this command can execute with the given message"""
-        # Check if sports command is enabled
-        sports_enabled = self.get_config_value('Sports_Command', 'sports_enabled', fallback=True, value_type='bool')
-        if not sports_enabled:
+        if not self.sports_enabled:
             return False
         
         # Channel access and cooldown are now handled by BaseCommand.can_execute()

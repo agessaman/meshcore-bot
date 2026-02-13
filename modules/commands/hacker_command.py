@@ -34,7 +34,9 @@ class HackerCommand(BaseCommand):
             bot: The bot instance.
         """
         super().__init__(bot)
-        self.enabled = self.get_config_value('Hacker_Command', 'hacker_enabled', fallback=False, value_type='bool')
+        self.enabled = self.get_config_value('Hacker_Command', 'enabled', fallback=None, value_type='bool')
+        if self.enabled is None:
+            self.enabled = self.get_config_value('Hacker_Command', 'hacker_enabled', fallback=False, value_type='bool')
     
     def get_help_text(self) -> str:
         """Get help text for the hacker command.
