@@ -85,7 +85,7 @@ class GlobalWxCommand(BaseCommand):
             content = content[1:].strip()
         content_lower = content.lower()
         for keyword in self.keywords:
-            if content_lower.startswith(keyword + ' '):
+            if content_lower.startswith(keyword + ' ') or content_lower == keyword:
                 return True
         return False
     
