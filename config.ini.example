@@ -309,10 +309,10 @@ long_jokes = false
 test = "ack @[{sender}]{phrase_part} | {connection_info} | Received at: {timestamp}"
 ping = "Pong!"
 pong = "Ping!"
-help = "Bot Help: test (or t), ping, help, hello, cmd, advert, @string, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats | More: 'help <command>'"
+help = "Bot Help: test (or t), ping, help, hello, cmd, advert, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats | More: 'help <command>'"
 
 # Override 'cmd' command output
-# cmd = "Available commands: test (or t), ping, help, hello, cmd, advert, @string, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats"
+# cmd = "Available commands: test (or t), ping, help, hello, cmd, advert, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats"
 
 [Scheduled_Messages]
 # Scheduled message format: HHMM = channel:message
