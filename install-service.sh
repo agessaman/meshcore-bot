@@ -405,6 +405,19 @@ copy_files_smart "$SCRIPT_DIR" "$INSTALL_DIR" || {
     exit 1
 }
 
+# If no config.ini in install dir, create it from config.ini.example
+if [ ! -f "$INSTALL_DIR/config.ini" ]; then
+    if [ -f "$INSTALL_DIR/config.ini.example" ]; then
+        cp "$INSTALL_DIR/config.ini.example" "$INSTALL_DIR/config.ini"
+        print_success "Created $INSTALL_DIR/config.ini from config.ini.example (no config was present)"
+    elif [ -f "$SCRIPT_DIR/config.ini.example" ]; then
+        cp "$SCRIPT_DIR/config.ini.example" "$INSTALL_DIR/config.ini"
+        print_success "Created $INSTALL_DIR/config.ini from config.ini.example (no config was present)"
+    else
+        print_warning "config.ini.example not found. Create $INSTALL_DIR/config.ini manually before starting the bot."
+    fi
+fi
+
 # Create venv and install dependencies before chown so the service user ends up
 # owning a complete, working venv (avoids partial root-owned venv and import errors).
 print_section "Step 4: Setting Up Python Virtual Environment"

@@ -518,29 +518,6 @@ startup_advert = false
 # false: Manual mode - no automatic actions, use !repeater commands to manage contacts (default)
 auto_manage_contacts = false
 
-[Joke_Command]
-# Enable or disable the joke command (true/false)
-enabled = true
-
-# Enable seasonal joke defaults (October: spooky, December: Christmas)
-# true: Seasonal defaults are applied (default)
-# false: No seasonal defaults (always random)
-seasonal_jokes = true
-
-# Handle long jokes (over 130 characters)
-# false: Fetch new jokes until we get a short one (default)
-# true: Split long jokes into multiple messages
-long_jokes = false
-
-[DadJoke_Command]
-# Enable or disable the dad joke command (true/false)
-enabled = true
-
-# Handle long jokes (over 130 characters)
-# false: Fetch new jokes until we get a short one (default)
-# true: Split long jokes into multiple messages
-long_jokes = false
-
 [Admin_ACL]
 # Admin Access Control List (ACL) for restricted commands
 # Only users with public keys listed here can execute admin commands
@@ -760,6 +737,30 @@ url_timeout = 10
 # true: Use 24-hour UTC format
 # false: Use 12-hour local format
 use_zulu_time = false
+
+[Joke_Command]
+# Enable or disable the joke command (true/false)
+enabled = true
+
+# Enable seasonal joke defaults (October: spooky, December: Christmas)
+# true: Seasonal defaults are applied (default)
+# false: No seasonal defaults (always random)
+seasonal_jokes = true
+
+# Handle long jokes (over 130 characters)
+# false: Fetch new jokes until we get a short one (default)
+# true: Split long jokes into multiple messages
+long_jokes = false
+
+[DadJoke_Command]
+# Enable or disable the dad joke command (true/false)
+enabled = true
+
+# Handle long jokes (over 130 characters)
+# false: Fetch new jokes until we get a short one (default)
+# true: Split long jokes into multiple messages
+long_jokes = false
+
 """
         with open(self.config_file, 'w') as f:
             f.write(default_config)
