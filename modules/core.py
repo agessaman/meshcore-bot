@@ -260,7 +260,8 @@ class MeshCoreBot:
         if not Path(self.config_file).exists():
             self.create_default_config()
         
-        self.config.read(self.config_file)
+        # Force UTF-8 so emoji and non-ASCII characters in config.ini parse on Windows.
+        self.config.read(self.config_file, encoding="utf-8")
     
     def _get_radio_settings(self) -> Dict[str, Any]:
         """Get current radio/connection settings from config.
@@ -298,7 +299,7 @@ class MeshCoreBot:
             if not Path(self.config_file).exists():
                 return (False, "Config file not found")
             
-            new_config.read(self.config_file)
+            new_config.read(self.config_file, encoding="utf-8")
             
             # Get new radio settings
             new_radio_settings = {
@@ -322,7 +323,7 @@ class MeshCoreBot:
             self.logger.info("Reloading configuration (radio settings unchanged)")
             
             # Reload the config
-            self.config.read(self.config_file)
+            self.config.read(self.config_file, encoding="utf-8")
             
             # Update rate limiters
             new_rate_limit = self.config.getint('Bot', 'rate_limit_seconds', fallback=10)
