@@ -228,35 +228,6 @@ companion_advert_threshold_days = 30
 # Companions must be inactive for at least this many days
 companion_min_inactive_days = 30
 
-[Joke_Command]
-# Enable or disable the joke command (true/false)
-enabled = true
-
-# Enable seasonal joke defaults (October: spooky, December: Christmas)
-# true: Seasonal defaults are applied (default)
-# false: No seasonal defaults (always random)
-seasonal_jokes = true
-
-# Handle long jokes (over 130 characters)
-# false: Fetch new jokes until we get a short one (default)
-# true: Split long jokes into multiple messages
-long_jokes = false
-
-# Channels where joke command is allowed (omit to use global monitor_channels)
-# channels = #bot,#jokes
-
-[DadJoke_Command]
-# Enable or disable the dad joke command (true/false)
-enabled = true
-
-# Handle long jokes (over 130 characters)
-# false: Fetch new jokes until we get a short one (default)
-# true: Split long jokes into multiple messages
-long_jokes = false
-
-# Channels where dadjoke command is allowed (omit to use global monitor_channels)
-# channels = #bot,#jokes
-
 [Keywords]
 # Available placeholders (message-based):
 # {sender} - Name/ID of message sender
@@ -566,7 +537,6 @@ enabled = true
 # The bot will automatically add the '#' prefix when displaying channels
 
 # General channels (no category prefix)
-general = General discussion and chat
 weather = Weather updates and conditions
 emergency = Emergency communications and alerts
 
@@ -675,9 +645,9 @@ path_selection_preset = balanced
 
 # Basic Settings
 # Geographic proximity calculation method
-# simple: Use proximity to bot location (default)
-# path: Use proximity to previous/next nodes in the path for more realistic routing
-proximity_method = simple
+# simple: Use proximity to bot location 
+# path: Use proximity to previous/next nodes in the path for more realistic routing (default)
+proximity_method = path
 
 # Enable path proximity fallback
 # When path proximity can't be calculated (missing location data), fall back to simple proximity
@@ -699,8 +669,8 @@ max_repeater_age_days = 14
 recency_weight = 0.4
 
 # Recency decay half-life in hours (for longer advert intervals)
-# Default: 12 hours. For 48-72 hour advert intervals, use 36-48 hours.
-recency_decay_half_life_hours = 12
+# Default: 24 hours. For 48-72 hour advert intervals, use 36-48 hours.
+recency_decay_half_life_hours = 24
 
 # Enable graph-based path validation
 # When enabled, uses observed mesh connections to improve path guessing accuracy
@@ -843,6 +813,36 @@ graph_startup_load_days = 0
 # Set to 1.0 to disable star bias
 star_bias_multiplier = 2.5
 
+
+[Joke_Command]
+# Enable or disable the joke command (true/false)
+enabled = true
+
+# Enable seasonal joke defaults (October: spooky, December: Christmas)
+# true: Seasonal defaults are applied (default)
+# false: No seasonal defaults (always random)
+seasonal_jokes = true
+
+# Handle long jokes (over 130 characters)
+# false: Fetch new jokes until we get a short one (default)
+# true: Split long jokes into multiple messages
+long_jokes = false
+
+# Channels where joke command is allowed (omit to use global monitor_channels)
+# channels = #bot,#jokes
+
+[DadJoke_Command]
+# Enable or disable the dad joke command (true/false)
+enabled = true
+
+# Handle long jokes (over 130 characters)
+# false: Fetch new jokes until we get a short one (default)
+# true: Split long jokes into multiple messages
+long_jokes = false
+
+# Channels where dadjoke command is allowed (omit to use global monitor_channels)
+# channels = #bot,#jokes
+
 [Hacker_Command]
 # Enable or disable the hacker command (true/false; responds to Linux commands with supervillain mainframe errors)
 enabled = false
@@ -856,7 +856,7 @@ enabled = false
 # {listening_duration}: Listening window duration in seconds
 # Leave empty to use default format
 # Example: "Found {path_count} unique path(s) for @[{sender}]:\n{paths}"
-response_format = 
+response_format = @[{sender}] found {path_count} unique path(s):\n{paths}
 
 [Greeter_Command]
 # Enable greeter to greet users on first channel message (true/false)
