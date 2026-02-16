@@ -7,12 +7,38 @@ from modules.config_validation import (
     SEVERITY_ERROR,
     SEVERITY_INFO,
     SEVERITY_WARNING,
+    strip_optional_quotes,
     validate_config,
     _resolve_path,
     _check_path_writable,
     _suggest_similar_command,
     _get_command_prefix_to_section,
 )
+
+
+class TestStripOptionalQuotes:
+    """Tests for strip_optional_quotes (monitor_channels and similar config values)."""
+
+    def test_unquoted_unchanged(self):
+        assert strip_optional_quotes("#bot,#bot-everett,#bots") == "#bot,#bot-everett,#bots"
+        assert strip_optional_quotes("general,test") == "general,test"
+
+    def test_double_quoted_stripped(self):
+        assert strip_optional_quotes('"#bot,#bot-everett,#bots"') == "#bot,#bot-everett,#bots"
+
+    def test_single_quoted_stripped(self):
+        assert strip_optional_quotes("'#bot,#bot-everett,#bots'") == "#bot,#bot-everett,#bots"
+
+    def test_empty_and_whitespace(self):
+        assert strip_optional_quotes("") == ""
+        assert strip_optional_quotes("  ") == ""
+
+    def test_mismatched_quotes_not_stripped(self):
+        assert strip_optional_quotes('"#bot,#bots\'') == '"#bot,#bots\''
+        assert strip_optional_quotes('\'#bot,#bots"') == '\'#bot,#bots"'
+
+    def test_single_char_quoted_stripped(self):
+        assert strip_optional_quotes('"a"') == "a"
 
 
 class TestValidateConfig:

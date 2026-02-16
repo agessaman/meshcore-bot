@@ -56,6 +56,21 @@ ADMIN_ACL_SECTION = "Admin_ACL"        # admin commands disabled
 BANNED_USERS_SECTION = "Banned_Users"   # empty banned list
 LOCALIZATION_SECTION = "Localization"   # language=en, translation_path=translations/
 
+def strip_optional_quotes(s: str) -> str:
+    """Strip one layer of surrounding double or single quotes if present.
+
+    Allows config values like monitor_channels to be written as
+    "#bot,#bot-everett,#bots" so the list does not look like comments.
+    Backward compatible: unquoted values are returned unchanged.
+    """
+    if not isinstance(s, str):
+        return s
+    s = s.strip()
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in '"\'':
+        return s[1:-1]
+    return s
+
+
 # Non-standard section name -> suggested canonical name (exact match)
 SECTION_TYPO_MAP = {
     "WebViewer": "Web_Viewer",

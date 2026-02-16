@@ -17,6 +17,7 @@ from .models import MeshMessage
 from .plugin_loader import PluginLoader
 from .commands.base_command import BaseCommand
 from .utils import check_internet_connectivity_async, decode_escape_sequences, format_keyword_response_with_placeholders
+from .config_validation import strip_optional_quotes
 
 
 @dataclass
@@ -423,8 +424,11 @@ class CommandManager:
         return any(sender_id.startswith(entry) for entry in self.banned_users)
     
     def load_monitor_channels(self) -> List[str]:
-        """Load monitored channels from config"""
-        channels = self.bot.config.get('Channels', 'monitor_channels', fallback='')
+        """Load monitored channels from config.
+        Values may be quoted, e.g. \"#bot,#bot-everett,#bots\" or unquoted.
+        """
+        raw = self.bot.config.get('Channels', 'monitor_channels', fallback='')
+        channels = strip_optional_quotes(raw)
         return [channel.strip() for channel in channels.split(',') if channel.strip()]
     
     def load_channel_keywords(self) -> Optional[List[str]]:

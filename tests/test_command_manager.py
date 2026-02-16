@@ -163,6 +163,12 @@ class TestLoadMonitorChannels:
         manager = make_manager(cm_bot)
         assert manager.monitor_channels == []
 
+    def test_load_monitor_channels_quoted(self, cm_bot):
+        """Quoted monitor_channels (e.g. \"#bot,#bot-everett,#bots\") is supported."""
+        cm_bot.config.set("Channels", "monitor_channels", '"#bot,#bot-everett,#bots"')
+        manager = make_manager(cm_bot)
+        assert manager.monitor_channels == ["#bot", "#bot-everett", "#bots"]
+
 
 class TestLoadChannelKeywords:
     """Tests for channel keyword whitelist loading."""
