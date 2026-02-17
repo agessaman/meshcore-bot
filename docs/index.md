@@ -18,6 +18,7 @@ Documentation for the MeshCore bot: setup, configuration, commands, and services
 |----------|-------------|
 | [Configuration](configuration.md) | config.ini structure and command options |
 | [Path Command](path-command-config.md) | Path command presets and tuning |
+| [Config validation](config-validation.md) | Validate config.ini before starting the bot |
 
 ## Guides
 

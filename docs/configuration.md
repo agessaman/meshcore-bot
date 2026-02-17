@@ -66,6 +66,10 @@ The Path command has many options (presets, proximity, graph validation, etc.). 
 
 Service plugins (Discord Bridge, Packet Capture, Map Uploader, Weather Service) each have their own section and are documented under [Service Plugins](service-plugins.md).
 
+## Config validation
+
+Before starting the bot, you can validate section names and path writability. See [Config validation](config-validation.md) for how to run `validate_config.py` or `meshcore_bot.py --validate-config`, and what is checked (required sections, typos like `[WebViewer]` → `[Web_Viewer]`, and writable paths).
+
 ## Reloading configuration
 
 Some configuration can be reloaded without restarting the bot using the **`reload`** command (admin only). Radio/connection settings are not changed by reload; restart the bot for those.

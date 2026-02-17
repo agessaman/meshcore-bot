@@ -56,6 +56,7 @@ nav:
   - Configuration:
     - Overview: configuration.md
     - Path Command: path-command-config.md
+    - Config validation: config-validation.md
   - Web Viewer: web-viewer.md
   - Command Reference: commands.md
   - Service Plugins:
