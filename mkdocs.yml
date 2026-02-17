@@ -49,8 +49,10 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Getting Started: getting-started.md
-  - Docker: DOCKER.md
+  - Quick Start: getting-started.md
+  - Installation:
+    - Docker: DOCKER.md
+    - Service: SERVICE_INSTALLATION.md
   - Configuration:
     - Overview: configuration.md
     - Path Command: PATH_COMMAND_CONFIG.md
