@@ -875,7 +875,7 @@ class WxCommand(BaseCommand):
                 return "No forecast data available", weather_json
             
             current = forecast[0]
-            day_name = self.abbreviate_noaa(current['name'])
+            day_name = self._noaa_period_display_name(current)
             temp = current.get('temperature', 'N/A')
             temp_unit = current.get('temperatureUnit', 'F')
             short_forecast = current.get('shortForecast', 'Unknown')
@@ -1005,7 +1005,7 @@ class WxCommand(BaseCommand):
             if is_current_night and today_period:
                 period = today_period[1]
                 # Always add today_period - it represents tomorrow's daytime when current is Tonight
-                period_name = self.abbreviate_noaa(period.get('name', 'Today'))
+                period_name = self._noaa_period_display_name(period)
                 period_temp = period.get('temperature', '')
                 period_short = period.get('shortForecast', '')
                 period_detailed = period.get('detailedForecast', '')
@@ -1063,7 +1063,7 @@ class WxCommand(BaseCommand):
                 
                 if should_add_tonight:
                     period = tonight_period[1]
-                    period_name = self.abbreviate_noaa(period.get('name', 'Tonight'))
+                    period_name = self._noaa_period_display_name(period)
                     period_temp = period.get('temperature', '')
                     period_short = period.get('shortForecast', '')
                     period_detailed = period.get('detailedForecast', '')
@@ -1110,7 +1110,7 @@ class WxCommand(BaseCommand):
             # Prioritize adding Tomorrow when current is Tonight to use more of the available message length
             if tomorrow_period:
                 period = tomorrow_period[1]
-                period_name = self.abbreviate_noaa(period.get('name', 'Tomorrow'))
+                period_name = self._noaa_period_display_name(period)
                 period_temp = period.get('temperature', '')
                 period_short = period.get('shortForecast', '')
                 period_detailed = period.get('detailedForecast', '')
@@ -1467,7 +1467,7 @@ class WxCommand(BaseCommand):
             # Build detailed forecast for tomorrow
             parts = []
             for period in tomorrow_periods:
-                period_name = self.abbreviate_noaa(period.get('name', 'Tomorrow'))
+                period_name = self._noaa_period_display_name(period)
                 temp = period.get('temperature', '')
                 temp_unit = period.get('temperatureUnit', 'F')
                 short_forecast = period.get('shortForecast', '')
@@ -3416,6 +3416,35 @@ class WxCommand(BaseCommand):
             return "💨"
         else:
             return "🌤️"  # Default weather emoji
+
+    # NOAA sometimes names forecast periods after federal holidays (e.g. "Washington's Birthday")
+    # instead of the weekday. Match these so we can resolve to weekday via startTime.
+    _NOAA_HOLIDAY_NAME_PATTERNS = (
+        "washington's birthday", "presidents day", "president's day",
+        "martin luther king", "mlk day", "memorial day", "labor day",
+        "independence day", "juneteenth", "columbus day", "veterans day",
+        "thanksgiving", "christmas day", "new year's day", "new year's eve",
+    )
+
+    def _noaa_period_display_name(self, period: dict) -> str:
+        """Return display label for a NOAA forecast period. Resolves holiday names to weekday."""
+        name = period.get('name', '') or ''
+        start_time_str = period.get('startTime')
+        name_lower = name.lower()
+        is_holiday = any(p in name_lower for p in self._NOAA_HOLIDAY_NAME_PATTERNS)
+        if is_holiday and start_time_str:
+            try:
+                # startTime is ISO 8601, e.g. 2025-02-17T08:00:00-08:00
+                dt = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
+                # Python weekday(): Mon=0 .. Sun=6
+                weekdays = ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')
+                day_abbrev = weekdays[dt.weekday()]
+                if 'night' in name_lower or 'overnight' in name_lower:
+                    return f"{day_abbrev} Night"
+                return day_abbrev
+            except (ValueError, TypeError):
+                pass
+        return self.abbreviate_noaa(name)
 
     def abbreviate_noaa(self, text: str) -> str:
         """Replace long strings with shorter ones for display"""

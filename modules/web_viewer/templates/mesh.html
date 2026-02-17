@@ -5,11 +5,11 @@
 {% block content %}
 <style>
     /* Make the mesh graph page use full height - scoped to this page only */
+    /* Fixed height so flex children (e.g. visualization-row) get remaining space; navbar + title + stats ~220px */
     #mesh-graph-container {
         display: flex;
         flex-direction: column;
-        flex: 1;
-        min-height: 0;
+        height: calc(100vh - 110px);
     }
     
     #map-view, #graph-view {
@@ -41,7 +41,7 @@
     }
 </style>
 
-<div id="mesh-graph-container" class="d-flex flex-column" style="flex: 1; min-height: 0;">
+<div id="mesh-graph-container" class="d-flex flex-column">
 <div class="row">
     <div class="col-12">
         <h1 class="mb-4">

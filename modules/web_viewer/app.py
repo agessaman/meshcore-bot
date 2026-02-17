@@ -162,10 +162,14 @@ class BotDataViewer:
                     feed_manager_enabled = self.config.getboolean('Feed_Manager', 'feed_manager_enabled', fallback=False)
                 except (configparser.NoSectionError, configparser.NoOptionError, ValueError, TypeError):
                     feed_manager_enabled = False
-                return dict(greeter_enabled=greeter_enabled, feed_manager_enabled=feed_manager_enabled)
+                try:
+                    bot_name = (self.config.get('Bot', 'bot_name', fallback='MeshCore Bot') or '').strip() or 'MeshCore Bot'
+                except (configparser.NoSectionError, configparser.NoOptionError):
+                    bot_name = 'MeshCore Bot'
+                return dict(greeter_enabled=greeter_enabled, feed_manager_enabled=feed_manager_enabled, bot_name=bot_name)
             except Exception as e:
                 self.logger.exception("Template context processor failed: %s", e)
-                return dict(greeter_enabled=False, feed_manager_enabled=False)
+                return dict(greeter_enabled=False, feed_manager_enabled=False, bot_name='MeshCore Bot')
     
     def _init_databases(self):
         """Initialize database connections"""
