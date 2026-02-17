@@ -149,8 +149,7 @@ class WxCommand(BaseCommand):
             content = content[1:].strip()
         content_lower = content.lower()
         for keyword in self.keywords:
-            # Match exact keyword or keyword followed by space
-            if content_lower == keyword or content_lower.startswith(keyword + ' '):
+            if content_lower.startswith(keyword + ' ') or content_lower == keyword:
                 return True
         return False
     

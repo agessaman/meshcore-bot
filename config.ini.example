@@ -1133,6 +1133,7 @@ auto_start = false
 # Optional: database path for web viewer. If unset, the viewer uses [Bot] db_path (recommended).
 # Only set this if you use a separate database for the viewer; you will see a startup warning.
 # See docs/WEB_VIEWER.md for migrating from a separate database.
+# db_path = meshcore_bot.db
 
 # Additional hashtag channels to decode in the packet stream
 # The web viewer can decrypt GroupText messages from hashtag channels

@@ -171,6 +171,17 @@ class BotDataViewer:
                 self.logger.exception("Template context processor failed: %s", e)
                 return dict(greeter_enabled=False, feed_manager_enabled=False, bot_name='MeshCore Bot')
     
+    def _get_db_path(self):
+        """Get the database path, falling back to [Bot] db_path if [Web_Viewer] db_path is unset"""
+        # Use [Bot] db_path when [Web_Viewer] db_path is unset
+        bot_db = self.config.get('Bot', 'db_path', fallback='meshcore_bot.db')
+        if (self.config.has_section('Web_Viewer') and self.config.has_option('Web_Viewer', 'db_path')
+                and self.config.get('Web_Viewer', 'db_path', fallback='').strip()):
+            use_db = self.config.get('Web_Viewer', 'db_path').strip()
+        else:
+            use_db = bot_db
+        return str(resolve_path(use_db, self.bot_root))
+    
     def _init_databases(self):
         """Initialize database connections"""
         try:
