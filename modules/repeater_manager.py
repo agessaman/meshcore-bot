@@ -27,11 +27,11 @@ class RepeaterManager:
         # Use the shared database manager
         self.db_manager = bot.db_manager
         
+        # Check for and handle database schema migration FIRST (before creating indexes)
+        self._migrate_database_schema()
+        
         # Initialize repeater-specific tables
         self._init_repeater_tables()
-        
-        # Check for and handle database schema migration
-        self._migrate_database_schema()
         
         # Initialize auto-purge monitoring
         self.contact_limit = 300  # MeshCore device limit (will be updated from device info)
@@ -107,6 +107,17 @@ class RepeaterManager:
                 UNIQUE(date, public_key)
             ''')
             
+            # Create unique_advert_packets table for tracking unique packet hashes
+            # This allows us to count unique advert packets (deduplicate by packet_hash)
+            self.db_manager.create_table('unique_advert_packets', '''
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date DATE NOT NULL,
+                public_key TEXT NOT NULL,
+                packet_hash TEXT NOT NULL,
+                first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(date, public_key, packet_hash)
+            ''')
+            
             # Create purging_log table for audit trail
             self.db_manager.create_table('purging_log', '''
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -117,8 +128,38 @@ class RepeaterManager:
                 reason TEXT
             ''')
             
+            # Create mesh_connections table for graph-based path validation
+            self.db_manager.create_table('mesh_connections', '''
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                from_prefix TEXT NOT NULL,
+                to_prefix TEXT NOT NULL,
+                from_public_key TEXT,
+                to_public_key TEXT,
+                observation_count INTEGER DEFAULT 1,
+                first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                avg_hop_position REAL,
+                geographic_distance REAL,
+                UNIQUE(from_prefix, to_prefix)
+            ''')
+            
+            # Create observed_paths table for storing complete paths from adverts and messages
+            self.db_manager.create_table('observed_paths', '''
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                public_key TEXT,
+                packet_hash TEXT,
+                from_prefix TEXT NOT NULL,
+                to_prefix TEXT NOT NULL,
+                path_hex TEXT NOT NULL,
+                path_length INTEGER NOT NULL,
+                packet_type TEXT NOT NULL,
+                first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                observation_count INTEGER DEFAULT 1
+            ''')
+            
             # Create indexes for better performance
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(self.db_path, timeout=30.0) as conn:
                 cursor = conn.cursor()
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_public_key ON repeater_contacts(public_key)')
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_device_type ON repeater_contacts(device_type)')
@@ -132,6 +173,35 @@ class RepeaterManager:
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_complete_currently_tracked ON complete_contact_tracking(is_currently_tracked)')
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_complete_location ON complete_contact_tracking(latitude, longitude)')
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_complete_role_tracked ON complete_contact_tracking(role, is_currently_tracked)')
+                
+                # Indexes for unique_advert_packets table
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_unique_advert_date_pubkey ON unique_advert_packets(date, public_key)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_unique_advert_hash ON unique_advert_packets(packet_hash)')
+                
+                # Indexes for mesh_connections table
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_from_prefix ON mesh_connections(from_prefix)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_to_prefix ON mesh_connections(to_prefix)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_last_seen ON mesh_connections(last_seen)')
+                
+                # Indexes for observed_paths table
+                # Index for advert path lookups by repeater (where public_key IS NOT NULL)
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_observed_paths_public_key ON observed_paths(public_key, packet_type)')
+                # Index for grouping paths by packet hash (same packet via different paths)
+                # Only create if packet_hash column exists (migration may have just added it)
+                cursor.execute("PRAGMA table_info(observed_paths)")
+                observed_paths_columns = [row[1] for row in cursor.fetchall()]
+                if 'packet_hash' in observed_paths_columns:
+                    cursor.execute('CREATE INDEX IF NOT EXISTS idx_observed_paths_packet_hash ON observed_paths(packet_hash) WHERE packet_hash IS NOT NULL')
+                # Unique index for adverts: one entry per repeater per unique path
+                cursor.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_observed_paths_advert_unique ON observed_paths(public_key, path_hex, packet_type) WHERE public_key IS NOT NULL')
+                # Index for general path lookups by endpoints
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_observed_paths_endpoints ON observed_paths(from_prefix, to_prefix, packet_type)')
+                # Unique index for messages: one entry per unique path between endpoints
+                cursor.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_observed_paths_message_unique ON observed_paths(from_prefix, to_prefix, path_hex, packet_type) WHERE public_key IS NULL')
+                # Index for recency filtering
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_observed_paths_last_seen ON observed_paths(last_seen)')
+                # Index for type-specific queries
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_observed_paths_type_seen ON observed_paths(packet_type, last_seen)')
                 conn.commit()
             
             self.logger.info("Repeater contacts database initialized successfully")
@@ -141,56 +211,82 @@ class RepeaterManager:
             raise
     
     def _migrate_database_schema(self):
-        """Handle database schema migration for existing installations"""
-        try:
-            # Check if the new location columns exist in repeater_contacts
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute("PRAGMA table_info(repeater_contacts)")
-                columns = [row[1] for row in cursor.fetchall()]
-                
-                # Add missing location columns if they don't exist
-                new_columns = [
-                    ('latitude', 'REAL'),
-                    ('longitude', 'REAL'),
-                    ('city', 'TEXT'),
-                    ('state', 'TEXT'),
-                    ('country', 'TEXT')
-                ]
-                
-                for column_name, column_type in new_columns:
-                    if column_name not in columns:
-                        self.logger.info(f"Adding missing column to repeater_contacts: {column_name}")
-                        cursor.execute(f"ALTER TABLE repeater_contacts ADD COLUMN {column_name} {column_type}")
+        """Handle database schema migration for existing installations.
+        Each table is migrated in isolation so one missing table or error does not block the rest.
+        Important for web viewer: migration runs when RepeaterManager is created, so contacts page
+        works for users who open the viewer without having started the bot after upgrade.
+        """
+        with sqlite3.connect(self.db_path, timeout=30.0) as conn:
+            cursor = conn.cursor()
+
+            # repeater_contacts: add location columns only if table exists
+            try:
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='repeater_contacts'")
+                if cursor.fetchone():
+                    cursor.execute("PRAGMA table_info(repeater_contacts)")
+                    columns = [row[1] for row in cursor.fetchall()]
+                    for column_name, column_type in [
+                        ('latitude', 'REAL'), ('longitude', 'REAL'), ('city', 'TEXT'),
+                        ('state', 'TEXT'), ('country', 'TEXT')
+                    ]:
+                        if column_name not in columns:
+                            self.logger.info(f"Adding missing column to repeater_contacts: {column_name}")
+                            cursor.execute(f"ALTER TABLE repeater_contacts ADD COLUMN {column_name} {column_type}")
+                            conn.commit()
+            except Exception as e:
+                self.logger.warning(f"Migration repeater_contacts: {e}")
+
+            # complete_contact_tracking: path columns and is_starred (required for contacts page)
+            try:
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='complete_contact_tracking'")
+                if cursor.fetchone():
+                    cursor.execute("PRAGMA table_info(complete_contact_tracking)")
+                    tracking_columns = [row[1] for row in cursor.fetchall()]
+                    for column_name, column_type in [
+                        ('out_path', 'TEXT'), ('out_path_len', 'INTEGER'), ('snr', 'REAL')
+                    ]:
+                        if column_name not in tracking_columns:
+                            self.logger.info(f"Adding missing column to complete_contact_tracking: {column_name}")
+                            cursor.execute(f"ALTER TABLE complete_contact_tracking ADD COLUMN {column_name} {column_type}")
+                            conn.commit()
+                    if 'is_starred' not in tracking_columns:
+                        self.logger.info("Adding is_starred column to complete_contact_tracking")
+                        cursor.execute("ALTER TABLE complete_contact_tracking ADD COLUMN is_starred BOOLEAN DEFAULT 0")
                         conn.commit()
-                
-                # Check if the new path columns exist in complete_contact_tracking
-                cursor.execute("PRAGMA table_info(complete_contact_tracking)")
-                tracking_columns = [row[1] for row in cursor.fetchall()]
-                
-                # Add missing path columns if they don't exist
-                path_columns = [
-                    ('out_path', 'TEXT'),
-                    ('out_path_len', 'INTEGER'),
-                    ('snr', 'REAL')
-                ]
-                
-                for column_name, column_type in path_columns:
-                    if column_name not in tracking_columns:
-                        self.logger.info(f"Adding missing column to complete_contact_tracking: {column_name}")
-                        cursor.execute(f"ALTER TABLE complete_contact_tracking ADD COLUMN {column_name} {column_type}")
+            except Exception as e:
+                self.logger.warning(f"Migration complete_contact_tracking: {e}")
+
+            # observed_paths: packet_hash
+            try:
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='observed_paths'")
+                if cursor.fetchone():
+                    cursor.execute("PRAGMA table_info(observed_paths)")
+                    observed_paths_columns = [row[1] for row in cursor.fetchall()]
+                    if 'packet_hash' not in observed_paths_columns:
+                        self.logger.info("Adding packet_hash column to observed_paths")
+                        cursor.execute("ALTER TABLE observed_paths ADD COLUMN packet_hash TEXT")
                         conn.commit()
-                
-                # Add is_starred column for path command bias
-                if 'is_starred' not in tracking_columns:
-                    self.logger.info("Adding is_starred column to complete_contact_tracking")
-                    cursor.execute("ALTER TABLE complete_contact_tracking ADD COLUMN is_starred BOOLEAN DEFAULT 0")
-                    conn.commit()
-                
-                self.logger.info("Database schema migration completed")
-                
-        except Exception as e:
-            self.logger.error(f"Error during database schema migration: {e}")
+            except Exception as e:
+                self.logger.warning(f"Migration observed_paths: {e}")
+
+            # mesh_connections: graph/viewer columns
+            try:
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='mesh_connections'")
+                if cursor.fetchone():
+                    cursor.execute("PRAGMA table_info(mesh_connections)")
+                    mc_columns = [row[1] for row in cursor.fetchall()]
+                    for col_name, col_type in [
+                        ('from_public_key', 'TEXT'), ('to_public_key', 'TEXT'),
+                        ('avg_hop_position', 'REAL'), ('geographic_distance', 'REAL'),
+                    ]:
+                        if col_name not in mc_columns:
+                            self.logger.info(f"Adding missing column to mesh_connections: {col_name}")
+                            cursor.execute(f"ALTER TABLE mesh_connections ADD COLUMN {col_name} {col_type}")
+                            conn.commit()
+            except Exception as e:
+                self.logger.warning(f"Migration mesh_connections: {e}")
+
+        self.logger.info("Database schema migration completed")
     
     async def track_contact_advertisement(self, advert_data: Dict, signal_info: Dict = None, packet_hash: Optional[str] = None) -> bool:
         """Track any contact advertisement in the complete tracking database"""
@@ -228,9 +324,21 @@ class RepeaterManager:
             out_path = advert_data.get('out_path', '')
             out_path_len = advert_data.get('out_path_len', -1)
             
+            # Check if this packet_hash was already processed for this contact
+            # This prevents duplicate writes of the same advert packet
+            if packet_hash and packet_hash != "0000000000000000":
+                existing_packet = self.db_manager.execute_query(
+                    'SELECT id FROM unique_advert_packets WHERE public_key = ? AND packet_hash = ?',
+                    (public_key, packet_hash)
+                )
+                if existing_packet:
+                    # This packet_hash was already processed - skip contact update
+                    self.logger.debug(f"Skipping duplicate advert packet for {name}: {packet_hash[:8]}... (already processed)")
+                    return True  # Return True since packet was already tracked (not an error)
+            
             # Check if this contact is already in our complete tracking
             existing = self.db_manager.execute_query(
-                'SELECT id, advert_count, last_heard, latitude, longitude, city, state, country FROM complete_contact_tracking WHERE public_key = ?',
+                'SELECT id, advert_count, last_heard, latitude, longitude, city, state, country, out_path, out_path_len FROM complete_contact_tracking WHERE public_key = ?',
                 (public_key,)
             )
             
@@ -259,6 +367,14 @@ class RepeaterManager:
             if existing:
                 # Update existing entry
                 advert_count = existing[0]['advert_count'] + 1
+                existing_out_path = existing[0].get('out_path')
+                existing_out_path_len = existing[0].get('out_path_len')
+                
+                # Only update out_path and out_path_len if they are NULL/empty (first-seen path)
+                # This preserves the first (shortest) path and doesn't overwrite it
+                final_out_path = out_path if (not existing_out_path or existing_out_path == '') else existing_out_path
+                final_out_path_len = out_path_len if (existing_out_path_len is None or existing_out_path_len == -1) else existing_out_path_len
+                
                 self.db_manager.execute_update('''
                     UPDATE complete_contact_tracking 
                     SET name = ?, last_heard = ?, advert_count = ?, role = ?, device_type = ?,
@@ -271,7 +387,7 @@ class RepeaterManager:
                     location_info['latitude'], location_info['longitude'], 
                     location_info['city'], location_info['state'], location_info['country'],
                     json.dumps(advert_data), signal_strength, snr, hop_count,
-                    current_time, out_path, out_path_len, public_key
+                    current_time, final_out_path, final_out_path_len, public_key
                 ))
                 
                 self.logger.debug(f"Updated contact tracking: {name} ({role}) - count: {advert_count}")
@@ -296,9 +412,9 @@ class RepeaterManager:
             # Update the currently_tracked flag based on device contact list
             await self._update_currently_tracked_status(public_key)
             
-            # Track daily advertisement statistics
+            # Track daily advertisement statistics (with packet_hash for unique tracking)
             await self._track_daily_advertisement(public_key, name, role, device_type_str, 
-                                                location_info, signal_strength, snr, hop_count, current_time)
+                                                location_info, signal_strength, snr, hop_count, current_time, packet_hash=packet_hash)
             
             return True
             
@@ -308,39 +424,90 @@ class RepeaterManager:
     
     async def _track_daily_advertisement(self, public_key: str, name: str, role: str, device_type: str,
                                        location_info: Dict, signal_strength: float, snr: float, 
-                                       hop_count: int, timestamp: datetime):
-        """Track daily advertisement statistics for accurate time-based reporting"""
+                                       hop_count: int, timestamp: datetime, packet_hash: Optional[str] = None):
+        """Track daily advertisement statistics for accurate time-based reporting.
+        
+        Args:
+            public_key: The public key of the node
+            name: The name of the node
+            role: The role of the node
+            device_type: The device type string
+            location_info: Location information dictionary
+            signal_strength: Signal strength (RSSI)
+            snr: Signal-to-noise ratio
+            hop_count: Number of hops
+            timestamp: Timestamp of the advert
+            packet_hash: Optional packet hash for unique packet tracking
+        """
         try:
             from datetime import date
             
             # Get today's date
             today = date.today()
             
-            # Check if we already have an entry for this contact today
-            existing_daily = self.db_manager.execute_query(
-                'SELECT id, advert_count, first_advert_time FROM daily_stats WHERE date = ? AND public_key = ?',
-                (today, public_key)
-            )
-            
-            if existing_daily:
-                # Update existing daily entry
-                daily_advert_count = existing_daily[0]['advert_count'] + 1
-                self.db_manager.execute_update('''
-                    UPDATE daily_stats 
-                    SET advert_count = ?, last_advert_time = ?
-                    WHERE date = ? AND public_key = ?
-                ''', (daily_advert_count, timestamp, today, public_key))
-                
-                self.logger.debug(f"Updated daily stats for {name}: {daily_advert_count} adverts today")
+            # Track unique packet hash if provided (for deduplication)
+            is_unique_packet = False
+            if packet_hash and packet_hash != "0000000000000000":
+                try:
+                    # Check if we've already seen this packet hash today
+                    existing_packet = self.db_manager.execute_query(
+                        'SELECT id FROM unique_advert_packets WHERE date = ? AND public_key = ? AND packet_hash = ?',
+                        (today, public_key, packet_hash)
+                    )
+                    
+                    if not existing_packet:
+                        # This is a new unique packet - insert it
+                        self.db_manager.execute_update('''
+                            INSERT INTO unique_advert_packets 
+                            (date, public_key, packet_hash, first_seen)
+                            VALUES (?, ?, ?, ?)
+                        ''', (today, public_key, packet_hash, timestamp))
+                        is_unique_packet = True
+                        self.logger.debug(f"New unique advert packet for {name}: {packet_hash[:8]}...")
+                    else:
+                        # We've already seen this packet hash today - don't count it again
+                        self.logger.debug(f"Duplicate advert packet for {name}: {packet_hash[:8]}... (already counted)")
+                except Exception as e:
+                    self.logger.debug(f"Error tracking unique packet hash: {e}")
+                    # Fall through to count it anyway if unique tracking fails
+                    is_unique_packet = True
             else:
-                # Insert new daily entry
-                self.db_manager.execute_update('''
-                    INSERT INTO daily_stats 
-                    (date, public_key, advert_count, first_advert_time, last_advert_time)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (today, public_key, 1, timestamp, timestamp))
+                # No packet hash provided, count it as unique (can't deduplicate)
+                is_unique_packet = True
+            
+            # Only increment count if this is a unique packet
+            if is_unique_packet:
+                # Check if we already have an entry for this contact today
+                existing_daily = self.db_manager.execute_query(
+                    'SELECT id, advert_count, first_advert_time FROM daily_stats WHERE date = ? AND public_key = ?',
+                    (today, public_key)
+                )
                 
-                self.logger.debug(f"Added daily stats for {name}: first advert today")
+                if existing_daily:
+                    # Update existing daily entry - count unique packets only
+                    # Count distinct packet hashes for today from unique_advert_packets table
+                    unique_count = self.db_manager.execute_query(
+                        'SELECT COUNT(*) FROM unique_advert_packets WHERE date = ? AND public_key = ?',
+                        (today, public_key)
+                    )
+                    daily_advert_count = unique_count[0]['COUNT(*)'] if unique_count else existing_daily[0]['advert_count'] + 1
+                    
+                    self.db_manager.execute_update('''
+                        UPDATE daily_stats 
+                        SET advert_count = ?, last_advert_time = ?
+                        WHERE date = ? AND public_key = ?
+                    ''', (daily_advert_count, timestamp, today, public_key))
+                    
+                    self.logger.debug(f"Updated daily stats for {name}: {daily_advert_count} unique adverts today")
+                else:
+                    # Insert new daily entry
+                    self.db_manager.execute_update('''
+                        INSERT INTO daily_stats 
+                        (date, public_key, advert_count, first_advert_time, last_advert_time)
+                        VALUES (?, ?, ?, ?, ?)
+                    ''', (today, public_key, 1, timestamp, timestamp))
+                    
+                    self.logger.debug(f"Added daily stats for {name}: first unique advert today")
                 
         except Exception as e:
             self.logger.error(f"Error tracking daily advertisement: {e}")
@@ -1607,7 +1774,7 @@ class RepeaterManager:
     def _is_in_acl(self, public_key: str) -> bool:
         """Check if a public key is in the bot's admin ACL (should never be purged)"""
         try:
-            if not hasattr(self.bot, 'config'):
+            if not hasattr(self.bot, 'config') or not self.bot.config.has_section('Admin_ACL'):
                 return False
             
             # Get admin pubkeys from config

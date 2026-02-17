@@ -6,6 +6,7 @@ Handles scanning, loading, and registering command plugins
 
 import os
 import sys
+import inspect
 import importlib
 import importlib.util
 from pathlib import Path
@@ -464,7 +465,3 @@ class PluginLoader:
                     issues.append(f"Keyword '{keyword}' conflicts with plugin '{existing_plugin}'")
         
         return issues
-
-
-# Import inspect at module level for the load_plugin method
-import inspect

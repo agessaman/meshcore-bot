@@ -380,9 +380,9 @@ class ModernDashboard {
             
             document.getElementById('connected-clients').textContent = healthData.connected_clients || 0;
             
-            // Store bot uptime for display
-            this.botStartTime = healthData.bot_uptime || 0;
-            
+            // Store bot uptime for display (null when bot not running / no start time in DB)
+            const rawUptime = healthData.bot_uptime;
+            this.botStartTime = (rawUptime != null && rawUptime > 0) ? rawUptime : null;
             // Update uptime display and restart live counter with fresh data
             this.updateUptime();
             this.startLiveUptime();
@@ -633,45 +633,53 @@ class ModernDashboard {
     
     updateUptime() {
         const uptimeElement = document.getElementById('uptime');
-        
-        if (this.botStartTime !== null) {
-            // Use bot uptime from API
-            const uptime = this.botStartTime;
-            this.formatUptime(uptime);
+        if (!uptimeElement) return;
+        if (this.botStartTime != null && this.botStartTime > 0) {
+            this.formatUptime(this.botStartTime);
         } else {
-            // Fallback to loading state
-            uptimeElement.textContent = 'Loading...';
+            // Bot not running or no start time in DB (e.g. viewer run standalone)
+            uptimeElement.textContent = 'Bot Down?';
         }
     }
     
     formatUptime(uptimeSeconds) {
         const uptimeElement = document.getElementById('uptime');
-        const hours = Math.floor(uptimeSeconds / 3600);
+        const totalMinutes = Math.floor(uptimeSeconds / 60);
+        const totalHours = Math.floor(uptimeSeconds / 3600);
+        const totalDays = Math.floor(uptimeSeconds / 86400);
+        const months = Math.floor(totalDays / 30);
+        const days = totalDays % 30;
+        const hours = Math.floor((uptimeSeconds % 86400) / 3600);
         const minutes = Math.floor((uptimeSeconds % 3600) / 60);
-        const seconds = uptimeSeconds % 60;
-        
-        if (hours > 0) {
-            uptimeElement.textContent = `${hours}h ${minutes}m`;
-        } else if (minutes > 0) {
-            uptimeElement.textContent = `${minutes}m ${seconds}s`;
-        } else {
-            uptimeElement.textContent = `${seconds}s`;
+        const seconds = Math.floor(uptimeSeconds % 60);
+
+        const parts = [];
+        if (months > 0) parts.push(`${months}mo`);
+        if (days > 0) parts.push(`${days}d`);
+        if (hours > 0) parts.push(`${hours}h`);
+        if (minutes > 0) parts.push(`${minutes}m`);
+        if (parts.length === 0 || totalHours < 1) {
+            if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
         }
+        uptimeElement.textContent = parts.length > 0 ? parts.join(' ') : '0s';
     }
     
     startLiveUptime() {
         // Clear any existing uptime interval
         if (this.uptimeInterval) {
             clearInterval(this.uptimeInterval);
+            this.uptimeInterval = null;
         }
         
-        // Start live uptime counter that increments every second
-        this.uptimeInterval = setInterval(() => {
-            if (this.botStartTime !== null) {
-                this.botStartTime += 1; // Increment by 1 second
-                this.formatUptime(this.botStartTime);
-            }
-        }, 1000); // Update every second
+        // Only run live counter when we have a valid bot uptime (bot is running)
+        if (this.botStartTime != null && this.botStartTime > 0) {
+            this.uptimeInterval = setInterval(() => {
+                if (this.botStartTime != null) {
+                    this.botStartTime += 1;
+                    this.formatUptime(this.botStartTime);
+                }
+            }, 1000);
+        }
     }
     
     updateTimestamp() {

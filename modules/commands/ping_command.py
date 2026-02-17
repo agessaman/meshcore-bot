@@ -22,6 +22,11 @@ class PingCommand(BaseCommand):
     description = "Responds to 'ping' with 'Pong!'"
     category = "basic"
     
+    # Documentation
+    short_description = "Get a quick 'pong'response from the bot"
+    usage = "ping"
+    examples = ["ping"]
+    
     def __init__(self, bot):
         """Initialize the ping command.
         

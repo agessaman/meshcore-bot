@@ -83,7 +83,9 @@ class PacketCaptureService(BaseServicePlugin):
             if not bot_formatter:
                 try:
                     import colorlog
-                    if bot.config.getboolean('Logging', 'colored_output', fallback=True):
+                    colored = (bot.config.getboolean('Logging', 'colored_output', fallback=True)
+                               if bot.config.has_section('Logging') else True)
+                    if colored:
                         bot_formatter = colorlog.ColoredFormatter(
                             '%(log_color)s%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                             datefmt='%Y-%m-%d %H:%M:%S',
@@ -311,7 +313,13 @@ class PacketCaptureService(BaseServicePlugin):
             MeshCore: The meshcore instance from the bot.
         """
         return self.bot.meshcore if self.bot else None
-    
+
+    def is_healthy(self) -> bool:
+        return (
+            self._running
+            and bool(self.meshcore and self.meshcore.is_connected)
+        )
+
     async def start(self) -> None:
         """Start the packet capture service.
         
@@ -797,8 +805,8 @@ class PacketCaptureService(BaseServicePlugin):
                     self.logger.debug(f"Calling publish_packet_mqtt for packet {self.packet_count}")
                 publish_metrics = await self.publish_packet_mqtt(formatted_packet)
             
-            # Log INFO level line for each packet (matches original script)
-            self.logger.info(f"📦 Captured packet #{self.packet_count}: {formatted_packet['route']} type {formatted_packet['packet_type']}, {formatted_packet['len']} bytes, SNR: {formatted_packet['SNR']}, RSSI: {formatted_packet['RSSI']}, hash: {formatted_packet['hash']} (MQTT: {publish_metrics['succeeded']}/{publish_metrics['attempted']})")
+            # Log DEBUG level for each packet (verbose; use INFO only for service lifecycle)
+            self.logger.debug(f"📦 Captured packet #{self.packet_count}: {formatted_packet['route']} type {formatted_packet['packet_type']}, {formatted_packet['len']} bytes, SNR: {formatted_packet['SNR']}, RSSI: {formatted_packet['RSSI']}, hash: {formatted_packet['hash']} (MQTT: {publish_metrics['succeeded']}/{publish_metrics['attempted']})")
             
             # Output full packet data structure in debug mode only (matches original script)
             if self.debug:

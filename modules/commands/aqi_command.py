@@ -31,6 +31,14 @@ class AqiCommand(BaseCommand):
     cooldown_seconds = 5  # 5 second cooldown per user to prevent API abuse
     requires_internet = True  # Requires internet access for OpenMeteo API and geocoding
     
+    # Documentation
+    short_description = "Get Air Quality Index for a location"
+    usage = "aqi <city|neighborhood|coordinates|help>"
+    examples = ["aqi seattle", "aqi 47.6,-122.3"]
+    parameters = [
+        {"name": "location", "description": "City, neighborhood, lat/lon, or 'help'"}
+    ]
+    
     # Error constants
     ERROR_FETCHING_DATA = "Error fetching AQI data"
     NO_DATA_AVAILABLE = "No AQI data available"
@@ -40,8 +48,9 @@ class AqiCommand(BaseCommand):
         self.aqi_enabled = self.get_config_value('Aqi_Command', 'enabled', fallback=True, value_type='bool')
         self.url_timeout = 10  # seconds
         
-        # Get default state from config for city disambiguation
-        self.default_state = self.bot.config.get('Weather', 'default_state', fallback='WA')
+        # Get default state and country from config for city disambiguation
+        self.default_state = self.bot.config.get('Weather', 'default_state', fallback='')
+        self.default_country = self.bot.config.get('Weather', 'default_country', fallback='US')
         
         # Get timezone from config
         self.timezone = self.bot.config.get('Bot', 'timezone', fallback='America/Los_Angeles')
@@ -87,7 +96,8 @@ class AqiCommand(BaseCommand):
         }
     
     def get_help_text(self) -> str:
-        return f"Usage: aqi <city|neighborhood|city country|lat,lon|help> - Get AQI for city/neighborhood in {self.default_state}, international cities, coordinates, or pollutant help"
+        region = self.default_state or self.default_country
+        return f"Usage: aqi <city|neighborhood|city country|lat,lon|help> - Get AQI for city/neighborhood in {region}, intl cities, coordinates, or help"
     
     def can_execute(self, message: MeshMessage) -> bool:
         """Check if this command can be executed with the given message.
@@ -467,7 +477,8 @@ class AqiCommand(BaseCommand):
                     if ',' in location and any(country in location.lower() for country in ['canada', 'mexico', 'uk', 'france', 'germany', 'italy', 'spain', 'australia', 'japan', 'china', 'india', 'brazil', 'uae', 'russia', 'korea', 'thailand', 'singapore', 'egypt', 'turkey']):
                         return f"Could not find city '{location}'"
                     else:
-                        return f"Could not find city '{location}' in {self.default_state}"
+                        region = self.default_state or self.default_country
+                        return f"Could not find city '{location}' in {region}"
                 
                 # Check if the found city is in a different state than default
                 actual_city = location
@@ -520,7 +531,7 @@ class AqiCommand(BaseCommand):
             if location_type == "city" and address_info:
                 # Always try to include city name if there's space
                 # Use abbreviate_location to shorten long location strings (e.g., "United States of America" -> "USA")
-                full_location = f"{actual_city}, {actual_state}"
+                full_location = f"{actual_city}, {actual_state}" if actual_state else actual_city
                 city_display = abbreviate_location(full_location, max_length=30)
                 
                 # Check if we have space for the city name
@@ -580,7 +591,7 @@ class AqiCommand(BaseCommand):
                             actual_state = "USA"
                     
                     # Use abbreviate_location to shorten long location strings (e.g., "United States of America" -> "USA")
-                    full_location = f"{actual_city}, {actual_state}"
+                    full_location = f"{actual_city}, {actual_state}" if actual_state else actual_city
                     city_display = abbreviate_location(full_location, max_length=30)
                     
                     # Check if we have space for the city name

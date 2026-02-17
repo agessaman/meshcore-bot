@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}MeshCore Bot Data Viewer{% endblock %}</title>
     
+    <!-- Favicons -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+    
     <!-- Apply theme immediately to prevent flash -->
     <script>
         (function() {
@@ -56,6 +62,11 @@
         }
 
         /* Apply theme variables */
+        html, body {
+            margin: 0;
+            padding: 0;
+        }
+        
         body {
             background-color: var(--bg-color);
             color: var(--text-color);
@@ -149,13 +160,6 @@
             font-size: 0.8em;
         }
         
-        .footer {
-            background-color: var(--footer-bg);
-            padding: 20px 0;
-            margin-top: 50px;
-            border-top: 1px solid var(--border-color);
-            color: var(--text-color);
-        }
         
         .loading {
             text-align: center;
@@ -342,7 +346,7 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container-fluid">
             <a class="navbar-brand" href="/">
-                <i class="fas fa-satellite-dish"></i> MeshCore Bot
+                <i class="fas fa-satellite-dish"></i> {{ bot_name|default('MeshCore Bot') }}
             </a>
             
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -364,6 +368,11 @@
                     <li class="nav-item">
                         <a class="nav-link" href="/contacts">
                             <i class="fas fa-users"></i> Contacts
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/mesh">
+                            <i class="fas fa-project-diagram"></i> Mesh Graph
                         </a>
                     </li>
                     <li class="nav-item">
@@ -415,22 +424,11 @@
         {% block content %}{% endblock %}
     </div>
     
-    <!-- Footer -->
-    <footer class="footer">
-        <div class="container">
-            <div class="row">
-                <div class="col-md-6">
-                    <p class="text-muted mb-0">
-                        <i class="fas fa-satellite-dish"></i> MeshCore Bot Data Viewer v2.0
-                    </p>
-                </div>
-                <div class="col-md-6 text-end">
-                    <p class="text-muted mb-0">
-                        Last updated: <span id="last-update">Loading...</span>
-                    </p>
-                </div>
-            </div>
-        </div>
+    <!-- Footer links (bottom of page, visible when scrolled down) -->
+    <footer class="text-center py-2" style="font-size: 0.7rem;">
+        <a href="https://github.com/agessaman/meshcore-bot" target="_blank" rel="noopener noreferrer" style="color: var(--text-muted, #6c757d); text-decoration: none;">meshcore-bot</a>
+        <span class="mx-1" style="color: var(--text-muted, #6c757d);"> for </span>
+        <a href="https://meshcore.co.uk/index.html" target="_blank" rel="noopener noreferrer" style="color: var(--text-muted, #6c757d); text-decoration: none;">MeshCore</a>
     </footer>
     
     <!-- Bootstrap JS -->

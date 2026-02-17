@@ -118,9 +118,32 @@ curl http://localhost:5000/api/stats
 
 ## Database Requirements
 
-The viewer requires access to the main database:
-- `meshcore_bot.db` - Main bot database (contains all data including contacts, tracking, cache, and stats)
+The viewer uses the same database as the bot by default (`[Bot] db_path`, typically `meshcore_bot.db`). That single file holds repeater contacts, mesh graph, packet stream, and other data so the viewer can show everything.
 
+## Migrating from a separate web viewer database
+
+If you previously had the web viewer using a **separate** database (e.g. `[Web_Viewer] db_path = bot_data.db`), you can switch to the shared database so the viewer shows repeater/graph data and uses one file.
+
+1. **Stop the bot and web viewer** so neither has the databases open.
+
+2. **Optionally preserve packet stream history** from the old viewer DB into the main DB:
+   - From the project root, run:
+     ```bash
+     python3 migrate_webviewer_db.py bot_data.db meshcore_bot.db
+     ```
+     Use your actual paths if they differ (e.g. full paths or different filenames). The script copies the `packet_stream` table from the first file into the second and skips rows that would duplicate IDs.
+   - If you don’t care about old packet stream data, skip this step; the viewer will create a new `packet_stream` table in the main DB.
+
+3. **Point the viewer at the main database** in `config.ini`:
+   ```ini
+   [Web_Viewer]
+   db_path = meshcore_bot.db
+   ```
+   (Or the same value as `[Bot] db_path` if you use a different path.)
+
+4. **Start the bot (and viewer as usual)**. The viewer will now read and write to the same database as the bot.
+
+You can keep or remove the old `bot_data.db` file after verifying the viewer works with the shared DB.
 
 ## Troubleshooting
 

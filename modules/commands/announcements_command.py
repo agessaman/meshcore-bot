@@ -88,6 +88,8 @@ class AnnouncementsCommand(BaseCommand):
         
         # Always include admin ACL members (inheritance)
         try:
+            if not self.bot.config.has_section('Admin_ACL'):
+                return acl_list
             admin_pubkeys = self.bot.config.get('Admin_ACL', 'admin_pubkeys', fallback='')
             if admin_pubkeys and admin_pubkeys.strip():
                 for key in admin_pubkeys.split(','):

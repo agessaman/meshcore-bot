@@ -28,16 +28,27 @@ class FeedManager:
         self.logger = bot.logger
         self.db_path = bot.db_manager.db_path
         
-        # Configuration
-        self.enabled = bot.config.getboolean('Feed_Manager', 'feed_manager_enabled', fallback=False)
-        self.default_check_interval = bot.config.getint('Feed_Manager', 'default_check_interval_seconds', fallback=300)
-        self.max_items_per_check = bot.config.getint('Feed_Manager', 'max_items_per_check', fallback=10)
-        self.request_timeout = bot.config.getint('Feed_Manager', 'feed_request_timeout', fallback=30)
-        self.user_agent = bot.config.get('Feed_Manager', 'feed_user_agent', fallback='MeshCoreBot/1.0 FeedManager')
-        self.rate_limit_seconds = bot.config.getfloat('Feed_Manager', 'feed_rate_limit_seconds', fallback=5.0)
-        self.max_message_length = bot.config.getint('Feed_Manager', 'max_message_length', fallback=130)
-        self.default_output_format = bot.config.get('Feed_Manager', 'default_output_format', fallback='{emoji} {body|truncate:100} - {date}\n{link|truncate:50}')
-        self.default_send_interval = bot.config.getfloat('Feed_Manager', 'default_message_send_interval_seconds', fallback=2.0)
+        # Configuration (guard against missing [Feed_Manager] section for upgrade compatibility)
+        if not bot.config.has_section('Feed_Manager'):
+            self.enabled = False
+            self.default_check_interval = 300
+            self.max_items_per_check = 10
+            self.request_timeout = 30
+            self.user_agent = 'MeshCoreBot/1.0 FeedManager'
+            self.rate_limit_seconds = 5.0
+            self.max_message_length = 130
+            self.default_output_format = '{emoji} {body|truncate:100} - {date}\n{link|truncate:50}'
+            self.default_send_interval = 2.0
+        else:
+            self.enabled = bot.config.getboolean('Feed_Manager', 'feed_manager_enabled', fallback=False)
+            self.default_check_interval = bot.config.getint('Feed_Manager', 'default_check_interval_seconds', fallback=300)
+            self.max_items_per_check = bot.config.getint('Feed_Manager', 'max_items_per_check', fallback=10)
+            self.request_timeout = bot.config.getint('Feed_Manager', 'feed_request_timeout', fallback=30)
+            self.user_agent = bot.config.get('Feed_Manager', 'feed_user_agent', fallback='MeshCoreBot/1.0 FeedManager')
+            self.rate_limit_seconds = bot.config.getfloat('Feed_Manager', 'feed_rate_limit_seconds', fallback=5.0)
+            self.max_message_length = bot.config.getint('Feed_Manager', 'max_message_length', fallback=130)
+            self.default_output_format = bot.config.get('Feed_Manager', 'default_output_format', fallback='{emoji} {body|truncate:100} - {date}\n{link|truncate:50}')
+            self.default_send_interval = bot.config.getfloat('Feed_Manager', 'default_message_send_interval_seconds', fallback=2.0)
         
         # Rate limiting per domain
         self._domain_last_request: Dict[str, float] = {}
@@ -838,7 +849,6 @@ class FeedManager:
         body = item.get('description', '') or item.get('body', '')
         # Clean HTML from body if present
         if body:
-            import html
             body = html.unescape(body)
             # Convert line break tags to newlines before stripping other HTML
             # Handle <br>, <br/>, <br />, <BR>, etc.

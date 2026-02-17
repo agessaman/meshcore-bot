@@ -26,6 +26,11 @@ class TestCommand(BaseCommand):
     description = "Responds to 'test' or 't' with connection info"
     category = "basic"
     
+    # Documentation
+    short_description = "Get test response with connection info"
+    usage = "test [phrase]"
+    examples = ["test", "t hello world"]
+    
     def __init__(self, bot):
         super().__init__(bot)
         self.test_enabled = self.get_config_value('Test_Command', 'enabled', fallback=True, value_type='bool')

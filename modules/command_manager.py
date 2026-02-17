@@ -16,7 +16,8 @@ from meshcore import EventType
 from .models import MeshMessage
 from .plugin_loader import PluginLoader
 from .commands.base_command import BaseCommand
-from .utils import check_internet_connectivity_async, format_keyword_response_with_placeholders
+from .utils import check_internet_connectivity_async, decode_escape_sequences, format_keyword_response_with_placeholders
+from .config_validation import strip_optional_quotes
 
 
 @dataclass
@@ -57,6 +58,15 @@ class InternetStatusCache:
         return time.time() - self.timestamp < cache_duration
 
 
+@dataclass
+class QueuedCommand:
+    """Represents a queued command waiting for cooldown to expire."""
+    command: BaseCommand
+    message: MeshMessage
+    queued_at: float
+    expires_at: float  # When cooldown expires
+
+
 class CommandManager:
     """Manages all bot commands and responses using dynamic plugin loading.
     
@@ -74,6 +84,8 @@ class CommandManager:
         self.custom_syntax = self.load_custom_syntax()
         self.banned_users = self.load_banned_users()
         self.monitor_channels = self.load_monitor_channels()
+        self.channel_keywords = self.load_channel_keywords()
+        self.command_prefix = self.load_command_prefix()
         
         # Initialize plugin loader and load all plugins
         self.plugin_loader = PluginLoader(bot)
@@ -84,7 +96,158 @@ class CommandManager:
         self._internet_cache = InternetStatusCache(has_internet=True, timestamp=0)
         self._internet_cache_duration = 30  # Cache for 30 seconds
         
+        # Command queue for near-expiring global cooldowns
+        # Key: (command_name, user_id) tuple, Value: QueuedCommand
+        self._command_queue: Dict[Tuple[str, str], QueuedCommand] = {}
+        self._queue_processor_task: Optional[asyncio.Task] = None
+        
         self.logger.info(f"CommandManager initialized with {len(self.commands)} plugins")
+    
+    def _should_queue_command(self, command: BaseCommand, message: MeshMessage) -> Tuple[bool, float]:
+        """Check if command should be queued instead of rejected.
+        
+        Only queues for global cooldowns when near expiring, and only if the user
+        didn't just execute the command themselves.
+        
+        Args:
+            command: The command to check.
+            message: The message triggering the command.
+            
+        Returns:
+            Tuple[bool, float]: (should_queue, remaining_seconds)
+                should_queue: True if command should be queued
+                remaining_seconds: Seconds until cooldown expires (0 if not queuing)
+        """
+        # Only queue for global cooldowns (not per-user)
+        if not message.sender_id:
+            return False, 0.0
+        
+        if command.cooldown_seconds <= 0:
+            return False, 0.0
+        
+        # Check global cooldown
+        can_execute, remaining = command.check_cooldown(None)  # None = global
+        if can_execute:
+            return False, 0.0
+        
+        # Don't queue if this user just executed the command
+        # Check if user has a recent per-user cooldown entry
+        if message.sender_id in command._user_cooldowns:
+            user_last_exec = command._user_cooldowns[message.sender_id]
+            time_since_user_exec = time.time() - user_last_exec
+            
+            # If user executed within last 3 seconds, they likely just triggered the global cooldown
+            # Don't queue in this case
+            if time_since_user_exec < 3.0:
+                return False, 0.0
+        
+        # Check if within queue threshold
+        threshold = command.get_queue_threshold_seconds()
+        if remaining <= threshold:
+            return True, remaining
+        
+        return False, 0.0
+    
+    def _queue_command(self, command: BaseCommand, message: MeshMessage, remaining_seconds: float) -> bool:
+        """Queue a command for execution after cooldown expires.
+        
+        Args:
+            command: The command to queue.
+            message: The message to queue.
+            remaining_seconds: Seconds until cooldown expires.
+            
+        Returns:
+            bool: True if queued, False if user already has queued command
+        """
+        user_id = message.sender_id or 'global'
+        queue_key = (command.name, user_id)
+        
+        # Max 1 command per user
+        if queue_key in self._command_queue:
+            return False
+        
+        current_time = time.time()
+        self._command_queue[queue_key] = QueuedCommand(
+            command=command,
+            message=message,
+            queued_at=current_time,
+            expires_at=current_time + remaining_seconds
+        )
+        
+        self.logger.debug(f"Queued command '{command.name}' for user {user_id}, "
+                         f"expires in {remaining_seconds:.1f}s")
+        
+        # Start processor if not running
+        if self._queue_processor_task is None or self._queue_processor_task.done():
+            self._start_queue_processor()
+        
+        return True
+    
+    def _start_queue_processor(self):
+        """Start background task to process command queue."""
+        if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop:
+            self._queue_processor_task = asyncio.create_task(self._process_command_queue())
+        else:
+            # Bot not fully started yet, will start in bot.start()
+            pass
+    
+    async def _process_command_queue(self):
+        """Background task to process queued commands when cooldown expires."""
+        while True:
+            try:
+                current_time = time.time()
+                ready_commands = []
+                
+                # Find commands ready to execute
+                for queue_key, queued_cmd in list(self._command_queue.items()):
+                    if current_time >= queued_cmd.expires_at:
+                        ready_commands.append((queue_key, queued_cmd))
+                
+                # Execute ready commands
+                for queue_key, queued_cmd in ready_commands:
+                    command = queued_cmd.command
+                    message = queued_cmd.message
+                    del self._command_queue[queue_key]
+                    
+                    self.logger.debug(f"Executing queued command '{command.name}' for user {message.sender_id}")
+                    
+                    # Record execution to prevent immediate re-queuing
+                    command.record_execution(message.sender_id if message.sender_id else None)
+                    
+                    # Execute the command (bypass normal flow)
+                    try:
+                        await self._execute_queued_command(command, message)
+                    except Exception as e:
+                        self.logger.error(f"Error executing queued command '{command.name}': {e}", 
+                                        exc_info=True)
+                
+                # Wait before next check
+                if ready_commands:
+                    await asyncio.sleep(0.1)  # Small delay between executions
+                else:
+                    await asyncio.sleep(0.5)  # Check every 500ms when idle
+                    
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(f"Error in command queue processor: {e}", exc_info=True)
+                await asyncio.sleep(1.0)
+    
+    async def _execute_queued_command(self, command: BaseCommand, message: MeshMessage):
+        """Execute a queued command (bypasses normal cooldown checks).
+        
+        Args:
+            command: The command to execute.
+            message: The queued message.
+        """
+        # Execute directly
+        success = await command.execute(message)
+        
+        # Record in stats
+        if 'stats' in self.commands:
+            stats_command = self.commands['stats']
+            if stats_command:
+                stats_command.record_command(message, command.name, success)
     
     async def _apply_tx_delay(self):
         """Apply transmission delay to prevent message collisions"""
@@ -92,25 +255,42 @@ class CommandManager:
             self.logger.debug(f"Applying {self.bot.tx_delay_ms}ms transmission delay")
             await asyncio.sleep(self.bot.tx_delay_ms / 1000.0)
     
-    async def _check_rate_limits(self) -> Tuple[bool, str]:
+    def get_rate_limit_key(self, message: MeshMessage) -> Optional[str]:
+        """Return the key used for per-user rate limiting (pubkey when available, else sender name)."""
+        return message.sender_pubkey or message.sender_id or None
+    
+    async def _check_rate_limits(
+        self, skip_user_rate_limit: bool = False, rate_limit_key: Optional[str] = None
+    ) -> Tuple[bool, str]:
         """Check all rate limits before sending.
         
         Checks both the user-specific rate limits and the global bot transmission
         limits. Also applies transmission delays if configured.
+        
+        Args:
+            skip_user_rate_limit: If True, skip the user rate limiter check (for automated responses).
+            rate_limit_key: Optional key for per-user rate limit (e.g. from get_rate_limit_key(message)).
         
         Returns:
             Tuple[bool, str]: A tuple containing:
                 - can_send: True if the message can be sent, False otherwise.
                 - reason: Reason string if rate limited, empty string otherwise.
         """
-        # Check user rate limiter
-        if not self.bot.rate_limiter.can_send():
-            wait_time = self.bot.rate_limiter.time_until_next()
-            # Only log warning if there's a meaningful wait time (> 0.1 seconds)
-            # This avoids misleading "Wait 0.0 seconds" messages from timing edge cases
-            if wait_time > 0.1:
-                return False, f"Rate limited. Wait {wait_time:.1f} seconds"
-            return False, ""  # Still rate limited, just don't log for very short waits
+        # Check global user rate limiter (unless skipped for automated responses)
+        if not skip_user_rate_limit:
+            if not self.bot.rate_limiter.can_send():
+                wait_time = self.bot.rate_limiter.time_until_next()
+                if wait_time > 0.1:
+                    return False, f"Rate limited. Wait {wait_time:.1f} seconds"
+                return False, ""
+            # Per-user rate limit when enabled and key present
+            if getattr(self.bot, 'per_user_rate_limit_enabled', False) and rate_limit_key:
+                per_user = getattr(self.bot, 'per_user_rate_limiter', None)
+                if per_user and not per_user.can_send(rate_limit_key):
+                    wait_time = per_user.time_until_next(rate_limit_key)
+                    if wait_time > 0.1:
+                        return False, f"Rate limited. Wait {wait_time:.1f} seconds"
+                    return False, ""
         
         # Wait for bot TX rate limiter
         await self.bot.bot_tx_rate_limiter.wait_for_tx()
@@ -120,7 +300,14 @@ class CommandManager:
         
         return True, ""
     
-    def _handle_send_result(self, result, operation_name: str, target: str, used_retry_method: bool = False) -> bool:
+    def _handle_send_result(
+        self,
+        result,
+        operation_name: str,
+        target: str,
+        used_retry_method: bool = False,
+        rate_limit_key: Optional[str] = None,
+    ) -> bool:
         """Handle result from message send operations.
         
         Args:
@@ -128,6 +315,7 @@ class CommandManager:
             operation_name: Name of the operation ("DM" or "Channel message").
             target: Recipient name or channel name for logging.
             used_retry_method: True if send_msg_with_retry was used (affects logging).
+            rate_limit_key: Optional key for per-user rate limit recording.
         
         Returns:
             bool: True if send succeeded (ACK received or sent successfully), False otherwise.
@@ -152,6 +340,10 @@ class CommandManager:
                     self.logger.info(f"✅ {operation_name} sent to {target}")
                 self.bot.rate_limiter.record_send()
                 self.bot.bot_tx_rate_limiter.record_tx()
+                if getattr(self.bot, 'per_user_rate_limit_enabled', False) and rate_limit_key:
+                    per_user = getattr(self.bot, 'per_user_rate_limiter', None)
+                    if per_user:
+                        per_user.record_send(rate_limit_key)
                 return True
             
             # Handle unexpected event types
@@ -165,6 +357,10 @@ class CommandManager:
                     self.logger.warning(f"Channel message sent to {target} but confirmation event not received (message may have been sent)")
                     self.bot.rate_limiter.record_send()
                     self.bot.bot_tx_rate_limiter.record_tx()
+                    if getattr(self.bot, 'per_user_rate_limit_enabled', False) and rate_limit_key:
+                        per_user = getattr(self.bot, 'per_user_rate_limiter', None)
+                        if per_user:
+                            per_user.record_send(rate_limit_key)
                     return True
             
             # Unknown event type - log warning
@@ -175,6 +371,10 @@ class CommandManager:
         self.logger.info(f"✅ {operation_name} sent to {target} (result: {result})")
         self.bot.rate_limiter.record_send()
         self.bot.bot_tx_rate_limiter.record_tx()
+        if getattr(self.bot, 'per_user_rate_limit_enabled', False) and rate_limit_key:
+            per_user = getattr(self.bot, 'per_user_rate_limiter', None)
+            if per_user:
+                per_user.record_send(rate_limit_key)
         return True
     
     def load_keywords(self) -> Dict[str, str]:
@@ -189,6 +389,8 @@ class CommandManager:
                 # Strip quotes from the response if present
                 if response.startswith('"') and response.endswith('"'):
                     response = response[1:-1]
+                # Decode escape sequences (e.g., \n for newlines)
+                response = decode_escape_sequences(response)
                 keywords[keyword.lower()] = response
         return keywords
     
@@ -200,18 +402,64 @@ class CommandManager:
                 # Strip quotes from the response format if present
                 if response_format.startswith('"') and response_format.endswith('"'):
                     response_format = response_format[1:-1]
+                # Decode escape sequences (e.g., \n for newlines)
+                response_format = decode_escape_sequences(response_format)
                 syntax_patterns[pattern] = response_format
         return syntax_patterns
     
     def load_banned_users(self) -> List[str]:
         """Load banned users from config"""
+        if not self.bot.config.has_section('Banned_Users'):
+            return []
         banned = self.bot.config.get('Banned_Users', 'banned_users', fallback='')
         return [user.strip() for user in banned.split(',') if user.strip()]
     
+    def is_user_banned(self, sender_id: Optional[str]) -> bool:
+        """Check if sender is banned using prefix (starts-with) matching.
+        
+        A banned entry "Awful Username" matches "Awful Username" and "Awful Username 🍆".
+        """
+        if not sender_id:
+            return False
+        return any(sender_id.startswith(entry) for entry in self.banned_users)
+    
     def load_monitor_channels(self) -> List[str]:
-        """Load monitored channels from config"""
-        channels = self.bot.config.get('Channels', 'monitor_channels', fallback='')
+        """Load monitored channels from config.
+        Values may be quoted, e.g. \"#bot,#bot-everett,#bots\" or unquoted.
+        """
+        raw = self.bot.config.get('Channels', 'monitor_channels', fallback='')
+        channels = strip_optional_quotes(raw)
         return [channel.strip() for channel in channels.split(',') if channel.strip()]
+    
+    def load_channel_keywords(self) -> Optional[List[str]]:
+        """Load channel keyword whitelist from config.
+        
+        When set, only these triggers (command/keyword names) are answered in channels;
+        DMs always get all triggers. Use to reduce channel floods by making heavy
+        triggers DM-only. Names are case-insensitive.
+        """
+        raw = self.bot.config.get('Channels', 'channel_keywords', fallback='').strip()
+        if not raw:
+            return None
+        return [k.strip().lower() for k in raw.split(',') if k.strip()]
+    
+    def _is_channel_trigger_allowed(self, trigger: str, message: MeshMessage) -> bool:
+        """Return True if this trigger is allowed for the message context.
+        When channel_keywords is set, channel messages only allow listed triggers."""
+        if message.is_dm:
+            return True
+        if self.channel_keywords is None:
+            return True
+        return trigger.lower() in self.channel_keywords
+    
+    def load_command_prefix(self) -> str:
+        """Load command prefix from config.
+        
+        Returns:
+            str: The command prefix, or empty string if not configured.
+        """
+        prefix = self.bot.config.get('Bot', 'command_prefix', fallback='')
+        return prefix.strip() if prefix else ''
     
     def format_keyword_response(self, response_format: str, message: MeshMessage) -> str:
         """Format a keyword response string with message data.
@@ -244,10 +492,20 @@ class CommandManager:
             List[tuple]: List of (trigger, response) tuples for matched keywords.
         """
         matches = []
-        # Strip exclamation mark if present (for command-style messages)
         content = message.content.strip()
-        if content.startswith('!'):
-            content = content[1:].strip()
+        
+        # Check for command prefix if configured
+        if self.command_prefix:
+            # If prefix is configured, message must start with it
+            if not content.startswith(self.command_prefix):
+                return matches  # No prefix, no match
+            # Strip the prefix
+            content = content[len(self.command_prefix):].strip()
+        else:
+            # If no prefix configured, strip legacy "!" prefix for backward compatibility
+            if content.startswith('!'):
+                content = content[1:].strip()
+        
         content_lower = content.lower()
         
         # Check for help requests first (special handling)
@@ -260,23 +518,45 @@ class CommandManager:
         
         # Check if message starts with any help keyword
         for help_keyword in help_keywords:
-            if content_lower.startswith(help_keyword + ' '):
-                command_name = content_lower[len(help_keyword):].strip()  # Remove help keyword prefix
-                help_text = self.get_help_for_command(command_name, message)
-                # Format the help response with message data (same as other keywords)
-                help_text = self.format_keyword_response(help_text, message)
-                matches.append(('help', help_text))
-                return matches
-            elif content_lower == help_keyword:
-                help_text = self.get_general_help()
-                # Format the help response with message data (same as other keywords)
-                help_text = self.format_keyword_response(help_text, message)
-                matches.append(('help', help_text))
-                return matches
+            if content_lower.startswith(help_keyword + ' ') or content_lower == help_keyword:
+                # Check channel restrictions for help keyword (same as other keywords/commands)
+                # DMs are allowed if respond_to_dms is enabled
+                if message.is_dm:
+                    if not self.bot.config.getboolean('Channels', 'respond_to_dms', fallback=True):
+                        break  # DMs disabled, skip help keyword
+                else:
+                    # For channel messages, check if channel is in monitor_channels
+                    if message.channel not in self.monitor_channels:
+                        break  # Channel not monitored, skip help keyword
+                    # When channel_keywords is set, only allow listed triggers in channel
+                    if not self._is_channel_trigger_allowed('help', message):
+                        break
+                
+                # Channel check passed, process help request
+                if content_lower.startswith(help_keyword + ' '):
+                    command_name = content_lower[len(help_keyword):].strip()  # Remove help keyword prefix
+                    help_text = self.get_help_for_command(command_name, message)
+                    # Format the help response with message data (same as other keywords)
+                    help_text = self.format_keyword_response(help_text, message)
+                    matches.append(('help', help_text))
+                    return matches
+                elif content_lower == help_keyword:
+                    help_text = self.get_general_help(message)
+                    # Format the help response with message data (same as other keywords)
+                    help_text = self.format_keyword_response(help_text, message)
+                    matches.append(('help', help_text))
+                    return matches
         
         # Check all loaded plugins for matches
         for command_name, command in self.commands.items():
             if command.should_execute(message):
+                # Check if we should queue instead of skip (for global cooldowns near expiring)
+                should_queue, remaining = self._should_queue_command(command, message)
+                if should_queue:
+                    if self._queue_command(command, message, remaining):
+                        continue  # Silently queue, don't add to matches
+                    # Queue failed, fall through to normal check
+                
                 # Check if command can execute (includes channel access check)
                 if not command.can_execute(message):
                     continue  # Skip this command if it can't execute (wrong channel, cooldown, etc.)
@@ -288,6 +568,10 @@ class CommandManager:
                         self.logger.warning(f"Command '{command_name}' requires internet but network is unavailable")
                         # Skip this command - don't add to matches
                         continue
+                
+                # When channel_keywords is set, only allow listed triggers in channel
+                if not self._is_channel_trigger_allowed(command_name, message):
+                    continue
                 
                 # Get response format and generate response
                 response_format = command.get_response_format()
@@ -304,6 +588,19 @@ class CommandManager:
             # Skip if we already have a plugin handling this keyword
             if any(keyword.lower() in [k.lower() for k in cmd.keywords] for cmd in self.commands.values()):
                 continue
+            
+            # Check channel restrictions for plain keywords (same as commands)
+            # DMs are allowed if respond_to_dms is enabled
+            if message.is_dm:
+                if not self.bot.config.getboolean('Channels', 'respond_to_dms', fallback=True):
+                    continue  # DMs disabled, skip this keyword
+            else:
+                # For channel messages, check if channel is in monitor_channels
+                if message.channel not in self.monitor_channels:
+                    continue  # Channel not monitored, skip this keyword
+                # When channel_keywords is set, only allow listed triggers in channel
+                if not self._is_channel_trigger_allowed(keyword, message):
+                    continue
             
             keyword_lower = keyword.lower()
             
@@ -361,7 +658,14 @@ class CommandManager:
             if stats_command:
                 stats_command.record_command(message, 'advert', response_sent)
     
-    async def send_dm(self, recipient_id: str, content: str) -> bool:
+    async def send_dm(
+        self,
+        recipient_id: str,
+        content: str,
+        command_id: Optional[str] = None,
+        skip_user_rate_limit: bool = False,
+        rate_limit_key: Optional[str] = None,
+    ) -> bool:
         """Send a direct message using meshcore-cli command.
         
         Handles contact lookup, rate limiting, and uses retry logic if available.
@@ -369,6 +673,9 @@ class CommandManager:
         Args:
             recipient_id: The recipient's name or ID.
             content: The message content to send.
+            command_id: Optional command_id for repeat tracking (if not provided, one will be generated).
+            skip_user_rate_limit: If True, skip user rate limiter checks (for automated responses).
+            rate_limit_key: Optional key for per-user rate limiting (e.g. from get_rate_limit_key(message)).
             
         Returns:
             bool: True if sent successfully, False otherwise.
@@ -377,7 +684,9 @@ class CommandManager:
             return False
         
         # Check all rate limits
-        can_send, reason = await self._check_rate_limits()
+        can_send, reason = await self._check_rate_limits(
+            skip_user_rate_limit=skip_user_rate_limit, rate_limit_key=rate_limit_key
+        )
         if not can_send:
             if reason:
                 self.logger.warning(reason)
@@ -393,6 +702,21 @@ class CommandManager:
             # Use the contact name for logging
             contact_name = contact.get('name', contact.get('adv_name', recipient_id))
             self.logger.info(f"Sending DM to {contact_name}: {content}")
+            
+            # Record transmission for repeat tracking (don't let this block sending)
+            try:
+                if hasattr(self.bot, 'transmission_tracker') and self.bot.transmission_tracker:
+                    if not command_id:
+                        command_id = f"dm_{contact_name}_{int(time.time())}"
+                    self.bot.transmission_tracker.record_transmission(
+                        content=content,
+                        target=contact_name,
+                        message_type='dm',
+                        command_id=command_id
+                    )
+            except Exception as e:
+                self.logger.debug(f"Error recording transmission for repeat tracking: {e}")
+                # Don't fail the send if transmission tracking fails
             
             # Try to use send_msg_with_retry if available (meshcore-2.1.6+)
             try:
@@ -430,13 +754,22 @@ class CommandManager:
                                hasattr(self.bot.meshcore.commands, 'send_msg_with_retry'))
             
             # Handle result using unified handler
-            return self._handle_send_result(result, "DM", contact_name, used_retry_method)
+            return self._handle_send_result(
+                result, "DM", contact_name, used_retry_method, rate_limit_key=rate_limit_key
+            )
                 
         except Exception as e:
             self.logger.error(f"Failed to send DM: {e}")
             return False
     
-    async def send_channel_message(self, channel: str, content: str) -> bool:
+    async def send_channel_message(
+        self,
+        channel: str,
+        content: str,
+        command_id: Optional[str] = None,
+        skip_user_rate_limit: bool = False,
+        rate_limit_key: Optional[str] = None,
+    ) -> bool:
         """Send a channel message using meshcore-cli command.
         
         Resolves channel names to numbers and handles rate limiting.
@@ -444,6 +777,9 @@ class CommandManager:
         Args:
             channel: The channel name (e.g., "LongFast").
             content: The message content to send.
+            command_id: Optional command_id for repeat tracking (if not provided, one will be generated).
+            skip_user_rate_limit: If True, skip user rate limiter checks (for automated responses).
+            rate_limit_key: Optional key for per-user rate limiting (e.g. from get_rate_limit_key(message)).
             
         Returns:
             bool: True if sent successfully, False otherwise.
@@ -452,7 +788,9 @@ class CommandManager:
             return False
         
         # Check all rate limits
-        can_send, reason = await self._check_rate_limits()
+        can_send, reason = await self._check_rate_limits(
+            skip_user_rate_limit=skip_user_rate_limit, rate_limit_key=rate_limit_key
+        )
         if not can_send:
             if reason:
                 self.logger.warning(reason)
@@ -469,13 +807,30 @@ class CommandManager:
             
             self.logger.info(f"Sending channel message to {channel} (channel {channel_num}): {content}")
             
+            # Record transmission for repeat tracking (don't let this block sending)
+            try:
+                if hasattr(self.bot, 'transmission_tracker') and self.bot.transmission_tracker:
+                    if not command_id:
+                        command_id = f"channel_{channel}_{int(time.time())}"
+                    self.bot.transmission_tracker.record_transmission(
+                        content=content,
+                        target=channel,
+                        message_type='channel',
+                        command_id=command_id
+                    )
+            except Exception as e:
+                self.logger.debug(f"Error recording transmission for repeat tracking: {e}")
+                # Don't fail the send if transmission tracking fails
+            
             # Use meshcore-cli send_chan_msg function
             from meshcore_cli.meshcore_cli import send_chan_msg
             result = await send_chan_msg(self.bot.meshcore, channel_num, content)
             
             # Handle result using unified handler
             target = f"{channel} (channel {channel_num})"
-            return self._handle_send_result(result, "Channel message", target)
+            return self._handle_send_result(
+                result, "Channel message", target, rate_limit_key=rate_limit_key
+            )
                 
         except Exception as e:
             self.logger.error(f"Failed to send channel message: {e}")
@@ -494,7 +849,7 @@ class CommandManager:
         # Special handling for common help requests
         if command_name.lower() in ['commands', 'list', 'all']:
             # User is asking for a list of commands, show general help
-            return self.get_general_help()
+            return self.get_general_help(message)
         
         # Map command aliases to their actual command names
         command_aliases = {
@@ -543,7 +898,7 @@ class CommandManager:
         if 'help' in self.commands:
             help_command = self.commands['help']
             if hasattr(help_command, 'get_available_commands_list'):
-                available_str = help_command.get_available_commands_list()
+                available_str = help_command.get_available_commands_list(message)
         
         # Fallback if help command doesn't have the method
         if not available_str:
@@ -558,10 +913,34 @@ class CommandManager:
             return self.bot.translator.translate('commands.help.unknown', command=command_name, available=available_str)
         return f"Unknown: {command_name}. Available: {available_str}. Try 'help' for command list."
     
-    def get_general_help(self) -> str:
-        """Get general help text from config (LoRa-friendly compact format)"""
-        # Get the help response from the keywords config
-        return self.keywords.get('help', 'Help not configured')
+    def get_general_help(self, message: MeshMessage = None) -> str:
+        """Get general help text from config (LoRa-friendly compact format).
+        
+        When message is provided, only lists commands valid for the message's channel.
+        """
+        # Prefer keywords config if user has customized help
+        if 'help' in self.keywords:
+            return self.keywords['help']
+        # Fallback: build compact list from available commands (filtered by channel)
+        if 'help' in self.commands:
+            help_command = self.commands['help']
+            if hasattr(help_command, 'get_available_commands_list'):
+                available_str = help_command.get_available_commands_list(message)
+                return f"Bot Help: {available_str} | More: 'help <command>'"
+        # Last resort: simple list of command names (filtered by channel when message provided)
+        help_cmd = self.commands.get('help')
+        if help_cmd and hasattr(help_cmd, '_is_command_valid_for_channel') and message:
+            primary_names = sorted([
+                cmd.name if hasattr(cmd, 'name') else name
+                for name, cmd in self.commands.items()
+                if help_cmd._is_command_valid_for_channel(name, cmd, message)
+            ])
+        else:
+            primary_names = sorted([
+                cmd.name if hasattr(cmd, 'name') else name
+                for name, cmd in self.commands.items()
+            ])
+        return f"Bot Help: {', '.join(primary_names)} | More: 'help <command>'"
     
     def get_available_commands_list(self) -> str:
         """Get a formatted list of available commands"""
@@ -617,7 +996,7 @@ class CommandManager:
         
         return commands_list
     
-    async def send_response(self, message: MeshMessage, content: str) -> bool:
+    async def send_response(self, message: MeshMessage, content: str, skip_user_rate_limit: bool = False) -> bool:
         """Unified method for sending responses to users.
         
         Automatically determines whether to send a DM or channel message based
@@ -626,6 +1005,7 @@ class CommandManager:
         Args:
             message: The original message being responded to.
             content: The response content.
+            skip_user_rate_limit: If True, skip the user rate limiter check (for automated responses).
             
         Returns:
             bool: True if response was sent successfully, False otherwise.
@@ -637,10 +1017,19 @@ class CommandManager:
             else:
                 self._last_response = content
             
+            rate_limit_key = self.get_rate_limit_key(message)
             if message.is_dm:
-                return await self.send_dm(message.sender_id, content)
+                return await self.send_dm(
+                    message.sender_id, content,
+                    skip_user_rate_limit=skip_user_rate_limit,
+                    rate_limit_key=rate_limit_key,
+                )
             else:
-                return await self.send_channel_message(message.channel, content)
+                return await self.send_channel_message(
+                    message.channel, content,
+                    skip_user_rate_limit=skip_user_rate_limit,
+                    rate_limit_key=rate_limit_key,
+                )
         except Exception as e:
             self.logger.error(f"Failed to send response: {e}")
             return False
@@ -654,10 +1043,20 @@ class CommandManager:
         Args:
             message: The message triggering the command execution.
         """
-        # Strip exclamation mark if present (for command-style messages)
         content = message.content.strip()
-        if content.startswith('!'):
-            content = content[1:].strip()
+        
+        # Check for command prefix if configured
+        if self.command_prefix:
+            # If prefix is configured, message must start with it
+            if not content.startswith(self.command_prefix):
+                return  # No prefix, no match
+            # Strip the prefix
+            content = content[len(self.command_prefix):].strip()
+        else:
+            # If no prefix configured, strip legacy "!" prefix for backward compatibility
+            if content.startswith('!'):
+                content = content[1:].strip()
+        
         content_lower = content.lower()
         
         # Check each command to see if it should execute
@@ -670,6 +1069,19 @@ class CommandManager:
                     continue
                 
                 self.logger.info(f"Command '{command_name}' matched, executing")
+                
+                # Check if we should queue instead of reject (for global cooldowns near expiring)
+                should_queue, remaining = self._should_queue_command(command, message)
+                if should_queue:
+                    if self._queue_command(command, message, remaining):
+                        # Successfully queued - silently return (no message sent)
+                        # Still record in stats as attempted
+                        if 'stats' in self.commands:
+                            stats_command = self.commands['stats']
+                            if stats_command:
+                                stats_command.record_command(message, command_name, False)
+                        return
+                    # Queue failed (user already has queued command) - fall through to normal rejection
                 
                 # Check if command can execute (cooldown, DM requirements, etc.)
                 if not command.can_execute_now(message):
@@ -770,8 +1182,42 @@ class CommandManager:
                             if response is None:
                                 response = "Command executed"
                             
+                            # Generate command_id for repeat tracking
+                            command_id = f"{command_name}_{message.sender_id}_{int(time.time())}"
+                            
+                            # Try to find matching transmission by content and timestamp
+                            if (hasattr(self.bot, 'transmission_tracker') and 
+                                self.bot.transmission_tracker and 
+                                response):
+                                # Search for recent transmission with matching content
+                                current_time = time.time()
+                                matched = False
+                                for timestamp_key in range(int(current_time - 10), int(current_time + 1)):
+                                    if timestamp_key in self.bot.transmission_tracker.pending_transmissions:
+                                        for record in self.bot.transmission_tracker.pending_transmissions[timestamp_key]:
+                                            # Match by exact content and recent timestamp to avoid false positives
+                                            # Using substring matching (e.g., "ok" in "outlook") would cause incorrect correlations
+                                            if record.content == response and \
+                                               abs(record.timestamp - current_time) < 10:
+                                                record.command_id = command_id
+                                                self.logger.debug(f"Linked command {command_id} to transmission: {record.message_type} to {record.target}")
+                                                matched = True
+                                                break
+                                        if matched:
+                                            break
+                                
+                                # Also check confirmed transmissions
+                                if not matched:
+                                    for packet_hash, record in self.bot.transmission_tracker.confirmed_transmissions.items():
+                                        # Match by exact content and recent timestamp to avoid false positives
+                                        if record.content == response and \
+                                           abs(record.timestamp - current_time) < 10:
+                                            record.command_id = command_id
+                                            self.logger.debug(f"Linked command {command_id} to confirmed transmission: {record.message_type} to {record.target}")
+                                            break
+                            
                             self.bot.web_viewer_integration.bot_integration.capture_command(
-                                message, command_name, response, success if success is not None else True
+                                message, command_name, response, success if success is not None else True, command_id
                             )
                         except Exception as e:
                             self.logger.debug(f"Failed to capture command data for web viewer: {e}")
@@ -793,8 +1239,9 @@ class CommandManager:
                         self.bot.web_viewer_integration and 
                         self.bot.web_viewer_integration.bot_integration):
                         try:
+                            command_id = f"{command_name}_{message.sender_id}_{int(time.time())}"
                             self.bot.web_viewer_integration.bot_integration.capture_command(
-                                message, command_name, f"Error: {e}", False
+                                message, command_name, f"Error: {e}", False, command_id
                             )
                         except Exception as capture_error:
                             self.logger.debug(f"Failed to capture failed command data: {capture_error}")

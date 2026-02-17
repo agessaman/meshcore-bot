@@ -22,8 +22,59 @@ class BotIntegration:
         self.circuit_breaker_open = False
         self.circuit_breaker_failures = 0
         self.is_shutting_down = False
+        # Initialize HTTP session with connection pooling for efficient reuse
+        self._init_http_session()
         # Initialize the packet_stream table
         self._init_packet_stream_table()
+    
+    def _init_http_session(self):
+        """Initialize a requests.Session with connection pooling and keep-alive"""
+        try:
+            import requests
+            from requests.adapters import HTTPAdapter
+            from urllib3.util.retry import Retry
+            import urllib3
+            import logging
+            
+            # Suppress urllib3 connection pool debug messages
+            # "Resetting dropped connection" is expected behavior when connections are idle
+            # and the connection pool is working correctly
+            urllib3_logger = logging.getLogger('urllib3.connectionpool')
+            urllib3_logger.setLevel(logging.INFO)  # Suppress DEBUG messages
+            
+            # Also disable other urllib3 warnings
+            urllib3.disable_warnings(urllib3.exceptions.NotOpenSSLWarning)
+            
+            self.http_session = requests.Session()
+            
+            # Configure retry strategy
+            retry_strategy = Retry(
+                total=2,
+                backoff_factor=0.1,
+                status_forcelist=[429, 500, 502, 503, 504],
+            )
+            
+            # Mount adapter with connection pooling
+            # pool_block=False allows non-blocking behavior if pool is full
+            adapter = HTTPAdapter(
+                pool_connections=1,  # Single connection pool for web viewer
+                pool_maxsize=5,      # Allow up to 5 connections in the pool
+                max_retries=retry_strategy,
+                pool_block=False     # Don't block if pool is full
+            )
+            self.http_session.mount("http://", adapter)
+            self.http_session.mount("https://", adapter)
+            
+            # Set default headers for keep-alive (though urllib3 handles this automatically)
+            self.http_session.headers.update({
+                'Connection': 'keep-alive',
+            })
+        except ImportError:
+            # Fallback if requests is not available
+            self.http_session = None
+        except Exception as e:
+            self.bot.logger.debug(f"Error initializing HTTP session: {e}")
+            self.http_session = None
     
     def reset_circuit_breaker(self):
         """Reset the circuit breaker"""
@@ -31,24 +82,19 @@ class BotIntegration:
         self.circuit_breaker_failures = 0
     
     def _get_web_viewer_db_path(self):
-        """Get the web viewer database path, falling back to [Bot] db_path if [Web_Viewer] db_path is unset"""
-        # Use [Bot] db_path when [Web_Viewer] db_path is unset
-        bot_db = self.bot.config.get('Bot', 'db_path', fallback='meshcore_bot.db')
-        if (self.bot.config.has_section('Web_Viewer') and self.bot.config.has_option('Web_Viewer', 'db_path')
-                and self.bot.config.get('Web_Viewer', 'db_path', fallback='').strip()):
-            use_db = self.bot.config.get('Web_Viewer', 'db_path').strip()
-        else:
-            use_db = bot_db
-        # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
+        """Return resolved database path for web viewer. Uses [Bot] db_path when [Web_Viewer] db_path is unset."""
         base_dir = self.bot.bot_root if hasattr(self.bot, 'bot_root') else '.'
-        return str(resolve_path(use_db, base_dir))
+        if self.bot.config.has_section('Web_Viewer') and self.bot.config.has_option('Web_Viewer', 'db_path'):
+            raw = self.bot.config.get('Web_Viewer', 'db_path', fallback='').strip()
+            if raw:
+                return resolve_path(raw, base_dir)
+        return str(Path(self.bot.db_manager.db_path).resolve())
     
     def _init_packet_stream_table(self):
-        """Initialize the packet_stream table in the database"""
+        """Initialize the packet_stream table in the web viewer database (same as [Bot] db_path by default)."""
         try:
             import sqlite3
             
-            # Get database path (falls back to [Bot] db_path if [Web_Viewer] db_path is unset)
             db_path = self._get_web_viewer_db_path()
             
             # Connect to database and create table if it doesn't exist
@@ -118,8 +164,10 @@ class BotIntegration:
             serializable_data = self._make_json_serializable(packet_data)
             
             # Store in database for web viewer to read
-            # Get database path (falls back to [Bot] db_path if [Web_Viewer] db_path is unset)
-            db_path = self._get_web_viewer_db_path()
+            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
+            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
+            base_dir = self.bot.bot_root if hasattr(self.bot, 'bot_root') else '.'
+            db_path = resolve_path(db_path, base_dir)
             conn = sqlite3.connect(str(db_path), timeout=30.0)
             cursor = conn.cursor()
             
@@ -138,7 +186,7 @@ class BotIntegration:
         except Exception as e:
             self.bot.logger.debug(f"Error storing packet data: {e}")
     
-    def capture_command(self, message, command_name, response, success):
+    def capture_command(self, message, command_name, response, success, command_id=None):
         """Capture command data and store in database for web viewer"""
         try:
             import sqlite3
@@ -150,6 +198,18 @@ class BotIntegration:
             channel = getattr(message, 'channel', 'Unknown')
             user_input = getattr(message, 'content', f'/{command_name}')
             
+            # Get repeat information if transmission tracker is available
+            repeat_count = 0
+            repeater_prefixes = []
+            repeater_counts = {}
+            if (hasattr(self.bot, 'transmission_tracker') and 
+                self.bot.transmission_tracker and 
+                command_id):
+                repeat_info = self.bot.transmission_tracker.get_repeat_info(command_id=command_id)
+                repeat_count = repeat_info.get('repeat_count', 0)
+                repeater_prefixes = repeat_info.get('repeater_prefixes', [])
+                repeater_counts = repeat_info.get('repeater_counts', {})
+            
             # Construct command data structure
             command_data = {
                 'user': user,
@@ -158,14 +218,17 @@ class BotIntegration:
                 'user_input': user_input,
                 'response': response,
                 'success': success,
-                'timestamp': time.time()
+                'timestamp': time.time(),
+                'repeat_count': repeat_count,
+                'repeater_prefixes': repeater_prefixes,
+                'repeater_counts': repeater_counts,  # Count per repeater prefix
+                'command_id': command_id  # Store command_id for later updates
             }
             
             # Convert non-serializable objects to strings
             serializable_data = self._make_json_serializable(command_data)
             
             # Store in database for web viewer to read
-            # Get database path (falls back to [Bot] db_path if [Web_Viewer] db_path is unset)
             db_path = self._get_web_viewer_db_path()
             conn = sqlite3.connect(str(db_path), timeout=30.0)
             cursor = conn.cursor()
@@ -193,7 +256,6 @@ class BotIntegration:
             serializable_data = self._make_json_serializable(routing_data)
             
             # Store in database for web viewer to read
-            # Get database path (falls back to [Bot] db_path if [Web_Viewer] db_path is unset)
             db_path = self._get_web_viewer_db_path()
             conn = sqlite3.connect(str(db_path), timeout=30.0)
             cursor = conn.cursor()
@@ -218,7 +280,6 @@ class BotIntegration:
             
             cutoff_time = time.time() - (days_to_keep * 24 * 60 * 60)
             
-            # Get database path (falls back to [Bot] db_path if [Web_Viewer] db_path is unset)
             db_path = self._get_web_viewer_db_path()
             conn = sqlite3.connect(str(db_path), timeout=30.0)
             cursor = conn.cursor()
@@ -261,9 +322,71 @@ class BotIntegration:
         else:
             return str(obj)
     
+    def send_mesh_edge_update(self, edge_data):
+        """Send mesh edge update to web viewer via HTTP API"""
+        try:
+            # Get web viewer URL from config
+            host = self.bot.config.get('Web_Viewer', 'host', fallback='127.0.0.1')
+            port = self.bot.config.getint('Web_Viewer', 'port', fallback=8080)
+            url = f"http://{host}:{port}/api/stream_data"
+            
+            payload = {
+                'type': 'mesh_edge',
+                'data': edge_data
+            }
+            
+            # Use session with connection pooling if available, otherwise fallback to requests.post
+            if self.http_session:
+                try:
+                    # Use a slightly longer timeout to allow connection reuse
+                    self.http_session.post(url, json=payload, timeout=1.0)
+                except Exception:
+                    # Silently fail - web viewer might not be running
+                    pass
+            else:
+                # Fallback if session not initialized
+                import requests
+                try:
+                    requests.post(url, json=payload, timeout=1.0)
+                except Exception:
+                    pass
+        except Exception as e:
+            self.bot.logger.debug(f"Error sending mesh edge update to web viewer: {e}")
+    
+    def send_mesh_node_update(self, node_data):
+        """Send mesh node update to web viewer via HTTP API"""
+        try:
+            import requests
+            import json
+            
+            # Get web viewer URL from config
+            host = self.bot.config.get('Web_Viewer', 'host', fallback='127.0.0.1')
+            port = self.bot.config.getint('Web_Viewer', 'port', fallback=8080)
+            url = f"http://{host}:{port}/api/stream_data"
+            
+            payload = {
+                'type': 'mesh_node',
+                'data': node_data
+            }
+            
+            # Send asynchronously (don't block)
+            try:
+                requests.post(url, json=payload, timeout=0.5)
+            except Exception:
+                # Silently fail - web viewer might not be running
+                pass
+        except Exception as e:
+            self.bot.logger.debug(f"Error sending mesh node update to web viewer: {e}")
+    
     def shutdown(self):
-        """Mark as shutting down"""
+        """Mark as shutting down and close HTTP session"""
         self.is_shutting_down = True
+        # Close HTTP session to clean up connections
+        if hasattr(self, 'http_session') and self.http_session:
+            try:
+                self.http_session.close()
+            except Exception:
+                pass
 
 class WebViewerIntegration:
     """Integration class for starting/stopping the web viewer with the bot"""
@@ -436,11 +559,15 @@ class WebViewerIntegration:
         try:
             # Get the path to the web viewer script
             viewer_script = Path(__file__).parent / "app.py"
+            # Use same config as bot so viewer finds db_path, Greeter_Command, etc.
+            config_path = getattr(self.bot, 'config_file', 'config.ini')
+            config_path = str(Path(config_path).resolve()) if config_path else 'config.ini'
             
             # Build command
             cmd = [
                 sys.executable,
                 str(viewer_script),
+                "--config", config_path,
                 "--host", self.host,
                 "--port", str(self.port)
             ]

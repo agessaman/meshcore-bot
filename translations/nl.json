@@ -494,6 +494,7 @@
             "header": "🛰️ Satellietpassage:\n{pass_info}",
             "error": "Fout bij ophalen satellietpassage-info: {error}",
             "no_satellite": "Geef een NORAD-nummer of snelkoppeling op. Voorbeeld: satpass iss",
+            "usage_short": "🛰️ satpass <sat|NORAD> [visueel]. Bijv: satpass iss, satpass 25544. help satpass voor snelkoppelingen.",
             "help_header": "🛰️ Satellietpassage info\n\nGebruik: satpass <NORAD_nummer_of_snelkoppeling>\n\nSnelkoppelingen:\n",
             "category_weather": "🌤️ Weer: ",
             "category_stations": "🚀 Stations: ",
@@ -941,6 +942,9 @@
         "cmd": {
             "description": "Lijst beschikbare commando's"
         }
+    },
+    "elapsed": {
+        "sync_device_clock": "Synchroniseer apparaatklok"
     },
     "errors": {
         "rate_limited": "Rate limited. Wacht {seconds:.1f} seconden",

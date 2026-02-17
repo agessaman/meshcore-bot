@@ -178,6 +178,15 @@ class AlertCommand(BaseCommand):
     description = "Get active emergency incidents (usage: alert seattle, alert 98258, alert 178th seattle, alert seattle all)"
     category = "emergency"
     cooldown_seconds = 10  # 10 second cooldown to prevent API abuse
+    
+    # Documentation
+    short_description = "Get active emergency incidents from PulsePoint"
+    usage = "alert <location> [all]"
+    examples = ["alert seattle", "alert 98101 all"]
+    parameters = [
+        {"name": "location", "description": "City, zip code, or street address"},
+        {"name": "all", "description": "Show all incidents (not just nearby)"}
+    ]
     requires_internet = True  # Requires internet access for PulsePoint API
     
     def __init__(self, bot):
@@ -193,7 +202,12 @@ class AlertCommand(BaseCommand):
         
         # Get max incident age in hours (default 24 hours) - filter out incidents older than this
         self.max_incident_age_hours = self.get_config_value('Alert_Command', 'max_incident_age_hours', fallback=24.0, value_type='float')
-    
+
+        # Load enabled (standard enabled; alert_enabled legacy)
+        self.alert_enabled = self.get_config_value('Alert_Command', 'enabled', fallback=None, value_type='bool')
+        if self.alert_enabled is None:
+            self.alert_enabled = self.get_config_value('Alert_Command', 'alert_enabled', fallback=True, value_type='bool')
+
     def can_execute(self, message: MeshMessage) -> bool:
         """Check if this command can be executed with the given message.
         
@@ -203,9 +217,7 @@ class AlertCommand(BaseCommand):
         Returns:
             bool: True if command is enabled and checks pass, False otherwise.
         """
-        # Check if alert command is enabled
-        alert_enabled = self.get_config_value('Alert_Command', 'alert_enabled', fallback=True, value_type='bool')
-        if not alert_enabled:
+        if not self.alert_enabled:
             return False
         
         # Call parent can_execute() which includes channel checking, cooldown, etc.

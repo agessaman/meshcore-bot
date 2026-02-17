@@ -11,6 +11,7 @@ import pytz
 import re
 from ..models import MeshMessage
 from ..security_utils import validate_pubkey_format
+from ..utils import format_elapsed_display
 
 
 class BaseCommand(ABC):
@@ -30,6 +31,12 @@ class BaseCommand(ABC):
     cooldown_seconds: int = 0
     category: str = "general"
     
+    # Documentation fields - to be overridden by subclasses for website generation
+    short_description: str = ""  # Brief description for website (without usage syntax)
+    usage: str = ""  # Usage syntax, e.g., "wx <zipcode|city> [tomorrow|7d|hourly|alerts]"
+    examples: List[str] = []  # Example commands, e.g., ["wx 98101", "wx seattle tomorrow"]
+    parameters: List[Dict[str, str]] = []  # Parameter definitions, e.g., [{"name": "location", "description": "US zip code or city name"}]
+    
     def __init__(self, bot):
         self.bot = bot
         self.logger = bot.logger
@@ -43,6 +50,9 @@ class BaseCommand(ABC):
     
         # Load translated keywords after initialization
         self._load_translated_keywords()
+        
+        # Cache command prefix from config
+        self._command_prefix = self._load_command_prefix()
     
     def translate(self, key: str, **kwargs) -> str:
         """Translate a key using the bot's translator.
@@ -92,6 +102,34 @@ class BaseCommand(ABC):
             'Hacker': 'Hacker_Command',
             'Sports': 'Sports_Command',
             'Stats': 'Stats_Command',
+            'Weather': 'Wx_Command',  # wx command reads from [Wx_Command]; [Weather] is legacy
+        }
+        # Legacy [Jokes] -> [Joke_Command] / [DadJoke_Command]: (requested_section, key) -> legacy section
+        # For 'enabled', also try legacy key: (section, key) -> (legacy_section, legacy_key) or list of same
+        legacy_key_alias = {
+            ('Joke_Command', 'enabled'): ('Jokes', 'joke_enabled'),
+            ('DadJoke_Command', 'enabled'): ('Jokes', 'dadjoke_enabled'),
+            # Standard enabled with *_enabled fallback (same section, then old section)
+            ('Stats_Command', 'enabled'): [
+                ('Stats_Command', 'stats_enabled'),
+                ('Stats', 'stats_enabled'),
+            ],
+            ('Sports_Command', 'enabled'): [
+                ('Sports_Command', 'sports_enabled'),
+                ('Sports', 'sports_enabled'),
+            ],
+            ('Hacker_Command', 'enabled'): [
+                ('Hacker_Command', 'hacker_enabled'),
+                ('Hacker', 'hacker_enabled'),
+            ],
+            ('Alert_Command', 'enabled'): [('Alert_Command', 'alert_enabled')],
+        }
+        legacy_section_fallback = {
+            ('Joke_Command', 'joke_enabled'): 'Jokes',
+            ('Joke_Command', 'seasonal_jokes'): 'Jokes',
+            ('Joke_Command', 'long_jokes'): 'Jokes',
+            ('DadJoke_Command', 'dadjoke_enabled'): 'Jokes',
+            ('DadJoke_Command', 'long_jokes'): 'Jokes',
         }
         
         # Determine old and new section names
@@ -102,10 +140,13 @@ class BaseCommand(ABC):
                 old_section = old
                 break
         
-        # Try new section first, then old section for backward compatibility
+        # Try new section first, then old section for backward compatibility, then legacy (e.g. Jokes)
         sections_to_try = [new_section]
         if old_section:
             sections_to_try.append(old_section)
+        legacy_sec = legacy_section_fallback.get((section, key))
+        if legacy_sec and legacy_sec not in sections_to_try:
+            sections_to_try.append(legacy_sec)
         
         for sec in sections_to_try:
             if self.bot.config.has_section(sec):
@@ -133,9 +174,12 @@ class BaseCommand(ABC):
                     
                     # If we got a value (not fallback), return it
                     if value != fallback or self.bot.config.has_option(sec, key):
-                        # Log migration notice on first use of old section
+                        # Log migration notice on first use of old/legacy section
                         if sec == old_section:
                             self.logger.info(f"Config migration: Using old section '[{old_section}]' for '{key}'. "
+                                           f"Please update to '[{new_section}]' in config.ini")
+                        elif legacy_sec and sec == legacy_sec:
+                            self.logger.info(f"Config migration: Using old section '[{legacy_sec}]' for '{key}'. "
                                            f"Please update to '[{new_section}]' in config.ini")
                         return value
                 except (ValueError, TypeError) as e:
@@ -145,9 +189,30 @@ class BaseCommand(ABC):
                     self.logger.debug(f"Error reading config {sec}.{key}: {e}")
                     continue
         
+        # Try legacy key alias (e.g. [Jokes] joke_enabled when requesting Joke_Command enabled)
+        alias = legacy_key_alias.get((section, key))
+        if alias:
+            aliases = [alias] if isinstance(alias, tuple) else alias
+            for legacy_sec, legacy_key in aliases:
+                if self.bot.config.has_section(legacy_sec) and self.bot.config.has_option(legacy_sec, legacy_key):
+                    try:
+                        if value_type == 'bool':
+                            value = self.bot.config.getboolean(legacy_sec, legacy_key, fallback=fallback)
+                        elif value_type == 'int':
+                            value = self.bot.config.getint(legacy_sec, legacy_key, fallback=fallback)
+                        elif value_type == 'float':
+                            value = self.bot.config.getfloat(legacy_sec, legacy_key, fallback=fallback)
+                        elif value_type == 'list':
+                            raw = self.bot.config.get(legacy_sec, legacy_key)
+                            value = [item.strip() for item in raw.split(',') if item.strip()]
+                        else:
+                            value = self.bot.config.get(legacy_sec, legacy_key)
+                        return value
+                    except (ValueError, TypeError) as e:
+                        self.logger.debug(f"Config conversion error for {legacy_sec}.{legacy_key}: {e}")
+        
         return fallback
     
-    @abstractmethod
     @abstractmethod
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the command with the given message.
@@ -168,6 +233,61 @@ class BaseCommand(ABC):
         """
         return self.description or "No help available for this command."
     
+    def get_usage_info(self) -> Dict[str, Any]:
+        """Get structured usage information including sub-commands and options.
+        
+        Uses class attributes as defaults, with translation overrides for i18n support.
+        
+        Returns:
+            Dict with keys:
+                - 'description': Main command description (for help text)
+                - 'short_description': Brief description for website (without usage syntax)
+                - 'usage': Usage syntax string (e.g., "wx <zipcode|city> [option]")
+                - 'subcommands': List of dicts with 'name' and 'description'
+                - 'examples': List of example strings
+                - 'parameters': List of dicts with 'name' and 'description'
+        """
+        # Start with class attribute defaults
+        usage_info = {
+            'description': self.description or "No description available",
+            'short_description': self.short_description or "",
+            'usage': self.usage or "",
+            'subcommands': [],
+            'examples': list(self.examples) if self.examples else [],
+            'parameters': list(self.parameters) if self.parameters else []
+        }
+        
+        # Try to get structured data from translations (i18n overrides)
+        if hasattr(self.bot, 'translator'):
+            try:
+                # Get subcommands from translations
+                subcommands_key = f"commands.{self.name}.subcommands"
+                subcommands_data = self.translate_get_value(subcommands_key)
+                if subcommands_data and isinstance(subcommands_data, list):
+                    usage_info['subcommands'] = subcommands_data
+                
+                # Get examples from translations (override class attribute)
+                examples_key = f"commands.{self.name}.examples"
+                examples_data = self.translate_get_value(examples_key)
+                if examples_data and isinstance(examples_data, list):
+                    usage_info['examples'] = examples_data
+                
+                # Get usage from translations (override class attribute)
+                usage_key = f"commands.{self.name}.usage_syntax"
+                usage_data = self.translate_get_value(usage_key)
+                if usage_data and isinstance(usage_data, str):
+                    usage_info['usage'] = usage_data
+                
+                # Get parameters from translations (override class attribute)
+                params_key = f"commands.{self.name}.parameters"
+                params_data = self.translate_get_value(params_key)
+                if params_data and isinstance(params_data, list):
+                    usage_info['parameters'] = params_data
+            except Exception as e:
+                self.logger.debug(f"Could not load usage info from translations for {self.name}: {e}")
+        
+        return usage_info
+    
     def _derive_config_section_name(self) -> str:
         """Derive config section name from command name.
         
@@ -180,6 +300,7 @@ class BaseCommand(ABC):
         # Special handling for camelCase names
         camel_case_map = {
             'dadjoke': 'DadJoke',
+            'webviewer': 'WebViewer',
         }
         
         if self.name in camel_case_map:
@@ -189,6 +310,21 @@ class BaseCommand(ABC):
             base_name = self.name.title().replace('_', '_')
         
         return f"{base_name}_Command"
+    
+    def get_queue_threshold_seconds(self) -> float:
+        """Get threshold for queuing commands during global cooldown.
+        
+        Returns:
+            float: Seconds remaining on cooldown below which commands should be queued.
+        """
+        section = self._derive_config_section_name()
+        threshold = self.get_config_value(section, 'cooldown_queue_threshold_seconds',
+                                         fallback=None, value_type='float')
+        if threshold is None:
+            # Fall back to global config
+            threshold = self.bot.config.getfloat('Bot', 'cooldown_queue_threshold_seconds', 
+                                                fallback=5.0)
+        return max(0.0, min(threshold, self.cooldown_seconds))
     
     def _load_allowed_channels(self) -> Optional[List[str]]:
         """Load allowed channels from config.
@@ -236,30 +372,42 @@ class BaseCommand(ABC):
         if message.is_dm:
             return True
         
+        if not message.channel:
+            return False
+        
+        # Normalize channel name for comparison (case-insensitive, preserve # prefix)
+        message_channel_normalized = message.channel.lower().strip()
+        
         # If no channel override, use global monitor_channels
         if self.allowed_channels is None:
-            return message.channel in self.bot.command_manager.monitor_channels
+            monitor_normalized = {ch.lower().strip() for ch in self.bot.command_manager.monitor_channels}
+            return message_channel_normalized in monitor_normalized
         
         # If empty list, command is disabled for channels (DM only)
         if self.allowed_channels == []:
             return False
         
-        # Check if channel is in allowed list
-        return message.channel in self.allowed_channels
+        # Normalize allowed channels for comparison (case-insensitive, preserve # prefix)
+        allowed_normalized = {ch.lower().strip() for ch in self.allowed_channels}
+        
+        # Check if channel matches allowed list
+        return message_channel_normalized in allowed_normalized
     
-    def can_execute(self, message: MeshMessage) -> bool:
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Check if this command can be executed with the given message.
         
         Checks channel permissions, DM requirements, cooldowns, and admin access.
         
         Args:
             message: The message to check execution for.
+            skip_channel_check: If True, skip channel check (used when a parent
+                command has already enforced its own channel override, e.g. wx delegating to gwx).
             
         Returns:
             bool: True if the command can be executed, False otherwise.
         """
         # Check channel access (standardized channel override)
-        if not self.is_channel_allowed(message):
+        if not skip_channel_check and not self.is_channel_allowed(message):
             return False
         
         # Check if command requires DM and message is not DM
@@ -297,19 +445,20 @@ class BaseCommand(ABC):
             'module_name': self.__class__.__module__
         }
     
-    async def send_response(self, message: MeshMessage, content: str) -> bool:
+    async def send_response(self, message: MeshMessage, content: str, skip_user_rate_limit: bool = False) -> bool:
         """Unified method for sending responses to users.
         
         Args:
             message: The message to respond to.
             content: The response content.
+            skip_user_rate_limit: If True, skip the user rate limiter check (for automated responses).
             
         Returns:
             bool: True if the response was sent successfully, False otherwise.
         """
         try:
             # Use the command manager's send_response method to ensure response capture
-            return await self.bot.command_manager.send_response(message, content)
+            return await self.bot.command_manager.send_response(message, content, skip_user_rate_limit=skip_user_rate_limit)
         except Exception as e:
             self.logger.error(f"Failed to send response: {e}")
             return False
@@ -467,15 +616,153 @@ class BaseCommand(ABC):
             # Log the error for debugging
             self.logger.debug(f"Could not load translated keywords for {self.name}: {e}")
     
+    def _load_command_prefix(self) -> str:
+        """Load command prefix from config.
+        
+        Returns:
+            str: The command prefix, or empty string if not configured.
+        """
+        prefix = self.bot.config.get('Bot', 'command_prefix', fallback='')
+        return prefix.strip() if prefix else ''
+    
+    def _get_bot_name(self) -> str:
+        """Get bot name from device or config.
+        
+        Returns:
+            str: The name of the bot/device.
+        """
+        # Try to get name from device first (actual radio username)
+        if hasattr(self.bot, 'meshcore') and self.bot.meshcore:
+            try:
+                if hasattr(self.bot.meshcore, 'self_info') and self.bot.meshcore.self_info:
+                    self_info = self.bot.meshcore.self_info
+                    # Try to get name from self_info (could be dict or object)
+                    if isinstance(self_info, dict):
+                        device_name = self_info.get('name') or self_info.get('adv_name')
+                        if device_name:
+                            return device_name
+                    elif hasattr(self_info, 'name'):
+                        if self_info.name:
+                            return self_info.name
+                    elif hasattr(self_info, 'adv_name'):
+                        if self_info.adv_name:
+                            return self_info.adv_name
+            except Exception as e:
+                self.logger.debug(f"Could not get name from device: {e}")
+        
+        # Fallback to config
+        bot_name = self.bot.config.get('Bot', 'bot_name', fallback='Bot')
+        return bot_name
+    
+    def _extract_mentions(self, text: str) -> List[str]:
+        """Extract all @[username] mentions from message content.
+        
+        Args:
+            text: The message text to process.
+            
+        Returns:
+            List[str]: List of mentioned usernames (without @[] brackets).
+        """
+        # Pattern to match @[username] - username can contain spaces, emojis, special chars
+        pattern = r'@\[([^\]]+)\]'
+        mentions = re.findall(pattern, text)
+        return mentions
+    
+    def _is_bot_mentioned(self, text: str) -> bool:
+        """Check if the bot is mentioned in the message.
+        
+        Args:
+            text: The message text to check.
+            
+        Returns:
+            bool: True if the bot is mentioned, False otherwise.
+        """
+        mentions = self._extract_mentions(text)
+        if not mentions:
+            return False
+        
+        bot_name = self._get_bot_name()
+        bot_name_lower = bot_name.lower()
+        
+        # Check if any mention matches the bot name (case-insensitive)
+        for mention in mentions:
+            if mention.lower() == bot_name_lower:
+                return True
+        
+        return False
+    
+    def _check_mentions_ok(self, text: str) -> bool:
+        """Check if mentions are valid (bot is mentioned if any mentions exist).
+        
+        Args:
+            text: The message text to check.
+            
+        Returns:
+            bool: True if mentions are OK (no mentions, or bot is mentioned), False otherwise.
+        """
+        mentions = self._extract_mentions(text)
+        if not mentions:
+            # No mentions - always OK
+            return True
+        
+        # If there are mentions, bot must be mentioned
+        return self._is_bot_mentioned(text)
+    
+    def _strip_mentions(self, text: str) -> str:
+        """Strip @[username] mentions from message content.
+        
+        Args:
+            text: The message text to process.
+            
+        Returns:
+            str: The text with mentions removed.
+        """
+        # Pattern to match @[username] - username can contain spaces, emojis, special chars
+        # Match @[ followed by any characters until ]
+        pattern = r'@\[([^\]]+)\]'
+        # Remove all mentions and clean up extra whitespace
+        cleaned = re.sub(pattern, '', text)
+        # Clean up multiple spaces and strip
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+        return cleaned
+    
     def matches_keyword(self, message: MeshMessage) -> bool:
-        """Check if this command matches the message content based on keywords"""
+        """Check if this command matches the message content based on keywords.
+        
+        Handles @[username] mentions: only responds if the bot is mentioned (if any mentions exist).
+        If other users are mentioned but not the bot, returns False.
+        
+        Handles command prefix: if a prefix is configured, the message must start with it.
+        
+        Args:
+            message: The message to check.
+            
+        Returns:
+            bool: True if message matches a keyword and bot is mentioned (if any mentions exist), False otherwise.
+        """
         if not self.keywords:
             return False
         
-        # Strip exclamation mark if present (for command-style messages)
         content = message.content.strip()
-        if content.startswith('!'):
-            content = content[1:].strip()
+        
+        # Check for command prefix if configured
+        if self._command_prefix:
+            # If prefix is configured, message must start with it
+            if not content.startswith(self._command_prefix):
+                return False
+            # Strip the prefix
+            content = content[len(self._command_prefix):].strip()
+        else:
+            # If no prefix configured, strip legacy "!" prefix for backward compatibility
+            if content.startswith('!'):
+                content = content[1:].strip()
+        
+        # Check if mentions are valid (bot must be mentioned if any mentions exist)
+        if not self._check_mentions_ok(content):
+            return False
+        
+        # Strip @[username] mentions before checking keywords
+        content = self._strip_mentions(content)
         content_lower = content.lower()
         
         for keyword in self.keywords:
@@ -495,8 +782,25 @@ class BaseCommand(ABC):
         return False
     
     def matches_custom_syntax(self, message: MeshMessage) -> bool:
-        """Check if this command matches custom syntax patterns"""
-        # Override in subclasses for custom syntax matching
+        """Check if this command matches custom syntax patterns.
+        
+        Handles @[username] mentions: only responds if the bot is mentioned (if any mentions exist).
+        Subclasses should call super().matches_custom_syntax() first if they override this method.
+        
+        Args:
+            message: The message to check.
+            
+        Returns:
+            bool: True if custom syntax matches and bot is mentioned (if any mentions exist), False otherwise.
+        """
+        content = message.content.strip()
+        
+        # Check if mentions are valid (bot must be mentioned if any mentions exist)
+        if not self._check_mentions_ok(content):
+            return False
+        
+        # Subclasses should override this method for custom syntax matching
+        # This base implementation just checks mentions
         return False
     
     def should_execute(self, message: MeshMessage) -> bool:
@@ -565,27 +869,9 @@ class BaseCommand(ABC):
             return "Unknown"
     
     def format_elapsed(self, message: MeshMessage) -> str:
-        """Format message timestamp for display"""
-        if message.timestamp and message.timestamp != 'unknown':
-            try:
-                from datetime import datetime,UTC
-                el = round((datetime.now(UTC).timestamp()-message.timestamp)*1000)
-                return f"{el}ms"
-            except:
-                return str(message.timestamp)
-        else:
-            return "Unknown"
-    def format_elapsed(self, message: MeshMessage) -> str:
-        """Format message timestamp for display"""
-        if message.timestamp and message.timestamp != 'unknown':
-            try:
-                from datetime import datetime,UTC
-                el = round((datetime.now(UTC).timestamp()-message.timestamp)*1000)
-                return f"{el}ms"
-            except:
-                return str(message.timestamp)
-        else:
-            return "Unknown"
+        """Format message elapsed for display. Uses 'Sync Device Clock' when device clock is invalid."""
+        translator = getattr(self.bot, 'translator', None)
+        return format_elapsed_display(message.timestamp, translator)
 
     def format_response(self, message: MeshMessage, response_format: str) -> str:
         """Format a response string with message data"""
@@ -612,7 +898,7 @@ class BaseCommand(ABC):
     
     def requires_admin_access(self) -> bool:
         """Check if this command requires admin access"""
-        if not hasattr(self.bot, 'config'):
+        if not hasattr(self.bot, 'config') or not self.bot.config.has_section('Admin_ACL'):
             return False
         
         try:
@@ -640,7 +926,7 @@ class BaseCommand(ABC):
         - Uses centralized validate_pubkey_format() function
         """
         import re # This import is needed for re.match
-        if not hasattr(self.bot, 'config'):
+        if not hasattr(self.bot, 'config') or not self.bot.config.has_section('Admin_ACL'):
             return False
         
         try:

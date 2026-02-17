@@ -103,3 +103,9 @@ class BaseServicePlugin(ABC):
         """
         return self._running
 
+    def is_healthy(self) -> bool:
+        """Report whether the service is healthy. Default: healthy if running.
+        Override in subclasses for connection-specific checks (e.g. meshcore, MQTT).
+        """
+        return self._running
+

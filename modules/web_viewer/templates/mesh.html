@@ -1,0 +1,2361 @@
+{% extends "base.html" %}
+
+{% block title %}Mesh Graph - MeshCore Bot Data Viewer{% endblock %}
+
+{% block content %}
+<style>
+    /* Make the mesh graph page use full height - scoped to this page only */
+    /* Fixed height so flex children (e.g. visualization-row) get remaining space; navbar + title + stats ~220px */
+    #mesh-graph-container {
+        display: flex;
+        flex-direction: column;
+        height: calc(100vh - 110px);
+    }
+    
+    #map-view, #graph-view {
+        flex: 1;
+        min-height: 0;
+    }
+    
+    .visualization-card {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+    }
+    
+    /* Add bottom margin to match side margins - apply to the row containing the visualization */
+    .visualization-row {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        margin-bottom: 1rem; /* Match Bootstrap's container-fluid horizontal padding (15px) */
+    }
+    
+    .visualization-row > .col-12 {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        flex: 1;
+    }
+</style>
+
+<div id="mesh-graph-container" class="d-flex flex-column">
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="fas fa-project-diagram"></i> Mesh Graph
+        </h1>
+    </div>
+</div>
+
+<!-- Statistics Panel - Compact -->
+<div class="row mb-3 g-2">
+    <div class="col">
+        <div class="card">
+            <div class="card-body p-2 d-flex align-items-center justify-content-between">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-sitemap me-2"></i>
+                    <div>
+                        <div class="small text-muted">Nodes</div>
+                        <div id="stat-node-count" class="text-primary fw-bold" style="font-size: 1.1rem; line-height: 1.2;">0</div>
+                        <div class="small text-muted">Total Repeaters</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col">
+        <div class="card">
+            <div class="card-body p-2 d-flex align-items-center justify-content-between">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-link me-2"></i>
+                    <div>
+                        <div class="small text-muted">Edges</div>
+                        <div id="stat-edge-count" class="text-info fw-bold" style="font-size: 1.1rem; line-height: 1.2;">0</div>
+                        <div class="small text-muted">Total Connections</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col">
+        <div class="card">
+            <div class="card-body p-2 d-flex align-items-center justify-content-between">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-chart-line me-2"></i>
+                    <div>
+                        <div class="small text-muted">Observations</div>
+                        <div id="stat-avg-obs" class="text-success fw-bold" style="font-size: 1.1rem; line-height: 1.2;">0</div>
+                        <div class="small text-muted">Avg per Edge</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col">
+        <div class="card">
+            <div class="card-body p-2 d-flex align-items-center justify-content-between">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-ruler me-2"></i>
+                    <div>
+                        <div class="small text-muted">Distance</div>
+                        <div id="stat-avg-dist" class="text-warning fw-bold" style="font-size: 1.1rem; line-height: 1.2;">0</div>
+                        <div class="small text-muted">Avg km</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col">
+        <div class="card">
+            <div class="card-body p-2 d-flex align-items-center justify-content-between">
+                <div class="d-flex align-items-center w-100">
+                    <i class="fas fa-sliders-h me-2"></i>
+                    <div class="flex-grow-1">
+                        <div class="small text-muted">Controls</div>
+                        <div class="d-flex align-items-center gap-1 mt-1 flex-wrap">
+                            <div class="btn-group" role="group">
+                                <button type="button" class="btn btn-primary btn-sm active" id="btn-view-map" onclick="switchView('map')">
+                                    <i class="fas fa-map"></i> Map
+                                </button>
+                                <button type="button" class="btn btn-outline-primary btn-sm" id="btn-view-graph" onclick="switchView('graph')">
+                                    <i class="fas fa-project-diagram"></i> Graph
+                                </button>
+                            </div>
+                            <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#filterPanel">
+                                <i class="fas fa-filter"></i>
+                            </button>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="refreshData()">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="exportView()">
+                                <i class="fas fa-download"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filter Panel -->
+<div class="row mb-3 collapse" id="filterPanel">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-filter"></i> Filters
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-2">
+                        <label for="filter-min-obs" class="form-label">Min Observations</label>
+                        <input type="range" class="form-range" id="filter-min-obs" min="1" max="50" value="1" oninput="updateFilterLabel('filter-min-obs', 'label-min-obs'); saveFilters();">
+                        <small id="label-min-obs" class="text-muted">1</small>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="filter-edge-days" class="form-label">Edge Timeframe</label>
+                        <select class="form-select" id="filter-edge-days" onchange="applyFilters(); saveFilters();">
+                            <option value="">All Time</option>
+                            <option value="1">Last 24 Hours</option>
+                            <option value="2">Last 48 Hours</option>
+                            <option value="3" selected>Last 72 Hours</option>
+                            <option value="7">Last 7 Days</option>
+                            <option value="30">Last 30 Days</option>
+                            <option value="90">Last 90 Days</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="filter-node-days" class="form-label">Node Timeframe</label>
+                        <select class="form-select" id="filter-node-days" onchange="applyFilters(); saveFilters();">
+                            <option value="">All Time</option>
+                            <option value="1">Last 24 Hours</option>
+                            <option value="2">Last 48 Hours</option>
+                            <option value="3" selected>Last 72 Hours</option>
+                            <option value="7">Last 7 Days</option>
+                            <option value="30">Last 30 Days</option>
+                            <option value="90">Last 90 Days</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="filter-starred" class="form-label">&nbsp;</label>
+                        <div class="d-flex align-items-center" style="min-height: 38px;">
+                            <div class="form-check mb-0">
+                                <input type="checkbox" class="form-check-input" id="filter-starred" onchange="applyFilters(); saveFilters();">
+                                <label class="form-check-label" for="filter-starred">Show Only Starred</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="filter-search" class="form-label">Search Node</label>
+                        <input type="text" class="form-control" id="filter-search" placeholder="Name, prefix, or path (e.g., 7e,01,86)..." oninput="handleSearchInput();">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Main Visualization Area -->
+<div class="row visualization-row" style="flex: 1; min-height: 0;">
+    <div class="col-12 h-100">
+        <div class="card h-100 visualization-card">
+            <div class="card-body p-0 h-100" style="position: relative;">
+                <!-- Map View -->
+                <div id="map-view" style="height: 100%; width: 100%;"></div>
+                
+                <!-- Graph View -->
+                <div id="graph-view" style="height: 100%; width: 100%; display: none;"></div>
+                
+                <!-- Connection Legend -->
+                <div id="connection-legend" class="connection-legend">
+                    <strong>Connection Types:</strong>
+                    <div class="connection-legend-item">
+                        <span class="connection-legend-color" style="background-color: #10b981;"></span>
+                        <span>Incoming</span>
+                    </div>
+                    <div class="connection-legend-item">
+                        <span class="connection-legend-color" style="background-color: #3b82f6;"></span>
+                        <span>Outgoing</span>
+                    </div>
+                    <div class="connection-legend-item">
+                        <span class="connection-legend-color" style="background-color: #9333ea;"></span>
+                        <span>Bidirectional</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Node Details Modal -->
+<div class="modal fade" id="nodeDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="nodeDetailsTitle">Node Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="nodeDetailsBody">
+                <!-- Content populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<!-- vis-network CSS -->
+<link rel="stylesheet" href="https://unpkg.com/vis-network@9.1.9/styles/vis-network.min.css" />
+
+<style>
+    #map-view, #graph-view {
+        min-height: 600px;
+    }
+    .leaflet-popup-content {
+        margin: 13px 19px;
+    }
+    /* Prevent selection rectangle/box when clicking on map elements */
+    .leaflet-container {
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .leaflet-container * {
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+    }
+    /* Prevent Leaflet popup from showing bounding box */
+    .leaflet-popup-pane {
+        pointer-events: auto;
+    }
+    /* Hide any selection outlines and bounding boxes */
+    .leaflet-interactive:focus {
+        outline: none;
+    }
+    .leaflet-popup {
+        /* Ensure popup doesn't trigger auto-pan visual indicators */
+    }
+    /* Hide Leaflet's auto-pan padding/bounding box visual */
+    .leaflet-container.leaflet-touch-zoom {
+        -ms-touch-action: pan-x pan-y;
+        touch-action: pan-x pan-y;
+    }
+    .node-marker-repeater {
+        background-color: #0d6efd;
+    }
+    .node-marker-roomserver {
+        background-color: #198754;
+    }
+    .node-marker-starred {
+        border: 3px solid #ffc107;
+    }
+    .mesh-node-popup .leaflet-popup-content {
+        margin: 10px 15px;
+    }
+    .mesh-node-popup .leaflet-popup-content table {
+        border-collapse: collapse;
+    }
+    .mesh-node-popup .leaflet-popup-content code {
+        background-color: rgba(0, 0, 0, 0.1);
+        padding: 2px 4px;
+        border-radius: 3px;
+        font-family: 'Courier New', monospace;
+    }
+    /* Legend for connection highlighting */
+    .connection-legend {
+        position: absolute;
+        bottom: 30px;
+        right: 10px;
+        background: var(--bs-body-bg, rgba(255, 255, 255, 0.95));
+        color: var(--bs-body-color, #212529);
+        padding: 10px;
+        border-radius: 5px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        border: 1px solid var(--bs-border-color, rgba(0,0,0,0.1));
+        z-index: 1000;
+        font-size: 0.85em;
+        display: none;
+    }
+    .connection-legend.active {
+        display: block;
+    }
+    .connection-legend strong {
+        color: var(--bs-body-color, #212529);
+        font-weight: 600;
+    }
+    .connection-legend-item {
+        display: flex;
+        align-items: center;
+        margin: 5px 0;
+        color: var(--bs-body-color, #212529);
+    }
+    .connection-legend-color {
+        width: 20px;
+        height: 3px;
+        margin-right: 8px;
+        display: inline-block;
+    }
+</style>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- vis-network JS -->
+<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+
+<script>
+    // Global state
+    let currentView = 'map';
+    let map = null;
+    let graphNetwork = null;
+    let allNodes = [];
+    let allEdges = [];
+    let filteredNodes = [];
+    let filteredEdges = [];
+    let nodeMap = {}; // prefix -> node data (all nodes, for path resolution)
+    let nodeMapByKey = {}; // public_key -> node data (all nodes, for path resolution)
+    let filteredNodeMap = {}; // prefix -> node (filtered set only, for edge drawing)
+    let filteredNodeMapByKey = {}; // public_key -> node (filtered set only, for edge drawing)
+    let edgeMap = {}; // "from-to" -> edge data
+    let mapViewState = null; // Store map center and zoom for preservation
+    let highlightedNode = null; // Currently highlighted node prefix
+    let highlightedNodeObject = null; // The actual node object that's highlighted
+    let highlightedEdges = new Map(); // Map of edge keys to their original styles
+    let allEdgeStyles = new Map(); // Map of all edge keys to their original styles (for dimming)
+    let allNodeStyles = new Map(); // Map of node identifiers to their original styles (for shrinking)
+    let nodeMarkers = new Map(); // Map of node identifier to marker for easy access
+    let nodeMarkersByPrefix = new Map(); // Map of prefix to array of markers (for multiple nodes with same prefix)
+    let edgeLines = new Map(); // Map of "from-to" to polyline for easy access
+    let edgeToNodes = new Map(); // Map of edge key to {fromNode, toNode} for accurate matching
+    let nodeModal = null; // Bootstrap modal instance for node details
+    let isInitialMapLoad = true; // Track if this is the first time rendering the map with nodes
+    let highlightedPath = null; // Currently highlighted path data
+    let pathHighlightTimeout = null; // Debounce timer for path resolution
+    
+    // Helper function to create unique node identifier
+    function getNodeId(node) {
+        return `${node.prefix}-${node.latitude.toFixed(6)}-${node.longitude.toFixed(6)}`;
+    }
+    
+    // Detect if input is a hex path (2+ hex values)
+    function detectPathInput(input) {
+        if (!input || input.trim().length === 0) return false;
+        
+        // Normalize input: remove commas, spaces, colons
+        const normalized = input.replace(/[,\s:]/g, '');
+        
+        // Check if it's a continuous hex string (e.g., "8601a5")
+        // If it's all hex and has 4+ characters (2+ hex pairs), it's a path
+        if (/^[0-9a-fA-F]{4,}$/.test(normalized)) {
+            return true;
+        }
+        
+        // Also check for space-separated hex values
+        const hexPattern = /\b[0-9a-fA-F]{2}\b/g;
+        const matches = input.match(hexPattern);
+        
+        // If we have 2+ hex values, treat as path
+        return matches && matches.length >= 2;
+    }
+    
+    // Resolve path via API
+    async function resolvePath(pathInput) {
+        try {
+            const response = await fetch('/api/mesh/resolve-path', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ path: pathInput })
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to resolve path');
+            }
+            
+            const data = await response.json();
+            return data;
+        } catch (error) {
+            console.error('Error resolving path:', error);
+            return { valid: false, error: error.message };
+        }
+    }
+    
+    // Handle search input - route to path resolution or normal filtering
+    function handleSearchInput() {
+        const searchInput = document.getElementById('filter-search');
+        const searchTerm = searchInput.value.trim();
+        
+        // Clear any existing path highlight timeout
+        if (pathHighlightTimeout) {
+            clearTimeout(pathHighlightTimeout);
+            pathHighlightTimeout = null;
+        }
+        
+        // If search is empty, clear path highlights and apply normal filters
+        if (!searchTerm) {
+            clearPathHighlight();
+            applyFilters();
+            saveFilters();
+            return;
+        }
+        
+        // Check if input is a path
+        if (detectPathInput(searchTerm)) {
+            // Clear previous path highlight when starting new search
+            clearPathHighlight();
+            
+            // Debounce path resolution (wait 500ms after user stops typing)
+            // Use longer delay when deleting to avoid flicker when path becomes invalid
+            const isDeleting = searchTerm.length < (highlightedPath ? highlightedPath.node_ids.join('').length : 999);
+            const delay = isDeleting ? 800 : 500; // Longer delay when deleting
+            
+            pathHighlightTimeout = setTimeout(async () => {
+                // Normalize path input: handle continuous hex strings (e.g., "8601a5")
+                let normalizedPath = searchTerm.trim();
+                const cleanPath = normalizedPath.replace(/[,\s:]/g, '');
+                if (/^[0-9a-fA-F]{4,}$/.test(cleanPath)) {
+                    // Continuous hex string - add spaces between pairs for API
+                    normalizedPath = cleanPath.match(/.{1,2}/g).join(' ');
+                }
+                const resolved = await resolvePath(normalizedPath);
+                if (resolved.valid && resolved.repeaters && resolved.repeaters.length > 0) {
+                    // Ensure map is rendered first (applyFilters will render if needed)
+                    // But don't filter out nodes/edges - we want to show the path on the full map
+                    if (currentView === 'map') {
+                        // Map should already be rendered, just highlight the path
+                        highlightPath(resolved);
+                    } else {
+                        // If in graph view, switch to map view first
+                        switchView('map');
+                        // Wait for map to render, then highlight
+                        setTimeout(() => highlightPath(resolved), 100);
+                    }
+                } else {
+                    // Path resolution failed, fall back to normal search
+                    applyFilters();
+                    saveFilters();
+                }
+            }, delay);
+        } else {
+            // Not a path - use normal filtering
+            // Add delay when deleting to avoid flicker
+            const isDeleting = searchTerm.length < (document.getElementById('filter-search').getAttribute('data-last-length') || 999);
+            const delay = isDeleting ? 300 : 0;
+            
+            // Store current length for next comparison
+            document.getElementById('filter-search').setAttribute('data-last-length', searchTerm.length);
+            
+            if (delay > 0) {
+                pathHighlightTimeout = setTimeout(() => {
+                    clearPathHighlight();
+                    applyFilters();
+                    saveFilters();
+                }, delay);
+            } else {
+                clearPathHighlight();
+                applyFilters();
+                saveFilters();
+            }
+        }
+    }
+    
+    // Highlight a resolved path on the map
+    // immediate: if true, apply styles synchronously (for use after renderMap to prevent flicker)
+    function highlightPath(resolvedPath, immediate = false) {
+        if (!resolvedPath || !resolvedPath.valid || !resolvedPath.repeaters) {
+            console.warn('Invalid path data:', resolvedPath);
+            return;
+        }
+        
+        // Check if map is available and has edges/nodes
+        if (!map || edgeLines.size === 0) {
+            console.warn('Map not ready or no edges rendered. Edge count:', edgeLines.size);
+            // Try to render the map first
+            if (currentView === 'map') {
+                applyFilters();
+                // Try again after rendering
+                setTimeout(() => highlightPath(resolvedPath, immediate), 200);
+            }
+            return;
+        }
+        
+        // Store path data first
+        highlightedPath = resolvedPath;
+        
+        // Clear any existing node connection highlights (but don't clear the map)
+        // Just reset the highlighted node state, don't call clearHighlights() which might affect rendering
+        if (highlightedNode) {
+            highlightedNode = null;
+            highlightedNodeObject = null;
+        }
+        
+        // Get all found repeaters with locations
+        const pathRepeaters = resolvedPath.repeaters.filter(r => r.found && r.latitude && r.longitude);
+        
+        if (pathRepeaters.length === 0) {
+            console.warn('No repeaters with locations found in path. Path data:', resolvedPath);
+            // Don't return - still show the map, just don't highlight anything
+            return;
+        }
+        
+        console.log(`Highlighting path with ${pathRepeaters.length} repeaters:`, pathRepeaters.map(r => r.node_id));
+        
+        // Highlight edges between consecutive nodes in the path
+        // Need to match the edgeKey format used when storing edges: `${edge.from_prefix}-${edge.to_prefix}`
+        const pathEdgeKeys = new Set();
+        for (let i = 0; i < pathRepeaters.length - 1; i++) {
+            const fromRepeater = pathRepeaters[i];
+            const toRepeater = pathRepeaters[i + 1];
+            
+            // Find the edge - try public key matching first, then prefix
+            let edge = null;
+            
+            // Try public key matching first (most accurate)
+            if (fromRepeater.public_key && toRepeater.public_key) {
+                edge = filteredEdges.find(e => 
+                    e.from_public_key === fromRepeater.public_key && 
+                    e.to_public_key === toRepeater.public_key
+                );
+            }
+            
+            // Fall back to prefix matching (case-insensitive)
+            const fromPrefix = fromRepeater.node_id.toUpperCase();
+            const toPrefix = toRepeater.node_id.toUpperCase();
+            
+            if (!edge) {
+                edge = filteredEdges.find(e => 
+                    e.from_prefix.toUpperCase() === fromPrefix && 
+                    e.to_prefix.toUpperCase() === toPrefix
+                );
+            }
+            
+            // Also check reverse direction (bidirectional edges)
+            if (!edge) {
+                edge = filteredEdges.find(e => 
+                    e.from_prefix.toUpperCase() === toPrefix && 
+                    e.to_prefix.toUpperCase() === fromPrefix
+                );
+            }
+            
+            if (edge) {
+                // Use the same edgeKey format as when storing: `${edge.from_prefix}-${edge.to_prefix}`
+                // Always use the edge's actual from/to prefixes (as stored in the database)
+                // Normalize to lowercase to match how edges are stored
+                const edgeKey = `${edge.from_prefix.toLowerCase()}-${edge.to_prefix.toLowerCase()}`;
+                pathEdgeKeys.add(edgeKey);
+                console.log(`Found edge for path segment ${fromRepeater.node_id}->${toRepeater.node_id}: ${edgeKey} (edge stored as ${edge.from_prefix}->${edge.to_prefix})`);
+            } else {
+                console.warn(`No edge found for path segment ${fromRepeater.node_id}->${toRepeater.node_id}`);
+                // Log available edges for debugging
+                const availableEdges = filteredEdges.filter(e => {
+                    const eFrom = e.from_prefix.toUpperCase();
+                    const eTo = e.to_prefix.toUpperCase();
+                    return (eFrom === fromPrefix || eTo === fromPrefix || eFrom === toPrefix || eTo === toPrefix);
+                });
+                if (availableEdges.length > 0) {
+                    console.log(`Available edges with these prefixes:`, availableEdges.map(e => `${e.from_prefix}->${e.to_prefix}`));
+                } else {
+                    console.log(`No edges found with prefixes ${fromPrefix} or ${toPrefix} in filteredEdges (total: ${filteredEdges.length})`);
+                }
+            }
+        }
+        
+        console.log(`Path edge keys to highlight:`, Array.from(pathEdgeKeys));
+        
+        // First, store original styles for ALL edges if not already stored
+        edgeLines.forEach((line, edgeKey) => {
+            if (!allEdgeStyles.has(edgeKey)) {
+                allEdgeStyles.set(edgeKey, {
+                    color: line.options.color,
+                    weight: line.options.weight,
+                    opacity: line.options.opacity
+                });
+            }
+        });
+        
+        console.log(`Total edges on map: ${edgeLines.size}, Path edges to highlight: ${pathEdgeKeys.size}`);
+        
+        // Normalize path edge keys to lowercase for matching
+        const normalizedPathEdgeKeys = new Set();
+        pathEdgeKeys.forEach(key => normalizedPathEdgeKeys.add(key.toLowerCase()));
+        
+        // Apply edge styles - immediately if requested (to prevent flicker after renderMap),
+        // otherwise use requestAnimationFrame to batch updates
+        const applyEdgeStyles = () => {
+            edgeLines.forEach((line, edgeKey) => {
+                // Normalize edgeKey for comparison
+                const normalizedKey = edgeKey.toLowerCase();
+                if (normalizedPathEdgeKeys.has(normalizedKey)) {
+                    // Apply path highlight style
+                    line.setStyle({
+                        color: '#fbbf24', // Bright yellow/orange
+                        weight: 6, // Thicker
+                        opacity: 1.0 // Fully opaque
+                    });
+                } else {
+                    // Dim non-path edges - now we know originalStyle exists since we stored it above
+                    const originalStyle = allEdgeStyles.get(edgeKey);
+                    if (originalStyle) {
+                        line.setStyle({
+                            color: '#848484',
+                            weight: Math.max(1, originalStyle.weight * 0.5),
+                            opacity: 0.2
+                        });
+                    }
+                }
+            });
+        };
+        
+        if (immediate) {
+            // Apply immediately to prevent flicker when called from renderMap()
+            applyEdgeStyles();
+        } else {
+            // Use requestAnimationFrame to batch all style updates in a single frame
+            requestAnimationFrame(applyEdgeStyles);
+        }
+        
+        // Highlight path nodes
+        pathRepeaters.forEach((repeater, index) => {
+            // Find the node in our node map
+            let node = null;
+            
+            // Try to find by public key first (most accurate)
+            if (repeater.public_key && nodeMapByKey && nodeMapByKey[repeater.public_key]) {
+                node = nodeMapByKey[repeater.public_key];
+            } else if (repeater.latitude && repeater.longitude) {
+                // Fall back to prefix and location matching (for cases where public key not available)
+                const matchingNodes = filteredNodes.filter(n => 
+                    n.prefix === repeater.node_id &&
+                    n.latitude && n.longitude &&
+                    Math.abs(n.latitude - repeater.latitude) < 0.001 &&
+                    Math.abs(n.longitude - repeater.longitude) < 0.001
+                );
+                if (matchingNodes.length > 0) {
+                    node = matchingNodes[0];
+                }
+            } else {
+                // Last resort: just match by prefix (less accurate but better than nothing)
+                node = nodeMap[repeater.node_id];
+            }
+            
+            if (node) {
+                const nodeId = getNodeId(node);
+                const marker = nodeMarkers.get(nodeId);
+                if (marker) {
+                    const highlightSize = getNodeSize(node) + 5;
+                    const highlightBorderWeight = getBorderWeight(highlightSize, node.is_starred);
+                    marker.setStyle({
+                        radius: highlightSize,
+                        weight: highlightBorderWeight,
+                        color: '#f59e0b' // Amber border
+                    });
+                }
+            }
+        });
+        
+        // Save filters (but don't trigger applyFilters to avoid clearing highlights)
+        saveFilters();
+    }
+    
+    // Clear path highlighting
+    function clearPathHighlight() {
+        if (!highlightedPath) return;
+        
+        highlightedPath = null;
+        
+        // Restore all edge styles
+        edgeLines.forEach((line, edgeKey) => {
+            const originalStyle = allEdgeStyles.get(edgeKey);
+            if (originalStyle) {
+                line.setStyle(originalStyle);
+            }
+        });
+        
+        // Restore all node styles
+        filteredNodes.forEach(node => {
+            const nodeId = getNodeId(node);
+            const marker = nodeMarkers.get(nodeId);
+            if (marker) {
+                const originalStyle = allNodeStyles.get(nodeId);
+                if (originalStyle) {
+                    // Restore original size and style
+                    marker.setStyle(originalStyle);
+                } else {
+                    // Fallback: restore based on node properties
+                    const normalSize = getNodeSize(node);
+                    const normalBorderWeight = getBorderWeight(normalSize, node.is_starred);
+                    marker.setStyle({
+                        radius: normalSize,
+                        weight: normalBorderWeight,
+                        color: node.is_starred ? '#ffc107' : '#ffffff',
+                        fillOpacity: 0.8
+                    });
+                }
+            }
+        });
+    }
+    
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', async function() {
+        // Initialize modal instances once
+        const nodeModalElement = document.getElementById('nodeDetailsModal');
+        if (nodeModalElement) {
+            nodeModal = new bootstrap.Modal(nodeModalElement, {
+                backdrop: true,
+                keyboard: true,
+                focus: true
+            });
+        }
+        
+        // Load saved filter settings
+        loadFilters();
+        
+        setupSocketIO();
+        // Load stats first to set initial filter value (but don't override saved filters)
+        await loadStats();
+        // Then load data (which will apply filters)
+        await loadData();
+        // Open graph tab if URL has #graph (e.g. /mesh#graph)
+        if (window.location.hash === '#graph') {
+            switchView('graph');
+        }
+        // Keep view in sync with URL hash (back/forward, direct link)
+        window.addEventListener('hashchange', function() {
+            if (window.location.hash === '#graph' && currentView !== 'graph') {
+                switchView('graph');
+            } else if (window.location.hash !== '#graph' && currentView === 'graph') {
+                switchView('map');
+            }
+        });
+    });
+    
+    // Load statistics
+    async function loadStats() {
+        try {
+            const response = await fetch('/api/mesh/stats');
+            const stats = await response.json();
+            
+            document.getElementById('stat-node-count').textContent = stats.node_count || 0;
+            document.getElementById('stat-edge-count').textContent = stats.total_edges || 0;
+            document.getElementById('stat-avg-obs').textContent = stats.avg_observations || 0;
+            document.getElementById('stat-avg-dist').textContent = stats.avg_distance ? stats.avg_distance + ' km' : 'N/A';
+            
+            // Set initial Min Observations filter to floor of average observations
+            // Only if no saved filter value exists
+            const savedFilters = localStorage.getItem('meshGraphFilters');
+            if (!savedFilters && stats.avg_observations && stats.avg_observations > 0) {
+                const minObsValue = Math.floor(stats.avg_observations);
+                const minObsSlider = document.getElementById('filter-min-obs');
+                const minObsLabel = document.getElementById('label-min-obs');
+                if (minObsSlider && !minObsSlider.value || minObsSlider.value === '1') {
+                    minObsSlider.value = minObsValue;
+                    // Update label directly without triggering applyFilters (data not loaded yet)
+                    if (minObsLabel) {
+                        minObsLabel.textContent = minObsValue;
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error loading stats:', error);
+        }
+    }
+    
+    // Load nodes and edges
+    // Options: { skipRender: true } - refresh allNodes/allEdges but do not call applyFilters().
+    // Used by socket handlers so graph view is not re-rendered on live updates (avoids chaotic re-stabilization).
+    async function loadData(options) {
+        const skipRender = options && options.skipRender === true;
+        
+        try {
+            // Load nodes
+            const nodesResponse = await fetch('/api/mesh/nodes');
+            const nodesData = await nodesResponse.json();
+            allNodes = nodesData.nodes || [];
+            
+            // Build node maps
+            nodeMap = {};
+            nodeMapByKey = {};
+            allNodes.forEach(node => {
+                nodeMap[node.prefix] = node; // Last node with this prefix wins (for backward compatibility)
+                if (node.public_key) {
+                    nodeMapByKey[node.public_key] = node; // Map by public key for accurate lookups
+                }
+            });
+            
+            // Load edges
+            const edgesResponse = await fetch('/api/mesh/edges');
+            const edgesData = await edgesResponse.json();
+            allEdges = edgesData.edges || [];
+            
+            // Build edge map
+            edgeMap = {};
+            allEdges.forEach(edge => {
+                const key = `${edge.from_prefix}-${edge.to_prefix}`;
+                edgeMap[key] = edge;
+            });
+            
+            if (!skipRender) {
+                // Apply filters (will use the min observations value set by loadStats)
+                // Note: applyFilters() will preserve and re-apply path highlights via renderMap()
+                applyFilters();
+            }
+        } catch (error) {
+            console.error('Error loading data:', error);
+            throw error; // Re-throw so callers can handle it
+        }
+    }
+    
+    // Save filter settings to localStorage
+    function saveFilters() {
+        try {
+            const filters = {
+                minObs: document.getElementById('filter-min-obs').value,
+                edgeDays: document.getElementById('filter-edge-days').value,
+                nodeDays: document.getElementById('filter-node-days').value,
+                starredOnly: document.getElementById('filter-starred').checked
+                // Note: searchTerm is NOT saved - it should not persist across reloads
+            };
+            localStorage.setItem('meshGraphFilters', JSON.stringify(filters));
+        } catch (error) {
+            console.debug('Error saving filters:', error);
+        }
+    }
+    
+    // Load filter settings from localStorage
+    function loadFilters() {
+        try {
+            const saved = localStorage.getItem('meshGraphFilters');
+            if (saved) {
+                const filters = JSON.parse(saved);
+                if (filters.minObs !== undefined) {
+                    document.getElementById('filter-min-obs').value = filters.minObs;
+                    updateFilterLabel('filter-min-obs', 'label-min-obs');
+                }
+                if (filters.edgeDays !== undefined) {
+                    document.getElementById('filter-edge-days').value = filters.edgeDays;
+                }
+                if (filters.nodeDays !== undefined) {
+                    document.getElementById('filter-node-days').value = filters.nodeDays;
+                }
+                if (filters.starredOnly !== undefined) {
+                    document.getElementById('filter-starred').checked = filters.starredOnly;
+                }
+                // Note: searchTerm is NOT loaded - it should reset on page reload
+            }
+        } catch (error) {
+            console.debug('Error loading filters:', error);
+        }
+    }
+    
+    // Apply filters
+    function applyFilters() {
+        // Preserve highlighted node before filtering/re-rendering
+        const preservedHighlightedNode = highlightedNodeObject;
+        // Preserve path highlight if active (will be re-applied in renderMap if still valid)
+        const preservedPath = highlightedPath;
+        
+        const minObs = parseInt(document.getElementById('filter-min-obs').value) || 1;
+        const edgeDays = document.getElementById('filter-edge-days').value;
+        const nodeDays = document.getElementById('filter-node-days').value;
+        const starredOnly = document.getElementById('filter-starred').checked;
+        const searchTerm = document.getElementById('filter-search').value.toLowerCase();
+        
+        // Filter edges
+        filteredEdges = allEdges.filter(edge => {
+            if (edge.observation_count < minObs) return false;
+            if (edgeDays && edge.last_seen) {
+                const edgeDate = new Date(edge.last_seen);
+                const cutoffDate = new Date();
+                cutoffDate.setDate(cutoffDate.getDate() - parseInt(edgeDays));
+                if (edgeDate < cutoffDate) return false;
+            }
+            return true;
+        });
+        
+        // Filter nodes by timeframe first
+        let candidateNodes = allNodes;
+        if (nodeDays) {
+            candidateNodes = allNodes.filter(node => {
+                const lastSeen = node.last_heard || node.last_advert_timestamp;
+                if (!lastSeen) return false;
+                const nodeDate = new Date(lastSeen);
+                const cutoffDate = new Date();
+                cutoffDate.setDate(cutoffDate.getDate() - parseInt(nodeDays));
+                return nodeDate >= cutoffDate;
+            });
+        }
+        
+        // Get unique node prefixes from filtered edges
+        const nodePrefixes = new Set();
+        filteredEdges.forEach(edge => {
+            nodePrefixes.add(edge.from_prefix);
+            nodePrefixes.add(edge.to_prefix);
+        });
+        
+        // Filter nodes - must be in filtered edges AND pass other filters
+        filteredNodes = candidateNodes.filter(node => {
+            if (!nodePrefixes.has(node.prefix)) return false;
+            if (starredOnly && !node.is_starred) return false;
+            // Only apply text search if it's not a path (path resolution is handled separately)
+            if (searchTerm && !detectPathInput(searchTerm)) {
+                const nameMatch = node.name.toLowerCase().includes(searchTerm);
+                const prefixMatch = node.prefix.toLowerCase().includes(searchTerm);
+                if (!nameMatch && !prefixMatch) return false;
+            }
+            return true;
+        });
+        
+        // Build filtered node maps for O(1) edge endpoint resolution (only draw edges when both endpoints are in filtered set)
+        filteredNodeMap = {};
+        filteredNodeMapByKey = {};
+        filteredNodes.forEach(node => {
+            filteredNodeMap[node.prefix] = node;
+            if (node.public_key) filteredNodeMapByKey[node.public_key] = node;
+        });
+        
+        // Re-render current view
+        if (currentView === 'map') {
+            renderMap();
+            // Highlights are re-applied inside renderMap() if preservedHighlightedNode or preservedPath exists
+        } else {
+            renderGraph();
+            // Re-apply highlights in graph view if we had a highlighted node (preservedHighlightedNode is the node object)
+            if (preservedHighlightedNode && filteredNodes.some(n => getNodeId(n) === getNodeId(preservedHighlightedNode))) {
+                requestAnimationFrame(() => {
+                    highlightNodeConnectionsGraph(preservedHighlightedNode);
+                });
+            }
+        }
+    }
+    
+    // Update filter label
+    function updateFilterLabel(inputId, labelId) {
+        const value = document.getElementById(inputId).value;
+        document.getElementById(labelId).textContent = value;
+        applyFilters();
+    }
+    
+    // Switch between views
+    function switchView(view) {
+        currentView = view;
+        // Update URL hash so /mesh#graph links open directly to graph tab
+        if (view === 'graph') {
+            if (window.location.hash !== '#graph') {
+                history.replaceState(null, '', window.location.pathname + '#graph');
+            }
+        } else {
+            if (window.location.hash) {
+                history.replaceState(null, '', window.location.pathname);
+            }
+        }
+        
+        if (view === 'map') {
+            document.getElementById('btn-view-map').classList.add('active');
+            document.getElementById('btn-view-map').classList.remove('btn-outline-primary');
+            document.getElementById('btn-view-map').classList.add('btn-primary');
+            document.getElementById('btn-view-graph').classList.remove('active');
+            document.getElementById('btn-view-graph').classList.remove('btn-primary');
+            document.getElementById('btn-view-graph').classList.add('btn-outline-primary');
+            document.getElementById('map-view').style.display = 'block';
+            document.getElementById('graph-view').style.display = 'none';
+            renderMap();
+        } else {
+            document.getElementById('btn-view-graph').classList.add('active');
+            document.getElementById('btn-view-graph').classList.remove('btn-outline-primary');
+            document.getElementById('btn-view-graph').classList.add('btn-primary');
+            document.getElementById('btn-view-map').classList.remove('active');
+            document.getElementById('btn-view-map').classList.remove('btn-primary');
+            document.getElementById('btn-view-map').classList.add('btn-outline-primary');
+            document.getElementById('map-view').style.display = 'none';
+            document.getElementById('graph-view').style.display = 'block';
+            renderGraph();
+        }
+    }
+    
+    // Render map view
+    function renderMap() {
+        // Preserve highlighted node and path before clearing
+        const preservedHighlightedNode = highlightedNodeObject;
+        const preservedPath = highlightedPath;
+        
+        // Check if this is initial load before saving state
+        const isInitialLoad = isInitialMapLoad && mapViewState === null;
+        
+        // Initialize map if it doesn't exist
+        if (!map) {
+            // Check if container is already initialized (Leaflet stores map instance in _leaflet_id)
+            const mapContainer = document.getElementById('map-view');
+            if (mapContainer && mapContainer._leaflet_id) {
+                // Container already has a map instance - we need to clear it first
+                // Try to get and destroy the existing map instance
+                try {
+                    // Leaflet stores map instances - try to access it
+                    const existingMap = L.Map.prototype.get ? L.Map.prototype.get(mapContainer._leaflet_id) : null;
+                    if (existingMap && existingMap.destroy) {
+                        existingMap.destroy();
+                    }
+                } catch (e) {
+                    // If we can't destroy it, just clear the container
+                    console.debug('Could not destroy existing map instance, clearing container');
+                }
+                
+                // Clear Leaflet's internal tracking
+                delete mapContainer._leaflet_id;
+                if (mapContainer._leaflet) delete mapContainer._leaflet;
+                
+                // Clear any Leaflet classes and content
+                mapContainer.className = mapContainer.className
+                    .replace(/\s*leaflet-container\s*/g, ' ')
+                    .replace(/\s*leaflet-touch\s*/g, ' ')
+                    .replace(/\s*leaflet-retina\s*/g, ' ')
+                    .trim();
+                mapContainer.innerHTML = '';
+                mapContainer.style.cssText = ''; // Clear any inline styles Leaflet added
+            }
+            
+            // First time initialization
+            try {
+                map = L.map('map-view', {
+                    zoomControl: true,
+                    preferCanvas: false,
+                    zoomAnimation: true, // Enable smooth zooming
+                    zoomAnimationThreshold: 4, // Only animate if zoom difference is >= 4
+                    fadeAnimation: true, // Enable fade animation for markers
+                    markerZoomAnimation: true // Enable zoom animation for markers
+                }).setView([0, 0], 2);
+                
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(map);
+                
+                // Disable popup auto-pan globally to prevent bounding boxes
+                L.Popup.prototype.options.autoPan = false;
+                mapViewState = null; // No previous state to preserve
+                isInitialMapLoad = true; // This is the initial map creation
+                
+                // Clear highlights when clicking on map (not on a marker)
+                map.on('click', (e) => {
+                    // Only clear if clicking directly on the map, not on a marker or popup
+                    const target = e.originalEvent.target;
+                    if (target && target.classList.contains('leaflet-container')) {
+                        clearHighlights();
+                    }
+                });
+                
+                // Preserve highlights when zooming/panning
+                map.on('zoomend', () => {
+                    if (highlightedNodeObject) {
+                        // Re-apply highlights after zoom using the actual node object
+                        highlightNodeConnectionsForNode(highlightedNodeObject);
+                    }
+                    // Also re-apply path highlights if active
+                    if (highlightedPath) {
+                        highlightPath(highlightedPath);
+                    }
+                });
+                
+                map.on('moveend', () => {
+                    if (highlightedNodeObject) {
+                        // Re-apply highlights after pan using the actual node object
+                        highlightNodeConnectionsForNode(highlightedNodeObject);
+                    }
+                    // Also re-apply path highlights if active
+                    if (highlightedPath) {
+                        highlightPath(highlightedPath);
+                    }
+                });
+            } catch (e) {
+                console.error('Error creating map:', e);
+                // If creation fails, clear container and retry after a brief delay
+                const container = document.getElementById('map-view');
+                if (container) {
+                    container.innerHTML = '';
+                    container.className = '';
+                    delete container._leaflet_id;
+                    if (container._leaflet) delete container._leaflet;
+                }
+                // Retry after a brief delay
+                setTimeout(() => {
+                    if (!map) {
+                        try {
+                            map = L.map('map-view', {
+                                zoomControl: true,
+                                preferCanvas: false
+                            }).setView([0, 0], 2);
+                            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                                attribution: '© OpenStreetMap contributors'
+                            }).addTo(map);
+                            // Re-render after successful creation
+                            renderMap();
+                        } catch (retryError) {
+                            console.error('Error retrying map creation:', retryError);
+                        }
+                    }
+                }, 100);
+                return; // Exit early, will retry
+            }
+        }
+        
+        // Save current map view state before clearing (if not initial load)
+        if (map && !isInitialLoad) {
+            const center = map.getCenter();
+            const zoom = map.getZoom();
+            mapViewState = {
+                center: [center.lat, center.lng],
+                zoom: zoom
+            };
+        }
+        
+        // Clear existing markers and lines more thoroughly
+        // First, remove all layers that are markers or polylines
+        if (map) {
+            const layersToRemove = [];
+            map.eachLayer(layer => {
+                // Check for all marker types (L.Marker, L.CircleMarker) and polylines
+                if (layer instanceof L.Marker || 
+                    layer instanceof L.CircleMarker || 
+                    layer instanceof L.Polyline ||
+                    (layer.options && (layer.options.radius !== undefined))) { // Catch any circle markers
+                    layersToRemove.push(layer);
+                }
+            });
+            layersToRemove.forEach(layer => {
+                map.removeLayer(layer);
+                // Explicitly unbind popups and tooltips to clear any cached state
+                if (layer.unbindPopup) layer.unbindPopup();
+                if (layer.unbindTooltip) layer.unbindTooltip();
+            });
+        }
+        
+        // Clear node and edge maps
+        nodeMarkers.clear();
+        nodeMarkersByPrefix.clear();
+        edgeLines.clear();
+        edgeToNodes.clear();
+        allEdgeStyles.clear();
+        allNodeStyles.clear();
+        highlightedEdges.clear();
+        // Note: Don't clear highlightedPath here - it will be re-applied after rendering if preservedPath exists
+        
+        if (filteredNodes.length === 0) {
+            // Restore view state even if no nodes
+            if (mapViewState) {
+                map.setView(mapViewState.center, mapViewState.zoom);
+            }
+            return;
+        }
+        
+        const bounds = [];
+        
+        // Add edges FIRST (so they appear below nodes)
+        filteredEdges.forEach(edge => {
+            // Resolve endpoints from filtered set only (so we don't draw edges to nodes outside node timeframe)
+            let fromNode = (edge.from_public_key && filteredNodeMapByKey[edge.from_public_key]) ? filteredNodeMapByKey[edge.from_public_key] : filteredNodeMap[edge.from_prefix];
+            let toNode = (edge.to_public_key && filteredNodeMapByKey[edge.to_public_key]) ? filteredNodeMapByKey[edge.to_public_key] : filteredNodeMap[edge.to_prefix];
+            if (!fromNode || !toNode) return;
+            
+            const color = getEdgeColor(edge);
+            const weight = Math.max(1, Math.log10(edge.observation_count) * 2);
+            
+            const line = L.polyline(
+                [[fromNode.latitude, fromNode.longitude], [toNode.latitude, toNode.longitude]],
+                {
+                    color: color,
+                    weight: weight,
+                    opacity: getEdgeOpacity(edge),
+                    pane: 'overlayPane' // Use overlayPane for edges (lower z-index)
+                }
+            );
+            
+            // Simple hover tooltip for quick info
+            line.bindTooltip(`
+                ${edge.from_prefix} → ${edge.to_prefix}<br>
+                Observations: ${edge.observation_count}<br>
+                Distance: ${edge.geographic_distance ? edge.geographic_distance.toFixed(1) + ' km' : 'N/A'}<br>
+                Last Seen: ${edge.last_seen ? new Date(edge.last_seen).toLocaleString() : 'Never'}
+            `);
+            
+            // Create information-rich popup tooltip (similar to nodes) for click
+            const edgeTooltipContent = `
+                <div style="min-width: 250px;">
+                    <strong style="font-size: 1.1em;">${edge.from_prefix} → ${edge.to_prefix}</strong><br>
+                    <hr style="margin: 5px 0; border-color: #666;">
+                    <table style="width: 100%; font-size: 0.9em;">
+                        <tr>
+                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>From:</strong></td>
+                            <td style="padding: 2px 0;">${fromNode ? escapeHtml(fromNode.name) : escapeHtml(edge.from_prefix)}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>To:</strong></td>
+                            <td style="padding: 2px 0;">${toNode ? escapeHtml(toNode.name) : escapeHtml(edge.to_prefix)}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Observations:</strong></td>
+                            <td style="padding: 2px 0;">${edge.observation_count}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Distance:</strong></td>
+                            <td style="padding: 2px 0;">${edge.geographic_distance ? edge.geographic_distance.toFixed(2) + ' km' : 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Avg Hop Position:</strong></td>
+                            <td style="padding: 2px 0;">${edge.avg_hop_position ? edge.avg_hop_position.toFixed(2) : 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>First Seen:</strong></td>
+                            <td style="padding: 2px 0;">${edge.first_seen ? new Date(edge.first_seen).toLocaleString() : 'Unknown'}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Last Seen:</strong></td>
+                            <td style="padding: 2px 0;">${edge.last_seen ? new Date(edge.last_seen).toLocaleString() : 'Unknown'}</td>
+                        </tr>
+                        ${edge.from_public_key ? `<tr>
+                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>From Public Key:</strong></td>
+                            <td style="padding: 2px 0;"><code style="font-size: 0.85em;">${formatPublicKey(edge.from_public_key)}</code></td>
+                        </tr>` : ''}
+                        ${edge.to_public_key ? `<tr>
+                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>To Public Key:</strong></td>
+                            <td style="padding: 2px 0;"><code style="font-size: 0.85em;">${formatPublicKey(edge.to_public_key)}</code></td>
+                        </tr>` : ''}
+                    </table>
+                </div>
+            `;
+            
+            line.bindPopup(edgeTooltipContent, {
+                maxWidth: 300,
+                className: 'mesh-edge-popup',
+                autoPan: false,  // Prevent bounding box/auto-pan when popup opens
+                autoPanPadding: [0, 0],  // No padding for auto-pan
+                closeOnClick: false  // Don't close on map click
+            });
+            
+            // Open popup on click and hide hover tooltip
+            line.on('click', (e) => {
+                // Prevent default behavior that might cause selection box
+                if (e.originalEvent) {
+                    e.originalEvent.preventDefault();
+                    e.originalEvent.stopPropagation();
+                }
+                
+                // Close hover tooltip if it's open
+                line.closeTooltip();
+                
+                // Open popup at the exact click location (e.latlng is the clicked point on the line)
+                // Use openPopup with the latlng and explicitly disable autoPan
+                const popup = line.getPopup();
+                if (popup) {
+                    popup.setLatLng(e.latlng);
+                    popup.options.autoPan = false;
+                    popup.openOn(map);
+                } else {
+                    // Fallback: use openPopup with options
+                    line.openPopup(e.latlng, {
+                        autoPan: false
+                    });
+                }
+            });
+            line.addTo(map);
+            
+            // Store edge line for highlighting, along with the actual node objects it connects
+            // Normalize to lowercase for consistent matching
+            const edgeKey = `${edge.from_prefix.toLowerCase()}-${edge.to_prefix.toLowerCase()}`;
+            edgeLines.set(edgeKey, line);
+            // Store the actual node objects this edge connects (not just prefixes)
+            edgeToNodes.set(edgeKey, { fromNode: fromNode, toNode: toNode });
+        });
+        
+        // Add markers for nodes AFTER edges (so they appear on top and are easier to click)
+        filteredNodes.forEach(node => {
+            // Calculate node size based on current filtered edges (this changes when filters change)
+            const nodeSize = getNodeSize(node);
+            // Calculate border weight that scales with node size
+            const borderWeight = getBorderWeight(nodeSize, node.is_starred);
+            
+            // Create marker with calculated size and border weight
+            const marker = L.circleMarker([node.latitude, node.longitude], {
+                radius: nodeSize,
+                fillColor: node.role === 'roomserver' ? '#198754' : '#0d6efd',
+                color: node.is_starred ? '#ffc107' : '#fff',
+                weight: borderWeight,
+                opacity: 1,
+                fillOpacity: 0.8,
+                pane: 'markerPane' // Use markerPane for nodes (higher z-index than overlayPane)
+            });
+            
+            // Create information-rich tooltip with all node details
+            const connections = filteredEdges.filter(e => 
+                e.from_prefix === node.prefix || e.to_prefix === node.prefix
+            );
+            const incoming = connections.filter(e => e.to_prefix === node.prefix).length;
+            const outgoing = connections.filter(e => e.from_prefix === node.prefix).length;
+            
+            const tooltipContent = `
+                <div style="min-width: 250px;">
+                    <strong style="font-size: 1.1em;">${escapeHtml(node.name)}</strong><br>
+                    <hr style="margin: 5px 0; border-color: #666;">
+                    <table style="width: 100%; font-size: 0.9em;">
+                        <tr>
+                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Prefix:</strong></td>
+                            <td style="padding: 2px 0;"><code>${escapeHtml(node.prefix)}</code></td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Public Key:</strong></td>
+                            <td style="padding: 2px 0;"><code style="font-size: 0.85em;">${formatPublicKey(node.public_key)}</code></td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Role:</strong></td>
+                            <td style="padding: 2px 0; text-transform: capitalize;">${escapeHtml(node.role)}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Location:</strong></td>
+                            <td style="padding: 2px 0;">${node.latitude.toFixed(6)}, ${node.longitude.toFixed(6)}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Starred:</strong></td>
+                            <td style="padding: 2px 0;">${node.is_starred ? '<i class="fas fa-star" style="color: #ffc107;"></i> Yes' : 'No'}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Last Heard:</strong></td>
+                            <td style="padding: 2px 0;">${node.last_heard ? new Date(node.last_heard).toLocaleString() : 'Never'}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Last Advert:</strong></td>
+                            <td style="padding: 2px 0;">${node.last_advert_timestamp ? new Date(node.last_advert_timestamp).toLocaleString() : 'Never'}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Connections:</strong></td>
+                            <td style="padding: 2px 0;">${connections.length} total (${incoming} incoming, ${outgoing} outgoing)</td>
+                        </tr>
+                    </table>
+                </div>
+            `;
+            
+            marker.bindPopup(tooltipContent, {
+                maxWidth: 300,
+                className: 'mesh-node-popup',
+                autoPan: false  // Prevent bounding box/auto-pan when popup opens
+            });
+            
+            // Add click handler to highlight connections - pass the actual node object
+            marker.on('click', (e) => {
+                // Clear path highlights when clicking a node
+                if (highlightedPath) {
+                    clearPathHighlight();
+                }
+                highlightNodeConnectionsForNode(node);
+                // Close hover tooltip if it's open (though nodes don't have hover tooltips, this is for consistency)
+                marker.closeTooltip();
+                // Open popup on click
+                marker.openPopup();
+            });
+            
+            // Add marker to markerPane (higher z-index than overlayPane where edges are)
+            marker.addTo(map);
+            // Store marker with unique node identifier
+            const nodeId = getNodeId(node);
+            nodeMarkers.set(nodeId, marker);
+            // Also store by prefix for backward compatibility (array of markers)
+            if (!nodeMarkersByPrefix.has(node.prefix)) {
+                nodeMarkersByPrefix.set(node.prefix, []);
+            }
+            nodeMarkersByPrefix.get(node.prefix).push({ marker: marker, node: node });
+            bounds.push([node.latitude, node.longitude]);
+        });
+        
+        // Clear highlight tracking (but preserve the node prefix to re-apply)
+        // Note: preservedHighlightedNode was already declared at the start of renderMap()
+        highlightedEdges.clear();
+        allEdgeStyles.clear();
+        // Temporarily clear highlightedNode to prevent issues during render
+        // We'll restore it after rendering if preservedHighlightedNode exists
+        // Note: preservedHighlightedNode was already declared at the start of renderMap()
+        highlightedNode = null;
+        
+        // Fit to bounds on initial load, otherwise restore previous view state
+        if (isInitialLoad && bounds.length > 0) {
+            // First time rendering with nodes - fit to bounds
+            map.fitBounds(bounds, { padding: [50, 50] });
+            isInitialMapLoad = false; // Mark that initial load is complete
+        } else if (mapViewState) {
+            // Subsequent renders - restore previous view state
+            map.setView(mapViewState.center, mapViewState.zoom);
+        } else if (bounds.length > 0) {
+            // Fallback: fit to bounds if no saved state
+            map.fitBounds(bounds, { padding: [50, 50] });
+        }
+        
+        // Re-apply highlights immediately after rendering if we had a highlighted node
+        // Use double requestAnimationFrame to ensure all layers are fully rendered
+        if (preservedHighlightedNode) {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    highlightNodeConnectionsForNode(preservedHighlightedNode);
+                });
+            });
+        }
+        
+        // Re-apply path highlights if they were active
+        if (preservedPath) {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    highlightPath(preservedPath);
+                });
+            });
+        }
+    }
+    
+    // Render graph view
+    function renderGraph() {
+        const container = document.getElementById('graph-view');
+        
+        // Prepare vis-network data - use unique node IDs to handle prefix collisions
+        // Remove duplicates by using a Map keyed by unique node ID
+        const nodeMapById = new Map();
+        filteredNodes.forEach(node => {
+            const nodeId = getNodeId(node); // Use unique ID (prefix-lat-lon) instead of just prefix
+            // Only add if we haven't seen this unique ID before
+            if (!nodeMapById.has(nodeId)) {
+                // Use shorter label to reduce overlap, show full name in tooltip
+                // For very long names, use just the prefix or a very short version
+                let shortLabel = node.name;
+                if (node.name.length > 25) {
+                    // For very long names, prefer showing prefix or first part
+                    shortLabel = node.prefix.toUpperCase() + ': ' + (node.name.length > 15 ? node.name.substring(0, 15) + '...' : node.name);
+                } else if (node.name.length > 20) {
+                    shortLabel = node.name.substring(0, 20) + '...';
+                }
+                nodeMapById.set(nodeId, {
+                    id: nodeId,
+                    label: shortLabel,
+                    title: `${node.name} (${node.prefix})`, // Full name in tooltip
+                    prefix: node.prefix, // Store prefix for reference
+                    color: {
+                        background: node.role === 'roomserver' ? '#198754' : '#0d6efd',
+                        border: node.is_starred ? '#ffc107' : '#fff',
+                        highlight: {
+                            background: node.role === 'roomserver' ? '#10b981' : '#f59e0b',
+                            border: '#d97706'
+                        },
+                        hover: {
+                            background: node.role === 'roomserver' ? '#10b981' : '#f59e0b',
+                            border: '#d97706'
+                        }
+                    },
+                    size: getNodeSize(node),
+                    borderWidth: getBorderWeight(getNodeSize(node), node.is_starred),
+                    font: { size: 12 }
+                });
+            }
+        });
+        const nodes = Array.from(nodeMapById.values());
+        
+        // Remove duplicate edges by using a Set keyed by edge ID
+        const edgeMapById = new Map();
+        filteredEdges.forEach(edge => {
+            // Resolve endpoints from filtered set only (so we don't draw edges to nodes outside node timeframe)
+            let fromNode = (edge.from_public_key && filteredNodeMapByKey[edge.from_public_key]) ? filteredNodeMapByKey[edge.from_public_key] : filteredNodeMap[edge.from_prefix];
+            let toNode = (edge.to_public_key && filteredNodeMapByKey[edge.to_public_key]) ? filteredNodeMapByKey[edge.to_public_key] : filteredNodeMap[edge.to_prefix];
+            if (!fromNode || !toNode) return;
+            
+            // Use unique node IDs for from/to to handle prefix collisions
+            const fromNodeId = getNodeId(fromNode);
+            const toNodeId = getNodeId(toNode);
+            const edgeId = `${fromNodeId}-${toNodeId}`;
+            
+            // Only add if we haven't seen this edge ID before
+            if (!edgeMapById.has(edgeId)) {
+                edgeMapById.set(edgeId, {
+                    id: edgeId, // Use unique IDs for edge ID
+                    from: fromNodeId, // Use unique node ID
+                    to: toNodeId, // Use unique node ID
+                    width: Math.max(1, Math.log10(edge.observation_count) * 2),
+                    color: {
+                        color: getEdgeColor(edge),
+                        opacity: getEdgeOpacity(edge)
+                    },
+                    arrows: 'to',
+                    title: `${edge.from_prefix} → ${edge.to_prefix} (${edge.observation_count} obs)`
+                });
+            }
+        });
+        const edges = Array.from(edgeMapById.values());
+        
+        const data = { nodes: nodes, edges: edges };
+        
+        const options = {
+            nodes: {
+                shape: 'dot',
+                font: {
+                    size: 13,
+                    color: '#ffffff',
+                    strokeWidth: 2,
+                    strokeColor: '#000000',
+                    face: 'Arial',
+                    align: 'center'
+                },
+                labelHighlightBold: true,
+                // Reduce label overlap by adjusting label distance
+                margin: 8,
+                // Global fallback so hover/highlight are never default gray (#848484)
+                color: {
+                    highlight: { border: '#d97706', background: '#f59e0b' },
+                    hover: { border: '#d97706', background: '#f59e0b' }
+                },
+                chosen: {
+                    node: function(values, id, selected, hovering) {
+                        if (hovering || selected) {
+                            values.color = {
+                                background: '#f59e0b',
+                                border: '#d97706',
+                                highlight: { background: '#f59e0b', border: '#d97706' },
+                                hover: { background: '#f59e0b', border: '#d97706' }
+                            };
+                            values.font = { size: 15, color: '#fef3c7', strokeWidth: 3, strokeColor: '#92400e' };
+                            values.size = values.size * 1.2; // Slightly enlarge on hover/select
+                        }
+                    }
+                }
+            },
+            edges: {
+                smooth: {
+                    type: 'continuous',
+                    roundness: 0.5
+                }
+                // No global highlight/hover so our direction colors (blue/green/purple) show when a node is selected
+            },
+            physics: {
+                enabled: true,
+                solver: 'forceAtlas2Based',
+                stabilization: {
+                    iterations: 600,
+                    fit: true
+                },
+                forceAtlas2Based: {
+                    gravitationalConstant: -1200,
+                    centralGravity: 0.005,
+                    springLength: 220,
+                    springConstant: 0.08,
+                    damping: 0.4,
+                    avoidOverlap: 1.0
+                }
+            },
+            interaction: {
+                hover: true,
+                tooltipDelay: 200,
+                zoomView: true,
+                dragView: true,
+                dragNodes: false,
+                selectConnectedEdges: false
+            },
+            layout: {
+                improvedLayout: false, // Disabled due to positioning issues with large graphs
+                hierarchical: {
+                    enabled: false
+                }
+            },
+            configure: {
+                enabled: false
+            }
+        };
+        
+        // Instead of destroying and recreating, update the existing network to prevent flashing
+        if (graphNetwork) {
+            // Update data and re-enable physics so the new graph runs stabilization again
+            graphNetwork.setData(data);
+            const updateOptions = {
+                nodes: options.nodes,
+                edges: options.edges,
+                physics: options.physics,
+                interaction: options.interaction,
+                layout: options.layout
+            };
+            graphNetwork.setOptions(updateOptions);
+        } else {
+            // Only create new network if it doesn't exist
+            graphNetwork = new vis.Network(container, data, options);
+            
+            // Freeze layout after stabilization so the graph settles instead of drifting
+            graphNetwork.on('stabilizationIterationsDone', () => {
+                graphNetwork.setOptions({ physics: false });
+            });
+            
+            // Apply direction colors to edges connected to a node (for hover and click)
+            function applyEdgeHighlightForNodeId(focusNodeId) {
+                if (!graphNetwork || !focusNodeId) return;
+                const edgeIdsToHighlight = [];
+                const edgeStyles = {};
+                const bidirectionalEdgeIds = new Set();
+                filteredEdges.forEach(edge => {
+                    let fromNode = (edge.from_public_key && filteredNodeMapByKey[edge.from_public_key]) ? filteredNodeMapByKey[edge.from_public_key] : filteredNodeMap[edge.from_prefix];
+                    let toNode = (edge.to_public_key && filteredNodeMapByKey[edge.to_public_key]) ? filteredNodeMapByKey[edge.to_public_key] : filteredNodeMap[edge.to_prefix];
+                    if (!fromNode || !toNode) return;
+                    const fromNodeId = getNodeId(fromNode);
+                    const toNodeId = getNodeId(toNode);
+                    const edgeId = `${fromNodeId}-${toNodeId}`;
+                    if (fromNodeId === focusNodeId || toNodeId === focusNodeId) {
+                        edgeIdsToHighlight.push(edgeId);
+                        const reverseEdgeId = `${toNodeId}-${fromNodeId}`;
+                        if (filteredEdges.some(e => {
+                            let revFromNode = (e.from_public_key && filteredNodeMapByKey[e.from_public_key]) ? filteredNodeMapByKey[e.from_public_key] : filteredNodeMap[e.from_prefix];
+                            let revToNode = (e.to_public_key && filteredNodeMapByKey[e.to_public_key]) ? filteredNodeMapByKey[e.to_public_key] : filteredNodeMap[e.to_prefix];
+                            if (!revFromNode || !revToNode) return false;
+                            return getNodeId(revFromNode) === toNodeId && getNodeId(revToNode) === fromNodeId;
+                        })) {
+                            bidirectionalEdgeIds.add(edgeId);
+                            bidirectionalEdgeIds.add(reverseEdgeId);
+                        }
+                        let highlightColor;
+                        if (bidirectionalEdgeIds.has(edgeId)) {
+                            highlightColor = '#9333ea';
+                        } else if (fromNodeId === focusNodeId) {
+                            highlightColor = '#3b82f6';
+                        } else {
+                            highlightColor = '#10b981';
+                        }
+                        const baseWidth = Math.max(1, Math.log10(edge.observation_count) * 2);
+                        edgeStyles[edgeId] = {
+                            color: {
+                                color: highlightColor,
+                                opacity: 1.0,
+                                highlight: highlightColor,
+                                hover: highlightColor
+                            },
+                            width: Math.max(3, baseWidth + 2)
+                        };
+                    }
+                });
+                const currentEdges = graphNetwork.body.data.edges.get();
+                const edgeUpdates = currentEdges.map(edge => {
+                    const edgeId = edge.id;
+                    if (edgeIdsToHighlight.includes(edgeId)) {
+                        return { id: edgeId, ...edgeStyles[edgeId] };
+                    }
+                    return {
+                        id: edgeId,
+                        color: { color: '#848484', opacity: 0.2 },
+                        width: 1
+                    };
+                });
+                graphNetwork.body.data.edges.update(edgeUpdates);
+            }
+            
+            // Restore edges after hover ends: re-apply selected node state or default edge colors
+            function restoreGraphEdgesAfterHover() {
+                if (!graphNetwork || currentView !== 'graph') return;
+                if (highlightedNodeObject) {
+                    highlightNodeConnectionsGraph(highlightedNodeObject);
+                } else {
+                    const currentEdges = graphNetwork.body.data.edges.get();
+                    const edgeUpdates = [];
+                    for (const edge of currentEdges) {
+                        const edgeId = edge.id;
+                        const originalEdge = filteredEdges.find(e => {
+                            let fromNode = (e.from_public_key && filteredNodeMapByKey[e.from_public_key]) ? filteredNodeMapByKey[e.from_public_key] : filteredNodeMap[e.from_prefix];
+                            let toNode = (e.to_public_key && filteredNodeMapByKey[e.to_public_key]) ? filteredNodeMapByKey[e.to_public_key] : filteredNodeMap[e.to_prefix];
+                            if (!fromNode || !toNode) return false;
+                            return `${getNodeId(fromNode)}-${getNodeId(toNode)}` === edgeId;
+                        });
+                        if (originalEdge) {
+                            edgeUpdates.push({
+                                id: edgeId,
+                                color: { color: getEdgeColor(originalEdge), opacity: getEdgeOpacity(originalEdge) },
+                                width: Math.max(1, Math.log10(originalEdge.observation_count) * 2)
+                            });
+                        }
+                    }
+                    if (edgeUpdates.length) graphNetwork.body.data.edges.update(edgeUpdates);
+                }
+            }
+            
+            // Event handlers - only set up once when network is first created
+            graphNetwork.on('hoverNode', (params) => {
+                if (params.node) applyEdgeHighlightForNodeId(params.node);
+            });
+            graphNetwork.on('blurNode', () => {
+                restoreGraphEdgesAfterHover();
+            });
+            graphNetwork.on('click', (params) => {
+                if (params.nodes.length > 0) {
+                    const nodeId = params.nodes[0];
+                    const node = filteredNodes.find(n => getNodeId(n) === nodeId);
+                    if (node) {
+                        // Click on the currently highlighted node = clear (fixes two-click-to-clear)
+                        if (highlightedNodeObject && getNodeId(highlightedNodeObject) === nodeId) {
+                            clearHighlights();
+                            return;
+                        }
+                        highlightNodeConnectionsGraph(node);
+                        showNodeDetails(node);
+                    }
+                } else if (params.edges.length > 0) {
+                    const edgeId = params.edges[0]; // This is now fromNodeId-toNodeId format
+                    // Find edge by matching the unique node IDs
+                    const edge = filteredEdges.find(e => {
+                        let fromNode = (e.from_public_key && filteredNodeMapByKey[e.from_public_key]) ? filteredNodeMapByKey[e.from_public_key] : filteredNodeMap[e.from_prefix];
+                        let toNode = (e.to_public_key && filteredNodeMapByKey[e.to_public_key]) ? filteredNodeMapByKey[e.to_public_key] : filteredNodeMap[e.to_prefix];
+                        if (!fromNode || !toNode) return false;
+                        const expectedEdgeId = `${getNodeId(fromNode)}-${getNodeId(toNode)}`;
+                        return expectedEdgeId === edgeId;
+                    });
+                    // Edge details now shown via popup tooltip, not modal
+                } else {
+                    // Clicked on empty space - clear highlights
+                    clearHighlights();
+                }
+            });
+        }
+    }
+    
+    // Highlight node connections on map - new version that takes the actual node object
+    function highlightNodeConnectionsForNode(clickedNode) {
+        // Clear previous highlights
+        clearHighlights();
+        
+        if (!clickedNode) return;
+        highlightedNode = clickedNode.prefix; // Store prefix for backward compatibility
+        highlightedNodeObject = clickedNode; // Store the actual node object
+        
+        // Show legend
+        const legend = document.getElementById('connection-legend');
+        if (legend) {
+            legend.classList.add('active');
+        }
+        
+        // Store original styles for all edges (for dimming non-highlighted ones)
+        allEdgeStyles.clear();
+        edgeLines.forEach((line, edgeKey) => {
+            allEdgeStyles.set(edgeKey, {
+                color: line.options.color,
+                weight: line.options.weight,
+                opacity: line.options.opacity
+            });
+        });
+        
+        // Store original styles for all nodes (for shrinking non-highlighted ones)
+        allNodeStyles.clear();
+        filteredNodes.forEach(node => {
+            const nodeId = getNodeId(node);
+            const marker = nodeMarkers.get(nodeId);
+            if (marker) {
+                allNodeStyles.set(nodeId, {
+                    radius: marker.options.radius,
+                    weight: marker.options.weight,
+                    color: marker.options.color,
+                    fillOpacity: marker.options.fillOpacity
+                });
+            }
+        });
+        
+        // Create a unique identifier for the clicked node using prefix + location
+        const clickedNodeId = getNodeId(clickedNode);
+        
+        // Find all edges connected to this specific node by checking actual node objects
+        // Use the edgeToNodes map to match edges to the actual clicked node, not just prefix
+        const highlightedEdgeKeys = new Set();
+        edgeToNodes.forEach((nodes, edgeKey) => {
+            // Check if this edge connects to the clicked node by comparing node identifiers
+            if (nodes.fromNode && nodes.toNode && clickedNode) {
+                // Create identifiers for the edge's nodes
+                const fromNodeId = getNodeId(nodes.fromNode);
+                const toNodeId = getNodeId(nodes.toNode);
+                
+                // Match if either end of the edge matches the clicked node
+                if (fromNodeId === clickedNodeId || toNodeId === clickedNodeId) {
+                    highlightedEdgeKeys.add(edgeKey);
+                }
+            }
+        });
+        
+        // Also get the edge objects for direction determination
+        const connectedEdges = [];
+        highlightedEdgeKeys.forEach(edgeKey => {
+            const edge = filteredEdges.find(e => 
+                `${e.from_prefix}-${e.to_prefix}` === edgeKey
+            );
+            if (edge) {
+                connectedEdges.push(edge);
+            }
+        });
+        
+        // Check for bidirectional edges
+        const bidirectionalEdges = new Set();
+        connectedEdges.forEach(edge => {
+            const reverseKey = `${edge.to_prefix}-${edge.from_prefix}`;
+            if (filteredEdges.some(e => 
+                e.from_prefix === edge.to_prefix && e.to_prefix === edge.from_prefix
+            )) {
+                bidirectionalEdges.add(`${edge.from_prefix}-${edge.to_prefix}`);
+                bidirectionalEdges.add(reverseKey);
+            }
+        });
+        
+        // Highlight connected edges and dim all others
+        edgeLines.forEach((line, edgeKey) => {
+            if (highlightedEdgeKeys.has(edgeKey)) {
+                // This is a connected edge - highlight it
+                const edge = filteredEdges.find(e => 
+                    `${e.from_prefix}-${e.to_prefix}` === edgeKey
+                );
+                if (!edge) return;
+                
+                // Determine edge direction and color by checking actual node objects
+                const edgeNodes = edgeToNodes.get(edgeKey);
+                let highlightColor;
+                if (bidirectionalEdges.has(edgeKey) || bidirectionalEdges.has(`${edge.to_prefix}-${edge.from_prefix}`)) {
+                    // Bidirectional - purple
+                    highlightColor = '#9333ea';
+                } else if (edgeNodes && edgeNodes.fromNode) {
+                    const fromNodeId = getNodeId(edgeNodes.fromNode);
+                    if (fromNodeId === clickedNodeId) {
+                        // Outgoing - blue (from node matches clicked node)
+                        highlightColor = '#3b82f6';
+                    } else {
+                        // Incoming - green (to node matches clicked node)
+                        highlightColor = '#10b981';
+                    }
+                } else {
+                    // Fallback to prefix matching if node objects not available
+                    highlightColor = edge.from_prefix === clickedNode.prefix ? '#3b82f6' : '#10b981';
+                }
+                
+                // Store original style
+                const originalStyle = allEdgeStyles.get(edgeKey);
+                if (originalStyle) {
+                    highlightedEdges.set(edgeKey, originalStyle);
+                }
+                
+                // Apply highlight
+                line.setStyle({
+                    color: highlightColor,
+                    weight: Math.max(originalStyle?.weight || 2, 4), // Make highlighted edges thicker
+                    opacity: 1.0
+                });
+            } else {
+                // This is not a connected edge - dim it
+                const originalStyle = allEdgeStyles.get(edgeKey);
+                if (originalStyle) {
+                    line.setStyle({
+                        color: '#848484', // Gray color for dimmed edges
+                        weight: Math.max(1, originalStyle.weight * 0.5), // Thinner
+                        opacity: 0.2 // Much lower opacity
+                    });
+                }
+            }
+        });
+        
+        // Build a set of connected node IDs (clicked node + all neighbors)
+        const connectedNodeIds = new Set([clickedNodeId]);
+        edgeToNodes.forEach((nodes, edgeKey) => {
+            if (highlightedEdgeKeys.has(edgeKey)) {
+                // This edge is connected to the clicked node, so both endpoints are connected
+                if (nodes.fromNode) {
+                    connectedNodeIds.add(getNodeId(nodes.fromNode));
+                }
+                if (nodes.toNode) {
+                    connectedNodeIds.add(getNodeId(nodes.toNode));
+                }
+            }
+        });
+        
+        // Highlight the clicked node, keep connected nodes at regular size, shrink all others
+        filteredNodes.forEach(node => {
+            const nodeId = getNodeId(node);
+            const marker = nodeMarkers.get(nodeId);
+            if (!marker) return;
+            
+            if (nodeId === clickedNodeId) {
+                // Highlight the clicked node - make it larger
+                const highlightSize = getNodeSize(node) + 3;
+                const highlightBorderWeight = getBorderWeight(highlightSize, node.is_starred);
+                marker.setStyle({
+                    radius: highlightSize,
+                    weight: highlightBorderWeight,
+                    color: '#ffc107',
+                    fillOpacity: 1.0
+                });
+            } else if (connectedNodeIds.has(nodeId)) {
+                // Keep connected nodes at regular size
+                const originalStyle = allNodeStyles.get(nodeId);
+                if (originalStyle) {
+                    marker.setStyle(originalStyle);
+                } else {
+                    // Fallback: restore based on node properties
+                    const nodeSize = getNodeSize(node);
+                    const borderWeight = getBorderWeight(nodeSize, node.is_starred);
+                    marker.setStyle({
+                        radius: nodeSize,
+                        weight: borderWeight,
+                        color: node.is_starred ? '#ffc107' : '#fff',
+                        fillOpacity: 0.8
+                    });
+                }
+            } else {
+                // Shrink all other nodes significantly for visibility
+                const originalStyle = allNodeStyles.get(nodeId);
+                if (originalStyle) {
+                    const shrunkSize = Math.max(2, originalStyle.radius * 0.3); // Shrink to 30% of original size, minimum 2px
+                    const shrunkWeight = Math.max(0.5, originalStyle.weight * 0.3);
+                    marker.setStyle({
+                        radius: shrunkSize,
+                        weight: shrunkWeight,
+                        color: originalStyle.color,
+                        fillOpacity: 0.4 // Reduce opacity for dimmed nodes
+                    });
+                }
+            }
+        });
+    }
+    
+    // Backward compatibility wrapper - converts prefix to node object
+    function highlightNodeConnections(nodePrefix) {
+        // Resolve from filtered set so we only highlight nodes that are currently visible
+        const node = filteredNodeMap[nodePrefix];
+        if (node) {
+            highlightNodeConnectionsForNode(node);
+        }
+    }
+    
+        // Highlight node connections in graph view.
+        // nodeOrIdOrPrefix: node object (preferred), unique node id string (getNodeId), or prefix string (fallback).
+        function highlightNodeConnectionsGraph(nodeOrIdOrPrefix) {
+        if (!graphNetwork || nodeOrIdOrPrefix == null) return;
+        
+        let clickedNode = null;
+        if (typeof nodeOrIdOrPrefix === 'object' && nodeOrIdOrPrefix !== null && 'prefix' in nodeOrIdOrPrefix && 'latitude' in nodeOrIdOrPrefix) {
+            clickedNode = nodeOrIdOrPrefix;
+        } else if (typeof nodeOrIdOrPrefix === 'string') {
+            const byId = filteredNodes.find(n => getNodeId(n) === nodeOrIdOrPrefix);
+            if (byId) {
+                clickedNode = byId;
+            } else {
+                const nodesWithPrefix = filteredNodes.filter(n => n.prefix === nodeOrIdOrPrefix);
+                if (nodesWithPrefix.length > 0) clickedNode = nodesWithPrefix[0];
+            }
+        }
+        if (!clickedNode) return;
+        
+        const clickedNodeId = getNodeId(clickedNode);
+        
+        // Don't call clearHighlights() so switching to another node works (direct state transition)
+        highlightedNode = clickedNode.prefix;
+        highlightedNodeObject = clickedNode;
+        
+        // Show legend
+        const legend = document.getElementById('connection-legend');
+        if (legend) {
+            legend.classList.add('active');
+        }
+        
+        // Find all edges connected to this specific node (using unique IDs)
+        const edgeIdsToHighlight = [];
+        const edgeStyles = {};
+        const bidirectionalEdgeIds = new Set();
+        const connectedNodeIds = new Set([clickedNodeId]);
+        
+        filteredEdges.forEach(edge => {
+            let fromNode = (edge.from_public_key && filteredNodeMapByKey[edge.from_public_key]) ? filteredNodeMapByKey[edge.from_public_key] : filteredNodeMap[edge.from_prefix];
+            let toNode = (edge.to_public_key && filteredNodeMapByKey[edge.to_public_key]) ? filteredNodeMapByKey[edge.to_public_key] : filteredNodeMap[edge.to_prefix];
+            if (!fromNode || !toNode) return;
+            
+            const fromNodeId = getNodeId(fromNode);
+            const toNodeId = getNodeId(toNode);
+            const edgeId = `${fromNodeId}-${toNodeId}`;
+            
+            // Check if this edge connects to the clicked node
+            if (fromNodeId === clickedNodeId || toNodeId === clickedNodeId) {
+                edgeIdsToHighlight.push(edgeId);
+                connectedNodeIds.add(fromNodeId);
+                connectedNodeIds.add(toNodeId);
+                
+                // Check for bidirectional
+                const reverseEdgeId = `${toNodeId}-${fromNodeId}`;
+                if (filteredEdges.some(e => {
+                    let revFromNode = (e.from_public_key && filteredNodeMapByKey[e.from_public_key]) ? filteredNodeMapByKey[e.from_public_key] : filteredNodeMap[e.from_prefix];
+                    let revToNode = (e.to_public_key && filteredNodeMapByKey[e.to_public_key]) ? filteredNodeMapByKey[e.to_public_key] : filteredNodeMap[e.to_prefix];
+                    if (!revFromNode || !revToNode) return false;
+                    return getNodeId(revFromNode) === toNodeId && getNodeId(revToNode) === fromNodeId;
+                })) {
+                    bidirectionalEdgeIds.add(edgeId);
+                    bidirectionalEdgeIds.add(reverseEdgeId);
+                }
+                
+                // Use connection direction colors: blue outgoing, green incoming, purple bidirectional
+                let highlightColor;
+                if (bidirectionalEdgeIds.has(edgeId)) {
+                    highlightColor = '#9333ea'; // Purple for bidirectional
+                } else if (fromNodeId === clickedNodeId) {
+                    highlightColor = '#3b82f6'; // Blue for outgoing
+                } else {
+                    highlightColor = '#10b981'; // Green for incoming
+                }
+                const baseWidth = Math.max(1, Math.log10(edge.observation_count) * 2);
+                edgeStyles[edgeId] = {
+                    color: {
+                        color: highlightColor,
+                        opacity: 1.0,
+                        highlight: highlightColor,
+                        hover: highlightColor
+                    },
+                    width: Math.max(3, baseWidth + 2)
+                };
+            }
+        });
+        
+        // Batch all edge updates in one call to avoid per-item redraws (was ~18s for large graphs)
+        const currentEdges = graphNetwork.body.data.edges.get();
+        const edgeUpdates = currentEdges.map(edge => {
+            const edgeId = edge.id;
+            if (edgeIdsToHighlight.includes(edgeId)) {
+                return { id: edgeId, ...edgeStyles[edgeId] };
+            }
+            return {
+                id: edgeId,
+                color: { color: '#848484', opacity: 0.2 },
+                width: 1
+            };
+        });
+        graphNetwork.body.data.edges.update(edgeUpdates);
+        
+        graphNetwork.selectNodes([clickedNodeId]);
+        
+        // Update all nodes in one batch: one update per graph node so labels aren't overwritten by duplicates
+        const nodeHighlightColor = clickedNode.role === 'roomserver' ? '#10b981' : '#f59e0b';
+        const graphNodeIds = graphNetwork.body.data.nodes.getIds();
+        const nodeUpdates = graphNodeIds.map(nid => {
+            const n = filteredNodes.find(fn => getNodeId(fn) === nid);
+            if (!n) return { id: nid, label: '', title: '' };
+            const isClicked = nid === clickedNodeId;
+            const isLinked = connectedNodeIds.has(nid);
+            const bg = n.role === 'roomserver' ? '#198754' : '#0d6efd';
+            const border = n.is_starred ? '#ffc107' : '#fff';
+            const hlBg = n.role === 'roomserver' ? '#10b981' : '#f59e0b';
+            const label = isLinked
+                ? (n.name.length > 22 ? n.name.substring(0, 22) + '... (' + n.prefix + ')' : n.name + ' (' + n.prefix + ')')
+                : '';
+            const title = n.name + ' (' + n.prefix + ')';
+            const update = {
+                id: nid,
+                label: label,
+                title: title,
+                color: isClicked
+                    ? { border: '#d97706', background: nodeHighlightColor, highlight: { border: '#d97706', background: nodeHighlightColor }, hover: { border: '#d97706', background: nodeHighlightColor } }
+                    : { background: bg, border: border, highlight: { background: hlBg, border: '#d97706' }, hover: { background: hlBg, border: '#d97706' } },
+                borderWidth: isClicked ? 4 : getBorderWeight(getNodeSize(n), n.is_starred),
+                size: isClicked ? getNodeSize(clickedNode) + 2 : getNodeSize(n)
+            };
+            // Force label to render for linked nodes (vis-network can skip if font not set on update)
+            if (isLinked) {
+                update.font = { size: 13, color: '#ffffff', strokeWidth: 2, strokeColor: '#000000' };
+            }
+            return update;
+        });
+        graphNetwork.body.data.nodes.update(nodeUpdates);
+    }
+    
+    // Clear all highlights
+    function clearHighlights() {
+        // Hide legend
+        const legend = document.getElementById('connection-legend');
+        if (legend) {
+            legend.classList.remove('active');
+        }
+        
+        // Clear path highlights if active
+        if (highlightedPath) {
+            clearPathHighlight();
+        }
+        
+        // Clear map view highlights - restore all node styles
+        filteredNodes.forEach(node => {
+            const nodeId = getNodeId(node);
+            const marker = nodeMarkers.get(nodeId);
+            if (marker) {
+                const originalStyle = allNodeStyles.get(nodeId);
+                if (originalStyle) {
+                    // Restore original size and style
+                    marker.setStyle(originalStyle);
+                } else {
+                    // Fallback: restore based on node properties
+                    const nodeSize = getNodeSize(node);
+                    const borderWeight = getBorderWeight(nodeSize, node.is_starred);
+                    marker.setStyle({
+                        radius: nodeSize,
+                        weight: borderWeight,
+                        color: node.is_starred ? '#ffc107' : '#fff',
+                        fillOpacity: 0.8
+                    });
+                }
+            }
+        });
+        
+        // Restore original edge styles for all edges
+        allEdgeStyles.forEach((originalStyle, edgeKey) => {
+            const line = edgeLines.get(edgeKey);
+            if (line) {
+                line.setStyle(originalStyle);
+            }
+        });
+        
+        highlightedEdges.clear();
+        allEdgeStyles.clear();
+        allNodeStyles.clear();
+        highlightedNode = null;
+        highlightedNodeObject = null;
+        
+        // Clear graph view highlights
+        if (graphNetwork && currentView === 'graph') {
+            graphNetwork.unselectAll();
+            
+            // Batch edge and node restores in single update() calls to avoid per-item redraws
+            const currentEdges = graphNetwork.body.data.edges.get();
+            const edgeUpdates = [];
+            for (const edge of currentEdges) {
+                const edgeId = edge.id;
+                const originalEdge = filteredEdges.find(e => {
+                    let fromNode = (e.from_public_key && filteredNodeMapByKey[e.from_public_key]) ? filteredNodeMapByKey[e.from_public_key] : filteredNodeMap[e.from_prefix];
+                    let toNode = (e.to_public_key && filteredNodeMapByKey[e.to_public_key]) ? filteredNodeMapByKey[e.to_public_key] : filteredNodeMap[e.to_prefix];
+                    if (!fromNode || !toNode) return false;
+                    const expectedEdgeId = `${getNodeId(fromNode)}-${getNodeId(toNode)}`;
+                    return expectedEdgeId === edgeId;
+                });
+                if (originalEdge) {
+                    edgeUpdates.push({
+                        id: edgeId,
+                        color: { color: getEdgeColor(originalEdge), opacity: getEdgeOpacity(originalEdge) },
+                        width: Math.max(1, Math.log10(originalEdge.observation_count) * 2)
+                    });
+                }
+            }
+            if (edgeUpdates.length) graphNetwork.body.data.edges.update(edgeUpdates);
+            
+            const graphNodeIds = graphNetwork.body.data.nodes.getIds();
+            const nodeUpdates = graphNodeIds.map(nodeId => {
+                const node = filteredNodes.find(fn => getNodeId(fn) === nodeId);
+                if (!node) return { id: nodeId, label: '', font: { size: 12 } };
+                const nodeSize = getNodeSize(node);
+                const borderWidth = getBorderWeight(nodeSize, node.is_starred);
+                const bg = node.role === 'roomserver' ? '#198754' : '#0d6efd';
+                const border = node.is_starred ? '#ffc107' : '#fff';
+                const hlBg = node.role === 'roomserver' ? '#10b981' : '#f59e0b';
+                return {
+                    id: nodeId,
+                    label: getDefaultNodeLabel(node),
+                    title: node.name + ' (' + node.prefix + ')',
+                    font: { size: 12 },
+                    color: {
+                        background: bg,
+                        border: border,
+                        highlight: { background: hlBg, border: '#d97706' },
+                        hover: { background: hlBg, border: '#d97706' }
+                    },
+                    borderWidth: borderWidth,
+                    size: nodeSize
+                };
+            });
+            graphNetwork.body.data.nodes.update(nodeUpdates);
+        }
+    }
+    
+    // Helper functions
+    function getNodeSize(node) {
+        // Calculate degree (number of connections) using current filteredEdges
+        // This ensures node size updates when filters change
+        const degree = filteredEdges.filter(e => 
+            e.from_prefix === node.prefix || e.to_prefix === node.prefix
+        ).length;
+        // Base size 6, scale with degree, cap at 16
+        return Math.max(6, Math.min(16, 6 + degree * 0.5));
+    }
+    
+    // Helper function to calculate border weight based on node size
+    function getBorderWeight(nodeSize, isStarred) {
+        // Scale border weight proportionally with node size
+        // For small nodes (4px), use ~0.8px border; for large nodes (12px), use ~2.4px border
+        const baseWeight = Math.max(0.8, nodeSize * 0.2);
+        return isStarred ? baseWeight * 1.5 : baseWeight;
+    }
+    
+    // Default label for a node (matches renderGraph shortLabel logic) for restore on clear
+    function getDefaultNodeLabel(node) {
+        if (node.name.length > 25) {
+            return node.prefix.toUpperCase() + ': ' + (node.name.length > 15 ? node.name.substring(0, 15) + '...' : node.name);
+        }
+        if (node.name.length > 20) {
+            return node.name.substring(0, 20) + '...';
+        }
+        return node.name;
+    }
+    
+    function getEdgeColor(edge) {
+        if (!edge.last_seen) return '#6c757d'; // Gray for unknown
+        
+        const lastSeen = new Date(edge.last_seen);
+        const now = new Date();
+        const daysAgo = (now - lastSeen) / (1000 * 60 * 60 * 24);
+        
+        if (daysAgo < 1) return '#198754'; // Green (recent)
+        if (daysAgo < 7) return '#ffc107'; // Yellow
+        if (daysAgo < 30) return '#fd7e14'; // Orange
+        return '#dc3545'; // Red (old)
+    }
+    
+    function getEdgeOpacity(edge) {
+        if (!edge.last_seen) return 0.3;
+        
+        const lastSeen = new Date(edge.last_seen);
+        const now = new Date();
+        const daysAgo = (now - lastSeen) / (1000 * 60 * 60 * 24);
+        
+        if (daysAgo < 1) return 0.9;
+        if (daysAgo < 7) return 0.7;
+        if (daysAgo < 30) return 0.5;
+        return 0.3;
+    }
+    
+    function showNodeDetails(node) {
+        const connections = filteredEdges.filter(e => 
+            e.from_prefix === node.prefix || e.to_prefix === node.prefix
+        );
+        const incoming = connections.filter(e => e.to_prefix === node.prefix).length;
+        const outgoing = connections.filter(e => e.from_prefix === node.prefix).length;
+        
+        document.getElementById('nodeDetailsTitle').textContent = node.name;
+        document.getElementById('nodeDetailsBody').innerHTML = `
+            <table class="table">
+                <tr><th>Prefix</th><td>${escapeHtml(node.prefix)}</td></tr>
+                <tr><th>Public Key</th><td><code>${formatPublicKey(node.public_key)}</code></td></tr>
+                <tr><th>Role</th><td>${escapeHtml(node.role)}</td></tr>
+                <tr><th>Location</th><td>${node.latitude.toFixed(6)}, ${node.longitude.toFixed(6)}</td></tr>
+                <tr><th>Starred</th><td>${node.is_starred ? '<i class="fas fa-star text-warning"></i> Yes' : 'No'}</td></tr>
+                <tr><th>Last Heard</th><td>${node.last_heard || 'Never'}</td></tr>
+                <tr><th>Last Advert</th><td>${node.last_advert_timestamp || 'Never'}</td></tr>
+                <tr><th>Connections</th><td>${connections.length} total (${incoming} incoming, ${outgoing} outgoing)</td></tr>
+            </table>
+        `;
+        
+        // Reuse modal instance or create new one
+        if (!nodeModal) {
+            const modalElement = document.getElementById('nodeDetailsModal');
+            nodeModal = new bootstrap.Modal(modalElement, {
+                backdrop: true,
+                keyboard: true,
+                focus: true
+            });
+        }
+        nodeModal.show();
+    }
+    
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    function formatPublicKey(publicKey) {
+        if (!publicKey || publicKey.length < 32) {
+            return escapeHtml(publicKey || '');
+        }
+        // First 8 bytes = 16 hex characters, last 8 bytes = 16 hex characters
+        const first8Bytes = publicKey.substring(0, 16);
+        const last8Bytes = publicKey.substring(publicKey.length - 16);
+        return escapeHtml(`${first8Bytes}...${last8Bytes}`);
+    }
+    
+    function refreshData() {
+        loadStats();
+        loadData();
+    }
+    
+    function exportView() {
+        // Simple export - could be enhanced to export as image
+        const data = {
+            nodes: filteredNodes,
+            edges: filteredEdges,
+            exported: new Date().toISOString()
+        };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `mesh-graph-${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+    
+    // Socket.IO setup for real-time updates
+    // Live updates are applied only when the map view is active. When the graph view is active,
+    // we refresh data in the background but do not re-render the graph, to avoid the chaotic
+    // re-stabilization layout (nodes clumping, edges tangling) that occurs when vis-network
+    // runs physics again. User can refresh or switch to map and back to see updated graph.
+    function setupSocketIO() {
+        const socket = io();
+        
+        socket.emit('subscribe_mesh');
+        
+        function onMeshUpdate(data, label) {
+            console.log(label, data);
+            loadStats();
+            loadData({ skipRender: true }).then(() => {
+                if (currentView === 'map') {
+                    applyFilters();
+                }
+            });
+        }
+        
+        socket.on('mesh_edge_added', (data) => onMeshUpdate(data, 'New edge added:'));
+        socket.on('mesh_edge_updated', (data) => onMeshUpdate(data, 'Edge updated:'));
+        socket.on('mesh_node_added', (data) => onMeshUpdate(data, 'New node added:'));
+    }
+</script>
+
+</div>
+{% endblock %}

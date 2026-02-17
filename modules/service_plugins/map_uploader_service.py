@@ -87,7 +87,9 @@ class MapUploaderService(BaseServicePlugin):
         if not bot_formatter:
             try:
                 import colorlog
-                if bot.config.getboolean('Logging', 'colored_output', fallback=True):
+                colored = (bot.config.getboolean('Logging', 'colored_output', fallback=True)
+                           if bot.config.has_section('Logging') else True)
+                if colored:
                     bot_formatter = colorlog.ColoredFormatter(
                         '%(log_color)s%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                         datefmt='%Y-%m-%d %H:%M:%S',
@@ -115,8 +117,9 @@ class MapUploaderService(BaseServicePlugin):
         console_handler.setFormatter(bot_formatter)
         self.logger.addHandler(console_handler)
         
-        # Also add file handler to write to the same log file as the bot
-        log_file = bot.config.get('Logging', 'log_file', fallback='meshcore_bot.log')
+        # Also add file handler to write to the same log file as the bot (skip if no [Logging] section)
+        log_file = (bot.config.get('Logging', 'log_file', fallback='meshcore_bot.log')
+                    if bot.config.has_section('Logging') else '')
         if log_file:
             # Resolve log file path (relative paths resolved from bot root, absolute paths used as-is)
             log_file = resolve_path(log_file, bot.bot_root)

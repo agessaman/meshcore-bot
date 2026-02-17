@@ -14,7 +14,7 @@ import json
 import os
 from typing import Dict, Tuple, Any
 from pathlib import Path
-from .utils import format_keyword_response_with_placeholders
+from .utils import decode_escape_sequences, format_keyword_response_with_placeholders
 
 
 class MessageScheduler:
@@ -25,6 +25,8 @@ class MessageScheduler:
         self.logger = bot.logger
         self.scheduled_messages = {}
         self.scheduler_thread = None
+        self.last_channel_ops_check_time = 0
+        self.last_message_queue_check_time = 0
     
     def get_current_time(self):
         """Get current time in configured timezone"""
@@ -42,6 +44,10 @@ class MessageScheduler:
     
     def setup_scheduled_messages(self):
         """Setup scheduled messages from config"""
+        # Clear existing scheduled jobs to avoid duplicates on reload
+        schedule.clear()
+        self.scheduled_messages.clear()
+        
         if self.bot.config.has_section('Scheduled_Messages'):
             self.logger.info("Found Scheduled_Messages section")
             for time_str, message_info in self.bot.config.items('Scheduled_Messages'):
@@ -53,15 +59,17 @@ class MessageScheduler:
                         continue
                     
                     channel, message = message_info.split(':', 1)
+                    channel = channel.strip()
+                    message = decode_escape_sequences(message.strip())
                     # Convert HHMM to HH:MM for scheduler
                     hour = int(time_str[:2])
                     minute = int(time_str[2:])
                     schedule_time = f"{hour:02d}:{minute:02d}"
                     
                     schedule.every().day.at(schedule_time).do(
-                        self.send_scheduled_message, channel.strip(), message.strip()
+                        self.send_scheduled_message, channel, message
                     )
-                    self.scheduled_messages[time_str] = (channel.strip(), message.strip())
+                    self.scheduled_messages[time_str] = (channel, message)
                     self.logger.info(f"Scheduled message: {schedule_time} -> {channel}: {message}")
                 except ValueError:
                     self.logger.warning(f"Invalid scheduled message format: {message_info}")
@@ -376,9 +384,6 @@ class MessageScheduler:
             # This prevents losing channels during incomplete updates
             
             # Process pending channel operations from web viewer (every 5 seconds)
-            if not hasattr(self, 'last_channel_ops_check_time'):
-                self.last_channel_ops_check_time = 0
-            
             if time.time() - self.last_channel_ops_check_time >= 5:  # Every 5 seconds
                 if (hasattr(self.bot, 'channel_manager') and self.bot.channel_manager and 
                     hasattr(self.bot, 'connected') and self.bot.connected):
@@ -405,9 +410,6 @@ class MessageScheduler:
                     self.last_channel_ops_check_time = time.time()
             
             # Process feed message queue (every 2 seconds)
-            if not hasattr(self, 'last_message_queue_check_time'):
-                self.last_message_queue_check_time = 0
-            
             if time.time() - self.last_message_queue_check_time >= 2:  # Every 2 seconds
                 if (hasattr(self.bot, 'feed_manager') and self.bot.feed_manager and 
                     hasattr(self.bot, 'connected') and self.bot.connected):

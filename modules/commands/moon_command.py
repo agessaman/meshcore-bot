@@ -17,6 +17,11 @@ class MoonCommand(BaseCommand):
     description = "Get moon phase, rise/set times and position"
     category = "solar"
     
+    # Documentation
+    short_description = "Get moon phase and rise/set times"
+    usage = "moon"
+    examples = ["moon"]
+    
     def __init__(self, bot):
         """Initialize the moon command.
         

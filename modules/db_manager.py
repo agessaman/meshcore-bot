@@ -30,7 +30,10 @@ class DBManager:
         'repeater_contacts',
         'complete_contact_tracking',  # Repeater manager
         'daily_stats',  # Repeater manager
+        'unique_advert_packets',  # Repeater manager - unique packet tracking
         'purging_log',  # Repeater manager
+        'mesh_connections',  # Mesh graph for path validation
+        'observed_paths',  # Repeater manager - observed paths from adverts and messages
     }
     
     def __init__(self, bot: Any, db_path: str = "meshcore_bot.db"):
@@ -531,7 +534,25 @@ class DBManager:
         except Exception as e:
             self.logger.error(f"Error executing update: {e}")
             return 0
-    
+
+    def execute_query_on_connection(self, conn: sqlite3.Connection, query: str, params: Tuple = ()) -> List[Dict]:
+        """Execute a query on an existing connection. Caller owns the connection."""
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        if conn.row_factory is sqlite3.Row:
+            return [dict(row) for row in rows]
+        desc = cursor.description
+        if not desc:
+            return []
+        return [dict(zip([c[0] for c in desc], row)) for row in rows]
+
+    def execute_update_on_connection(self, conn: sqlite3.Connection, query: str, params: Tuple = ()) -> int:
+        """Execute an update/insert/delete on an existing connection. Caller must commit."""
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        return cursor.rowcount
+
     # Bot metadata methods
     def set_metadata(self, key: str, value: str) -> None:
         """Set a metadata value for the bot.

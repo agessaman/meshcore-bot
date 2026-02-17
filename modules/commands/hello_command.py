@@ -5,6 +5,7 @@ Responds to various greetings with robot-themed responses
 """
 
 import random
+import re
 from typing import Any, List, Dict
 from .base_command import BaseCommand
 from ..models import MeshMessage
@@ -18,6 +19,11 @@ class HelloCommand(BaseCommand):
     keywords = ['hello', 'hi', 'hey', 'howdy', 'greetings', 'salutations', 'good morning', 'good afternoon', 'good evening', 'good night', 'yo', 'sup', 'whats up', 'what\'s up', 'morning', 'afternoon', 'evening', 'night', 'gday', 'g\'day', 'hola', 'bonjour', 'ciao', 'namaste', 'aloha', 'shalom', 'konnichiwa', 'guten tag', 'buenos dias', 'buenas tardes', 'buenas noches']
     description = "Responds to greetings with robot-themed responses"
     category = "basic"
+    
+    # Documentation
+    short_description = "Responds to greetings with robot-themed responses"
+    usage = "hello"
+    examples = ["hello", "hi", "hey"]
     
     def __init__(self, bot: Any):
         """Initialize the hello command.
@@ -263,7 +269,15 @@ class HelloCommand(BaseCommand):
         Returns:
             bool: True if it's an emoji-only message, False otherwise.
         """
-        return self.is_emoji_only_message(message.content)
+        content = message.content.strip()
+        
+        # Check if mentions are valid (bot must be mentioned if any mentions exist)
+        if not self._check_mentions_ok(content):
+            return False
+        
+        # Strip mentions before checking for emoji-only messages
+        content = self._strip_mentions(content)
+        return self.is_emoji_only_message(content)
     
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the hello command.
@@ -277,9 +291,12 @@ class HelloCommand(BaseCommand):
         # Get bot name from config
         bot_name = self.bot.config.get('Bot', 'bot_name', fallback='Bot')
         
-        # Check if message is emoji-only
-        if self.is_emoji_only_message(message.content):
-            response = self.get_emoji_response(message.content, bot_name)
+        # Strip mentions from content for processing
+        content = self._strip_mentions(message.content)
+        
+        # Check if message is emoji-only (after stripping mentions)
+        if self.is_emoji_only_message(content):
+            response = self.get_emoji_response(content, bot_name)
         else:
             # Get random robot greeting
             random_greeting = self.get_random_greeting()

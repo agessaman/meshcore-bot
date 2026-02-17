@@ -7,7 +7,7 @@ A Python bot that connects to MeshCore mesh networks via serial port, BLE, or TC
 - **Connection Methods**: Serial port, BLE (Bluetooth Low Energy), or TCP/IP
 - **Keyword Responses**: Configurable keyword-response pairs with template variables
 - **Command System**: Plugin-based command architecture with built-in commands
-- **Rate Limiting**: Configurable rate limiting to prevent network spam
+- **Rate Limiting**: Global, per-user (by pubkey or name), and bot transmission rate limits to prevent spam
 - **User Management**: Ban/unban users with persistent storage
 - **Scheduled Messages**: Send messages at configured times
 - **Direct Message Support**: Respond to private messages
@@ -84,6 +84,43 @@ sudo systemctl status meshcore-bot
 
 See [SERVICE-INSTALLATION.md](SERVICE-INSTALLATION.md) for detailed service installation instructions.
 
+### Docker Deployment
+For containerized deployment using Docker:
+
+1. **Create data directories and configuration**:
+   ```bash
+   mkdir -p data/{config,databases,logs,backups}
+   cp config.ini.example data/config/config.ini
+   # Edit data/config/config.ini with your settings
+   ```
+
+2. **Update paths in config.ini** to use `/data/` directories:
+   ```ini
+   [Bot]
+   db_path = /data/databases/meshcore_bot.db
+   
+   [Logging]
+   log_file = /data/logs/meshcore_bot.log
+   ```
+
+3. **Build and start with Docker Compose**:
+   ```bash
+   docker compose build
+   docker compose up -d
+   ```
+   
+   Or build and start in one command:
+   ```bash
+   docker compose up -d --build
+   ```
+
+4. **View logs**:
+   ```bash
+   docker-compose logs -f
+   ```
+
+See [DOCKER.md](docs/DOCKER.md) for detailed Docker deployment instructions, including serial port access, web viewer configuration, and troubleshooting.
+
 ## NixOS
 Use the Nix flake via flake.nix
 ```nix
@@ -127,7 +164,10 @@ timeout = 30                      # Connection timeout
 [Bot]
 bot_name = MeshCoreBot            # Bot identification name
 enabled = true                    # Enable/disable bot
-rate_limit_seconds = 2            # Rate limiting interval
+rate_limit_seconds = 2            # Global: min seconds between any bot reply
+bot_tx_rate_limit_seconds = 1.0   # Min seconds between bot transmissions
+per_user_rate_limit_seconds = 5   # Per-user: min seconds between replies to same user (pubkey or name)
+per_user_rate_limit_enabled = true
 startup_advert = flood            # Send advert on startup
 ```
 
@@ -145,6 +185,8 @@ help = "Bot Help: test, ping, help, hello, cmd, wx, aqi, sun, moon, solar, hfcon
 [Channels]
 monitor_channels = general,test,emergency  # Channels to monitor
 respond_to_dms = true                      # Enable DM responses
+# Optional: limit channel responses to certain keywords (DM gets all triggers)
+# channel_keywords = help,ping,test,hello
 ```
 
 ### External Data APIs
@@ -158,7 +200,7 @@ airnow_api_key =                  # Air quality data
 ### Alert Command
 ```ini
 [Alert_Command]
-alert_enabled = true                    # Enable/disable alert command
+enabled = true                           # Enable/disable alert command
 max_incident_age_hours = 24             # Maximum age for incidents (hours)
 max_distance_km = 20.0                  # Maximum distance for proximity queries (km)
 agency.city.<city_name> = <agency_ids>   # City-specific agency IDs (e.g., agency.city.seattle = 17D20,17M15)
@@ -183,7 +225,7 @@ python meshcore_bot.py
 
 ### Available Commands
 
-For a comprehensive list of all available commands with examples and detailed explanations, see [COMMANDS.md](COMMANDS.md).
+For a comprehensive list of all available commands with examples and detailed explanations, see [COMMANDS.md](docs/COMMANDS.md).
 
 Quick reference:
 - **Basic:** `test`, `ping`, `help`, `hello`, `cmd`
@@ -204,6 +246,25 @@ Keyword responses support these template variables:
 - `{snr}` - Signal-to-noise ratio
 - `{timestamp}` - Message timestamp
 - `{path}` - Message routing path
+
+### Adding Newlines
+
+To add newlines in keyword responses, use `\n` (single backslash + n):
+
+```ini
+[Keywords]
+test = "Line 1\nLine 2\nLine 3"
+```
+
+This will output:
+```
+Line 1
+Line 2
+Line 3
+```
+
+To use a literal backslash + n, use `\\n` (double backslash + n).  
+Other escape sequences: `\t` (tab), `\r` (carriage return), `\\` (literal backslash)
 
 Example:
 ```ini
@@ -275,7 +336,9 @@ help = "Bot Help: test, ping, help, hello, cmd, wx, gwx, aqi, sun, moon, solar, 
    - Check meshcore library documentation for protocol details
 
 5. **Rate Limiting**:
-   - Adjust `rate_limit_seconds` in config
+   - **Global**: `rate_limit_seconds` — minimum time between any two bot replies
+   - **Per-user**: `per_user_rate_limit_seconds` and `per_user_rate_limit_enabled` — minimum time between replies to the same user (user identified by public key when available, else sender name; channel senders often matched by name)
+   - **Bot TX**: `bot_tx_rate_limit_seconds` — minimum time between bot transmissions on the mesh
    - Check logs for rate limiting messages
 
 ### Debug Mode

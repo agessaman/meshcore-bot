@@ -11,7 +11,7 @@ This document provides a comprehensive list of all available commands in the Mes
 - [Entertainment Commands](#entertainment-commands)
 - [Sports Commands](#sports-commands)
 - [MeshCore Utility Commands](#meshcore-utility-commands)
-- [Management Commands](#management-commands)
+- [Admin Commands](#admin-commands)
 
 ---
 
@@ -213,6 +213,77 @@ aqi help
 - European AQI (if available)
 - Pollutant concentrations (PM2.5, PM10, Ozone, etc.)
 - Health recommendations
+
+---
+
+### `airplanes [location] [options]` / `overhead [lat,lon]`
+
+Get aircraft tracking information using ADS-B data from airplanes.live or compatible APIs.
+
+**Aliases:** `aircraft`, `planes`, `adsb`, `overhead`
+
+**Usage:**
+```
+airplanes
+airplanes here
+airplanes <latitude>,<longitude>
+airplanes [location] [options]
+overhead
+overhead <latitude>,<longitude>
+```
+
+**Special Command: `overhead`**
+- Returns the single closest aircraft directly overhead
+- Uses companion location from database (if available)
+- If companion location not available, prompts user to specify coordinates
+- Always returns one aircraft sorted by distance (closest first)
+
+**Location Options:**
+- No location: Uses companion location (if available), otherwise bot location
+- `here`: Uses bot location from config
+- `<lat>,<lon>`: Uses specified coordinates (e.g., `47.6,-122.3`)
+
+**Filter Options:**
+- `radius=<nm>` - Search radius in nautical miles (default: 25, max: 250)
+- `alt=<min>-<max>` - Filter by altitude range in feet (e.g., `alt=1000-5000`)
+- `speed=<min>-<max>` - Filter by ground speed range in knots
+- `type=<code>` - Filter by aircraft type code (e.g., `B738`, `A321`)
+- `callsign=<pattern>` - Filter by callsign pattern
+- `military` - Show only military aircraft
+- `ladd` - Show only LADD aircraft
+- `pia` - Show only PIA aircraft
+- `squawk=<code>` - Filter by transponder squawk code
+- `limit=<n>` - Limit number of results (default: 10, max: 50)
+- `closest` - Sort by distance (closest first)
+- `highest` - Sort by altitude (highest first)
+- `fastest` - Sort by speed (fastest first)
+
+**Examples:**
+```
+airplanes
+airplanes here
+airplanes 47.6,-122.3
+airplanes radius=50
+airplanes alt=10000-40000
+airplanes type=B738
+airplanes military
+airplanes callsign=UAL limit=5
+airplanes 47.6,-122.3 radius=25 closest
+```
+
+**Response:**
+- **Single aircraft**: Detailed format with callsign, type, altitude, speed, track, distance, bearing, vertical rate, and registration
+- **Multiple aircraft**: Compact list format with callsign, altitude, speed, distance, and bearing
+
+**Configuration:**
+The command can be configured in `config.ini` under `[Airplanes_Command]`:
+- `enabled` - Enable/disable the command
+- `api_url` - API endpoint URL (default: `http://api.airplanes.live/v2/`)
+- `default_radius` - Default search radius in nautical miles
+- `max_results` - Maximum number of results to return
+- `url_timeout` - API request timeout in seconds
+
+**Note:** Uses companion location from database if available, otherwise falls back to bot location from config. The API is rate-limited to 1 request per second.
 
 ---
 
@@ -592,9 +663,77 @@ mt
 
 ---
 
-## Management Commands
+## Command Syntax
 
-**Note:** Management commands are only available via Direct Message (DM) and may require ACL permissions.
+### Prefix
+
+Commands can be used with or without the `!` prefix:
+- `test` or `!test` - Both work
+- `wx 98101` or `!wx 98101` - Both work
+
+### Direct Messages
+
+Some commands work in both public channels and direct messages, while admin commands typically require direct messages for security.
+
+### Rate Limiting
+
+The bot implements rate limiting to prevent spam. If you send commands too quickly, you may receive a rate limit message. Wait a few seconds before trying again.
+
+### Case Sensitivity
+
+Most commands are case-insensitive:
+- `TEST` and `test` work the same
+- `WX 98101` and `wx 98101` work the same
+
+### Getting Help
+
+Use the `help` command to get more information:
+- `help` - List all commands
+- `help <command>` - Get detailed help for a specific command
+
+---
+
+## Additional Notes
+
+### Location Requirements
+
+Some commands use location data:
+- **`sun` and `moon`** - Use the bot's configured default location (`bot_latitude` and `bot_longitude` in config.ini), not the user's location from their advert
+- **`solar`** - Does not require location (provides global solar conditions)
+- **`solarforecast`** - Requires a location parameter (location name, repeater name, coordinates, or zipcode)
+- **`wx`** - Requires a zipcode parameter
+- **`gwx`** - Requires a location parameter
+- **`aqi`** - Requires a location parameter
+
+### API Keys
+
+Some commands require API keys to be configured in `config.ini`:
+- `satpass` - Requires `n2yo_api_key`
+- `aqi` - Requires `airnow_api_key` (optional, uses fallback if not configured)
+
+### Weather Data
+
+- `wx` uses NOAA API (US locations only)
+- `gwx` uses Open-Meteo API (global locations)
+- Both provide current conditions and forecasts
+
+### Command Categories
+
+Commands are organized into categories for easier discovery:
+- **Basic** - Essential commands for testing and help
+- **Information** - Weather, astronomy, and data queries
+- **Emergency** - Emergency and safety information
+- **Gaming** - Fun commands for games and random numbers
+- **Entertainment** - Jokes and humorous responses
+- **Sports** - Sports scores and information
+- **MeshCore Utility** - Network-specific utilities
+- **Admin** - Administrative commands (DM only)
+
+---
+
+## Admin Commands
+
+**Note:** Admin commands are only available via Direct Message (DM) and may require ACL permissions.
 
 ### `repeater` or `repeaters` or `rp`
 
@@ -718,74 +857,6 @@ feed test https://example.com/feed.xml
 **Response:** Confirmation of the action or list of subscriptions.
 
 **Note:** Admin access required. Feeds are automatically checked and posted to the specified channel.
-
----
-
-## Command Syntax
-
-### Prefix
-
-Commands can be used with or without the `!` prefix:
-- `test` or `!test` - Both work
-- `wx 98101` or `!wx 98101` - Both work
-
-### Direct Messages
-
-Some commands work in both public channels and direct messages, while management commands typically require direct messages for security.
-
-### Rate Limiting
-
-The bot implements rate limiting to prevent spam. If you send commands too quickly, you may receive a rate limit message. Wait a few seconds before trying again.
-
-### Case Sensitivity
-
-Most commands are case-insensitive:
-- `TEST` and `test` work the same
-- `WX 98101` and `wx 98101` work the same
-
-### Getting Help
-
-Use the `help` command to get more information:
-- `help` - List all commands
-- `help <command>` - Get detailed help for a specific command
-
----
-
-## Additional Notes
-
-### Location Requirements
-
-Some commands use location data:
-- **`sun` and `moon`** - Use the bot's configured default location (`bot_latitude` and `bot_longitude` in config.ini), not the user's location from their advert
-- **`solar`** - Does not require location (provides global solar conditions)
-- **`solarforecast`** - Requires a location parameter (location name, repeater name, coordinates, or zipcode)
-- **`wx`** - Requires a zipcode parameter
-- **`gwx`** - Requires a location parameter
-- **`aqi`** - Requires a location parameter
-
-### API Keys
-
-Some commands require API keys to be configured in `config.ini`:
-- `satpass` - Requires `n2yo_api_key`
-- `aqi` - Requires `airnow_api_key` (optional, uses fallback if not configured)
-
-### Weather Data
-
-- `wx` uses NOAA API (US locations only)
-- `gwx` uses Open-Meteo API (global locations)
-- Both provide current conditions and forecasts
-
-### Command Categories
-
-Commands are organized into categories for easier discovery:
-- **Basic** - Essential commands for testing and help
-- **Information** - Weather, astronomy, and data queries
-- **Emergency** - Emergency and safety information
-- **Gaming** - Fun commands for games and random numbers
-- **Entertainment** - Jokes and humorous responses
-- **Sports** - Sports scores and information
-- **MeshCore Utility** - Network-specific utilities
-- **Management** - Administrative commands (DM only)
 
 ---
 

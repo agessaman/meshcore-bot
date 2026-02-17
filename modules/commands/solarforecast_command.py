@@ -29,6 +29,17 @@ class SolarforecastCommand(BaseCommand):
     cooldown_seconds = 10  # 10 second cooldown per user
     requires_internet = True  # Requires internet access for Forecast.Solar API and geocoding
     
+    # Documentation
+    short_description = "Get solar panel production forecast for a location or repeater"
+    usage = "sf <location> [watts] [azimuth] [angle]"
+    examples = ["sf seattle", "sf 47.6,-122.3 200"]
+    parameters = [
+        {"name": "location", "description": "City, coordinates, or repeater name"},
+        {"name": "watts", "description": "Panel size in watts (default: 100)"},
+        {"name": "azimuth", "description": "Panel direction, 0=south (default: 0)"},
+        {"name": "angle", "description": "Panel tilt in degrees (default: 30)"}
+    ]
+    
     # Error constants - will use translations instead
     ERROR_FETCHING_DATA = "Error fetching forecast"  # Deprecated - use translate
     NO_DATA_AVAILABLE = "No forecast data"  # Deprecated - use translate
@@ -48,7 +59,7 @@ class SolarforecastCommand(BaseCommand):
         self.forecast_cache = {}
         
         # Get default state from config for city disambiguation
-        self.default_state = self.bot.config.get('Weather', 'default_state', fallback='WA')
+        self.default_state = self.bot.config.get('Weather', 'default_state', fallback='')
         
         # Initialize geocoder (will use rate-limited helpers for actual calls)
         self.geolocator = get_nominatim_geocoder()

@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List, Tuple
 from .base_command import BaseCommand
 from ..models import MeshMessage
+from ..utils import decode_escape_sequences
 
 
 class GreeterCommand(BaseCommand):
@@ -124,11 +125,21 @@ class GreeterCommand(BaseCommand):
         self.enabled = self.get_config_value('Greeter_Command', 'enabled', fallback=False, value_type='bool')
         self.greeting_message = self.get_config_value('Greeter_Command', 'greeting_message', 
                                                       fallback='Welcome to the mesh, {sender}!')
+        # Decode escape sequences (e.g., \n for newlines)
+        self.greeting_message = decode_escape_sequences(self.greeting_message)
+        
         self.rollout_days = self.get_config_value('Greeter_Command', 'rollout_days', fallback=7, value_type='int')
         self.include_mesh_info = self.get_config_value('Greeter_Command', 'include_mesh_info', 
                                                        fallback=True, value_type='bool')
         self.mesh_info_format = self.get_config_value('Greeter_Command', 'mesh_info_format',
                                                       fallback='\n\nMesh Info: {total_contacts} contacts, {repeaters} repeaters')
+        # Decode escape sequences (e.g., \n for newlines)
+        self.mesh_info_format = decode_escape_sequences(self.mesh_info_format)
+        
+        # Log configuration for debugging
+        self.logger.debug(f"Greeter config loaded: include_mesh_info={self.include_mesh_info}, "
+                         f"mesh_info_format={repr(self.mesh_info_format)}")
+        
         self.per_channel_greetings = self.get_config_value('Greeter_Command', 'per_channel_greetings',
                                                            fallback=False, value_type='bool')
         self.auto_backfill = self.get_config_value('Greeter_Command', 'auto_backfill', 
@@ -163,6 +174,8 @@ class GreeterCommand(BaseCommand):
                     channel_name, greeting = entry.split(':', 1)
                     channel_name = channel_name.strip()
                     greeting = greeting.strip()
+                    # Decode escape sequences (e.g., \n for newlines)
+                    greeting = decode_escape_sequences(greeting)
                     # Store both original and lowercase channel name for case-insensitive matching
                     self.channel_greetings[channel_name.lower()] = {
                         'channel': channel_name,
@@ -992,17 +1005,28 @@ class GreeterCommand(BaseCommand):
         
         # Add mesh info to the last part if enabled
         if self.include_mesh_info:
-            mesh_info_text = self.mesh_info_format.format(
-                total_contacts=mesh_info.get('total_contacts', 0),
-                repeaters=mesh_info.get('repeaters', 0),
-                companions=mesh_info.get('companions', 0),
-                recent_activity_24h=mesh_info.get('recent_activity_24h', 0)
-            )
-            # Append mesh info to the last greeting part
-            if formatted_parts:
-                formatted_parts[-1] += mesh_info_text
-            else:
-                formatted_parts.append(mesh_info_text)
+            self.logger.debug(f"Including mesh info. Format: {repr(self.mesh_info_format)}, Mesh info: {mesh_info}")
+            try:
+                mesh_info_text = self.mesh_info_format.format(
+                    total_contacts=mesh_info.get('total_contacts', 0),
+                    repeaters=mesh_info.get('repeaters', 0),
+                    companions=mesh_info.get('companions', 0),
+                    recent_activity_24h=mesh_info.get('recent_activity_24h', 0)
+                )
+                self.logger.debug(f"Formatted mesh info text: {repr(mesh_info_text)}")
+                # Append mesh info to the last greeting part
+                if formatted_parts:
+                    formatted_parts[-1] += mesh_info_text
+                else:
+                    formatted_parts.append(mesh_info_text)
+            except (KeyError, ValueError) as e:
+                self.logger.warning(f"Error formatting mesh info: {e}. Format string: {repr(self.mesh_info_format)}, Mesh info keys: {list(mesh_info.keys())}")
+                # Continue without mesh info rather than failing the entire greeting
+            except Exception as e:
+                self.logger.error(f"Unexpected error formatting mesh info: {e}", exc_info=True)
+                # Continue without mesh info rather than failing the entire greeting
+        else:
+            self.logger.debug("Mesh info not included (include_mesh_info is False)")
         
         return formatted_parts
     
@@ -1244,16 +1268,20 @@ class GreeterCommand(BaseCommand):
                 if i > 0:
                     # Wait for bot TX rate limiter between multi-part messages
                     # This ensures we respect the bot's rate limiting configuration
+                    # Note: User rate limiter is not checked here since greeter is an automated bot response
                     await self.bot.bot_tx_rate_limiter.wait_for_tx()
+                    
                     # Additional delay to ensure proper spacing (use configured rate limit)
                     rate_limit = self.bot.config.getfloat('Bot', 'bot_tx_rate_limit_seconds', fallback=1.0)
                     # Use a conservative sleep time to avoid rate limiting
                     sleep_time = max(rate_limit + 0.5, 1.0)  # At least 1 second, or rate_limit + 0.5 seconds
                     await asyncio.sleep(sleep_time)
                 
-                result = await self.send_response(message, greeting_part)
+                # Skip user rate limiter for greeter messages since they're automated bot responses
+                result = await self.send_response(message, greeting_part, skip_user_rate_limit=True)
                 if not result:
                     success = False
+                    self.logger.warning(f"Failed to send greeting part {i+1} of {len(greeting_parts)}")
             
             return success
         except Exception as e:

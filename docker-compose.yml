@@ -1,0 +1,52 @@
+services:
+  meshcore-bot:
+    # Build configuration - builds locally if image not available
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Pre-built image from GitHub Container Registry
+    # Image tag is automatically set based on current git branch via .env file
+    # Set DOCKER_IMAGE_REGISTRY in .env to override (default: ghcr.io/agessaman/meshcore-bot)
+    image: ${DOCKER_IMAGE_REGISTRY:-ghcr.io/agessaman/meshcore-bot}:${DOCKER_IMAGE_TAG:-latest}
+    pull_policy: missing
+    container_name: meshcore-bot
+    restart: unless-stopped
+    
+    # Device access for serial ports (Linux)
+    # Uncomment and adjust if using serial connection
+    # devices:
+    #   - /dev/ttyUSB0:/dev/ttyUSB0
+    
+    # Network mode for host access (needed for BLE and some serial setups)
+    # Uncomment if you need host network access
+    # NOTE: On some ARM devices (Orange Pi, Raspberry Pi) with Docker bridge networking issues,
+    # you may need to uncomment this to bypass bridge networking
+    # network_mode: host
+    
+    # Environment variables (optional, can override config.ini settings)
+    environment:
+      - TZ=America/Los_Angeles  # Set your timezone
+      # - PYTHONUNBUFFERED=1  # Already set in Dockerfile
+    
+    # Volume mappings for persistent data
+    volumes:
+      # Configuration file
+      - ./data/config:/data/config:ro
+      # Databases (main bot database and web viewer database)
+      - ./data/databases:/data/databases
+      # Logs
+      - ./data/logs:/data/logs
+      # Backups (optional)
+      - ./data/backups:/data/backups
+    
+    # Port mappings (if web viewer is enabled)
+    # Uncomment and adjust if using web viewer
+    # ports:
+    #   - "8080:8080"
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -21,6 +21,11 @@ class SunCommand(BaseCommand):
     description = "Get sunrise/sunset times"
     category = "solar"
     
+    # Documentation
+    short_description = "Get sunrise and sunset times"
+    usage = "sun"
+    examples = ["sun"]
+    
     def __init__(self, bot):
         """Initialize the sun command.
         

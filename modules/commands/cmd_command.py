@@ -18,6 +18,11 @@ class CmdCommand(BaseCommand):
     description = "Lists available commands in compact format"
     category = "basic"
     
+    # Documentation
+    short_description = "Lists available commands"
+    usage = "cmd"
+    examples = ["cmd"]
+    
     def __init__(self, bot):
         """Initialize the cmd command.
         
@@ -129,9 +134,9 @@ class CmdCommand(BaseCommand):
                 # Can't fit this command, add count of remaining
                 remaining_count = len(command_names) - len(result)
                 if remaining_count > 0:
-                    suffix = f" (+{remaining_count} more)"
+                    suffix = f" ({remaining_count} more)"
                     if current_length + len(suffix) <= max_length:
-                        result.append(suffix.replace('+', '').replace('more', f'{remaining_count} more'))
+                        result.append(suffix)
                 break
         
         return prefix + ', '.join(result)

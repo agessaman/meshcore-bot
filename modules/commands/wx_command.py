@@ -11,8 +11,9 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import xml.dom.minidom
 from datetime import datetime, timedelta
+from typing import Optional, Tuple
 from geopy.geocoders import Nominatim
-from ..utils import rate_limited_nominatim_geocode_sync, rate_limited_nominatim_reverse_sync, get_nominatim_geocoder, geocode_zipcode_sync, geocode_city_sync
+from ..utils import rate_limited_nominatim_geocode_sync, rate_limited_nominatim_reverse_sync, get_nominatim_geocoder, geocode_zipcode_sync, geocode_city_sync, normalize_us_state
 import maidenhead as mh
 from .base_command import BaseCommand
 from ..models import MeshMessage
@@ -24,6 +25,14 @@ try:
 except ImportError:
     WX_INTERNATIONAL_AVAILABLE = False
     GlobalWxCommand = None
+
+# Import WXSIM parser for custom weather sources
+try:
+    from ..clients.wxsim_parser import WXSIMParser
+    WXSIM_PARSER_AVAILABLE = True
+except ImportError:
+    WXSIM_PARSER_AVAILABLE = False
+    WXSIMParser = None
 
 
 class WxCommand(BaseCommand):
@@ -37,6 +46,15 @@ class WxCommand(BaseCommand):
     cooldown_seconds = 5  # 5 second cooldown per user to prevent API abuse
     requires_internet = True  # Requires internet access for NOAA API and geocoding
     
+    # Documentation
+    short_description = "Get weather for a US location using NOAA weather data"
+    usage = "wx <zipcode|city> [tomorrow|7d|hourly|alerts]"
+    examples = ["wx 98101", "wx seattle", "wx 90210 7d"]
+    parameters = [
+        {"name": "location", "description": "US zip code or city name"},
+        {"name": "option", "description": "tomorrow, 7d, hourly, or alerts (optional)"}
+    ]
+    
     # Error constants
     NO_DATA_NOGPS = "No GPS data available"
     ERROR_FETCHING_DATA = "Error fetching weather data"
@@ -45,6 +63,12 @@ class WxCommand(BaseCommand):
     def __init__(self, bot):
         super().__init__(bot)
         self.wx_enabled = self.get_config_value('Wx_Command', 'enabled', fallback=True, value_type='bool')
+        
+        # Initialize WXSIM parser if available
+        if WXSIM_PARSER_AVAILABLE:
+            self.wxsim_parser = WXSIMParser()
+        else:
+            self.wxsim_parser = None
         
         # Check weather provider setting - delegate to international command if using Open-Meteo
         weather_provider = bot.config.get('Weather', 'weather_provider', fallback='noaa').lower()
@@ -66,8 +90,9 @@ class WxCommand(BaseCommand):
             self.use_metric = False  # Use imperial units by default
             self.zulu_time = False  # Use local time by default
             
-            # Get default state from config for city disambiguation
-            self.default_state = self.bot.config.get('Weather', 'default_state', fallback='WA')
+            # Get default state and country from config for city disambiguation
+            self.default_state = self.bot.config.get('Weather', 'default_state', fallback='')
+            self.default_country = self.bot.config.get('Weather', 'default_country', fallback='US')
             
             # Initialize geocoder (will use rate-limited helpers for actual calls)
             # Keep geolocator for backwards compatibility, but prefer rate-limited helpers
@@ -135,7 +160,11 @@ class WxCommand(BaseCommand):
             return False
         
         if self.delegate_command:
-            return self.delegate_command.can_execute(message)
+            # Enforce [Wx_Command] channels first; delegate uses skip_channel_check
+            # so [Wx_Command] channels override is honored when using Open-Meteo
+            if not self.is_channel_allowed(message):
+                return False
+            return self.delegate_command.can_execute(message, skip_channel_check=True)
         
         # Use base class for cooldown and other checks
         return super().can_execute(message)
@@ -147,6 +176,253 @@ class WxCommand(BaseCommand):
         
         # Use base class method
         return super().get_remaining_cooldown(user_id)
+    
+    def _get_companion_location(self, message: MeshMessage) -> Optional[Tuple[float, float]]:
+        """Get companion/sender location from database.
+        
+        Args:
+            message: The message object.
+            
+        Returns:
+            Optional[Tuple[float, float]]: Tuple of (latitude, longitude) or None.
+        """
+        try:
+            sender_pubkey = message.sender_pubkey
+            if not sender_pubkey:
+                self.logger.debug("No sender_pubkey in message for companion location lookup")
+                return None
+            
+            query = '''
+                SELECT latitude, longitude 
+                FROM complete_contact_tracking 
+                WHERE public_key = ? 
+                AND latitude IS NOT NULL AND longitude IS NOT NULL
+                AND latitude != 0 AND longitude != 0
+                ORDER BY COALESCE(last_advert_timestamp, last_heard) DESC
+                LIMIT 1
+            '''
+            
+            results = self.bot.db_manager.execute_query(query, (sender_pubkey,))
+            
+            if results:
+                row = results[0]
+                lat = row['latitude']
+                lon = row['longitude']
+                self.logger.debug(f"Found companion location: {lat}, {lon} for pubkey {sender_pubkey[:16]}...")
+                return (lat, lon)
+            else:
+                self.logger.debug(f"No location found in database for pubkey {sender_pubkey[:16]}...")
+            return None
+        except Exception as e:
+            self.logger.warning(f"Error getting companion location: {e}")
+            return None
+    
+    def _get_bot_location(self) -> Optional[Tuple[float, float]]:
+        """Get bot location from config.
+        
+        Returns:
+            Optional[Tuple[float, float]]: Tuple of (latitude, longitude) or None.
+        """
+        try:
+            lat = self.bot.config.getfloat('Bot', 'bot_latitude', fallback=None)
+            lon = self.bot.config.getfloat('Bot', 'bot_longitude', fallback=None)
+            
+            if lat is not None and lon is not None:
+                # Validate coordinates
+                if -90 <= lat <= 90 and -180 <= lon <= 180:
+                    return (lat, lon)
+            return None
+        except Exception as e:
+            self.logger.debug(f"Error getting bot location: {e}")
+            return None
+    
+    def _get_custom_wxsim_source(self, location: Optional[str] = None) -> Optional[str]:
+        """Get custom WXSIM source URL from config.
+        
+        Looks for keys in [Weather] section with pattern: custom.wxsim.<name> = <url>
+        Similar to how Channels_List handles dotted keys.
+        
+        Args:
+            location: Location name or None for default source
+            
+        Returns:
+            Optional[str]: Source URL or None if not found
+        """
+        if not self.wxsim_parser:
+            self.logger.debug("WXSIM parser not available")
+            return None
+        
+        section = 'Weather'
+        if not self.bot.config.has_section(section):
+            self.logger.debug(f"Config section '{section}' does not exist")
+            return None
+        
+        if location:
+            # Strip whitespace and normalize
+            location = location.strip()
+            location_lower = location.lower()
+            self.logger.debug(f"Checking for WXSIM source for location: '{location}' (normalized: '{location_lower}')")
+            
+            # Look for keys matching custom.wxsim.<location> pattern
+            prefix = 'custom.wxsim.'
+            for key, value in self.bot.config.items(section):
+                if key.startswith(prefix):
+                    # Extract the location name from the key (e.g., "custom.wxsim.lethbridge" -> "lethbridge")
+                    key_location = key[len(prefix):].strip()
+                    if key_location.lower() == location_lower:
+                        self.logger.debug(f"Found WXSIM source: {key} = {value}")
+                        return value
+            
+            self.logger.debug(f"No WXSIM source found for location '{location}'")
+        else:
+            # Check for default source: custom.wxsim.default
+            default_key = 'custom.wxsim.default'
+            if self.bot.config.has_option(section, default_key):
+                url = self.bot.config.get(section, default_key)
+                self.logger.debug(f"Found default WXSIM source: {url}")
+                return url
+            self.logger.debug("No default WXSIM source configured")
+        
+        return None
+    
+    def _get_wxsim_weather(self, source_url: str, forecast_type: str = "default", 
+                                num_days: int = 7, message: MeshMessage = None, 
+                                location_name: Optional[str] = None) -> str:
+        """Get and format weather from WXSIM source.
+        
+        Args:
+            source_url: URL to WXSIM plaintext.txt file
+            forecast_type: "default", "tomorrow", or "multiday"
+            num_days: Number of days for multiday forecast
+            message: The MeshMessage for dynamic length calculation
+            location_name: Optional location name for display
+            
+        Returns:
+            str: Formatted weather string
+        """
+        if not self.wxsim_parser:
+            return self.translate('commands.wx.error', error="WXSIM parser not available")
+        
+        # Fetch WXSIM data
+        text = self.wxsim_parser.fetch_from_url(source_url, timeout=self.url_timeout)
+        if not text:
+            return self.translate('commands.wx.error', error="Failed to fetch WXSIM data")
+        
+        # Parse the data
+        forecast = self.wxsim_parser.parse(text)
+        
+        # Validate forecast is not stale
+        is_stale, stale_reason = self.wxsim_parser.is_forecast_stale(forecast, max_age_hours=48)
+        if is_stale:
+            self.logger.warning(f"WXSIM forecast appears stale: {stale_reason}")
+            # Still return the forecast, but log the warning
+            # Optionally, we could return an error message here instead
+        
+        # Get unit preferences from config
+        temp_unit = self.bot.config.get('Weather', 'temperature_unit', fallback='fahrenheit').lower()
+        wind_unit = self.bot.config.get('Weather', 'wind_speed_unit', fallback='mph').lower()
+        
+        # Format based on forecast type
+        if forecast_type == "tomorrow":
+            # Get tomorrow's forecast
+            if len(forecast.periods) > 1:
+                tomorrow = forecast.periods[1]
+                high = self.wxsim_parser._convert_temp(tomorrow.high_temp, temp_unit) if tomorrow.high_temp else None
+                low = self.wxsim_parser._convert_temp(tomorrow.low_temp, temp_unit) if tomorrow.low_temp else None
+                temp_symbol = "°F" if temp_unit == 'fahrenheit' else "°C"
+                
+                result = f"Tomorrow: {tomorrow.conditions}"
+                if high is not None and low is not None:
+                    result += f" {high}{temp_symbol}/{low}{temp_symbol}"
+                elif high is not None:
+                    result += f" {high}{temp_symbol}"
+                elif low is not None:
+                    result += f" {low}{temp_symbol}"
+                
+                if tomorrow.precip_chance and tomorrow.precip_chance > 30:
+                    result += f" {tomorrow.precip_chance}% PoP"
+                
+                if location_name:
+                    return f"{location_name}: {result}"
+                return result
+            else:
+                return self.translate('commands.wx.error', error="Tomorrow forecast not available")
+        
+        elif forecast_type == "multiday":
+            # Format multiday forecast
+            summary = self.wxsim_parser.format_forecast_summary(forecast, num_days, temp_unit, wind_unit)
+            if location_name:
+                return f"{location_name}:\n{summary}"
+            return summary
+        
+        else:
+            # Default: current conditions + today's forecast
+            current = self.wxsim_parser.format_current_conditions(forecast, temp_unit, wind_unit)
+            
+            # Add today's high/low if available (use first period as "today")
+            if forecast.periods:
+                today = forecast.periods[0]
+                high = self.wxsim_parser._convert_temp(today.high_temp, temp_unit) if today.high_temp else None
+                low = self.wxsim_parser._convert_temp(today.low_temp, temp_unit) if today.low_temp else None
+                temp_symbol = "°F" if temp_unit == 'fahrenheit' else "°C"
+                
+                if high is not None and low is not None:
+                    current += f" | H:{high}{temp_symbol} L:{low}{temp_symbol}"
+                elif high is not None:
+                    current += f" | H:{high}{temp_symbol}"
+                elif low is not None:
+                    current += f" | L:{low}{temp_symbol}"
+                
+                # Add tomorrow if available (second period)
+                if len(forecast.periods) > 1:
+                    tomorrow = forecast.periods[1]
+                    tomorrow_high = self.wxsim_parser._convert_temp(tomorrow.high_temp, temp_unit) if tomorrow.high_temp else None
+                    tomorrow_low = self.wxsim_parser._convert_temp(tomorrow.low_temp, temp_unit) if tomorrow.low_temp else None
+                    
+                    if tomorrow_high is not None and tomorrow_low is not None:
+                        current += f" | Tomorrow: {tomorrow_high}{temp_symbol}/{tomorrow_low}{temp_symbol}"
+            
+            if location_name:
+                return f"{location_name}: {current}"
+            return current
+    
+    def _coordinates_to_location_string(self, lat: float, lon: float) -> Optional[str]:
+        """Convert coordinates to a location string (city name) using reverse geocoding.
+        
+        Args:
+            lat: Latitude.
+            lon: Longitude.
+            
+        Returns:
+            Optional[str]: Location string (city name) or None if geocoding fails.
+        """
+        try:
+            from ..utils import rate_limited_nominatim_reverse_sync
+            result = rate_limited_nominatim_reverse_sync(self.bot, f"{lat}, {lon}", timeout=10)
+            if result and hasattr(result, 'raw'):
+                # Extract city name from address
+                address = result.raw.get('address', {})
+                city = (address.get('city') or 
+                       address.get('town') or 
+                       address.get('village') or 
+                       address.get('municipality') or
+                       address.get('county', ''))
+                state = address.get('state', '')
+                
+                # Normalize state to abbreviation
+                if state:
+                    state_abbr, _ = normalize_us_state(state)
+                    if state_abbr:
+                        state = state_abbr
+                
+                if city:
+                    if state:
+                        return f"{city}, {state}"
+                    return city
+            return None
+        except Exception as e:
+            self.logger.debug(f"Error reverse geocoding coordinates {lat}, {lon}: {e}")
+            return None
     
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the weather command"""
@@ -160,9 +436,43 @@ class WxCommand(BaseCommand):
         # Support formats: "wx 12345", "wx seattle", "wx paris, tx", "weather everett", "wxa bellingham"
         # New formats: "wx 12345 tomorrow", "wx 12345 7", "wx 12345 7day", "wx 12345 alerts"
         parts = content.split()
+        
+        # Track if we're using companion location (so we always show location in response)
+        using_companion_location = False
+        
+        # If no location specified, check for custom WXSIM default source first
         if len(parts) < 2:
-            await self.send_response(message, self.translate('commands.wx.usage'))
-            return True
+            wxsim_source = self._get_custom_wxsim_source(None)  # Check for default
+            if wxsim_source:
+                # Use custom WXSIM default source
+                try:
+                    self.record_execution(message.sender_id)
+                    weather_data = self._get_wxsim_weather(wxsim_source, "default", 7, message)
+                    await self.send_response(message, weather_data)
+                    return True
+                except Exception as e:
+                    self.logger.error(f"Error fetching WXSIM weather: {e}")
+                    await self.send_response(message, self.translate('commands.wx.error', error=str(e)))
+                    return True
+            
+            # No custom source, try companion location
+            companion_location = self._get_companion_location(message)
+            if companion_location:
+                # Use coordinates directly to avoid re-geocoding issues
+                location_str = f"{companion_location[0]},{companion_location[1]}"
+                parts = [parts[0], location_str]
+                using_companion_location = True
+                # Get city name for display
+                display_name = self._coordinates_to_location_string(companion_location[0], companion_location[1])
+                if display_name:
+                    self.logger.info(f"Using companion location: {display_name} ({companion_location[0]}, {companion_location[1]})")
+                else:
+                    self.logger.info(f"Using companion coordinates: {location_str}")
+            else:
+                # No companion location available, show usage
+                self.logger.debug("No companion location found, showing usage")
+                await self.send_response(message, self.translate('commands.wx.usage'))
+                return True
         
         # Check for "alerts" keyword first (special handling)
         show_full_alerts = False
@@ -204,8 +514,31 @@ class WxCommand(BaseCommand):
             await self.send_response(message, self.translate('commands.wx.usage'))
             return True
         
-        # Check if it's a zipcode (5 digits) or city name
-        if re.match(r'^\d{5}$', location):
+        # Check for custom WXSIM source first (before checking location type)
+        wxsim_source = self._get_custom_wxsim_source(location)
+        if wxsim_source:
+            self.logger.info(f"Using custom WXSIM source for location '{location}': {wxsim_source}")
+            # Use custom WXSIM source
+            try:
+                self.record_execution(message.sender_id)
+                weather_data = self._get_wxsim_weather(wxsim_source, forecast_type, num_days, message, location_name=location)
+                if forecast_type == "multiday":
+                    await self._send_multiday_forecast(message, weather_data)
+                else:
+                    await self.send_response(message, weather_data)
+                return True
+            except Exception as e:
+                self.logger.error(f"Error fetching WXSIM weather: {e}")
+                await self.send_response(message, self.translate('commands.wx.error', error=str(e)))
+                return True
+        else:
+            self.logger.debug(f"No custom WXSIM source found for location '{location}', using normal weather API")
+        
+        # Check if it's coordinates, zipcode, or city name
+        if re.match(r'^\s*-?\d+\.?\d*\s*,\s*-?\d+\.?\d*\s*$', location):
+            # It's coordinates (lat,lon format)
+            location_type = "coordinates"
+        elif re.match(r'^\d{5}$', location):
             # It's a zipcode
             location_type = "zipcode"
         else:
@@ -220,7 +553,18 @@ class WxCommand(BaseCommand):
             if show_full_alerts:
                 # Get alerts only (no weather forecast)
                 lat, lon = None, None
-                if location_type == "zipcode":
+                if location_type == "coordinates":
+                    try:
+                        lat_str, lon_str = location.split(',')
+                        lat = float(lat_str.strip())
+                        lon = float(lon_str.strip())
+                        if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+                            await self.send_response(message, self.translate('commands.wx.error', error="Invalid coordinates"))
+                            return True
+                    except ValueError:
+                        await self.send_response(message, self.translate('commands.wx.error', error=f"Invalid coordinates format: {location}"))
+                        return True
+                elif location_type == "zipcode":
                     lat, lon = self.zipcode_to_lat_lon(location)
                     if lat is None or lon is None:
                         await self.send_response(message, self.translate('commands.wx.no_location_zipcode', location=location))
@@ -232,7 +576,8 @@ class WxCommand(BaseCommand):
                     else:
                         lat, lon = result
                     if lat is None or lon is None:
-                        await self.send_response(message, self.translate('commands.wx.no_location_city', location=location, state=self.default_state))
+                        region = self.default_state or self.default_country
+                        await self.send_response(message, self.translate('commands.wx.no_location_city', location=location, state=region))
                         return True
                 
                 # Get and display full alert list
@@ -240,7 +585,7 @@ class WxCommand(BaseCommand):
                 return True
             
             # Get weather data for the location
-            weather_data = await self.get_weather_for_location(location, location_type, forecast_type, num_days)
+            weather_data = await self.get_weather_for_location(location, location_type, forecast_type, num_days, message, using_companion_location=using_companion_location)
             
             # Check if we need to send multiple messages
             if isinstance(weather_data, tuple) and weather_data[0] == "multi_message":
@@ -272,18 +617,48 @@ class WxCommand(BaseCommand):
             await self.send_response(message, self.translate('commands.wx.error', error=str(e)))
             return True
     
-    async def get_weather_for_location(self, location: str, location_type: str, forecast_type: str = "default", num_days: int = 7) -> str:
-        """Get weather data for a location (zipcode or city)
+    async def get_weather_for_location(self, location: str, location_type: str, forecast_type: str = "default", num_days: int = 7, message: MeshMessage = None, using_companion_location: bool = False) -> str:
+        """Get weather data for a location (coordinates, zipcode, or city)
         
         Args:
-            location: The location (zipcode or city name)
-            location_type: "zipcode" or "city"
+            location: The location (coordinates "lat,lon", zipcode, or city name)
+            location_type: "coordinates", "zipcode", or "city"
             forecast_type: "default", "tomorrow", "multiday", or "hourly"
             num_days: Number of days for multiday forecast (2-7)
+            message: The MeshMessage for dynamic length calculation
+            using_companion_location: If True, always include location prefix even if same state
         """
         try:
-            # Convert location to lat/lon
-            if location_type == "zipcode":
+            # Convert location to lat/lon based on type
+            if location_type == "coordinates":
+                # Parse coordinates from "lat,lon" format
+                try:
+                    lat_str, lon_str = location.split(',')
+                    lat = float(lat_str.strip())
+                    lon = float(lon_str.strip())
+                    
+                    # Validate coordinate ranges
+                    if not (-90 <= lat <= 90):
+                        return self.translate('commands.wx.error', error=f"Invalid latitude: {lat}")
+                    if not (-180 <= lon <= 180):
+                        return self.translate('commands.wx.error', error=f"Invalid longitude: {lon}")
+                    
+                    # Get address_info for location display via reverse geocoding
+                    location_str = self._coordinates_to_location_string(lat, lon)
+                    if location_str:
+                        # Parse the location string to get city and state for address_info
+                        parts = location_str.split(',')
+                        if len(parts) >= 2:
+                            city = parts[0].strip()
+                            state = parts[1].strip()
+                            address_info = {'city': city, 'state': state}
+                        else:
+                            address_info = {'city': location_str}
+                    else:
+                        address_info = {}
+                except ValueError:
+                    return self.translate('commands.wx.error', error=f"Invalid coordinates format: {location}")
+            elif location_type == "zipcode":
                 lat, lon = self.zipcode_to_lat_lon(location)
                 if lat is None or lon is None:
                     return self.translate('commands.wx.no_location_zipcode', location=location)
@@ -297,11 +672,12 @@ class WxCommand(BaseCommand):
                     address_info = None
                 
                 if lat is None or lon is None:
-                    return self.translate('commands.wx.no_location_city', location=location, state=self.default_state)
+                    region = self.default_state or self.default_country
+                    return self.translate('commands.wx.no_location_city', location=location, state=region)
                 
                 # Check if the found city is in a different state than default
                 actual_city = location
-                actual_state = self.default_state
+                actual_state = self.default_state or self.default_country
                 if address_info:
                     # Try to get the best city name from various address fields
                     actual_city = (address_info.get('city') or 
@@ -311,59 +687,68 @@ class WxCommand(BaseCommand):
                                  address_info.get('municipality') or 
                                  location)
                     actual_state = address_info.get('state', self.default_state)
-                    # Convert full state name to abbreviation if needed
+                    # Convert full state name to abbreviation if needed using the us library
                     if len(actual_state) > 2:
-                        state_abbrev_map = {
-                            'Washington': 'WA', 'California': 'CA', 'New York': 'NY', 'Texas': 'TX',
-                            'Florida': 'FL', 'Illinois': 'IL', 'Pennsylvania': 'PA', 'Ohio': 'OH',
-                            'Georgia': 'GA', 'North Carolina': 'NC', 'Michigan': 'MI', 'New Jersey': 'NJ',
-                            'Virginia': 'VA', 'Tennessee': 'TN', 'Indiana': 'IN', 'Arizona': 'AZ',
-                            'Massachusetts': 'MA', 'Missouri': 'MO', 'Maryland': 'MD', 'Wisconsin': 'WI',
-                            'Colorado': 'CO', 'Minnesota': 'MN', 'South Carolina': 'SC', 'Alabama': 'AL',
-                            'Louisiana': 'LA', 'Kentucky': 'KY', 'Oregon': 'OR', 'Oklahoma': 'OK',
-                            'Connecticut': 'CT', 'Utah': 'UT', 'Iowa': 'IA', 'Nevada': 'NV',
-                            'Arkansas': 'AR', 'Mississippi': 'MS', 'Kansas': 'KS', 'New Mexico': 'NM',
-                            'Nebraska': 'NE', 'West Virginia': 'WV', 'Idaho': 'ID', 'Hawaii': 'HI',
-                            'New Hampshire': 'NH', 'Maine': 'ME', 'Montana': 'MT', 'Rhode Island': 'RI',
-                            'Delaware': 'DE', 'South Dakota': 'SD', 'North Dakota': 'ND', 'Alaska': 'AK',
-                            'Vermont': 'VT', 'Wyoming': 'WY'
-                        }
-                        actual_state = state_abbrev_map.get(actual_state, actual_state)
+                        state_abbr, _ = normalize_us_state(actual_state)
+                        if state_abbr:
+                            actual_state = state_abbr
                     
                     # Also check if the default state needs to be converted for comparison
                     default_state_full = self.default_state
                     if len(self.default_state) == 2:
                         # Convert abbreviation to full name for comparison
-                        abbrev_to_full_map = {v: k for k, v in state_abbrev_map.items()}
-                        default_state_full = abbrev_to_full_map.get(self.default_state, self.default_state)
+                        _, default_state_full = normalize_us_state(self.default_state)
+                        if not default_state_full:
+                            default_state_full = self.default_state
             
-            # Add location info if city is in a different state than default
+            # Add location info if city is in a different state than default, or if using companion location
             location_prefix = ""
-            if location_type == "city" and address_info:
+            if location_type == "coordinates" and address_info:
+                # For coordinates, always show location if we have address info
+                city = address_info.get('city', '')
+                state = address_info.get('state', '')
+                if city and state:
+                    # Normalize state to abbreviation
+                    state_abbr, _ = normalize_us_state(state)
+                    if state_abbr:
+                        state = state_abbr
+                    location_prefix = f"{city}, {state}: "
+                elif city:
+                    location_prefix = f"{city}: "
+            elif location_type == "city" and address_info:
                 # Compare states (handle both full names and abbreviations)
                 states_different = (actual_state != self.default_state and 
                                   actual_state != default_state_full)
-                if states_different:
-                    location_prefix = f"{actual_city}, {actual_state}: "
+                # Always show location if using companion location, or if state is different
+                if using_companion_location or states_different:
+                    location_prefix = f"{actual_city}, {actual_state}: " if actual_state else f"{actual_city}: "
+            elif location_type == "zipcode" and using_companion_location:
+                # For zipcode with companion location, try to get city name from reverse geocoding
+                location_str = self._coordinates_to_location_string(lat, lon)
+                if location_str:
+                    location_prefix = f"{location_str}: "
+            
+            # Get max message length dynamically
+            max_length = self.get_max_message_length(message) if message else 130
             
             # Get weather forecast based on type
             if forecast_type == "tomorrow":
-                forecast_periods, points_data = self.get_noaa_weather(lat, lon, return_periods=True)
+                forecast_periods, points_data = self.get_noaa_weather(lat, lon, return_periods=True, max_length=max_length)
                 if forecast_periods == self.ERROR_FETCHING_DATA:
                     return self.translate('commands.wx.error_fetching')
-                weather = self.format_tomorrow_forecast(forecast_periods)
+                weather = self.format_tomorrow_forecast(forecast_periods, max_length=max_length)
             elif forecast_type == "multiday":
-                forecast_periods, points_data = self.get_noaa_weather(lat, lon, return_periods=True)
+                forecast_periods, points_data = self.get_noaa_weather(lat, lon, return_periods=True, max_length=max_length)
                 if forecast_periods == self.ERROR_FETCHING_DATA:
                     return self.translate('commands.wx.error_fetching')
-                weather = self.format_multiday_forecast(forecast_periods, num_days)
+                weather = self.format_multiday_forecast(forecast_periods, num_days, max_length=max_length)
             elif forecast_type == "hourly":
                 hourly_periods, points_data = self.get_noaa_hourly_weather(lat, lon)
                 if hourly_periods == self.ERROR_FETCHING_DATA:
                     return self.translate('commands.wx.error_fetching')
-                weather = self.format_hourly_forecast(hourly_periods)
+                weather = self.format_hourly_forecast(hourly_periods, max_length=max_length)
             else:  # default
-                weather, points_data = self.get_noaa_weather(lat, lon)
+                weather, points_data = self.get_noaa_weather(lat, lon, max_length=max_length)
                 if weather == self.ERROR_FETCHING_DATA:
                     return self.translate('commands.wx.error_fetching')
                 
@@ -385,7 +770,7 @@ class WxCommand(BaseCommand):
                         if alerts_full_result not in [self.ERROR_FETCHING_DATA, self.NO_ALERTS]:
                             alerts_list, _ = alerts_full_result
                             # Format with prioritization and summary
-                            formatted_alert_text = self._format_alerts_compact_summary(alerts_list, alert_count)
+                            formatted_alert_text = self._format_alerts_compact_summary(alerts_list, alert_count, max_length=max_length)
                         else:
                             # Fallback to old format
                             formatted_alert_text = full_alert_text
@@ -432,13 +817,14 @@ class WxCommand(BaseCommand):
             self.logger.error(f"Error geocoding city {city}: {e}")
             return None, None, None
     
-    def get_noaa_weather(self, lat: float, lon: float, return_periods: bool = False) -> tuple:
+    def get_noaa_weather(self, lat: float, lon: float, return_periods: bool = False, max_length: int = 130) -> tuple:
         """Get weather forecast from NOAA and return both weather string and points data
         
         Args:
             lat: Latitude
             lon: Longitude
             return_periods: If True, return forecast periods array instead of formatted string
+            max_length: Maximum message length (default 130 for backwards compatibility)
         
         Returns:
             Tuple of (weather_string_or_periods, points_data)
@@ -488,7 +874,7 @@ class WxCommand(BaseCommand):
                 return "No forecast data available", weather_json
             
             current = forecast[0]
-            day_name = self.abbreviate_noaa(current['name'])
+            day_name = self._noaa_period_display_name(current)
             temp = current.get('temperature', 'N/A')
             temp_unit = current.get('temperatureUnit', 'F')
             short_forecast = current.get('shortForecast', 'Unknown')
@@ -517,18 +903,19 @@ class WxCommand(BaseCommand):
             # Get observation station data for more accurate current conditions
             observation_data = self.get_observation_data(weather_json)
             
-            # Use most of the 130 char limit (120 chars) to ensure current period gets full details
+            # Use most of the max_length limit (max_length - 10 chars) to ensure current period gets full details
             # Additional periods will only be added if there's remaining space
             # Pass observation_data to use real-time station data instead of parsing from text
-            weather = self._add_period_details(weather, detailed_forecast, 0, max_length=120, observation_data=observation_data)
+            current_period_max = max_length - 10
+            weather = self._add_period_details(weather, detailed_forecast, 0, max_length=current_period_max, observation_data=observation_data)
             
             # Also add precipitation chance if available (not in helper function)
-            if precip_chance and self._count_display_width(weather) < 120:
+            if precip_chance and self._count_display_width(weather) < current_period_max:
                 weather += f" 🌦️{precip_chance}%"
             
             # Also add UV index if available (not in helper function)
             uv_index = self.extract_uv_index(detailed_forecast)
-            if uv_index and self._count_display_width(weather) < 120:
+            if uv_index and self._count_display_width(weather) < current_period_max:
                 weather += f" UV{uv_index}"
             
             # Add next period (Today, Tonight) and Tomorrow if available
@@ -617,7 +1004,7 @@ class WxCommand(BaseCommand):
             if is_current_night and today_period:
                 period = today_period[1]
                 # Always add today_period - it represents tomorrow's daytime when current is Tonight
-                period_name = self.abbreviate_noaa(period.get('name', 'Today'))
+                period_name = self._noaa_period_display_name(period)
                 period_temp = period.get('temperature', '')
                 period_short = period.get('shortForecast', '')
                 period_detailed = period.get('detailedForecast', '')
@@ -637,27 +1024,27 @@ class WxCommand(BaseCommand):
                     # Add wind info if space allows (using display width)
                     if period_wind_speed and period_wind_direction:
                         test_str = weather + period_str
-                        if self._count_display_width(test_str) < 120:
+                        if self._count_display_width(test_str) < max_length - 10:
                             wind_match = re.search(r'(\d+)', period_wind_speed)
                             if wind_match:
                                 wind_num = wind_match.group(1)
                                 wind_dir = self.abbreviate_wind_direction(period_wind_direction)
                                 if wind_dir:
                                     wind_info = f" {wind_dir}{wind_num}"
-                                    if self._count_display_width(test_str + wind_info) <= 130:
+                                    if self._count_display_width(test_str + wind_info) <= max_length:
                                         period_str += wind_info
                     
                     # Add additional details (humidity, dew point, visibility, etc.)
                     # But only if current period isn't too long - prioritize current period details
                     current_weather_len = self._count_display_width(weather)
-                    # Only add details to additional periods if current period is under 110 chars
+                    # Only add details to additional periods if current period is under max_length - 20 chars
                     # This ensures we prioritize current period details first
-                    if current_weather_len < 110:
-                        period_str = self._add_period_details(period_str, period_detailed, current_weather_len, max_length=130)
+                    if current_weather_len < max_length - 20:
+                        period_str = self._add_period_details(period_str, period_detailed, current_weather_len, max_length=max_length)
                     
                     # Only add if we have space (using display width)
                     # Be more conservative - only add if current period is reasonable length
-                    if current_weather_len < 110 and self._count_display_width(weather + period_str) <= 130:
+                    if current_weather_len < max_length - 20 and self._count_display_width(weather + period_str) <= max_length:
                         weather += period_str
             
             # Add Tonight if it's the immediate next period (and current is not already Tonight)
@@ -675,7 +1062,7 @@ class WxCommand(BaseCommand):
                 
                 if should_add_tonight:
                     period = tonight_period[1]
-                    period_name = self.abbreviate_noaa(period.get('name', 'Tonight'))
+                    period_name = self._noaa_period_display_name(period)
                     period_temp = period.get('temperature', '')
                     period_short = period.get('shortForecast', '')
                     period_detailed = period.get('detailedForecast', '')
@@ -695,34 +1082,34 @@ class WxCommand(BaseCommand):
                         # Add wind info if space allows (using display width)
                         if period_wind_speed and period_wind_direction:
                             test_str = weather + period_str
-                            if self._count_display_width(test_str) < 120:
+                            if self._count_display_width(test_str) < max_length - 10:
                                 wind_match = re.search(r'(\d+)', period_wind_speed)
                                 if wind_match:
                                     wind_num = wind_match.group(1)
                                     wind_dir = self.abbreviate_wind_direction(period_wind_direction)
                                     if wind_dir:
                                         wind_info = f" {wind_dir}{wind_num}"
-                                        if self._count_display_width(test_str + wind_info) <= 130:
+                                        if self._count_display_width(test_str + wind_info) <= max_length:
                                             period_str += wind_info
                         
                     # Add additional details (humidity, dew point, visibility, etc.)
                     # But only if current period isn't too long - prioritize current period details
                     current_weather_len = self._count_display_width(weather)
-                    # Only add details to additional periods if current period is under 110 chars
+                    # Only add details to additional periods if current period is under max_length - 20 chars
                     # This ensures we prioritize current period details first
-                    if current_weather_len < 110:
-                        period_str = self._add_period_details(period_str, period_detailed, current_weather_len, max_length=130)
+                    if current_weather_len < max_length - 20:
+                        period_str = self._add_period_details(period_str, period_detailed, current_weather_len, max_length=max_length)
                     
                     # Only add if we have space (using display width)
                     # Be more conservative - only add if current period is reasonable length
-                    if current_weather_len < 110 and self._count_display_width(weather + period_str) <= 130:
+                    if current_weather_len < max_length - 20 and self._count_display_width(weather + period_str) <= max_length:
                         weather += period_str
             
             # Always try to add Tomorrow if available (especially if current is Tonight)
-            # Prioritize adding Tomorrow when current is Tonight to use more of the 130 char limit
+            # Prioritize adding Tomorrow when current is Tonight to use more of the available message length
             if tomorrow_period:
                 period = tomorrow_period[1]
-                period_name = self.abbreviate_noaa(period.get('name', 'Tomorrow'))
+                period_name = self._noaa_period_display_name(period)
                 period_temp = period.get('temperature', '')
                 period_short = period.get('shortForecast', '')
                 period_detailed = period.get('detailedForecast', '')
@@ -788,29 +1175,29 @@ class WxCommand(BaseCommand):
                                 wind_dir = self.abbreviate_wind_direction(period_wind_direction)
                                 if wind_dir:
                                     wind_info = f" {wind_dir}{wind_num}"
-                                    if self._count_display_width(test_str + wind_info) <= 130:
+                                    if self._count_display_width(test_str + wind_info) <= max_length:
                                         period_str += wind_info
                     
                     # Add additional details (humidity, dew point, visibility, etc.)
                     # But only if current period isn't too long - prioritize current period details
                     current_weather_len = self._count_display_width(weather)
-                    # Only add details to additional periods if current period is under 110 chars
+                    # Only add details to additional periods if current period is under max_length - 20 chars
                     # This ensures we prioritize current period details first
-                    if current_weather_len < 110:
-                        max_chars = 128 if (is_current_tonight or is_current_night) else 130
+                    if current_weather_len < max_length - 20:
+                        max_chars = max_length - 2 if (is_current_tonight or is_current_night) else max_length
                         period_str = self._add_period_details(period_str, period_detailed, current_weather_len, max_chars)
                     
                     # Only add if we have space (using display width, prioritize current period)
                     # Be more aggressive about adding tomorrow_period when current is Tonight and we have space
-                    max_chars = 128 if (is_current_tonight or is_current_night) else 130
+                    max_chars = max_length - 2 if (is_current_tonight or is_current_night) else max_length
                     # If current is Tonight and we have plenty of space, be more lenient with the length check
                     if is_current_tonight or is_current_night:
-                        # Allow adding tomorrow_period if we're under 120 chars (more lenient than 110)
-                        if current_weather_len < 120 and self._count_display_width(weather + period_str) <= max_chars:
+                        # Allow adding tomorrow_period if we're under max_length - 10 chars (more lenient)
+                        if current_weather_len < max_length - 10 and self._count_display_width(weather + period_str) <= max_chars:
                             weather += period_str
                     else:
                         # For non-night periods, use the stricter check
-                        if current_weather_len < 110 and self._count_display_width(weather + period_str) <= max_chars:
+                        if current_weather_len < max_length - 20 and self._count_display_width(weather + period_str) <= max_chars:
                             weather += period_str
             
             return weather, weather_json
@@ -877,11 +1264,12 @@ class WxCommand(BaseCommand):
             self.logger.error(f"Error fetching NOAA hourly weather: {e}")
             return self.ERROR_FETCHING_DATA, None
     
-    def format_hourly_forecast(self, hourly_periods: list) -> str:
-        """Format hourly forecast to fit as many hours as possible in 130 chars
+    def format_hourly_forecast(self, hourly_periods: list, max_length: int = 130) -> str:
+        """Format hourly forecast to fit as many hours as possible in max_length chars
         
         Args:
             hourly_periods: List of hourly forecast periods from NOAA
+            max_length: Maximum message length (default 130 for backwards compatibility)
         
         Returns:
             Formatted string with one hour per line
@@ -892,7 +1280,6 @@ class WxCommand(BaseCommand):
             
             lines = []
             current_length = 0
-            max_length = 130
             
             # Filter to only future hours
             now = datetime.now()
@@ -1028,7 +1415,7 @@ class WxCommand(BaseCommand):
             self.logger.error(f"Error formatting hourly forecast: {e}")
             return f"Error formatting hourly forecast: {str(e)}"
     
-    def format_tomorrow_forecast(self, forecast: list) -> str:
+    def format_tomorrow_forecast(self, forecast: list, max_length: int = 130) -> str:
         """Format a detailed forecast for tomorrow"""
         try:
             # Find tomorrow's periods
@@ -1079,7 +1466,7 @@ class WxCommand(BaseCommand):
             # Build detailed forecast for tomorrow
             parts = []
             for period in tomorrow_periods:
-                period_name = self.abbreviate_noaa(period.get('name', 'Tomorrow'))
+                period_name = self._noaa_period_display_name(period)
                 temp = period.get('temperature', '')
                 temp_unit = period.get('temperatureUnit', 'F')
                 short_forecast = period.get('shortForecast', '')
@@ -1119,7 +1506,7 @@ class WxCommand(BaseCommand):
             self.logger.error(f"Error formatting tomorrow forecast: {e}")
             return self.translate('commands.wx.tomorrow_error')
     
-    def format_multiday_forecast(self, forecast: list, num_days: int = 7) -> str:
+    def format_multiday_forecast(self, forecast: list, num_days: int = 7, max_length: int = 130) -> str:
         """Format a less detailed multi-day forecast summary"""
         try:
             # Group periods by day
@@ -1371,6 +1758,9 @@ class WxCommand(BaseCommand):
         """Send multi-day forecast response, splitting into multiple messages if needed"""
         import asyncio
         
+        # Get max message length dynamically
+        max_length = self.get_max_message_length(message)
+        
         lines = forecast_text.split('\n')
         
         # Remove empty lines
@@ -1379,13 +1769,13 @@ class WxCommand(BaseCommand):
         if not lines:
             return
         
-        # If single line and under 130 chars, send as-is
-        if self._count_display_width(forecast_text) <= 130:
+        # If single line and under max_length chars, send as-is
+        if self._count_display_width(forecast_text) <= max_length:
             await self.send_response(message, forecast_text)
             return
         
         # Multi-line message - try to fit as many days as possible in one message
-        # Only split when necessary (message would exceed 130 chars)
+        # Only split when necessary (message would exceed max_length chars)
         current_message = ""
         message_count = 0
         
@@ -1393,14 +1783,14 @@ class WxCommand(BaseCommand):
             if not line:
                 continue
             
-            # Check if adding this line would exceed 130 characters (using display width)
+            # Check if adding this line would exceed max_length characters (using display width)
             if current_message:
                 test_message = current_message + "\n" + line
             else:
                 test_message = line
             
-            # Only split if message would exceed 130 chars (using display width)
-            if self._count_display_width(test_message) > 130:
+            # Only split if message would exceed max_length chars (using display width)
+            if self._count_display_width(test_message) > max_length:
                 # Send current message and start new one
                 if current_message:
                     await self.send_response(message, current_message)
@@ -1418,7 +1808,7 @@ class WxCommand(BaseCommand):
                         await asyncio.sleep(2.0)
                     current_message = ""
             else:
-                # Add line to current message (fits within 130 chars)
+                # Add line to current message (fits within max_length chars)
                 if current_message:
                     current_message += "\n" + line
                 else:
@@ -2121,12 +2511,13 @@ class WxCommand(BaseCommand):
             # Abbreviated format: just event type and severity
             return f"{severity_emoji}{event} {event_type_abbrev}" if event else f"{severity_emoji}{event_type_abbrev}"
     
-    def _format_alerts_compact_summary(self, alerts: list, alert_count: int) -> str:
+    def _format_alerts_compact_summary(self, alerts: list, alert_count: int, max_length: int = 130) -> str:
         """Format multiple alerts with prioritized first alert and summary of others
         
         Args:
             alerts: List of prioritized alert dicts
             alert_count: Total number of alerts
+            max_length: Maximum message length (default 130 for backwards compatibility)
         
         Returns:
             Compact formatted string: "4 alerts: 🟠High Wind Warn til 6AM | +3: 🌊Flood Watch, ❄️Freeze Adv, 🌫️Dense Fog Adv"
@@ -2186,16 +2577,16 @@ class WxCommand(BaseCommand):
         # Combine: first alert + summary
         result = f"{alert_count} alerts: {first_alert_text} | {remaining_summary}"
         
-        # Check if it fits in 130 chars, truncate if needed
-        if self._count_display_width(result) > 130:
+        # Check if it fits in max_length chars, truncate if needed
+        if self._count_display_width(result) > max_length:
             # Try shorter first alert
             first_alert_text_short = self._format_alert_compact(first_alert, include_details=False)
             result = f"{alert_count} alerts: {first_alert_text_short} | {remaining_summary}"
             
             # If still too long, truncate remaining summary
-            if self._count_display_width(result) > 130:
+            if self._count_display_width(result) > max_length:
                 max_remaining = 3
-                while max_remaining > 0 and self._count_display_width(result) > 130:
+                while max_remaining > 0 and self._count_display_width(result) > max_length:
                     if remaining_count > max_remaining:
                         remaining_summary = f"+{remaining_count}: {', '.join(remaining_parts[:max_remaining])}..."
                     else:
@@ -2371,14 +2762,17 @@ class WxCommand(BaseCommand):
         rate_limit = self.bot.config.getfloat('Bot', 'bot_tx_rate_limit_seconds', fallback=1.0)
         sleep_time = max(rate_limit + 1.0, 2.0)
         
-        # Group alerts into messages that fit within 130 chars
+        # Get max message length dynamically
+        max_length = self.get_max_message_length(message)
+        
+        # Group alerts into messages that fit within max_length chars
         current_message = f"{alert_count} alerts:"
         messages = []
         
         for line in alert_lines:
             # Check if adding this line would exceed limit
             test_message = current_message + "\n" + line if current_message else line
-            if self._count_display_width(test_message) > 130:
+            if self._count_display_width(test_message) > max_length:
                 # Current message is full, start new one
                 if current_message:
                     messages.append(current_message)
@@ -3021,6 +3415,35 @@ class WxCommand(BaseCommand):
             return "💨"
         else:
             return "🌤️"  # Default weather emoji
+
+    # NOAA sometimes names forecast periods after federal holidays (e.g. "Washington's Birthday")
+    # instead of the weekday. Match these so we can resolve to weekday via startTime.
+    _NOAA_HOLIDAY_NAME_PATTERNS = (
+        "washington's birthday", "presidents day", "president's day",
+        "martin luther king", "mlk day", "memorial day", "labor day",
+        "independence day", "juneteenth", "columbus day", "veterans day",
+        "thanksgiving", "christmas day", "new year's day", "new year's eve",
+    )
+
+    def _noaa_period_display_name(self, period: dict) -> str:
+        """Return display label for a NOAA forecast period. Resolves holiday names to weekday."""
+        name = period.get('name', '') or ''
+        start_time_str = period.get('startTime')
+        name_lower = name.lower()
+        is_holiday = any(p in name_lower for p in self._NOAA_HOLIDAY_NAME_PATTERNS)
+        if is_holiday and start_time_str:
+            try:
+                # startTime is ISO 8601, e.g. 2025-02-17T08:00:00-08:00
+                dt = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
+                # Python weekday(): Mon=0 .. Sun=6
+                weekdays = ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')
+                day_abbrev = weekdays[dt.weekday()]
+                if 'night' in name_lower or 'overnight' in name_lower:
+                    return f"{day_abbrev} Night"
+                return day_abbrev
+            except (ValueError, TypeError):
+                pass
+        return self.abbreviate_noaa(name)
 
     def abbreviate_noaa(self, text: str) -> str:
         """Replace long strings with shorter ones for display"""

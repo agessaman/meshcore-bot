@@ -82,6 +82,11 @@ rate_limit_seconds = 10
 # Prevents bot from overwhelming the mesh network
 bot_tx_rate_limit_seconds = 1.0
 
+# Per-user rate limit: minimum seconds between bot replies to the same user
+# User key: public key when available, else sender name
+per_user_rate_limit_seconds = 5
+per_user_rate_limit_enabled = true
+
 # Transmission delay in milliseconds before sending messages
 # Helps prevent message collisions on the mesh network
 # Recommended: 100-500ms for busy networks, 0 for quiet networks
@@ -171,7 +176,8 @@ admin_pubkeys =
 
 # Commands that require admin access (comma-separated)
 # These commands will only work for users in the admin_pubkeys list
-admin_commands = repeater,webviewer
+# reload: Reload configuration without restarting (radio settings cannot be changed)
+admin_commands = repeater,webviewer,reload
 
 [Keywords]
 # Available placeholders (message-based):
@@ -183,7 +189,7 @@ admin_commands = repeater,webviewer
 # {path} - Message routing path (e.g., "01,5f (2 hops)")
 # {path_distance} - Total distance between all hops in path with locations (e.g., "123.4km (3 segs, 1 no-loc)")
 # {firstlast_distance} - Distance between first and last repeater in path (e.g., "45.6km" or empty if locations missing)
-# {elapsed} - Message elapsed time
+# {elapsed} - Elapsed time (e.g. 1234ms) or "Sync Device Clock" when device clock is invalid (use {elapsed} only; do not append ms)
 test = "ack @[{sender}]{phrase_part} | {connection_info} | Received at: {timestamp}"
 ping = "Pong!"
 
@@ -198,10 +204,18 @@ monitor_channels = general,test,emergency
 # false: Bot will ignore direct messages
 respond_to_dms = true
 
+# Optional: limit channel responses to certain keywords (e.g. help,ping,test).
+# When set, only these triggers work in channels; DMs get all triggers.
+# channel_keywords =
+
 [Banned_Users]
-# List of banned user IDs (comma-separated)
-# Bot will ignore messages from these users
+# List of banned sender names (comma-separated). Matching is prefix (starts-with):
+# "Awful Username" also matches "Awful Username 🍆". No bot responses in channels or DMs.
 banned_users = 
+
+[Feed_Manager]
+# Enable or disable RSS/API feed subscriptions (disabled by default)
+feed_manager_enabled = false
 
 [Logging]
 # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
@@ -363,30 +377,27 @@ enabled = false
 # Enable or disable the cmd command
 enabled = false
 
-[Jokes]
-# Enable or disable joke commands
-joke_enabled = false
-dadjoke_enabled = false
+[Joke_Command]
+enabled = false
+
+[DadJoke_Command]
+enabled = false
 
 [Sports_Command]
-# Enable or disable the sports command
-sports_enabled = false
+enabled = false
 
 [Stats_Command]
-# Enable or disable the stats command
-stats_enabled = false
+enabled = false
 
 [Hacker_Command]
-# Enable or disable the hacker command
-hacker_enabled = false
+enabled = false
 
 [Greeter_Command]
 # Enable or disable the greeter command
 enabled = false
 
 [Alert_Command]
-# Enable or disable the alert command
-alert_enabled = false
+enabled = false
 
 [Announcements_Command]
 # Enable or disable the announcements command
@@ -416,6 +427,10 @@ enabled = false
 
 [Solar_Command]
 # Enable or disable the solar command
+enabled = false
+
+[Aurora_Command]
+# Enable or disable the aurora command
 enabled = false
 
 [Solarforecast_Command]

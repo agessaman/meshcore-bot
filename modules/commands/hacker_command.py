@@ -22,6 +22,11 @@ class HackerCommand(BaseCommand):
     description = "Simulates hacking a supervillain's mainframe with hilarious error messages"
     category = "fun"
     
+    # Documentation
+    short_description = "Try Linux commands and get supervillain mainframe errors"
+    usage = "<linux_command>"
+    examples = ["sudo make me a sandwich", "rm -rf /"]
+    
     def __init__(self, bot: Any):
         """Initialize the hacker command.
         
@@ -29,7 +34,9 @@ class HackerCommand(BaseCommand):
             bot: The bot instance.
         """
         super().__init__(bot)
-        self.enabled = self.get_config_value('Hacker_Command', 'hacker_enabled', fallback=False, value_type='bool')
+        self.enabled = self.get_config_value('Hacker_Command', 'enabled', fallback=None, value_type='bool')
+        if self.enabled is None:
+            self.enabled = self.get_config_value('Hacker_Command', 'hacker_enabled', fallback=False, value_type='bool')
     
     def get_help_text(self) -> str:
         """Get help text for the hacker command.
