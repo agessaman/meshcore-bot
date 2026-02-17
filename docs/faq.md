@@ -21,3 +21,9 @@ Without `--upgrade`, the script does *not* update the service file (systemd/laun
 - Any changes to the service definition (paths, user, etc.) in the script are not applied.
 
 **Recommendation:** Use `./install-service.sh --upgrade` after `git pull` when you want to upgrade; that updates files, dependencies, and the service, and reloads the service, while keeping your `config.ini` intact.
+
+## Command reference and website
+
+### How can I generate a custom command reference for my bot users?
+
+See [Custom command reference website](command-reference-website.md): it explains how to use `generate_website.py` to build a single-page HTML from your config (with optional styles) and upload it to your site.
