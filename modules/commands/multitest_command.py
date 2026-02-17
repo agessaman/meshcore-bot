@@ -353,10 +353,8 @@ class MultitestCommand(BaseCommand):
                 existing_session = self._active_sessions[user_id]
                 elapsed = time.time() - existing_session.listening_start_time
                 if elapsed < existing_session.listening_duration:
-                    # User already has an active session, reject this one
-                    remaining = existing_session.listening_duration - elapsed
-                    response = f"Multitest already in progress. Please wait {remaining:.1f} seconds."
-                    await self.send_response(message, response)
+                    # User already has an active session - silently ignore second Mt
+                    # so the first session can complete and send its response
                     return True
             
             # Record execution time BEFORE starting async work to prevent race conditions
