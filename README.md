@@ -82,7 +82,7 @@ sudo systemctl start meshcore-bot
 sudo systemctl status meshcore-bot
 ```
 
-See [SERVICE-INSTALLATION.md](SERVICE-INSTALLATION.md) for detailed service installation instructions.
+See [Service installation](docs/SERVICE-INSTALLATION.md) for detailed service installation instructions.
 
 ### Docker Deployment
 For containerized deployment using Docker:

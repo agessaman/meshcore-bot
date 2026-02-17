@@ -52,7 +52,7 @@ nav:
   - Quick Start: getting-started.md
   - Installation:
     - Docker: DOCKER.md
-    - Service: SERVICE_INSTALLATION.md
+    - Service: SERVICE-INSTALLATION.md
   - Configuration:
     - Overview: configuration.md
     - Path Command: PATH_COMMAND_CONFIG.md

@@ -52,7 +52,7 @@ sudo systemctl start meshcore-bot
 sudo systemctl status meshcore-bot
 ```
 
-See [SERVICE-INSTALLATION.md](https://github.com/agessaman/meshcore-bot/blob/main/SERVICE-INSTALLATION.md) for full steps.
+See [Service installation](SERVICE-INSTALLATION.md) for full steps.
 
 ### Docker
 
