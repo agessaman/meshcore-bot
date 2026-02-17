@@ -88,7 +88,7 @@ class BotIntegration:
             raw = self.bot.config.get('Web_Viewer', 'db_path', fallback='').strip()
             if raw:
                 return resolve_path(raw, base_dir)
-        return Path(self.bot.db_manager.db_path).resolve()
+        return str(Path(self.bot.db_manager.db_path).resolve())
     
     def _init_packet_stream_table(self):
         """Initialize the packet_stream table in the web viewer database (same as [Bot] db_path by default)."""
