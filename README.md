@@ -225,7 +225,7 @@ python meshcore_bot.py
 
 ### Available Commands
 
-For a comprehensive list of all available commands with examples and detailed explanations, see [Command reference](docs/commands.md).
+For a comprehensive list of all available commands with examples and detailed explanations, see [Command reference](docs/command-reference.md).
 
 Quick reference:
 - **Basic:** `test`, `ping`, `help`, `hello`, `cmd`

@@ -7,7 +7,7 @@ Documentation for the MeshCore bot: setup, configuration, commands, and services
 ## Project overview
 
 - [README](https://github.com/agessaman/meshcore-bot/blob/main/README.md) – Getting started, installation, quick start
-- [Command Reference](commands.md) – Full command reference
+- [Command Reference](command-reference.md) – Full command reference
 - [Docker deployment](docker.md) – Docker deployment
 - [Service installation](service-installation.md) – Systemd service setup
 - [Web Viewer](web-viewer.md) – Web viewer module

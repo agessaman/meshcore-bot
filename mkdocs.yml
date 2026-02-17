@@ -51,6 +51,7 @@ nav:
   - Home: index.md
   - Quick Start: getting-started.md
   - Installation:
+    - Overview: installation.md
     - Docker: docker.md
     - Service: service-installation.md
   - Configuration:
@@ -58,7 +59,7 @@ nav:
     - Path Command: path-command-config.md
     - Config validation: config-validation.md
   - Web Viewer: web-viewer.md
-  - Command Reference: commands.md
+  - Command Reference: command-reference.md
   - Service Plugins:
     - Overview: service-plugins.md
     - Discord Bridge: discord-bridge.md

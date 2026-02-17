@@ -77,6 +77,6 @@ meshcore-bot.url = "github:agessaman/meshcore-bot/";
 
 ## Next steps
 
-- **[Command Reference](commands.md)** — Full command reference (wx, aqi, sun, path, prefix, etc.)
+- **[Command Reference](command-reference.md)** — Full command reference (wx, aqi, sun, path, prefix, etc.)
 - **[README](https://github.com/agessaman/meshcore-bot/blob/main/README.md)** — Features, keywords, configuration overview
 - **Guides** (sidebar) — Path command, repeater commands, feeds, weather service, Discord bridge, map uploader, packet capture
