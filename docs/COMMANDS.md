@@ -860,5 +860,5 @@ feed test https://example.com/feed.xml
 
 ---
 
-For more information about configuring the bot, see the main [README.md](README.md) file.
+For more information about configuring the bot, see the main [README](https://github.com/agessaman/meshcore-bot/blob/main/README.md) file.
 

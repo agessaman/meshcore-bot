@@ -6,7 +6,7 @@ The bot is configured via `config.ini` in the project root (or the path given wi
 
 - **Sections** are named in square brackets, e.g. `[Bot]`, `[Connection]`, `[Path_Command]`.
 - **Options** are `key = value` (or `key=value`). Comments start with `#` or `;`.
-- **Paths** can be relative (to the directory containing the config file) or absolute. For Docker, use absolute paths under `/data/` (see [Docker deployment](DOCKER.md)).
+- **Paths** can be relative (to the directory containing the config file) or absolute. For Docker, use absolute paths under `/data/` (see [Docker deployment](docker.md)).
 
 The main sections include:
 
@@ -45,9 +45,9 @@ Many commands and features have their own section. Options there control whether
 
 Examples of sections that configure specific commands or features:
 
-- **`[Path_Command]`** – Path decoding and repeater selection. See [Path Command](PATH_COMMAND_CONFIG.md) for all options.
+- **`[Path_Command]`** – Path decoding and repeater selection. See [Path Command](path-command-config.md) for all options.
 - **`[Prefix_Command]`** – Prefix lookup, prefix best, range limits.
-- **`[Weather]`** – Used by the `wx` / `gwx` commands and the Weather Service plugin (see [Weather Service](WEATHER_SERVICE.md)).
+- **`[Weather]`** – Used by the `wx` / `gwx` commands and the Weather Service plugin (see [Weather Service](weather-service.md)).
 - **`[Airplanes_Command]`** – Aircraft/ADS-B command (API URL, radius, limits).
 - **`[Aurora_Command]`** – Aurora command (default coordinates).
 - **`[Alert_Command]`** – Emergency alerts (agency IDs, etc.).
@@ -60,7 +60,7 @@ Full reference: see `config.ini.example` in the repository for every section and
 
 The Path command has many options (presets, proximity, graph validation, etc.). All are documented in:
 
-**[Path Command](PATH_COMMAND_CONFIG.md)** – Presets, geographic and graph settings, and tuning.
+**[Path Command](path-command-config.md)** – Presets, geographic and graph settings, and tuning.
 
 ## Service plugin configuration
 

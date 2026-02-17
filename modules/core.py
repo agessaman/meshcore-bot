@@ -96,7 +96,7 @@ class MeshCoreBot:
                 if wv_path != bot_path:
                     self.logger.warning(
                         "Web viewer database path differs from bot database: viewer=%s, bot=%s. "
-                        "For shared repeater/graph and packet stream data, set [Web_Viewer] db_path to the same as [Bot] db_path or remove it to use the bot database. See docs/WEB_VIEWER.md (migrating from a separate database).",
+                        "For shared repeater/graph and packet stream data, set [Web_Viewer] db_path to the same as [Bot] db_path or remove it to use the bot database. See docs/web-viewer.md (migrating from a separate database).",
                         wv_path, bot_path
                     )
         

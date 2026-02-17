@@ -51,19 +51,19 @@ nav:
   - Home: index.md
   - Quick Start: getting-started.md
   - Installation:
-    - Docker: DOCKER.md
-    - Service: SERVICE-INSTALLATION.md
+    - Docker: docker.md
+    - Service: service-installation.md
   - Configuration:
     - Overview: configuration.md
-    - Path Command: PATH_COMMAND_CONFIG.md
-  - Web Viewer: WEB_VIEWER.md
-  - Command Reference: COMMANDS.md
+    - Path Command: path-command-config.md
+  - Web Viewer: web-viewer.md
+  - Command Reference: commands.md
   - Service Plugins:
     - Overview: service-plugins.md
-    - Discord Bridge: DISCORD_BRIDGE.md
-    - Packet Capture: PACKET_CAPTURE.md
-    - Map Uploader: MAP_UPLOADER.md
-    - Weather Service: WEATHER_SERVICE.md
-    - Feed Management: FEEDS.md
+    - Discord Bridge: discord-bridge.md
+    - Packet Capture: packet-capture.md
+    - Map Uploader: map-uploader.md
+    - Weather Service: weather-service.md
+    - Feed Management: feeds.md
   - FAQ: faq.md
-  - Upgrade: UPGRADE.md
+  - Upgrade: upgrade.md

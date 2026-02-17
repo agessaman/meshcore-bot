@@ -94,7 +94,7 @@ else
 fi
 
 # [Web_Viewer] db_path is intentionally not set: when unset, the viewer uses [Bot] db_path.
-# See config.ini.example and docs/WEB_VIEWER.md.
+# See config.ini.example and docs/web-viewer.md.
 
 # Update PacketCapture paths (if section exists)
 if grep -q "^\[PacketCapture\]" "$CONFIG_FILE"; then
