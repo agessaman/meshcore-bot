@@ -50,16 +50,12 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
-  - FAQ: faq.md
-  - Command Reference: COMMANDS.md
   - Docker: DOCKER.md
   - Configuration:
     - Overview: configuration.md
     - Path Command: PATH_COMMAND_CONFIG.md
-  - Upgrade: UPGRADE.md
   - Web Viewer: WEB_VIEWER.md
-  - Guides:
-    - Repeater Commands: REPEATER_COMMANDS.md
+  - Command Reference: COMMANDS.md
   - Service Plugins:
     - Overview: service-plugins.md
     - Discord Bridge: DISCORD_BRIDGE.md
@@ -67,3 +63,5 @@ nav:
     - Map Uploader: MAP_UPLOADER.md
     - Weather Service: WEATHER_SERVICE.md
     - Feed Management: FEEDS.md
+  - FAQ: faq.md
+  - Upgrade: UPGRADE.md
