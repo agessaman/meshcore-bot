@@ -93,7 +93,8 @@ class RepeaterManager:
                 location_accuracy REAL,
                 contact_source TEXT DEFAULT 'advertisement',
                 out_path TEXT,
-                out_path_len INTEGER
+                out_path_len INTEGER,
+                is_starred INTEGER DEFAULT 0
             ''')
             
             # Create daily_stats table for daily statistics tracking
