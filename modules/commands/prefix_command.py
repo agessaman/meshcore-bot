@@ -1369,7 +1369,9 @@ class PrefixCommand(BaseCommand):
         if len(response) <= max_length:
             # Single message is fine
             await self.send_response(message, response)
+            return
         else:
+            # Multi-message: per-user rate limit applies only to the first message (the trigger)
             # Split into multiple messages for over-the-air transmission
             # But keep the full response in last_response for web viewer
             lines = response.split('\n')
@@ -1433,7 +1435,9 @@ class PrefixCommand(BaseCommand):
                     # Send current message and start new one
                     # Add ellipsis on new line to end of continued message
                     current_message += continuation_end
-                    await self.send_response(message, current_message.rstrip())
+                    # Per-user rate limit applies only to the first message (trigger); skip for continuations
+                    skip_user_limit = message_count > 0
+                    await self.send_response(message, current_message.rstrip(), skip_user_rate_limit=skip_user_limit)
                     await asyncio.sleep(3.0)  # Delay between messages (same as other commands)
                     message_count += 1
                     lines_in_current = 0
@@ -1449,9 +1453,9 @@ class PrefixCommand(BaseCommand):
                         current_message = line
                     lines_in_current += 1
             
-            # Send the last message if there's content
+            # Send the last message if there's content (continuation; skip per-user rate limit)
             if current_message:
-                await self.send_response(message, current_message)
+                await self.send_response(message, current_message, skip_user_rate_limit=True)
     
     async def __aenter__(self):
         """Async context manager entry"""

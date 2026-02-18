@@ -786,7 +786,11 @@ class AirplanesCommand(BaseCommand):
             if len(current_message) + len(line) + 1 > max_length:  # +1 for newline
                 # Send current message and start new one
                 if current_message:
-                    await self.send_response(message, current_message.rstrip())
+                    # Per-user rate limit applies only to first message (trigger); skip for continuations
+                    await self.send_response(
+                        message, current_message.rstrip(),
+                        skip_user_rate_limit=(message_count > 0)
+                    )
                     await asyncio.sleep(2.0)  # Delay between messages
                     message_count += 1
                 
@@ -799,6 +803,6 @@ class AirplanesCommand(BaseCommand):
                 else:
                     current_message = line
         
-        # Send the last message if there's content
+        # Send the last message if there's content (continuation; skip per-user rate limit)
         if current_message:
-            await self.send_response(message, current_message)
+            await self.send_response(message, current_message, skip_user_rate_limit=True)

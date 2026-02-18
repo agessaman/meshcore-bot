@@ -1661,7 +1661,11 @@ class PathCommand(BaseCommand):
                         # Add ellipsis on new line to end of continued message (if not the last message)
                         if i < len(lines):
                             current_message += self.translate('commands.path.continuation_end')
-                        await self.send_response(message, current_message.rstrip())
+                        # Per-user rate limit applies only to first message (trigger); skip for continuations
+                        await self.send_response(
+                            message, current_message.rstrip(),
+                            skip_user_rate_limit=(message_count > 0)
+                        )
                         await asyncio.sleep(3.0)  # Delay between messages (same as other commands)
                         message_count += 1
                     
@@ -1677,9 +1681,9 @@ class PathCommand(BaseCommand):
                     else:
                         current_message = line
             
-            # Send the last message if there's content
+            # Send the last message if there's content (continuation; skip per-user rate limit)
             if current_message:
-                await self.send_response(message, current_message)
+                await self.send_response(message, current_message, skip_user_rate_limit=True)
     
     async def _extract_path_from_recent_messages(self) -> str:
         """Extract path from the current message's path information (same as test command)"""

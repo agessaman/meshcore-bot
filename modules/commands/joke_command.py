@@ -304,11 +304,11 @@ class JokeCommand(BaseCommand):
             parts = self.split_joke(joke_text)
             
             if len(parts) == 2 and len(parts[0]) <= 130 and len(parts[1]) <= 130:
-                # Can be split into two messages
+                # Can be split into two messages (per-user rate limit applies only to first)
                 await self.send_response(message, parts[0])
                 # Use conservative delay to avoid rate limiting (same as weather command)
                 await asyncio.sleep(2.0)
-                await self.send_response(message, parts[1])
+                await self.send_response(message, parts[1], skip_user_rate_limit=True)
             else:
                 # Cannot be split properly, send as single message (user will see truncation)
                 await self.send_response(message, joke_text)
