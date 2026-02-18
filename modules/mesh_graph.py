@@ -533,13 +533,24 @@ class MeshGraph:
 
         try:
             if is_new:
-                # Insert new edge
+                # Upsert new edge.
+                # Use INSERT ... ON CONFLICT DO UPDATE so that if the row already exists
+                # in the database (e.g. it was filtered out of the in-memory graph at
+                # startup by startup_load_days / edge_expiration_days, or written by a
+                # concurrent process), we merge rather than fail with UNIQUE constraint.
                 query = '''
                     INSERT INTO mesh_connections
                     (from_prefix, to_prefix, from_public_key, to_public_key,
                      observation_count, first_seen, last_seen, avg_hop_position,
                      geographic_distance)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(from_prefix, to_prefix) DO UPDATE SET
+                        observation_count  = MAX(observation_count, excluded.observation_count),
+                        last_seen          = MAX(last_seen, excluded.last_seen),
+                        avg_hop_position   = excluded.avg_hop_position,
+                        geographic_distance = COALESCE(excluded.geographic_distance, geographic_distance),
+                        from_public_key    = COALESCE(excluded.from_public_key, from_public_key),
+                        to_public_key      = COALESCE(excluded.to_public_key, to_public_key)
                 '''
                 params = (
                     edge['from_prefix'],
