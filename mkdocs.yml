@@ -33,6 +33,9 @@ theme:
 
 plugins:
   - search
+  - exclude:
+      glob:
+        - local/**
 
 markdown_extensions:
   - pymdownx.superfences
@@ -46,17 +49,23 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Getting Started: getting-started.md
-  - FAQ: faq.md
-  - Command Reference: COMMANDS.md
+  - Quick Start: getting-started.md
+  - Installation:
+    - Overview: installation.md
+    - Docker: docker.md
+    - Service: service-installation.md
   - Configuration:
     - Overview: configuration.md
-    - Path Command: PATH_COMMAND_CONFIG.md
-  - Web Viewer: WEB_VIEWER.md
+    - Path Command: path-command-config.md
+    - Config validation: config-validation.md
+  - Web Viewer: web-viewer.md
+  - Command Reference: command-reference.md
   - Service Plugins:
     - Overview: service-plugins.md
-    - Discord Bridge: DISCORD_BRIDGE.md
-    - Packet Capture: PACKET_CAPTURE.md
-    - Map Uploader: MAP_UPLOADER.md
-    - Weather Service: WEATHER_SERVICE.md
-    - Feed Management: FEEDS.md
+    - Discord Bridge: discord-bridge.md
+    - Packet Capture: packet-capture.md
+    - Map Uploader: map-uploader.md
+    - Weather Service: weather-service.md
+    - Feed Management: feeds.md
+  - FAQ: faq.md
+  - Upgrade: upgrade.md

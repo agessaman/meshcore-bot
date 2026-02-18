@@ -52,7 +52,7 @@ sudo systemctl start meshcore-bot
 sudo systemctl status meshcore-bot
 ```
 
-See [SERVICE-INSTALLATION.md](https://github.com/agessaman/meshcore-bot/blob/main/SERVICE-INSTALLATION.md) for full steps.
+See [Service installation](service-installation.md) for full steps.
 
 ### Docker
 
@@ -61,11 +61,11 @@ Run in a container with Docker Compose:
 ```bash
 mkdir -p data/{config,databases,logs,backups}
 cp config.ini.example data/config/config.ini
-# Edit data/config/config.ini and set paths to /data/... (see [Docker](DOCKER.md))
+# Edit data/config/config.ini and set paths to /data/... (see [Docker](docker.md))
 docker compose up -d --build
 ```
 
-See [Docker deployment](DOCKER.md) for paths, serial access, and troubleshooting.
+See [Docker deployment](docker.md) for paths, serial access, and troubleshooting.
 
 ### NixOS
 
@@ -77,6 +77,6 @@ meshcore-bot.url = "github:agessaman/meshcore-bot/";
 
 ## Next steps
 
-- **[Command Reference](COMMANDS.md)** — Full command reference (wx, aqi, sun, path, prefix, etc.)
+- **[Command Reference](command-reference.md)** — Full command reference (wx, aqi, sun, path, prefix, etc.)
 - **[README](https://github.com/agessaman/meshcore-bot/blob/main/README.md)** — Features, keywords, configuration overview
 - **Guides** (sidebar) — Path command, repeater commands, feeds, weather service, Discord bridge, map uploader, packet capture

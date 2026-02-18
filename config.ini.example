@@ -640,7 +640,7 @@ enable_p_shortcut = true
 # - geographic: Prioritize geographic proximity over graph evidence (better for local networks)
 # - graph: Prioritize graph evidence over geographic proximity (better for well-connected networks)
 # Individual settings below can override preset values
-# See docs/PATH_COMMAND_CONFIG.md for detailed documentation
+# See docs/path-command-config.md for detailed documentation
 path_selection_preset = balanced
 
 # Basic Settings
@@ -1132,7 +1132,7 @@ auto_start = false
 
 # Optional: database path for web viewer. If unset, the viewer uses [Bot] db_path (recommended).
 # Only set this if you use a separate database for the viewer; you will see a startup warning.
-# See docs/WEB_VIEWER.md for migrating from a separate database.
+# See docs/web-viewer.md for migrating from a separate database.
 # db_path = meshcore_bot.db
 
 # Additional hashtag channels to decode in the packet stream

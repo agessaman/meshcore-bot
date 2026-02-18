@@ -470,4 +470,4 @@ docker-compose up -d
 
 - [Docker Documentation](https://docs.docker.com/)
 - [Docker Compose Documentation](https://docs.docker.com/compose/)
-- [Main README](https://github.com/agessaman/meshcore-bot/blob/main/README.md) for general bot configuration
+- [Main README](https://github.com/agessaman/meshcore-bot/blob/main/README.md) for general bot configuration.

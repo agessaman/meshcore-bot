@@ -15,10 +15,10 @@ A Python bot that connects to MeshCore mesh networks via serial port, BLE, or TC
 
 ### Service Plugins
 
-- **Discord Bridge**: One-way webhook bridge to post mesh messages to Discord ([docs](docs/DISCORD_BRIDGE.md))
-- **Packet Capture**: Capture and publish packets to MQTT brokers ([docs](docs/PACKET_CAPTURE.md))
-- **Map Uploader**: Upload node adverts to map.meshcore.dev ([docs](docs/MAP_UPLOADER.md))
-- **Weather Service**: Scheduled forecasts, alerts, and lightning detection ([docs](docs/WEATHER_SERVICE.md))
+- **Discord Bridge**: One-way webhook bridge to post mesh messages to Discord ([docs](docs/discord-bridge.md))
+- **Packet Capture**: Capture and publish packets to MQTT brokers ([docs](docs/packet-capture.md))
+- **Map Uploader**: Upload node adverts to map.meshcore.dev ([docs](docs/map-uploader.md))
+- **Weather Service**: Scheduled forecasts, alerts, and lightning detection ([docs](docs/weather-service.md))
 
 ## Requirements
 
@@ -82,7 +82,7 @@ sudo systemctl start meshcore-bot
 sudo systemctl status meshcore-bot
 ```
 
-See [SERVICE-INSTALLATION.md](SERVICE-INSTALLATION.md) for detailed service installation instructions.
+See [Service installation](docs/service-installation.md) for detailed service installation instructions.
 
 ### Docker Deployment
 For containerized deployment using Docker:
@@ -119,7 +119,7 @@ For containerized deployment using Docker:
    docker-compose logs -f
    ```
 
-See [DOCKER.md](docs/DOCKER.md) for detailed Docker deployment instructions, including serial port access, web viewer configuration, and troubleshooting.
+See [Docker deployment](docs/docker.md) for detailed Docker deployment instructions, including serial port access, web viewer configuration, and troubleshooting.
 
 ## NixOS
 Use the Nix flake via flake.nix
@@ -225,7 +225,7 @@ python meshcore_bot.py
 
 ### Available Commands
 
-For a comprehensive list of all available commands with examples and detailed explanations, see [COMMANDS.md](docs/COMMANDS.md).
+For a comprehensive list of all available commands with examples and detailed explanations, see [Command reference](docs/command-reference.md).
 
 Quick reference:
 - **Basic:** `test`, `ping`, `help`, `hello`, `cmd`
