@@ -801,10 +801,24 @@ graph_path_validation_max_bonus = 0.3
 # Lower values = stronger bonus from observation count. 50.0 means 50 observations = 0.15 bonus
 graph_path_validation_obs_divisor = 50.0
 
-# Load only recent edges on startup (days, 0 = load all)
-# Useful for large graphs. Set to 0 to load all edges, or N to load only edges seen in last N days.
-# For development with frequent restarts, 0 (load all) is recommended to maintain graph quality
+# Load only recent edges on startup (days, 0 = load all historical edges)
+# Edges older than this are skipped at startup to bound initial memory usage.
+# The in-code default is 14 days when this setting is absent from config.ini.
+# Recommended values:
+#   0  - Load all historical edges (servers with ample RAM, e.g. x86 VM)
+#   14 - Good balance of coverage vs. memory (default for unconfigured installs)
+#   7  - Reduced memory footprint for Raspberry Pi Zero 2 W
+# Note: edges older than graph_edge_expiration_days are never loaded regardless of this value.
 graph_startup_load_days = 0
+
+# Enable graph data capture from incoming packets (default: true)
+# When true, the bot observes routing paths from advertisements, messages, and trace
+# packets and stores edges in the mesh graph.
+# When false, NO new edge data is collected and the background batch writer thread is
+# not started — reducing both CPU and RAM overhead. Any edges already in the database
+# are still available for graph_based_validation if that is also enabled.
+# Set to false on devices that don't use the path command and want minimal overhead.
+graph_capture_enabled = true
 
 # Star bias multiplier for path command
 # When a contact is starred in the web viewer, multiply its selection score by this value

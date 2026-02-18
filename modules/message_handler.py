@@ -536,7 +536,9 @@ class MessageHandler:
                 
                 # Update mesh graph with edges from the advert path
                 # Create edge from advertising device to first hop in path
-                if out_path and out_path_len > 0 and hasattr(self.bot, 'mesh_graph') and self.bot.mesh_graph:
+                if (out_path and out_path_len > 0
+                        and hasattr(self.bot, 'mesh_graph') and self.bot.mesh_graph
+                        and self.bot.mesh_graph.capture_enabled):
                     self._update_mesh_graph_from_advert(advert_data, out_path, out_path_len, packet_info)
                 
                 # Store complete path in observed_paths table
@@ -1605,7 +1607,8 @@ class MessageHandler:
                             
                             # Update mesh graph with trace path - bot is the destination, so we can confirm these edges
                             # Since the bot received this trace packet, it's the destination node
-                            self._update_mesh_graph_from_trace(path_hashes, packet_info)
+                            if hasattr(self.bot, 'mesh_graph') and self.bot.mesh_graph and self.bot.mesh_graph.capture_enabled:
+                                self._update_mesh_graph_from_trace(path_hashes, packet_info)
                         else:
                             path_string = "Direct" if hops == 0 else f"Unknown routing ({hops} hops)"
                             self.logger.info(f"🎯 EXTRACTED PATH FROM TRACE PACKET: {path_string}")
@@ -1619,7 +1622,8 @@ class MessageHandler:
                             path_string = ','.join(path_nodes)
                             self.logger.info(f"🎯 EXTRACTED PATH FROM PACKET: {path_string} ({hops} hops)")
                             # Update mesh graph with path edges
-                            self._update_mesh_graph(path_nodes, packet_info)
+                            if hasattr(self.bot, 'mesh_graph') and self.bot.mesh_graph and self.bot.mesh_graph.capture_enabled:
+                                self._update_mesh_graph(path_nodes, packet_info)
                         else:
                             # Method 2: Try path_hex field
                             path_hex = packet_info.get('path_hex', '')
@@ -1629,7 +1633,8 @@ class MessageHandler:
                                 path_string = ','.join(path_nodes)
                                 self.logger.info(f"🎯 EXTRACTED PATH FROM PACKET HEX: {path_string} ({hops} hops)")
                                 # Update mesh graph with path edges
-                                self._update_mesh_graph(path_nodes, packet_info)
+                                if hasattr(self.bot, 'mesh_graph') and self.bot.mesh_graph and self.bot.mesh_graph.capture_enabled:
+                                    self._update_mesh_graph(path_nodes, packet_info)
                             else:
                                 # Method 3: Try path_info.path field
                                 path_info = packet_info.get('path_info', {})
@@ -1638,7 +1643,8 @@ class MessageHandler:
                                     path_string = ','.join(path_nodes)
                                     self.logger.info(f"🎯 EXTRACTED PATH FROM PATH_INFO: {path_string} ({hops} hops)")
                                     # Update mesh graph with path edges
-                                    self._update_mesh_graph(path_nodes, packet_info)
+                                    if hasattr(self.bot, 'mesh_graph') and self.bot.mesh_graph and self.bot.mesh_graph.capture_enabled:
+                                        self._update_mesh_graph(path_nodes, packet_info)
                                 else:
                                     # No path found - this is truly unknown
                                     path_string = "Direct" if hops == 0 else "Unknown routing"
