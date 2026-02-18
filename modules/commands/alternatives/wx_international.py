@@ -1178,7 +1178,11 @@ class GlobalWxCommand(BaseCommand):
             if self._count_display_width(test_message) > max_length:
                 # Send current message and start new one
                 if current_message:
-                    await self.send_response(message, current_message)
+                    # Per-user rate limit applies only to first message (trigger); skip for continuations
+                    await self.send_response(
+                        message, current_message,
+                        skip_user_rate_limit=(message_count > 0)
+                    )
                     message_count += 1
                     # Wait between messages (same as other commands)
                     if i < len(lines):
@@ -1187,7 +1191,10 @@ class GlobalWxCommand(BaseCommand):
                     current_message = line
                 else:
                     # Single line is too long, send it anyway (will be truncated by bot)
-                    await self.send_response(message, line)
+                    await self.send_response(
+                        message, line,
+                        skip_user_rate_limit=(message_count > 0)
+                    )
                     message_count += 1
                     if i < len(lines) - 1:
                         await asyncio.sleep(2.0)
@@ -1199,9 +1206,9 @@ class GlobalWxCommand(BaseCommand):
                 else:
                     current_message = line
         
-        # Send the last message if there's content
+        # Send the last message if there's content (continuation; skip per-user rate limit)
         if current_message:
-            await self.send_response(message, current_message)
+            await self.send_response(message, current_message, skip_user_rate_limit=True)
     
     def _degrees_to_direction(self, degrees: float) -> str:
         """Convert wind direction in degrees to compass direction with emoji.

@@ -1086,7 +1086,11 @@ class SolarforecastCommand(BaseCommand):
             if len(test_message) > 130:
                 # Send current message and start new one
                 if current_message:
-                    await self.send_response(message, current_message)
+                    # Per-user rate limit applies only to first message (trigger); skip for continuations
+                    await self.send_response(
+                        message, current_message,
+                        skip_user_rate_limit=(message_count > 0)
+                    )
                     message_count += 1
                     # Wait between messages (same as other commands)
                     if message_count > 0 and i < len(lines):
@@ -1095,7 +1099,10 @@ class SolarforecastCommand(BaseCommand):
                     current_message = line
                 else:
                     # Single line is too long, send it anyway (will be truncated by bot)
-                    await self.send_response(message, line)
+                    await self.send_response(
+                        message, line,
+                        skip_user_rate_limit=(message_count > 0)
+                    )
                     message_count += 1
                     if i < len(lines) - 1:
                         await asyncio.sleep(2.0)
@@ -1106,7 +1113,7 @@ class SolarforecastCommand(BaseCommand):
                 else:
                     current_message = line
         
-        # Send the last message if there's content
+        # Send the last message if there's content (continuation; skip per-user rate limit)
         if current_message:
-            await self.send_response(message, current_message)
+            await self.send_response(message, current_message, skip_user_rate_limit=True)
 
