@@ -32,7 +32,29 @@ See [Custom command reference website](command-reference-website.md): it explain
 
 ### How do I run meshcore-bot on a Raspberry Pi Zero 2 W?
 
-The Pi Zero 2 W has 512 MB of RAM, which is enough to run the bot, but the Mesh Graph can grow large on a busy mesh. Add the following to the `[Path_Command]` section of your `config.ini` to keep memory usage in check:
+The Pi Zero 2 W has 512 MB of RAM. The bot and the web viewer are two separate
+Python processes; together they use roughly 300 MB on a busy mesh, which leaves
+little headroom. Follow the two steps below to keep things comfortable.
+
+#### Step 1 — Run the bot only (saves ~150 MB)
+
+The web viewer is optional. If you don't need the browser-based dashboard on
+the Pi itself, disable it and access it from another machine instead:
+
+```ini
+[Web_Viewer]
+enabled = false
+auto_start = false
+```
+
+The bot continues to work normally; the web viewer just won't start on the Pi.
+If you still want the dashboard, run the viewer on a desktop or server that
+shares the same database file (see [MeshCore Bot Data Viewer](web-viewer.md)).
+
+#### Step 2 — Tune the Mesh Graph (saves another 50–100 MB on busy meshes)
+
+Even with the web viewer off, the Mesh Graph can grow large. Add the following
+to the `[Path_Command]` section of your `config.ini`:
 
 ```ini
 [Path_Command]
@@ -51,4 +73,6 @@ graph_write_strategy = batched
 # graph_capture_enabled = false
 ```
 
-These settings do not affect path prediction accuracy: edges older than a few days carry negligible confidence due to the 48-hour recency half-life used by the scoring algorithm.
+These settings do not affect path prediction accuracy: edges older than a few
+days carry negligible confidence due to the 48-hour recency half-life used by
+the scoring algorithm.
