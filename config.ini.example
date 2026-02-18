@@ -124,7 +124,7 @@ startup_advert = false
 # device: Device handles auto-addition using standard auto-discovery mode, bot manages contact list capacity (purge old contacts when near limits)
 # bot: Bot automatically adds new companion contacts to device, bot manages contact list capacity (purge old contacts when near limits)
 # false: Manual mode - no automatic actions, use !repeater commands to manage contacts (default)
-auto_manage_contacts = false
+auto_manage_contacts = bot
 
 # Database path for main bot database
 # Default: meshcore_bot.db
