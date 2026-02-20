@@ -427,6 +427,15 @@
     <!-- Footer links (bottom of page, visible when scrolled down) -->
     <footer class="text-center py-2" style="font-size: 0.7rem;">
         <a href="https://github.com/agessaman/meshcore-bot" target="_blank" rel="noopener noreferrer" style="color: var(--text-muted, #6c757d); text-decoration: none;">meshcore-bot</a>
+        {% if version_info.tag %}
+        <span class="mx-1" style="color: var(--text-muted, #6c757d);"> {{ version_info.tag }}</span>
+        {% elif version_info.branch or version_info.commit or version_info.date %}
+        <span class="mx-1" style="color: var(--text-muted, #6c757d);">
+            {% if version_info.branch %}{{ version_info.branch }}{% endif %}
+            {% if version_info.commit %}{% if version_info.branch %} · {% endif %}<code class="text-muted" style="font-size: inherit;">{{ version_info.commit }}</code>{% endif %}
+            {% if version_info.date %}{% if version_info.branch or version_info.commit %} · {% endif %}{{ version_info.date }}{% endif %}
+        </span>
+        {% endif %}
         <span class="mx-1" style="color: var(--text-muted, #6c757d);"> for </span>
         <a href="https://meshcore.co.uk/index.html" target="_blank" rel="noopener noreferrer" style="color: var(--text-muted, #6c757d); text-decoration: none;">MeshCore</a>
     </footer>

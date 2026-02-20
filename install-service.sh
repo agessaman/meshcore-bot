@@ -405,6 +405,18 @@ copy_files_smart "$SCRIPT_DIR" "$INSTALL_DIR" || {
     exit 1
 }
 
+# Write .version_info at install dir so web viewer and packet_capture show version after install
+if command -v git &>/dev/null && [ -d "$SCRIPT_DIR/.git" ]; then
+    GIT_HASH="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+    if VERSION="$(git -C "$SCRIPT_DIR" describe --exact-match HEAD 2>/dev/null)"; then
+        INSTALLER_VER="$VERSION"
+    else
+        INSTALLER_VER="dev-${GIT_HASH}"
+    fi
+    printf '%s\n' "{\"installer_version\": \"${INSTALLER_VER}\", \"git_hash\": \"${GIT_HASH}\"}" > "$INSTALL_DIR/.version_info"
+    print_success "Wrote version info (${INSTALLER_VER}) to $INSTALL_DIR/.version_info"
+fi
+
 # If no config.ini in install dir, create it from config.ini.example
 if [ ! -f "$INSTALL_DIR/config.ini" ]; then
     if [ -f "$INSTALL_DIR/config.ini.example" ]; then

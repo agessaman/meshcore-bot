@@ -43,6 +43,22 @@ from .transmission_tracker import TransmissionTracker
 from .utils import resolve_path
 
 
+class _DuplicateAwareConfigParser(configparser.ConfigParser):
+    """ConfigParser that allows duplicate options (last value wins) and logs ERROR when seen."""
+
+    def __init__(self, *args, **kwargs):
+        kwargs['strict'] = False
+        super().__init__(*args, **kwargs)
+
+    def _handle_option(self, st, line, fpname):
+        if st.optname in st.options:
+            logging.getLogger(__name__).error(
+                "Duplicate option in config file: section [%s], option '%s' (file %s, line %s). Using last value.",
+                st.sectname, st.optname, fpname, getattr(st, 'lineno', '?'),
+            )
+        st.options[st.optname] = st.optvalue
+
+
 class MeshCoreBot:
     """MeshCore Bot using official meshcore package.
     
@@ -52,7 +68,7 @@ class MeshCoreBot:
     
     def __init__(self, config_file: str = "config.ini"):
         self.config_file = config_file
-        self.config = configparser.ConfigParser()
+        self.config = _DuplicateAwareConfigParser()
         self.load_config()
         
         # Setup logging

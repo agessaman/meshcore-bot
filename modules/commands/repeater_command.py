@@ -280,11 +280,7 @@ class RepeaterCommand(BaseCommand):
                 # Force a complete refresh of contacts from device after purging
                 self.logger.info("Forcing contact list refresh from device to ensure persistence...")
                 try:
-                    from meshcore_cli.meshcore_cli import next_cmd
-                    await asyncio.wait_for(
-                        next_cmd(self.bot.meshcore, ["contacts"]),
-                        timeout=30.0
-                    )
+                    await self.bot.meshcore.commands.get_contacts()
                     self.logger.info("Contact list refreshed from device")
                 except Exception as e:
                     self.logger.warning(f"Failed to refresh contact list: {e}")
@@ -314,21 +310,16 @@ class RepeaterCommand(BaseCommand):
                 # Final verification: Check if contacts were actually removed from device
                 self.logger.info("Performing final verification of contact removal...")
                 try:
-                    from meshcore_cli.meshcore_cli import next_cmd
-                    await asyncio.wait_for(
-                        next_cmd(self.bot.meshcore, ["contacts"]),
-                        timeout=30.0
-                    )
-                    
+                    await self.bot.meshcore.commands.get_contacts()
+
                     # Count remaining repeaters on device
-                    remaining_repeaters = 0
-                    if hasattr(self.bot.meshcore, 'contacts'):
-                        for contact_key, contact_data in self.bot.meshcore.contacts.items():
-                            if self.bot.repeater_manager._is_repeater_device(contact_data):
-                                remaining_repeaters += 1
-                    
+                    remaining_repeaters = sum(
+                        1 for contact_data in self.bot.meshcore.contacts.values()
+                        if self.bot.repeater_manager._is_repeater_device(contact_data)
+                    )
+
                     self.logger.info(f"Final verification: {remaining_repeaters} repeaters still on device")
-                    
+
                 except Exception as e:
                     self.logger.warning(f"Final verification failed: {e}")
                 

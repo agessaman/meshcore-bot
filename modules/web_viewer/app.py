@@ -9,6 +9,7 @@ import json
 import time
 import configparser
 import logging
+import subprocess
 import threading
 from datetime import datetime, timedelta, date
 from flask import Flask, render_template, jsonify, request, send_from_directory, make_response
@@ -85,6 +86,9 @@ class BotDataViewer:
             use_db = bot_db
         self.db_path = str(resolve_path(use_db, self.bot_root))
         
+        # Version info for footer (tag or branch/commit/date); computed once at startup
+        self._version_info = self._get_version_info()
+
         # Setup template context processor for global template variables
         self._setup_template_context()
         
@@ -148,8 +152,61 @@ class BotDataViewer:
             config.read(config_path)
         return config
     
+    def _get_version_info(self) -> Dict[str, Optional[str]]:
+        """Get version info for footer: tag if on a tag, else branch, commit hash and date.
+        Checks MESHCORE_BOT_VERSION env (Docker/build), then .version_info, then git. Never raises."""
+        out = {"tag": None, "branch": None, "commit": None, "date": None}
+        # Docker / CI: version set at build time (e.g. ARG + ENV in Dockerfile)
+        env_version = os.environ.get("MESHCORE_BOT_VERSION", "").strip()
+        if env_version:
+            out["tag"] = env_version if env_version.startswith("v") else f"v{env_version}"
+            return out
+        version_file = self.bot_root / ".version_info"
+        try:
+            if version_file.is_file():
+                with open(version_file, "r") as f:
+                    data = json.load(f)
+                # Installer/tag installs write installer_version (often the tag name)
+                tag = data.get("installer_version") or data.get("tag")
+                if tag:
+                    out["tag"] = tag if tag.startswith("v") else f"v{tag}"
+                    return out
+        except (OSError, json.JSONDecodeError, KeyError):
+            pass
+        try:
+            def run(cmd: List[str]) -> Optional[str]:
+                args = ["git", "-C", str(self.bot_root)] + cmd
+                result = subprocess.run(
+                    args, capture_output=True, text=True, timeout=5
+                )
+                if result.returncode != 0:
+                    return None
+                return (result.stdout or "").strip() or None
+
+            # Check if HEAD is a tag
+            tag = run(["describe", "--exact-match", "HEAD"])
+            if tag:
+                out["tag"] = tag if tag.startswith("v") else f"v{tag}"
+                return out
+            branch = run(["rev-parse", "--abbrev-ref", "HEAD"])
+            commit = run(["rev-parse", "--short", "HEAD"])
+            date_raw = run(["show", "-s", "--format=%ci", "HEAD"])
+            out["branch"] = branch or None
+            out["commit"] = commit or None
+            if date_raw:
+                try:
+                    # %ci is ISO format; take date part only
+                    out["date"] = date_raw.split("T")[0]
+                except IndexError:
+                    out["date"] = date_raw
+            return out
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError, OSError):
+            return out
+
     def _setup_template_context(self):
         """Setup template context processor to inject global variables"""
+        version_info = self._version_info
+
         @self.app.context_processor
         def inject_template_vars():
             """Inject variables available to all templates. Never raises so templates always render."""
@@ -166,10 +223,15 @@ class BotDataViewer:
                     bot_name = (self.config.get('Bot', 'bot_name', fallback='MeshCore Bot') or '').strip() or 'MeshCore Bot'
                 except (configparser.NoSectionError, configparser.NoOptionError):
                     bot_name = 'MeshCore Bot'
-                return dict(greeter_enabled=greeter_enabled, feed_manager_enabled=feed_manager_enabled, bot_name=bot_name)
+                return dict(
+                    greeter_enabled=greeter_enabled,
+                    feed_manager_enabled=feed_manager_enabled,
+                    bot_name=bot_name,
+                    version_info=version_info,
+                )
             except Exception as e:
                 self.logger.exception("Template context processor failed: %s", e)
-                return dict(greeter_enabled=False, feed_manager_enabled=False, bot_name='MeshCore Bot')
+                return dict(greeter_enabled=False, feed_manager_enabled=False, bot_name='MeshCore Bot', version_info=version_info)
     
     def _get_db_path(self):
         """Get the database path, falling back to [Bot] db_path if [Web_Viewer] db_path is unset"""
