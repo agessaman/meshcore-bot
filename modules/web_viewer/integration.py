@@ -17,10 +17,15 @@ from ..utils import resolve_path
 class BotIntegration:
     """Simple bot integration for web viewer compatibility"""
     
+    # After this many consecutive connection failures, stop sending until cooldown expires
+    CIRCUIT_BREAKER_THRESHOLD = 3
+    CIRCUIT_BREAKER_COOLDOWN_SEC = 60
+
     def __init__(self, bot):
         self.bot = bot
         self.circuit_breaker_open = False
         self.circuit_breaker_failures = 0
+        self.circuit_breaker_last_failure_time = 0.0
         self.is_shutting_down = False
         # Initialize HTTP session with connection pooling for efficient reuse
         self._init_http_session()
@@ -36,11 +41,10 @@ class BotIntegration:
             import urllib3
             import logging
             
-            # Suppress urllib3 connection pool debug messages
-            # "Resetting dropped connection" is expected behavior when connections are idle
-            # and the connection pool is working correctly
+            # Suppress urllib3 connection pool messages when web viewer is unreachable
+            # Connection refused / Retrying WARNINGs would flood logs during routing bursts
             urllib3_logger = logging.getLogger('urllib3.connectionpool')
-            urllib3_logger.setLevel(logging.INFO)  # Suppress DEBUG messages
+            urllib3_logger.setLevel(logging.ERROR)
             
             # Also disable other urllib3 warnings
             urllib3.disable_warnings(urllib3.exceptions.NotOpenSSLWarning)
@@ -80,6 +84,30 @@ class BotIntegration:
         """Reset the circuit breaker"""
         self.circuit_breaker_open = False
         self.circuit_breaker_failures = 0
+
+    def _should_skip_web_viewer_send(self):
+        """Return True if we should skip sending (circuit open and within cooldown)."""
+        if not self.circuit_breaker_open:
+            return False
+        if (time.time() - self.circuit_breaker_last_failure_time) >= self.CIRCUIT_BREAKER_COOLDOWN_SEC:
+            self.reset_circuit_breaker()
+            return False
+        return True
+
+    def _record_web_viewer_result(self, success):
+        """Update circuit breaker state after a send attempt."""
+        if success:
+            self.reset_circuit_breaker()
+        else:
+            self.circuit_breaker_failures += 1
+            self.circuit_breaker_last_failure_time = time.time()
+            if self.circuit_breaker_failures >= self.CIRCUIT_BREAKER_THRESHOLD:
+                self.circuit_breaker_open = True
+                self.bot.logger.debug(
+                    "Web viewer unreachable after %d failures; circuit open for %ds",
+                    self.circuit_breaker_failures,
+                    self.CIRCUIT_BREAKER_COOLDOWN_SEC,
+                )
     
     def _get_web_viewer_db_path(self):
         """Return resolved database path for web viewer. Uses [Bot] db_path when [Web_Viewer] db_path is unset."""
@@ -325,6 +353,8 @@ class BotIntegration:
     def send_mesh_edge_update(self, edge_data):
         """Send mesh edge update to web viewer via HTTP API"""
         try:
+            if self._should_skip_web_viewer_send():
+                return
             # Get web viewer URL from config
             host = self.bot.config.get('Web_Viewer', 'host', fallback='127.0.0.1')
             port = self.bot.config.getint('Web_Viewer', 'port', fallback=8080)
@@ -338,28 +368,27 @@ class BotIntegration:
             # Use session with connection pooling if available, otherwise fallback to requests.post
             if self.http_session:
                 try:
-                    # Use a slightly longer timeout to allow connection reuse
                     self.http_session.post(url, json=payload, timeout=1.0)
+                    self._record_web_viewer_result(True)
                 except Exception:
-                    # Silently fail - web viewer might not be running
-                    pass
+                    self._record_web_viewer_result(False)
             else:
-                # Fallback if session not initialized
                 import requests
                 try:
                     requests.post(url, json=payload, timeout=1.0)
+                    self._record_web_viewer_result(True)
                 except Exception:
-                    pass
+                    self._record_web_viewer_result(False)
         except Exception as e:
             self.bot.logger.debug(f"Error sending mesh edge update to web viewer: {e}")
     
     def send_mesh_node_update(self, node_data):
         """Send mesh node update to web viewer via HTTP API"""
         try:
+            if self._should_skip_web_viewer_send():
+                return
             import requests
-            import json
-            
-            # Get web viewer URL from config
+
             host = self.bot.config.get('Web_Viewer', 'host', fallback='127.0.0.1')
             port = self.bot.config.getint('Web_Viewer', 'port', fallback=8080)
             url = f"http://{host}:{port}/api/stream_data"
@@ -369,12 +398,11 @@ class BotIntegration:
                 'data': node_data
             }
             
-            # Send asynchronously (don't block)
             try:
                 requests.post(url, json=payload, timeout=0.5)
+                self._record_web_viewer_result(True)
             except Exception:
-                # Silently fail - web viewer might not be running
-                pass
+                self._record_web_viewer_result(False)
         except Exception as e:
             self.bot.logger.debug(f"Error sending mesh node update to web viewer: {e}")
     

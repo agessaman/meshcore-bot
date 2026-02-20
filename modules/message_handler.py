@@ -534,8 +534,9 @@ class MessageHandler:
                     advert_data['out_path'] = out_path
                     advert_data['out_path_len'] = out_path_len
                 
-                # Update mesh graph with edges from the advert path
-                # Create edge from advertising device to first hop in path
+                # Update mesh graph with edges from the advert path (one edge per hop).
+                # This can trigger many send_mesh_edge_update() calls in quick succession;
+                # if the web viewer is down, that produces a wave of connection-refused logs.
                 if (out_path and out_path_len > 0
                         and hasattr(self.bot, 'mesh_graph') and self.bot.mesh_graph
                         and self.bot.mesh_graph.capture_enabled):
