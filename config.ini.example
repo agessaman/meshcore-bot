@@ -1238,6 +1238,7 @@ mqtt_enabled = true
 # mqttN_topic_packets =               # Packets topic template (uses placeholders below)
 # mqttN_topic_prefix =                # Legacy topic prefix (fallback if topic_status/topic_packets not set)
 # mqttN_client_id =                   # MQTT client ID (optional, auto-generated from bot name)
+# mqttN_upload_packet_types =         # Comma-separated packet types to upload (e.g. 2,4); empty = all
 #
 # Topic template placeholders:
 # {IATA} - Uppercase IATA code (e.g., SEA)
@@ -1257,6 +1258,7 @@ mqtt1_topic_status = meshcore/{IATA}/{PUBLIC_KEY}/status
 mqtt1_topic_packets = meshcore/{IATA}/{PUBLIC_KEY}/packets
 mqtt1_websocket_path = /mqtt
 mqtt1_client_id = 
+mqtt1_upload_packet_types = 
 
 # MQTT Broker 2 - Let's Mesh Analyzer (EU)
 mqtt2_enabled = true
@@ -1270,6 +1272,7 @@ mqtt2_topic_status = meshcore/{IATA}/{PUBLIC_KEY}/status
 mqtt2_topic_packets = meshcore/{IATA}/{PUBLIC_KEY}/packets
 mqtt2_websocket_path = /mqtt
 mqtt2_client_id = 
+mqtt2_upload_packet_types = 
 
 # Stats and status publishing
 # Enable stats in status messages

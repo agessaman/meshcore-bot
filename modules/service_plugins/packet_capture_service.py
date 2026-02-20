@@ -231,6 +231,14 @@ class PacketCaptureService(BaseServicePlugin):
                 broker_num += 1
                 continue
             
+            # Parse upload_packet_types: comma-separated list (e.g. "2,4"); empty/unset = upload all
+            upload_types_raw = config.get('PacketCapture', f'mqtt{broker_num}_upload_packet_types', fallback='').strip()
+            upload_packet_types = None
+            if upload_types_raw:
+                upload_packet_types = frozenset(t.strip() for t in upload_types_raw.split(',') if t.strip())
+                if not upload_packet_types:
+                    upload_packet_types = None
+
             broker = {
                 'enabled': True,
                 'host': config.get('PacketCapture', server_key, fallback='localhost'),
@@ -245,7 +253,8 @@ class PacketCaptureService(BaseServicePlugin):
                 'transport': config.get('PacketCapture', f'mqtt{broker_num}_transport', fallback='tcp').lower(),
                 'use_tls': config.getboolean('PacketCapture', f'mqtt{broker_num}_use_tls', fallback=False),
                 'websocket_path': config.get('PacketCapture', f'mqtt{broker_num}_websocket_path', fallback='/mqtt'),
-                'client_id': config.get('PacketCapture', f'mqtt{broker_num}_client_id', fallback=None)
+                'client_id': config.get('PacketCapture', f'mqtt{broker_num}_client_id', fallback=None),
+                'upload_packet_types': upload_packet_types,
             }
             
             # Set default topic_prefix if not set
@@ -1309,7 +1318,15 @@ class PacketCaptureService(BaseServicePlugin):
             try:
                 client = mqtt_client_info['client']
                 config = mqtt_client_info['config']
-                
+
+                # Per-broker packet type filter: if set, only upload listed types (e.g. 2,4 = TXT_MSG, ADVERT)
+                upload_types = config.get('upload_packet_types')
+                if upload_types is not None and packet_info.get('packet_type', '') not in upload_types:
+                    self.logger.debug(
+                        f"Skipping MQTT broker {config.get('host', 'unknown')} (packet type {packet_info.get('packet_type')} not in {sorted(upload_types)})"
+                    )
+                    continue
+
                 # Determine topic
                 topic = None
                 if config.get('topic_packets'):
