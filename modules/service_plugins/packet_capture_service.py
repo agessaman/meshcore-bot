@@ -815,7 +815,8 @@ class PacketCaptureService(BaseServicePlugin):
                 publish_metrics = await self.publish_packet_mqtt(formatted_packet)
             
             # Log DEBUG level for each packet (verbose; use INFO only for service lifecycle)
-            self.logger.debug(f"📦 Captured packet #{self.packet_count}: {formatted_packet['route']} type {formatted_packet['packet_type']}, {formatted_packet['len']} bytes, SNR: {formatted_packet['SNR']}, RSSI: {formatted_packet['RSSI']}, hash: {formatted_packet['hash']} (MQTT: {publish_metrics['succeeded']}/{publish_metrics['attempted']})")
+            action = "Skipping" if publish_metrics.get("skipped_by_filter") else "Captured"
+            self.logger.debug(f"📦 {action} packet #{self.packet_count}: {formatted_packet['route']} type {formatted_packet['packet_type']}, {formatted_packet['len']} bytes, SNR: {formatted_packet['SNR']}, RSSI: {formatted_packet['RSSI']}, hash: {formatted_packet['hash']} (MQTT: {publish_metrics['succeeded']}/{publish_metrics['attempted']})")
             
             # Output full packet data structure in debug mode only (matches original script)
             if self.debug:
@@ -1286,20 +1287,21 @@ class PacketCaptureService(BaseServicePlugin):
         
         return topic
     
-    async def publish_packet_mqtt(self, packet_info: Dict[str, Any]) -> Dict[str, int]:
-        """Publish packet to MQTT - returns metrics dict with 'attempted' and 'succeeded' counts.
+    async def publish_packet_mqtt(self, packet_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Publish packet to MQTT - returns metrics dict with attempted/succeeded/skipped_by_filter.
         
         Args:
             packet_info: Formatted packet dictionary.
             
         Returns:
-            Dict[str, int]: Dictionary with 'attempted' and 'succeeded' counts.
+            Dict with 'attempted', 'succeeded' counts and 'skipped_by_filter' (True when
+            packet type was excluded by mqttN_upload_packet_types for all connected brokers).
         """
         # Always log when function is called (helps diagnose if it's not being invoked)
         self.logger.debug(f"publish_packet_mqtt called (packet {self.packet_count}, {len(self.mqtt_clients)} clients)")
         
-        # Initialize metrics
-        metrics = {"attempted": 0, "succeeded": 0}
+        # Initialize metrics (skipped_by_filter: True when packet type excluded by upload_packet_types)
+        metrics = {"attempted": 0, "succeeded": 0, "skipped_by_filter": False}
         
         # Check per-broker connection status (more accurate than global flag)
         # Don't use early return - let the loop check each broker individually
@@ -1322,6 +1324,7 @@ class PacketCaptureService(BaseServicePlugin):
                 # Per-broker packet type filter: if set, only upload listed types (e.g. 2,4 = TXT_MSG, ADVERT)
                 upload_types = config.get('upload_packet_types')
                 if upload_types is not None and packet_info.get('packet_type', '') not in upload_types:
+                    metrics["skipped_by_filter"] = True
                     self.logger.debug(
                         f"Skipping MQTT broker {config.get('host', 'unknown')} (packet type {packet_info.get('packet_type')} not in {sorted(upload_types)})"
                     )
