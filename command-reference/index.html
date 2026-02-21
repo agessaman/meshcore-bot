@@ -1,0 +1,2499 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for the MeshCore bot and its services">
+      
+      
+      
+        <link rel="canonical" href="https://agessaman.github.io/meshcore-bot/command-reference/">
+      
+      
+        <link rel="prev" href="../web-viewer/">
+      
+      
+        <link rel="next" href="../service-plugins/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.2">
+    
+    
+      
+        <title>Command Reference - Meshcore Bot Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="cyan">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#meshcore-bot-commands" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Meshcore Bot Documentation" class="md-header__button md-logo" aria-label="Meshcore Bot Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Meshcore Bot Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Command Reference
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="cyan"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="cyan"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/agessaman/meshcore-bot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    meshcore-bot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Quick Start
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../installation/" class="md-tabs__link">
+          
+  
+  
+  Installation
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../configuration/" class="md-tabs__link">
+          
+  
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../web-viewer/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Web Viewer
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Command Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../service-plugins/" class="md-tabs__link">
+          
+  
+  
+  Service Plugins
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../faq/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  FAQ
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../upgrade/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Upgrade
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--lifted md-nav--integrated" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Meshcore Bot Documentation" class="md-nav__button md-logo" aria-label="Meshcore Bot Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Meshcore Bot Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/agessaman/meshcore-bot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    meshcore-bot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Installation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docker.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../service-installation.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Configuration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../path-command-config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Path Command
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../config-validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Config validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../web-viewer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Viewer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Command Reference
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Command Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#table-of-contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table of Contents
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#basic-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic Commands
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Basic Commands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#test-or-t" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        test or t
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ping
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#help" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        help
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hello" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        hello
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cmd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        cmd
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#information-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Information Commands
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Information Commands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#channels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        channels
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wx-zipcode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        wx &lt;zipcode&gt;
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gwx-location" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        gwx &lt;location&gt;
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#aqi-location" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        aqi &lt;location&gt;
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#airplanes-location-options-overhead-latlon" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        airplanes [location] [options] / overhead [lat,lon]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sun" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        sun
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#moon" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        moon
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#solar" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        solar
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#solarforecast-or-sf" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        solarforecast or sf
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hfcond" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        hfcond
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#satpass-norad" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        satpass &lt;NORAD&gt;
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#emergency-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Emergency Commands
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Emergency Commands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#alert-location-all" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        alert &lt;location&gt; [all]
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gaming-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gaming Commands
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Gaming Commands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#dice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dice
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#roll" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        roll
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entertainment-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entertainment Commands
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Entertainment Commands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#joke" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        joke
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dadjoke" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        dadjoke
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hacker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        hacker
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sports-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sports Commands
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Sports Commands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        sports
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#meshcore-utility-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MeshCore Utility Commands
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="MeshCore Utility Commands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#path-or-decode-or-route" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        path or decode or route
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prefix-xx" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        prefix &lt;XX&gt;
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        stats
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multitest-or-mt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        multitest or mt
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#command-syntax" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Command Syntax
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Command Syntax">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#prefix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prefix
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#direct-messages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Direct Messages
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rate-limiting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rate Limiting
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#case-sensitivity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Case Sensitivity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#getting-help" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Getting Help
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#additional-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Additional Notes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Additional Notes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#location-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Location Requirements
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#api-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API Keys
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#weather-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Weather Data
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#command-categories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Command Categories
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#admin-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Admin Commands
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Admin Commands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#repeater-or-repeaters-or-rp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        repeater or repeaters or rp
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="repeater or repeaters or rp">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#repeater-management-subcommands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Repeater Management Subcommands
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#contact-list-management-subcommands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Contact List Management Subcommands
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#advert" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        advert
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#feed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        feed
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="feed">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#subcommands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Subcommands
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Service Plugins
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Service Plugins
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../service-plugins/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../discord-bridge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Discord Bridge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../packet-capture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Packet Capture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../map-uploader/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Map Uploader
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../weather-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Weather Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../feeds.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feed Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../upgrade/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="meshcore-bot-commands">MeshCore Bot Commands</h1>
+<p>This document provides a comprehensive list of all available commands in the MeshCore Bot, with examples and detailed explanations.</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#basic-commands">Basic Commands</a></li>
+<li><a href="#information-commands">Information Commands</a></li>
+<li><a href="#emergency-commands">Emergency Commands</a></li>
+<li><a href="#gaming-commands">Gaming Commands</a></li>
+<li><a href="#entertainment-commands">Entertainment Commands</a></li>
+<li><a href="#sports-commands">Sports Commands</a></li>
+<li><a href="#meshcore-utility-commands">MeshCore Utility Commands</a></li>
+<li><a href="#admin-commands">Admin Commands</a></li>
+</ul>
+<hr />
+<h2 id="basic-commands">Basic Commands</h2>
+<h3 id="test-or-t"><code>test</code> or <code>t</code></h3>
+<p>Test message response to verify bot connectivity and functionality.</p>
+<p><strong>Usage:</strong>
+- <code>test</code> - Basic test response
+- <code>test &lt;phrase&gt;</code> - Test with optional phrase</p>
+<p><strong>Examples:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>test
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>t hello world
+</code></pre></div></p>
+<p><strong>Response:</strong> Confirms message receipt with connection information.</p>
+<hr />
+<h3 id="ping"><code>ping</code></h3>
+<p>Simple ping/pong response to test bot responsiveness.</p>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>ping
+</code></pre></div></p>
+<p><strong>Response:</strong> <code>Pong!</code></p>
+<hr />
+<h3 id="help"><code>help</code></h3>
+<p>Show available commands or get detailed help for a specific command.</p>
+<p><strong>Usage:</strong>
+- <code>help</code> - List all available commands
+- <code>help &lt;command&gt;</code> - Get detailed help for a specific command</p>
+<p><strong>Examples:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>help
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>help wx
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>help repeater
+</code></pre></div></p>
+<p><strong>Response:</strong> Lists commands or provides detailed information about the specified command.</p>
+<hr />
+<h3 id="hello"><code>hello</code></h3>
+<p>Greeting response. Also responds to various greeting keywords.</p>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>hello
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>hi
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>hey
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>howdy
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>greetings
+</code></pre></div></p>
+<p><strong>Response:</strong> Friendly greeting message.</p>
+<hr />
+<h3 id="cmd"><code>cmd</code></h3>
+<p>List available commands in compact format.</p>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>cmd
+</code></pre></div></p>
+<p><strong>Response:</strong> Compact list of all available commands.</p>
+<hr />
+<h2 id="information-commands">Information Commands</h2>
+<h3 id="channels"><code>channels</code></h3>
+<p>List and manage hashtag channels on the MeshCore network.</p>
+<p><strong>Usage:</strong>
+- <code>channels</code> - List general channels
+- <code>channels list</code> - List all channel categories
+- <code>channels &lt;category&gt;</code> - List channels in a specific category
+- <code>channels #channel</code> - Get information about a specific channel</p>
+<p><strong>Examples:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>channels
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>channels list
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>channels emergency
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>channels #general
+</code></pre></div></p>
+<p><strong>Response:</strong> Lists available channels with their descriptions and usage statistics.</p>
+<hr />
+<h3 id="wx-zipcode"><code>wx &lt;zipcode&gt;</code></h3>
+<p>Get weather information for a US zip code using NOAA data.</p>
+<p><strong>Aliases:</strong> <code>weather</code>, <code>wxa</code>, <code>wxalert</code></p>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>wx &lt;zipcode&gt;
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>weather &lt;zipcode&gt;
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>wxa &lt;zipcode&gt;
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>wxalert &lt;zipcode&gt;
+</code></pre></div></p>
+<p><strong>Examples:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>wx 98101
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>weather 90210
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>wxa 10001
+</code></pre></div></p>
+<p><strong>Response:</strong> Current weather conditions, forecast for tonight/tomorrow, and active weather alerts. Includes:
+- Current conditions (temperature, humidity, wind, etc.)
+- Short-term forecast (tonight, tomorrow)
+- Weather alerts if any are active</p>
+<p><strong>Note:</strong> Weather alerts are automatically included when available.</p>
+<hr />
+<h3 id="gwx-location"><code>gwx &lt;location&gt;</code></h3>
+<p>Get global weather information for any location worldwide using Open-Meteo API.</p>
+<p><strong>Aliases:</strong> <code>globalweather</code>, <code>gwxa</code></p>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>gwx &lt;location&gt;
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>globalweather &lt;location&gt;
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>gwxa &lt;location&gt;
+</code></pre></div></p>
+<p><strong>Examples:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>gwx Tokyo
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>gwx Paris, France
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>gwx London
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>globalweather New York
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>gwx 35.6762,139.6503
+</code></pre></div></p>
+<p><strong>Response:</strong> Current weather conditions and forecast for the specified location, including:
+- Current temperature and conditions
+- Feels-like temperature
+- Wind speed and direction
+- Humidity
+- Dew point
+- Visibility
+- Pressure
+- Forecast for today/tonight and tomorrow</p>
+<hr />
+<h3 id="aqi-location"><code>aqi &lt;location&gt;</code></h3>
+<p>Get Air Quality Index (AQI) information for a location.</p>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>aqi &lt;location&gt;
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>aqi &lt;city&gt;
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>aqi &lt;city&gt;, &lt;state&gt;
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>aqi &lt;city&gt;, &lt;country&gt;
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>aqi &lt;latitude&gt;,&lt;longitude&gt;
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>aqi help
+</code></pre></div></p>
+<p><strong>Examples:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>aqi seattle
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>aqi greenwood
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>aqi vancouver canada
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>aqi 47.6,-122.3
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>aqi help
+</code></pre></div></p>
+<p><strong>Response:</strong> Air quality data including:
+- US AQI value and category
+- European AQI (if available)
+- Pollutant concentrations (PM2.5, PM10, Ozone, etc.)
+- Health recommendations</p>
+<hr />
+<h3 id="airplanes-location-options-overhead-latlon"><code>airplanes [location] [options]</code> / <code>overhead [lat,lon]</code></h3>
+<p>Get aircraft tracking information using ADS-B data from airplanes.live or compatible APIs.</p>
+<p><strong>Aliases:</strong> <code>aircraft</code>, <code>planes</code>, <code>adsb</code>, <code>overhead</code></p>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>airplanes
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>airplanes here
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>airplanes &lt;latitude&gt;,&lt;longitude&gt;
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>airplanes [location] [options]
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>overhead
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>overhead &lt;latitude&gt;,&lt;longitude&gt;
+</code></pre></div></p>
+<p><strong>Special Command: <code>overhead</code></strong>
+- Returns the single closest aircraft directly overhead
+- Uses companion location from database (if available)
+- If companion location not available, prompts user to specify coordinates
+- Always returns one aircraft sorted by distance (closest first)</p>
+<p><strong>Location Options:</strong>
+- No location: Uses companion location (if available), otherwise bot location
+- <code>here</code>: Uses bot location from config
+- <code>&lt;lat&gt;,&lt;lon&gt;</code>: Uses specified coordinates (e.g., <code>47.6,-122.3</code>)</p>
+<p><strong>Filter Options:</strong>
+- <code>radius=&lt;nm&gt;</code> - Search radius in nautical miles (default: 25, max: 250)
+- <code>alt=&lt;min&gt;-&lt;max&gt;</code> - Filter by altitude range in feet (e.g., <code>alt=1000-5000</code>)
+- <code>speed=&lt;min&gt;-&lt;max&gt;</code> - Filter by ground speed range in knots
+- <code>type=&lt;code&gt;</code> - Filter by aircraft type code (e.g., <code>B738</code>, <code>A321</code>)
+- <code>callsign=&lt;pattern&gt;</code> - Filter by callsign pattern
+- <code>military</code> - Show only military aircraft
+- <code>ladd</code> - Show only LADD aircraft
+- <code>pia</code> - Show only PIA aircraft
+- <code>squawk=&lt;code&gt;</code> - Filter by transponder squawk code
+- <code>limit=&lt;n&gt;</code> - Limit number of results (default: 10, max: 50)
+- <code>closest</code> - Sort by distance (closest first)
+- <code>highest</code> - Sort by altitude (highest first)
+- <code>fastest</code> - Sort by speed (fastest first)</p>
+<p><strong>Examples:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>airplanes
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>airplanes here
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>airplanes 47.6,-122.3
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>airplanes radius=50
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>airplanes alt=10000-40000
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>airplanes type=B738
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>airplanes military
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>airplanes callsign=UAL limit=5
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>airplanes 47.6,-122.3 radius=25 closest
+</code></pre></div></p>
+<p><strong>Response:</strong>
+- <strong>Single aircraft</strong>: Detailed format with callsign, type, altitude, speed, track, distance, bearing, vertical rate, and registration
+- <strong>Multiple aircraft</strong>: Compact list format with callsign, altitude, speed, distance, and bearing</p>
+<p><strong>Configuration:</strong>
+The command can be configured in <code>config.ini</code> under <code>[Airplanes_Command]</code>:
+- <code>enabled</code> - Enable/disable the command
+- <code>api_url</code> - API endpoint URL (default: <code>http://api.airplanes.live/v2/</code>)
+- <code>default_radius</code> - Default search radius in nautical miles
+- <code>max_results</code> - Maximum number of results to return
+- <code>url_timeout</code> - API request timeout in seconds</p>
+<p><strong>Note:</strong> Uses companion location from database if available, otherwise falls back to bot location from config. The API is rate-limited to 1 request per second.</p>
+<hr />
+<h3 id="sun"><code>sun</code></h3>
+<p>Get sunrise and sunset times for the bot's configured location.</p>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>sun
+</code></pre></div></p>
+<p><strong>Response:</strong> Sunrise and sunset times, day length, and solar noon.</p>
+<p><strong>Note:</strong> Uses the bot's configured default location (<code>bot_latitude</code> and <code>bot_longitude</code> in config.ini), not the user's location from their advert.</p>
+<hr />
+<h3 id="moon"><code>moon</code></h3>
+<p>Get moon phase information and moonrise/moonset times for the bot's configured location.</p>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>moon
+</code></pre></div></p>
+<p><strong>Response:</strong> Current moon phase, moonrise/moonset times, and illumination percentage.</p>
+<p><strong>Note:</strong> Uses the bot's configured default location (<code>bot_latitude</code> and <code>bot_longitude</code> in config.ini), not the user's location from their advert.</p>
+<hr />
+<h3 id="solar"><code>solar</code></h3>
+<p>Get solar conditions and HF band status.</p>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>solar
+</code></pre></div></p>
+<p><strong>Response:</strong> Solar activity information including:
+- Solar flux
+- Sunspot number
+- A-index and K-index
+- HF band conditions (Open/Closed/Marginal)
+- Solar activity summary</p>
+<hr />
+<h3 id="solarforecast-or-sf"><code>solarforecast</code> or <code>sf</code></h3>
+<p>Get solar panel production forecast for a location.</p>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>sf &lt;location|repeater_name|coordinates|zipcode&gt; [panel_size] [azimuth] [angle]
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>solarforecast &lt;location&gt; [panel_size] [azimuth] [angle]
+</code></pre></div></p>
+<p><strong>Parameters:</strong>
+- <code>location</code> - Location name, repeater name, coordinates (lat,lon), or zipcode
+- <code>panel_size</code> - Panel size in watts (optional, default: 100W)
+- <code>azimuth</code> - Panel azimuth in degrees, 0=south (optional, default: 180)
+- <code>angle</code> - Panel tilt angle in degrees (optional, default: 30)</p>
+<p><strong>Examples:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>sf seattle
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>sf seattle 200
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>sf seattle 200 180 45
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>sf 47.6,-122.3 150
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>sf repeater1 100 180 30
+</code></pre></div></p>
+<p><strong>Response:</strong> Solar panel production forecast including:
+- Daily production estimate
+- Hourly production breakdown
+- Peak production time
+- Total daily kWh estimate</p>
+<hr />
+<h3 id="hfcond"><code>hfcond</code></h3>
+<p>Get HF band conditions for amateur radio.</p>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>hfcond
+</code></pre></div></p>
+<p><strong>Response:</strong> HF band conditions including:
+- Band status (Open/Closed/Marginal)
+- Solar flux
+- A-index and K-index
+- Propagation conditions</p>
+<hr />
+<h3 id="satpass-norad"><code>satpass &lt;NORAD&gt;</code></h3>
+<p>Get satellite pass information for a satellite by NORAD ID.</p>
+<p><strong>Usage:</strong>
+- <code>satpass &lt;NORAD&gt;</code> - Get radio passes (all passes above horizon)
+- <code>satpass &lt;NORAD&gt; visual</code> - Get visual passes only (must be visually observable)
+- <code>satpass &lt;shortcut&gt;</code> - Use predefined shortcuts</p>
+<p><strong>Shortcuts:</strong>
+- <strong>Weather Satellites:</strong> <code>noaa15</code>, <code>noaa18</code>, <code>noaa19</code>, <code>metop-a</code>, <code>metop-b</code>, <code>metop-c</code>, <code>goes16</code>, <code>goes17</code>, <code>goes18</code>
+- <strong>Space Stations:</strong> <code>iss</code>, <code>tiangong</code>, <code>tiangong1</code>, <code>tiangong2</code>
+- <strong>Telescopes:</strong> <code>hst</code>, <code>hubble</code>
+- <strong>Other:</strong> <code>starlink</code></p>
+<p><strong>Examples:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>satpass 25544
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>satpass iss
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>satpass iss visual
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>satpass noaa19
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>satpass hubble visual
+</code></pre></div></p>
+<p><strong>Response:</strong> Upcoming satellite passes including:
+- Pass start/end times
+- Maximum elevation
+- Duration
+- Azimuth at start/end
+- Visual pass indicator (if applicable)</p>
+<p><strong>Note:</strong> Requires <code>n2yo_api_key</code> to be configured in <code>config.ini</code>.</p>
+<hr />
+<h2 id="emergency-commands">Emergency Commands</h2>
+<h3 id="alert-location-all"><code>alert &lt;location&gt; [all]</code></h3>
+<p>Get active emergency incidents for a location.</p>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>alert &lt;city|zipcode|street city|lat,lon|county&gt; [all]
+</code></pre></div></p>
+<p><strong>Parameters:</strong>
+- <code>location</code> - City name, zipcode, street address with city, coordinates, or county name
+- <code>all</code> - Show all incidents (default: shows most relevant incidents)</p>
+<p><strong>Examples:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>alert seattle
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>alert 98101
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>alert main street seattle
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>alert 47.6,-122.3
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a>alert seattle all
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a>alert king county
+</code></pre></div></p>
+<p><strong>Response:</strong> Active emergency incidents including:
+- Incident type and description
+- Location
+- Agency
+- Time
+- Severity level</p>
+<p><strong>Note:</strong> Requires <code>Alert_Command</code> configuration in <code>config.ini</code> with agency IDs for your area.</p>
+<hr />
+<h2 id="gaming-commands">Gaming Commands</h2>
+<h3 id="dice"><code>dice</code></h3>
+<p>Roll dice with various configurations.</p>
+<p><strong>Usage:</strong>
+- <code>dice</code> - Roll a standard 6-sided die (d6)
+- <code>dice d&lt;N&gt;</code> - Roll a die with N sides
+- <code>dice &lt;X&gt;d&lt;N&gt;</code> - Roll X dice with N sides each</p>
+<p><strong>Examples:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>dice
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>dice d20
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>dice 2d6
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a>dice 3d10
+</code></pre></div></p>
+<p><strong>Response:</strong> Shows the dice roll result(s) and total.</p>
+<hr />
+<h3 id="roll"><code>roll</code></h3>
+<p>Roll a random number within a specified range.</p>
+<p><strong>Usage:</strong>
+- <code>roll</code> - Roll a number between 1 and 100
+- <code>roll &lt;max&gt;</code> - Roll a number between 1 and max</p>
+<p><strong>Examples:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>roll
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>roll 50
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a>roll 1000
+</code></pre></div></p>
+<p><strong>Response:</strong> Shows the random number result.</p>
+<hr />
+<h2 id="entertainment-commands">Entertainment Commands</h2>
+<h3 id="joke"><code>joke</code></h3>
+<p>Get a random joke from various categories.</p>
+<p><strong>Usage:</strong>
+- <code>joke</code> - Get a random joke
+- <code>joke &lt;category&gt;</code> - Get a joke from a specific category</p>
+<p><strong>Examples:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>joke
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>joke programming
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>joke pun
+</code></pre></div></p>
+<p><strong>Response:</strong> A random joke from the selected category.</p>
+<hr />
+<h3 id="dadjoke"><code>dadjoke</code></h3>
+<p>Get a dad joke from icanhazdadjoke.com.</p>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>dadjoke
+</code></pre></div></p>
+<p><strong>Response:</strong> A random dad joke.</p>
+<hr />
+<h3 id="hacker"><code>hacker</code></h3>
+<p>Responds to Linux/Unix commands with supervillain mainframe error messages.</p>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>sudo
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>ps aux
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>grep
+<a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a>ls -l
+<a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a>cat
+<a id="__codelineno-27-6" name="__codelineno-27-6" href="#__codelineno-27-6"></a>rm -rf
+</code></pre></div></p>
+<p><strong>Examples:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>sudo make me a sandwich
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>ps aux | grep evil
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>ls -l /secret/base
+</code></pre></div></p>
+<p><strong>Response:</strong> Humorous error messages in the style of a supervillain's mainframe system.</p>
+<hr />
+<h2 id="sports-commands">Sports Commands</h2>
+<h3 id="sports"><code>sports</code></h3>
+<p>Get sports scores for configured teams or leagues.</p>
+<p><strong>Usage:</strong>
+- <code>sports</code> - Get scores for default teams
+- <code>sports &lt;team&gt;</code> - Get scores for a specific team
+- <code>sports &lt;league&gt;</code> - Get scores for a league (nfl, mlb, nba, nhl, etc.)</p>
+<p><strong>Examples:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>sports
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>sports seahawks
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>sports nfl
+<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a>sports mlb
+</code></pre></div></p>
+<p><strong>Response:</strong> Current scores and game information for the requested teams or league.</p>
+<hr />
+<h2 id="meshcore-utility-commands">MeshCore Utility Commands</h2>
+<h3 id="path-or-decode-or-route"><code>path</code> or <code>decode</code> or <code>route</code></h3>
+<p>Decode and display the routing path of a message.</p>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>path
+<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a>decode
+<a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a>route
+</code></pre></div></p>
+<p><strong>Response:</strong> Shows the complete routing path the message took through the mesh network, including all intermediate nodes.</p>
+<hr />
+<h3 id="prefix-xx"><code>prefix &lt;XX&gt;</code></h3>
+<p>Look up repeaters by two-character prefix.</p>
+<p><strong>Usage:</strong>
+- <code>prefix &lt;XX&gt;</code> - Look up repeaters with the specified prefix
+- <code>prefix &lt;XX&gt; all</code> - Include all repeaters (not just active ones)
+- <code>prefix refresh</code> - Refresh the prefix cache
+- <code>prefix free</code> or <code>prefix available</code> - Show available prefixes</p>
+<p><strong>Examples:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>prefix 1A
+<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a>prefix 2B all
+<a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a>prefix refresh
+<a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a>prefix free
+</code></pre></div></p>
+<p><strong>Response:</strong> List of repeaters matching the prefix, including:
+- Repeater name
+- Status (active/inactive)
+- Last seen time
+- Location (if available)</p>
+<hr />
+<h3 id="stats"><code>stats</code></h3>
+<p>Show bot usage statistics for the past 24 hours.</p>
+<p><strong>Usage:</strong>
+- <code>stats</code> - Overall statistics
+- <code>stats messages</code> - Message statistics
+- <code>stats channels</code> - Channel statistics
+- <code>stats paths</code> - Path statistics</p>
+<p><strong>Examples:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>stats
+<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a>stats messages
+<a id="__codelineno-32-3" name="__codelineno-32-3" href="#__codelineno-32-3"></a>stats channels
+<a id="__codelineno-32-4" name="__codelineno-32-4" href="#__codelineno-32-4"></a>stats paths
+</code></pre></div></p>
+<p><strong>Response:</strong> Usage statistics including:
+- Total messages processed
+- Commands executed
+- Channel activity
+- Routing path information</p>
+<hr />
+<h3 id="multitest-or-mt"><code>multitest</code> or <code>mt</code></h3>
+<p>Listen for 6 seconds and collect all unique paths from incoming messages.</p>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>multitest
+<a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a>mt
+</code></pre></div></p>
+<p><strong>Response:</strong> List of all unique routing paths discovered during the 6-second listening period.</p>
+<hr />
+<h2 id="command-syntax">Command Syntax</h2>
+<h3 id="prefix">Prefix</h3>
+<p>Commands can be used with or without the <code>!</code> prefix:
+- <code>test</code> or <code>!test</code> - Both work
+- <code>wx 98101</code> or <code>!wx 98101</code> - Both work</p>
+<h3 id="direct-messages">Direct Messages</h3>
+<p>Some commands work in both public channels and direct messages, while admin commands typically require direct messages for security.</p>
+<h3 id="rate-limiting">Rate Limiting</h3>
+<p>The bot implements rate limiting to prevent spam. If you send commands too quickly, you may receive a rate limit message. Wait a few seconds before trying again.</p>
+<h3 id="case-sensitivity">Case Sensitivity</h3>
+<p>Most commands are case-insensitive:
+- <code>TEST</code> and <code>test</code> work the same
+- <code>WX 98101</code> and <code>wx 98101</code> work the same</p>
+<h3 id="getting-help">Getting Help</h3>
+<p>Use the <code>help</code> command to get more information:
+- <code>help</code> - List all commands
+- <code>help &lt;command&gt;</code> - Get detailed help for a specific command</p>
+<hr />
+<h2 id="additional-notes">Additional Notes</h2>
+<h3 id="location-requirements">Location Requirements</h3>
+<p>Some commands use location data:
+- <strong><code>sun</code> and <code>moon</code></strong> - Use the bot's configured default location (<code>bot_latitude</code> and <code>bot_longitude</code> in config.ini), not the user's location from their advert
+- <strong><code>solar</code></strong> - Does not require location (provides global solar conditions)
+- <strong><code>solarforecast</code></strong> - Requires a location parameter (location name, repeater name, coordinates, or zipcode)
+- <strong><code>wx</code></strong> - Requires a zipcode parameter
+- <strong><code>gwx</code></strong> - Requires a location parameter
+- <strong><code>aqi</code></strong> - Requires a location parameter</p>
+<h3 id="api-keys">API Keys</h3>
+<p>Some commands require API keys to be configured in <code>config.ini</code>:
+- <code>satpass</code> - Requires <code>n2yo_api_key</code>
+- <code>aqi</code> - Requires <code>airnow_api_key</code> (optional, uses fallback if not configured)</p>
+<h3 id="weather-data">Weather Data</h3>
+<ul>
+<li><code>wx</code> uses NOAA API (US locations only)</li>
+<li><code>gwx</code> uses Open-Meteo API (global locations)</li>
+<li>Both provide current conditions and forecasts</li>
+</ul>
+<h3 id="command-categories">Command Categories</h3>
+<p>Commands are organized into categories for easier discovery:
+- <strong>Basic</strong> - Essential commands for testing and help
+- <strong>Information</strong> - Weather, astronomy, and data queries
+- <strong>Emergency</strong> - Emergency and safety information
+- <strong>Gaming</strong> - Fun commands for games and random numbers
+- <strong>Entertainment</strong> - Jokes and humorous responses
+- <strong>Sports</strong> - Sports scores and information
+- <strong>MeshCore Utility</strong> - Network-specific utilities
+- <strong>Admin</strong> - Administrative commands (DM only)</p>
+<hr />
+<h2 id="admin-commands">Admin Commands</h2>
+<p><strong>Note:</strong> Admin commands are only available via Direct Message (DM) and may require ACL permissions.</p>
+<h3 id="repeater-or-repeaters-or-rp"><code>repeater</code> or <code>repeaters</code> or <code>rp</code></h3>
+<p>Manage repeater contacts and contact list capacity.</p>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a>repeater &lt;subcommand&gt; [options]
+<a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a>repeaters &lt;subcommand&gt; [options]
+<a id="__codelineno-34-3" name="__codelineno-34-3" href="#__codelineno-34-3"></a>rp &lt;subcommand&gt; [options]
+</code></pre></div></p>
+<h4 id="repeater-management-subcommands">Repeater Management Subcommands</h4>
+<ul>
+<li><code>scan</code> - Scan current contacts and catalog new repeaters</li>
+<li><code>list</code> - List repeater contacts (use <code>--all</code> to show purged ones)</li>
+<li><code>locations</code> - Show location data status for repeaters</li>
+<li><code>update-geo</code> - Update missing geolocation data (state/country) from coordinates</li>
+<li><code>update-geo dry-run</code> - Preview what would be updated without making changes</li>
+<li><code>update-geo &lt;N&gt;</code> - Update up to N repeaters (default: 10)</li>
+<li><code>update-geo dry-run &lt;N&gt;</code> - Preview updates for up to N repeaters</li>
+<li><code>purge all</code> - Purge all repeaters</li>
+<li><code>purge all force</code> - Force purge all repeaters (uses multiple removal methods)</li>
+<li><code>purge &lt;days&gt;</code> - Purge repeaters older than specified days</li>
+<li><code>purge &lt;name&gt;</code> - Purge specific repeater by name</li>
+<li><code>restore &lt;name&gt;</code> - Restore a previously purged repeater</li>
+<li><code>stats</code> - Show repeater management statistics</li>
+</ul>
+<h4 id="contact-list-management-subcommands">Contact List Management Subcommands</h4>
+<ul>
+<li><code>status</code> - Show contact list status and limits</li>
+<li><code>manage</code> - Manage contact list to prevent hitting limits</li>
+<li><code>manage --dry-run</code> - Show what management actions would be taken</li>
+<li><code>add &lt;name&gt; [key]</code> - Add a discovered contact to contact list</li>
+<li><code>auto-purge</code> - Show auto-purge status and controls</li>
+<li><code>auto-purge trigger</code> - Manually trigger auto-purge</li>
+<li><code>auto-purge enable/disable</code> - Enable/disable auto-purge</li>
+<li><code>purge-status</code> - Show detailed purge status and recommendations</li>
+<li><code>test-purge</code> - Test the improved purge system</li>
+<li><code>discover</code> - Discover companion contacts</li>
+<li><code>auto &lt;on|off&gt;</code> - Toggle manual contact addition setting</li>
+<li><code>test</code> - Test meshcore-cli command functionality</li>
+</ul>
+<p><strong>Examples:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a>repeater scan
+<a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a>repeater status
+<a id="__codelineno-35-3" name="__codelineno-35-3" href="#__codelineno-35-3"></a>repeater manage
+<a id="__codelineno-35-4" name="__codelineno-35-4" href="#__codelineno-35-4"></a>repeater manage --dry-run
+<a id="__codelineno-35-5" name="__codelineno-35-5" href="#__codelineno-35-5"></a>repeater add &quot;John&quot;
+<a id="__codelineno-35-6" name="__codelineno-35-6" href="#__codelineno-35-6"></a>repeater discover
+<a id="__codelineno-35-7" name="__codelineno-35-7" href="#__codelineno-35-7"></a>repeater auto-purge
+<a id="__codelineno-35-8" name="__codelineno-35-8" href="#__codelineno-35-8"></a>repeater auto-purge trigger
+<a id="__codelineno-35-9" name="__codelineno-35-9" href="#__codelineno-35-9"></a>repeater purge-status
+<a id="__codelineno-35-10" name="__codelineno-35-10" href="#__codelineno-35-10"></a>repeater purge all
+<a id="__codelineno-35-11" name="__codelineno-35-11" href="#__codelineno-35-11"></a>repeater purge 30
+<a id="__codelineno-35-12" name="__codelineno-35-12" href="#__codelineno-35-12"></a>repeater stats
+</code></pre></div></p>
+<p><strong>Response:</strong> Varies by subcommand. Provides information about repeater contacts, contact list capacity, and management actions.</p>
+<p><strong>Note:</strong> This system helps manage both repeater contacts and overall contact list capacity. It automatically removes stale contacts and old repeaters when approaching device limits.</p>
+<p><strong>Automatic Features:</strong>
+- NEW_CONTACT events are automatically monitored
+- Repeaters are automatically cataloged when discovered
+- Contact list capacity is monitored in real-time
+- <code>auto_manage_contacts = device</code>: Device handles auto-addition, bot manages capacity
+- <code>auto_manage_contacts = bot</code>: Bot automatically adds companion contacts and manages capacity
+- <code>auto_manage_contacts = false</code>: Manual mode - use <code>!repeater</code> commands to manage contacts</p>
+<hr />
+<h3 id="advert"><code>advert</code></h3>
+<p>Send a network flood advert to announce the bot's presence on the mesh network.</p>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>advert
+</code></pre></div></p>
+<p><strong>Response:</strong> Confirms that the advert was sent.</p>
+<p><strong>Note:</strong> 
+- DM only command
+- 1-hour cooldown period between uses
+- Sends a flood advert to all nodes on the network</p>
+<hr />
+<h3 id="feed"><code>feed</code></h3>
+<p>Manage RSS feed and API feed subscriptions (Admin only).</p>
+<p><strong>Usage:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a>feed &lt;subcommand&gt; [options]
+</code></pre></div></p>
+<h4 id="subcommands">Subcommands</h4>
+<ul>
+<li><code>subscribe &lt;rss|api&gt; &lt;url&gt; &lt;channel&gt; [name]</code> - Subscribe to a feed</li>
+<li><code>unsubscribe &lt;id|url&gt; &lt;channel&gt;</code> - Unsubscribe from a feed</li>
+<li><code>list [channel]</code> - List all subscriptions</li>
+<li><code>status &lt;id&gt;</code> - Get status of a specific subscription</li>
+<li><code>test &lt;url&gt;</code> - Test a feed URL</li>
+<li><code>enable &lt;id&gt;</code> - Enable a subscription</li>
+<li><code>disable &lt;id&gt;</code> - Disable a subscription</li>
+<li><code>update &lt;id&gt; [interval_seconds]</code> - Update subscription interval</li>
+</ul>
+<p><strong>Examples:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a>feed subscribe rss https://alerts.example.com/rss emergency &quot;Emergency Alerts&quot;
+<a id="__codelineno-38-2" name="__codelineno-38-2" href="#__codelineno-38-2"></a>feed subscribe api https://api.example.com/alerts emergency &quot;API Alerts&quot; &#39;{&quot;headers&quot;: {&quot;Authorization&quot;: &quot;Bearer TOKEN&quot;}}&#39;
+<a id="__codelineno-38-3" name="__codelineno-38-3" href="#__codelineno-38-3"></a>feed list
+<a id="__codelineno-38-4" name="__codelineno-38-4" href="#__codelineno-38-4"></a>feed status 1
+<a id="__codelineno-38-5" name="__codelineno-38-5" href="#__codelineno-38-5"></a>feed test https://example.com/feed.xml
+</code></pre></div></p>
+<p><strong>Response:</strong> Confirmation of the action or list of subscriptions.</p>
+<p><strong>Note:</strong> Admin access required. Feeds are automatically checked and posted to the specified channel.</p>
+<hr />
+<p>For more information about configuring the bot, see the main <a href="https://github.com/agessaman/meshcore-bot/blob/main/README.md">README</a> file.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.sections", "toc.integrate", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
