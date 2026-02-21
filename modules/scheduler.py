@@ -364,7 +364,9 @@ class MessageScheduler:
                             future.result(timeout=120)  # 2 minute timeout for feed polling
                             self.logger.debug("Feed polling cycle completed")
                         except Exception as e:
-                            self.logger.error(f"Error in feed polling cycle: {e}")
+                            import traceback
+                            self.logger.error(f"Error in feed polling cycle: {type(e).__name__}: {e}")
+                            self.logger.debug(f"Feed polling traceback:\n{traceback.format_exc()}")
                     else:
                         # Fallback: create new event loop if main loop not available
                         try:
@@ -377,7 +379,9 @@ class MessageScheduler:
                             loop.run_until_complete(self.bot.feed_manager.poll_all_feeds())
                             self.logger.debug("Feed polling cycle completed")
                         except Exception as e:
-                            self.logger.error(f"Error in feed polling cycle: {e}")
+                            import traceback
+                            self.logger.error(f"Error in feed polling cycle (fallback): {type(e).__name__}: {e}")
+                            self.logger.debug(f"Feed polling fallback traceback:\n{traceback.format_exc()}")
                     last_feed_poll_time = time.time()
             
             # Channels are fetched once on launch only - no periodic refresh
@@ -397,7 +401,9 @@ class MessageScheduler:
                         try:
                             future.result(timeout=30)  # 30 second timeout
                         except Exception as e:
-                            self.logger.error(f"Error processing channel operations: {e}")
+                            import traceback
+                            self.logger.error(f"Error processing channel operations: {type(e).__name__}: {e}")
+                            self.logger.debug(f"Channel operations traceback:\n{traceback.format_exc()}")
                     else:
                         # Fallback: create new event loop if main loop not available
                         try:
@@ -423,7 +429,9 @@ class MessageScheduler:
                         try:
                             future.result(timeout=30)  # 30 second timeout
                         except Exception as e:
-                            self.logger.error(f"Error processing message queue: {e}")
+                            import traceback
+                            self.logger.error(f"Error processing message queue: {type(e).__name__}: {e}")
+                            self.logger.debug(f"Message queue traceback:\n{traceback.format_exc()}")
                     else:
                         # Fallback: create new event loop if main loop not available
                         try:
