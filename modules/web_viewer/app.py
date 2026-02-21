@@ -195,8 +195,8 @@ class BotDataViewer:
             out["commit"] = commit or None
             if date_raw:
                 try:
-                    # %ci is ISO format; take date part only
-                    out["date"] = date_raw.split("T")[0]
+                    # %ci is "YYYY-MM-DD HH:MM:SS +tz"; take date part only
+                    out["date"] = date_raw.split()[0]
                 except IndexError:
                     out["date"] = date_raw
             return out
