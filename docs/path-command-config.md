@@ -201,8 +201,15 @@ These settings control how graph edges are stored in the database.
 
 **`graph_startup_load_days`** (days, 0 = load all)
 - Load only edges seen in last N days on startup
-- `0` = load all edges (recommended for development)
-- Default: `0`
+- `0` = load all edges (use on servers with ample RAM)
+- Default: `14` (set to `0` in `config.ini` to load all)
+
+**`graph_capture_enabled`** (boolean)
+- When `false`, no new edge data is collected from packets and the background
+  batch writer thread is not started — reducing CPU and RAM overhead
+- Edges already in the database are still used for path validation
+- Set to `false` on devices that don't use the path command
+- Default: `true`
 
 ## Preset Configurations
 

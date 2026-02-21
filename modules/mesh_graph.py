@@ -6,6 +6,8 @@ Persists graph state across bot restarts for development scenarios.
 """
 
 import sqlite3
+import sys
+import time
 import threading
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Set
@@ -24,29 +26,44 @@ class MeshGraph:
         self.bot = bot
         self.logger = bot.logger
         self.db_manager = bot.db_manager
-        
+
+        # Capture/validation feature flags
+        # graph_capture_enabled: controls whether new edge data is collected from packets
+        # When False, no new edges are added and the batch writer thread is not started.
+        self.capture_enabled = bot.config.getboolean('Path_Command', 'graph_capture_enabled', fallback=True)
+
         # In-memory graph storage: {(from_prefix, to_prefix): edge_data}
         self.edges: Dict[Tuple[str, str], Dict] = {}
-        
+
+        # Adjacency indexes for O(1) neighbour lookups (derived from self.edges)
+        self._outgoing_index: Dict[str, Set[str]] = defaultdict(set)  # from_prefix -> set of to_prefixes
+        self._incoming_index: Dict[str, Set[str]] = defaultdict(set)  # to_prefix -> set of from_prefixes
+
+        # Per-edge last-notification timestamps for web viewer throttling (unix float)
+        self._notification_timestamps: Dict[Tuple[str, str], float] = {}
+
         # Track pending updates for batched writes
         self.pending_updates: Set[Tuple[str, str]] = set()
         self.pending_lock = threading.Lock()
-        
+
         # Write strategy configuration
         self.write_strategy = bot.config.get('Path_Command', 'graph_write_strategy', fallback='hybrid')
         self.batch_interval = bot.config.getint('Path_Command', 'graph_batch_interval_seconds', fallback=30)
         self.batch_max_pending = bot.config.getint('Path_Command', 'graph_batch_max_pending', fallback=100)
-        self.startup_load_days = bot.config.getint('Path_Command', 'graph_startup_load_days', fallback=0)
-        
+        # Default 14 days: edges older than this carry near-zero recency confidence anyway.
+        # Set to 0 in config.ini to load all historical edges (e.g. on servers with ample RAM).
+        self.startup_load_days = bot.config.getint('Path_Command', 'graph_startup_load_days', fallback=14)
+        self.edge_expiration_days = bot.config.getint('Path_Command', 'graph_edge_expiration_days', fallback=7)
+
         # Background task for batched writes
         self._batch_task = None
         self._shutdown_event = threading.Event()
-        
+
         # Load graph from database on startup
         self._load_from_database()
-        
-        # Start background batch writer if needed
-        if self.write_strategy in ('batched', 'hybrid'):
+
+        # Start background batch writer only when capture is active
+        if self.capture_enabled and self.write_strategy in ('batched', 'hybrid'):
             self._start_batch_writer()
     
     def _load_from_database(self):
@@ -58,42 +75,70 @@ class MeshGraph:
                        geographic_distance
                 FROM mesh_connections
             '''
-            
-            # Apply date filter if configured
+
+            # Build WHERE clause combining startup_load_days and edge_expiration_days.
+            # startup_load_days: explicit cap on how far back to load (0 = no cap).
+            # edge_expiration_days: always applied — never load edges we would immediately
+            #   evict as expired (this bounds memory even when startup_load_days=0).
+            where_parts = []
             if self.startup_load_days > 0:
                 cutoff_date = datetime.now() - timedelta(days=self.startup_load_days)
-                query += f" WHERE last_seen >= '{cutoff_date.isoformat()}'"
-            
+                where_parts.append(f"last_seen >= '{cutoff_date.isoformat()}'")
+            if self.edge_expiration_days > 0:
+                expiry_date = datetime.now() - timedelta(days=self.edge_expiration_days)
+                where_parts.append(f"last_seen >= '{expiry_date.isoformat()}'")
+            if where_parts:
+                # Use the most restrictive (most recent) cutoff
+                query += " WHERE " + " AND ".join(where_parts)
+
             query += " ORDER BY last_seen DESC"
-            
+
             results = self.db_manager.execute_query(query)
-            
+
             edge_count = 0
             for row in results:
                 from_prefix = row['from_prefix']
                 to_prefix = row['to_prefix']
                 edge_key = (from_prefix, to_prefix)
-                
+
+                # Intern public key strings so identical keys across many edges share
+                # a single string object in memory rather than duplicating bytes.
+                from_pk = row.get('from_public_key')
+                to_pk = row.get('to_public_key')
+                if from_pk:
+                    from_pk = sys.intern(from_pk)
+                if to_pk:
+                    to_pk = sys.intern(to_pk)
+
                 self.edges[edge_key] = {
                     'from_prefix': from_prefix,
                     'to_prefix': to_prefix,
-                    'from_public_key': row.get('from_public_key'),
-                    'to_public_key': row.get('to_public_key'),
+                    'from_public_key': from_pk,
+                    'to_public_key': to_pk,
                     'observation_count': row.get('observation_count', 1),
                     'first_seen': row.get('first_seen'),
                     'last_seen': row.get('last_seen'),
                     'avg_hop_position': row.get('avg_hop_position'),
                     'geographic_distance': row.get('geographic_distance')
                 }
+
+                # Maintain adjacency indexes
+                self._outgoing_index[from_prefix].add(to_prefix)
+                self._incoming_index[to_prefix].add(from_prefix)
+
                 edge_count += 1
-            
+
             self.logger.info(f"Loaded {edge_count} graph edges from database")
-            
+
             # Log statistics
             if edge_count > 0:
                 total_observations = sum(e['observation_count'] for e in self.edges.values())
                 self.logger.info(f"Graph statistics: {edge_count} edges, {total_observations} total observations")
-        
+
+            # Belt-and-suspenders: prune any edges that slipped through the SQL filter
+            # (e.g. timezone edge cases or edges loaded before expiration_days was set)
+            self.prune_expired_edges()
+
         except Exception as e:
             self.logger.warning(f"Error loading graph from database: {e}")
             # Continue with empty graph
@@ -115,20 +160,30 @@ class MeshGraph:
         """
         if not from_prefix or not to_prefix:
             return
-        
+
+        # Respect the capture kill-switch — allow reads but block writes
+        if not self.capture_enabled:
+            return
+
         # Normalize prefixes to lowercase
         from_prefix = from_prefix.lower()[:2]
         to_prefix = to_prefix.lower()[:2]
-        
+
+        # Intern public key strings so repeated identical keys share one object in RAM
+        if from_public_key:
+            from_public_key = sys.intern(from_public_key)
+        if to_public_key:
+            to_public_key = sys.intern(to_public_key)
+
         edge_key = (from_prefix, to_prefix)
         now = datetime.now()
-        
+
         # Update or create edge
         if edge_key in self.edges:
             edge = self.edges[edge_key]
             edge['observation_count'] += 1
             edge['last_seen'] = now
-            
+
             # Update average hop position
             if hop_position is not None:
                 current_avg = edge.get('avg_hop_position')
@@ -139,21 +194,21 @@ class MeshGraph:
                 else:
                     # First time setting hop position
                     edge['avg_hop_position'] = hop_position
-            
+
             # Update public keys if provided (always update if we have a better key)
             # This allows us to fill in missing keys on existing edges
             if from_public_key:
                 edge['from_public_key'] = from_public_key
             if to_public_key:
                 edge['to_public_key'] = to_public_key
-            
+
             # Update geographic distance if provided
             if geographic_distance is not None:
                 edge['geographic_distance'] = geographic_distance
-            
+
             is_new_edge = False
         else:
-            # New edge
+            # New edge — also update adjacency indexes
             self.edges[edge_key] = {
                 'from_prefix': from_prefix,
                 'to_prefix': to_prefix,
@@ -165,6 +220,8 @@ class MeshGraph:
                 'avg_hop_position': hop_position if hop_position is not None else None,
                 'geographic_distance': geographic_distance
             }
+            self._outgoing_index[from_prefix].add(to_prefix)
+            self._incoming_index[to_prefix].add(from_prefix)
             is_new_edge = True
         
         # Persist according to write strategy
@@ -193,18 +250,31 @@ class MeshGraph:
         self._notify_web_viewer_edge(edge_key, is_new_edge)
     
     def _notify_web_viewer_edge(self, edge_key: Tuple[str, str], is_new: bool):
-        """Notify web viewer of edge update via bot integration"""
+        """Notify web viewer of edge update via bot integration.
+
+        New edges always trigger an immediate notification.  Updates to existing
+        edges are throttled to at most once every 10 seconds to reduce HTTP
+        traffic on busy meshes.
+        """
         try:
             if not hasattr(self.bot, 'web_viewer_integration') or not self.bot.web_viewer_integration:
                 return
-            
+
             if not hasattr(self.bot.web_viewer_integration, 'bot_integration'):
                 return
-            
+
             edge = self.edges.get(edge_key)
             if not edge:
                 return
-            
+
+            # Throttle repeated updates for the same edge (new edges always notify)
+            now_ts = time.time()
+            if not is_new:
+                last_notified = self._notification_timestamps.get(edge_key, 0.0)
+                if (now_ts - last_notified) < 10.0:
+                    return  # Skip — notified recently enough
+            self._notification_timestamps[edge_key] = now_ts
+
             # Prepare edge data for web viewer
             edge_data = {
                 'from_prefix': edge['from_prefix'],
@@ -218,7 +288,7 @@ class MeshGraph:
                 'geographic_distance': edge.get('geographic_distance'),
                 'is_new': is_new
             }
-            
+
             # Send update asynchronously
             self.bot.web_viewer_integration.bot_integration.send_mesh_edge_update(edge_data)
         except Exception as e:
@@ -434,39 +504,53 @@ class MeshGraph:
         is_new: bool,
         conn: Optional[sqlite3.Connection] = None,
         location_cache: Optional[Dict[str, Tuple[float, float]]] = None,
+        skip_distance_recalc: bool = False,
     ):
         """Write a single edge to the database.
-        
+
         Args:
             edge_key: (from_prefix, to_prefix) tuple.
             is_new: True if this is a new edge, False if updating existing.
             conn: Optional existing DB connection for batch operations (caller commits).
             location_cache: Optional cache for location lookups within a flush.
+            skip_distance_recalc: If True, skip distance recalculation (used by
+                _flush_pending_updates_sync which already recalculates before calling here).
         """
         if edge_key not in self.edges:
             return
-        
+
         edge = self.edges[edge_key]
-        
-        # Recalculate distance using full public keys if available (more accurate)
-        # This fixes issues where prefix collisions cause wrong locations to be used
-        if edge.get('from_public_key') or edge.get('to_public_key'):
+
+        # Recalculate distance using full public keys if available (more accurate).
+        # Skipped when called from the batch flush loop, which already recalculated.
+        if not skip_distance_recalc and (edge.get('from_public_key') or edge.get('to_public_key')):
             recalculated_distance = self._recalculate_distance_if_needed(
                 edge, conn=conn, location_cache=location_cache
             )
             if recalculated_distance is not None:
                 edge['geographic_distance'] = recalculated_distance
                 self.logger.debug(f"Mesh graph: Recalculated distance for {edge_key} using public keys: {recalculated_distance:.1f} km")
-        
+
         try:
             if is_new:
-                # Insert new edge
+                # Upsert new edge.
+                # Use INSERT ... ON CONFLICT DO UPDATE so that if the row already exists
+                # in the database (e.g. it was filtered out of the in-memory graph at
+                # startup by startup_load_days / edge_expiration_days, or written by a
+                # concurrent process), we merge rather than fail with UNIQUE constraint.
                 query = '''
-                    INSERT INTO mesh_connections 
+                    INSERT INTO mesh_connections
                     (from_prefix, to_prefix, from_public_key, to_public_key,
                      observation_count, first_seen, last_seen, avg_hop_position,
                      geographic_distance)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(from_prefix, to_prefix) DO UPDATE SET
+                        observation_count  = MAX(observation_count, excluded.observation_count),
+                        last_seen          = MAX(last_seen, excluded.last_seen),
+                        avg_hop_position   = excluded.avg_hop_position,
+                        geographic_distance = COALESCE(excluded.geographic_distance, geographic_distance),
+                        from_public_key    = COALESCE(excluded.from_public_key, from_public_key),
+                        to_public_key      = COALESCE(excluded.to_public_key, to_public_key)
                 '''
                 params = (
                     edge['from_prefix'],
@@ -480,10 +564,10 @@ class MeshGraph:
                     edge.get('geographic_distance')
                 )
             else:
-                # Update existing edge - recalculate distance if we now have public keys
-                # Only update distance if we have at least one public key and current distance seems wrong
+                # Update existing edge — recalculate distance if we now have public keys,
+                # but only when not already done by the caller (skip_distance_recalc=False).
                 current_distance = edge.get('geographic_distance')
-                if (edge.get('from_public_key') or edge.get('to_public_key')) and current_distance:
+                if not skip_distance_recalc and (edge.get('from_public_key') or edge.get('to_public_key')) and current_distance:
                     recalculated = self._recalculate_distance_if_needed(
                         edge, conn=conn, location_cache=location_cache
                     )
@@ -581,6 +665,51 @@ class MeshGraph:
             self.logger.debug(f"Error building update params for {edge_key}: {e}")
             return None
     
+    def prune_expired_edges(self) -> int:
+        """Remove edges from the in-memory graph that have exceeded graph_edge_expiration_days.
+
+        Only evicts from RAM — the database rows are kept so that historical data is
+        preserved and can be reloaded if the expiration window is later widened.
+
+        Returns:
+            int: Number of edges evicted.
+        """
+        if self.edge_expiration_days <= 0:
+            return 0
+
+        cutoff = datetime.now() - timedelta(days=self.edge_expiration_days)
+        expired_keys = []
+        for edge_key, edge in self.edges.items():
+            last_seen = edge.get('last_seen')
+            if last_seen is None:
+                continue
+            if isinstance(last_seen, str):
+                try:
+                    last_seen = datetime.fromisoformat(last_seen.replace('Z', '+00:00'))
+                except ValueError:
+                    continue
+            if last_seen < cutoff:
+                expired_keys.append(edge_key)
+
+        for edge_key in expired_keys:
+            from_prefix, to_prefix = edge_key
+            del self.edges[edge_key]
+            # Clean up adjacency indexes
+            if from_prefix in self._outgoing_index:
+                self._outgoing_index[from_prefix].discard(to_prefix)
+                if not self._outgoing_index[from_prefix]:
+                    del self._outgoing_index[from_prefix]
+            if to_prefix in self._incoming_index:
+                self._incoming_index[to_prefix].discard(from_prefix)
+                if not self._incoming_index[to_prefix]:
+                    del self._incoming_index[to_prefix]
+            # Drop stale notification timestamp if present
+            self._notification_timestamps.pop(edge_key, None)
+
+        if expired_keys:
+            self.logger.debug(f"Pruned {len(expired_keys)} expired graph edges (older than {self.edge_expiration_days} days)")
+        return len(expired_keys)
+
     def _start_batch_writer(self):
         """Start background task for batched writes."""
         def batch_writer_loop():
@@ -589,7 +718,9 @@ class MeshGraph:
                 if not self._shutdown_event.is_set():
                     # Flush synchronously (database operations are synchronous)
                     self._flush_pending_updates_sync()
-        
+                    # Periodically evict expired edges from RAM
+                    self.prune_expired_edges()
+
         import threading
         batch_thread = threading.Thread(target=batch_writer_loop, daemon=True)
         batch_thread.start()
@@ -630,7 +761,9 @@ class MeshGraph:
                     (edge_key[0], edge_key[1]),
                 )
                 is_new = cursor.fetchone() is None
-                self._write_edge_to_db(edge_key, is_new, conn=conn, location_cache=location_cache)
+                # Distance was already recalculated above — tell _write_edge_to_db to skip it
+                self._write_edge_to_db(edge_key, is_new, conn=conn, location_cache=location_cache,
+                                       skip_distance_recalc=True)
             if conn:
                 conn.commit()
         except Exception as e:
@@ -684,27 +817,47 @@ class MeshGraph:
     
     def get_outgoing_edges(self, prefix: str) -> List[Dict]:
         """Get all edges originating from a node.
-        
+
+        Uses the adjacency index for O(1) lookup instead of a full scan.
+
         Args:
             prefix: Node prefix.
-            
+
         Returns:
             List of edge dictionaries.
         """
         prefix = prefix.lower()[:2]
-        return [edge for (f, t), edge in self.edges.items() if f == prefix]
-    
+        to_prefixes = self._outgoing_index.get(prefix)
+        if not to_prefixes:
+            return []
+        result = []
+        for to_prefix in to_prefixes:
+            edge = self.edges.get((prefix, to_prefix))
+            if edge is not None:
+                result.append(edge)
+        return result
+
     def get_incoming_edges(self, prefix: str) -> List[Dict]:
         """Get all edges ending at a node.
-        
+
+        Uses the adjacency index for O(1) lookup instead of a full scan.
+
         Args:
             prefix: Node prefix.
-            
+
         Returns:
             List of edge dictionaries.
         """
         prefix = prefix.lower()[:2]
-        return [edge for (f, t), edge in self.edges.items() if t == prefix]
+        from_prefixes = self._incoming_index.get(prefix)
+        if not from_prefixes:
+            return []
+        result = []
+        for from_prefix in from_prefixes:
+            edge = self.edges.get((from_prefix, prefix))
+            if edge is not None:
+                result.append(edge)
+        return result
     
     def validate_path_segment(self, from_prefix: str, to_prefix: str, 
                              min_observations: int = 1,

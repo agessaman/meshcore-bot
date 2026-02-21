@@ -85,6 +85,37 @@ mqtt2_username = user
 mqtt2_password = pass
 ```
 
+#### Filtering by packet type
+
+You can limit which packet types are uploaded to each broker with `mqttN_upload_packet_types`. Use a comma-separated list of type numbers; if unset or empty, all packet types are uploaded.
+
+```ini
+# Only upload text messages and adverts to this broker
+mqtt1_upload_packet_types = 2, 4
+
+# Broker 2 gets everything (default)
+# mqtt2_upload_packet_types =
+```
+
+**Packet type reference:**
+
+| Type | Name       | Description        |
+|------|------------|--------------------|
+| 0    | REQ        | Request            |
+| 1    | RESPONSE   | Response           |
+| 2    | TXT_MSG    | Text message       |
+| 3    | ACK        | Acknowledgment     |
+| 4    | ADVERT     | Advertisement      |
+| 5    | GRP_TXT    | Group text         |
+| 6    | GRP_DATA   | Group data         |
+| 7    | ANON_REQ   | Anonymous request  |
+| 8    | PATH       | Path               |
+| 9    | TRACE      | Trace              |
+| 10   | MULTIPART  | Multipart          |
+| 11–15| Type11–RAW_CUSTOM | Other types |
+
+Packets that are excluded by this filter are still written to the output file (if configured) and still counted; they are only skipped for MQTT upload to that broker. Debug logs will show "Skipping" for those packets.
+
 ### Topic Templates
 
 Placeholders:
@@ -170,8 +201,9 @@ Common issues:
 ### No Packets Being Published
 
 1. **Verify MQTT connection** - Check logs for "Connected to MQTT broker"
-2. **Check packet count** - Service logs "Captured packet #N" for each packet
+2. **Check packet count** - Service logs "Captured packet #N" (or "Skipping packet #N" when filtered) for each packet
 3. **Verify topics** - Ensure topics match broker expectations
+4. **Check upload filter** - If `mqttN_upload_packet_types` is set, only those types are uploaded. DEBUG Logs show "packet type X not in [Y, Z]" when a packet is skipped
 
 ---
 

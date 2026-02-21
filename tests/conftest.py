@@ -124,6 +124,7 @@ def test_config():
     config.set('Path_Command', 'graph_batch_max_pending', '100')
     config.set('Path_Command', 'graph_startup_load_days', '0')  # Don't load old data in tests
     config.set('Path_Command', 'graph_edge_expiration_days', '7')
+    config.set('Path_Command', 'graph_capture_enabled', 'true')
     config.set('Path_Command', 'graph_use_bidirectional', 'true')
     config.set('Path_Command', 'graph_use_hop_position', 'true')
     config.set('Path_Command', 'graph_multi_hop_enabled', 'true')

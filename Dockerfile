@@ -43,6 +43,10 @@ COPY --from=builder /root/.local /home/meshcore/.local
 # Set working directory
 WORKDIR /app
 
+# Version for web viewer footer (set at build time; e.g. --build-arg MESHCORE_BOT_VERSION=v1.2.3)
+ARG MESHCORE_BOT_VERSION
+ENV MESHCORE_BOT_VERSION=${MESHCORE_BOT_VERSION}
+
 # Copy application files
 COPY --chown=meshcore:meshcore . /app/
 
