@@ -51,12 +51,19 @@ class _DuplicateAwareConfigParser(configparser.ConfigParser):
         super().__init__(*args, **kwargs)
 
     def _handle_option(self, st, line, fpname):
-        if st.optname in st.options:
-            logging.getLogger(__name__).error(
-                "Duplicate option in config file: section [%s], option '%s' (file %s, line %s). Using last value.",
-                st.sectname, st.optname, fpname, getattr(st, 'lineno', '?'),
-            )
-        st.options[st.optname] = st.optvalue
+        # Extract option name before calling parent to check for duplicates
+        mo = self._optcre.match(line.clean)
+        if mo:
+            optname = mo.group('option')
+            if optname:
+                optname = self.optionxform(optname.rstrip())
+                if optname in st.cursect:
+                    logging.getLogger(__name__).error(
+                        "Duplicate option in config file: section [%s], option '%s' (file %s, line %s). Using last value.",
+                        st.sectname, st.optname, fpname, getattr(st, 'lineno', '?'),
+                    )
+        # Call parent to handle the actual parsing and setting
+        super()._handle_option(st, line, fpname)
 
 
 class MeshCoreBot:
