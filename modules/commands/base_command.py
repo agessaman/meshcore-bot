@@ -11,7 +11,7 @@ import pytz
 import re
 from ..models import MeshMessage
 from ..security_utils import validate_pubkey_format
-from ..utils import format_elapsed_display
+from ..utils import format_elapsed_display, get_config_timezone
 
 
 class BaseCommand(ABC):
@@ -849,23 +849,10 @@ class BaseCommand(ABC):
     def format_timestamp(self, message: MeshMessage) -> str:
         """Format current bot time for display (not sender's timestamp to avoid clock issues)"""
         try:
-            # Get configured timezone or use system timezone
-            timezone_str = self.bot.config.get('Bot', 'timezone', fallback='')
-            
-            if timezone_str:
-                try:
-                    # Use configured timezone
-                    tz = pytz.timezone(timezone_str)
-                    dt = datetime.now(tz)
-                except pytz.exceptions.UnknownTimeZoneError:
-                    # Fallback to system timezone if configured timezone is invalid
-                    dt = datetime.now()
-            else:
-                # Use system timezone
-                dt = datetime.now()
-            
+            tz, _ = get_config_timezone(self.bot.config, self.logger)
+            dt = datetime.now(tz)
             return dt.strftime("%H:%M:%S")
-        except:
+        except Exception:
             return "Unknown"
     
     def format_elapsed(self, message: MeshMessage) -> str:

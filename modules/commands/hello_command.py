@@ -4,11 +4,13 @@ Hello command for the MeshCore Bot
 Responds to various greetings with robot-themed responses
 """
 
+import datetime
 import random
 import re
 from typing import Any, List, Dict
 from .base_command import BaseCommand
 from ..models import MeshMessage
+from ..utils import get_config_timezone
 
 
 class HelloCommand(BaseCommand):
@@ -307,23 +309,8 @@ class HelloCommand(BaseCommand):
     
     def get_random_greeting(self) -> str:
         """Generate a random robot greeting by combining opening and descriptor"""
-        import datetime
-        import pytz
-        
-        # Get configured timezone or use system timezone
-        timezone_str = self.bot.config.get('Bot', 'timezone', fallback='')
-        
-        if timezone_str:
-            try:
-                # Use configured timezone
-                tz = pytz.timezone(timezone_str)
-                current_time = datetime.datetime.now(tz)
-            except pytz.exceptions.UnknownTimeZoneError:
-                # Fallback to system timezone if configured timezone is invalid
-                current_time = datetime.datetime.now()
-        else:
-            # Use system timezone
-            current_time = datetime.datetime.now()
+        tz, _ = get_config_timezone(self.bot.config, self.logger)
+        current_time = datetime.datetime.now(tz)
         
         # Get current hour to determine time of day
         current_hour = current_time.hour

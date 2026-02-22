@@ -8,13 +8,12 @@ import time
 import threading
 import schedule
 import datetime
-import pytz
 import sqlite3
 import json
 import os
 from typing import Dict, Tuple, Any
 from pathlib import Path
-from .utils import decode_escape_sequences, format_keyword_response_with_placeholders
+from .utils import decode_escape_sequences, format_keyword_response_with_placeholders, get_config_timezone
 
 
 class MessageScheduler:
@@ -30,17 +29,8 @@ class MessageScheduler:
     
     def get_current_time(self):
         """Get current time in configured timezone"""
-        timezone_str = self.bot.config.get('Bot', 'timezone', fallback='')
-        
-        if timezone_str:
-            try:
-                tz = pytz.timezone(timezone_str)
-                return datetime.datetime.now(tz)
-            except pytz.exceptions.UnknownTimeZoneError:
-                self.logger.warning(f"Invalid timezone '{timezone_str}', using system timezone")
-                return datetime.datetime.now()
-        else:
-            return datetime.datetime.now()
+        tz, _ = get_config_timezone(self.bot.config, self.logger)
+        return datetime.datetime.now(tz)
     
     def setup_scheduled_messages(self):
         """Setup scheduled messages from config"""

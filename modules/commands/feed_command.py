@@ -27,9 +27,12 @@ class FeedCommand(BaseCommand):
     def __init__(self, bot):
         super().__init__(bot)
         self.db_path = bot.db_manager.db_path
+        self.feed_enabled = self.get_config_value('Feed_Command', 'enabled', fallback=True, value_type='bool')
     
     def can_execute(self, message: MeshMessage) -> bool:
-        """Check if this command can be executed (admin only)"""
+        """Check if this command can be executed (enabled, admin only)"""
+        if not self.feed_enabled:
+            return False
         if not self.requires_admin_access():
             return False
         return super().can_execute(message)

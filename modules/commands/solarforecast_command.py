@@ -10,7 +10,7 @@ import time
 import hashlib
 import pytz
 from geopy.geocoders import Nominatim
-from ..utils import rate_limited_nominatim_reverse, get_nominatim_geocoder, geocode_zipcode, geocode_city
+from ..utils import rate_limited_nominatim_reverse, get_nominatim_geocoder, geocode_zipcode, geocode_city, get_config_timezone
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple, Dict
 from .base_command import BaseCommand
@@ -636,21 +636,8 @@ class SolarforecastCommand(BaseCommand):
         if not watt_hours_day:
             return self.translate('commands.solarforecast.no_data')
         
-        # Get timezone from config or use system timezone
-        timezone_str = self.bot.config.get('Bot', 'timezone', fallback='')
-        if timezone_str:
-            try:
-                local_tz = pytz.timezone(timezone_str)
-            except pytz.exceptions.UnknownTimeZoneError:
-                local_tz = None
-        else:
-            local_tz = None
-        
-        # Get current time in local timezone
-        if local_tz:
-            now = datetime.now(local_tz)
-        else:
-            now = datetime.now()
+        local_tz, _ = get_config_timezone(self.bot.config, self.logger)
+        now = datetime.now(local_tz)
         
         today = now.strftime('%Y-%m-%d')
         tomorrow = (now + timedelta(days=1)).strftime('%Y-%m-%d')
