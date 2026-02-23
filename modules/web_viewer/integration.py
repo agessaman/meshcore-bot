@@ -126,7 +126,7 @@ class BotIntegration:
             db_path = self._get_web_viewer_db_path()
             
             # Connect to database and create table if it doesn't exist
-            conn = sqlite3.connect(str(db_path), timeout=30.0)
+            conn = sqlite3.connect(str(db_path), timeout=60.0)
             cursor = conn.cursor()
             
             # Create packet_stream table with schema matching the INSERT statements
@@ -151,6 +151,12 @@ class BotIntegration:
                 ON packet_stream(type)
             ''')
             
+            # Enable WAL for better concurrent access (bot + web viewer use same DB)
+            try:
+                cursor.execute('PRAGMA journal_mode=WAL')
+            except sqlite3.OperationalError:
+                pass  # Ignore if locked; WAL may already be set
+            
             conn.commit()
             conn.close()
             
@@ -161,12 +167,43 @@ class BotIntegration:
             # Don't raise - allow bot to continue even if table init fails
             # The error will be caught when trying to insert data
     
+    def _insert_packet_stream_row(self, data_json: str, row_type: str, log_prefix: str = "packet data"):
+        """Insert one row into packet_stream. Retries on database is locked. Logs and returns on failure."""
+        import sqlite3
+        import time
+        db_path = self._get_web_viewer_db_path()
+        max_retries = 3
+        for attempt in range(max_retries):
+            conn = None
+            try:
+                conn = sqlite3.connect(str(db_path), timeout=60.0)
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO packet_stream (timestamp, data, type)
+                    VALUES (?, ?, ?)
+                ''', (time.time(), data_json, row_type))
+                conn.commit()
+                return
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e).lower() and attempt < max_retries - 1:
+                    time.sleep(0.15 * (attempt + 1))
+                    continue
+                self.bot.logger.warning(f"Error storing {log_prefix} for web viewer: {e}")
+                return
+            except Exception as e:
+                self.bot.logger.warning(f"Error storing {log_prefix} for web viewer: {e}")
+                return
+            finally:
+                if conn is not None:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+    
     def capture_full_packet_data(self, packet_data):
         """Capture full packet data and store in database for web viewer"""
         try:
-            import sqlite3
             import json
-            import time
             from datetime import datetime
             
             # Ensure packet_data is a dict (might be passed as dict already)
@@ -191,33 +228,15 @@ class BotIntegration:
             # Convert non-serializable objects to strings
             serializable_data = self._make_json_serializable(packet_data)
             
-            # Store in database for web viewer to read
-            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
-            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
-            base_dir = self.bot.bot_root if hasattr(self.bot, 'bot_root') else '.'
-            db_path = resolve_path(db_path, base_dir)
-            conn = sqlite3.connect(str(db_path), timeout=30.0)
-            cursor = conn.cursor()
-            
-            # Insert packet data
-            cursor.execute('''
-                INSERT INTO packet_stream (timestamp, data, type)
-                VALUES (?, ?, ?)
-            ''', (time.time(), json.dumps(serializable_data), 'packet'))
-            
-            conn.commit()
-            conn.close()
-            
-            # Note: Cleanup is handled by the web viewer subprocess to avoid
-            # database lock contention between bot and web viewer processes
+            # Store in database for web viewer to read (retries on database is locked)
+            self._insert_packet_stream_row(json.dumps(serializable_data), 'packet', "packet data")
             
         except Exception as e:
-            self.bot.logger.debug(f"Error storing packet data: {e}")
+            self.bot.logger.warning(f"Error storing packet data for web viewer: {e}")
     
     def capture_command(self, message, command_name, response, success, command_id=None):
         """Capture command data and store in database for web viewer"""
         try:
-            import sqlite3
             import json
             import time
             
@@ -256,19 +275,8 @@ class BotIntegration:
             # Convert non-serializable objects to strings
             serializable_data = self._make_json_serializable(command_data)
             
-            # Store in database for web viewer to read
-            db_path = self._get_web_viewer_db_path()
-            conn = sqlite3.connect(str(db_path), timeout=30.0)
-            cursor = conn.cursor()
-            
-            # Insert command data
-            cursor.execute('''
-                INSERT INTO packet_stream (timestamp, data, type)
-                VALUES (?, ?, ?)
-            ''', (time.time(), json.dumps(serializable_data), 'command'))
-            
-            conn.commit()
-            conn.close()
+            # Store in database for web viewer to read (retries on database is locked)
+            self._insert_packet_stream_row(json.dumps(serializable_data), 'command', "command data")
             
         except Exception as e:
             self.bot.logger.debug(f"Error storing command data: {e}")
@@ -276,26 +284,13 @@ class BotIntegration:
     def capture_packet_routing(self, routing_data):
         """Capture packet routing data and store in database for web viewer"""
         try:
-            import sqlite3
             import json
-            import time
             
             # Convert non-serializable objects to strings
             serializable_data = self._make_json_serializable(routing_data)
             
-            # Store in database for web viewer to read
-            db_path = self._get_web_viewer_db_path()
-            conn = sqlite3.connect(str(db_path), timeout=30.0)
-            cursor = conn.cursor()
-            
-            # Insert routing data
-            cursor.execute('''
-                INSERT INTO packet_stream (timestamp, data, type)
-                VALUES (?, ?, ?)
-            ''', (time.time(), json.dumps(serializable_data), 'routing'))
-            
-            conn.commit()
-            conn.close()
+            # Store in database for web viewer to read (retries on database is locked)
+            self._insert_packet_stream_row(json.dumps(serializable_data), 'routing', "routing data")
             
         except Exception as e:
             self.bot.logger.debug(f"Error storing routing data: {e}")
@@ -309,7 +304,7 @@ class BotIntegration:
             cutoff_time = time.time() - (days_to_keep * 24 * 60 * 60)
             
             db_path = self._get_web_viewer_db_path()
-            conn = sqlite3.connect(str(db_path), timeout=30.0)
+            conn = sqlite3.connect(str(db_path), timeout=60.0)
             cursor = conn.cursor()
             
             # Clean up old packet stream data

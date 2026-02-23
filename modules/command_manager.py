@@ -913,10 +913,15 @@ class CommandManager:
             return self.bot.translator.translate('commands.help.unknown', command=command_name, available=available_str)
         return f"Unknown: {command_name}. Available: {available_str}. Try 'help' for command list."
     
+    # Prefix and suffix for general help (reserve space so suffix is never cut off)
+    _HELP_PREFIX = "Bot Help: "
+    _HELP_SUFFIX = " | More: 'help <command>'"
+
     def get_general_help(self, message: MeshMessage = None) -> str:
         """Get general help text from config (LoRa-friendly compact format).
-        
+
         When message is provided, only lists commands valid for the message's channel.
+        Reserves space for the suffix so the message always ends with | More: 'help <command>'.
         """
         # Prefer keywords config if user has customized help
         if 'help' in self.keywords:
@@ -925,8 +930,12 @@ class CommandManager:
         if 'help' in self.commands:
             help_command = self.commands['help']
             if hasattr(help_command, 'get_available_commands_list'):
-                available_str = help_command.get_available_commands_list(message)
-                return f"Bot Help: {available_str} | More: 'help <command>'"
+                max_list = None
+                if message and hasattr(help_command, 'get_max_message_length'):
+                    max_total = help_command.get_max_message_length(message)
+                    max_list = max_total - len(self._HELP_PREFIX) - len(self._HELP_SUFFIX)
+                available_str = help_command.get_available_commands_list(message, max_length=max_list)
+                return f"{self._HELP_PREFIX}{available_str}{self._HELP_SUFFIX}"
         # Last resort: simple list of command names (filtered by channel when message provided)
         help_cmd = self.commands.get('help')
         if help_cmd and hasattr(help_cmd, '_is_command_valid_for_channel') and message:
@@ -940,7 +949,17 @@ class CommandManager:
                 cmd.name if hasattr(cmd, 'name') else name
                 for name, cmd in self.commands.items()
             ])
-        return f"Bot Help: {', '.join(primary_names)} | More: 'help <command>'"
+        # Truncate list to reserve space for suffix when message (and thus max length) is known
+        if message and help_cmd and hasattr(help_cmd, 'get_max_message_length'):
+            max_total = help_cmd.get_max_message_length(message)
+            max_list = max_total - len(self._HELP_PREFIX) - len(self._HELP_SUFFIX)
+            if hasattr(help_cmd, '_format_commands_list_to_length'):
+                list_str = help_cmd._format_commands_list_to_length(primary_names, max_list)
+            else:
+                list_str = ', '.join(primary_names)
+        else:
+            list_str = ', '.join(primary_names)
+        return f"{self._HELP_PREFIX}{list_str}{self._HELP_SUFFIX}"
     
     def get_available_commands_list(self) -> str:
         """Get a formatted list of available commands"""
