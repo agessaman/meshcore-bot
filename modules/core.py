@@ -51,23 +51,12 @@ class _DuplicateAwareConfigParser(configparser.ConfigParser):
         super().__init__(*args, **kwargs)
 
     def _handle_option(self, st, line, fpname):
-        # Python 3.13+ uses st.cursect; older internals used st.options (both mean current section dict).
-        sect = getattr(st, 'cursect', None) or getattr(st, 'options', None)
-        if sect is not None:
-            # Duplicate check: in 3.13 optname is set inside base _handle_option, so parse line here for the check.
-            line_str = getattr(line, 'clean', None)
-            if line_str is None:
-                line_str = line if isinstance(line, str) else str(line)
-            mo = self._optcre.match(line_str) if line_str else None
-            if mo:
-                optname = self.optionxform(mo.group('option').rstrip())
-                if optname in sect:
-                    logging.getLogger(__name__).error(
-                        "Duplicate option in config file: section [%s], option '%s' (file %s, line %s). Using last value.",
-                        getattr(st, 'sectname', '?'), optname, fpname, getattr(st, 'lineno', '?'),
-                    )
-        # Delegate to base to parse line and set option (required on Python 3.13+).
-        super()._handle_option(st, line, fpname)
+        if st.optname in st.options:
+            logging.getLogger(__name__).error(
+                "Duplicate option in config file: section [%s], option '%s' (file %s, line %s). Using last value.",
+                st.sectname, st.optname, fpname, getattr(st, 'lineno', '?'),
+            )
+        st.options[st.optname] = st.optvalue
 
 
 class MeshCoreBot:
