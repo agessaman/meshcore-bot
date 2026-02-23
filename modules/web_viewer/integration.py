@@ -191,11 +191,8 @@ class BotIntegration:
             # Convert non-serializable objects to strings
             serializable_data = self._make_json_serializable(packet_data)
             
-            # Store in database for web viewer to read
-            db_path = self.bot.config.get('Web_Viewer', 'db_path', fallback='meshcore_bot.db')
-            # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
-            base_dir = self.bot.bot_root if hasattr(self.bot, 'bot_root') else '.'
-            db_path = resolve_path(db_path, base_dir)
+            # Store in database for web viewer to read (same path as viewer so packet log shows packets)
+            db_path = self._get_web_viewer_db_path()
             conn = sqlite3.connect(str(db_path), timeout=30.0)
             cursor = conn.cursor()
             
@@ -212,7 +209,7 @@ class BotIntegration:
             # database lock contention between bot and web viewer processes
             
         except Exception as e:
-            self.bot.logger.debug(f"Error storing packet data: {e}")
+            self.bot.logger.warning(f"Error storing packet data for web viewer: {e}")
     
     def capture_command(self, message, command_name, response, success, command_id=None):
         """Capture command data and store in database for web viewer"""

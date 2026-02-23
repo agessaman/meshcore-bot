@@ -149,18 +149,26 @@ class HelpCommand(BaseCommand):
                 return False
         return True
 
-    def get_available_commands_list(self, message: Optional[MeshMessage] = None) -> str:
+    # Reserved suffix appended by command_manager.get_general_help (must match there)
+    HELP_LIST_SUFFIX = " | More: 'help <command>'"
+
+    def get_available_commands_list(
+        self, message: Optional[MeshMessage] = None, max_length: Optional[int] = None
+    ) -> str:
         """Get a list of most popular commands in descending order.
-        
+
         Queries usage statistics to order commands by popularity. Ensures each
         command is listed only once using its primary name. When message is
         provided, only returns commands valid for the message's channel (respects
-        per-command channel overrides and channel_keywords).
-        
+        per-command channel overrides and channel_keywords). When max_length is
+        set, truncates the list so the result fits (appends " (N more)" when needed).
+
         Args:
             message: Optional message for context filtering. When provided, only
                 commands that can execute in this channel are included.
-        
+            max_length: Optional max length for the returned list (for LoRa).
+                When set, list is truncated and may end with " (N more)".
+
         Returns:
             str: Comma-separated list of command names.
         """
@@ -251,10 +259,10 @@ class HelpCommand(BaseCommand):
                     for name, cmd in self.bot.command_manager.commands.items()
                     if self._is_command_valid_for_channel(name, cmd, message)
                 ])
-            
-            # Return comma-separated list
-            return ', '.join(command_names)
-            
+
+            # Apply max_length truncation when reserved for suffix (e.g. " | More: 'help <command>'")
+            return self._format_commands_list_to_length(command_names, max_length)
+
         except Exception as e:
             self.logger.error(f"Error getting available commands list: {e}")
             # Fallback to simple list of all command names (filtered by channel)
@@ -263,6 +271,28 @@ class HelpCommand(BaseCommand):
                 for name, cmd in self.bot.command_manager.commands.items()
                 if self._is_command_valid_for_channel(name, cmd, message)
             ])
+            return self._format_commands_list_to_length(command_names, max_length)
+
+    def _format_commands_list_to_length(
+        self, command_names: list, max_length: Optional[int] = None
+    ) -> str:
+        """Format command names as comma-separated list, optionally truncated to max_length."""
+        if not max_length or max_length <= 0:
             return ', '.join(command_names)
+        result = []
+        current_length = 0
+        for name in command_names:
+            add_len = len(name) + (2 if result else 0)  # ", " before each after first
+            if current_length + add_len <= max_length:
+                result.append(name)
+                current_length += add_len
+            else:
+                remaining = len(command_names) - len(result)
+                if remaining > 0:
+                    suffix = f" ({remaining} more)"
+                    if current_length + len(suffix) <= max_length:
+                        return ', '.join(result) + suffix
+                break
+        return ', '.join(result)
     
 

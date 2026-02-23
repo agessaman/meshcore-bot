@@ -397,7 +397,7 @@ class MessageScheduler:
                         try:
                             future.result(timeout=30)  # 30 second timeout
                         except Exception as e:
-                            self.logger.error(f"Error processing channel operations: {e}")
+                            self.logger.exception(f"Error processing channel operations: {e}")
                     else:
                         # Fallback: create new event loop if main loop not available
                         try:
@@ -423,7 +423,7 @@ class MessageScheduler:
                         try:
                             future.result(timeout=30)  # 30 second timeout
                         except Exception as e:
-                            self.logger.error(f"Error processing message queue: {e}")
+                            self.logger.exception(f"Error processing message queue: {e}")
                     else:
                         # Fallback: create new event loop if main loop not available
                         try:
@@ -611,7 +611,7 @@ class MessageScheduler:
         except Exception as e:
             db_path = getattr(self.bot.db_manager, 'db_path', 'unknown')
             db_path_str = str(db_path) if db_path != 'unknown' else 'unknown'
-            self.logger.error(f"Error in _process_channel_operations: {e}")
+            self.logger.exception(f"Error in _process_channel_operations: {e}")
             if db_path_str != 'unknown':
                 path_obj = Path(db_path_str)
                 self.logger.error(f"Database path: {db_path_str} (exists: {path_obj.exists()}, readable: {os.access(db_path_str, os.R_OK) if path_obj.exists() else False}, writable: {os.access(db_path_str, os.W_OK) if path_obj.exists() else False})")

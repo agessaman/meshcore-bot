@@ -22,6 +22,33 @@ Without `--upgrade`, the script does *not* update the service file (systemd/laun
 
 **Recommendation:** Use `./install-service.sh --upgrade` after `git pull` when you want to upgrade; that updates files, dependencies, and the service, and reloads the service, while keeping your `config.ini` intact.
 
+### I moved a previous database into a new install; the bot runs but I see "Error processing message queue" or "Error processing channel operations". What should I do?
+
+Moving an old database into a new install can cause those errors when:
+
+1. **Schema mismatch** — The old DB may be missing tables or columns (e.g. `feed_message_queue`, `channel_operations`, or `message_send_interval_seconds` on `feed_subscriptions`). The bot runs `CREATE TABLE IF NOT EXISTS` and `ALTER TABLE` on startup, so missing tables/columns are usually added. If the exception in the log is `no such column`, the schema in the copied DB is older than expected; ensure the bot has started at least once so migrations run.
+2. **Stale queue/ops** — Pending rows in `feed_message_queue` or `channel_operations` from the old install may reference channels or feeds that don’t exist or differ on the new install. You can clear them so the scheduler stops hitting errors (with the bot stopped). If `sqlite3` is not installed, use Python instead:
+   - Clear unsent queue and pending channel ops (Python; no extra packages):
+     ```bash
+     sudo -u meshcore /opt/meshcore-bot/venv/bin/python -c "
+     import sqlite3
+     p = '/opt/meshcore-bot/meshcore_bot.db'
+     c = sqlite3.connect(p)
+     c.execute('DELETE FROM feed_message_queue WHERE sent_at IS NULL')
+     c.execute(\"DELETE FROM channel_operations WHERE status = 'pending'\")
+     c.commit()
+     print('Cleared pending queue and channel ops')
+     c.close()
+     "
+     ```
+   - Or with the `sqlite3` CLI if available:
+     `sqlite3 /path/to/meshcore_bot.db "DELETE FROM feed_message_queue WHERE sent_at IS NULL; DELETE FROM channel_operations WHERE status = 'pending';"`
+   - To clear only pending channel ops:
+     `sudo -u meshcore /opt/meshcore-bot/venv/bin/python -c "import sqlite3; c=sqlite3.connect('/opt/meshcore-bot/meshcore_bot.db'); c.execute(\"DELETE FROM channel_operations WHERE status = 'pending'\"); c.commit(); print('Cleared pending channel ops'); c.close()"`
+3. **Timeout** — If the log line has nothing after the colon, the exception is often a 30s timeout (scheduler runs queue/ops with a 30s limit). A large backlog or slow DB can trigger it; clearing pending queue/ops as above usually fixes it.
+
+After pulling the latest code, the next time an error occurs the log will include a full traceback (exception type and message), which makes the cause clear.
+
 ## Command reference and website
 
 ### How can I generate a custom command reference for my bot users?
