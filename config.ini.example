@@ -1096,6 +1096,28 @@ enabled = true
 enabled = true
 # channels =
 
+[Trace_Command]
+# Enable or disable the trace/tracer commands (link diagnostics)
+enabled = true
+# Maximum path length (hops) for manual or reciprocal path; paths longer than this are capped
+maximum_hops = 5
+# Trace mode: one_byte (default) or two_byte (when firmware supports it)
+trace_mode = one_byte
+# Timeout: total = timeout_base_seconds + (path hops * timeout_per_hop_seconds); typical 6 hops ~1s, 10 ~2s
+timeout_base_seconds = 1.0
+timeout_per_hop_seconds = 0.5
+# Retries: max attempts (default 2 = try once, then once more after delay)
+trace_retry_count = 2
+# Seconds to wait before retrying a failed trace
+trace_retry_delay_seconds = 1.0
+# Update mesh graph with bidirectional link when 1-byte trace succeeds
+update_graph_one_byte = true
+# Update mesh graph with 2-byte link identification when 2-byte trace succeeds (when supported)
+update_graph_two_byte = true
+# Optional: single emoji or string for bot in trace output; if unset, uses [Bot]
+# bot_label = 🤖
+# channels =
+
 [Feed_Command]
 enabled = false
 # channels =

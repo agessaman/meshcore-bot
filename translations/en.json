@@ -29,7 +29,8 @@
     "webviewer": ["webviewer", "web", "viewer", "wv"],
     "cmd": ["cmd", "commands"],
     "advert": ["advert"],
-    "multitest": ["multitest", "mt"]
+    "multitest": ["multitest", "mt"],
+    "trace": ["trace", "tracer"]
   },
   "commands": {
     "help": {
@@ -264,6 +265,10 @@
     "multitest": {
       "description": "Listens for 6 seconds and collects all unique paths from incoming messages with the same packet hash",
       "help": "Listens for 6 seconds and collects all unique paths from incoming messages with the same packet hash"
+    },
+    "trace": {
+      "description": "Run link trace (trace=manual path, tracer=round-trip so bot hears return)",
+      "help": "trace [path] — manual path (return may not be heard). tracer [path] — round-trip. Path: comma 2-char hex (e.g. 01,7a,55). No path = use your message path."
     },
     "prefix": {
       "description": "Look up repeaters by two-character prefix (e.g., 'prefix 1A')",

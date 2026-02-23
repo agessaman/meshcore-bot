@@ -258,7 +258,18 @@ class CommandManager:
     def get_rate_limit_key(self, message: MeshMessage) -> Optional[str]:
         """Return the key used for per-user rate limiting (pubkey when available, else sender name)."""
         return message.sender_pubkey or message.sender_id or None
-    
+
+    def get_rate_limit_wait_seconds(self, rate_limit_key: Optional[str] = None) -> float:
+        """Return seconds to wait until we could pass rate limits (for reply retry)."""
+        wait = 0.0
+        if not self.bot.rate_limiter.can_send():
+            wait = max(wait, self.bot.rate_limiter.time_until_next())
+        if getattr(self.bot, "per_user_rate_limit_enabled", False) and rate_limit_key:
+            per_user = getattr(self.bot, "per_user_rate_limiter", None)
+            if per_user and not per_user.can_send(rate_limit_key):
+                wait = max(wait, per_user.time_until_next(rate_limit_key))
+        return wait
+
     async def _check_rate_limits(
         self, skip_user_rate_limit: bool = False, rate_limit_key: Optional[str] = None
     ) -> Tuple[bool, str]:
