@@ -1389,6 +1389,39 @@ blitz_collection_interval = 600000
 # blitz_area_max_lat = 48.76
 # blitz_area_max_lon = 18.62
 
+[Earthquake_Service]
+# Enable earthquake alert service (true/false)
+# Polls USGS Earthquake API and posts alerts to a channel when quakes occur in the configured region
+enabled = false
+
+# Channel to post earthquake alerts to
+channel = #general
+
+# Poll interval (milliseconds). How often to check USGS for new earthquakes
+# Default: 60000 (1 minute)
+poll_interval = 60000
+
+# Time window (minutes). Only earthquakes in the last N minutes are queried
+# Default: 10
+time_window_minutes = 10
+
+# Minimum magnitude to report (e.g. 3.0 for M3.0+)
+# Default: 3.0
+min_magnitude = 3.0
+
+# Region bounding box (decimal degrees). Defaults are California
+# Southern and northern latitude bounds
+minlatitude = 32.5
+maxlatitude = 42.0
+# Western and eastern longitude bounds (negative = West)
+minlongitude = -124.5
+maxlongitude = -114.0
+
+# Send USGS event link in a separate message following the alert (true/false)
+# When true: notification message then link-only message. When false: no link sent.
+# Default: true
+send_link = true
+
 [DiscordBridge]
 # Enable Discord bridge service
 # Enable Discord bridge (true/false). One-way, read-only webhooks
