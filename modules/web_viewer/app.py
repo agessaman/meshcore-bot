@@ -2824,7 +2824,7 @@ class BotDataViewer:
                         self._cleanup_stale_clients()
                     
                     # Clean up old data every hour (after 12 stale client cleanups)
-                    self._cleanup_old_data(days_to_keep=7)
+                    self._cleanup_old_data()
                     
                 except Exception as e:
                     self.logger.error(f"Error in cleanup scheduler: {e}", exc_info=True)
@@ -2856,13 +2856,22 @@ class BotDataViewer:
         except Exception as e:
             self.logger.error(f"Error cleaning up stale clients: {e}")
     
-    def _cleanup_old_data(self, days_to_keep: int = 7):
-        """Clean up old packet stream data to prevent database bloat"""
+    def _cleanup_old_data(self, days_to_keep: Optional[int] = None):
+        """Clean up old packet stream data to prevent database bloat.
+        Uses [Data_Retention] packet_stream_retention_days when days_to_keep is not provided."""
         conn = None
         try:
             import sqlite3
             import time
-            
+
+            if days_to_keep is None:
+                days_to_keep = 3
+                if self.config.has_section('Data_Retention') and self.config.has_option('Data_Retention', 'packet_stream_retention_days'):
+                    try:
+                        days_to_keep = self.config.getint('Data_Retention', 'packet_stream_retention_days')
+                    except (ValueError, TypeError):
+                        pass
+
             cutoff_time = time.time() - (days_to_keep * 24 * 60 * 60)
             
             # Use DEFERRED isolation; longer timeout to wait out bot writes

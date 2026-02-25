@@ -625,6 +625,25 @@ track_command_details = true
 # false: Keep actual user IDs in stats
 anonymize_users = false
 
+[Data_Retention]
+# Data retention controls how long the bot keeps data in the database.
+# The scheduler runs cleanup daily so retention is enforced even when the
+# standalone web viewer is not running. Shorter retention reduces DB size.
+#
+# Packet stream (web viewer real-time display and transmission_tracker)
+# 2-3 days is enough for most deployments; 7 days if you need longer history.
+packet_stream_retention_days = 3
+#
+# Repeater/stats tables: daily_stats, unique_advert_packets, observed_paths
+daily_stats_retention_days = 90
+observed_paths_retention_days = 90
+#
+# Purging log (audit trail for repeater purges)
+purging_log_retention_days = 90
+#
+# Mesh connections (path graph edges). Should be >= Path_Command graph_edge_expiration_days.
+mesh_connections_retention_days = 7
+
 [Path_Command]
 # Enable or disable the path command
 enabled = true

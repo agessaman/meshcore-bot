@@ -717,6 +717,28 @@ class MeshGraph:
             self.logger.debug(f"Pruned {len(expired_keys)} expired graph edges (older than {self.edge_expiration_days} days)")
         return len(expired_keys)
 
+    def delete_expired_edges_from_db(self, days: int) -> int:
+        """Delete mesh_connections rows older than the given days.
+        Keeps the on-disk table aligned with in-memory pruning and prevents unbounded growth.
+        Called from the scheduler (e.g. daily). Use Data_Retention mesh_connections_retention_days
+        or Path_Command graph_edge_expiration_days.
+        Returns:
+            int: Number of rows deleted.
+        """
+        if days <= 0:
+            return 0
+        try:
+            deleted = self.db_manager.execute_update(
+                "DELETE FROM mesh_connections WHERE last_seen < datetime('now', ?)",
+                (f'-{days} days',)
+            )
+            if deleted > 0:
+                self.logger.info(f"Cleaned up {deleted} old mesh_connections entries (older than {days} days)")
+            return deleted
+        except Exception as e:
+            self.logger.error(f"Error cleaning up mesh_connections: {e}")
+            return 0
+
     def _start_batch_writer(self):
         """Start background task for batched writes."""
         def batch_writer_loop():

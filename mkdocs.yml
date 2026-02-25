@@ -56,6 +56,7 @@ nav:
     - Service: service-installation.md
   - Configuration:
     - Overview: configuration.md
+    - Data retention: data-retention.md
     - Path Command: path-command-config.md
     - Config validation: config-validation.md
   - Web Viewer: web-viewer.md
