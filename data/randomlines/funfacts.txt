@@ -1,0 +1,4 @@
+Packets are tiny on purpose to keep airtime low.
+RF hates metal boxes but loves elevation.
+Weather usually affects LoRa less than Wi-Fi.
+You can often improve signal just by rotating the antenna.
