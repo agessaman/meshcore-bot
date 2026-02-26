@@ -1135,6 +1135,8 @@ update_graph_one_byte = true
 update_graph_two_byte = true
 # Optional: single emoji or string for bot in trace output; if unset, uses [Bot]
 # bot_label = 🤖
+# Output format: inline (default) or vertical
+# output_format = inline
 # channels =
 
 [Feed_Command]

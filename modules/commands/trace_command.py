@@ -44,6 +44,8 @@ class TraceCommand(BaseCommand):
         self.bot_label = (self.bot.config.get("Trace_Command", "bot_label", fallback="") or "").strip()
         if not self.bot_label:
             self.bot_label = "[Bot]"
+        output_fmt = (self.bot.config.get("Trace_Command", "output_format", fallback="inline") or "inline").strip().lower()
+        self.output_format = output_fmt if output_fmt in ("inline", "vertical") else "inline"
 
     def can_execute(self, message: MeshMessage) -> bool:
         if not self.trace_enabled:
@@ -125,10 +127,16 @@ class TraceCommand(BaseCommand):
         return nodes + list(reversed(nodes[:-1]))
 
     def _format_trace_result(self, message: MeshMessage, result: RunTraceResult) -> str:
-        """Single chain: bot_label SNR [node] ... SNR bot_label (no duplicate info)."""
-        senderStr = f"@[{message.sender_id}] "
+        """Format trace result as inline (default) or vertical per output_format config."""
+        sender_str = f"@[{message.sender_id}] "
         if not result.success:
-            return f"{senderStr}Trace failed: {result.error_message or 'unknown'}"
+            return f"{sender_str}Trace failed: {result.error_message or 'unknown'}"
+        if self.output_format == "vertical":
+            return self._format_trace_vertical(sender_str, result)
+        return self._format_trace_inline(sender_str, result)
+
+    def _format_trace_inline(self, sender_str: str, result: RunTraceResult) -> str:
+        """Single chain: bot_label SNR [node] ... SNR bot_label."""
         parts = [self.bot_label]
         for node in result.path_nodes:
             s = node.get("snr")
@@ -136,11 +144,32 @@ class TraceCommand(BaseCommand):
             if h:
                 node_str = f"[{h}]"
             else:
-                node_str = self.bot_label  # final node (bot), no brackets
+                node_str = self.bot_label
             if s is not None:
                 parts.append(f"{s:.1f}")
             parts.append(node_str)
-        return senderStr + " ".join(parts)
+        return sender_str + " ".join(parts)
+
+    def _format_trace_vertical(self, sender_str: str, result: RunTraceResult) -> str:
+        """Vertical format: one line per hop, 'from → snr →' (next line's from); 'db' only on first SNR."""
+        lines = [f"{sender_str}Trace:"]
+        nodes = result.path_nodes
+        for i, node in enumerate(nodes):
+            s = node.get("snr")
+            h = node.get("hash")
+            label = h if h else self.bot_label
+            if i == 0:
+                # First hop: bot → SNR db →
+                snr_str = f"{s:.1f} db" if s is not None else "—"
+                lines.append(f"{label} → {snr_str} →")
+            elif i == len(nodes) - 1:
+                # Last hop: node → SNR → bot
+                snr_str = f"{s:.1f}" if s is not None else "—"
+                lines.append(f"{label} → {snr_str} → {self.bot_label}")
+            else:
+                snr_str = f"{s:.1f}" if s is not None else "—"
+                lines.append(f"{label} → {snr_str} →")
+        return "\n".join(lines)
 
     async def execute(self, message: MeshMessage) -> bool:
         content = message.content.strip()
