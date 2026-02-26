@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Trace and Tracer commands for the MeshCore Bot.
-Link diagnostics: trace (manual path), tracer (reciprocal path so return is heard by bot).
+Link diagnostics: trace (manual path when given, reciprocal when no path); tracer (reciprocal so return is heard by bot).
 """
 
 import asyncio
@@ -19,7 +19,7 @@ class TraceCommand(BaseCommand):
 
     name = "trace"
     keywords = ["trace", "tracer"]
-    description = "Run a trace along a path (trace=manual, tracer=round-trip); path optional, uses your incoming path"
+    description = "Run a trace along a path (trace=manual if path given, else round-trip; tracer=always round-trip)"
     requires_dm = False
     cooldown_seconds = 2
     category = "meshcore_info"
@@ -52,9 +52,9 @@ class TraceCommand(BaseCommand):
 
     def get_help_text(self) -> str:
         return (
-            "trace [path] — run trace along path (return may not be heard). "
+            "trace [path] — run trace along path (return may not be heard). No path = round-trip like tracer. "
             "tracer [path] — round-trip so bot hears return. Path: comma 2-char hex (e.g. 01,7a,55). "
-            "No path = use your message path."
+            "No path = use your message path (round-trip)."
         )
 
     def matches_keyword(self, message: MeshMessage) -> bool:
@@ -124,10 +124,11 @@ class TraceCommand(BaseCommand):
         # Return path: reverse of path excluding last node (so we don't duplicate the far end)
         return nodes + list(reversed(nodes[:-1]))
 
-    def _format_trace_result(self, result: RunTraceResult) -> str:
-        """Single chain: bot_label > SNR > [node] > ... > SNR > bot_label (no duplicate info)."""
+    def _format_trace_result(self, message: MeshMessage, result: RunTraceResult) -> str:
+        """Single chain: bot_label SNR [node] ... SNR bot_label (no duplicate info)."""
+        senderStr = f"@[{message.sender_id}] "
         if not result.success:
-            return f"Trace failed: {result.error_message or 'unknown'}"
+            return f"{senderStr}Trace failed: {result.error_message or 'unknown'}"
         parts = [self.bot_label]
         for node in result.path_nodes:
             s = node.get("snr")
@@ -139,7 +140,7 @@ class TraceCommand(BaseCommand):
             if s is not None:
                 parts.append(f"{s:.1f}")
             parts.append(node_str)
-        return " > ".join(parts)
+        return senderStr + " ".join(parts)
 
     async def execute(self, message: MeshMessage) -> bool:
         content = message.content.strip()
@@ -160,7 +161,8 @@ class TraceCommand(BaseCommand):
                 return True
             path_nodes = path_nodes[: self.maximum_hops]
 
-        if is_tracer:
+        # Use reciprocal path for tracer (always) or when no path given (so round-trip completes)
+        if is_tracer or path_arg is None:
             path_nodes = self._build_reciprocal_path(path_nodes)
             path_nodes = path_nodes[: self.maximum_hops]
 
@@ -185,7 +187,7 @@ class TraceCommand(BaseCommand):
             timeout_seconds=None,
         )
 
-        response = self._format_trace_result(result)
+        response = self._format_trace_result(message, result)
         sent = await self.send_response(message, response)
         # If rate limited (e.g. after retry), wait and retry once so the user gets the result
         if not sent and hasattr(self.bot, "command_manager") and self.bot.command_manager:
