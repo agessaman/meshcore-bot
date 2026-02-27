@@ -189,6 +189,8 @@ class TraceCommand(BaseCommand):
                 )
                 return True
             path_nodes = path_nodes[: self.maximum_hops]
+            # Incoming path is sender → ... → bot; reverse so we have path from bot toward sender
+            path_nodes = list(reversed(path_nodes))
 
         # Use reciprocal path for tracer (always) or when no path given (so round-trip completes)
         if is_tracer or path_arg is None:
