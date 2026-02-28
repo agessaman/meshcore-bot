@@ -597,6 +597,28 @@ route
 
 ---
 
+### `trace` and `tracer`
+
+Run a link trace for diagnostics. **trace** sends a trace along the given path (return may not be heard by the bot). **tracer** builds a round-trip path so the bot's radio hears the return.
+
+**Usage:**
+- `trace [path]` - Trace along path (comma-separated 2-char hex, e.g. `01,7a,55`). No path = use your message's incoming path.
+- `tracer [path]` - Same but path is converted to round-trip (e.g. `01,7a,55` → `01,7a,55,7a,01`) so the bot hears the response.
+
+**Examples:**
+```
+trace 01,7a,55
+tracer 01,7a,55
+tracer
+```
+With no path, both use the path your message took to reach the bot (like the test command).
+
+**Config:** `[Trace_Command]` — `enabled`, `maximum_hops`, `trace_mode` (one_byte/two_byte), `timeout_base_seconds` (default 1.0), `timeout_per_hop_seconds` (default 0.5), `trace_retry_count` (default 2 attempts), `trace_retry_delay_seconds` (default 1.0), `update_graph_one_byte`, `update_graph_two_byte`. Total wait per attempt = base + (hops × per_hop). On failure, waits then retries up to `trace_retry_count` times.
+
+**Response:** Compact trace result: tag, hop count, SNR per hop, and optional graph update when enabled.
+
+---
+
 ### `prefix <XX>`
 
 Look up repeaters by two-character prefix.

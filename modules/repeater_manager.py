@@ -3032,7 +3032,48 @@ class RepeaterManager:
                 
         except Exception as e:
             self.logger.error(f"Error cleaning up database: {e}")
-    
+
+    def cleanup_repeater_retention(
+        self,
+        daily_stats_days: int = 90,
+        observed_paths_days: int = 90
+    ) -> None:
+        """Clean up old daily_stats, unique_advert_packets, and observed_paths rows.
+        Called from the scheduler so retention is enforced even when stats command is not run."""
+        try:
+            total_deleted = 0
+
+            # daily_stats and unique_advert_packets use date column
+            cutoff_date = (datetime.now() - timedelta(days=daily_stats_days)).date().isoformat()
+            n = self.db_manager.execute_update(
+                'DELETE FROM daily_stats WHERE date < ?',
+                (cutoff_date,)
+            )
+            if n > 0:
+                self.logger.info(f"Cleaned up {n} old daily_stats entries (older than {daily_stats_days} days)")
+            total_deleted += n
+
+            n = self.db_manager.execute_update(
+                'DELETE FROM unique_advert_packets WHERE date < ?',
+                (cutoff_date,)
+            )
+            if n > 0:
+                self.logger.info(f"Cleaned up {n} old unique_advert_packets entries (older than {daily_stats_days} days)")
+            total_deleted += n
+
+            # observed_paths uses last_seen (timestamp)
+            cutoff_ts = (datetime.now() - timedelta(days=observed_paths_days)).isoformat()
+            n = self.db_manager.execute_update(
+                'DELETE FROM observed_paths WHERE last_seen < ?',
+                (cutoff_ts,)
+            )
+            if n > 0:
+                self.logger.info(f"Cleaned up {n} old observed_paths entries (older than {observed_paths_days} days)")
+            total_deleted += n
+
+        except Exception as e:
+            self.logger.error(f"Error cleaning up repeater retention tables: {e}")
+
     # Delegate geocoding cache methods to db_manager
     def get_cached_geocoding(self, query: str) -> Tuple[Optional[float], Optional[float]]:
         """Get cached geocoding result for a query"""

@@ -143,20 +143,22 @@ class MeshGraph:
             self.logger.warning(f"Error loading graph from database: {e}")
             # Continue with empty graph
     
-    def add_edge(self, from_prefix: str, to_prefix: str, 
+    def add_edge(self, from_prefix: str, to_prefix: str,
                  from_public_key: Optional[str] = None,
                  to_public_key: Optional[str] = None,
                  hop_position: Optional[int] = None,
-                 geographic_distance: Optional[float] = None):
+                 geographic_distance: Optional[float] = None,
+                 prefix_bytes: int = 1):
         """Add or update an edge in the graph.
-        
+
         Args:
-            from_prefix: Source node prefix (2 hex chars).
-            to_prefix: Destination node prefix (2 hex chars).
+            from_prefix: Source node prefix (2 hex chars, or 4 when prefix_bytes=2).
+            to_prefix: Destination node prefix (2 hex chars, or 4 when prefix_bytes=2).
             from_public_key: Full public key of source node (optional).
             to_public_key: Full public key of destination node (optional).
             hop_position: Position in path where this edge was observed (optional).
             geographic_distance: Distance in km between nodes (optional).
+            prefix_bytes: 1 = 1-byte (2-char) prefix (default); 2 = 2-byte confirmed (stored as edge flag for weighting).
         """
         if not from_prefix or not to_prefix:
             return
@@ -206,6 +208,10 @@ class MeshGraph:
             if geographic_distance is not None:
                 edge['geographic_distance'] = geographic_distance
 
+            # 2-byte trace confirmation (for path weighting when supported)
+            if prefix_bytes == 2:
+                edge['confirmed_2byte'] = True
+
             is_new_edge = False
         else:
             # New edge — also update adjacency indexes
@@ -218,7 +224,8 @@ class MeshGraph:
                 'first_seen': now,
                 'last_seen': now,
                 'avg_hop_position': hop_position if hop_position is not None else None,
-                'geographic_distance': geographic_distance
+                'geographic_distance': geographic_distance,
+                'confirmed_2byte': True if prefix_bytes == 2 else False,
             }
             self._outgoing_index[from_prefix].add(to_prefix)
             self._incoming_index[to_prefix].add(from_prefix)
@@ -709,6 +716,28 @@ class MeshGraph:
         if expired_keys:
             self.logger.debug(f"Pruned {len(expired_keys)} expired graph edges (older than {self.edge_expiration_days} days)")
         return len(expired_keys)
+
+    def delete_expired_edges_from_db(self, days: int) -> int:
+        """Delete mesh_connections rows older than the given days.
+        Keeps the on-disk table aligned with in-memory pruning and prevents unbounded growth.
+        Called from the scheduler (e.g. daily). Use Data_Retention mesh_connections_retention_days
+        or Path_Command graph_edge_expiration_days.
+        Returns:
+            int: Number of rows deleted.
+        """
+        if days <= 0:
+            return 0
+        try:
+            deleted = self.db_manager.execute_update(
+                "DELETE FROM mesh_connections WHERE last_seen < datetime('now', ?)",
+                (f'-{days} days',)
+            )
+            if deleted > 0:
+                self.logger.info(f"Cleaned up {deleted} old mesh_connections entries (older than {days} days)")
+            return deleted
+        except Exception as e:
+            self.logger.error(f"Error cleaning up mesh_connections: {e}")
+            return 0
 
     def _start_batch_writer(self):
         """Start background task for batched writes."""

@@ -56,6 +56,10 @@ Examples of sections that configure specific commands or features:
 
 Full reference: see `config.ini.example` in the repository for every section and option, with inline comments.
 
+## Data retention
+
+Database tables (packet stream, stats, repeater data, mesh graph) are pruned automatically. Retention periods and defaults are described in **[Data retention](data-retention.md)**. The bot’s scheduler runs cleanup daily even when the standalone web viewer is not running.
+
 ## Path Command configuration
 
 The Path command has many options (presets, proximity, graph validation, etc.). All are documented in:

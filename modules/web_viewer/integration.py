@@ -11,6 +11,7 @@ import sys
 import os
 import re
 from pathlib import Path
+from typing import Optional
 
 from ..utils import resolve_path
 
@@ -295,12 +296,21 @@ class BotIntegration:
         except Exception as e:
             self.bot.logger.debug(f"Error storing routing data: {e}")
     
-    def cleanup_old_data(self, days_to_keep: int = 7):
-        """Clean up old packet stream data to prevent database bloat"""
+    def cleanup_old_data(self, days_to_keep: Optional[int] = None):
+        """Clean up old packet stream data to prevent database bloat.
+        Uses [Data_Retention] packet_stream_retention_days when days_to_keep is not provided."""
         try:
             import sqlite3
             import time
-            
+
+            if days_to_keep is None:
+                days_to_keep = 3
+                if self.bot.config.has_section('Data_Retention') and self.bot.config.has_option('Data_Retention', 'packet_stream_retention_days'):
+                    try:
+                        days_to_keep = self.bot.config.getint('Data_Retention', 'packet_stream_retention_days')
+                    except (ValueError, TypeError):
+                        pass
+
             cutoff_time = time.time() - (days_to_keep * 24 * 60 * 60)
             
             db_path = self._get_web_viewer_db_path()

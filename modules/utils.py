@@ -10,8 +10,51 @@ import socket
 import asyncio
 import urllib.request
 import urllib.error
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple, Dict, Union, List, Any
+
+try:
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+except ImportError:
+    ZoneInfo = None  # type: ignore[misc, assignment]
+    ZoneInfoNotFoundError = Exception  # type: ignore[misc, assignment]
+
+
+def is_valid_timezone(tz_str: str) -> bool:
+    """Return True if the string is a valid IANA timezone name."""
+    if not (tz_str and tz_str.strip()):
+        return False
+    if ZoneInfo is not None:
+        try:
+            ZoneInfo(tz_str.strip())
+            return True
+        except ZoneInfoNotFoundError:
+            return False
+    try:
+        import pytz
+        pytz.timezone(tz_str.strip())
+        return True
+    except Exception:
+        return False
+
+
+def get_config_timezone(config: Any, logger: Optional[Any] = None) -> Tuple[Any, str]:
+    """Resolve [Bot] timezone from config; fall back to system timezone if invalid or empty.
+
+    Returns:
+        (tz, iana_str): tz is a timezone object for datetime; iana_str is an IANA
+        string for APIs (e.g. OpenMeteo). When falling back to system, iana_str is "UTC".
+    """
+    timezone_str = (config.get('Bot', 'timezone', fallback='') or '').strip()
+    if timezone_str and is_valid_timezone(timezone_str):
+        import pytz
+        return (pytz.timezone(timezone_str), timezone_str)
+    if timezone_str and logger:
+        logger.warning("Invalid timezone '%s', using system timezone", timezone_str)
+    # System timezone for datetime; use "UTC" for API when we don't have an IANA name
+    tz = datetime.now().astimezone().tzinfo
+    return (tz, "UTC")
 
 
 def abbreviate_location(location: str, max_length: int = 20) -> str:
@@ -2015,20 +2058,8 @@ def format_keyword_response_with_placeholders(
             
             # Format timestamp
             try:
-                timezone_str = bot.config.get('Bot', 'timezone', fallback='')
-                if timezone_str:
-                    try:
-                        import pytz
-                        from datetime import datetime
-                        tz = pytz.timezone(timezone_str)
-                        dt = datetime.now(tz)
-                    except Exception:
-                        from datetime import datetime
-                        dt = datetime.now()
-                else:
-                    from datetime import datetime
-                    dt = datetime.now()
-                
+                tz, _ = get_config_timezone(bot.config, getattr(bot, 'logger', None))
+                dt = datetime.now(tz)
                 time_str = dt.strftime("%H:%M:%S")
             except Exception:
                 time_str = "Unknown"

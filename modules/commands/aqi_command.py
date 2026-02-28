@@ -10,7 +10,7 @@ import requests_cache
 from retry_requests import retry
 from datetime import datetime
 from geopy.geocoders import Nominatim
-from ..utils import rate_limited_nominatim_geocode_sync, rate_limited_nominatim_reverse_sync, get_nominatim_geocoder, abbreviate_location, geocode_zipcode_sync, geocode_city_sync
+from ..utils import rate_limited_nominatim_geocode_sync, rate_limited_nominatim_reverse_sync, get_nominatim_geocoder, abbreviate_location, geocode_zipcode_sync, geocode_city_sync, is_valid_timezone
 from .base_command import BaseCommand
 from ..models import MeshMessage
 
@@ -52,8 +52,14 @@ class AqiCommand(BaseCommand):
         self.default_state = self.bot.config.get('Weather', 'default_state', fallback='')
         self.default_country = self.bot.config.get('Weather', 'default_country', fallback='US')
         
-        # Get timezone from config
-        self.timezone = self.bot.config.get('Bot', 'timezone', fallback='America/Los_Angeles')
+        # Get timezone from config (validated); invalid or empty falls back to system; for API use default or UTC
+        timezone_str = self.bot.config.get('Bot', 'timezone', fallback='').strip()
+        if timezone_str and is_valid_timezone(timezone_str):
+            self.timezone = timezone_str
+        else:
+            if timezone_str:
+                self.logger.warning("Invalid timezone '%s', using system timezone", timezone_str)
+            self.timezone = "America/Los_Angeles" if not timezone_str else "UTC"
         
         # Initialize geocoder (will use rate-limited helpers for actual calls)
         self.geolocator = get_nominatim_geocoder()
@@ -798,11 +804,13 @@ class AqiCommand(BaseCommand):
             # Make sure all required weather variables are listed here
             # The order of variables in current is important to assign them correctly below
             url = "https://air-quality-api.open-meteo.com/v1/air-quality"
+            # OpenMeteo requires a valid IANA timezone; empty config sends "" and returns "Invalid timezone"
+            tz_for_api = (self.timezone or "UTC").strip() or "UTC"
             params = {
                 "latitude": lat,
                 "longitude": lon,
                 "current": ["us_aqi", "european_aqi", "pm10", "pm2_5", "carbon_monoxide", "nitrogen_dioxide", "sulphur_dioxide", "ozone", "dust"],
-                "timezone": self.timezone,
+                "timezone": tz_for_api,
                 "forecast_days": 1,
             }
             responses = self.openmeteo.weather_api(url, params=params)

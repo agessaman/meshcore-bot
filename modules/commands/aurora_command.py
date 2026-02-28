@@ -12,7 +12,7 @@ import pytz
 
 from ..clients.noaa_aurora_client import NOAAAuroraClient
 from ..models import MeshMessage
-from ..utils import geocode_city_sync, geocode_zipcode_sync
+from ..utils import geocode_city_sync, geocode_zipcode_sync, get_config_timezone
 from .base_command import BaseCommand
 
 
@@ -123,17 +123,11 @@ class AuroraCommand(BaseCommand):
         if dt_utc is None:
             return "—"
         use_zulu = self.get_config_value("Solar_Config", "use_zulu_time", fallback=False, value_type="bool")
-        tz_str = self.bot.config.get("Bot", "timezone", fallback="").strip()
-        if use_zulu or not tz_str:
+        tz, iana_str = get_config_timezone(self.bot.config, self.logger)
+        if use_zulu or iana_str == "UTC":
             return dt_utc.strftime("%b %d ") + f"{dt_utc.hour:02d}Z"
-        try:
-            local_tz = pytz.timezone(tz_str)
-            local = dt_utc.astimezone(local_tz)
-            # Match solar/moon: 12h when not Zulu
-            return local.strftime("%b %d %I:%M%p")
-        except (pytz.exceptions.UnknownTimeZoneError, Exception):
-            self.logger.debug(f"Invalid timezone '{tz_str}', using UTC for KP time")
-            return dt_utc.strftime("%b %d ") + f"{dt_utc.hour:02d}Z"
+        local = dt_utc.astimezone(tz)
+        return local.strftime("%b %d %I:%M%p")
 
     def _resolve_location(
         self, message: MeshMessage, location: Optional[str]
