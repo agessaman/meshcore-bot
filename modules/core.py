@@ -79,6 +79,11 @@ class MeshCoreBot:
         except (OSError, ValueError, sqlite3.Error) as e:
             self.logger.error(f"Failed to initialize database manager: {e}")
             raise
+
+        # Set length of prefix
+        self.prefix_bytes = self.config.getint("Bot", "prefix_bytes", fallback=1)
+        self.prefix_hex_chars = self.prefix_bytes * 2
+        self.logger.info(f"Prefix mode: {self.prefix_bytes} bytes ({self.prefix_hex_chars} hex chars)")
         
         # Store start time in database for web viewer access
         try:
@@ -1532,3 +1537,9 @@ long_jokes = false
             self.logger.error(f"Error sending startup advert: {e}")
             import traceback
             self.logger.error(traceback.format_exc())
+
+    def key_prefix(self, public_key: str) -> str:
+        return public_key[:self.prefix_hex_chars]
+
+    def is_valid_prefix(self, prefix: str) -> bool:
+        return len(prefix) == self.prefix_hex_chars

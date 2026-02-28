@@ -2045,7 +2045,7 @@ class MessageHandler:
             self.logger.debug("Mesh graph: No public key in advert data, skipping graph update")
             return
         
-        advertiser_prefix = advertiser_key[:2].lower()
+        advertiser_prefix = advertiser_key[:self.bot.prefix_hex_chars].lower()
         
         # Parse path from hex string
         path_nodes = []
@@ -3115,7 +3115,7 @@ class MessageHandler:
                         try:
                             node_data = {
                                 'public_key': public_key,
-                                'prefix': public_key[:2].lower() if public_key else '',
+                                'prefix': public_key[:self.bot.prefix_hex_chars].lower() if public_key else '',
                                 'name': contact_name,
                                 'role': 'repeater'
                             }

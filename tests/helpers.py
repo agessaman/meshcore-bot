@@ -104,8 +104,8 @@ def create_test_edge(
         to_public_key = (to_prefix.lower() * 16)[:64]
     
     return {
-        'from_prefix': from_prefix.lower()[:2],
-        'to_prefix': to_prefix.lower()[:2],
+        'from_prefix': from_prefix.lower()[:self.bot.prefix_hex_chars],
+        'to_prefix': to_prefix.lower()[:self.bot.prefix_hex_chars],
         'from_public_key': from_public_key,
         'to_public_key': to_public_key,
         'observation_count': observation_count,
@@ -125,7 +125,7 @@ def create_test_path(node_ids: List[str]) -> List[str]:
     Returns:
         List of node IDs (normalized to lowercase)
     """
-    return [node_id.lower()[:2] for node_id in node_ids]
+    return [node_id.lower()[:self.bot.prefix_hex_chars] for node_id in node_ids]
 
 
 def populate_test_graph(mesh_graph, edges: List[Dict[str, Any]]):
@@ -145,7 +145,7 @@ def populate_test_graph(mesh_graph, edges: List[Dict[str, Any]]):
             geographic_distance=edge.get('geographic_distance')
         )
         # Manually set observation_count and timestamps if needed
-        edge_key = (edge['from_prefix'].lower()[:2], edge['to_prefix'].lower()[:2])
+        edge_key = (edge['from_prefix'].lower()[:self.bot.prefix_hex_chars], edge['to_prefix'].lower()[:self.bot.prefix_hex_chars])
         if edge_key in mesh_graph.edges:
             if edge.get('observation_count', 1) > 1:
                 mesh_graph.edges[edge_key]['observation_count'] = edge['observation_count']

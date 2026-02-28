@@ -154,6 +154,9 @@ respond_to_dms = true
 # Example: channel_keywords = help,ping,test,hello
 # channel_keywords =
 
+# Set a custom prefix length for the public keys to identify repeaters
+prefix_bytes = 1
+
 [Banned_Users]
 # List of banned sender names (comma-separated). Matching is prefix (starts-with):
 # "Awful Username" also matches "Awful Username 🍆". No bot responses in channels or DMs.
