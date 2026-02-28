@@ -73,7 +73,6 @@ The `docker-compose.yml` file maps the following directories:
 ### Serial Port Access
 
 **⚠️ Important: Docker Desktop on macOS does NOT support serial device passthrough.**
-
 If you're using a serial connection, you have several options:
 
 **Option 1: Use TCP Connection (Recommended for macOS)**
@@ -107,6 +106,8 @@ For BLE connections on Linux, you may need host network access:
 network_mode: host
 ```
 **Note**: Host network mode gives the container full access to the host network, which has security implications.
+
+**Windows 11 (Docker Desktop / WSL2):** See [Connecting COM Ports to Docker on Windows 11](#connecting-com-ports-to-docker-on-windows-11) below.
 
 ### Web Viewer Port
 
@@ -278,12 +279,15 @@ If you see `[Errno 13] Permission denied` when accessing serial devices:
 
 ### Serial Port Not Found
 
-1. **Check device exists**:
+1. **Windows: "No such file or directory: 'COM3'"**  
+   Docker on Windows (WSL2) cannot see Windows COM ports. See [Connecting COM Ports to Docker on Windows 11](#connecting-com-ports-to-docker-on-windows-11) above.
+
+2. **Check device exists** (Linux):
    ```bash
    ls -l /dev/ttyUSB0  # or your device
    ```
 
-2. **Use host network mode** if device mapping doesn't work:
+3. **Use host network mode** if device mapping doesn't work:
    ```yaml
    network_mode: host
    ```
@@ -465,6 +469,68 @@ docker-compose up -d
 4. **Secrets**: Never commit API keys or sensitive data to version control. Use environment variables or secrets management
 
 5. **Web viewer**: If enabled, ensure it's only accessible on trusted networks or use a reverse proxy with authentication
+
+## Connecting COM Ports to Docker on Windows 11 {#connecting-com-ports-to-docker-on-windows-11}
+
+On Windows 11, Docker runs inside a Linux VM (WSL2). Linux does not see Windows COM ports by default, so the bot may fail with:
+
+```
+Connection failed: [Errno 2] could not open port COM3: [Errno 2] No such file or directory: 'COM3'
+```
+
+Even if the port works in Windows (e.g. in Device Manager or in [app.meshcore.nz](https://app.meshcore.nz)), you must **pass the USB device from Windows into WSL** so the container can use it.
+
+**1. Install the USB bridge**
+
+Open **PowerShell as Administrator** and run:
+
+```powershell
+winget install --id Microsoft.usbipd-win
+```
+
+Restart your computer if prompted.
+
+**2. Identify and share the radio**
+
+With the radio plugged in, in PowerShell:
+
+- **Find the device**: Run `usbipd list`. Note the **BUSID** for your radio (e.g. `2-3`).
+- **Bind it**: Run `usbipd bind --busid <YOUR-BUSID>`.
+- **Attach to WSL**: Run `usbipd attach --wsl --busid <YOUR-BUSID>`.
+
+**Important:** Close any app that is using the serial port (e.g. the [app.meshcore.nz](https://app.meshcore.nz) browser tab) before binding. Only one process can own the port at a time.
+
+**3. Use the Linux device name in Docker**
+
+After attaching, the device in WSL is no longer `COM3`. It will typically appear as `/dev/ttyUSB0`. To confirm, inside WSL run:
+
+```bash
+ls /dev/tty*
+```
+
+**4. Update Docker and config**
+
+In `docker-compose.yml`, add (or adjust) the device mapping:
+
+```yaml
+devices:
+  - "/dev/ttyUSB0:/dev/ttyUSB0"
+```
+
+In `config.ini`, set the serial port to the Linux device:
+
+```ini
+[Connection]
+connection_type = serial
+serial_port = /dev/ttyUSB0
+```
+
+**Notes:**
+
+- Bind/attach is **not persistent**. After a reboot or unplugging the radio, run `usbipd bind` and `usbipd attach --wsl` again (or use a script).
+- To attach to the Docker Desktop distro specifically:  
+  `usbipd attach --wsl --busid <BUSID> --distribution docker-desktop`  
+  (Use `usbipd --help` to see your exact distribution name.)
 
 ## Additional Resources
 
