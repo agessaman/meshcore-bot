@@ -124,17 +124,22 @@ class MultitestCommand(BaseCommand):
                 # Try to extract from path_hex if path_nodes not available
                 path_hex = routing_info.get('path_hex', '')
                 if path_hex:
-                    # Convert hex string to node list (every 2 characters = 1 node)
-                    path_nodes = [path_hex[i:i+2] for i in range(0, len(path_hex), 2)]
+                    n = getattr(self.bot, 'prefix_hex_chars', 2)
+                    if n <= 0:
+                        n = 2
+                    path_nodes = [path_hex[i:i+n] for i in range(0, len(path_hex), n)]
+                    if (len(path_hex) % n) != 0:
+                        path_nodes = [path_hex[i:i+2] for i in range(0, len(path_hex), 2)]
             
             if path_nodes:
                 # Validate and format path nodes
+                valid_len = getattr(self.bot, 'prefix_hex_chars', 2)
+                if valid_len <= 0:
+                    valid_len = 2
                 valid_parts = []
                 for node in path_nodes:
-                    # Convert to string if needed
                     node_str = str(node).lower().strip()
-                    # Check if it's a 2-character hex value
-                    if len(node_str) == 2 and all(c in '0123456789abcdef' for c in node_str):
+                    if len(node_str) in (2, valid_len) and all(c in '0123456789abcdef' for c in node_str):
                         valid_parts.append(node_str)
                 
                 if valid_parts:

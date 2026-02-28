@@ -362,16 +362,24 @@ class BotDataViewer:
         
         # Parse hex input - same logic as PathCommand._decode_path
         # Handle both comma/space-separated and continuous hex strings (e.g., "8601a5")
+        prefix_hex_chars = self.config.getint('Bot', 'prefix_bytes', fallback=1) * 2
+        if prefix_hex_chars <= 0:
+            prefix_hex_chars = 2
         # First, try to parse as continuous hex string
         path_input_clean = path_input.replace(',', '').replace(':', '').replace(' ', '')
         if re.match(r'^[0-9a-fA-F]{4,}$', path_input_clean):
-            # Continuous hex string - split into pairs
-            hex_matches = [path_input_clean[i:i+2] for i in range(0, len(path_input_clean), 2)]
+            # Continuous hex string - split using configured prefix length
+            hex_matches = [path_input_clean[i:i+prefix_hex_chars] for i in range(0, len(path_input_clean), prefix_hex_chars)]
+            if (len(path_input_clean) % prefix_hex_chars) != 0 and prefix_hex_chars > 2:
+                hex_matches = [path_input_clean[i:i+2] for i in range(0, len(path_input_clean), 2)]
         else:
             # Space/comma-separated format
             path_input = path_input.replace(',', ' ').replace(':', ' ')
             hex_pattern = rf'[0-9a-fA-F]{{{prefix_hex_chars}}}'
             hex_matches = re.findall(hex_pattern, path_input)
+            if not hex_matches and prefix_hex_chars > 2:
+                hex_pattern = r'[0-9a-fA-F]{2}'
+                hex_matches = re.findall(hex_pattern, path_input)
         
         if not hex_matches:
             return {
@@ -806,7 +814,7 @@ class BotDataViewer:
                     try:
                         # Query stored paths from this repeater
                         query = '''
-                            SELECT path_hex, observation_count, last_seen, from_prefix, to_prefix
+                            SELECT path_hex, observation_count, last_seen, from_prefix, to_prefix, bytes_per_hop
                             FROM observed_paths
                             WHERE public_key = ? AND packet_type = 'advert'
                             ORDER BY observation_count DESC, last_seen DESC
@@ -827,9 +835,14 @@ class BotDataViewer:
                                 obs_count = stored_path.get('observation_count', 1)
                                 
                                 if stored_hex:
-                                    # Check for shared path segments
-                                    stored_nodes = [stored_hex[i:i+2] for i in range(0, len(stored_hex), 2)]
-                                    decoded_nodes = [decoded_path_hex[i:i+2] for i in range(0, len(decoded_path_hex), 2)]
+                                    # Chunk size: use stored bytes_per_hop (multi-byte path support)
+                                    n = (stored_path.get('bytes_per_hop') or 1) * 2
+                                    if n <= 0:
+                                        n = 2
+                                    stored_nodes = [stored_hex[i:i+n] for i in range(0, len(stored_hex), n)]
+                                    if (len(stored_hex) % n) != 0:
+                                        stored_nodes = [stored_hex[i:i+2] for i in range(0, len(stored_hex), 2)]
+                                    decoded_nodes = path_context if path_context else [decoded_path_hex[i:i+n] for i in range(0, len(decoded_path_hex), n)]
                                     
                                     # Count how many nodes appear in both paths (in order)
                                     common_segments = 0
@@ -3534,7 +3547,7 @@ class BotDataViewer:
                     c.snr, c.hop_count, c.first_heard, c.last_heard,
                     c.advert_count, c.is_currently_tracked,
                     c.raw_advert_data, c.signal_strength,
-                    c.is_starred, c.out_path, c.out_path_len,
+                    c.is_starred, c.out_path, c.out_path_len, c.out_bytes_per_hop,
                     COUNT(*) as total_messages,
                     MAX(c.last_advert_timestamp) as last_message,
                     GROUP_CONCAT(op.path_hex, '|||') as all_paths_hex,
@@ -3550,7 +3563,7 @@ class BotDataViewer:
                          c.snr, c.hop_count, c.first_heard, c.last_heard,
                          c.advert_count, c.is_currently_tracked,
                          c.raw_advert_data, c.signal_strength, c.is_starred,
-                         c.out_path, c.out_path_len
+                         c.out_path, c.out_path_len, c.out_bytes_per_hop
                 ORDER BY c.last_heard DESC
             """, params)
             
@@ -3613,6 +3626,7 @@ class BotDataViewer:
                     'is_starred': bool(row['is_starred'] if row['is_starred'] is not None else 0),
                     'out_path': row['out_path'] if row['out_path'] is not None else '',
                     'out_path_len': row['out_path_len'] if row['out_path_len'] is not None else -1,
+                    'out_bytes_per_hop': row['out_bytes_per_hop'] if row.get('out_bytes_per_hop') is not None else None,
                     'all_paths': all_paths
                 })
             
@@ -5172,15 +5186,23 @@ class BotDataViewer:
         from datetime import datetime
         
         # Parse the path input - handle various formats
+        prefix_hex_chars = self.config.getint('Bot', 'prefix_bytes', fallback=1) * 2
+        if prefix_hex_chars <= 0:
+            prefix_hex_chars = 2
         path_input_clean = path_hex.replace(' ', '').replace(',', '').replace(':', '')
         if re.match(r'^[0-9a-fA-F]{4,}$', path_input_clean):
-            # Continuous hex string - split into pairs
-            hex_matches = [path_input_clean[i:i+2] for i in range(0, len(path_input_clean), 2)]
+            # Continuous hex string - split using configured prefix length
+            hex_matches = [path_input_clean[i:i+prefix_hex_chars] for i in range(0, len(path_input_clean), prefix_hex_chars)]
+            if (len(path_input_clean) % prefix_hex_chars) != 0 and prefix_hex_chars > 2:
+                hex_matches = [path_input_clean[i:i+2] for i in range(0, len(path_input_clean), 2)]
         else:
             # Space/comma-separated format
             path_input = path_hex.replace(',', ' ').replace(':', ' ')
-            hex_pattern = rf'[0-9a-fA-F]{{{prefix_hex_chars}}}'            
+            hex_pattern = rf'[0-9a-fA-F]{{{prefix_hex_chars}}}'
             hex_matches = re.findall(hex_pattern, path_input)
+            if not hex_matches and prefix_hex_chars > 2:
+                hex_pattern = r'[0-9a-fA-F]{2}'
+                hex_matches = re.findall(hex_pattern, path_input)
         
         if not hex_matches:
             return []
@@ -5447,7 +5469,7 @@ class BotDataViewer:
                 if candidate_public_key and len(path_context) > 1:
                     try:
                         query = '''
-                            SELECT path_hex, observation_count, last_seen, from_prefix, to_prefix
+                            SELECT path_hex, observation_count, last_seen, from_prefix, to_prefix, bytes_per_hop
                             FROM observed_paths
                             WHERE public_key = ? AND packet_type = 'advert'
                             ORDER BY observation_count DESC, last_seen DESC
@@ -5466,8 +5488,13 @@ class BotDataViewer:
                                 obs_count = stored_path.get('observation_count', 1)
                                 
                                 if stored_hex:
-                                    stored_nodes = [stored_hex[i:i+2] for i in range(0, len(stored_hex), 2)]
-                                    decoded_nodes = [decoded_path_hex[i:i+2] for i in range(0, len(decoded_path_hex), 2)]
+                                    n = (stored_path.get('bytes_per_hop') or 1) * 2
+                                    if n <= 0:
+                                        n = 2
+                                    stored_nodes = [stored_hex[i:i+n] for i in range(0, len(stored_hex), n)]
+                                    if (len(stored_hex) % n) != 0:
+                                        stored_nodes = [stored_hex[i:i+2] for i in range(0, len(stored_hex), 2)]
+                                    decoded_nodes = path_context if path_context else [decoded_path_hex[i:i+n] for i in range(0, len(decoded_path_hex), n)]
                                     
                                     # Check for exact path match (full path)
                                     common_segments = 0

@@ -26,7 +26,7 @@ from meshcore import EventType
 from ..enums import AdvertFlags, PayloadType, PayloadVersion, RouteType, DeviceRole
 
 # Import bot's utilities for packet hash
-from ..utils import calculate_packet_hash
+from ..utils import calculate_packet_hash, decode_path_len_byte
 
 # Import MQTT client
 try:
@@ -871,24 +871,25 @@ class PacketCaptureService(BaseServicePlugin):
                     self.logger.debug(f"Packet too short after transport codes ({len(byte_data)} bytes, offset {offset}), cannot decode")
                 return None
             
-            path_len = byte_data[offset]
+            path_len_byte = byte_data[offset]
             offset += 1
+            path_byte_length, bytes_per_hop = decode_path_len_byte(path_len_byte)
             
-            if len(byte_data) < offset + path_len:
+            if len(byte_data) < offset + path_byte_length:
                 if self.debug:
-                    self.logger.debug(f"Packet too short for path ({len(byte_data)} bytes, need {offset + path_len}), cannot decode")
+                    self.logger.debug(f"Packet too short for path ({len(byte_data)} bytes, need {offset + path_byte_length}), cannot decode")
                 return None
             
             # Extract path
-            path_bytes = byte_data[offset:offset + path_len]
-            offset += path_len
+            path_bytes = byte_data[offset:offset + path_byte_length]
+            offset += path_byte_length
             
-            # Convert path to list of hex node IDs (for compatibility)
+            # Chunk path by bytes_per_hop from packet (1, 2, or 3; legacy fallback uses 1)
+            hex_chars = bytes_per_hop * 2
             path_hex = path_bytes.hex()
-            path_nodes = []
-            for i in range(0, len(path_hex), 2):
-                if i + 1 < len(path_hex):
-                    path_nodes.append(path_hex[i:i+2])
+            path_nodes = [path_hex[i:i + hex_chars].upper() for i in range(0, len(path_hex), hex_chars)]
+            if (len(path_hex) % hex_chars) != 0 or not path_nodes:
+                path_nodes = [path_hex[i:i + 2].upper() for i in range(0, len(path_hex), 2)]
             
             # Remaining data is payload
             packet_payload = byte_data[offset:]
@@ -915,7 +916,9 @@ class PacketCaptureService(BaseServicePlugin):
                 'payload_type': payload_type.name,
                 'payload_type_value': payload_type.value,
                 'payload_version': payload_version.value,
-                'path_len': path_len,
+                'path_len': len(path_nodes),
+                'path_byte_length': path_byte_length,
+                'bytes_per_hop': bytes_per_hop,
                 'path_hex': path_hex,
                 'path': path_nodes,  # List of hex node IDs
                 'payload_hex': packet_payload.hex(),

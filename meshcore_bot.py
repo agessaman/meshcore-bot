@@ -53,9 +53,26 @@ def main():
     # For SIGTERM, we'll handle it in the async context
     async def run_bot():
         """Run bot with proper signal handling"""
+        loop = asyncio.get_running_loop()
+
+        def meshcore_task_exception_handler(loop, context):
+            """Log unhandled exceptions from asyncio tasks (e.g. meshcore reader)."""
+            exc = context.get('exception')
+            msg = context.get('message', 'Unhandled exception in task')
+            if exc is not None:
+                bot.logger.warning(
+                    "%s: %s",
+                    msg,
+                    exc,
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
+            else:
+                bot.logger.warning("%s: %s", msg, context)
+
+        loop.set_exception_handler(meshcore_task_exception_handler)
+
         # Set up signal handlers for graceful shutdown (Unix only)
         if sys.platform != 'win32':
-            loop = asyncio.get_running_loop()
             shutdown_event = asyncio.Event()
             bot_task = None
             

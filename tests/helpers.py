@@ -74,7 +74,8 @@ def create_test_edge(
     first_seen: Optional[datetime] = None,
     last_seen: Optional[datetime] = None,
     avg_hop_position: Optional[float] = None,
-    geographic_distance: Optional[float] = None
+    geographic_distance: Optional[float] = None,
+    prefix_hex_chars: int = 2
 ) -> Dict[str, Any]:
     """Factory function to create test edge data.
     
@@ -88,6 +89,7 @@ def create_test_edge(
         last_seen: Last observation time (default: now)
         avg_hop_position: Average hop position in paths
         geographic_distance: Distance in km
+        prefix_hex_chars: Number of hex chars per prefix (default 2). Use bot.prefix_hex_chars when testing with a bot.
     
     Returns:
         Dictionary with edge data matching MeshGraph edge structure
@@ -104,8 +106,8 @@ def create_test_edge(
         to_public_key = (to_prefix.lower() * 16)[:64]
     
     return {
-        'from_prefix': from_prefix.lower()[:self.bot.prefix_hex_chars],
-        'to_prefix': to_prefix.lower()[:self.bot.prefix_hex_chars],
+        'from_prefix': from_prefix.lower()[:prefix_hex_chars],
+        'to_prefix': to_prefix.lower()[:prefix_hex_chars],
         'from_public_key': from_public_key,
         'to_public_key': to_public_key,
         'observation_count': observation_count,
@@ -116,24 +118,26 @@ def create_test_edge(
     }
 
 
-def create_test_path(node_ids: List[str]) -> List[str]:
+def create_test_path(node_ids: List[str], prefix_hex_chars: int = 2) -> List[str]:
     """Factory function to create test path data.
     
     Args:
         node_ids: List of node prefixes in path order
+        prefix_hex_chars: Number of hex chars per node (default 2). Use bot.prefix_hex_chars when testing with a bot.
     
     Returns:
         List of node IDs (normalized to lowercase)
     """
-    return [node_id.lower()[:self.bot.prefix_hex_chars] for node_id in node_ids]
+    return [node_id.lower()[:prefix_hex_chars] for node_id in node_ids]
 
 
-def populate_test_graph(mesh_graph, edges: List[Dict[str, Any]]):
+def populate_test_graph(mesh_graph, edges: List[Dict[str, Any]], prefix_hex_chars: int = 2):
     """Helper to populate a MeshGraph instance with test edges.
     
     Args:
         mesh_graph: MeshGraph instance to populate
         edges: List of edge dictionaries (from create_test_edge)
+        prefix_hex_chars: Number of hex chars per prefix (default 2). Must match mesh_graph's bot.prefix_hex_chars when graph uses prefix-based keys.
     """
     for edge in edges:
         mesh_graph.add_edge(
@@ -145,7 +149,7 @@ def populate_test_graph(mesh_graph, edges: List[Dict[str, Any]]):
             geographic_distance=edge.get('geographic_distance')
         )
         # Manually set observation_count and timestamps if needed
-        edge_key = (edge['from_prefix'].lower()[:self.bot.prefix_hex_chars], edge['to_prefix'].lower()[:self.bot.prefix_hex_chars])
+        edge_key = (edge['from_prefix'].lower()[:prefix_hex_chars], edge['to_prefix'].lower()[:prefix_hex_chars])
         if edge_key in mesh_graph.edges:
             if edge.get('observation_count', 1) > 1:
                 mesh_graph.edges[edge_key]['observation_count'] = edge['observation_count']

@@ -153,6 +153,7 @@ class RepeaterManager:
                 to_prefix TEXT NOT NULL,
                 path_hex TEXT NOT NULL,
                 path_length INTEGER NOT NULL,
+                bytes_per_hop INTEGER,
                 packet_type TEXT NOT NULL,
                 first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -267,8 +268,25 @@ class RepeaterManager:
                         self.logger.info("Adding packet_hash column to observed_paths")
                         cursor.execute("ALTER TABLE observed_paths ADD COLUMN packet_hash TEXT")
                         conn.commit()
+                    if 'bytes_per_hop' not in observed_paths_columns:
+                        self.logger.info("Adding bytes_per_hop column to observed_paths")
+                        cursor.execute("ALTER TABLE observed_paths ADD COLUMN bytes_per_hop INTEGER")
+                        conn.commit()
             except Exception as e:
                 self.logger.warning(f"Migration observed_paths: {e}")
+
+            # complete_contact_tracking: out_bytes_per_hop (multi-byte path decode)
+            try:
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='complete_contact_tracking'")
+                if cursor.fetchone():
+                    cursor.execute("PRAGMA table_info(complete_contact_tracking)")
+                    cct_columns = [row[1] for row in cursor.fetchall()]
+                    if 'out_bytes_per_hop' not in cct_columns:
+                        self.logger.info("Adding out_bytes_per_hop column to complete_contact_tracking")
+                        cursor.execute("ALTER TABLE complete_contact_tracking ADD COLUMN out_bytes_per_hop INTEGER")
+                        conn.commit()
+            except Exception as e:
+                self.logger.warning(f"Migration complete_contact_tracking out_bytes_per_hop: {e}")
 
             # mesh_connections: graph/viewer columns
             try:
@@ -324,6 +342,7 @@ class RepeaterManager:
             # Extract path information from advert_data
             out_path = advert_data.get('out_path', '')
             out_path_len = advert_data.get('out_path_len', -1)
+            out_bytes_per_hop = advert_data.get('out_bytes_per_hop')
             
             # Check if this packet_hash was already processed for this contact
             # This prevents duplicate writes of the same advert packet
@@ -339,7 +358,7 @@ class RepeaterManager:
             
             # Check if this contact is already in our complete tracking
             existing = self.db_manager.execute_query(
-                'SELECT id, advert_count, last_heard, latitude, longitude, city, state, country, out_path, out_path_len FROM complete_contact_tracking WHERE public_key = ?',
+                'SELECT id, advert_count, last_heard, latitude, longitude, city, state, country, out_path, out_path_len, out_bytes_per_hop FROM complete_contact_tracking WHERE public_key = ?',
                 (public_key,)
             )
             
@@ -375,20 +394,21 @@ class RepeaterManager:
                 # This preserves the first (shortest) path and doesn't overwrite it
                 final_out_path = out_path if (not existing_out_path or existing_out_path == '') else existing_out_path
                 final_out_path_len = out_path_len if (existing_out_path_len is None or existing_out_path_len == -1) else existing_out_path_len
+                final_out_bytes_per_hop = out_bytes_per_hop if (out_bytes_per_hop is not None) else existing[0].get('out_bytes_per_hop')
                 
                 self.db_manager.execute_update('''
                     UPDATE complete_contact_tracking 
                     SET name = ?, last_heard = ?, advert_count = ?, role = ?, device_type = ?,
                         latitude = ?, longitude = ?, city = ?, state = ?, country = ?, 
                         raw_advert_data = ?, signal_strength = ?, snr = ?, hop_count = ?, 
-                        last_advert_timestamp = ?, out_path = ?, out_path_len = ?
+                        last_advert_timestamp = ?, out_path = ?, out_path_len = ?, out_bytes_per_hop = ?
                     WHERE public_key = ?
                 ''', (
                     name, current_time, advert_count, role, device_type_str,
                     location_info['latitude'], location_info['longitude'], 
                     location_info['city'], location_info['state'], location_info['country'],
                     json.dumps(advert_data), signal_strength, snr, hop_count,
-                    current_time, final_out_path, final_out_path_len, public_key
+                    current_time, final_out_path, final_out_path_len, final_out_bytes_per_hop, public_key
                 ))
                 
                 self.logger.debug(f"Updated contact tracking: {name} ({role}) - count: {advert_count}")
@@ -398,14 +418,14 @@ class RepeaterManager:
                     INSERT INTO complete_contact_tracking 
                     (public_key, name, role, device_type, first_heard, last_heard, advert_count,
                      latitude, longitude, city, state, country, raw_advert_data,
-                     signal_strength, snr, hop_count, last_advert_timestamp, out_path, out_path_len)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     signal_strength, snr, hop_count, last_advert_timestamp, out_path, out_path_len, out_bytes_per_hop)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     public_key, name, role, device_type_str, current_time, current_time, 1,
                     location_info['latitude'], location_info['longitude'], 
                     location_info['city'], location_info['state'], location_info['country'],
                     json.dumps(advert_data), signal_strength, snr, hop_count, current_time,
-                    out_path, out_path_len
+                    out_path, out_path_len, out_bytes_per_hop
                 ))
                 
                 self.logger.info(f"Added new contact to complete tracking: {name} ({role})")

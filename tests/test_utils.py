@@ -11,6 +11,8 @@ from modules.utils import (
     calculate_distance,
     format_elapsed_display,
     parse_path_string,
+    decode_path_len_byte,
+    calculate_packet_hash,
 )
 
 
@@ -163,6 +165,59 @@ class TestFormatElapsedDisplay:
         assert result == "Custom Sync Message"
 
 
+class TestDecodePathLenByte:
+    """Tests for decode_path_len_byte() (RF path_len encoding: low 6 bits = hop count, high 2 = size code)."""
+
+    def test_single_byte_one_hop(self):
+        # size_code=0 -> 1 byte/hop, hop_count=1 -> 1 path byte
+        path_byte_length, bytes_per_hop = decode_path_len_byte(0x01)
+        assert path_byte_length == 1
+        assert bytes_per_hop == 1
+
+    def test_single_byte_three_hops(self):
+        path_byte_length, bytes_per_hop = decode_path_len_byte(0x03)
+        assert path_byte_length == 3
+        assert bytes_per_hop == 1
+
+    def test_multi_byte_two_bytes_per_hop_one_hop(self):
+        # size_code=1 -> 2 bytes/hop, hop_count=1 -> 2 path bytes
+        path_byte_length, bytes_per_hop = decode_path_len_byte(0x41)
+        assert path_byte_length == 2
+        assert bytes_per_hop == 2
+
+    def test_multi_byte_two_bytes_per_hop_three_hops(self):
+        # size_code=1, hop_count=3 -> 6 path bytes
+        path_byte_length, bytes_per_hop = decode_path_len_byte(0x43)
+        assert path_byte_length == 6
+        assert bytes_per_hop == 2
+
+    def test_three_bytes_per_hop(self):
+        # size_code=2 -> 3 bytes/hop, hop_count=2 -> 6 path bytes
+        path_byte_length, bytes_per_hop = decode_path_len_byte(0x82)
+        assert path_byte_length == 6
+        assert bytes_per_hop == 3
+
+    def test_reserved_size_code_fallback(self):
+        # size_code=3 (bytes_per_hop=4) is reserved -> legacy: path_len_byte as raw byte count, 1 byte/hop
+        path_byte_length, bytes_per_hop = decode_path_len_byte(0xC2)
+        assert path_byte_length == 0xC2  # raw byte value
+        assert bytes_per_hop == 1
+
+    def test_path_exceeds_max_fallback(self):
+        # 32 hops * 2 bytes = 64, max_path_size=64 is ok; 33*2=66 > 64 -> legacy
+        path_byte_length, bytes_per_hop = decode_path_len_byte(0x41, max_path_size=64)
+        assert path_byte_length == 2
+        assert bytes_per_hop == 2
+        path_byte_length, bytes_per_hop = decode_path_len_byte(0x61, max_path_size=64)  # 33 hops * 2
+        assert path_byte_length == 0x61
+        assert bytes_per_hop == 1
+
+    def test_zero_hops(self):
+        path_byte_length, bytes_per_hop = decode_path_len_byte(0x00)
+        assert path_byte_length == 0
+        assert bytes_per_hop == 1
+
+
 class TestParsePathString:
     """Tests for parse_path_string()."""
 
@@ -185,3 +240,70 @@ class TestParsePathString:
 
     def test_mixed_case_normalized_uppercase(self):
         assert parse_path_string("01,5f,aB") == ["01", "5F", "AB"]
+
+    # --- Multi-byte (4 hex chars = 2 bytes per hop) ---
+
+    def test_four_char_continuous_hex(self):
+        assert parse_path_string("01025fab", prefix_hex_chars=4) == ["0102", "5FAB"]
+
+    def test_four_char_comma_separated(self):
+        assert parse_path_string("0102,5fab,abcd", prefix_hex_chars=4) == ["0102", "5FAB", "ABCD"]
+
+    def test_four_char_space_separated(self):
+        assert parse_path_string("0102 5fab abcd", prefix_hex_chars=4) == ["0102", "5FAB", "ABCD"]
+
+    def test_four_char_legacy_fallback_when_no_four_char_matches(self):
+        # Input that has no 4-char groups (odd length or different pattern) -> fallback to 2-char
+        result = parse_path_string("01", prefix_hex_chars=4)
+        assert result == ["01"]
+
+    def test_two_char_explicit(self):
+        """Ensure prefix_hex_chars=2 still works when passed explicitly."""
+        assert parse_path_string("015fab", prefix_hex_chars=2) == ["01", "5F", "AB"]
+
+
+class TestCalculatePacketHashPathLength:
+    """Tests that calculate_packet_hash uses decode_path_len_byte so multi-byte paths skip correctly."""
+
+    def test_single_byte_path_hash_valid(self):
+        # Minimal TRACE packet: header(0x24=route0 type9), 4B transport, path_len=0x01 (1 hop, 1 byte), path [0x01], payload
+        raw = "24000000000101deadbeef"
+        h = calculate_packet_hash(raw)
+        assert len(h) == 16
+        assert all(c in "0123456789ABCDEF" for c in h)
+        assert h != "0000000000000000"
+
+    def test_multi_byte_path_hash_valid(self):
+        # Same but path_len=0x41 (1 hop, 2 bytes), path 0x01 0x02, same payload
+        raw = "2400000000410102deadbeef"
+        h = calculate_packet_hash(raw)
+        assert len(h) == 16
+        assert all(c in "0123456789ABCDEF" for c in h)
+        assert h != "0000000000000000"
+
+    def test_single_vs_multi_byte_path_different_hashes(self):
+        # TRACE includes path_byte_length in hash, so different path lengths must produce different hashes
+        single = "24000000000101deadbeef"
+        multi = "2400000000410102deadbeef"
+        assert calculate_packet_hash(single) != calculate_packet_hash(multi)
+
+
+class TestMultiBytePathDisplayContract:
+    """Contract: path_hex stored with bytes_per_hop=2 should format to comma-separated 4-char nodes."""
+
+    def test_multi_byte_path_format_contract(self):
+        # path_hex "01025fab" with 2 bytes per hop (4 hex chars per node) -> "0102,5fab"
+        path_hex = "01025fab"
+        nodes = parse_path_string(path_hex, prefix_hex_chars=4)
+        assert nodes == ["0102", "5FAB"]
+        display = ",".join(n.lower() for n in nodes)
+        assert display == "0102,5fab"
+
+    def test_single_byte_path_format_contract(self):
+        # path_hex "01025fab" with 1 byte per hop (2 hex chars) -> "01,02,5f,ab"
+        path_hex = "01025fab"
+        nodes = parse_path_string(path_hex, prefix_hex_chars=2)
+        assert nodes == ["01", "02", "5F", "AB"]
+        display = ",".join(n.lower() for n in nodes)
+        assert display == "01,02,5f,ab"
+

@@ -1391,7 +1391,7 @@ class PathCommand(BaseCommand):
                 try:
                     # Query stored paths from this repeater
                     query = '''
-                        SELECT path_hex, observation_count, last_seen, from_prefix, to_prefix
+                        SELECT path_hex, observation_count, last_seen, from_prefix, to_prefix, bytes_per_hop
                         FROM observed_paths
                         WHERE public_key = ? AND packet_type = 'advert'
                         ORDER BY observation_count DESC, last_seen DESC
@@ -1410,10 +1410,16 @@ class PathCommand(BaseCommand):
                             obs_count = stored_path.get('observation_count', 1)
                             
                             if stored_hex:
-                                # Check for shared path segments (helps identify which repeater in prefix collision)
-                                # Look for common intermediate hops between stored path and decoded path
-                                stored_nodes = [stored_hex[i:i+2] for i in range(0, len(stored_hex), 2)]
-                                decoded_nodes = [decoded_path_hex[i:i+2] for i in range(0, len(decoded_path_hex), 2)]
+                                # Chunk using stored bytes_per_hop (multi-byte path support)
+                                n = (stored_path.get('bytes_per_hop') or 1) * 2
+                                if n <= 0:
+                                    n = 2
+                                stored_nodes = [stored_hex[i:i+n] for i in range(0, len(stored_hex), n)]
+                                if (len(stored_hex) % n) != 0:
+                                    stored_nodes = [stored_hex[i:i+2] for i in range(0, len(stored_hex), 2)]
+                                decoded_nodes = [decoded_path_hex[i:i+n] for i in range(0, len(decoded_path_hex), n)]
+                                if (len(decoded_path_hex) % n) != 0:
+                                    decoded_nodes = [decoded_path_hex[i:i+2] for i in range(0, len(decoded_path_hex), 2)]
                                 
                                 # Count how many nodes appear in both paths (in order)
                                 common_segments = 0
@@ -1599,7 +1605,7 @@ class PathCommand(BaseCommand):
                     line = self.translate('commands.path.node_collision', node_id=node_id, matches=matches)
                 elif info.get('geographic_guess', False) or info.get('graph_guess', False):
                     # Geographic or graph-based selection
-                    name = info['name']
+                    name = info.get('name', self.translate('commands.path.unknown_name'))
                     confidence = info.get('confidence', 0.0)
                     is_graph = info.get('graph_guess', False)
                     
@@ -1620,7 +1626,7 @@ class PathCommand(BaseCommand):
                     line = self.translate('commands.path.node_geographic', node_id=node_id, name=name, confidence=confidence_indicator)
                 else:
                     # Single repeater found
-                    name = info['name']
+                    name = info.get('name', self.translate('commands.path.unknown_name'))
                     
                     # Truncate name if too long
                     truncation = self.translate('commands.path.truncation')

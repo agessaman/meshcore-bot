@@ -901,6 +901,14 @@ class PrefixCommand(BaseCommand):
         # Get local database data for location enhancement
         db_data = await self.get_prefix_data_from_db(prefix, include_all=include_all)
         
+        # If no results with default time window, retry with include_all so we don't say
+        # "no repeaters" when path decode just showed this prefix (path uses include_historical)
+        if db_data is None and not include_all and api_data is None:
+            db_data = await self.get_prefix_data_from_db(prefix, include_all=True)
+            if db_data is not None:
+                db_data['fallback_to_all'] = True
+                db_data['include_all'] = True
+        
         # If we have API data, enhance it with local location data
         if api_data and db_data:
             return self._enhance_api_data_with_locations(api_data, db_data)
@@ -1072,11 +1080,13 @@ class PrefixCommand(BaseCommand):
                     SELECT name, public_key, device_type, last_heard as last_seen, latitude, longitude, city, state, country, role
                     FROM complete_contact_tracking 
                     WHERE public_key LIKE ? AND role IN ('repeater', 'roomserver')
-                    AND last_heard >= datetime('now', '-{self.prefix_heard_days} days')
+                    AND last_heard >= datetime('now', 'localtime', '-{self.prefix_heard_days} days')
                     ORDER BY name
                 '''
-            # The prefix should match the first two characters of the public key
-            prefix_pattern = f"{prefix}%"
+            # Normalize prefix for LIKE: match configured length and lowercase (public_key is typically hex lowercase)
+            n = int(getattr(self.bot, 'prefix_hex_chars', 2))
+            prefix_normalized = prefix[:n].lower() if prefix else ''
+            prefix_pattern = f"{prefix_normalized}%"
             
             results = self.bot.db_manager.execute_query(query, (prefix_pattern,))
             
@@ -1221,7 +1231,7 @@ class PrefixCommand(BaseCommand):
                         FROM complete_contact_tracking
                         WHERE role IN ('repeater', 'roomserver')
                         AND LENGTH(public_key) >= {n}
-                        AND last_heard >= datetime('now', '-{self.prefix_free_days} days')
+                        AND last_heard >= datetime('now', 'localtime', '-{self.prefix_free_days} days')
                         '''
                     else:
                         query = f'''
@@ -1229,7 +1239,7 @@ class PrefixCommand(BaseCommand):
                         FROM complete_contact_tracking
                         WHERE role IN ('repeater', 'roomserver')
                         AND LENGTH(public_key) >= {n}
-                        AND last_heard >= datetime('now', '-{self.prefix_free_days} days')
+                        AND last_heard >= datetime('now', 'localtime', '-{self.prefix_free_days} days')
                         '''
                     
                     results = self.bot.db_manager.execute_query(query)
@@ -1346,6 +1356,8 @@ class PrefixCommand(BaseCommand):
             # Database response format - keep brief for character limit
             if include_all:
                 response = self.translate('commands.prefix.prefix_db_all', prefix=prefix, count=node_count, plural=plural) + "\n"
+                if data.get('fallback_to_all'):
+                    response += self.translate('commands.prefix.older_entries_note', days=self.prefix_heard_days) + "\n"
             else:
                 # Show time period for default behavior - use abbreviated form
                 days_str = f"{self.prefix_heard_days}d" if self.prefix_heard_days != 7 else "7d"

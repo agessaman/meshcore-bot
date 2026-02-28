@@ -66,6 +66,14 @@ class MeshGraph:
         if self.capture_enabled and self.write_strategy in ('batched', 'hybrid'):
             self._start_batch_writer()
     
+    def _prefix_len(self) -> int:
+        """Return configured prefix length in hex chars (always an int for slicing)."""
+        n = getattr(self.bot, 'prefix_hex_chars', 2)
+        try:
+            return max(2, int(n))
+        except (TypeError, ValueError):
+            return 2
+
     def _load_from_database(self):
         """Load graph edges from database on startup."""
         try:
@@ -168,8 +176,8 @@ class MeshGraph:
             return
 
         # Normalize prefixes to lowercase
-        from_prefix = from_prefix.lower()[:self.bot.prefix_hex_chars]
-        to_prefix = to_prefix.lower()[:self.bot.prefix_hex_chars]
+        from_prefix = from_prefix.lower()[:self._prefix_len()]
+        to_prefix = to_prefix.lower()[:self._prefix_len()]
 
         # Intern public key strings so repeated identical keys share one object in RAM
         if from_public_key:
@@ -826,8 +834,8 @@ class MeshGraph:
         Returns:
             bool: True if edge exists.
         """
-        from_prefix = from_prefix.lower()[:self.bot.prefix_hex_chars]
-        to_prefix = to_prefix.lower()[:self.bot.prefix_hex_chars]
+        from_prefix = from_prefix.lower()[:self._prefix_len()]
+        to_prefix = to_prefix.lower()[:self._prefix_len()]
         return (from_prefix, to_prefix) in self.edges
     
     def get_edge(self, from_prefix: str, to_prefix: str) -> Optional[Dict]:
@@ -840,8 +848,8 @@ class MeshGraph:
         Returns:
             Dict with edge data or None if not found.
         """
-        from_prefix = from_prefix.lower()[:self.bot.prefix_hex_chars]
-        to_prefix = to_prefix.lower()[:self.bot.prefix_hex_chars]
+        from_prefix = from_prefix.lower()[:self._prefix_len()]
+        to_prefix = to_prefix.lower()[:self._prefix_len()]
         return self.edges.get((from_prefix, to_prefix))
     
     def get_outgoing_edges(self, prefix: str) -> List[Dict]:
@@ -855,7 +863,7 @@ class MeshGraph:
         Returns:
             List of edge dictionaries.
         """
-        prefix = prefix.lower()[:self.bot.prefix_hex_chars]
+        prefix = prefix.lower()[:self._prefix_len()]
         to_prefixes = self._outgoing_index.get(prefix)
         if not to_prefixes:
             return []
@@ -877,7 +885,7 @@ class MeshGraph:
         Returns:
             List of edge dictionaries.
         """
-        prefix = prefix.lower()[:self.bot.prefix_hex_chars]
+        prefix = prefix.lower()[:self._prefix_len()]
         from_prefixes = self._incoming_index.get(prefix)
         if not from_prefixes:
             return []
@@ -1081,8 +1089,8 @@ class MeshGraph:
             List of (candidate_prefix, score) tuples sorted by score (highest first).
             Score is 0.0-1.0 based on path strength.
         """
-        from_prefix = from_prefix.lower()[:self.bot.prefix_hex_chars]
-        to_prefix = to_prefix.lower()[:self.bot.prefix_hex_chars]
+        from_prefix = from_prefix.lower()[:self._prefix_len()]
+        to_prefix = to_prefix.lower()[:self._prefix_len()]
         
         candidates: Dict[str, float] = {}
         

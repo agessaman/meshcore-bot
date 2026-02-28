@@ -325,6 +325,33 @@ def get_major_city_queries(city: str, state_abbr: Optional[str] = None) -> List[
     return []
 
 
+def decode_path_len_byte(path_len_byte: int, max_path_size: int = 64) -> tuple:
+    """Decode the RF packet path_len byte per firmware (Packet.cpp).
+    
+    Encoding: low 6 bits = hop count, high 2 bits = size code.
+    bytes_per_hop = (path_len >> 6) + 1 → 1, 2, 3, or 4 (4 is reserved and invalid).
+    
+    Args:
+        path_len_byte: The single path_len byte from the packet.
+        max_path_size: Max path bytes (default 64, matches MAX_PATH_SIZE).
+        
+    Returns:
+        Tuple of (path_byte_length, bytes_per_hop). If encoding is invalid
+        (hash_size==4 or hop_count*bytes_per_hop > max_path_size), returns
+        (path_len_byte, 1) for legacy: path_len is raw byte count, 1 byte per hop.
+    """
+    hop_count = path_len_byte & 63
+    size_code = path_len_byte >> 6
+    bytes_per_hop = size_code + 1  # 1, 2, 3, or 4
+    if bytes_per_hop == 4:
+        # Reserved in firmware, invalid
+        return (path_len_byte, 1)
+    path_byte_length = hop_count * bytes_per_hop
+    if path_byte_length > max_path_size:
+        return (path_len_byte, 1)
+    return (path_byte_length, bytes_per_hop)
+
+
 def calculate_packet_hash(raw_hex: str, payload_type: int = None) -> str:
     """Calculate hash for packet identification - based on packet.cpp.
     
@@ -366,16 +393,16 @@ def calculate_packet_hash(raw_hex: str, payload_type: int = None) -> str:
         if len(byte_data) <= offset:
             return "0000000000000000"
         
-        # Read path_len (1 byte on wire, but stored as uint16_t in C++)
-        path_len = byte_data[offset]
+        path_len_byte = byte_data[offset]
         offset += 1
+        path_byte_length, _ = decode_path_len_byte(path_len_byte)
         
         # Validate we have enough bytes for the path
-        if len(byte_data) < offset + path_len:
+        if len(byte_data) < offset + path_byte_length:
             return "0000000000000000"
         
         # Skip past the path to get to payload
-        payload_start = offset + path_len
+        payload_start = offset + path_byte_length
         
         # Validate we have payload data
         if len(byte_data) <= payload_start:
@@ -394,7 +421,7 @@ def calculate_packet_hash(raw_hex: str, payload_type: int = None) -> str:
             # C++ does: sha.update(&path_len, sizeof(path_len))
             # path_len is uint16_t, so sizeof(path_len) = 2 bytes
             # Convert path_len to 2-byte little-endian uint16_t
-            hash_obj.update(path_len.to_bytes(2, byteorder='little'))
+            hash_obj.update(path_byte_length.to_bytes(2, byteorder='little'))
         
         hash_obj.update(payload_data)
         
@@ -1585,7 +1612,7 @@ async def check_internet_connectivity_async(host: str = "8.8.8.8", port: int = 5
         return False
 
 
-def parse_path_string(path_str: str) -> List[str]:
+def parse_path_string(path_str: str, prefix_hex_chars: int = 2) -> List[str]:
     """Parse a path string to extract node IDs.
     
     Handles various formats:
@@ -1596,9 +1623,10 @@ def parse_path_string(path_str: str) -> List[str]:
     
     Args:
         path_str: Path string in various formats.
+        prefix_hex_chars: Number of hex characters per node (2 = 1 byte, 4 = 2 bytes). Default 2.
         
     Returns:
-        List[str]: List of 2-character uppercase hex node IDs.
+        List[str]: List of uppercase hex node IDs (each of length prefix_hex_chars).
     """
     if not path_str:
         return []
@@ -1613,6 +1641,11 @@ def parse_path_string(path_str: str) -> List[str]:
     # Extract hex values using regex (prefix_hex_chars-wide hex tokens)
     hex_pattern = rf'[0-9a-fA-F]{{{prefix_hex_chars}}}'
     hex_matches = re.findall(hex_pattern, path_str)
+    
+    # Legacy fallback: if configured length > 2 and no matches, retry with 2-char (1-byte) nodes
+    if not hex_matches and prefix_hex_chars > 2:
+        legacy_pattern = r'[0-9a-fA-F]{2}'
+        hex_matches = re.findall(legacy_pattern, path_str)
     
     # Convert to uppercase for consistency
     return [match.upper() for match in hex_matches]
@@ -1643,7 +1676,7 @@ def calculate_path_distances(bot: Any, path_str: str) -> Tuple[str, str]:
     
     try:
         # Parse node IDs from path string
-        node_ids = parse_path_string(path_str)
+        node_ids = parse_path_string(path_str, getattr(bot, 'prefix_hex_chars', 2))
         
         if len(node_ids) == 0:
             # No nodes parsed - likely direct connection

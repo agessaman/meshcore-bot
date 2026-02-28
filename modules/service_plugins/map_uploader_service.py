@@ -47,7 +47,7 @@ from .packet_capture_utils import (
 from .base_service import BaseServicePlugin
 
 # Import utilities
-from ..utils import resolve_path
+from ..utils import resolve_path, decode_path_len_byte
 
 
 class MapUploaderService(BaseServicePlugin):
@@ -530,12 +530,13 @@ class MapUploaderService(BaseServicePlugin):
             if len(byte_data) <= offset:
                 return
             
-            path_len = byte_data[offset]
+            path_len_byte = byte_data[offset]
             offset += 1
+            path_byte_length, _ = decode_path_len_byte(path_len_byte)
             
             # Skip path
-            if path_len > 0 and len(byte_data) > offset + path_len:
-                offset += path_len
+            if path_byte_length > 0 and len(byte_data) > offset + path_byte_length:
+                offset += path_byte_length
             
             # Extract payload
             payload_bytes = byte_data[offset:]
