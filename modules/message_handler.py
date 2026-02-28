@@ -2052,7 +2052,7 @@ class MessageHandler:
             self.logger.debug("Mesh graph: No public key in advert data, skipping graph update")
             return
         
-        advertiser_prefix = advertiser_key[:2].lower()
+        advertiser_prefix = advertiser_key[:self.bot.prefix_hex_chars].lower()
         
         # Parse path from hex string
         path_nodes = []
@@ -2623,13 +2623,43 @@ class MessageHandler:
                         )
                     except Exception as e:
                         self.logger.debug(f"Failed to capture keyword data for web viewer: {e}")
-        
+
         # Only execute commands if no help response was sent and no plugin command with response was matched
         # Help responses and plugin commands with responses should be the final response for that message
         # Plugin commands without responses (response is None) should still be executed
         if not help_response_sent and not plugin_command_with_response_matched:
-            await self.bot.command_manager.execute_commands(message)
-    
+            # After keyword handling, try RandomLine            
+            randomline_match = self.bot.command_manager.match_randomline(message)
+            if randomline_match:
+                key, response = randomline_match
+                plugin_command_with_response_matched = True
+                import time
+                command_id = f"randomline_{key}_{message.sender_id}_{int(time.time())}"
+
+                try:
+                    rate_limit_key = self.bot.command_manager.get_rate_limit_key(message)
+                    if message.is_dm:
+                        success = await self.bot.command_manager.send_dm(
+                            message.sender_id, response, command_id, rate_limit_key=rate_limit_key
+                        )
+                    else:
+                        success = await self.bot.command_manager.send_channel_message(
+                            message.channel, response, command_id, rate_limit_key=rate_limit_key
+                        )
+
+                    if not success:
+                        self.logger.warning(
+                            f"Failed to send randomline response for '{key}' to "
+                            f"{message.sender_id if message.is_dm else message.channel}"
+                        )
+                except Exception as e:
+                    self.logger.error(f"Error sending randomline response for '{key}': {e}", exc_info=True)
+                    success = False
+                
+            else:
+                # If no keyword or RandomLine match, try all other commands
+                await self.bot.command_manager.execute_commands(message)
+            
     def should_process_message(self, message: MeshMessage) -> bool:
         """Check if message should be processed by the bot"""
         # Check if bot is enabled
@@ -2780,7 +2810,7 @@ class MessageHandler:
                         try:
                             node_data = {
                                 'public_key': public_key,
-                                'prefix': public_key[:2].lower() if public_key else '',
+                                'prefix': public_key[:self.bot.prefix_hex_chars].lower() if public_key else '',
                                 'name': contact_name,
                                 'role': 'repeater'
                             }

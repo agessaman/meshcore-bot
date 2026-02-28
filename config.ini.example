@@ -154,6 +154,9 @@ respond_to_dms = true
 # Example: channel_keywords = help,ping,test,hello
 # channel_keywords =
 
+# Set a custom prefix length for the public keys to identify repeaters
+prefix_bytes = 1
+
 [Banned_Users]
 # List of banned sender names (comma-separated). Matching is prefix (starts-with):
 # "Awful Username" also matches "Awful Username 🍆". No bot responses in channels or DMs.
@@ -284,6 +287,25 @@ help = "Bot Help: test (or t), ping, help, hello, cmd, advert, wx, aqi, sun, moo
 
 # Override 'cmd' command output
 # cmd = "Available commands: test (or t), ping, help, hello, cmd, advert, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats"
+
+[RandomLine]
+# Configurable command to act on a trigger word and respond with a random line from its file
+# triggers.<key> = csv list of trigger words
+# file.<key> = path to text file
+# prefix.<key> = string prepended to the chosen line (often an emoji)
+
+# default prefix (blank = no prefix)
+prefix.default =
+
+# Mom Jokes
+triggers.momjoke = momjoke,momjokes,mom joke,mom jokes,mom-joke,mom-jokes
+file.momjoke = data/randomlines/momjokes.txt
+prefix.momjoke = 🥸
+
+# Fun Facts
+triggers.funfact = funfact,funfacts,fun fact,fun facts,fun-fact,fun-facts
+file.funfact = data/randomlines/funfacts.txt
+prefix.funfact = 💡
 
 [Scheduled_Messages]
 # Scheduled message format: HHMM = channel:message

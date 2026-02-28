@@ -378,35 +378,45 @@
     let isInitialMapLoad = true; // Track if this is the first time rendering the map with nodes
     let highlightedPath = null; // Currently highlighted path data
     let pathHighlightTimeout = null; // Debounce timer for path resolution
-    
+
+    const PREFIX_HEX_CHARS = {{ prefix_hex_chars|default(2) }};  
+  
     // Helper function to create unique node identifier
     function getNodeId(node) {
         return `${node.prefix}-${node.latitude.toFixed(6)}-${node.longitude.toFixed(6)}`;
     }
-    
+
     // Detect if input is a hex path (2+ hex values)
-    function detectPathInput(input) {
-        if (!input || input.trim().length === 0) return false;
-        
-        // Normalize input: remove commas, spaces, colons
-        const normalized = input.replace(/[,\s:]/g, '');
-        
-        // Check if it's a continuous hex string (e.g., "8601a5")
-        // If it's all hex and has 4+ characters (2+ hex pairs), it's a path
-        if (/^[0-9a-fA-F]{4,}$/.test(normalized)) {
-            return true;
-        }
-        
-        // Also check for space-separated hex values
-        const hexPattern = /\b[0-9a-fA-F]{2}\b/g;
-        const matches = input.match(hexPattern);
-        
-        // If we have 2+ hex values, treat as path
-        return matches && matches.length >= 2;
-    }
-    
-    // Resolve path via API
-    async function resolvePath(pathInput) {
+  function detectPathInput(input) {
+      if (!input || input.trim().length === 0) return false;
+      
+      // Pull from template if you can, otherwise default.
+      // If you already have this elsewhere on the page, reuse it.
+      const prefixHexChars = PREFIX_HEX_CHARS;
+
+      // Normalize input: remove commas, spaces, colons
+      const normalized = input.replace(/[,\s:]/g, '');
+
+      // Check if it's a continuous hex string (e.g., "8601a5" or "8601A58F02")
+      // If it's all hex and has at least 2 tokens, treat as path.
+      // Optional: require it to align on token boundaries to reduce false positives.
+      const minChars = prefixHexChars * 2; // 2+ tokens
+      if (new RegExp(`^[0-9a-fA-F]{${minChars},}$`).test(normalized)) {
+          // If you want to be slightly stricter (still minimal), uncomment:
+          // if (normalized.length % prefixHexChars === 0) return true;
+          return true;
+      }
+
+      // Also check for space-separated hex values
+      const hexPattern = new RegExp(`\\b[0-9a-fA-F]{${prefixHexChars}}\\b`, 'g');
+      const matches = input.match(hexPattern);
+
+      // If we have 2+ hex values, treat as path
+      return matches && matches.length >= 2;
+  }
+      
+  // Resolve path via API
+  async function resolvePath(pathInput) {
         try {
             const response = await fetch('/api/mesh/resolve-path', {
                 method: 'POST',

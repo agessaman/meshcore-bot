@@ -370,7 +370,7 @@ class BotDataViewer:
         else:
             # Space/comma-separated format
             path_input = path_input.replace(',', ' ').replace(':', ' ')
-            hex_pattern = r'[0-9a-fA-F]{2}'
+            hex_pattern = rf'[0-9a-fA-F]{{{prefix_hex_chars}}}'
             hex_matches = re.findall(hex_pattern, path_input)
         
         if not hex_matches:
@@ -675,7 +675,7 @@ class BotDataViewer:
             best_method = None
             
             for repeater in repeaters:
-                candidate_prefix = repeater.get('public_key', '')[:2].lower() if repeater.get('public_key') else None
+                candidate_prefix = repeater.get('public_key', '')[:self.bot.prefix_hex_chars].lower() if repeater.get('public_key') else None
                 candidate_public_key = repeater.get('public_key', '').lower() if repeater.get('public_key') else None
                 if not candidate_prefix:
                     continue
@@ -1137,7 +1137,10 @@ class BotDataViewer:
         @self.app.route('/mesh')
         def mesh():
             """Mesh graph visualization page"""
-            return render_template('mesh.html')
+            return render_template(
+                'mesh.html',
+                prefix_hex_chars=self.bot.prefix_hex_chars
+            )
         
         # Favicon routes
         @self.app.route('/apple-touch-icon.png')
@@ -5176,7 +5179,7 @@ class BotDataViewer:
         else:
             # Space/comma-separated format
             path_input = path_hex.replace(',', ' ').replace(':', ' ')
-            hex_pattern = r'[0-9a-fA-F]{2}'
+            hex_pattern = rf'[0-9a-fA-F]{{{prefix_hex_chars}}}'            
             hex_matches = re.findall(hex_pattern, path_input)
         
         if not hex_matches:
@@ -5319,7 +5322,7 @@ class BotDataViewer:
             best_method = None
             
             for repeater in repeaters:
-                candidate_prefix = repeater.get('public_key', '')[:2].lower() if repeater.get('public_key') else None
+                candidate_prefix = repeater.get('public_key', '')[:self.bot.prefix_hex_chars].lower() if repeater.get('public_key') else None
                 candidate_public_key = repeater.get('public_key', '').lower() if repeater.get('public_key') else None
                 if not candidate_prefix:
                     continue

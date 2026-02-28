@@ -224,8 +224,16 @@ class PathCommand(BaseCommand):
             path_input = path_input.replace(',', ' ').replace(':', ' ')
             
             # Extract hex values using regex
-            hex_pattern = r'[0-9a-fA-F]{2}'
+            # Try configured width first
+            n = getattr(self.bot, "prefix_hex_chars", 2)
+            hex_pattern = rf'[0-9a-fA-F]{{{n}}}'
             hex_matches = re.findall(hex_pattern, path_input)
+
+            # Backward compatibility:
+            # if no matches and we're expecting >2 chars, try legacy 2-char paths
+            if not hex_matches and n > 2:
+                legacy_pattern = r'[0-9a-fA-F]{2}'
+                hex_matches = re.findall(legacy_pattern, path_input)
             
             if not hex_matches:
                 return self.translate('commands.path.no_valid_hex')
@@ -266,7 +274,7 @@ class PathCommand(BaseCommand):
             api_data = None
 
             # Query the database for repeaters with matching prefixes
-            # Node IDs are typically the first 2 characters of the public key
+            # Node IDs are the configured prefix of the public key (see Bot.prefix_bytes)
             for node_id in node_ids:
                 # Test dependency injection: use provided lookup when available
                 if lookup_func is not None:
@@ -1313,7 +1321,8 @@ class PathCommand(BaseCommand):
         best_method = None
         
         for repeater in repeaters:
-            candidate_prefix = repeater.get('public_key', '')[:2].lower() if repeater.get('public_key') else None
+            pk = repeater.get('public_key') or ''
+            candidate_prefix = self.bot.key_prefix(pk).lower() if pk else None
             candidate_public_key = repeater.get('public_key', '').lower() if repeater.get('public_key') else None
             if not candidate_prefix:
                 continue
@@ -1712,7 +1721,7 @@ class PathCommand(BaseCommand):
                 else:
                     # Try to decode even single nodes (e.g., "01" should be decoded to a repeater name)
                     # Check if path_part looks like it contains hex values
-                    hex_pattern = r'[0-9a-fA-F]{2}'
+                    hex_pattern = rf'[0-9a-fA-F]{{{self.bot.prefix_hex_chars}}}'
                     if re.search(hex_pattern, path_part):
                         # Looks like hex values, try to decode
                         return await self._decode_path(path_part)

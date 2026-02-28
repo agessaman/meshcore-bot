@@ -26,19 +26,19 @@ class PrefixCommand(BaseCommand):
     # Plugin metadata
     name = "prefix"
     keywords = ['prefix', 'repeater', 'lookup']
-    description = "Look up repeaters by two-character prefix (e.g., 'prefix 1A')"
+    description = "Look up repeaters by prefix (e.g., 'prefix 1A' or 'prefix 2299')"
     category = "meshcore_info"
     requires_dm = False
     cooldown_seconds = 2
     requires_internet = False  # Will be set to True in __init__ if API is configured
-    
+
     # Documentation
-    short_description = "Look up repeaters by two-character prefix and show their locations (if known)"
-    usage = "prefix <XX|free|refresh>"
-    examples = ["prefix 1A", "prefix free"]
+    short_description = "Look up repeaters by prefix and show their locations (if known)"
+    usage = "prefix <XX|XXXX|free|refresh>"
+    examples = ["prefix 1A", "prefix 2299", "prefix free"]
     parameters = [
-        {"name": "prefix", "description": "Two-character prefix (e.g., 1A, 2B)"},
-        {"name": "free", "description": "Show available/unused prefixes"}
+        {"name": "prefix", "description": "Prefix in hex (2 chars or configured length)"},
+        {"name": "free", "description": "Show available/unused prefixes (may be disabled)"},
     ]
     
     def __init__(self, bot: Any):
@@ -252,17 +252,18 @@ class PrefixCommand(BaseCommand):
         """
         try:
             # Query all repeaters with valid coordinates
-            query = '''
-                SELECT SUBSTR(public_key, 1, 2) as prefix, public_key, name, 
-                       latitude, longitude,
-                       COALESCE(last_advert_timestamp, last_heard) as last_seen
-                FROM complete_contact_tracking 
-                WHERE role IN ('repeater', 'roomserver')
-                AND latitude IS NOT NULL 
-                AND longitude IS NOT NULL
-                AND latitude != 0 
-                AND longitude != 0
-            '''
+            n = int(getattr(self.bot, "prefix_hex_chars", 2))
+            query = f"""
+            SELECT SUBSTR(public_key, 1, {n}) AS prefix,
+            COUNT(*) AS repeater_count,
+            AVG(latitude) AS avg_lat,
+            AVG(longitude) AS avg_lon,
+            MAX(COALESCE(last_advert_timestamp, last_heard)) AS most_recent
+            FROM complete_contact_tracking
+            WHERE role IN ('repeater', 'roomserver')
+            AND LENGTH(public_key) >= {n}
+            GROUP BY prefix
+            """
             
             results = self.bot.db_manager.execute_query(query)
             
@@ -380,17 +381,18 @@ class PrefixCommand(BaseCommand):
         """
         try:
             # Get all known prefixes from database
-            query = '''
-                SELECT SUBSTR(public_key, 1, 2) as prefix, 
-                       COUNT(*) as repeater_count,
-                       AVG(latitude) as avg_lat,
-                       AVG(longitude) as avg_lon,
-                       MAX(COALESCE(last_advert_timestamp, last_heard)) as most_recent
-                FROM complete_contact_tracking 
-                WHERE role IN ('repeater', 'roomserver')
-                AND LENGTH(public_key) >= 2
-                GROUP BY prefix
-            '''
+            n = int(getattr(self.bot, "prefix_hex_chars", 2))
+            query = f"""
+            SELECT SUBSTR(public_key, 1, {n}) AS prefix,
+            COUNT(*) AS repeater_count,
+            AVG(latitude) AS avg_lat,
+            AVG(longitude) AS avg_lon,
+            MAX(COALESCE(last_advert_timestamp, last_heard)) AS most_recent
+            FROM complete_contact_tracking
+            WHERE role IN ('repeater', 'roomserver')
+            AND LENGTH(public_key) >= {n}
+            GROUP BY prefix
+            """
             
             results = self.bot.db_manager.execute_query(query)
             
@@ -451,8 +453,9 @@ class PrefixCommand(BaseCommand):
             
             # Also include free prefixes (not in database) that aren't neighbors or excluded
             # Generate all valid hex prefixes (01-FE, excluding 00 and FF)
-            for i in range(1, 255):  # 1 to 254 (exclude 0 and 255)
-                prefix = f"{i:02X}"
+            max_val = (16 ** self.bot.prefix_hex_chars)
+            for i in range(1, max_val - 1):  # still excluding all-zeros and all-FF..FF
+                prefix = f"{i:0{self.bot.prefix_hex_chars}X}"
                 prefix_lower = prefix.lower()
                 
                 # Skip if already in database (already processed above)
@@ -803,6 +806,11 @@ class PrefixCommand(BaseCommand):
         
         # Handle free/available command
         if command == "FREE" or command == "AVAILABLE":
+            if getattr(self.bot, "prefix_hex_chars", 2) > 2:
+                # Keep behavior consistent: send a response and return True
+                await self._send_prefix_response(message, "Feature disabled for multi-byte prefixes.")
+                return True
+            
             free_prefixes, total_free, has_data = await self.get_free_prefixes()
             if not has_data:
                 response = self.translate('commands.prefix.unable_determine_free')
@@ -839,10 +847,22 @@ class PrefixCommand(BaseCommand):
         if len(parts) >= 3 and parts[2].upper() == "ALL":
             include_all = True
         
-        # Validate prefix format
-        if len(command) != 2 or not command.isalnum():
-            response = self.translate('commands.prefix.invalid_format')
-            return await self.send_response(message, response)
+            # Validate prefix format:
+            # - allow legacy 2-char prefixes (current mesh hop IDs)
+            # - allow configured N-char prefixes (e.g., 4) for pubkey-prefix lookups
+            n = int(getattr(self.bot, "prefix_hex_chars", 2))
+            allowed_lengths = {2, n}
+
+            if len(command) not in allowed_lengths:
+                # If you updated translations to mention {{prefix_hex_chars}}, great,
+                # but this is clearer during the transition:
+                response = f"Invalid prefix format. Expected 2 or {n} hex characters."
+                return await self.send_response(message, response)
+
+            import re
+            if not re.fullmatch(r"[0-9a-fA-F]+", command):
+                response = f"Invalid prefix format. Expected 2 or {n} hex characters."
+                return await self.send_response(message, response)
         
         # Get prefix data
         prefix_data = await self.get_prefix_data(command, include_all=include_all)
@@ -1055,7 +1075,6 @@ class PrefixCommand(BaseCommand):
                     AND last_heard >= datetime('now', '-{self.prefix_heard_days} days')
                     ORDER BY name
                 '''
-            
             # The prefix should match the first two characters of the public key
             prefix_pattern = f"{prefix}%"
             
@@ -1191,22 +1210,28 @@ class PrefixCommand(BaseCommand):
                 # Only repeaters heard within prefix_free_days will be considered as using a prefix
                 try:
                     # If distance filtering is enabled, we need location data to filter
+                    n = int(getattr(self.bot, "prefix_hex_chars", 2))
+
+                    # If distance filtering is enabled, we need location data to filter
                     if self.distance_filtering_enabled:
                         query = f'''
-                            SELECT DISTINCT SUBSTR(public_key, 1, 2) as prefix, latitude, longitude
-                            FROM complete_contact_tracking 
-                            WHERE role IN ('repeater', 'roomserver')
-                            AND LENGTH(public_key) >= 2
-                            AND last_heard >= datetime('now', '-{self.prefix_free_days} days')
+                        SELECT DISTINCT SUBSTR(public_key, 1, {n}) as prefix,
+                        latitude,
+                        longitude
+                        FROM complete_contact_tracking
+                        WHERE role IN ('repeater', 'roomserver')
+                        AND LENGTH(public_key) >= {n}
+                        AND last_heard >= datetime('now', '-{self.prefix_free_days} days')
                         '''
                     else:
                         query = f'''
-                            SELECT DISTINCT SUBSTR(public_key, 1, 2) as prefix
-                            FROM complete_contact_tracking 
-                            WHERE role IN ('repeater', 'roomserver')
-                            AND LENGTH(public_key) >= 2
-                            AND last_heard >= datetime('now', '-{self.prefix_free_days} days')
+                        SELECT DISTINCT SUBSTR(public_key, 1, {n}) as prefix
+                        FROM complete_contact_tracking
+                        WHERE role IN ('repeater', 'roomserver')
+                        AND LENGTH(public_key) >= {n}
+                        AND last_heard >= datetime('now', '-{self.prefix_free_days} days')
                         '''
+                    
                     results = self.bot.db_manager.execute_query(query)
                     for row in results:
                         prefix = row['prefix'].upper()
@@ -1236,10 +1261,12 @@ class PrefixCommand(BaseCommand):
                 self.logger.warning("No data available for free prefixes lookup (empty cache and database)")
                 return [], 0, False
             
-            # Generate all valid hex prefixes (01-FE, excluding 00 and FF)
+            # Generate all valid hex prefixes (exclude all-zeros and all-FF)
             all_prefixes = []
-            for i in range(1, 255):  # 1 to 254 (exclude 0 and 255)
-                prefix = f"{i:02X}"
+            max_val = 16 ** self.bot.prefix_hex_chars
+            
+            for i in range(1, max_val - 1):
+                prefix = f"{i:0{self.bot.prefix_hex_chars}X}"
                 all_prefixes.append(prefix)
             
             # Find free prefixes

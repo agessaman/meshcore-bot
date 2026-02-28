@@ -57,3 +57,9 @@ Earthquake M3.2 mb | 12km NW of Borrego Springs, CA | 14:32:15 UTC | depth 12 km
 https://earthquake.usgs.gov/earthquakes/eventpage/ci40623456
 ```
 When `send_link = false`, only the first line is sent and no link is posted.
+
+---
+
+## Credit
+
+Original code and idea by [davidkjackson54](https://github.com/davidkjackson54).

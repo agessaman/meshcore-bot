@@ -1610,8 +1610,8 @@ def parse_path_string(path_str: str) -> List[str]:
     # Replace common separators with spaces
     path_str = path_str.replace(',', ' ').replace(':', ' ')
     
-    # Extract hex values using regex (2-character hex pairs)
-    hex_pattern = r'[0-9a-fA-F]{2}'
+    # Extract hex values using regex (prefix_hex_chars-wide hex tokens)
+    hex_pattern = rf'[0-9a-fA-F]{{{prefix_hex_chars}}}'
     hex_matches = re.findall(hex_pattern, path_str)
     
     # Convert to uppercase for consistency

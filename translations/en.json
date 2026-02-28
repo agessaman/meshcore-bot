@@ -246,7 +246,7 @@
     "path": {
       "description": "Decode hex path data to show which repeaters were involved in message routing",
       "help": "Path: path [hex] - Decode path to show repeaters. Use path alone for current message path, or path [7e,01] for specific path.",
-      "no_valid_hex": "❌ No valid hex values found in path data. Use format like: 11,98,a4,49,cd,5f,01",
+      "no_valid_hex": "❌ No valid hex values found in path data.",
       "no_path": "❌ No path information available in current message",
       "error": "Error processing path: {error}",
       "error_decoding": "❌ Error decoding path: {error}",
@@ -278,7 +278,7 @@
       "refresh_not_available": "❌ Refresh not available - no API URL configured. Using local database only.",
       "cache_refreshed": "🔄 Repeater prefix cache refreshed!",
       "unable_determine_free": "❌ Unable to determine free prefixes. Try 'prefix refresh' first.",
-      "invalid_format": "❌ Invalid prefix format. Use two characters (e.g., prefix 1A)",
+      "invalid_format": "❌ Invalid prefix format. Expected {prefix_hex_chars} hex characters.",
       "no_repeaters_found": "❌ No repeaters found with prefix '{prefix}'",
       "no_free_prefixes": "❌ No free prefixes found (all 254 valid prefixes are in use)",
       "available_prefixes": "Available Prefixes ({shown} of {total} free):",

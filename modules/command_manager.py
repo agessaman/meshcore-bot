@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import List, Dict, Tuple, Optional, Any
 from datetime import datetime
 import pytz
+import random
 from meshcore import EventType
 
 from .models import MeshMessage
@@ -639,7 +640,116 @@ class CommandManager:
                         self.logger.warning(f"Error formatting response for '{keyword}': {e}")
                         matches.append((keyword, response_format))
         
-        return matches
+        return matches  
+
+    def _normalize_trigger_text(self, raw: str) -> str:
+        """
+        Normalize user input / triggers:
+        - strip configured command_prefix if present
+        - strip legacy leading "!" if no command_prefix configured
+        - lowercase
+        - trim + collapse whitespace
+        """
+        if raw is None:
+            return ""
+        text = raw.strip()
+
+        # Mirror check_keywords() prefix handling
+        if self.command_prefix:
+            if not text.startswith(self.command_prefix):
+                return ""  # No prefix -> treat as non-matchable
+            text = text[len(self.command_prefix):].strip()
+        else:
+            # Backward compatibility
+            if text.startswith('!'):
+                text = text[1:].strip()
+
+        # case-insensitive + ignore extra spaces
+        return " ".join(text.lower().split())
+
+    def match_randomline(self, message: MeshMessage) -> Optional[Tuple[str, str]]:
+        """
+        Exact-match message content against RandomLine triggers.
+        Returns (key, response) or None.
+        Matching is case-insensitive and ignores extra spaces.
+        """
+        if not self.bot.config.has_section('RandomLine'):
+            return None
+
+        # Start with the same content + prefix stripping logic as check_keywords()
+        content = (message.content or "").strip()
+
+        # Check for command prefix if configured
+        if self.command_prefix:
+            if not content.startswith(self.command_prefix):
+                return None
+            content = content[len(self.command_prefix):].strip()
+        else:
+            # Legacy "!" prefix compatibility
+            if content.startswith('!'):
+                content = content[1:].strip()
+
+        # Normalize: lowercase + collapse whitespace
+        content_norm = " ".join(content.lower().split())
+        if not content_norm:
+            return None
+
+        # Build trigger -> key map from config: triggers.<key> = csv list
+        trigger_map = {}
+        for cfg_key, cfg_val in self.bot.config.items('RandomLine'):
+            if not cfg_key.startswith('triggers.'):
+                continue
+
+            key = cfg_key.split('.', 1)[1].strip()
+            if not key:
+                continue
+
+            raw_triggers = [t.strip() for t in (cfg_val or "").split(",") if t.strip()]
+            for trig in raw_triggers:
+                trig_norm = " ".join(trig.lower().split())
+                if trig_norm:
+                    trigger_map[trig_norm] = key
+
+        key = trigger_map.get(content_norm)
+        if not key:
+            return None
+
+        # Channel restrictions (mirror the plain keyword restrictions)
+        if message.is_dm:
+            if not self.bot.config.getboolean('Channels', 'respond_to_dms', fallback=True):
+                return None
+        else:
+            if message.channel not in self.monitor_channels:
+                return None
+            if not self._is_channel_trigger_allowed(key, message):
+                return None
+
+        file_path = self.bot.config.get('RandomLine', f'file.{key}', fallback='').strip()
+        if not file_path:
+            self.logger.warning(f"RandomLine matched '{key}' but missing config file.{key}")
+            return None
+
+        # Read usable lines
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                lines = [ln.strip() for ln in f.readlines()]
+            lines = [ln for ln in lines if ln]  # drop blank lines
+        except Exception as e:
+            self.logger.error(f"RandomLine error reading {file_path} for '{key}': {e}", exc_info=True)
+            return None
+
+        if not lines:
+            self.logger.warning(f"RandomLine file is empty for '{key}': {file_path}")
+            return None
+
+        chosen = random.choice(lines)
+
+        prefix = self.bot.config.get('RandomLine', f'prefix.{key}', fallback='').strip()
+        if not prefix:
+            prefix = (self.bot.config.get('RandomLine', 'prefix.default', fallback='') or '').strip()
+
+        response = f"{prefix} {chosen}".strip() if prefix else chosen
+        return key, response
     
     async def handle_advert_command(self, message: MeshMessage):
         """Handle the advert command from DM.
