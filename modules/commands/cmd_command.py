@@ -4,7 +4,7 @@ Cmd command for the MeshCore Bot
 Lists available commands in a compact, comma-separated format for LoRa
 """
 
-from typing import Optional
+from typing import Any, Optional
 from .base_command import BaseCommand
 from ..models import MeshMessage
 
@@ -52,13 +52,30 @@ class CmdCommand(BaseCommand):
             str: The help text for this command.
         """
         return "Lists commands in compact format."
-    
-    def _get_commands_list(self, max_length: Optional[int] = None) -> str:
+
+    def _is_command_valid_for_channel(self, cmd_name: str, cmd_instance: Any, message: Optional[MeshMessage]) -> bool:
+        """Return True if this command is valid in the message's channel context."""
+        if message is None:
+            return True
+        if hasattr(cmd_instance, 'is_channel_allowed') and callable(cmd_instance.is_channel_allowed):
+            if not cmd_instance.is_channel_allowed(message):
+                return False
+        if hasattr(self.bot.command_manager, '_is_channel_trigger_allowed'):
+            if not self.bot.command_manager._is_channel_trigger_allowed(cmd_name, message):
+                return False
+        return True
+
+    def _get_commands_list(self, message: Optional[MeshMessage] = None, max_length: Optional[int] = None) -> str:
         """Get a compact list of available commands, prioritizing important ones.
-        
+
+        When message is provided, only includes commands that can execute in this
+        channel (respects per-command channel overrides and channel_keywords).
+
         Args:
+            message: Optional message for context filtering. When provided, only
+                commands valid for this channel are included.
             max_length: Maximum length for the command list (None = no limit).
-        
+
         Returns:
             str: Comma-separated list of commands, truncated if necessary.
         """
@@ -68,24 +85,29 @@ class CmdCommand(BaseCommand):
             'wx', 'aqi', 'sun', 'moon', 'solar', 'hfcond', 'satpass',
             'prefix', 'path', 'sports', 'dice', 'roll', 'stats'
         ]
-        
-        # Get all command names
+
+        # Get all command names (only those available in this context)
         all_commands = []
-        
-        # Include plugin commands
+
+        # Include plugin commands that are valid for this channel
         for cmd_name, cmd_instance in self.bot.command_manager.commands.items():
             # Skip system commands without keywords (like greeter)
             if hasattr(cmd_instance, 'keywords') and cmd_instance.keywords:
+                if not self._is_command_valid_for_channel(cmd_name, cmd_instance, message):
+                    continue
                 all_commands.append(cmd_name)
-        
-        # Include config keywords that aren't handled by plugins
+
+        # Include config keywords that aren't handled by plugins (and are allowed in channel)
         for keyword in self.bot.command_manager.keywords.keys():
             # Check if this keyword is already handled by a plugin
             is_plugin_keyword = any(
-                keyword.lower() in [k.lower() for k in cmd.keywords] 
+                keyword.lower() in [k.lower() for k in cmd.keywords]
                 for cmd in self.bot.command_manager.commands.values()
             )
             if not is_plugin_keyword:
+                if message is not None and hasattr(self.bot.command_manager, '_is_channel_trigger_allowed'):
+                    if not self.bot.command_manager._is_channel_trigger_allowed(keyword, message):
+                        continue
                 all_commands.append(keyword)
         
         # Remove duplicates and sort
@@ -162,8 +184,8 @@ class CmdCommand(BaseCommand):
             # Fallback to dynamic command list if no custom keyword is defined
             # Get max message length to ensure we fit within limits
             max_length = self.get_max_message_length(message)
-            # _get_commands_list handles the prefix internally
-            response = self._get_commands_list(max_length=max_length)
+            # _get_commands_list handles the prefix internally; pass message for context filtering
+            response = self._get_commands_list(message=message, max_length=max_length)
             return await self.send_response(message, response)
         except Exception as e:
             self.logger.error(f"Error executing cmd command: {e}")

@@ -67,7 +67,7 @@ class WebViewerCommand(BaseCommand):
         # Check if message starts with any of our keywords
         content_lower = content.lower()
         for keyword in self.keywords:
-            if content_lower.startswith(keyword + ' '):
+            if content_lower.startswith(keyword + ' ') or content_lower == keyword:
                 return True
         return False
     
@@ -89,7 +89,7 @@ class WebViewerCommand(BaseCommand):
         # Parse subcommand
         parts = content.split()
         if len(parts) < 2:
-            await self.bot.send_response("Usage: webviewer <subcommand>\nSubcommands: status, reset, restart")
+            await self.send_response(message, "Usage: webviewer <subcommand>\nSubcommands: status, reset, restart")
             return True
         
         subcommand = parts[1].lower()
@@ -101,7 +101,7 @@ class WebViewerCommand(BaseCommand):
         elif subcommand == "restart":
             await self._handle_restart(message)
         else:
-            await self.bot.send_response("Unknown subcommand. Use: status, reset, restart")
+            await self.send_response(message, "Unknown subcommand. Use: status, reset, restart")
         
         return True
     
@@ -112,7 +112,7 @@ class WebViewerCommand(BaseCommand):
             message: The message that triggered the detailed status request.
         """
         if not hasattr(self.bot, 'web_viewer_integration') or not self.bot.web_viewer_integration:
-            await self.bot.send_response("Web viewer integration not available")
+            await self.send_response(message, "Web viewer integration not available")
             return
         
         integration = self.bot.web_viewer_integration
@@ -134,7 +134,7 @@ class WebViewerCommand(BaseCommand):
         for key, value in status.items():
             status_text += f"• {key}: {value}\n"
         
-        await self.bot.send_response(status_text)
+        await self.send_response(message, status_text)
     
     async def _handle_reset(self, message: MeshMessage) -> None:
         """Handle reset subcommand.
@@ -143,14 +143,14 @@ class WebViewerCommand(BaseCommand):
             message: The message that triggered the reset request.
         """
         if not hasattr(self.bot, 'web_viewer_integration') or not self.bot.web_viewer_integration:
-            await self.bot.send_response("Web viewer integration not available")
+            await self.send_response(message, "Web viewer integration not available")
             return
         
         if hasattr(self.bot.web_viewer_integration, 'bot_integration') and self.bot.web_viewer_integration.bot_integration:
             self.bot.web_viewer_integration.bot_integration.reset_circuit_breaker()
-            await self.bot.send_response("Circuit breaker reset")
+            await self.send_response(message, "Circuit breaker reset")
         else:
-            await self.bot.send_response("Bot integration not available")
+            await self.send_response(message, "Bot integration not available")
     
     async def _handle_restart(self, message: MeshMessage) -> None:
         """Handle restart subcommand.
@@ -159,11 +159,11 @@ class WebViewerCommand(BaseCommand):
             message: The message that triggered the restart request.
         """
         if not hasattr(self.bot, 'web_viewer_integration') or not self.bot.web_viewer_integration:
-            await self.bot.send_response("Web viewer integration not available")
+            await self.send_response(message, "Web viewer integration not available")
             return
         
         try:
             self.bot.web_viewer_integration.restart_viewer()
-            await self.bot.send_response("Web viewer restart initiated")
+            await self.send_response(message, "Web viewer restart initiated")
         except Exception as e:
-            await self.bot.send_response(f"Failed to restart web viewer: {e}")
+            await self.send_response(message, f"Failed to restart web viewer: {e}")

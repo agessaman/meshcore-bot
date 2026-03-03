@@ -286,7 +286,7 @@ class BotDataViewer:
         """Initialize the packet_stream table in the web viewer database (same as [Bot] db_path by default)."""
         conn = None
         try:
-            with sqlite3.connect(self.db_path, timeout=30) as conn:
+            with sqlite3.connect(self.db_path, timeout=60) as conn:
                 cursor = conn.cursor()
                 
                 # Create packet_stream table with schema matching the INSERT statements
@@ -311,6 +311,12 @@ class BotDataViewer:
                     ON packet_stream(type)
                 ''')
                 
+                # Enable WAL for better concurrent access (bot + web viewer use same DB)
+                try:
+                    cursor.execute('PRAGMA journal_mode=WAL')
+                except sqlite3.OperationalError:
+                    pass  # Ignore if locked; WAL may already be set
+                
                 conn.commit()
                 
                 self.logger.info(f"Initialized packet_stream table in {self.db_path}")
@@ -322,7 +328,7 @@ class BotDataViewer:
     def _get_db_connection(self):
         """Get database connection - create new connection for each request to avoid threading issues"""
         try:
-            conn = sqlite3.connect(self.db_path, timeout=30)
+            conn = sqlite3.connect(self.db_path, timeout=60)
             conn.row_factory = sqlite3.Row
             return conn
         except Exception as e:
@@ -1568,7 +1574,7 @@ class BotDataViewer:
                 # Get commands from last 60 minutes
                 cutoff_time = time.time() - (60 * 60)  # 60 minutes ago
                 
-                with sqlite3.connect(self.db_path, timeout=30) as conn:
+                with sqlite3.connect(self.db_path, timeout=60) as conn:
                     cursor = conn.cursor()
                     
                     cursor.execute('''
@@ -2701,7 +2707,7 @@ class BotDataViewer:
                     # Connect to database with timeout to prevent hanging
                     # Use check_same_thread=False for thread safety, but be careful
                     try:
-                        conn = sqlite3.connect(self.db_path, timeout=30, check_same_thread=False)
+                        conn = sqlite3.connect(self.db_path, timeout=60, check_same_thread=False)
                         conn.row_factory = sqlite3.Row
                     except sqlite3.OperationalError as conn_error:
                         error_msg = str(conn_error)
@@ -2754,8 +2760,8 @@ class BotDataViewer:
                     finally:
                         conn.close()
                     
-                    # Sleep before next poll
-                    time.sleep(0.5)  # Poll every 500ms
+                    # Sleep before next poll (back off to reduce lock contention with bot writes)
+                    time.sleep(2.0)  # Poll every 2s
                     
                 except sqlite3.OperationalError as e:
                     consecutive_errors += 1
@@ -2859,8 +2865,8 @@ class BotDataViewer:
             
             cutoff_time = time.time() - (days_to_keep * 24 * 60 * 60)
             
-            # Use shorter timeout and isolation_level for better concurrency
-            conn = sqlite3.connect(self.db_path, timeout=10, isolation_level='DEFERRED')
+            # Use DEFERRED isolation; longer timeout to wait out bot writes
+            conn = sqlite3.connect(self.db_path, timeout=60, isolation_level='DEFERRED')
             cursor = conn.cursor()
             
             # Use WAL mode for better concurrent access (if not already set)

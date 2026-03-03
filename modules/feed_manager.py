@@ -1263,7 +1263,7 @@ class FeedManager:
         except Exception as e:
             db_path = getattr(self, 'db_path', 'unknown')
             db_path_str = str(db_path) if db_path != 'unknown' else 'unknown'
-            self.logger.error(f"Error processing message queue: {e}")
+            self.logger.exception(f"Error processing message queue: {e}")
             if db_path_str != 'unknown':
                 path_obj = Path(db_path_str)
                 self.logger.error(f"Database path: {db_path_str} (exists: {path_obj.exists()}, readable: {os.access(db_path_str, os.R_OK) if path_obj.exists() else False}, writable: {os.access(db_path_str, os.W_OK) if path_obj.exists() else False})")
