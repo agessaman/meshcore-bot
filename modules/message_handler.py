@@ -14,7 +14,7 @@ from meshcore import EventType
 
 from .models import MeshMessage
 from .enums import PayloadType, PayloadVersion, RouteType, AdvertFlags, DeviceRole
-from .utils import calculate_packet_hash, format_elapsed_display
+from .utils import calculate_packet_hash, format_elapsed_display, decode_path_len_byte
 from .security_utils import sanitize_input
 from .graph_trace_helper import update_mesh_graph_from_trace_data
 
@@ -1150,17 +1150,24 @@ class MessageHandler:
                 self.logger.error(f"Packet too short for path_len at offset {offset}: {len(byte_data)} bytes")
                 return None
             
-            path_len = byte_data[offset]
+            raw_path_len = byte_data[offset]
             offset += 1
-            
+
+            path_meta = decode_path_len_byte(raw_path_len)
+            path_len = path_meta['hop_count']
+            path_byte_count = path_meta['path_byte_count']
+
             # Check if we have enough data for the full path
-            if len(byte_data) < offset + path_len:
-                self.logger.error(f"Packet too short for path (need {offset + path_len}, have {len(byte_data)})")
+            if len(byte_data) < offset + path_byte_count:
+                self.logger.error(
+                    f"Packet too short for path (need {offset + path_byte_count}, have {len(byte_data)}). "
+                    f"raw_path_len=0x{raw_path_len:02x}, mode={path_meta['mode_name']}, hops={path_len}, bytes_per_hop={path_meta['bytes_per_hop']}"
+                )
                 return None
             
             # Extract path
-            path_bytes = byte_data[offset:offset + path_len]
-            offset += path_len
+            path_bytes = byte_data[offset:offset + path_byte_count]
+            offset += path_byte_count
             
             # Remaining data is payload
             payload = byte_data[offset:]
@@ -1176,20 +1183,24 @@ class MessageHandler:
             # Extract payload type (bits 2-5)
             payload_type = PayloadType((header >> 2) & 0x0F)
 
-            # Convert path to list of hex values
+            # Convert path to list of hex values grouped by hop size
             path_hex = path_bytes.hex()
+            bytes_per_hop = path_meta['bytes_per_hop']
+            chunk_chars = bytes_per_hop * 2
             path_values = []
-            i = 0
-            while i < len(path_hex):
-                path_values.append(path_hex[i:i+2])
-                i += 2
+            if chunk_chars > 0:
+                i = 0
+                while i < len(path_hex):
+                    path_values.append(path_hex[i:i+chunk_chars])
+                    i += chunk_chars
             
             # Process path based on packet type
             path_info = self._process_packet_path(
                 path_bytes, 
                 payload, 
                 route_type, 
-                payload_type
+                payload_type,
+                path_meta
             )
             
             # Extract transport codes if present (only for TRANSPORT_FLOOD and TRANSPORT_DIRECT)
@@ -1218,7 +1229,13 @@ class MessageHandler:
                 'has_transport_codes': has_transport,
                 'transport_codes': transport_codes,
                 'transport_size': 4 if has_transport else 0,
+                'path_len_raw': raw_path_len,
                 'path_len': path_len,
+                'path_hops': path_len,
+                'path_mode': path_meta['mode'],
+                'path_mode_name': path_meta['mode_name'],
+                'bytes_per_hop': path_meta['bytes_per_hop'],
+                'path_bytes_length': path_byte_count,
                 'path_info': path_info,
                 'path': path_values,  # For backward compatibility
                 'path_hex': path_hex,
@@ -1333,7 +1350,8 @@ class MessageHandler:
             return {}
 
     def _process_packet_path(self, path_bytes: bytes, payload: bytes, 
-                             route_type: RouteType, payload_type: PayloadType) -> dict:
+                             route_type: RouteType, payload_type: PayloadType,
+                             path_meta: Optional[Dict[str, Any]] = None) -> dict:
         """
         Process the path field based on packet and route type
         
@@ -1347,8 +1365,24 @@ class MessageHandler:
             dict: Processed path information
         """
         try:
-            # Convert path bytes to hex node IDs
-            path_nodes = [f"{b:02x}" for b in path_bytes]
+            if path_meta is None:
+                path_meta = {
+                    'mode': 0,
+                    'mode_name': 'legacy',
+                    'bytes_per_hop': 1,
+                    'hop_count': len(path_bytes),
+                    'path_byte_count': len(path_bytes),
+                }
+
+            bytes_per_hop = max(1, int(path_meta.get('bytes_per_hop', 1)))
+            chunk_size = bytes_per_hop
+            path_nodes = []
+            for i in range(0, len(path_bytes), chunk_size):
+                chunk = path_bytes[i:i + chunk_size]
+                if len(chunk) == chunk_size:
+                    path_nodes.append(chunk.hex())
+                elif chunk:
+                    path_nodes.append(chunk.hex())
             
             # Special handling for TRACE packets
             if payload_type == PayloadType.TRACE:
@@ -1377,29 +1411,41 @@ class MessageHandler:
                     'snr_path': path_nodes,  # SNR data as hex for reference
                     'path': path_hashes,  # Actual routing path from payload pathHashes
                     'path_hashes': path_hashes,  # Explicit field for pathHashes
-                    'description': f"TRACE packet with {len(snr_values)} SNR readings and {len(path_hashes)} path nodes"
+                    'description': f"TRACE packet with {len(snr_values)} SNR readings and {len(path_hashes)} path nodes",
+                    'bytes_per_hop': bytes_per_hop,
+                    'path_mode': path_meta.get('mode_name', 'legacy'),
+                    'path_byte_count': len(path_bytes),
+                    'hop_count': path_meta.get('hop_count', len(path_nodes))
                 }
             
             # Regular packets - determine path type based on route type
             is_direct = route_type in [RouteType.DIRECT, RouteType.TRANSPORT_DIRECT]
             
+            common = {
+                'path': path_nodes,
+                'bytes_per_hop': bytes_per_hop,
+                'path_mode': path_meta.get('mode_name', 'legacy'),
+                'path_byte_count': len(path_bytes),
+                'hop_count': path_meta.get('hop_count', len(path_nodes))
+            }
+            
             if is_direct:
                 # Direct routing: path contains routing instructions
                 # Bytes are stripped at each hop
                 return {
+                    **common,
                     'type': 'routing_instructions',
-                    'path': path_nodes,
                     'meaning': 'bytes_stripped_at_each_hop',
-                    'description': f"Direct route via {','.join(path_nodes)} ({len(path_nodes)} hops)"
+                    'description': f"Direct route via {','.join(path_nodes)} ({common['hop_count']} hops)"
                 }
             else:
                 # Flood routing: path contains historical route
                 # Bytes are added as packet floods through network
                 return {
+                    **common,
                     'type': 'historical_route', 
-                    'path': path_nodes,
                     'meaning': 'bytes_added_as_packet_floods',
-                    'description': f"Flooded through {','.join(path_nodes)} ({len(path_nodes)} hops)"
+                    'description': f"Flooded through {','.join(path_nodes)} ({common['hop_count']} hops)"
                 }
                 
         except Exception as e:
@@ -1409,6 +1455,10 @@ class MessageHandler:
             return {
                 'type': 'unknown',
                 'path': path_nodes,
+                'bytes_per_hop': 1,
+                'path_mode': 'legacy',
+                'path_byte_count': len(path_bytes),
+                'hop_count': len(path_nodes),
                 'description': f"Path: {','.join(path_nodes)}"
             }
     

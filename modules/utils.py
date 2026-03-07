@@ -21,6 +21,43 @@ except ImportError:
     ZoneInfoNotFoundError = Exception  # type: ignore[misc, assignment]
 
 
+def decode_path_len_byte(raw_path_len: int) -> Dict[str, Union[int, str]]:
+    """Decode MeshCore path length byte into hop and byte counts.
+
+    Supports the newer multibyte path encoding where the upper two bits encode
+    path mode / bytes-per-hop. Falls back to a legacy literal byte-count mode
+    for unknown encodings so older behavior does not completely break.
+    """
+    raw = int(raw_path_len) & 0xFF
+    mode = (raw >> 6) & 0x03
+    hop_count = raw & 0x3F
+
+    if mode == 0:
+        bytes_per_hop = 1
+        mode_name = '1byte'
+        path_byte_count = hop_count
+    elif mode == 1:
+        bytes_per_hop = 2
+        mode_name = '2byte'
+        path_byte_count = hop_count * 2
+    else:
+        # Reserved / unknown encoding. Treat the raw value as a literal byte count
+        # so callers can still make progress rather than slicing the packet blindly.
+        bytes_per_hop = 1
+        mode_name = 'legacy_literal'
+        hop_count = raw
+        path_byte_count = raw
+
+    return {
+        'raw_path_len': raw,
+        'mode': mode,
+        'mode_name': mode_name,
+        'hop_count': hop_count,
+        'bytes_per_hop': bytes_per_hop,
+        'path_byte_count': path_byte_count,
+    }
+
+
 def is_valid_timezone(tz_str: str) -> bool:
     """Return True if the string is a valid IANA timezone name."""
     if not (tz_str and tz_str.strip()):
@@ -366,16 +403,19 @@ def calculate_packet_hash(raw_hex: str, payload_type: int = None) -> str:
         if len(byte_data) <= offset:
             return "0000000000000000"
         
-        # Read path_len (1 byte on wire, but stored as uint16_t in C++)
-        path_len = byte_data[offset]
+        # Read and decode path_len byte
+        raw_path_len = byte_data[offset]
+        path_meta = decode_path_len_byte(raw_path_len)
+        path_len = path_meta['hop_count']
+        path_byte_count = path_meta['path_byte_count']
         offset += 1
         
         # Validate we have enough bytes for the path
-        if len(byte_data) < offset + path_len:
+        if len(byte_data) < offset + path_byte_count:
             return "0000000000000000"
         
         # Skip past the path to get to payload
-        payload_start = offset + path_len
+        payload_start = offset + path_byte_count
         
         # Validate we have payload data
         if len(byte_data) <= payload_start:
