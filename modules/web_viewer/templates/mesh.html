@@ -44,8 +44,11 @@
 <div id="mesh-graph-container" class="d-flex flex-column">
 <div class="row">
     <div class="col-12">
-        <h1 class="mb-4">
-            <i class="fas fa-project-diagram"></i> Mesh Graph
+        <h1 class="mb-4 d-flex align-items-center justify-content-between">
+            <span><i class="fas fa-project-diagram"></i> Mesh Graph</span>
+            <span class="badge bg-secondary fw-normal" style="font-size: 0.75rem; padding: 0.35rem 0.5rem;" title="Active topology engine mode">
+                Topology: {{ topology_engine_mode|upper }}
+            </span>
         </h1>
     </div>
 </div>
@@ -124,6 +127,13 @@
                                     <i class="fas fa-project-diagram"></i> Graph
                                 </button>
                             </div>
+                            {% if topology_shadow_enabled %}
+                            <div class="btn-group" role="group" aria-label="Shadow graph mode">
+                                <button type="button" class="btn btn-outline-secondary btn-sm active" id="btn-data-mode-legacy" onclick="switchDataMode('legacy')">Legacy</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-data-mode-new" onclick="switchDataMode('new')">New</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-data-mode-overlay" onclick="switchDataMode('overlay')">Overlay</button>
+                            </div>
+                            {% endif %}
                             <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#filterPanel">
                                 <i class="fas fa-filter"></i>
                             </button>
@@ -134,11 +144,16 @@
                                 <i class="fas fa-download"></i>
                             </button>
                         </div>
+                        <div id="data-mode-description" class="small text-muted mt-1"></div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+</div>
+
+<div id="model-data-notice" class="alert alert-warning py-2 px-3 mb-3" style="display: none;">
+    Model graph has limited data for current filters. Try increasing timeframe or switching back to Legacy.
 </div>
 
 <!-- Filter Panel -->
@@ -392,9 +407,14 @@
     let highlightedPath = null; // Currently highlighted path data
     let pathHighlightTimeout = null; // Debounce timer for path resolution
 
+    const TOPOLOGY_SHADOW_ENABLED = {{ 'true' if topology_shadow_enabled else 'false' }};
+    const TOPOLOGY_ENGINE_MODE = '{{ topology_engine_mode|default("legacy") }}';
     const PREFIX_HEX_CHARS = {{ prefix_hex_chars|default(2) }};  
     // Graph prefix length from edges API (2, 4, or 6 hex chars); used for node prefix display and node fetch.
     let graphPrefixHexChars = PREFIX_HEX_CHARS;
+    let currentDataMode = 'legacy';
+    let legacyGraphData = { nodes: [], edges: [], prefixHexChars: PREFIX_HEX_CHARS };
+    let modelGraphData = { nodes: [], edges: [], prefixHexChars: PREFIX_HEX_CHARS };
     // Format prefix for display: add byte count when multi-byte (2 or 3 bytes)
     function formatPrefixWithBytes(prefix) {
         if (!prefix || typeof prefix !== 'string') return '';
@@ -817,10 +837,14 @@
         
         // Load saved filter settings
         loadFilters();
+        loadDataMode();
+        setDataModeButtonState();
         
         setupSocketIO();
         // Load stats first to set initial filter value (but don't override saved filters)
-        await loadStats();
+        if (currentDataMode === 'legacy') {
+            await loadStats();
+        }
         // Then load data (which will apply filters)
         await loadData();
         // Open graph tab if URL has #graph (e.g. /mesh#graph)
@@ -868,6 +892,98 @@
         }
     }
     
+    function updateStatsFromCurrentData() {
+        const avgObs = allEdges.length > 0
+            ? (allEdges.reduce((sum, edge) => sum + (Number(edge.observation_count) || 0), 0) / allEdges.length).toFixed(2)
+            : 0;
+        document.getElementById('stat-node-count').textContent = allNodes.length || 0;
+        document.getElementById('stat-edge-count').textContent = allEdges.length || 0;
+        document.getElementById('stat-avg-obs').textContent = avgObs;
+        document.getElementById('stat-avg-dist').textContent = 'N/A';
+    }
+
+    function updateModelDataNotice() {
+        const notice = document.getElementById('model-data-notice');
+        if (!notice) return;
+        const shouldShow = TOPOLOGY_SHADOW_ENABLED && currentDataMode !== 'legacy' && (allNodes.length === 0 || allEdges.length === 0);
+        notice.style.display = shouldShow ? 'block' : 'none';
+    }
+
+    async function fetchLegacyGraphData() {
+        const edgesResponse = await fetch('/api/mesh/edges');
+        const edgesData = await edgesResponse.json();
+        const prefixHexChars = (edgesData.prefix_hex_chars && [2, 4, 6].includes(edgesData.prefix_hex_chars))
+            ? edgesData.prefix_hex_chars
+            : PREFIX_HEX_CHARS;
+        const nodesResponse = await fetch('/api/mesh/nodes?prefix_hex_chars=' + prefixHexChars);
+        const nodesData = await nodesResponse.json();
+        legacyGraphData = {
+            nodes: nodesData.nodes || [],
+            edges: edgesData.edges || [],
+            prefixHexChars: prefixHexChars
+        };
+        return legacyGraphData;
+    }
+
+    async function fetchModelGraphData() {
+        const edgeDays = parseInt(document.getElementById('filter-edge-days')?.value || '0', 10);
+        const queryDays = Number.isFinite(edgeDays) && edgeDays > 0 ? edgeDays : 14;
+        const response = await fetch(`/api/mesh/model-graph?days=${queryDays}`);
+        if (!response.ok) {
+            throw new Error('Failed to load model graph data');
+        }
+        const modelData = await response.json();
+        modelGraphData = {
+            nodes: modelData.nodes || [],
+            edges: modelData.edges || [],
+            prefixHexChars: (modelData.prefix_hex_chars && [2, 4, 6].includes(modelData.prefix_hex_chars))
+                ? modelData.prefix_hex_chars
+                : PREFIX_HEX_CHARS
+        };
+        return modelGraphData;
+    }
+
+    function buildOverlayGraphData(legacyData, modelData) {
+        const nodeById = {};
+        const putNode = (node) => {
+            const key = node.public_key || `${node.prefix}-${node.latitude}-${node.longitude}`;
+            if (!nodeById[key]) nodeById[key] = node;
+        };
+        (legacyData.nodes || []).forEach(putNode);
+        (modelData.nodes || []).forEach(putNode);
+
+        const modelEdgeIndex = {};
+        (modelData.edges || []).forEach((edge) => {
+            modelEdgeIndex[`${edge.from_prefix}-${edge.to_prefix}`] = edge;
+        });
+
+        const legacyEdges = (legacyData.edges || []).map((edge) => {
+            const key = `${edge.from_prefix}-${edge.to_prefix}`;
+            const modelMatch = modelEdgeIndex[key];
+            return {
+                ...edge,
+                overlay_type: modelMatch ? 'shared' : 'legacy_only',
+                model_confidence: modelMatch ? modelMatch.model_confidence : null,
+                source_method: modelMatch ? modelMatch.source_method : null
+            };
+        });
+
+        const legacyEdgeKeys = new Set(legacyEdges.map((edge) => `${edge.from_prefix}-${edge.to_prefix}`));
+        const modelOnlyEdges = (modelData.edges || [])
+            .filter((edge) => !legacyEdgeKeys.has(`${edge.from_prefix}-${edge.to_prefix}`))
+            .map((edge) => ({
+                ...edge,
+                overlay_type: 'model_only',
+                observation_count: edge.observation_count || edge.evidence_count || 1
+            }));
+
+        return {
+            nodes: Object.values(nodeById),
+            edges: legacyEdges.concat(modelOnlyEdges),
+            prefixHexChars: Math.max(legacyData.prefixHexChars || 2, modelData.prefixHexChars || 2)
+        };
+    }
+
     // Load nodes and edges
     // Options: { skipRender: true } - refresh allNodes/allEdges but do not call applyFilters().
     // Used by socket handlers so graph view is not re-rendered on live updates (avoids chaotic re-stabilization).
@@ -875,18 +991,22 @@
         const skipRender = options && options.skipRender === true;
         
         try {
-            // Load edges first so we can pass prefix_hex_chars to nodes (keeps node prefix in sync with edge prefixes)
-            const edgesResponse = await fetch('/api/mesh/edges');
-            const edgesData = await edgesResponse.json();
-            allEdges = edgesData.edges || [];
-            graphPrefixHexChars = (edgesData.prefix_hex_chars && [2, 4, 6].includes(edgesData.prefix_hex_chars))
-                ? edgesData.prefix_hex_chars
-                : PREFIX_HEX_CHARS;
-            
-            // Load nodes with graph prefix length so node.prefix matches edge prefixes (e.g. 2-byte)
-            const nodesResponse = await fetch('/api/mesh/nodes?prefix_hex_chars=' + graphPrefixHexChars);
-            const nodesData = await nodesResponse.json();
-            allNodes = nodesData.nodes || [];
+            const mode = TOPOLOGY_SHADOW_ENABLED ? currentDataMode : 'legacy';
+            let activeData = null;
+
+            if (mode === 'legacy') {
+                activeData = await fetchLegacyGraphData();
+            } else if (mode === 'new') {
+                activeData = await fetchModelGraphData();
+            } else {
+                const legacyData = await fetchLegacyGraphData();
+                const modelData = await fetchModelGraphData();
+                activeData = buildOverlayGraphData(legacyData, modelData);
+            }
+
+            allEdges = activeData.edges || [];
+            allNodes = activeData.nodes || [];
+            graphPrefixHexChars = activeData.prefixHexChars || PREFIX_HEX_CHARS;
             
             // Build node maps
             nodeMap = {};
@@ -904,6 +1024,11 @@
                 const key = `${edge.from_prefix}-${edge.to_prefix}`;
                 edgeMap[key] = edge;
             });
+
+            if (mode !== 'legacy') {
+                updateStatsFromCurrentData();
+            }
+            updateModelDataNotice();
             
             if (!skipRender) {
                 // Apply filters (will use the min observations value set by loadStats)
@@ -957,6 +1082,70 @@
             console.debug('Error loading filters:', error);
         }
     }
+
+    function loadDataMode() {
+        if (!TOPOLOGY_SHADOW_ENABLED) {
+            currentDataMode = 'legacy';
+            return;
+        }
+        try {
+            const saved = (localStorage.getItem('meshGraphDataMode') || '').toLowerCase();
+            if (saved === 'new' || saved === 'overlay' || saved === 'legacy') {
+                currentDataMode = saved;
+            } else {
+                currentDataMode = 'legacy';
+            }
+        } catch (error) {
+            console.debug('Error loading data mode:', error);
+            currentDataMode = 'legacy';
+        }
+    }
+
+    function saveDataMode() {
+        if (!TOPOLOGY_SHADOW_ENABLED) return;
+        try {
+            localStorage.setItem('meshGraphDataMode', currentDataMode);
+        } catch (error) {
+            console.debug('Error saving data mode:', error);
+        }
+    }
+
+    function setDataModeButtonState() {
+        const description = document.getElementById('data-mode-description');
+        if (!TOPOLOGY_SHADOW_ENABLED) {
+            if (description) description.textContent = `Topology mode: ${TOPOLOGY_ENGINE_MODE}, graph source: legacy`;
+            return;
+        }
+        ['legacy', 'new', 'overlay'].forEach((mode) => {
+            const button = document.getElementById(`btn-data-mode-${mode}`);
+            if (!button) return;
+            const active = currentDataMode === mode;
+            button.classList.toggle('active', active);
+            button.classList.toggle('btn-secondary', active);
+            button.classList.toggle('btn-outline-secondary', !active);
+        });
+        if (description) {
+            if (currentDataMode === 'overlay') {
+                description.textContent = 'Overlay colors: teal=shared, blue=model-only, gray=legacy-only';
+            } else if (currentDataMode === 'new') {
+                description.textContent = 'Showing topology model graph only';
+            } else {
+                description.textContent = 'Showing legacy graph only';
+            }
+        }
+    }
+
+    async function switchDataMode(mode) {
+        if (!TOPOLOGY_SHADOW_ENABLED) return;
+        if (!['legacy', 'new', 'overlay'].includes(mode)) return;
+        currentDataMode = mode;
+        saveDataMode();
+        setDataModeButtonState();
+        if (currentDataMode === 'legacy') {
+            await loadStats();
+        }
+        await loadData();
+    }
     
     // Apply filters
     function applyFilters() {
@@ -966,6 +1155,9 @@
         const preservedPath = highlightedPath;
         
         const minObs = parseInt(document.getElementById('filter-min-obs').value) || 1;
+        // Model-derived graphs often have low per-edge evidence counts compared to legacy mesh_connections.
+        // Keep the slider behavior unchanged for legacy mode, but avoid over-filtering in new/overlay modes.
+        const effectiveMinObs = currentDataMode === 'legacy' ? minObs : 1;
         const edgeDays = document.getElementById('filter-edge-days').value;
         const nodeDays = document.getElementById('filter-node-days').value;
         const starredOnly = document.getElementById('filter-starred').checked;
@@ -973,7 +1165,8 @@
         
         // Filter edges
         filteredEdges = allEdges.filter(edge => {
-            if (edge.observation_count < minObs) return false;
+            const edgeEvidence = Number(edge.observation_count ?? edge.evidence_count ?? 1) || 1;
+            if (edgeEvidence < effectiveMinObs) return false;
             if (edgeDays && edge.last_seen) {
                 const edgeDate = new Date(edge.last_seen);
                 const cutoffDate = new Date();
@@ -1275,6 +1468,8 @@
             line.bindTooltip(`
                 ${formatPrefixWithBytes(edge.from_prefix)} → ${formatPrefixWithBytes(edge.to_prefix)}<br>
                 Observations: ${edge.observation_count}<br>
+                ${edge.overlay_type ? `Overlay Type: ${edge.overlay_type.replace('_', ' ')}<br>` : ''}
+                ${edge.model_confidence !== undefined && edge.model_confidence !== null ? `Model Confidence: ${Number(edge.model_confidence).toFixed(2)}<br>` : ''}
                 Distance: ${edge.geographic_distance ? edge.geographic_distance.toFixed(1) + ' km' : 'N/A'}<br>
                 Last Seen: ${edge.last_seen ? new Date(edge.last_seen).toLocaleString() : 'Never'}
             `);
@@ -1315,6 +1510,18 @@
                             <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Last Seen:</strong></td>
                             <td style="padding: 2px 0;">${edge.last_seen ? new Date(edge.last_seen).toLocaleString() : 'Unknown'}</td>
                         </tr>
+                        ${edge.overlay_type ? `<tr>
+                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Overlay Type:</strong></td>
+                            <td style="padding: 2px 0;">${escapeHtml(edge.overlay_type.replace('_', ' '))}</td>
+                        </tr>` : ''}
+                        ${edge.model_confidence !== undefined && edge.model_confidence !== null ? `<tr>
+                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Model Confidence:</strong></td>
+                            <td style="padding: 2px 0;">${Number(edge.model_confidence).toFixed(3)}</td>
+                        </tr>` : ''}
+                        ${edge.source_method ? `<tr>
+                            <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Source Method:</strong></td>
+                            <td style="padding: 2px 0;">${escapeHtml(edge.source_method)}</td>
+                        </tr>` : ''}
                         ${edge.from_public_key ? `<tr>
                             <td style="padding: 2px 8px 2px 0; color: #888;"><strong>From Public Key:</strong></td>
                             <td style="padding: 2px 0;"><code style="font-size: 0.85em;">${formatPublicKey(edge.from_public_key)}</code></td>
@@ -1596,7 +1803,7 @@
                         opacity: getEdgeOpacity(edge)
                     },
                     arrows: 'to',
-                    title: `${edge.from_prefix} → ${edge.to_prefix} (${edge.observation_count} obs)`
+                    title: `${edge.from_prefix} → ${edge.to_prefix} (${edge.observation_count} obs)${edge.overlay_type ? ' [' + edge.overlay_type + ']' : ''}${edge.model_confidence !== undefined && edge.model_confidence !== null ? ' conf=' + Number(edge.model_confidence).toFixed(2) : ''}`
                 });
             }
         });
@@ -2309,6 +2516,11 @@
     }
     
     function getEdgeColor(edge) {
+        if (currentDataMode === 'overlay') {
+            if (edge.overlay_type === 'model_only') return '#0d6efd'; // Blue: model-only
+            if (edge.overlay_type === 'legacy_only') return '#6c757d'; // Gray: legacy-only
+            if (edge.overlay_type === 'shared') return '#20c997'; // Teal: shared
+        }
         if (!edge.last_seen) return '#6c757d'; // Gray for unknown
         
         const lastSeen = new Date(edge.last_seen);
@@ -2322,6 +2534,11 @@
     }
     
     function getEdgeOpacity(edge) {
+        if (currentDataMode === 'overlay') {
+            if (edge.overlay_type === 'legacy_only') return 0.45;
+            if (edge.overlay_type === 'model_only') return 0.85;
+            return 0.75;
+        }
         if (!edge.last_seen) return 0.3;
         
         const lastSeen = new Date(edge.last_seen);
@@ -2384,7 +2601,9 @@
     }
     
     function refreshData() {
-        loadStats();
+        if (currentDataMode === 'legacy') {
+            loadStats();
+        }
         loadData();
     }
     
@@ -2416,7 +2635,9 @@
         
         function onMeshUpdate(data, label) {
             console.log(label, data);
-            loadStats();
+            if (currentDataMode === 'legacy') {
+                loadStats();
+            }
             loadData({ skipRender: true }).then(() => {
                 if (currentView === 'map') {
                     applyFilters();

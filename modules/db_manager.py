@@ -35,6 +35,9 @@ class DBManager:
         'purging_log',  # Repeater manager
         'mesh_connections',  # Mesh graph for path validation
         'observed_paths',  # Repeater manager - observed paths from adverts and messages
+        'topology_inference_shadow',  # Shadow outputs from topology engine
+        'topology_ghost_nodes',  # Ghost node hypotheses from topology engine
+        'topology_model_metrics',  # Legacy/new agreement and quality metrics
     }
     
     def __init__(self, bot: Any, db_path: str = "meshcore_bot.db"):

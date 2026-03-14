@@ -96,6 +96,17 @@ class TestAdjacencyIndexes:
             assert from_p in mesh_graph._incoming_index[to_p], \
                 f"Missing {from_p} in _incoming_index[{to_p}]"
 
+    def test_root_index_populated_and_pruned(self, mesh_graph):
+        """Root prefix indexes should track edge keys and be cleaned after prune."""
+        mesh_graph.add_edge('ab12', 'cd34')
+        assert ('ab12', 'cd34') in mesh_graph._from_root_index['ab']
+        assert ('ab12', 'cd34') in mesh_graph._to_root_index['cd']
+
+        mesh_graph.edges[('ab12', 'cd34')]['last_seen'] = datetime.now() - timedelta(days=30)
+        mesh_graph.prune_expired_edges()
+        assert ('ab12', 'cd34') not in mesh_graph._from_root_index.get('ab', set())
+        assert ('ab12', 'cd34') not in mesh_graph._to_root_index.get('cd', set())
+
 
 # ---------------------------------------------------------------------------
 # 2. Public Key Interning

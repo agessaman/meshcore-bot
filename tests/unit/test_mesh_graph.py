@@ -174,6 +174,20 @@ class TestMeshGraphMultiResolution:
         assert mesh_graph.get_edge("7e42", "8611")["observation_count"] == 5
         assert mesh_graph.get_edge("7e99", "86ff")["observation_count"] == 1
 
+    def test_prefix_match_tiebreak_prefers_most_recent(self, mesh_graph):
+        """When specificity and observation_count tie, get_edge should prefer most recent edge."""
+        mesh_graph.add_edge("7e42", "8611")
+        mesh_graph.add_edge("7e99", "86ff")
+        old_dt = datetime.now() - timedelta(days=3)
+        new_dt = datetime.now() - timedelta(hours=1)
+        mesh_graph.edges[("7e42", "8611")]["last_seen"] = old_dt
+        mesh_graph.edges[("7e99", "86ff")]["last_seen"] = new_dt
+
+        edge = mesh_graph.get_edge("7e", "86")
+        assert edge is not None
+        assert edge["from_prefix"] == "7e99"
+        assert edge["to_prefix"] == "86ff"
+
     def test_get_outgoing_edges_prefix_match(self, mesh_graph):
         """get_outgoing_edges(7e) returns edges from 7e42 and 7e99 when both exist."""
         mesh_graph.add_edge("7e42", "8611")

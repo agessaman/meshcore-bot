@@ -982,7 +982,15 @@ class ModernContactsManager {
             // Create a unique ID for this tooltip
             const tooltipId = `hops-tooltip-${contact.user_id.substring(0, 16).replace(/[^a-zA-Z0-9]/g, '_')}`;
             const pathCountText = hasMultiplePaths ? ` <small>(${allPaths.length} paths)</small>` : '';
-            const bytesPerHop = contact.out_bytes_per_hop != null && [1, 2, 3].includes(Number(contact.out_bytes_per_hop)) ? Number(contact.out_bytes_per_hop) : '';
+            let bytesPerHop = contact.out_bytes_per_hop != null && [1, 2, 3].includes(Number(contact.out_bytes_per_hop)) ? Number(contact.out_bytes_per_hop) : '';
+            // Infer bytes_per_hop when not stored (e.g. legacy contacts) so tooltip uses multi-byte decode
+            if (bytesPerHop === '' && outPathLen > 0) {
+                const pathByteLen = outPath.length / 2;
+                if (pathByteLen % outPathLen === 0) {
+                    const inferred = pathByteLen / outPathLen;
+                    if (inferred === 1 || inferred === 2 || inferred === 3) bytesPerHop = inferred;
+                }
+            }
             return `<span class="badge bg-primary path-badge" 
                           id="${tooltipId}" 
                           data-path-hex="${escapedPath}"

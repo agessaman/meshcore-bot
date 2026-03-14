@@ -2,6 +2,7 @@
 
 import pytest
 from pathlib import Path
+from unittest.mock import Mock
 
 from modules.core import MeshCoreBot
 
@@ -78,3 +79,27 @@ class TestReloadConfigMerge:
         success, _ = bot.reload_config()
         assert success
         assert bot.config.get("LocalExtra", "my_option") == "updated_after_reload"
+
+    def test_reload_config_calls_command_reload_hooks(self, tmp_path):
+        db_path = tmp_path / "bot.db"
+        main_config = tmp_path / "config.ini"
+        main_config.write_text(
+            _minimal_main_config(tmp_path, db_path),
+            encoding="utf-8",
+        )
+        bot = MeshCoreBot(config_file=str(main_config))
+
+        fake_cmd = Mock()
+        fake_cmd.reload_from_config = Mock()
+        cm = Mock()
+        cm.commands = {"path": fake_cmd}
+        cm.load_keywords.return_value = {}
+        cm.load_custom_syntax.return_value = []
+        cm.load_banned_users.return_value = []
+        cm.load_monitor_channels.return_value = []
+        cm.load_channel_keywords.return_value = {}
+        bot.command_manager = cm
+
+        success, _ = bot.reload_config()
+        assert success
+        fake_cmd.reload_from_config.assert_called_once()

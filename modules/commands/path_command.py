@@ -114,6 +114,19 @@ class PathCommand(BaseCommand):
         self.graph_path_validation_max_bonus = bot.config.getfloat('Path_Command', 'graph_path_validation_max_bonus', fallback=0.3)
         self.graph_path_validation_max_bonus = max(0.0, min(1.0, self.graph_path_validation_max_bonus))  # Clamp to 0.0-1.0
         self.graph_path_validation_obs_divisor = bot.config.getfloat('Path_Command', 'graph_path_validation_obs_divisor', fallback=50.0)
+
+        # Topology engine mode:
+        # - legacy: keep current graph/geographic behavior
+        # - shadow: compute probabilistic selection in parallel, keep legacy output
+        # - new: use probabilistic selection as primary, fallback to legacy
+        self.topology_engine_mode = bot.config.get('Path_Command', 'topology_engine_mode', fallback='legacy').lower()
+        if self.topology_engine_mode not in ('legacy', 'shadow', 'new'):
+            self.topology_engine_mode = 'legacy'
+        self.topology_shadow_sample_rate = bot.config.getfloat('Path_Command', 'topology_shadow_sample_rate', fallback=1.0)
+        self.topology_shadow_sample_rate = max(0.0, min(1.0, self.topology_shadow_sample_rate))
+        self.topology_ghost_enabled = bot.config.getboolean('Path_Command', 'topology_ghost_enabled', fallback=True)
+        self.topology_ghost_min_confidence = bot.config.getfloat('Path_Command', 'topology_ghost_min_confidence', fallback=0.35)
+        self.topology_ghost_min_confidence = max(0.0, min(1.0, self.topology_ghost_min_confidence))
         
         # Get star bias multiplier (how much to boost starred repeaters' scores)
         # Default 2.5 means starred repeaters get 2.5x their normal score
@@ -434,6 +447,7 @@ class PathCommand(BaseCommand):
                         graph_confidence = 0.0
                         geo_repeater = None
                         geo_confidence = 0.0
+                        topo_result = {"repeater": None, "confidence": 0.0, "method": None, "is_topology_guess": False}
                         
                         # Try graph-based selection if enabled
                         if self.graph_based_validation and hasattr(self.bot, 'mesh_graph') and self.bot.mesh_graph:
@@ -449,6 +463,18 @@ class PathCommand(BaseCommand):
                             geo_repeater, geo_confidence = self._select_repeater_by_proximity(
                                 recent_repeaters, node_id, node_ids, sender_location
                             )
+
+                        # Run probabilistic topology engine in shadow/new modes
+                        topology_engine = getattr(self.bot, 'topology_engine', None)
+                        if self.topology_engine_mode in ('shadow', 'new') and topology_engine:
+                            topo_result = topology_engine.select_for_hop(
+                                repeaters=recent_repeaters,
+                                node_id=node_id,
+                                path_context=node_ids,
+                            )
+                        topo_repeater = topo_result.get("repeater")
+                        topo_confidence = float(topo_result.get("confidence") or 0.0)
+                        topo_method = topo_result.get("method")
                         
                         # Helper function to check if repeater has valid location data
                         def has_valid_location(repeater):
@@ -522,6 +548,24 @@ class PathCommand(BaseCommand):
                                         confidence = graph_confidence
                                         selection_method = selection_method or 'graph'
                         
+                        # In new mode, prefer topology engine when confidence is adequate.
+                        if self.topology_engine_mode == 'new' and topo_repeater and topo_confidence >= self.topology_ghost_min_confidence:
+                            selected_repeater = topo_repeater
+                            confidence = topo_confidence
+                            selection_method = topo_method or 'topology_viterbi'
+
+                        # In shadow mode, store comparison telemetry while preserving legacy output.
+                        if topology_engine:
+                            topology_engine.maybe_record_shadow_comparison(
+                                topology_mode=self.topology_engine_mode,
+                                path_nodes=node_ids,
+                                model_result=topo_result,
+                                legacy_choice=selected_repeater,
+                                legacy_confidence=confidence,
+                                legacy_method=selection_method,
+                                non_collision=False,
+                            )
+
                         if selected_repeater and confidence >= 0.5:
                             # High confidence selection (graph or geographic)
                             repeater_info[node_id] = {
@@ -533,7 +577,9 @@ class PathCommand(BaseCommand):
                                 'found': True,
                                 'collision': False,
                                 'geographic_guess': (selection_method == 'geographic'),
-                                'graph_guess': (selection_method == 'graph'),
+                                'graph_guess': bool(selection_method and selection_method.startswith('graph')),
+                                'topology_guess': bool(selection_method and selection_method.startswith('topology')),
+                                'selection_method': selection_method,
                                 'confidence': confidence
                             }
                         else:
@@ -548,6 +594,22 @@ class PathCommand(BaseCommand):
                     elif len(recent_repeaters) == 1:
                         # Single recent match after filtering - no choice made, so no confidence indicator
                         repeater = recent_repeaters[0]
+                        topology_engine = getattr(self.bot, 'topology_engine', None)
+                        if topology_engine:
+                            topo_result = topology_engine.select_for_hop(
+                                repeaters=recent_repeaters,
+                                node_id=node_id,
+                                path_context=node_ids,
+                            )
+                            topology_engine.maybe_record_shadow_comparison(
+                                topology_mode=self.topology_engine_mode,
+                                path_nodes=node_ids,
+                                model_result=topo_result,
+                                legacy_choice=repeater,
+                                legacy_confidence=1.0,
+                                legacy_method='single_match',
+                                non_collision=True,
+                            )
                         repeater_info[node_id] = {
                             'name': repeater['name'],
                             'public_key': repeater['public_key'],
@@ -1440,27 +1502,27 @@ class PathCommand(BaseCommand):
                             decoded_nodes = [decoded_path_hex[i:i+path_n] for i in range(0, len(decoded_path_hex), path_n)]
                             if (len(decoded_path_hex) % path_n) != 0:
                                 decoded_nodes = [decoded_path_hex[i:i+2] for i in range(0, len(decoded_path_hex), 2)]
-                                
-                                # Count how many nodes appear in both paths (in order)
-                                common_segments = 0
-                                min_len = min(len(stored_nodes), len(decoded_nodes))
-                                for i in range(min_len):
-                                    if stored_nodes[i] == decoded_nodes[i]:
-                                        common_segments += 1
-                                    else:
-                                        break
-                                
-                                # Bonus based on common segments and observation count
-                                if common_segments >= 2:
-                                    # At least 2 common segments - significant match
-                                    segment_bonus = min(0.2, 0.05 * common_segments)
-                                    obs_bonus = min(0.15, obs_count / self.graph_path_validation_obs_divisor)
-                                    path_validation_bonus = max(path_validation_bonus, segment_bonus + obs_bonus)
-                                    # Cap at max bonus
-                                    path_validation_bonus = min(self.graph_path_validation_max_bonus, path_validation_bonus)
-                                    self.logger.debug(f"Path validation match for {repeater.get('name', 'unknown')}: {common_segments} common segments (obs: {obs_count})")
-                                    if path_validation_bonus >= self.graph_path_validation_max_bonus * 0.9:
-                                        break  # Strong match found
+
+                            # Count how many nodes appear in both paths (in order)
+                            common_segments = 0
+                            min_len = min(len(stored_nodes), len(decoded_nodes))
+                            for i in range(min_len):
+                                if stored_nodes[i] == decoded_nodes[i]:
+                                    common_segments += 1
+                                else:
+                                    break
+
+                            # Bonus based on common segments and observation count
+                            if common_segments >= 2:
+                                # At least 2 common segments - significant match
+                                segment_bonus = min(0.2, 0.05 * common_segments)
+                                obs_bonus = min(0.15, obs_count / self.graph_path_validation_obs_divisor)
+                                path_validation_bonus = max(path_validation_bonus, segment_bonus + obs_bonus)
+                                # Cap at max bonus
+                                path_validation_bonus = min(self.graph_path_validation_max_bonus, path_validation_bonus)
+                                self.logger.debug(f"Path validation match for {repeater.get('name', 'unknown')}: {common_segments} common segments (obs: {obs_count})")
+                                if path_validation_bonus >= self.graph_path_validation_max_bonus * 0.9:
+                                    break  # Strong match found
                 except Exception as e:
                     self.logger.debug(f"Error checking path validation for {candidate_prefix}: {e}")
             
@@ -1605,7 +1667,7 @@ class PathCommand(BaseCommand):
             return best_repeater, confidence, best_method or 'graph'
         
         return None, 0.0, None
-    
+
     def _format_path_response(self, node_ids: List[str], repeater_info: Dict[str, Dict[str, Any]]) -> str:
         """Format the path decode response
         
@@ -1623,11 +1685,11 @@ class PathCommand(BaseCommand):
                     # Multiple repeaters with same prefix
                     matches = info.get('matches', 0)
                     line = self.translate('commands.path.node_collision', node_id=node_id, matches=matches)
-                elif info.get('geographic_guess', False) or info.get('graph_guess', False):
-                    # Geographic or graph-based selection
+                elif info.get('geographic_guess', False) or info.get('graph_guess', False) or info.get('topology_guess', False):
+                    # Geographic/graph/topology-based selection
                     name = info.get('name', self.translate('commands.path.unknown_name'))
                     confidence = info.get('confidence', 0.0)
-                    is_graph = info.get('graph_guess', False)
+                    is_topology = info.get('topology_guess', False)
                     
                     # Truncate name if too long
                     truncation = self.translate('commands.path.truncation')
@@ -1641,9 +1703,18 @@ class PathCommand(BaseCommand):
                         confidence_indicator = self.medium_confidence_symbol
                     else:
                         confidence_indicator = self.low_confidence_symbol
-                    
-                    # Use geographic translation key for backward compatibility, or add graph-specific if needed
-                    line = self.translate('commands.path.node_geographic', node_id=node_id, name=name, confidence=confidence_indicator)
+
+                    # Preserve existing translation key, but include method detail for topology selections.
+                    if is_topology:
+                        method = info.get('selection_method', 'topology')
+                        line = self.translate(
+                            'commands.path.node_geographic',
+                            node_id=node_id,
+                            name=f"{name} [{method}]",
+                            confidence=confidence_indicator,
+                        )
+                    else:
+                        line = self.translate('commands.path.node_geographic', node_id=node_id, name=name, confidence=confidence_indicator)
                 else:
                     # Single repeater found
                     name = info.get('name', self.translate('commands.path.unknown_name'))
@@ -1766,6 +1837,24 @@ class PathCommand(BaseCommand):
         except Exception as e:
             self.logger.error(f"Error extracting path from current message: {e}")
             return self.translate('commands.path.error_extracting', error=str(e))
+
+    def reload_from_config(self) -> None:
+        """Refresh runtime-selectable topology settings from current config.
+
+        This is invoked by core reload_config() so topology behavior can be changed
+        without restarting the bot process.
+        """
+        mode = self.bot.config.get('Path_Command', 'topology_engine_mode', fallback='legacy').lower()
+        if mode not in ('legacy', 'shadow', 'new'):
+            mode = 'legacy'
+        self.topology_engine_mode = mode
+
+        sample = self.bot.config.getfloat('Path_Command', 'topology_shadow_sample_rate', fallback=1.0)
+        self.topology_shadow_sample_rate = max(0.0, min(1.0, sample))
+
+        self.topology_ghost_enabled = self.bot.config.getboolean('Path_Command', 'topology_ghost_enabled', fallback=True)
+        ghost_threshold = self.bot.config.getfloat('Path_Command', 'topology_ghost_min_confidence', fallback=0.35)
+        self.topology_ghost_min_confidence = max(0.0, min(1.0, ghost_threshold))
     
     def get_help(self) -> str:
         """Get help text for the path command"""

@@ -375,6 +375,13 @@
                             <i class="fas fa-project-diagram"></i> Mesh Graph
                         </a>
                     </li>
+                    {% if topology_shadow_enabled %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="/topology-validation">
+                            <i class="fas fa-vial"></i> Topology Validation
+                        </a>
+                    </li>
+                    {% endif %}
                     <li class="nav-item">
                         <a class="nav-link" href="/cache">
                             <i class="fas fa-database"></i> Cache

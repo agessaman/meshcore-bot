@@ -256,3 +256,55 @@ class TestPathCommandGraphSelection:
         
         # Should skip this repeater (no prefix to match)
         assert result == (None, 0.0, None) or result[0] is None
+
+    def test_select_repeater_by_graph_path_validation_bonus_applies_without_remainder(self, mock_bot, mesh_graph):
+        """Path-validation bonus should apply for well-formed decoded paths (no length remainder)."""
+        mock_bot.mesh_graph = mesh_graph
+        path_cmd = PathCommand(mock_bot)
+        path_cmd.graph_multi_hop_enabled = False
+
+        mock_bot.db_manager.create_table(
+            "observed_paths",
+            """
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            public_key TEXT,
+            packet_hash TEXT,
+            from_prefix TEXT NOT NULL,
+            to_prefix TEXT NOT NULL,
+            path_hex TEXT NOT NULL,
+            path_length INTEGER NOT NULL,
+            bytes_per_hop INTEGER,
+            packet_type TEXT NOT NULL,
+            first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            observation_count INTEGER DEFAULT 1
+            """,
+        )
+        candidate_key = "7e" * 32
+        mock_bot.db_manager.execute_update(
+            """
+            INSERT INTO observed_paths
+            (public_key, packet_hash, from_prefix, to_prefix, path_hex, path_length, bytes_per_hop, packet_type, first_seen, last_seen, observation_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                candidate_key,
+                "pkt-path-bonus",
+                "01",
+                "86",
+                "017e86",
+                3,
+                1,
+                "advert",
+                datetime.now().isoformat(),
+                datetime.now().isoformat(),
+                25,
+            ),
+        )
+
+        repeaters = [create_test_repeater("7e", "PathBonusCandidate", public_key=candidate_key)]
+        selected, confidence, method = path_cmd._select_repeater_by_graph(repeaters, "7e", ["01", "7e", "86"])
+        assert selected is not None
+        assert selected["public_key"] == candidate_key
+        assert confidence > 0.0
+        assert method == "graph"

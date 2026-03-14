@@ -116,10 +116,15 @@ class WebViewerCommand(BaseCommand):
             return
         
         integration = self.bot.web_viewer_integration
+        topology_mode = self.bot.config.get('Path_Command', 'topology_engine_mode', fallback='legacy').strip().lower()
+        if topology_mode not in ('legacy', 'shadow', 'new'):
+            topology_mode = 'legacy'
         status = {
             'enabled': integration.enabled,
             'running': integration.running,
-            'url': f"http://{integration.host}:{integration.port}" if integration.running else None
+            'url': f"http://{integration.host}:{integration.port}" if integration.running else None,
+            'topology_mode': topology_mode,
+            'topology_validation_page_expected': (topology_mode == 'shadow')
         }
         
         if hasattr(integration, 'bot_integration') and integration.bot_integration:

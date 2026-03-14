@@ -1,0 +1,531 @@
+{% extends "base.html" %}
+
+{% block title %}Topology Validation - MeshCore Bot Data Viewer{% endblock %}
+
+{% block extra_css %}
+<style>
+    .metric-info-btn {
+        border: 0;
+        background: transparent;
+        color: var(--text-muted);
+        padding: 0;
+        margin-left: 0.3rem;
+        line-height: 1;
+        cursor: help;
+        font-size: 0.95rem;
+    }
+    .metric-info-btn:hover {
+        color: var(--text-color);
+    }
+    .metric-info-btn:focus-visible {
+        outline: 2px solid #0d6efd;
+        outline-offset: 2px;
+        border-radius: 0.2rem;
+        color: var(--text-color);
+    }
+    [data-theme="dark"] .metric-info-btn:focus-visible {
+        outline-color: #60a5fa;
+    }
+    .topology-kpi {
+        border-left: 4px solid var(--border-color);
+    }
+    .topology-kpi.kpi-primary { border-left-color: #0d6efd; }
+    .topology-kpi.kpi-success { border-left-color: #20c997; }
+    .topology-kpi.kpi-warning { border-left-color: #ffc107; }
+    .topology-kpi.kpi-info { border-left-color: #6f42c1; }
+    .topology-kpi .kpi-value {
+        font-size: 1.45rem;
+        font-weight: 700;
+        line-height: 1.1;
+    }
+    .topology-muted-note {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+    }
+    .table thead th {
+        position: sticky;
+        top: 0;
+        background: var(--card-header-bg);
+        z-index: 2;
+        color: var(--text-color);
+    }
+    .table tbody td {
+        color: var(--text-color);
+    }
+    .table-striped > tbody > tr:nth-of-type(odd) > * {
+        background-color: var(--bg-secondary);
+    }
+    .table-striped > tbody > tr:nth-of-type(even) > * {
+        background-color: var(--card-bg);
+    }
+    [data-theme="dark"] .table.table-striped > tbody > tr:nth-of-type(odd) > * {
+        color: var(--text-color) !important;
+    }
+    .mono-cell code {
+        font-size: 0.78rem;
+        color: var(--text-color);
+        background: var(--bg-tertiary);
+        border-radius: 4px;
+        padding: 0.08rem 0.3rem;
+    }
+    .confidence-high { font-weight: 600; color: #198754; }
+    .confidence-medium { font-weight: 600; color: #b26a00; }
+    .confidence-low { font-weight: 600; color: #dc3545; }
+    [data-theme="dark"] .confidence-high { color: #34d399; }
+    [data-theme="dark"] .confidence-medium { color: #fbbf24; }
+    [data-theme="dark"] .confidence-low { color: #f87171; }
+    .badge-mismatch {
+        background-color: #f59e0b;
+        color: #111827;
+        font-weight: 600;
+    }
+    [data-theme="dark"] .badge-mismatch {
+        color: #111827;
+    }
+    /* Colored tags for model vs legacy methods */
+    .badge-method-viterbi { background-color: #0d6efd; color: #fff; }
+    .badge-method-ghost { background-color: #6f42c1; color: #fff; }
+    .badge-method-default { background-color: #6c757d; color: #fff; }
+    .badge-legacy-graph { background-color: #0dcaf0; color: #000; }
+    .badge-legacy-single { background-color: #198754; color: #fff; }
+    .badge-legacy-geographic { background-color: #fd7e14; color: #000; }
+    .badge-legacy-combined { background-color: #20c997; color: #000; }
+    .badge-legacy-none { background-color: #6c757d; color: #fff; }
+    .badge-legacy-default { background-color: #adb5bd; color: #000; }
+    [data-theme="dark"] .badge-legacy-graph { color: #fff; }
+    [data-theme="dark"] .badge-legacy-geographic { color: #fff; }
+    [data-theme="dark"] .badge-legacy-combined { color: #fff; }
+    [data-theme="dark"] .badge-legacy-default { color: #fff; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-2">
+    <div class="col-12">
+        <h1 class="mb-1"><i class="fas fa-vial"></i> Topology Validation (Shadow Mode)</h1>
+        <p class="text-muted mb-1">
+            Compare legacy topology selection against the new probabilistic engine using recorded shadow telemetry.
+        </p>
+        <div class="topology-muted-note">
+            Showing model-vs-legacy comparison rows by default. Ingest-only rows can be toggled on for debugging.
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="card topology-kpi kpi-primary">
+            <div class="card-body">
+                <div class="small text-muted">Total Comparisons
+                    <button type="button" class="metric-info-btn" data-bs-toggle="tooltip" title="Number of model-vs-legacy comparison rows in the selected time window.">
+                        <i class="fas fa-circle-info"></i>
+                    </button>
+                </div>
+                <div id="kpi-total-comparisons" class="kpi-value">0</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card topology-kpi kpi-success">
+            <div class="card-body">
+                <div class="small text-muted">Agreement Rate
+                    <button type="button" class="metric-info-btn" data-bs-toggle="tooltip" title="Percent of comparisons where model and legacy selected the same repeater.">
+                        <i class="fas fa-circle-info"></i>
+                    </button>
+                </div>
+                <div id="kpi-agreement-rate" class="kpi-value">0%</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card topology-kpi kpi-warning">
+            <div class="card-body">
+                <div class="small text-muted">Non-Collision Agreement
+                    <button type="button" class="metric-info-btn" data-bs-toggle="tooltip" title="Agreement rate on rows where legacy had a single non-collision match.">
+                        <i class="fas fa-circle-info"></i>
+                    </button>
+                </div>
+                <div id="kpi-non-collision-rate" class="kpi-value">0%</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card topology-kpi kpi-info">
+            <div class="card-body">
+                <div class="small text-muted">Confidence Delta (Model-Legacy)
+                    <button type="button" class="metric-info-btn" data-bs-toggle="tooltip" title="Average model confidence minus average legacy confidence. Positive means model is more confident on average.">
+                        <i class="fas fa-circle-info"></i>
+                    </button>
+                </div>
+                <div id="kpi-confidence-delta" class="kpi-value">0.000</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header"><i class="fas fa-sliders-h"></i> Filters</div>
+            <div class="card-body">
+                <label for="filter-days" class="form-label">Time Window</label>
+                <select id="filter-days" class="form-select mb-3">
+                    <option value="1">Last 24 hours</option>
+                    <option value="3">Last 3 days</option>
+                    <option value="7" selected>Last 7 days</option>
+                    <option value="14">Last 14 days</option>
+                    <option value="30">Last 30 days</option>
+                </select>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="filter-include-ingest">
+                    <label class="form-check-label" for="filter-include-ingest">
+                        Include ingest-only rows
+                    </label>
+                </div>
+                <button class="btn btn-primary w-100" onclick="reloadValidationData()">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+                <hr>
+                <div class="small fw-semibold mb-2">Backfill Model Confidence</div>
+                <label for="backfill-days" class="form-label">Replay Window</label>
+                <select id="backfill-days" class="form-select mb-2">
+                    <option value="1">Last 24 hours</option>
+                    <option value="3">Last 3 days</option>
+                    <option value="7" selected>Last 7 days</option>
+                    <option value="14">Last 14 days</option>
+                    <option value="30">Last 30 days</option>
+                    <option value="60">Last 60 days</option>
+                    <option value="90">Last 90 days</option>
+                </select>
+                <label for="backfill-limit" class="form-label">Row Cap (optional)</label>
+                <input id="backfill-limit" type="number" min="1" step="1" class="form-control mb-2" placeholder="No cap">
+                <button id="backfill-start-btn" class="btn btn-outline-warning w-100" onclick="startTopologyBackfill()">
+                    <i class="fas fa-play"></i> Start Backfill
+                </button>
+                <div class="topology-muted-note mt-2" id="backfill-status-line">Backfill status: idle</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <div class="card h-100">
+            <div class="card-header"><i class="fas fa-chart-line"></i> Daily Agreement Trend</div>
+            <div class="card-body" style="height: 280px;">
+                <canvas id="metricsChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header"><i class="fas fa-exchange-alt"></i> Recent Comparisons</div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped mb-0">
+                        <thead>
+                            <tr>
+                                <th>Time <button type="button" class="metric-info-btn" data-bs-toggle="tooltip" title="Timestamp when the comparison row was recorded."><i class="fas fa-circle-info"></i></button></th>
+                                <th>Method <button type="button" class="metric-info-btn" data-bs-toggle="tooltip" title="Model method used to choose the repeater (for example topology_viterbi)."><i class="fas fa-circle-info"></i></button></th>
+                                <th>Legacy Method <button type="button" class="metric-info-btn" data-bs-toggle="tooltip" title="Legacy strategy used for comparison (graph, geographic, single_match, etc)."><i class="fas fa-circle-info"></i></button></th>
+                                <th>Agreement <button type="button" class="metric-info-btn" data-bs-toggle="tooltip" title="Whether model and legacy selected the same repeater for this row."><i class="fas fa-circle-info"></i></button></th>
+                                <th>Model Conf <button type="button" class="metric-info-btn" data-bs-toggle="tooltip" title="Model confidence score for this row (0.000 to 1.000)."><i class="fas fa-circle-info"></i></button></th>
+                                <th>Legacy Conf <button type="button" class="metric-info-btn" data-bs-toggle="tooltip" title="Legacy confidence score for this row (0.000 to 1.000)."><i class="fas fa-circle-info"></i></button></th>
+                                <th>Packet Hash <button type="button" class="metric-info-btn" data-bs-toggle="tooltip" title="Short packet identifier for correlation/debugging."><i class="fas fa-circle-info"></i></button></th>
+                            </tr>
+                        </thead>
+                        <tbody id="comparisons-table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header"><i class="fas fa-ghost"></i> Ghost Hypotheses</div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped mb-0">
+                        <thead>
+                            <tr>
+                                <th>Ghost ID <button type="button" class="metric-info-btn" data-bs-toggle="tooltip" title="Synthetic ID for an unresolved node hypothesis inferred by the model."><i class="fas fa-circle-info"></i></button></th>
+                                <th>Tier <button type="button" class="metric-info-btn" data-bs-toggle="tooltip" title="Confidence bucket from evidence accumulation (noise, possible, likely, confirmed)."><i class="fas fa-circle-info"></i></button></th>
+                                <th>Evidence <button type="button" class="metric-info-btn" data-bs-toggle="tooltip" title="Number of observations supporting this ghost node hypothesis."><i class="fas fa-circle-info"></i></button></th>
+                            </tr>
+                        </thead>
+                        <tbody id="ghosts-table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let metricsChart = null;
+let backfillPollHandle = null;
+
+function safePct(n, d) {
+    if (!d || d <= 0) return "0%";
+    return `${((n / d) * 100).toFixed(1)}%`;
+}
+
+function toNum(v, fallback = 0) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
+}
+
+function trimHash(v) {
+    if (!v) return '-';
+    return v.length > 12 ? `${v.slice(0, 12)}...` : v;
+}
+
+function escapeHtml(s) {
+    if (s == null) return '';
+    const t = String(s);
+    return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function methodBadgeClass(method) {
+    const m = (method || '').toLowerCase();
+    if (m.includes('ghost')) return 'badge-method-ghost';
+    if (m.includes('viterbi')) return 'badge-method-viterbi';
+    return 'badge-method-default';
+}
+
+function legacyBadgeClass(legacyMethod) {
+    const m = (legacyMethod || '').toLowerCase();
+    if (m === 'legacy_recency_graph' || m === 'graph') return 'badge-legacy-graph';
+    if (m === 'legacy_single' || m === 'single_match') return 'badge-legacy-single';
+    if (m === 'legacy_none') return 'badge-legacy-none';
+    if (m === 'geographic') return 'badge-legacy-geographic';
+    if (m === 'graph_geographic_combined') return 'badge-legacy-combined';
+    return 'badge-legacy-default';
+}
+
+function updateKpis(metricsRows = []) {
+    const totals = metricsRows.reduce((acc, row) => {
+        acc.total += toNum(row.total_comparisons);
+        acc.agree += toNum(row.agreement_count);
+        acc.ncTotal += toNum(row.non_collision_comparisons);
+        acc.ncAgree += toNum(row.non_collision_agreement_count);
+        acc.modelConf += toNum(row.avg_model_confidence);
+        acc.legacyConf += toNum(row.avg_legacy_confidence);
+        return acc;
+    }, { total: 0, agree: 0, ncTotal: 0, ncAgree: 0, modelConf: 0, legacyConf: 0 });
+
+    const days = metricsRows.length || 1;
+    const avgModel = totals.modelConf / days;
+    const avgLegacy = totals.legacyConf / days;
+
+    document.getElementById('kpi-total-comparisons').textContent = totals.total.toLocaleString();
+    document.getElementById('kpi-agreement-rate').textContent = safePct(totals.agree, totals.total);
+    document.getElementById('kpi-non-collision-rate').textContent = safePct(totals.ncAgree, totals.ncTotal);
+    document.getElementById('kpi-confidence-delta').textContent = (avgModel - avgLegacy).toFixed(3);
+}
+
+function renderMetricsChart(metricsRows = []) {
+    const labels = metricsRows.map(r => r.metric_date).reverse();
+    const agreementSeries = metricsRows.map(r => {
+        const total = toNum(r.total_comparisons);
+        const agree = toNum(r.agreement_count);
+        return total > 0 ? (agree / total) * 100 : 0;
+    }).reverse();
+    const ncSeries = metricsRows.map(r => {
+        const total = toNum(r.non_collision_comparisons);
+        const agree = toNum(r.non_collision_agreement_count);
+        return total > 0 ? (agree / total) * 100 : 0;
+    }).reverse();
+
+    const ctx = document.getElementById('metricsChart');
+    if (metricsChart) metricsChart.destroy();
+    metricsChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: 'Agreement %',
+                    data: agreementSeries,
+                    borderColor: '#0d6efd',
+                    tension: 0.25
+                },
+                {
+                    label: 'Non-Collision Agreement %',
+                    data: ncSeries,
+                    borderColor: '#20c997',
+                    tension: 0.25
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { y: { min: 0, max: 100 } }
+        }
+    });
+}
+
+function renderComparisons(rows = []) {
+    const tbody = document.getElementById('comparisons-table-body');
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-muted">No comparison rows for this filter.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = rows.map(r => {
+        const agreeBadge = toNum(r.agreement) === 1
+            ? '<span class="badge bg-success">Match</span>'
+            : '<span class="badge badge-mismatch">Mismatch</span>';
+        const modelConf = toNum(r.model_confidence);
+        const legacyConf = toNum(r.legacy_confidence);
+        const modelClass = modelConf >= 0.75 ? 'confidence-high' : (modelConf >= 0.4 ? 'confidence-medium' : 'confidence-low');
+        const legacyClass = legacyConf >= 0.75 ? 'confidence-high' : (legacyConf >= 0.4 ? 'confidence-medium' : 'confidence-low');
+        const methodLabel = r.method || '-';
+        const legacyLabel = r.legacy_method || '-';
+        const methodBadge = `<span class="badge ${methodBadgeClass(r.method)}">${escapeHtml(methodLabel)}</span>`;
+        const legacyBadge = `<span class="badge ${legacyBadgeClass(r.legacy_method)}">${escapeHtml(legacyLabel)}</span>`;
+        return `
+            <tr>
+                <td>${r.created_at || '-'}</td>
+                <td class="mono-cell">${methodBadge}</td>
+                <td class="mono-cell">${legacyBadge}</td>
+                <td>${agreeBadge}</td>
+                <td class="${modelClass}">${modelConf.toFixed(3)}</td>
+                <td class="${legacyClass}">${legacyConf.toFixed(3)}</td>
+                <td class="mono-cell"><code>${trimHash(r.packet_hash)}</code></td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderGhosts(rows = []) {
+    const tbody = document.getElementById('ghosts-table-body');
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="3" class="text-muted">No ghost hypotheses.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = rows.map(r => `
+        <tr>
+            <td><code>${r.ghost_id || '-'}</code></td>
+            <td>${r.confidence_tier || '-'}</td>
+            <td>${toNum(r.evidence_count).toLocaleString()}</td>
+        </tr>
+    `).join('');
+}
+
+async function reloadValidationData() {
+    const days = document.getElementById('filter-days').value || '7';
+    const includeIngest = document.getElementById('filter-include-ingest').checked ? '1' : '0';
+    const [metricsResp, shadowResp, ghostsResp] = await Promise.all([
+        fetch(`/api/mesh/topology-metrics?days=${encodeURIComponent(days)}`),
+        fetch(`/api/mesh/topology-shadow?days=${encodeURIComponent(days)}&include_ingest=${includeIngest}`),
+        fetch('/api/mesh/topology-ghosts?limit=200')
+    ]);
+
+    const metricsJson = await metricsResp.json();
+    const shadowJson = await shadowResp.json();
+    const ghostsJson = await ghostsResp.json();
+
+    const metricsRows = metricsJson.metrics || [];
+    const comparisonsRows = shadowJson.comparisons || [];
+    const ghostRows = ghostsJson.ghost_nodes || [];
+
+    updateKpis(metricsRows);
+    renderMetricsChart(metricsRows);
+    renderComparisons(comparisonsRows);
+    renderGhosts(ghostRows);
+}
+
+function updateBackfillStatusLine(state = {}) {
+    const line = document.getElementById('backfill-status-line');
+    const button = document.getElementById('backfill-start-btn');
+    if (!line || !button) return;
+    const status = state.status || 'idle';
+    const processed = toNum(state.processed);
+    const total = toNum(state.total);
+    const written = toNum(state.comparisons_written);
+    const errors = toNum(state.errors);
+    button.disabled = status === 'running';
+    if (status === 'running') {
+        line.textContent = `Backfill status: running (${processed.toLocaleString()}/${total.toLocaleString()} processed, ${written.toLocaleString()} comparisons, ${errors.toLocaleString()} errors)`;
+    } else if (status === 'completed') {
+        line.textContent = `Backfill status: completed (${processed.toLocaleString()}/${total.toLocaleString()} processed, ${written.toLocaleString()} comparisons, ${errors.toLocaleString()} errors)`;
+    } else if (status === 'failed') {
+        line.textContent = `Backfill status: failed (${state.last_error || 'unknown error'})`;
+    } else {
+        line.textContent = 'Backfill status: idle';
+    }
+}
+
+async function pollTopologyBackfillStatus() {
+    try {
+        const resp = await fetch('/api/mesh/topology-backfill/status');
+        if (!resp.ok) return;
+        const json = await resp.json();
+        const state = json.state || {};
+        const previousStatusText = document.getElementById('backfill-status-line')?.textContent || '';
+        updateBackfillStatusLine(state);
+
+        if (state.status === 'running') {
+            if (!backfillPollHandle) {
+                backfillPollHandle = setInterval(pollTopologyBackfillStatus, 3000);
+            }
+            return;
+        }
+
+        if (backfillPollHandle) {
+            clearInterval(backfillPollHandle);
+            backfillPollHandle = null;
+        }
+        if (state.status === 'completed' && !previousStatusText.includes('completed')) {
+            await reloadValidationData();
+        }
+    } catch (error) {
+        console.error('Failed to poll topology backfill status:', error);
+    }
+}
+
+async function startTopologyBackfill() {
+    const days = parseInt(document.getElementById('backfill-days').value || '7', 10);
+    const limitRaw = (document.getElementById('backfill-limit').value || '').trim();
+    const body = { days };
+    if (limitRaw) body.limit = parseInt(limitRaw, 10);
+
+    try {
+        const resp = await fetch('/api/mesh/topology-backfill/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const json = await resp.json();
+        if (!resp.ok) {
+            const line = document.getElementById('backfill-status-line');
+            if (line) line.textContent = `Backfill status: ${json.error || 'failed to start'}`;
+            return;
+        }
+        updateBackfillStatusLine((json && json.state) || {});
+        if (backfillPollHandle) {
+            clearInterval(backfillPollHandle);
+            backfillPollHandle = null;
+        }
+        await pollTopologyBackfillStatus();
+    } catch (error) {
+        console.error('Failed to start topology backfill:', error);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    if (window.bootstrap && bootstrap.Tooltip) {
+        document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((el) => {
+            new bootstrap.Tooltip(el, { container: 'body' });
+        });
+    }
+    document.getElementById('filter-days').addEventListener('change', reloadValidationData);
+    document.getElementById('filter-include-ingest').addEventListener('change', reloadValidationData);
+    reloadValidationData();
+    pollTopologyBackfillStatus();
+});
+</script>
+{% endblock %}

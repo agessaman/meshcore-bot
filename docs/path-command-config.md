@@ -224,6 +224,37 @@ These settings control how graph edges are stored in the database.
 - Set to `false` on devices that don't use the path command
 - Default: `true`
 
+## Probabilistic Topology Engine (Shadow/Cutover)
+
+These settings control the additive topology engine used for shadow-mode
+validation and optional cutover.
+
+**`topology_engine_mode`** (`legacy` | `shadow` | `new`)
+- `legacy`: Keep existing graph/geographic selection only
+- `shadow`: Run topology model in parallel and store legacy-vs-model comparisons
+- `new`: Use topology model as primary selector with legacy fallback
+- Default: `legacy`
+
+**`topology_shadow_sample_rate`** (0.0 to 1.0)
+- Sampling rate for writing shadow comparisons
+- `1.0` writes all comparisons; lower values reduce DB churn on busy nodes
+- Default: `1.0`
+
+**`topology_ghost_enabled`** (boolean)
+- Allow low-confidence unresolved selections to be tracked as ghost hypotheses
+- Ghost nodes are stored in a supplemental table and do not alter legacy data
+- Default: `true`
+
+**`topology_ghost_min_confidence`** (0.0 to 1.0)
+- Minimum confidence required before topology selections are treated as non-ghost
+- Lower values accept more model choices; higher values are more conservative
+- Default: `0.35`
+
+**`topology_max_candidates_per_prefix`** (integer)
+- Maximum number of repeater candidates considered per prefix during decode
+- Lower values reduce CPU; higher values improve ambiguity exploration
+- Default: `12`
+
 ## Preset Configurations
 
 ### `balanced` (Default)

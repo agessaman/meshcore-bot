@@ -2056,6 +2056,15 @@ class MessageHandler:
                     now.isoformat()
                 ))
                 self.logger.debug(f"Stored new {packet_type} path in observed_paths: {from_prefix}->{to_prefix} ({path_length} bytes)")
+
+            # Shadow topology ingest is additive and never changes legacy writes/behavior.
+            topology_engine = getattr(self.bot, 'topology_engine', None)
+            if topology_engine:
+                topology_engine.ingest_path_observation(
+                    path_nodes=path_nodes,
+                    packet_hash=packet_hash,
+                    bytes_per_hop=bytes_per_hop,
+                )
         
         except Exception as e:
             self.logger.warning(f"Error storing observed path: {e}")

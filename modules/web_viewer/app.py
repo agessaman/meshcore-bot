@@ -26,6 +26,7 @@ sys.path.insert(0, project_root)
 
 from modules.db_manager import DBManager
 from modules.repeater_manager import RepeaterManager
+from modules.topology_engine import TopologyEngine
 from modules.utils import resolve_path, calculate_distance
 
 class BotDataViewer:
@@ -74,6 +75,23 @@ class BotDataViewer:
         self._db_lock = threading.Lock()
         self._db_last_used = 0
         self._db_timeout = 300  # 5 minutes connection timeout
+
+        # Background topology backfill job state.
+        self._topology_backfill_lock = threading.Lock()
+        self._topology_backfill_state = {
+            "status": "idle",
+            "job_id": None,
+            "days": None,
+            "limit": None,
+            "total": 0,
+            "processed": 0,
+            "rows_skipped": 0,
+            "errors": 0,
+            "comparisons_written": 0,
+            "started_at": None,
+            "completed_at": None,
+            "last_error": None,
+        }
         
         # Load configuration
         self.config = self._load_config(config_path)
@@ -147,10 +165,23 @@ class BotDataViewer:
         self.logger.info("Web viewer logging initialized with rotation (5MB max, 3 backups)")
     
     def _load_config(self, config_path):
-        """Load configuration from file"""
+        """Load configuration from file and merge local overrides.
+
+        Mirrors core bot behavior:
+        1) Load main config file
+        2) Merge local/config.ini if present (local overrides win)
+        """
         config = configparser.ConfigParser()
         if os.path.exists(config_path):
-            config.read(config_path)
+            config.read(config_path, encoding="utf-8")
+
+        # Merge local config overrides using the same root resolution as core.
+        local_config = self.bot_root / "local" / "config.ini"
+        if local_config.exists():
+            try:
+                config.read(str(local_config), encoding="utf-8")
+            except Exception as e:
+                self.logger.warning(f"Failed to load local config override {local_config}: {e}")
         return config
     
     def _get_version_info(self) -> Dict[str, Optional[str]]:
@@ -224,15 +255,39 @@ class BotDataViewer:
                     bot_name = (self.config.get('Bot', 'bot_name', fallback='MeshCore Bot') or '').strip() or 'MeshCore Bot'
                 except (configparser.NoSectionError, configparser.NoOptionError):
                     bot_name = 'MeshCore Bot'
+                topology_engine_mode = self._get_topology_engine_mode()
                 return dict(
                     greeter_enabled=greeter_enabled,
                     feed_manager_enabled=feed_manager_enabled,
                     bot_name=bot_name,
                     version_info=version_info,
+                    topology_engine_mode=topology_engine_mode,
+                    topology_shadow_enabled=(topology_engine_mode == 'shadow'),
                 )
             except Exception as e:
                 self.logger.exception("Template context processor failed: %s", e)
-                return dict(greeter_enabled=False, feed_manager_enabled=False, bot_name='MeshCore Bot', version_info=version_info)
+                return dict(
+                    greeter_enabled=False,
+                    feed_manager_enabled=False,
+                    bot_name='MeshCore Bot',
+                    version_info=version_info,
+                    topology_engine_mode='legacy',
+                    topology_shadow_enabled=False,
+                )
+
+    def _get_topology_engine_mode(self) -> str:
+        """Return topology engine mode with safe fallback."""
+        try:
+            mode = self.config.get('Path_Command', 'topology_engine_mode', fallback='legacy').strip().lower()
+        except Exception:
+            mode = 'legacy'
+        if mode not in ('legacy', 'shadow', 'new'):
+            return 'legacy'
+        return mode
+
+    def _is_topology_shadow_mode(self) -> bool:
+        """Whether topology validation pages should be enabled."""
+        return self._get_topology_engine_mode() == 'shadow'
     
     def _get_db_path(self):
         """Get the database path, falling back to [Bot] db_path if [Web_Viewer] db_path is unset"""
@@ -271,6 +326,10 @@ class BotDataViewer:
             from modules.mesh_graph import MeshGraph
             minimal_bot.mesh_graph = MeshGraph(minimal_bot)
             self.mesh_graph = minimal_bot.mesh_graph
+            minimal_bot.prefix_hex_chars = self.config.getint('Bot', 'prefix_bytes', fallback=1) * 2
+
+            # Initialize topology engine for shadow/new model graph APIs.
+            self.topology_engine = TopologyEngine(minimal_bot)
             
             # Initialize packet_stream table for real-time monitoring
             self._init_packet_stream_table()
@@ -324,6 +383,62 @@ class BotDataViewer:
         except Exception as e:
             self.logger.error(f"Failed to initialize packet_stream table: {e}")
             # Don't raise - allow web viewer to continue even if table init fails
+
+    def _get_topology_backfill_state(self) -> Dict[str, Any]:
+        with self._topology_backfill_lock:
+            return dict(self._topology_backfill_state)
+
+    def _update_topology_backfill_state(self, updates: Dict[str, Any]) -> Dict[str, Any]:
+        with self._topology_backfill_lock:
+            self._topology_backfill_state.update(updates or {})
+            return dict(self._topology_backfill_state)
+
+    def _run_topology_backfill_job(self, job_id: str, days: int, limit: Optional[int]) -> None:
+        try:
+            if not hasattr(self, "topology_engine") or self.topology_engine is None:
+                raise RuntimeError("Topology engine is not initialized.")
+
+            def on_progress(progress_update: Dict[str, Any]) -> None:
+                progress_update = dict(progress_update or {})
+                progress_update["job_id"] = job_id
+                self._update_topology_backfill_state(progress_update)
+
+            result = self.topology_engine.run_confidence_backfill(
+                days=days,
+                limit=limit,
+                progress_callback=on_progress,
+            )
+            self._update_topology_backfill_state(
+                {
+                    **result,
+                    "status": "completed",
+                    "job_id": job_id,
+                    "days": days,
+                    "limit": limit,
+                    "last_error": None,
+                }
+            )
+        except Exception as e:
+            self.logger.error(f"Topology backfill job failed: {e}")
+            self._update_topology_backfill_state(
+                {
+                    "status": "failed",
+                    "job_id": job_id,
+                    "days": days,
+                    "limit": limit,
+                    "completed_at": datetime.now().isoformat(),
+                    "last_error": str(e),
+                }
+            )
+
+    def _start_topology_backfill_thread(self, job_id: str, days: int, limit: Optional[int]) -> None:
+        thread = threading.Thread(
+            target=self._run_topology_backfill_job,
+            args=(job_id, days, limit),
+            daemon=True,
+            name=f"topology-backfill-{job_id}",
+        )
+        thread.start()
     
     def _get_db_connection(self):
         """Get database connection - create new connection for each request to avoid threading issues"""
@@ -1177,6 +1292,13 @@ class BotDataViewer:
                 'mesh.html',
                 prefix_hex_chars=prefix_hex_chars
             )
+
+        @self.app.route('/topology-validation')
+        def topology_validation():
+            """Shadow-only validation page comparing legacy vs new topology methods."""
+            if not self._is_topology_shadow_mode():
+                return make_response(("Not Found", 404))
+            return render_template('topology_validation.html')
         
         # Favicon routes
         @self.app.route('/apple-touch-icon.png')
@@ -1584,6 +1706,202 @@ class BotDataViewer:
                 error_trace = traceback.format_exc()
                 self.logger.error(f"Error resolving path: {e}\n{error_trace}")
                 return jsonify({'error': str(e), 'traceback': error_trace}), 500
+
+        @self.app.route('/api/mesh/topology-shadow')
+        def api_topology_shadow():
+            """Get recent shadow comparisons (additive debug endpoint)."""
+            conn = None
+            try:
+                days = request.args.get('days', default=7, type=int) or 7
+                days = max(1, min(days, 90))
+                include_ingest_raw = (request.args.get('include_ingest', default='0') or '0').strip().lower()
+                include_ingest = include_ingest_raw in ('1', 'true', 'yes', 'on')
+                conn = self._get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    '''
+                    SELECT path_hex, method, model_confidence, legacy_method, legacy_confidence, agreement, packet_hash, bytes_per_hop, created_at
+                    FROM topology_inference_shadow
+                    WHERE created_at >= datetime("now", "-" || ? || " days")
+                      AND (? = 1 OR method != 'shadow_ingest')
+                    ORDER BY created_at DESC
+                    LIMIT 200
+                    ''',
+                    (days, 1 if include_ingest else 0),
+                )
+                rows = cursor.fetchall()
+                return jsonify({'comparisons': [dict(r) for r in rows], 'days': days, 'include_ingest': include_ingest})
+            except Exception as e:
+                self.logger.error(f"Error getting topology shadow data: {e}")
+                return jsonify({'error': str(e)}), 500
+            finally:
+                if conn:
+                    conn.close()
+
+        @self.app.route('/api/mesh/topology-metrics')
+        def api_topology_metrics():
+            """Get daily topology agreement metrics (additive debug endpoint)."""
+            conn = None
+            try:
+                days = request.args.get('days', default=14, type=int) or 14
+                days = max(1, min(days, 180))
+                conn = self._get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    '''
+                    SELECT metric_date, total_comparisons, agreement_count, disagreement_count,
+                           non_collision_comparisons, non_collision_agreement_count,
+                           avg_legacy_confidence, avg_model_confidence, updated_at
+                    FROM topology_model_metrics
+                    WHERE metric_date >= date("now", "-" || ? || " days")
+                    ORDER BY metric_date DESC
+                    ''',
+                    (days,),
+                )
+                metrics = [dict(r) for r in cursor.fetchall()]
+                return jsonify({'metrics': metrics, 'days': days})
+            except Exception as e:
+                self.logger.error(f"Error getting topology metrics: {e}")
+                return jsonify({'error': str(e)}), 500
+            finally:
+                if conn:
+                    conn.close()
+
+        @self.app.route('/api/mesh/topology-ghosts')
+        def api_topology_ghosts():
+            """Get recent ghost-node hypotheses (shadow diagnostics)."""
+            conn = None
+            try:
+                limit = request.args.get('limit', default=200, type=int) or 200
+                limit = max(1, min(limit, 1000))
+                conn = self._get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    '''
+                    SELECT ghost_id, prefix, inferred_neighbors_json, evidence_count, confidence_tier,
+                           model_confidence, first_seen, last_seen
+                    FROM topology_ghost_nodes
+                    ORDER BY last_seen DESC
+                    LIMIT ?
+                    ''',
+                    (limit,),
+                )
+                rows = [dict(r) for r in cursor.fetchall()]
+                for row in rows:
+                    neighbors = row.get('inferred_neighbors_json')
+                    if neighbors:
+                        try:
+                            row['inferred_neighbors'] = json.loads(neighbors)
+                        except (TypeError, ValueError, json.JSONDecodeError):
+                            row['inferred_neighbors'] = None
+                return jsonify({'ghost_nodes': rows, 'limit': limit})
+            except Exception as e:
+                self.logger.error(f"Error getting topology ghost nodes: {e}")
+                return jsonify({'error': str(e)}), 500
+            finally:
+                if conn:
+                    conn.close()
+
+        @self.app.route('/api/mesh/topology-backfill/start', methods=['POST'])
+        def api_topology_backfill_start():
+            """Start a background observed_paths replay backfill job."""
+            try:
+                topology_mode = self._get_topology_engine_mode()
+                if topology_mode not in ('shadow', 'new'):
+                    return jsonify(
+                        {
+                            'error': 'Topology backfill is only available when topology_engine_mode is shadow or new.',
+                            'topology_mode': topology_mode,
+                        }
+                    ), 404
+
+                payload = request.get_json(silent=True) or {}
+                days = payload.get('days', 7)
+                limit = payload.get('limit')
+                try:
+                    days = int(days)
+                except (TypeError, ValueError):
+                    return jsonify({'error': 'days must be an integer.'}), 400
+                days = max(1, min(days, 90))
+
+                if limit in ("", None):
+                    limit = None
+                else:
+                    try:
+                        limit = int(limit)
+                    except (TypeError, ValueError):
+                        return jsonify({'error': 'limit must be an integer when provided.'}), 400
+                    limit = max(1, min(limit, 500000))
+
+                current = self._get_topology_backfill_state()
+                if current.get('status') == 'running':
+                    return jsonify({'error': 'A topology backfill job is already running.', 'state': current}), 409
+
+                job_id = datetime.now().strftime('%Y%m%d%H%M%S%f')
+                start_state = {
+                    'status': 'running',
+                    'job_id': job_id,
+                    'days': days,
+                    'limit': limit,
+                    'total': 0,
+                    'processed': 0,
+                    'rows_skipped': 0,
+                    'errors': 0,
+                    'comparisons_written': 0,
+                    'started_at': datetime.now().isoformat(),
+                    'completed_at': None,
+                    'last_error': None,
+                }
+                self._update_topology_backfill_state(start_state)
+                self._start_topology_backfill_thread(job_id=job_id, days=days, limit=limit)
+                return jsonify({'ok': True, 'state': self._get_topology_backfill_state()})
+            except Exception as e:
+                self.logger.error(f"Error starting topology backfill: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/mesh/topology-backfill/status')
+        def api_topology_backfill_status():
+            """Get current background topology backfill job status."""
+            try:
+                return jsonify({'state': self._get_topology_backfill_state()})
+            except Exception as e:
+                self.logger.error(f"Error getting topology backfill status: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/mesh/model-graph')
+        def api_mesh_model_graph():
+            """Get topology-engine-derived model graph (shadow/new mode only)."""
+            try:
+                topology_mode = self._get_topology_engine_mode()
+                if topology_mode not in ('shadow', 'new'):
+                    return jsonify(
+                        {
+                            'error': 'Model graph is only available when topology_engine_mode is shadow or new.',
+                            'topology_mode': topology_mode,
+                        }
+                    ), 404
+
+                if not hasattr(self, 'topology_engine') or self.topology_engine is None:
+                    return jsonify({'error': 'Topology engine is not initialized.'}), 500
+
+                days = request.args.get('days', default=7, type=int) or 7
+                days = max(1, min(days, 90))
+                min_confidence = request.args.get('min_confidence', default=0.0, type=float)
+                if min_confidence is None:
+                    min_confidence = 0.0
+                min_confidence = max(0.0, min(min_confidence, 1.0))
+                include_ghost = (request.args.get('include_ghost', default='0') or '0').strip().lower() in ('1', 'true', 'yes', 'on')
+
+                payload = self.topology_engine.get_model_graph(
+                    days=days,
+                    min_confidence=min_confidence,
+                    include_ghost=include_ghost,
+                )
+                payload['topology_mode'] = topology_mode
+                return jsonify(payload)
+            except Exception as e:
+                self.logger.error(f"Error getting model graph: {e}")
+                return jsonify({'error': str(e)}), 500
         
         @self.app.route('/api/stream_data', methods=['POST'])
         def api_stream_data():
@@ -3462,6 +3780,9 @@ class BotDataViewer:
             'message_stats': 'Message statistics and analytics',
             'command_stats': 'Command execution statistics',
             'path_stats': 'Network path statistics',
+            'topology_inference_shadow': 'Shadow topology resolver comparisons',
+            'topology_ghost_nodes': 'Ghost node hypotheses from probabilistic topology',
+            'topology_model_metrics': 'Daily agreement metrics for topology model',
             'geocoding_cache': 'Geocoding service cache',
             'generic_cache': 'General purpose cache storage'
         }

@@ -210,6 +210,18 @@ class MeshCoreBot:
         except (OSError, ValueError, AttributeError, ImportError) as e:
             self.logger.warning(f"Failed to initialize mesh graph: {e}")
             self.mesh_graph = None
+
+        # Initialize topology engine for shadow/new probabilistic resolution
+        self.logger.info("Initializing topology engine")
+        try:
+            from .topology_engine import TopologyEngine
+            self.topology_engine = TopologyEngine(self)
+            self.logger.info(
+                f"Topology engine initialized (mode={self.topology_engine.mode}, sample_rate={self.topology_engine.shadow_sample_rate:.2f})"
+            )
+        except (OSError, ValueError, AttributeError, ImportError) as e:
+            self.logger.warning(f"Failed to initialize topology engine: {e}")
+            self.topology_engine = None
         
         # Initialize service plugin loader and load all services
         self.logger.info("Initializing service plugin loader")
@@ -398,6 +410,14 @@ class MeshCoreBot:
                 self.command_manager.banned_users = self.command_manager.load_banned_users()
                 self.command_manager.monitor_channels = self.command_manager.load_monitor_channels()
                 self.command_manager.channel_keywords = self.command_manager.load_channel_keywords()
+
+                # Let commands refresh runtime-configurable state without restart.
+                for cmd_name, cmd_instance in self.command_manager.commands.items():
+                    if hasattr(cmd_instance, 'reload_from_config') and callable(cmd_instance.reload_from_config):
+                        try:
+                            cmd_instance.reload_from_config()
+                        except Exception as e:
+                            self.logger.warning(f"Failed to reload config for command '{cmd_name}': {e}")
                 self.logger.info("Command manager config reloaded")
             
             # Update scheduler (scheduled messages)

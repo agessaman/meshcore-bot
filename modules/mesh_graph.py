@@ -51,6 +51,9 @@ class MeshGraph:
         # Adjacency indexes for O(1) neighbour lookups (derived from self.edges)
         self._outgoing_index: Dict[str, Set[str]] = defaultdict(set)  # from_prefix -> set of to_prefixes
         self._incoming_index: Dict[str, Set[str]] = defaultdict(set)  # to_prefix -> set of from_prefixes
+        # Root-prefix indexes (first byte) to avoid full edge scans for prefix-matching queries.
+        self._from_root_index: Dict[str, Set[Tuple[str, str]]] = defaultdict(set)  # '7e' -> {(7e42,8611), ...}
+        self._to_root_index: Dict[str, Set[Tuple[str, str]]] = defaultdict(set)  # '86' -> {(7e42,8611), ...}
 
         # Per-edge last-notification timestamps for web viewer throttling (unix float)
         self._notification_timestamps: Dict[Tuple[str, str], float] = {}
@@ -103,6 +106,47 @@ class MeshGraph:
         a, b = a.lower().strip(), b.lower().strip()
         return a == b or a.startswith(b) or b.startswith(a)
 
+    def _root_prefix(self, prefix: str) -> str:
+        """Return canonical first-byte root key used for coarse indexing."""
+        if not prefix:
+            return ""
+        p = prefix.lower().strip()
+        return p[:2] if len(p) >= 2 else p
+
+    def _index_edge_key(self, edge_key: Tuple[str, str]) -> None:
+        """Add edge key to adjacency/root indexes."""
+        from_p, to_p = edge_key
+        self._outgoing_index[from_p].add(to_p)
+        self._incoming_index[to_p].add(from_p)
+        from_root = self._root_prefix(from_p)
+        to_root = self._root_prefix(to_p)
+        if from_root:
+            self._from_root_index[from_root].add(edge_key)
+        if to_root:
+            self._to_root_index[to_root].add(edge_key)
+
+    def _deindex_edge_key(self, edge_key: Tuple[str, str]) -> None:
+        """Remove edge key from adjacency/root indexes."""
+        from_p, to_p = edge_key
+        if from_p in self._outgoing_index:
+            self._outgoing_index[from_p].discard(to_p)
+            if not self._outgoing_index[from_p]:
+                del self._outgoing_index[from_p]
+        if to_p in self._incoming_index:
+            self._incoming_index[to_p].discard(from_p)
+            if not self._incoming_index[to_p]:
+                del self._incoming_index[to_p]
+        from_root = self._root_prefix(from_p)
+        to_root = self._root_prefix(to_p)
+        if from_root in self._from_root_index:
+            self._from_root_index[from_root].discard(edge_key)
+            if not self._from_root_index[from_root]:
+                del self._from_root_index[from_root]
+        if to_root in self._to_root_index:
+            self._to_root_index[to_root].discard(edge_key)
+            if not self._to_root_index[to_root]:
+                del self._to_root_index[to_root]
+
     def _get_edge_by_prefix_match(self, from_q: str, to_q: str) -> Optional[Dict]:
         """Return the best matching edge for a prefix query. Single edge only; never merge counts.
         Tie-break: exact key if present, else longest combined prefix length, then max
@@ -127,8 +171,21 @@ class MeshGraph:
         if not from_q or not to_q:
             return []
 
+        # Narrow candidate set by first-byte root on both sides before full prefix checks.
+        from_root = self._root_prefix(from_q)
+        to_root = self._root_prefix(to_q)
+        from_candidates = self._from_root_index.get(from_root, set()) if from_root else set()
+        to_candidates = self._to_root_index.get(to_root, set()) if to_root else set()
+        if from_candidates and to_candidates:
+            candidate_keys = from_candidates.intersection(to_candidates)
+        else:
+            candidate_keys = from_candidates or to_candidates or set(self.edges.keys())
+
         candidates: List[Tuple[Tuple[str, str], Dict]] = []
-        for edge_key, edge in self.edges.items():
+        for edge_key in candidate_keys:
+            edge = self.edges.get(edge_key)
+            if not edge:
+                continue
             from_p, to_p = edge_key
             if self._prefix_match(from_p, from_q) and self._prefix_match(to_p, to_q):
                 candidates.append((edge_key, edge))
@@ -148,9 +205,10 @@ class MeshGraph:
                 except ValueError:
                     last = datetime.min
             last_ts = last if isinstance(last, datetime) else datetime.min
-            return (-spec, -obs, last_ts)  # desc spec, desc obs, asc time -> most recent last
+            return (spec, obs, last_ts)
 
-        candidates.sort(key=sort_key)
+        # Best first: desc specificity, desc observations, desc recency.
+        candidates.sort(key=sort_key, reverse=True)
         return candidates
 
     def _remove_edge_from_memory(self, edge_key: Tuple[str, str]) -> None:
@@ -159,16 +217,8 @@ class MeshGraph:
         """
         if edge_key not in self.edges:
             return
-        from_p, to_p = edge_key
         del self.edges[edge_key]
-        if from_p in self._outgoing_index:
-            self._outgoing_index[from_p].discard(to_p)
-            if not self._outgoing_index[from_p]:
-                del self._outgoing_index[from_p]
-        if to_p in self._incoming_index:
-            self._incoming_index[to_p].discard(from_p)
-            if not self._incoming_index[to_p]:
-                del self._incoming_index[to_p]
+        self._deindex_edge_key(edge_key)
         self._notification_timestamps.pop(edge_key, None)
 
     def _delete_edge_from_db(
@@ -267,9 +317,8 @@ class MeshGraph:
                     'geographic_distance': row.get('geographic_distance')
                 }
 
-                # Maintain adjacency indexes
-                self._outgoing_index[from_prefix].add(to_prefix)
-                self._incoming_index[to_prefix].add(from_prefix)
+                # Maintain adjacency/root indexes
+                self._index_edge_key(edge_key)
 
                 edge_count += 1
 
@@ -401,8 +450,7 @@ class MeshGraph:
                     "geographic_distance": geographic_distance if geographic_distance is not None else best_edge.get("geographic_distance"),
                     "confirmed_2byte": True if prefix_bytes == 2 else best_edge.get("confirmed_2byte", False),
                 }
-                self._outgoing_index[from_prefix].add(to_prefix)
-                self._incoming_index[to_prefix].add(from_prefix)
+                self._index_edge_key(edge_key)
 
                 self._persist_and_notify_edge(edge_key, is_new_edge=True)
                 return
@@ -454,8 +502,7 @@ class MeshGraph:
                 'geographic_distance': geographic_distance,
                 'confirmed_2byte': True if prefix_bytes == 2 else False,
             }
-            self._outgoing_index[from_prefix].add(to_prefix)
-            self._incoming_index[to_prefix].add(from_prefix)
+            self._index_edge_key(edge_key)
             is_new_edge = True
 
         self._persist_and_notify_edge(edge_key, is_new_edge)
@@ -923,19 +970,7 @@ class MeshGraph:
                 expired_keys.append(edge_key)
 
         for edge_key in expired_keys:
-            from_prefix, to_prefix = edge_key
-            del self.edges[edge_key]
-            # Clean up adjacency indexes
-            if from_prefix in self._outgoing_index:
-                self._outgoing_index[from_prefix].discard(to_prefix)
-                if not self._outgoing_index[from_prefix]:
-                    del self._outgoing_index[from_prefix]
-            if to_prefix in self._incoming_index:
-                self._incoming_index[to_prefix].discard(from_prefix)
-                if not self._incoming_index[to_prefix]:
-                    del self._incoming_index[to_prefix]
-            # Drop stale notification timestamp if present
-            self._notification_timestamps.pop(edge_key, None)
+            self._remove_edge_from_memory(edge_key)
 
         if expired_keys:
             self.logger.debug(f"Pruned {len(expired_keys)} expired graph edges (older than {self.edge_expiration_days} days)")
@@ -1072,9 +1107,12 @@ class MeshGraph:
         prefix = prefix.lower().strip() if prefix else ""
         if not prefix:
             return []
+        root = self._root_prefix(prefix)
+        candidate_keys = self._from_root_index.get(root, set()) if root else set(self.edges.keys())
         result = []
-        for edge in self.edges.values():
-            if self._prefix_match(edge['from_prefix'], prefix):
+        for edge_key in candidate_keys:
+            edge = self.edges.get(edge_key)
+            if edge and self._prefix_match(edge['from_prefix'], prefix):
                 result.append(edge)
         return result
 
@@ -1090,9 +1128,12 @@ class MeshGraph:
         prefix = prefix.lower().strip() if prefix else ""
         if not prefix:
             return []
+        root = self._root_prefix(prefix)
+        candidate_keys = self._to_root_index.get(root, set()) if root else set(self.edges.keys())
         result = []
-        for edge in self.edges.values():
-            if self._prefix_match(edge['to_prefix'], prefix):
+        for edge_key in candidate_keys:
+            edge = self.edges.get(edge_key)
+            if edge and self._prefix_match(edge['to_prefix'], prefix):
                 result.append(edge)
         return result
     

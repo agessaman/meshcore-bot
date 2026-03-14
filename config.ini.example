@@ -886,6 +886,25 @@ graph_startup_load_days = 0
 # Set to false on devices that don't use the path command and want minimal overhead.
 graph_capture_enabled = true
 
+# Topology engine mode:
+# - legacy: Existing graph/geographic resolver only (default)
+# - shadow: Run probabilistic engine in parallel and record comparisons, but keep legacy output
+# - new: Use probabilistic engine as primary selector with legacy fallback
+topology_engine_mode = legacy
+
+# Sampling rate for shadow comparison writes (0.0-1.0)
+# Use values <1.0 on high-traffic nodes to reduce write volume.
+topology_shadow_sample_rate = 1.0
+
+# Enable ghost-node hypotheses when model confidence is low (shadow/new modes)
+topology_ghost_enabled = true
+
+# Minimum model confidence to accept a non-ghost topology selection (0.0-1.0)
+topology_ghost_min_confidence = 0.35
+
+# Maximum repeater candidates evaluated per prefix by the topology engine
+topology_max_candidates_per_prefix = 12
+
 # Star bias multiplier for path command
 # When a contact is starred in the web viewer, multiply its selection score by this value
 # Higher values = stronger preference for starred repeaters

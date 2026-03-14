@@ -161,6 +161,52 @@ class RepeaterManager:
                 last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 observation_count INTEGER DEFAULT 1
             ''')
+
+            # Create shadow topology inference table (additive; legacy behavior unchanged)
+            self.db_manager.create_table('topology_inference_shadow', '''
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path_hex TEXT NOT NULL,
+                path_nodes_json TEXT NOT NULL,
+                resolved_path_json TEXT NOT NULL,
+                method TEXT NOT NULL,
+                model_confidence REAL NOT NULL,
+                legacy_method TEXT,
+                legacy_confidence REAL,
+                agreement INTEGER DEFAULT 0,
+                packet_hash TEXT,
+                bytes_per_hop INTEGER,
+                backfill_key TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ''')
+
+            # Create ghost-node hypotheses table for unresolved/collision cases
+            self.db_manager.create_table('topology_ghost_nodes', '''
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ghost_id TEXT UNIQUE NOT NULL,
+                prefix TEXT NOT NULL,
+                inferred_neighbors_json TEXT,
+                evidence_count INTEGER DEFAULT 1,
+                confidence_tier TEXT DEFAULT 'possible',
+                model_confidence REAL DEFAULT 0.0,
+                first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ''')
+
+            # Create model metrics table for shadow-mode comparison telemetry
+            self.db_manager.create_table('topology_model_metrics', '''
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                metric_date DATE NOT NULL,
+                total_comparisons INTEGER DEFAULT 0,
+                agreement_count INTEGER DEFAULT 0,
+                disagreement_count INTEGER DEFAULT 0,
+                non_collision_comparisons INTEGER DEFAULT 0,
+                non_collision_agreement_count INTEGER DEFAULT 0,
+                avg_legacy_confidence REAL,
+                avg_model_confidence REAL,
+                metadata_json TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(metric_date)
+            ''')
             
             # Create indexes for better performance
             with self.db_manager.connection() as conn:
@@ -206,6 +252,15 @@ class RepeaterManager:
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_observed_paths_last_seen ON observed_paths(last_seen)')
                 # Index for type-specific queries
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_observed_paths_type_seen ON observed_paths(packet_type, last_seen)')
+
+                # Indexes for topology shadow tables
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_topology_shadow_created ON topology_inference_shadow(created_at)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_topology_shadow_packet_hash ON topology_inference_shadow(packet_hash)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_topology_shadow_agreement ON topology_inference_shadow(agreement, created_at)')
+                cursor.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_topology_shadow_backfill_key ON topology_inference_shadow(backfill_key) WHERE backfill_key IS NOT NULL')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_topology_ghost_prefix ON topology_ghost_nodes(prefix, last_seen)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_topology_ghost_tier ON topology_ghost_nodes(confidence_tier, last_seen)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_topology_metrics_date ON topology_model_metrics(metric_date)')
                 conn.commit()
             
             self.logger.info("Repeater contacts database initialized successfully")
@@ -306,6 +361,44 @@ class RepeaterManager:
                             conn.commit()
             except Exception as e:
                 self.logger.warning(f"Migration mesh_connections: {e}")
+
+            # topology_inference_shadow: add columns for newer shadow metadata
+            try:
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='topology_inference_shadow'")
+                if cursor.fetchone():
+                    cursor.execute("PRAGMA table_info(topology_inference_shadow)")
+                    tis_columns = [row[1] for row in cursor.fetchall()]
+                    for col_name, col_type in [
+                        ('legacy_method', 'TEXT'),
+                        ('legacy_confidence', 'REAL'),
+                        ('agreement', 'INTEGER DEFAULT 0'),
+                        ('packet_hash', 'TEXT'),
+                        ('bytes_per_hop', 'INTEGER'),
+                        ('backfill_key', 'TEXT'),
+                    ]:
+                        if col_name not in tis_columns:
+                            self.logger.info(f"Adding missing column to topology_inference_shadow: {col_name}")
+                            cursor.execute(f"ALTER TABLE topology_inference_shadow ADD COLUMN {col_name} {col_type}")
+                            conn.commit()
+                    cursor.execute(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS idx_topology_shadow_backfill_key ON topology_inference_shadow(backfill_key) WHERE backfill_key IS NOT NULL"
+                    )
+                    conn.commit()
+            except Exception as e:
+                self.logger.warning(f"Migration topology_inference_shadow: {e}")
+
+            # topology_ghost_nodes: add model confidence tracking
+            try:
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='topology_ghost_nodes'")
+                if cursor.fetchone():
+                    cursor.execute("PRAGMA table_info(topology_ghost_nodes)")
+                    tgn_columns = [row[1] for row in cursor.fetchall()]
+                    if 'model_confidence' not in tgn_columns:
+                        self.logger.info("Adding model_confidence column to topology_ghost_nodes")
+                        cursor.execute("ALTER TABLE topology_ghost_nodes ADD COLUMN model_confidence REAL DEFAULT 0.0")
+                        conn.commit()
+            except Exception as e:
+                self.logger.warning(f"Migration topology_ghost_nodes: {e}")
 
         self.logger.info("Database schema migration completed")
     
