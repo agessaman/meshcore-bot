@@ -3,7 +3,7 @@
 import pytest
 
 from modules.commands.help_command import HelpCommand
-from tests.conftest import command_mock_bot, mock_message
+from tests.conftest import mock_message
 
 
 class TestHelpCommand:

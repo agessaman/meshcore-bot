@@ -3,8 +3,8 @@
 Test helper functions and factories for creating test data
 """
 
-from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional, Tuple
+from datetime import datetime
+from typing import Any, Optional
 
 
 def create_test_repeater(
@@ -17,9 +17,9 @@ def create_test_repeater(
     last_heard: Optional[datetime] = None,
     last_advert_timestamp: Optional[datetime] = None,
     role: str = "repeater"
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Factory function to create test repeater data.
-    
+
     Args:
         prefix: Two-character hex prefix (default: "01")
         name: Repeater name
@@ -30,20 +30,20 @@ def create_test_repeater(
         last_heard: Last heard timestamp (default: now)
         last_advert_timestamp: Last advert timestamp (default: now)
         role: Device role (default: "repeater")
-    
+
     Returns:
         Dictionary with repeater data matching database schema
     """
     if public_key is None:
         # Generate a realistic-looking public key from prefix
         public_key = (prefix.lower() * 16)[:64]  # 64 hex chars = 32 bytes
-    
+
     now = datetime.now()
     if last_heard is None:
         last_heard = now
     if last_advert_timestamp is None:
         last_advert_timestamp = now
-    
+
     return {
         'name': name,
         'public_key': public_key,
@@ -76,9 +76,9 @@ def create_test_edge(
     avg_hop_position: Optional[float] = None,
     geographic_distance: Optional[float] = None,
     prefix_hex_chars: int = 2
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Factory function to create test edge data.
-    
+
     Args:
         from_prefix: Source node prefix
         to_prefix: Destination node prefix
@@ -90,7 +90,7 @@ def create_test_edge(
         avg_hop_position: Average hop position in paths
         geographic_distance: Distance in km
         prefix_hex_chars: Number of hex chars per prefix (default 2). Use bot.prefix_hex_chars when testing with a bot.
-    
+
     Returns:
         Dictionary with edge data matching MeshGraph edge structure
     """
@@ -99,12 +99,12 @@ def create_test_edge(
         first_seen = now
     if last_seen is None:
         last_seen = now
-    
+
     if from_public_key is None:
         from_public_key = (from_prefix.lower() * 16)[:64]
     if to_public_key is None:
         to_public_key = (to_prefix.lower() * 16)[:64]
-    
+
     return {
         'from_prefix': from_prefix.lower()[:prefix_hex_chars],
         'to_prefix': to_prefix.lower()[:prefix_hex_chars],
@@ -118,22 +118,22 @@ def create_test_edge(
     }
 
 
-def create_test_path(node_ids: List[str], prefix_hex_chars: int = 2) -> List[str]:
+def create_test_path(node_ids: list[str], prefix_hex_chars: int = 2) -> list[str]:
     """Factory function to create test path data.
-    
+
     Args:
         node_ids: List of node prefixes in path order
         prefix_hex_chars: Number of hex chars per node (default 2). Use bot.prefix_hex_chars when testing with a bot.
-    
+
     Returns:
         List of node IDs (normalized to lowercase)
     """
     return [node_id.lower()[:prefix_hex_chars] for node_id in node_ids]
 
 
-def populate_test_graph(mesh_graph, edges: List[Dict[str, Any]], prefix_hex_chars: int = 2):
+def populate_test_graph(mesh_graph, edges: list[dict[str, Any]], prefix_hex_chars: int = 2):
     """Helper to populate a MeshGraph instance with test edges.
-    
+
     Args:
         mesh_graph: MeshGraph instance to populate
         edges: List of edge dictionaries (from create_test_edge)

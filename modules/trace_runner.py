@@ -9,7 +9,7 @@ and future automated mesh tracing service.
 import asyncio
 import random
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from meshcore import EventType
 
@@ -20,13 +20,13 @@ class RunTraceResult:
 
     success: bool
     tag: int
-    path_nodes: List[Dict[str, Any]] = field(default_factory=list)
+    path_nodes: list[dict[str, Any]] = field(default_factory=list)
     path_len: int = 0
     flags: int = 0
     error_message: Optional[str] = None
 
 
-def _get_timeout_seconds(bot: Any, path: Optional[List[str]]) -> float:
+def _get_timeout_seconds(bot: Any, path: Optional[list[str]]) -> float:
     """Compute total timeout from path length and config."""
     per_hop = bot.config.getfloat("Trace_Command", "timeout_per_hop_seconds", fallback=0.5)
     base = bot.config.getfloat("Trace_Command", "timeout_base_seconds", fallback=1.0)
@@ -38,7 +38,7 @@ def _get_timeout_seconds(bot: Any, path: Optional[List[str]]) -> float:
 
 async def _run_trace_attempt(
     bot: Any,
-    path: Optional[List[str]],
+    path: Optional[list[str]],
     path_string: Optional[str],
     flags: int,
     timeout_seconds: float,
@@ -106,7 +106,7 @@ async def _run_trace_attempt(
 
 async def run_trace(
     bot: Any,
-    path: Optional[List[str]] = None,
+    path: Optional[list[str]] = None,
     flags: int = 0,
     timeout_seconds: Optional[float] = None,
 ) -> RunTraceResult:

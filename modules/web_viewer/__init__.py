@@ -6,6 +6,6 @@ allowing users to visualize bot databases and monitor real-time data.
 """
 
 from .app import BotDataViewer
-from .integration import WebViewerIntegration, BotIntegration
+from .integration import BotIntegration, WebViewerIntegration
 
 __all__ = ['BotDataViewer', 'WebViewerIntegration', 'BotIntegration']

@@ -1,11 +1,8 @@
 """Tests for modules.rate_limiter."""
 
 import time
-from unittest.mock import patch
 
-import pytest
-
-from modules.rate_limiter import RateLimiter, PerUserRateLimiter
+from modules.rate_limiter import PerUserRateLimiter, RateLimiter
 
 
 class TestRateLimiter:

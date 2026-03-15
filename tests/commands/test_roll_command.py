@@ -1,10 +1,11 @@
 """Tests for modules.commands.roll_command."""
 
 import re
+
 import pytest
 
 from modules.commands.roll_command import RollCommand
-from tests.conftest import command_mock_bot, mock_message
+from tests.conftest import mock_message
 
 
 class TestParseRollNotation:

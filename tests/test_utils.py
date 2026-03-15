@@ -1,18 +1,27 @@
 """Tests for modules.utils."""
 
-import pytest
-from unittest.mock import MagicMock
+import configparser
+from pathlib import Path
+from unittest.mock import MagicMock, Mock, patch
 
 from modules.utils import (
     abbreviate_location,
-    truncate_string,
-    decode_escape_sequences,
-    parse_location_string,
     calculate_distance,
-    format_elapsed_display,
-    parse_path_string,
-    decode_path_len_byte,
     calculate_packet_hash,
+    calculate_path_distances,
+    check_internet_connectivity,
+    decode_escape_sequences,
+    decode_path_len_byte,
+    format_elapsed_display,
+    format_keyword_response_with_placeholders,
+    format_location_for_display,
+    get_config_timezone,
+    get_major_city_queries,
+    is_valid_timezone,
+    parse_location_string,
+    parse_path_string,
+    resolve_path,
+    truncate_string,
 )
 
 
@@ -261,6 +270,325 @@ class TestParsePathString:
         """Ensure prefix_hex_chars=2 still works when passed explicitly."""
         assert parse_path_string("015fab", prefix_hex_chars=2) == ["01", "5F", "AB"]
 
+
+# ---------------------------------------------------------------------------
+# is_valid_timezone
+# ---------------------------------------------------------------------------
+
+class TestIsValidTimezone:
+    """Tests for is_valid_timezone()."""
+
+    def test_valid_utc(self):
+        assert is_valid_timezone("UTC") is True
+
+    def test_valid_us_eastern(self):
+        assert is_valid_timezone("America/New_York") is True
+
+    def test_valid_europe_london(self):
+        assert is_valid_timezone("Europe/London") is True
+
+    def test_invalid_returns_false(self):
+        assert is_valid_timezone("Not/A/Timezone") is False
+
+    def test_empty_string_returns_false(self):
+        assert is_valid_timezone("") is False
+
+    def test_whitespace_only_returns_false(self):
+        assert is_valid_timezone("   ") is False
+
+    def test_strips_whitespace_before_checking(self):
+        assert is_valid_timezone("  UTC  ") is True
+
+
+# ---------------------------------------------------------------------------
+# get_config_timezone
+# ---------------------------------------------------------------------------
+
+class TestGetConfigTimezone:
+    """Tests for get_config_timezone()."""
+
+    def _config(self, tz_value=""):
+        cfg = configparser.ConfigParser()
+        cfg.add_section("Bot")
+        if tz_value:
+            cfg.set("Bot", "timezone", tz_value)
+        return cfg
+
+    def test_valid_timezone_returned(self):
+        cfg = self._config("UTC")
+        tz, iana = get_config_timezone(cfg)
+        assert iana == "UTC"
+        assert tz is not None
+
+    def test_invalid_timezone_falls_back_to_utc_iana(self):
+        cfg = self._config("Not/Valid")
+        _, iana = get_config_timezone(cfg)
+        assert iana == "UTC"
+
+    def test_empty_timezone_falls_back(self):
+        cfg = self._config("")
+        _, iana = get_config_timezone(cfg)
+        assert iana == "UTC"
+
+    def test_invalid_timezone_logs_warning_when_logger_provided(self):
+        cfg = self._config("Bad/Zone")
+        logger = Mock()
+        get_config_timezone(cfg, logger)
+        logger.warning.assert_called_once()
+
+    def test_no_logger_no_crash_on_invalid(self):
+        cfg = self._config("Bad/Zone")
+        _, iana = get_config_timezone(cfg, None)
+        assert iana == "UTC"
+
+
+# ---------------------------------------------------------------------------
+# format_location_for_display
+# ---------------------------------------------------------------------------
+
+class TestFormatLocationForDisplay:
+    """Tests for format_location_for_display()."""
+
+    def test_none_city_returns_none(self):
+        assert format_location_for_display(None) is None
+
+    def test_empty_city_returns_none(self):
+        assert format_location_for_display("") is None
+
+    def test_city_only(self):
+        result = format_location_for_display("Seattle", max_length=50)
+        assert "Seattle" in result
+
+    def test_city_and_state(self):
+        result = format_location_for_display("Seattle", "WA", max_length=50)
+        assert "Seattle" in result
+        assert "WA" in result
+
+    def test_state_not_duplicated_when_same_as_city(self):
+        result = format_location_for_display("Seattle", "Seattle", max_length=50)
+        # "Seattle" should not appear twice as comma-joined
+        assert result.count("Seattle") == 1
+
+    def test_respects_max_length(self):
+        result = format_location_for_display("Very Long City Name That Goes On", "State", max_length=15)
+        assert len(result) <= 15
+
+
+# ---------------------------------------------------------------------------
+# get_major_city_queries
+# ---------------------------------------------------------------------------
+
+class TestGetMajorCityQueries:
+    """Tests for get_major_city_queries()."""
+
+    def test_known_city_returns_list(self):
+        result = get_major_city_queries("seattle")
+        assert isinstance(result, list)
+        assert len(result) > 0
+        assert any("Seattle" in q for q in result)
+
+    def test_unknown_city_returns_empty(self):
+        result = get_major_city_queries("tinyunknownvillage")
+        assert result == []
+
+    def test_case_insensitive(self):
+        assert get_major_city_queries("Seattle") == get_major_city_queries("seattle")
+
+    def test_new_york_returns_multiple_queries(self):
+        result = get_major_city_queries("new york")
+        assert len(result) >= 1
+
+    def test_portland_returns_multiple_queries(self):
+        # Portland has OR and ME variants
+        result = get_major_city_queries("portland")
+        assert len(result) >= 2
+
+
+# ---------------------------------------------------------------------------
+# resolve_path
+# ---------------------------------------------------------------------------
+
+class TestResolvePath:
+    """Tests for resolve_path()."""
+
+    def test_absolute_path_unchanged(self):
+        result = resolve_path("/var/lib/bot/data.db", "/opt/bot")
+        assert result == "/var/lib/bot/data.db"
+
+    def test_relative_path_resolved_to_base_dir(self):
+        result = resolve_path("data.db", "/opt/bot")
+        assert result == "/opt/bot/data.db"
+
+    def test_path_object_input(self):
+        result = resolve_path(Path("data.db"), Path("/opt/bot"))
+        assert result == "/opt/bot/data.db"
+
+    def test_returns_string(self):
+        result = resolve_path("data.db", "/opt/bot")
+        assert isinstance(result, str)
+
+    def test_dot_base_dir_resolves_to_cwd(self):
+        import os
+        result = resolve_path("data.db", ".")
+        assert result == os.path.join(os.getcwd(), "data.db")
+
+
+# ---------------------------------------------------------------------------
+# check_internet_connectivity
+# ---------------------------------------------------------------------------
+
+class TestCheckInternetConnectivity:
+    """Tests for check_internet_connectivity()."""
+
+    def test_returns_true_when_socket_connects(self):
+        mock_sock = Mock()
+        with patch("modules.utils.socket.socket") as mock_socket_cls:
+            mock_socket_cls.return_value = mock_sock
+            result = check_internet_connectivity(host="8.8.8.8", port=53, timeout=1.0)
+        assert result is True
+        mock_sock.connect.assert_called_once_with(("8.8.8.8", 53))
+
+    def test_returns_false_when_all_fail(self):
+        with patch("modules.utils.socket.socket") as mock_socket_cls, \
+             patch("modules.utils.urllib.request.urlopen") as mock_urlopen:
+            mock_socket_cls.return_value.connect.side_effect = OSError("refused")
+            mock_urlopen.side_effect = OSError("no net")
+            result = check_internet_connectivity(host="8.8.8.8", port=53, timeout=1.0)
+        assert result is False
+
+    def test_falls_back_to_http_when_socket_fails(self):
+        mock_response = Mock()
+        mock_response.close = Mock()
+        with patch("modules.utils.socket.socket") as mock_socket_cls, \
+             patch("modules.utils.urllib.request.urlopen") as mock_urlopen:
+            mock_socket_cls.return_value.connect.side_effect = OSError("refused")
+            mock_urlopen.return_value = mock_response
+            result = check_internet_connectivity(host="8.8.8.8", port=53, timeout=1.0)
+        assert result is True
+
+
+# ---------------------------------------------------------------------------
+# calculate_path_distances
+# ---------------------------------------------------------------------------
+
+class TestCalculatePathDistances:
+    """Tests for calculate_path_distances()."""
+
+    def _bot(self):
+        bot = Mock()
+        bot.db_manager = Mock()
+        bot.prefix_hex_chars = 2
+        bot.logger = Mock()
+        return bot
+
+    def test_empty_path_returns_direct(self):
+        path_dist, fl_dist = calculate_path_distances(self._bot(), "")
+        assert "direct" in path_dist.lower()
+
+    def test_direct_path_returns_direct(self):
+        path_dist, fl_dist = calculate_path_distances(self._bot(), "Direct")
+        assert "direct" in path_dist.lower()
+
+    def test_no_db_manager_returns_unknown(self):
+        bot = Mock(spec=[])  # No db_manager attribute
+        path_dist, fl_dist = calculate_path_distances(bot, "01,5f")
+        assert "unknown" in path_dist.lower()
+
+    def test_single_node_returns_locally(self):
+        bot = self._bot()
+        with patch("modules.utils._get_node_location_from_db", return_value=None):
+            path_dist, fl_dist = calculate_path_distances(bot, "01")
+        assert "local" in path_dist.lower() or "1 hop" in path_dist.lower()
+
+    def test_two_nodes_with_locations_returns_distance(self):
+        bot = self._bot()
+        # Seattle and Portland coords
+        locations = [((47.6062, -122.3321), None), ((45.5152, -122.6784), None)]
+        with patch("modules.utils._get_node_location_from_db", side_effect=locations):
+            path_dist, fl_dist = calculate_path_distances(bot, "01,5f")
+        assert "km" in path_dist
+        assert "km" in fl_dist
+
+    def test_two_nodes_no_locations_returns_unknown(self):
+        bot = self._bot()
+        with patch("modules.utils._get_node_location_from_db", return_value=None):
+            path_dist, fl_dist = calculate_path_distances(bot, "01,5f")
+        assert "unknown" in path_dist.lower()
+
+
+# ---------------------------------------------------------------------------
+# format_keyword_response_with_placeholders
+# ---------------------------------------------------------------------------
+
+class TestFormatKeywordResponseWithPlaceholders:
+    """Tests for format_keyword_response_with_placeholders()."""
+
+    def _bot(self):
+        bot = Mock()
+        bot.config = configparser.ConfigParser()
+        bot.config.add_section("Bot")
+        bot.config.set("Bot", "timezone", "UTC")
+        bot.db_manager = Mock()
+        bot.prefix_hex_chars = 2
+        bot.logger = Mock()
+        bot.translator = None
+        return bot
+
+    def _msg(self, **kwargs):
+        msg = Mock()
+        msg.sender_id = kwargs.get("sender_id", "Alice")
+        msg.path = kwargs.get("path", "01,5f")
+        msg.snr = kwargs.get("snr", 10)
+        msg.rssi = kwargs.get("rssi", -80)
+        msg.timestamp = kwargs.get("timestamp")
+        msg.hops = kwargs.get("hops")
+        return msg
+
+    def test_sender_placeholder(self):
+        bot = self._bot()
+        msg = self._msg(sender_id="Bob")
+        with patch("modules.utils.calculate_path_distances", return_value=("", "")):
+            result = format_keyword_response_with_placeholders("{sender}", msg, bot)
+        assert result == "Bob"
+
+    def test_no_message_uses_unknown_defaults(self):
+        bot = self._bot()
+        result = format_keyword_response_with_placeholders("{sender}", None, bot)
+        assert result == "Unknown"
+
+    def test_mesh_info_total_contacts(self):
+        bot = self._bot()
+        mesh_info = {"total_contacts": 42}
+        result = format_keyword_response_with_placeholders("{total_contacts}", None, bot, mesh_info)
+        assert result == "42"
+
+    def test_missing_placeholder_returns_format_string(self):
+        bot = self._bot()
+        # {nonexistent} is not in replacements -> KeyError -> returns raw string
+        result = format_keyword_response_with_placeholders("{nonexistent}", None, bot)
+        assert result == "{nonexistent}"
+
+    def test_hops_label_singular(self):
+        bot = self._bot()
+        msg = self._msg(hops=1)
+        with patch("modules.utils.calculate_path_distances", return_value=("", "")):
+            result = format_keyword_response_with_placeholders("{hops_label}", msg, bot)
+        assert result == "1 hop"
+
+    def test_hops_label_plural(self):
+        bot = self._bot()
+        msg = self._msg(hops=3)
+        with patch("modules.utils.calculate_path_distances", return_value=("", "")):
+            result = format_keyword_response_with_placeholders("{hops_label}", msg, bot)
+        assert result == "3 hops"
+
+    def test_connection_info_contains_snr_rssi(self):
+        bot = self._bot()
+        msg = self._msg(snr=12, rssi=-75)
+        with patch("modules.utils.calculate_path_distances", return_value=("", "")):
+            result = format_keyword_response_with_placeholders("{connection_info}", msg, bot)
+        assert "SNR" in result
+        assert "RSSI" in result
 
 class TestCalculatePacketHashPathLength:
     """Tests that calculate_packet_hash uses decode_path_len_byte so multi-byte paths skip correctly."""

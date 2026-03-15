@@ -4,13 +4,15 @@ Skipped when the checkin_service local plugin is not present (it does not ship w
 """
 
 import configparser
-import pytest
+
+# Import from local plugin (repo root is on path when running tests)
+import sys
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
-# Import from local plugin (repo root is on path when running tests)
-import sys
+import pytest
+
 _root = Path(__file__).resolve().parent.parent
 if str(_root) not in sys.path:
     sys.path.insert(0, str(_root))

@@ -1,10 +1,10 @@
 """Tests for modules.commands.dice_command."""
 
+
 import pytest
-from unittest.mock import patch
 
 from modules.commands.dice_command import DiceCommand
-from tests.conftest import command_mock_bot, mock_message
+from tests.conftest import mock_message
 
 
 class TestParseDiceNotation:
