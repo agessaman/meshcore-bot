@@ -152,24 +152,41 @@ class DiscordBridgeService(BaseServicePlugin):
             self.logger.warning("No [DiscordBridge] section found in config")
             return
 
+        import re
+
         for key, value in self.bot.config.items('DiscordBridge'):
             # Look for bridge.* pattern
             if key.startswith('bridge.'):
                 channel_name = key[7:]  # Remove 'bridge.' prefix
-                webhook_url = value.strip()
+                raw_value = value.strip()
 
-                # Basic validation
-                if not webhook_url.startswith('https://discord.com/api/webhooks/'):
-                    self.logger.warning(f"Invalid webhook URL for channel '{channel_name}': {webhook_url[:50]}...")
+                if not raw_value:
                     continue
 
-                # Store with original case, but we'll match case-insensitively
-                self.channel_webhooks[channel_name] = webhook_url
-                # Mask webhook token in logs for security
-                masked_url = self._mask_webhook_url(webhook_url)
-                self.logger.info(f"Configured Discord bridge: {channel_name} → {masked_url}")
+                # Support multiple webhooks per channel via comma- or whitespace-separated list
+                # URLs themselves never contain spaces or commas, so this is safe
+                candidates = [part.strip() for part in re.split(r'[,\s]+', raw_value) if part.strip()]
 
-        self.logger.info(f"Loaded {len(self.channel_webhooks)} Discord channel mapping(s)")
+                for webhook_url in candidates:
+                    # Basic validation
+                    if not webhook_url.startswith('https://discord.com/api/webhooks/'):
+                        self.logger.warning(f"Invalid webhook URL for channel '{channel_name}': {webhook_url[:50]}...")
+                        continue
+
+                    # Initialize list for channel if needed
+                    if channel_name not in self.channel_webhooks:
+                        self.channel_webhooks[channel_name] = []
+
+                    self.channel_webhooks[channel_name].append(webhook_url)
+
+                    # Mask webhook token in logs for security
+                    masked_url = self._mask_webhook_url(webhook_url)
+                    self.logger.info(f"Configured Discord bridge: {channel_name} → {masked_url}")
+
+        total_mappings = sum(len(urls) for urls in self.channel_webhooks.values())
+        self.logger.info(
+            f"Loaded {len(self.channel_webhooks)} Discord channel(s) with {total_mappings} webhook mapping(s)"
+        )
 
     def _generate_avatar_url(self, username: str) -> Optional[str]:
         """Generate a unique avatar URL for a username.
@@ -364,13 +381,15 @@ class DiscordBridgeService(BaseServicePlugin):
                 return
 
             # Check if this channel is configured for bridging (case-insensitive)
-            webhook_url = None
+            webhook_urls = None
+            matched_config_name = None
             for config_channel, url in self.channel_webhooks.items():
                 if config_channel.lower() == channel_name.lower():
-                    webhook_url = url
+                    webhook_urls = url
+                    matched_config_name = config_channel
                     break
 
-            if not webhook_url:
+            if not webhook_urls:
                 self.logger.debug(f"Channel '{channel_name}' not configured for Discord bridge")
                 return
 
@@ -399,7 +418,9 @@ class DiscordBridgeService(BaseServicePlugin):
                 message_text = censor(message_text, self.logger)
 
             # Queue message for posting (with rate limiting and retry logic)
-            await self._queue_message(webhook_url, message_text, channel_name, sender_name)
+            # Fan out to all configured webhooks for this channel
+            for webhook_url in webhook_urls:
+                await self._queue_message(webhook_url, message_text, channel_name, sender_name)
 
         except Exception as e:
             self.logger.error(f"Error handling mesh channel message: {e}", exc_info=True)

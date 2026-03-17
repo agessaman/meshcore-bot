@@ -61,6 +61,9 @@ avatar_style = color
 # Map MeshCore channels to Discord webhooks
 bridge.general = https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz1234567890ABCD
 bridge.emergency = https://discord.com/api/webhooks/987654321098765432/ZYXWVUTSRQPONMLKJIHGFEDCBAzyxwvutsrqponmlkjihgf
+
+# Fan out a single MeshCore channel to multiple Discord servers
+bridge.Public = https://discord.com/api/webhooks/AAA/aaa..., https://discord.com/api/webhooks/BBB/bbb...
 ```
 
 **Important:** Only channels explicitly listed will be bridged. Any channel not in the config will be ignored.

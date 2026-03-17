@@ -498,18 +498,30 @@ else
     print_success "Created virtual environment at $INSTALL_DIR/venv"
 fi
 
-# Upgrade pip first
-print_info "Upgrading pip to latest version"
-"$INSTALL_DIR/venv/bin/pip" install --quiet --upgrade pip >/dev/null 2>&1 || true
+# Verify virtual environment looks healthy
+VENV_PYTHON="$INSTALL_DIR/venv/bin/python"
+if [ ! -x "$VENV_PYTHON" ]; then
+    print_error "Python virtual environment at $INSTALL_DIR/venv appears to be incomplete or corrupted"
+    print_error "Expected Python executable not found at: $VENV_PYTHON"
+    print_info "Try removing $INSTALL_DIR/venv and re-running this installer to recreate it:"
+    echo "  sudo rm -rf $INSTALL_DIR/venv"
+    echo "  sudo ./install-service.sh"
+    exit 1
+fi
 
-# Install dependencies in venv
+# Ensure pip is available and up to date inside the venv
+print_info "Ensuring pip is available and up to date in the virtual environment"
+$VENV_PYTHON -m ensurepip --upgrade >/dev/null 2>&1 || true
+$VENV_PYTHON -m pip install --quiet --upgrade pip >/dev/null 2>&1 || true
+
+# Install dependencies in venv using python -m pip (more portable than calling pip directly)
 print_info "Installing Python dependencies from requirements.txt"
 print_info "This may take a few minutes depending on your internet connection..."
 if [ ! -f "$INSTALL_DIR/requirements.txt" ]; then
     print_error "requirements.txt not found in installation directory"
     exit 1
 fi
-"$INSTALL_DIR/venv/bin/pip" install --quiet -r "$INSTALL_DIR/requirements.txt" || {
+$VENV_PYTHON -m pip install --quiet -r "$INSTALL_DIR/requirements.txt" || {
     print_error "Failed to install Python dependencies"
     print_info "You may need to check your internet connection or Python version"
     exit 1
