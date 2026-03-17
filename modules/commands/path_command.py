@@ -282,6 +282,12 @@ class PathCommand(BaseCommand):
         repeater_info = {}
 
         try:
+            current_packet_hash = None
+            current_message = getattr(self, "_current_message", None)
+            routing_info = getattr(current_message, "routing_info", None) if current_message else None
+            if isinstance(routing_info, dict):
+                current_packet_hash = routing_info.get("packet_hash")
+
             # Skip API cache for path decoding - use database with improved proximity logic
             # API cache doesn't have recency-based proximity selection needed for path decoding
             api_data = None
@@ -471,6 +477,8 @@ class PathCommand(BaseCommand):
                                 repeaters=recent_repeaters,
                                 node_id=node_id,
                                 path_context=node_ids,
+                                topology_mode=self.topology_engine_mode,
+                                packet_hash=current_packet_hash,
                             )
                         topo_repeater = topo_result.get("repeater")
                         topo_confidence = float(topo_result.get("confidence") or 0.0)
@@ -564,6 +572,7 @@ class PathCommand(BaseCommand):
                                 legacy_confidence=confidence,
                                 legacy_method=selection_method,
                                 non_collision=False,
+                                packet_hash=current_packet_hash,
                             )
 
                         if selected_repeater and confidence >= 0.5:
@@ -600,6 +609,8 @@ class PathCommand(BaseCommand):
                                 repeaters=recent_repeaters,
                                 node_id=node_id,
                                 path_context=node_ids,
+                                topology_mode=self.topology_engine_mode,
+                                packet_hash=current_packet_hash,
                             )
                             topology_engine.maybe_record_shadow_comparison(
                                 topology_mode=self.topology_engine_mode,
@@ -609,6 +620,7 @@ class PathCommand(BaseCommand):
                                 legacy_confidence=1.0,
                                 legacy_method='single_match',
                                 non_collision=True,
+                                packet_hash=current_packet_hash,
                             )
                         repeater_info[node_id] = {
                             'name': repeater['name'],

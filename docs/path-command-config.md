@@ -255,6 +255,25 @@ validation and optional cutover.
 - Lower values reduce CPU; higher values improve ambiguity exploration
 - Default: `12`
 
+**`topology_advert_anchor_enabled`** (boolean)
+- Enable advert-origin soft-prior scoring for topology evaluation paths (shadow/backfill)
+- Uses `observed_paths.public_key` for advert rows as a bounded signal; never a hard lock
+- Default: `false`
+
+**`topology_advert_anchor_weight`** (0.0 to 1.0)
+- Relative strength of advert-origin soft prior when enabled
+- Higher values increase influence of origin-linked evidence, but still bounded by max adjustment
+- Default: `0.2`
+
+**`topology_advert_anchor_max_adjustment`** (0.0 to 0.5)
+- Hard cap on per-step score adjustment from advert-origin prior
+- Keeps prior additive and prevents it from overwhelming graph/recency evidence
+- Default: `0.08`
+
+**`topology_advert_anchor_freshness_hours`** (integer hours)
+- Maximum age for origin evidence before prior is treated as stale/neutral
+- Default: `168` (7 days)
+
 ## Preset Configurations
 
 ### `balanced` (Default)

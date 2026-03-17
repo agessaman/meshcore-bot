@@ -449,6 +449,86 @@
         return `${node.prefix}-${node.latitude.toFixed(6)}-${node.longitude.toFixed(6)}`;
     }
 
+    function nodeIdentityKey(node) {
+        const lat = Number(node.latitude);
+        const lon = Number(node.longitude);
+        const hasCoords = Number.isFinite(lat) && Number.isFinite(lon);
+        const pk = (node.public_key || '').toLowerCase();
+        if (pk && hasCoords) {
+            return `${pk}|${lat.toFixed(6)}|${lon.toFixed(6)}`;
+        }
+        if (pk) return `pk:${pk}`;
+        return `prefix:${(node.prefix || '').toLowerCase()}|${String(node.latitude)}|${String(node.longitude)}`;
+    }
+
+    // Merge nodes that represent the same repeater identity (same public key + location).
+    function mergeNodesByIdentity(nodes) {
+        const mergedById = {};
+        (nodes || []).forEach((node) => {
+            if (!node) return;
+            const id = nodeIdentityKey(node);
+            const existing = mergedById[id];
+            if (!existing) {
+                const copy = { ...node };
+                const initialPrefix = (node.prefix || '').toLowerCase();
+                copy.prefixes = initialPrefix ? [initialPrefix] : [];
+                const pk = (node.public_key || '').toLowerCase();
+                if (pk.length >= 2) copy.prefixes.push(pk.slice(0, 2));
+                if (pk.length >= 4) copy.prefixes.push(pk.slice(0, 4));
+                if (pk.length >= 6) copy.prefixes.push(pk.slice(0, 6));
+                mergedById[id] = copy;
+                return;
+            }
+
+            const p = (node.prefix || '').toLowerCase();
+            if (p && !existing.prefixes.includes(p)) existing.prefixes.push(p);
+            if (p && (!existing.prefix || p.length > existing.prefix.length)) {
+                // Keep the most specific prefix as canonical.
+                existing.prefix = p;
+            }
+            if (!existing.public_key && node.public_key) existing.public_key = node.public_key;
+            if (!existing.name && node.name) existing.name = node.name;
+            if (!existing.last_heard && node.last_heard) existing.last_heard = node.last_heard;
+            if (!existing.last_advert_timestamp && node.last_advert_timestamp) existing.last_advert_timestamp = node.last_advert_timestamp;
+            existing.is_starred = Boolean(existing.is_starred || node.is_starred);
+        });
+
+        return Object.values(mergedById).map((node) => {
+            const prefixes = Array.from(new Set((node.prefixes || []).filter(Boolean)));
+            prefixes.sort((a, b) => a.length - b.length || a.localeCompare(b));
+            return {
+                ...node,
+                prefixes,
+                prefix: node.prefix || prefixes[prefixes.length - 1] || '',
+            };
+        });
+    }
+
+    function getDisplayPrefixForBytes(node, numBytes) {
+        const byteCount = Math.max(1, Math.min(3, parseInt(numBytes, 10) || 1));
+        const targetHexChars = byteCount * 2;
+        const pk = (node && node.public_key) ? node.public_key.toLowerCase().trim() : '';
+        if (pk.length >= targetHexChars) {
+            return pk.slice(0, targetHexChars);
+        }
+
+        const aliases = [];
+        if (node && Array.isArray(node.prefixes)) aliases.push(...node.prefixes);
+        if (node && node.prefix) aliases.push(node.prefix);
+
+        const normalized = Array.from(new Set(aliases
+            .map((p) => (p || '').toLowerCase().trim())
+            .filter(Boolean)));
+        normalized.sort((a, b) => b.length - a.length || a.localeCompare(b));
+
+        // Prefer an alias that already has enough width.
+        for (const p of normalized) {
+            if (p.length >= targetHexChars) return p.slice(0, targetHexChars);
+        }
+        // Otherwise use the most specific alias we have.
+        return normalized[0] || '';
+    }
+
     // Resolve an edge prefix (2, 4, or 6 hex chars) to a node when node.prefix may be longer or equal.
     function findNodeByEdgePrefix(prefix) {
         if (!prefix) return null;
@@ -934,7 +1014,7 @@
         }
         const modelData = await response.json();
         modelGraphData = {
-            nodes: modelData.nodes || [],
+            nodes: mergeNodesByIdentity(modelData.nodes || []),
             edges: modelData.edges || [],
             prefixHexChars: (modelData.prefix_hex_chars && [2, 4, 6].includes(modelData.prefix_hex_chars))
                 ? modelData.prefix_hex_chars
@@ -946,7 +1026,7 @@
     function buildOverlayGraphData(legacyData, modelData) {
         const nodeById = {};
         const putNode = (node) => {
-            const key = node.public_key || `${node.prefix}-${node.latitude}-${node.longitude}`;
+            const key = nodeIdentityKey(node);
             if (!nodeById[key]) nodeById[key] = node;
         };
         (legacyData.nodes || []).forEach(putNode);
@@ -978,7 +1058,7 @@
             }));
 
         return {
-            nodes: Object.values(nodeById),
+            nodes: mergeNodesByIdentity(Object.values(nodeById)),
             edges: legacyEdges.concat(modelOnlyEdges),
             prefixHexChars: Math.max(legacyData.prefixHexChars || 2, modelData.prefixHexChars || 2)
         };
@@ -1618,6 +1698,7 @@
             }
             numBytes = Math.min(3, Math.max(1, numBytes));
             
+            const displayPrefix = getDisplayPrefixForBytes(node, numBytes);
             const tooltipContent = `
                 <div style="min-width: 250px;">
                     <strong style="font-size: 1.1em;">${escapeHtml(node.name)}</strong><br>
@@ -1625,7 +1706,7 @@
                     <table style="width: 100%; font-size: 0.9em;">
                         <tr>
                             <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Prefix:</strong></td>
-                            <td style="padding: 2px 0;">${formatPrefixAsByteChunksHTML(node.public_key || node.prefix || '', numBytes)}</td>
+                            <td style="padding: 2px 0;">${formatPrefixAsByteChunksHTML(displayPrefix || node.prefix || '', numBytes)}</td>
                         </tr>
                         <tr>
                             <td style="padding: 2px 8px 2px 0; color: #888;"><strong>Public Key:</strong></td>
@@ -1683,11 +1764,15 @@
             // Store marker with unique node identifier
             const nodeId = getNodeId(node);
             nodeMarkers.set(nodeId, marker);
-            // Also store by prefix for backward compatibility (array of markers)
-            if (!nodeMarkersByPrefix.has(node.prefix)) {
-                nodeMarkersByPrefix.set(node.prefix, []);
-            }
-            nodeMarkersByPrefix.get(node.prefix).push({ marker: marker, node: node });
+            // Also store by all known prefixes for backward compatibility/highlighting.
+            const aliases = (node.prefixes && node.prefixes.length > 0) ? node.prefixes : [node.prefix];
+            aliases.forEach((alias) => {
+                if (!alias) return;
+                if (!nodeMarkersByPrefix.has(alias)) {
+                    nodeMarkersByPrefix.set(alias, []);
+                }
+                nodeMarkersByPrefix.get(alias).push({ marker: marker, node: node });
+            });
             bounds.push([node.latitude, node.longitude]);
         });
         

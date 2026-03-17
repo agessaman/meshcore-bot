@@ -37,3 +37,40 @@ The rewrite may use additive tables:
 - `topology_model_metrics`
 
 These tables must not be required for legacy functionality.
+
+## Advert-Anchor Evaluation Runbook (shadow/backfill)
+
+Use this process to evaluate `topology_advert_anchor_*` soft-prior settings without
+changing live `new`-mode behavior.
+
+1. Baseline (feature off)
+   - Set `topology_advert_anchor_enabled = false`
+   - Run topology backfill for a fixed window (for example 14 or 30 days)
+   - Save:
+     - `/api/mesh/topology-metrics?days=<window>`
+     - `/api/mesh/topology-shadow?days=<window>` (includes `anchor_diagnostics`)
+
+2. Candidate run (feature on)
+   - Set `topology_advert_anchor_enabled = true`
+   - Keep same `days`, `limit`, and sampling settings
+   - Run the same backfill window again
+   - Save the same two payloads
+
+3. Compare pass/fail criteria
+   - Required:
+     - `anchor_diagnostics.anchored_ghost_rate` decreases
+     - No material drop in non-collision agreement
+   - Guardrails:
+     - `anchor_diagnostics.average_anchor_adjustment` remains near zero/small
+       (no runaway bias)
+     - Confidence distributions remain stable (no broad collapse or saturation)
+
+4. Suggested defaults for first rollout
+   - `topology_advert_anchor_weight = 0.2`
+   - `topology_advert_anchor_max_adjustment = 0.08`
+   - `topology_advert_anchor_freshness_hours = 168`
+
+5. Promotion guidance
+   - If anchored ghost rate improves and agreement is stable, keep settings for
+     continued shadow observation.
+   - Only consider new-mode integration after repeated windows show stable gains.

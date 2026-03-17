@@ -439,6 +439,90 @@ class BotDataViewer:
             name=f"topology-backfill-{job_id}",
         )
         thread.start()
+
+    def _rebuild_topology_model_metrics(self, conn: sqlite3.Connection) -> int:
+        """Recompute topology_model_metrics from non-ingest shadow comparisons."""
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM topology_model_metrics")
+        cursor.execute(
+            """
+            INSERT INTO topology_model_metrics
+            (
+                metric_date,
+                total_comparisons,
+                agreement_count,
+                disagreement_count,
+                non_collision_comparisons,
+                non_collision_agreement_count,
+                avg_legacy_confidence,
+                avg_model_confidence,
+                metadata_json,
+                updated_at
+            )
+            SELECT
+                date(created_at) AS metric_date,
+                COUNT(*) AS total_comparisons,
+                SUM(CASE WHEN agreement = 1 THEN 1 ELSE 0 END) AS agreement_count,
+                COUNT(*) - SUM(CASE WHEN agreement = 1 THEN 1 ELSE 0 END) AS disagreement_count,
+                SUM(CASE WHEN COALESCE(legacy_method, '') IN ('single_match', 'legacy_single') THEN 1 ELSE 0 END) AS non_collision_comparisons,
+                SUM(
+                    CASE
+                        WHEN COALESCE(legacy_method, '') IN ('single_match', 'legacy_single') AND agreement = 1 THEN 1
+                        ELSE 0
+                    END
+                ) AS non_collision_agreement_count,
+                AVG(COALESCE(legacy_confidence, 0.0)) AS avg_legacy_confidence,
+                AVG(COALESCE(model_confidence, 0.0)) AS avg_model_confidence,
+                '{}' AS metadata_json,
+                CURRENT_TIMESTAMP AS updated_at
+            FROM topology_inference_shadow
+            WHERE method != 'shadow_ingest'
+            GROUP BY date(created_at)
+            ORDER BY metric_date
+            """
+        )
+        rows = self.db_manager.execute_query_on_connection(
+            conn,
+            "SELECT COUNT(*) AS n FROM topology_model_metrics",
+            (),
+        ) or [{"n": 0}]
+        return int(rows[0].get("n", 0))
+
+    def _reset_topology_backfill_comparisons(self) -> Dict[str, Any]:
+        """Delete backfill-derived shadow rows and rebuild daily metrics."""
+        with closing(self._get_db_connection()) as conn:
+            conn.execute("BEGIN")
+            try:
+                deleted_rows_raw = self.db_manager.execute_query_on_connection(
+                    conn,
+                    "SELECT COUNT(*) AS n FROM topology_inference_shadow WHERE backfill_key IS NOT NULL",
+                    (),
+                ) or [{"n": 0}]
+                deleted_rows = int(deleted_rows_raw[0].get("n", 0))
+
+                self.db_manager.execute_update_on_connection(
+                    conn,
+                    "DELETE FROM topology_inference_shadow WHERE backfill_key IS NOT NULL",
+                    (),
+                )
+
+                metrics_rows_rebuilt = self._rebuild_topology_model_metrics(conn)
+                remaining_rows_raw = self.db_manager.execute_query_on_connection(
+                    conn,
+                    "SELECT COUNT(*) AS n FROM topology_inference_shadow WHERE method != 'shadow_ingest'",
+                    (),
+                ) or [{"n": 0}]
+                remaining_comparisons = int(remaining_rows_raw[0].get("n", 0))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+
+        return {
+            "deleted_rows": deleted_rows,
+            "metrics_rows_rebuilt": metrics_rows_rebuilt,
+            "remaining_comparisons": remaining_comparisons,
+        }
     
     def _get_db_connection(self):
         """Get database connection - create new connection for each request to avoid threading issues"""
@@ -1730,7 +1814,21 @@ class BotDataViewer:
                     (days, 1 if include_ingest else 0),
                 )
                 rows = cursor.fetchall()
-                return jsonify({'comparisons': [dict(r) for r in rows], 'days': days, 'include_ingest': include_ingest})
+                anchor_diag = {}
+                if hasattr(self, "topology_engine") and self.topology_engine is not None:
+                    try:
+                        diag_payload = self.topology_engine.get_shadow_diagnostics(days=days)
+                        anchor_diag = diag_payload.get("anchor_diagnostics") or {}
+                    except Exception:
+                        anchor_diag = {}
+                return jsonify(
+                    {
+                        'comparisons': [dict(r) for r in rows],
+                        'days': days,
+                        'include_ingest': include_ingest,
+                        'anchor_diagnostics': anchor_diag,
+                    }
+                )
             except Exception as e:
                 self.logger.error(f"Error getting topology shadow data: {e}")
                 return jsonify({'error': str(e)}), 500
@@ -1759,7 +1857,14 @@ class BotDataViewer:
                     (days,),
                 )
                 metrics = [dict(r) for r in cursor.fetchall()]
-                return jsonify({'metrics': metrics, 'days': days})
+                anchor_diag = {}
+                if hasattr(self, "topology_engine") and self.topology_engine is not None:
+                    try:
+                        diag_payload = self.topology_engine.get_shadow_diagnostics(days=days)
+                        anchor_diag = diag_payload.get("anchor_diagnostics") or {}
+                    except Exception:
+                        anchor_diag = {}
+                return jsonify({'metrics': metrics, 'days': days, 'anchor_diagnostics': anchor_diag})
             except Exception as e:
                 self.logger.error(f"Error getting topology metrics: {e}")
                 return jsonify({'error': str(e)}), 500
@@ -1866,6 +1971,29 @@ class BotDataViewer:
                 return jsonify({'state': self._get_topology_backfill_state()})
             except Exception as e:
                 self.logger.error(f"Error getting topology backfill status: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/mesh/topology-backfill/reset', methods=['POST'])
+        def api_topology_backfill_reset():
+            """Delete backfill-derived comparisons and rebuild topology metrics."""
+            try:
+                topology_mode = self._get_topology_engine_mode()
+                if topology_mode not in ('shadow', 'new'):
+                    return jsonify(
+                        {
+                            'error': 'Topology reset is only available when topology_engine_mode is shadow or new.',
+                            'topology_mode': topology_mode,
+                        }
+                    ), 404
+
+                current = self._get_topology_backfill_state()
+                if current.get('status') == 'running':
+                    return jsonify({'error': 'Cannot reset while a topology backfill job is running.', 'state': current}), 409
+
+                summary = self._reset_topology_backfill_comparisons()
+                return jsonify({'ok': True, 'summary': summary, 'state': self._get_topology_backfill_state()})
+            except Exception as e:
+                self.logger.error(f"Error resetting topology backfill comparisons: {e}")
                 return jsonify({'error': str(e)}), 500
 
         @self.app.route('/api/mesh/model-graph')

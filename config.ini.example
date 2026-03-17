@@ -905,6 +905,20 @@ topology_ghost_min_confidence = 0.35
 # Maximum repeater candidates evaluated per prefix by the topology engine
 topology_max_candidates_per_prefix = 12
 
+# Advert-origin anchor soft prior (shadow/backfill evaluation only)
+# When enabled, advert rows with known origin public_key can softly nudge topology scoring.
+# This does not hard-lock candidates and is ignored outside shadow evaluation paths.
+topology_advert_anchor_enabled = false
+
+# Relative strength of advert-origin soft prior (0.0-1.0)
+topology_advert_anchor_weight = 0.2
+
+# Absolute cap for per-step score adjustment from advert-origin prior (0.0-0.5)
+topology_advert_anchor_max_adjustment = 0.08
+
+# Maximum age (hours) for origin contact evidence used by advert-origin prior
+topology_advert_anchor_freshness_hours = 168
+
 # Star bias multiplier for path command
 # When a contact is starred in the web viewer, multiply its selection score by this value
 # Higher values = stronger preference for starred repeaters

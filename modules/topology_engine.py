@@ -39,6 +39,25 @@ class TopologyEngine:
         self.min_edge_observations = max(
             1, cfg.getint("Path_Command", "min_edge_observations", fallback=3)
         )
+        self.advert_anchor_enabled = cfg.getboolean(
+            "Path_Command", "topology_advert_anchor_enabled", fallback=False
+        )
+        self.advert_anchor_weight = max(
+            0.0, min(1.0, cfg.getfloat("Path_Command", "topology_advert_anchor_weight", fallback=0.2))
+        )
+        self.advert_anchor_max_adjustment = max(
+            0.0,
+            min(
+                0.5,
+                cfg.getfloat("Path_Command", "topology_advert_anchor_max_adjustment", fallback=0.08),
+            ),
+        )
+        self.advert_anchor_freshness_hours = max(
+            1,
+            cfg.getint("Path_Command", "topology_advert_anchor_freshness_hours", fallback=168),
+        )
+        self._origin_location_cache: Dict[str, Optional[Tuple[float, float]]] = {}
+        self._last_anchor_debug: Dict[str, Any] = {"applied": False, "adjustment_total": 0.0}
 
     def ingest_path_observation(
         self,
@@ -76,6 +95,7 @@ class TopologyEngine:
         path_context: List[str],
         repeaters: List[Dict[str, Any]],
         current_index: int,
+        resolution_context: Optional[Dict[str, Any]] = None,
     ) -> Tuple[Optional[Dict[str, Any]], float, Optional[str]]:
         """Resolve the best repeater candidate for a colliding node via Viterbi."""
         if not repeaters or current_index < 0 or current_index >= len(path_context):
@@ -92,7 +112,11 @@ class TopologyEngine:
                 candidates = [self._ghost_state(path_node)]
             state_sets.append(candidates)
 
-        best_sequence, best_score = self._viterbi_decode(state_sets, path_context)
+        best_sequence, best_score = self._viterbi_decode(
+            state_sets,
+            path_context,
+            resolution_context=resolution_context,
+        )
         if not best_sequence:
             return None, 0.0, None
 
@@ -127,6 +151,8 @@ class TopologyEngine:
         repeaters: List[Dict[str, Any]],
         node_id: str,
         path_context: List[str],
+        topology_mode: Optional[str] = None,
+        packet_hash: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Command-facing topology selection wrapper with stable return shape."""
         if not repeaters or not path_context:
@@ -135,8 +161,22 @@ class TopologyEngine:
                 "confidence": 0.0,
                 "method": None,
                 "is_topology_guess": False,
+                "anchor_prior_applied": False,
+                "anchor_prior_adjustment": 0.0,
             }
         try:
+            resolution_context = None
+            origin_public_key = None
+            origin_packet_type = None
+            if self._should_apply_anchor_prior(topology_mode=topology_mode):
+                origin_public_key, origin_packet_type = self._lookup_observed_path_origin(
+                    packet_hash=packet_hash,
+                    path_nodes=path_context,
+                )
+                resolution_context = self._build_resolution_context(
+                    origin_public_key=origin_public_key,
+                    origin_packet_type=origin_packet_type,
+                )
             current_index = path_context.index(node_id) if node_id in path_context else -1
             if current_index < 0:
                 return {
@@ -144,18 +184,26 @@ class TopologyEngine:
                     "confidence": 0.0,
                     "method": None,
                     "is_topology_guess": False,
+                    "anchor_prior_applied": False,
+                    "anchor_prior_adjustment": 0.0,
                 }
             repeater, confidence, method = self.resolve_path_candidates(
                 node_id=node_id,
                 path_context=path_context,
                 repeaters=repeaters,
                 current_index=current_index,
+                resolution_context=resolution_context,
             )
+            anchor_debug = self._consume_last_anchor_debug()
             return {
                 "repeater": repeater,
                 "confidence": confidence,
                 "method": method,
                 "is_topology_guess": bool(method and method.startswith("topology")),
+                "anchor_prior_applied": bool(anchor_debug.get("applied")),
+                "anchor_prior_adjustment": float(anchor_debug.get("adjustment_total") or 0.0),
+                "origin_public_key": origin_public_key,
+                "origin_packet_type": origin_packet_type,
             }
         except Exception as e:
             self.logger.debug(f"Topology engine select_for_hop failed: {e}")
@@ -164,6 +212,8 @@ class TopologyEngine:
                 "confidence": 0.0,
                 "method": None,
                 "is_topology_guess": False,
+                "anchor_prior_applied": False,
+                "anchor_prior_adjustment": 0.0,
             }
 
     def maybe_record_shadow_comparison(
@@ -177,11 +227,20 @@ class TopologyEngine:
         non_collision: bool = False,
         packet_hash: Optional[str] = None,
         bytes_per_hop: Optional[int] = None,
+        origin_public_key: Optional[str] = None,
+        origin_packet_type: Optional[str] = None,
+        anchor_prior_applied: bool = False,
+        anchor_prior_adjustment: float = 0.0,
     ) -> bool:
         """Record shadow telemetry only when the engine is in shadow mode."""
         if (topology_mode or "").lower() != "shadow":
             return False
         model_result = model_result or {}
+        if not origin_public_key and packet_hash and path_nodes:
+            origin_public_key, origin_packet_type = self._lookup_observed_path_origin(
+                packet_hash=packet_hash,
+                path_nodes=path_nodes,
+            )
         return self.record_shadow_comparison(
             path_nodes=path_nodes,
             model_choice=model_result.get("repeater"),
@@ -193,6 +252,10 @@ class TopologyEngine:
             packet_hash=packet_hash,
             bytes_per_hop=bytes_per_hop,
             non_collision=non_collision,
+            origin_public_key=origin_public_key,
+            origin_packet_type=origin_packet_type,
+            anchor_prior_applied=bool(model_result.get("anchor_prior_applied", anchor_prior_applied)),
+            anchor_prior_adjustment=float(model_result.get("anchor_prior_adjustment", anchor_prior_adjustment) or 0.0),
         )
 
     def record_shadow_comparison(
@@ -208,6 +271,10 @@ class TopologyEngine:
         bytes_per_hop: Optional[int] = None,
         non_collision: bool = False,
         backfill_key: Optional[str] = None,
+        origin_public_key: Optional[str] = None,
+        origin_packet_type: Optional[str] = None,
+        anchor_prior_applied: bool = False,
+        anchor_prior_adjustment: float = 0.0,
     ) -> bool:
         """Persist legacy-vs-new comparison rows and update daily metrics."""
         if random.random() > self.shadow_sample_rate:
@@ -224,6 +291,10 @@ class TopologyEngine:
                 "legacy_public_key": legacy_pk,
                 "model_name": (model_choice or {}).get("name"),
                 "legacy_name": (legacy_choice or {}).get("name"),
+                "origin_public_key": (origin_public_key or "").lower() or None,
+                "origin_packet_type": (origin_packet_type or "").lower() or None,
+                "anchor_prior_applied": bool(anchor_prior_applied),
+                "anchor_prior_adjustment": float(anchor_prior_adjustment or 0.0),
             }
         )
         path_hex = "".join(path_nodes).lower() if path_nodes else ""
@@ -351,7 +422,22 @@ class TopologyEngine:
             LIMIT 100
             """
         )
-        return {"metrics": metrics, "recent_comparisons": recent, "ghost_nodes": ghosts}
+        anchor_rows = self.db.execute_query(
+            """
+            SELECT method, agreement, resolved_path_json
+            FROM topology_inference_shadow
+            WHERE created_at >= datetime('now', ?)
+              AND method != 'shadow_ingest'
+            """,
+            (f"-{days} days",),
+        )
+        anchor_stats = self._compute_anchor_diagnostics(anchor_rows)
+        return {
+            "metrics": metrics,
+            "recent_comparisons": recent,
+            "ghost_nodes": ghosts,
+            "anchor_diagnostics": anchor_stats,
+        }
 
     def get_model_graph(
         self,
@@ -540,7 +626,7 @@ class TopologyEngine:
             total_rows = min(total_rows, max(1, min(500000, int(limit))))
 
         select_query = f"""
-            SELECT path_hex, path_length, bytes_per_hop, packet_hash, observation_count, last_seen
+            SELECT path_hex, path_length, bytes_per_hop, packet_hash, observation_count, last_seen, packet_type, public_key
             FROM observed_paths
             WHERE last_seen >= datetime('now', ?)
             ORDER BY last_seen ASC
@@ -580,6 +666,10 @@ class TopologyEngine:
                         skipped += 1
                         continue
 
+                    row_resolution_context = self._build_resolution_context(
+                        origin_public_key=row.get("public_key"),
+                        origin_packet_type=row.get("packet_type"),
+                    )
                     wrote_for_row = False
                     for current_index, node_id in enumerate(path_nodes):
                         repeaters = self._query_candidates_for_prefix(node_id)
@@ -596,7 +686,9 @@ class TopologyEngine:
                             path_context=path_nodes,
                             repeaters=repeaters,
                             current_index=current_index,
+                            resolution_context=row_resolution_context,
                         )
+                        anchor_debug = self._consume_last_anchor_debug()
 
                         # If both methods fail to pick anything, skip this node.
                         if not legacy_choice and not model_choice:
@@ -619,6 +711,10 @@ class TopologyEngine:
                             bytes_per_hop=row.get("bytes_per_hop"),
                             non_collision=non_collision,
                             backfill_key=backfill_key,
+                            origin_public_key=row.get("public_key"),
+                            origin_packet_type=row.get("packet_type"),
+                            anchor_prior_applied=bool(anchor_debug.get("applied")),
+                            anchor_prior_adjustment=float(anchor_debug.get("adjustment_total") or 0.0),
                         )
                         if wrote:
                             comparisons_written += 1
@@ -801,6 +897,7 @@ class TopologyEngine:
         self,
         state_sets: List[List[Dict[str, Any]]],
         path_context: List[str],
+        resolution_context: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[Dict[str, Any]], float]:
         """Compute best state path with log-space Viterbi."""
         if not state_sets:
@@ -812,8 +909,21 @@ class TopologyEngine:
 
         first_scores = []
         first_parent = []
+        anchor_debug = {"applied": False, "adjustment_total": 0.0}
+        self._last_anchor_debug = anchor_debug
+        path_length = len(path_context)
         for st in state_sets[0]:
             emission = max(epsilon, self._emission_score(st))
+            adjust = self._origin_emission_adjustment(
+                state=st,
+                node_index=0,
+                path_length=path_length,
+                resolution_context=resolution_context,
+            )
+            if adjust:
+                anchor_debug["applied"] = True
+                anchor_debug["adjustment_total"] += adjust
+                emission = max(epsilon, min(0.99, emission + adjust))
             first_scores.append(math.log(emission))
             first_parent.append(-1)
         dp.append(first_scores)
@@ -831,7 +941,15 @@ class TopologyEngine:
                 for prev_idx, prev_st in enumerate(prev_states):
                     transition = max(
                         epsilon,
-                        self._transition_score(prev_st, cur_st, path_context[i - 1], path_context[i]),
+                        self._transition_score(
+                            prev_st,
+                            cur_st,
+                            path_context[i - 1],
+                            path_context[i],
+                            transition_index=i - 1,
+                            path_length=path_length,
+                            resolution_context=resolution_context,
+                        ),
                     )
                     val = dp[i - 1][prev_idx] + math.log(transition) + math.log(emission)
                     if val > best_val:
@@ -857,6 +975,7 @@ class TopologyEngine:
         sequence.reverse()
         if len(sequence) != len(state_sets):
             return [], 0.0
+        self._last_anchor_debug = anchor_debug
         return sequence, best_log_score
 
     def _emission_score(self, state: Dict[str, Any]) -> float:
@@ -874,6 +993,9 @@ class TopologyEngine:
         cur_state: Dict[str, Any],
         prev_node: str,
         cur_node: str,
+        transition_index: Optional[int] = None,
+        path_length: Optional[int] = None,
+        resolution_context: Optional[Dict[str, Any]] = None,
     ) -> float:
         prev_is_ghost = prev_state.get("is_ghost")
         cur_is_ghost = cur_state.get("is_ghost")
@@ -897,7 +1019,317 @@ class TopologyEngine:
             use_bidirectional=True,
             use_hop_position=False,
         )
-        return max(0.01, min(0.99, 0.2 + 0.75 * graph_score))
+        base_score = max(0.01, min(0.99, 0.2 + 0.75 * graph_score))
+        adjust = self._origin_transition_adjustment(
+            prev_state=prev_state,
+            cur_state=cur_state,
+            prev_node=prev_node,
+            cur_node=cur_node,
+            transition_index=transition_index,
+            path_length=path_length,
+            resolution_context=resolution_context,
+        )
+        if adjust:
+            self._last_anchor_debug["applied"] = True
+            self._last_anchor_debug["adjustment_total"] = float(
+                self._last_anchor_debug.get("adjustment_total", 0.0) + adjust
+            )
+        return max(0.01, min(0.99, base_score + adjust))
+
+    def _should_apply_anchor_prior(
+        self,
+        topology_mode: Optional[str] = None,
+        origin_packet_type: Optional[str] = None,
+    ) -> bool:
+        if not self.advert_anchor_enabled:
+            return False
+        mode = (topology_mode or "").strip().lower()
+        # Phase-1 rollout: evaluation paths only.
+        if mode and mode != "shadow":
+            return False
+        packet_type = (origin_packet_type or "").strip().lower()
+        if packet_type and packet_type != "advert":
+            return False
+        return True
+
+    def _build_resolution_context(
+        self,
+        origin_public_key: Optional[str] = None,
+        origin_packet_type: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        packet_type = (origin_packet_type or "").strip().lower()
+        origin_pk = (origin_public_key or "").strip().lower()
+        if not self._should_apply_anchor_prior(
+            topology_mode="shadow",
+            origin_packet_type=packet_type,
+        ):
+            return None
+        if packet_type != "advert" or not origin_pk:
+            return None
+        if not self._is_contact_fresh(origin_pk):
+            return None
+        return {
+            "origin_public_key": origin_pk,
+            "origin_packet_type": packet_type,
+            "origin_location": self._get_contact_location(origin_pk),
+        }
+
+    def _lookup_observed_path_origin(
+        self,
+        packet_hash: Optional[str],
+        path_nodes: Optional[List[str]] = None,
+    ) -> Tuple[Optional[str], Optional[str]]:
+        safe_hash = (packet_hash or "").strip()
+        if not safe_hash or safe_hash == "0000000000000000":
+            return None, None
+        try:
+            rows = self.db.execute_query(
+                """
+                SELECT public_key, packet_type, path_hex, path_length, bytes_per_hop, last_seen
+                FROM observed_paths
+                WHERE packet_hash = ?
+                ORDER BY last_seen DESC
+                LIMIT 10
+                """,
+                (safe_hash,),
+            )
+            if not rows:
+                return None, None
+            path_hex = "".join(path_nodes or []).lower()
+            if path_hex:
+                for row in rows:
+                    candidate_nodes = self._parse_observed_path_nodes(row)
+                    if candidate_nodes and "".join(candidate_nodes).lower() == path_hex:
+                        return row.get("public_key"), row.get("packet_type")
+            top = rows[0]
+            return top.get("public_key"), top.get("packet_type")
+        except Exception:
+            return None, None
+
+    def _get_contact_location(self, public_key: str) -> Optional[Tuple[float, float]]:
+        pk = (public_key or "").strip().lower()
+        if not pk:
+            return None
+        if pk in self._origin_location_cache:
+            return self._origin_location_cache[pk]
+        location: Optional[Tuple[float, float]] = None
+        try:
+            rows = self.db.execute_query(
+                """
+                SELECT latitude, longitude
+                FROM complete_contact_tracking
+                WHERE public_key = ?
+                LIMIT 1
+                """,
+                (pk,),
+            )
+            if rows:
+                lat = rows[0].get("latitude")
+                lon = rows[0].get("longitude")
+                if lat not in (None, 0, 0.0) and lon not in (None, 0, 0.0):
+                    location = (float(lat), float(lon))
+        except Exception:
+            location = None
+        self._origin_location_cache[pk] = location
+        return location
+
+    def _is_contact_fresh(self, public_key: str) -> bool:
+        pk = (public_key or "").strip().lower()
+        if not pk:
+            return False
+        try:
+            rows = self.db.execute_query(
+                """
+                SELECT COALESCE(last_advert_timestamp, last_heard) AS last_seen
+                FROM complete_contact_tracking
+                WHERE public_key = ?
+                LIMIT 1
+                """,
+                (pk,),
+            )
+            if not rows:
+                return False
+            last_seen = rows[0].get("last_seen")
+            if not last_seen:
+                return False
+            if isinstance(last_seen, str):
+                dt = datetime.fromisoformat(last_seen.replace("Z", "+00:00"))
+            else:
+                dt = last_seen
+            if getattr(dt, "tzinfo", None):
+                age_hours = max(0.0, (datetime.now(dt.tzinfo) - dt).total_seconds() / 3600.0)
+            else:
+                age_hours = max(0.0, (datetime.now() - dt).total_seconds() / 3600.0)
+            return age_hours <= float(self.advert_anchor_freshness_hours)
+        except Exception:
+            return False
+
+    def _origin_emission_adjustment(
+        self,
+        state: Dict[str, Any],
+        node_index: int,
+        path_length: int,
+        resolution_context: Optional[Dict[str, Any]],
+    ) -> float:
+        if node_index != 0 or not resolution_context:
+            return 0.0
+        origin_pk = (resolution_context.get("origin_public_key") or "").lower()
+        if not origin_pk or state.get("is_ghost"):
+            return 0.0
+        state_pk = (state.get("public_key") or "").lower()
+        if not state_pk:
+            return 0.0
+        raw = 0.0
+        if state_pk == origin_pk:
+            raw += 1.0
+        elif origin_pk.startswith(state_pk) or state_pk.startswith(origin_pk):
+            raw += 0.7
+        else:
+            raw -= 0.25
+        return self._bounded_anchor_adjustment(raw)
+
+    def _origin_transition_adjustment(
+        self,
+        prev_state: Dict[str, Any],
+        cur_state: Dict[str, Any],
+        prev_node: str,
+        cur_node: str,
+        transition_index: Optional[int],
+        path_length: Optional[int],
+        resolution_context: Optional[Dict[str, Any]],
+    ) -> float:
+        if not resolution_context or transition_index != 0:
+            return 0.0
+        if prev_state.get("is_ghost") or cur_state.get("is_ghost"):
+            return 0.0
+        origin_pk = (resolution_context.get("origin_public_key") or "").lower()
+        if not origin_pk:
+            return 0.0
+        prev_pk = (prev_state.get("public_key") or "").lower()
+        cur_pk = (cur_state.get("public_key") or "").lower()
+        prev_prefix = (prev_pk or prev_node or "").lower()[: self.prefix_hex_chars]
+        cur_prefix = (cur_pk or cur_node or "").lower()[: self.prefix_hex_chars]
+        if not prev_prefix or not cur_prefix:
+            return 0.0
+
+        raw = 0.0
+        if prev_pk == origin_pk:
+            raw += 0.8
+        elif prev_pk and not origin_pk.startswith(prev_pk):
+            raw -= 0.2
+
+        mesh_graph = getattr(self.bot, "mesh_graph", None)
+        if mesh_graph:
+            edge = mesh_graph.get_edge(prev_prefix, cur_prefix)
+            if edge:
+                edge_from = (edge.get("from_public_key") or "").lower()
+                edge_to = (edge.get("to_public_key") or "").lower()
+                if edge_from:
+                    raw += 0.6 if edge_from == origin_pk else -0.2
+                if edge_to and cur_pk:
+                    raw += 0.2 if edge_to == cur_pk else -0.05
+
+        origin_loc = resolution_context.get("origin_location")
+        cur_lat = cur_state.get("latitude")
+        cur_lon = cur_state.get("longitude")
+        if origin_loc and cur_lat not in (None, 0, 0.0) and cur_lon not in (None, 0, 0.0):
+            try:
+                km = self._haversine_km(origin_loc[0], origin_loc[1], float(cur_lat), float(cur_lon))
+                if km <= 200.0:
+                    raw += 0.15
+                elif km > 800.0:
+                    raw -= 0.12
+            except Exception:
+                pass
+
+        return self._bounded_anchor_adjustment(raw)
+
+    def _bounded_anchor_adjustment(self, raw_score: float) -> float:
+        if raw_score == 0.0:
+            return 0.0
+        weighted = float(raw_score) * self.advert_anchor_weight
+        capped = max(-self.advert_anchor_max_adjustment, min(self.advert_anchor_max_adjustment, weighted))
+        return capped
+
+    def _consume_last_anchor_debug(self) -> Dict[str, Any]:
+        debug = dict(self._last_anchor_debug or {})
+        self._last_anchor_debug = {"applied": False, "adjustment_total": 0.0}
+        return {
+            "applied": bool(debug.get("applied")),
+            "adjustment_total": float(debug.get("adjustment_total") or 0.0),
+        }
+
+    @staticmethod
+    def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        radius_km = 6371.0
+        d_lat = math.radians(lat2 - lat1)
+        d_lon = math.radians(lon2 - lon1)
+        a = (
+            math.sin(d_lat / 2) ** 2
+            + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(d_lon / 2) ** 2
+        )
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(max(0.0, 1 - a)))
+        return radius_km * c
+
+    def _compute_anchor_diagnostics(self, rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+        total_rows = 0
+        anchored_rows = 0
+        anchored_agree = 0
+        anchored_ghost = 0
+        unanchored_rows = 0
+        unanchored_agree = 0
+        unanchored_ghost = 0
+        prior_applied_count = 0
+        prior_adjustment_sum = 0.0
+
+        for row in rows:
+            total_rows += 1
+            method = (row.get("method") or "").lower()
+            agreement = int(row.get("agreement") or 0)
+            payload = {}
+            try:
+                payload = json.loads(row.get("resolved_path_json") or "{}")
+            except (TypeError, ValueError, json.JSONDecodeError):
+                payload = {}
+            origin_packet_type = (payload.get("origin_packet_type") or "").lower()
+            origin_public_key = (payload.get("origin_public_key") or "").lower()
+            is_anchored = origin_packet_type == "advert" and bool(origin_public_key)
+            prior_applied = bool(payload.get("anchor_prior_applied"))
+            prior_adjust = float(payload.get("anchor_prior_adjustment") or 0.0)
+
+            if prior_applied:
+                prior_applied_count += 1
+                prior_adjustment_sum += prior_adjust
+
+            if is_anchored:
+                anchored_rows += 1
+                anchored_agree += agreement
+                if method == "topology_viterbi_ghost":
+                    anchored_ghost += 1
+            else:
+                unanchored_rows += 1
+                unanchored_agree += agreement
+                if method == "topology_viterbi_ghost":
+                    unanchored_ghost += 1
+
+        anchored_agreement_rate = (anchored_agree / anchored_rows) if anchored_rows else 0.0
+        unanchored_agreement_rate = (unanchored_agree / unanchored_rows) if unanchored_rows else 0.0
+        anchored_ghost_rate = (anchored_ghost / anchored_rows) if anchored_rows else 0.0
+        unanchored_ghost_rate = (unanchored_ghost / unanchored_rows) if unanchored_rows else 0.0
+
+        return {
+            "total_rows": total_rows,
+            "anchored_rows": anchored_rows,
+            "unanchored_rows": unanchored_rows,
+            "anchor_prior_applied_count": prior_applied_count,
+            "average_anchor_adjustment": (prior_adjustment_sum / prior_applied_count) if prior_applied_count else 0.0,
+            "anchored_agreement_rate": anchored_agreement_rate,
+            "unanchored_agreement_rate": unanchored_agreement_rate,
+            "agreement_delta_anchored_vs_unanchored": anchored_agreement_rate - unanchored_agreement_rate,
+            "anchored_ghost_rate": anchored_ghost_rate,
+            "unanchored_ghost_rate": unanchored_ghost_rate,
+            "ghost_rate_delta_anchored_vs_unanchored": anchored_ghost_rate - unanchored_ghost_rate,
+        }
 
     def _recency_score(self, state: Dict[str, Any]) -> float:
         recent = state.get("last_advert_timestamp") or state.get("last_heard")

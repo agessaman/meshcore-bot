@@ -126,12 +126,14 @@ def test_topology_validation_api_data_flow(tmp_path, monkeypatch):
     shadow_json = shadow_resp.get_json()
     assert "comparisons" in shadow_json
     assert len(shadow_json["comparisons"]) >= 1
+    assert "anchor_diagnostics" in shadow_json
 
     metrics_resp = client.get("/api/mesh/topology-metrics?days=7")
     assert metrics_resp.status_code == 200
     metrics_json = metrics_resp.get_json()
     assert "metrics" in metrics_json
     assert len(metrics_json["metrics"]) >= 1
+    assert "anchor_diagnostics" in metrics_json
 
     ghost_resp = client.get("/api/mesh/topology-ghosts?limit=10")
     assert ghost_resp.status_code == 200
@@ -314,6 +316,7 @@ def test_topology_validation_has_backfill_controls_in_shadow(tmp_path, monkeypat
     resp = shadow_client.get("/topology-validation")
     assert resp.status_code == 200
     assert b"backfill-start-btn" in resp.data
+    assert b"backfill-reset-btn" in resp.data
     assert b"backfill-days" in resp.data
     assert b"backfill-limit" in resp.data
 
@@ -381,3 +384,102 @@ def test_topology_backfill_api_rejects_concurrent_start(tmp_path, monkeypatch):
     assert resp.status_code == 409
     payload = resp.get_json()
     assert "already running" in payload["error"]
+
+
+@pytest.mark.unit
+def test_topology_backfill_reset_deletes_only_backfill_and_rebuilds_metrics(tmp_path, monkeypatch):
+    viewer = _build_viewer(tmp_path, monkeypatch, "shadow")
+    client = viewer.app.test_client()
+
+    # Backfill-derived comparison row (should be removed).
+    viewer.db_manager.execute_update(
+        """
+        INSERT INTO topology_inference_shadow
+        (path_hex, path_nodes_json, resolved_path_json, method, model_confidence, legacy_method, legacy_confidence, agreement, packet_hash, bytes_per_hop, backfill_key)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "017e86",
+            '["01","7e","86"]',
+            '{"model_public_key":"7e"}',
+            "topology_viterbi",
+            0.80,
+            "legacy_single",
+            1.00,
+            1,
+            "pkt-bf",
+            1,
+            "obs_replay:pkt-bf:017e86:1",
+        ),
+    )
+    # Live comparison row (should remain).
+    viewer.db_manager.execute_update(
+        """
+        INSERT INTO topology_inference_shadow
+        (path_hex, path_nodes_json, resolved_path_json, method, model_confidence, legacy_method, legacy_confidence, agreement, packet_hash, bytes_per_hop, backfill_key)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "017e86",
+            '["01","7e","86"]',
+            '{"model_public_key":"7e"}',
+            "topology_viterbi",
+            0.62,
+            "graph",
+            0.71,
+            0,
+            "pkt-live",
+            1,
+            None,
+        ),
+    )
+    # Existing stale metrics (should be rebuilt).
+    viewer.db_manager.execute_update(
+        """
+        INSERT INTO topology_model_metrics
+        (metric_date, total_comparisons, agreement_count, disagreement_count,
+         non_collision_comparisons, non_collision_agreement_count, avg_legacy_confidence, avg_model_confidence, metadata_json)
+        VALUES (date('now', '-1 day'), 999, 999, 0, 999, 999, 0.99, 0.99, '{}')
+        """,
+        (),
+    )
+
+    resp = client.post("/api/mesh/topology-backfill/reset", json={})
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert payload["ok"] is True
+    summary = payload["summary"]
+    assert summary["deleted_rows"] == 1
+    assert summary["remaining_comparisons"] == 1
+    assert summary["metrics_rows_rebuilt"] >= 1
+
+    # Verify backfill rows removed, live row preserved.
+    rows_backfill = viewer.db_manager.execute_query(
+        "SELECT COUNT(*) AS n FROM topology_inference_shadow WHERE backfill_key IS NOT NULL"
+    )
+    rows_live = viewer.db_manager.execute_query(
+        "SELECT COUNT(*) AS n FROM topology_inference_shadow WHERE backfill_key IS NULL AND method != 'shadow_ingest'"
+    )
+    assert rows_backfill[0]["n"] == 0
+    assert rows_live[0]["n"] == 1
+
+    # Metrics rebuilt from remaining rows.
+    metrics = viewer.db_manager.execute_query(
+        "SELECT total_comparisons, agreement_count, disagreement_count FROM topology_model_metrics"
+    )
+    assert metrics
+    assert metrics[0]["total_comparisons"] == 1
+    assert metrics[0]["agreement_count"] == 0
+    assert metrics[0]["disagreement_count"] == 1
+
+
+@pytest.mark.unit
+def test_topology_backfill_reset_rejects_while_running(tmp_path, monkeypatch):
+    viewer = _build_viewer(tmp_path, monkeypatch, "shadow")
+    client = viewer.app.test_client()
+
+    viewer._update_topology_backfill_state({"status": "running", "job_id": "running-job"})
+    resp = client.post("/api/mesh/topology-backfill/reset", json={})
+    assert resp.status_code == 409
+    payload = resp.get_json()
+    assert "running" in payload["error"].lower()

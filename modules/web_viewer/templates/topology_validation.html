@@ -202,6 +202,12 @@
                 <button id="backfill-start-btn" class="btn btn-outline-warning w-100" onclick="startTopologyBackfill()">
                     <i class="fas fa-play"></i> Start Backfill
                 </button>
+                <button id="backfill-reset-btn" class="btn btn-outline-danger w-100 mt-2" onclick="resetTopologyBackfillComparisons()">
+                    <i class="fas fa-trash-alt"></i> Remove Backfill Comparisons
+                </button>
+                <div class="topology-muted-note mt-1">
+                    Removes only backfill-derived comparison/metric data. Source telemetry tables are not modified.
+                </div>
                 <div class="topology-muted-note mt-2" id="backfill-status-line">Backfill status: idle</div>
             </div>
         </div>
@@ -441,6 +447,7 @@ async function reloadValidationData() {
 function updateBackfillStatusLine(state = {}) {
     const line = document.getElementById('backfill-status-line');
     const button = document.getElementById('backfill-start-btn');
+    const resetButton = document.getElementById('backfill-reset-btn');
     if (!line || !button) return;
     const status = state.status || 'idle';
     const processed = toNum(state.processed);
@@ -448,6 +455,7 @@ function updateBackfillStatusLine(state = {}) {
     const written = toNum(state.comparisons_written);
     const errors = toNum(state.errors);
     button.disabled = status === 'running';
+    if (resetButton) resetButton.disabled = status === 'running';
     if (status === 'running') {
         line.textContent = `Backfill status: running (${processed.toLocaleString()}/${total.toLocaleString()} processed, ${written.toLocaleString()} comparisons, ${errors.toLocaleString()} errors)`;
     } else if (status === 'completed') {
@@ -456,6 +464,35 @@ function updateBackfillStatusLine(state = {}) {
         line.textContent = `Backfill status: failed (${state.last_error || 'unknown error'})`;
     } else {
         line.textContent = 'Backfill status: idle';
+    }
+}
+
+async function resetTopologyBackfillComparisons() {
+    const confirmation = window.confirm(
+        'Remove backfill-derived topology comparisons and rebuild metrics from remaining rows?\n\nSource telemetry (observed_paths, complete_contact_tracking) will not be changed.'
+    );
+    if (!confirmation) return;
+
+    try {
+        const resp = await fetch('/api/mesh/topology-backfill/reset', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        const json = await resp.json();
+        const line = document.getElementById('backfill-status-line');
+        if (!resp.ok) {
+            if (line) line.textContent = `Backfill reset: ${json.error || 'failed'}`;
+            return;
+        }
+        const summary = (json && json.summary) || {};
+        if (line) {
+            line.textContent = `Backfill reset: removed ${toNum(summary.deleted_rows).toLocaleString()} backfill rows; rebuilt ${toNum(summary.metrics_rows_rebuilt).toLocaleString()} metric day rows.`;
+        }
+        await reloadValidationData();
+        await pollTopologyBackfillStatus();
+    } catch (error) {
+        console.error('Failed to reset topology backfill comparisons:', error);
     }
 }
 
