@@ -23,16 +23,16 @@ _warned_unavailable = False
 _unidecode_available = False
 
 try:
-    from better_profanity import profanity  # type: ignore
+    from better_profanity import profanity
     _profanity_available = True
 except ImportError:
-    profanity = None  # type: ignore
+    profanity = None
 
 try:
-    from unidecode import unidecode  # type: ignore
+    from unidecode import unidecode
     _unidecode_available = True
 except ImportError:
-    unidecode = None  # type: ignore
+    unidecode = None
 
 
 def _has_hate_symbols(text: str) -> bool:

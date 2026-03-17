@@ -23,7 +23,7 @@ try:
     PYNACL_AVAILABLE = True
 except ImportError:
     PYNACL_AVAILABLE = False
-    nacl = None
+    nacl = None  # type: ignore[assignment]
 
 # Fallback to cryptography library
 try:
@@ -33,7 +33,7 @@ try:
     CRYPTOGRAPHY_AVAILABLE = True
 except ImportError:
     CRYPTOGRAPHY_AVAILABLE = False
-    ed25519 = None
+    ed25519 = None  # type: ignore[assignment]
 
 
 def hex_to_bytes(hex_str: str) -> bytes:

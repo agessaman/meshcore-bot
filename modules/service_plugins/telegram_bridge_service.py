@@ -20,14 +20,14 @@ try:
     import aiohttp
     AIOHTTP_AVAILABLE = True
 except ImportError:
-    aiohttp = None
+    aiohttp = None  # type: ignore[assignment]
     AIOHTTP_AVAILABLE = False
 
 try:
     import requests
     REQUESTS_AVAILABLE = True
 except ImportError:
-    requests = None
+    requests = None  # type: ignore[assignment]
     REQUESTS_AVAILABLE = False
 
 import contextlib
@@ -409,6 +409,7 @@ class TelegramBridgeService(BaseServicePlugin):
         queued_msg: Optional[QueuedMessage] = None,
     ) -> bool:
         try:
+            assert self.http_session is not None
             async with self.http_session.post(
                 url, json=payload, timeout=aiohttp.ClientTimeout(total=10)
             ) as response:

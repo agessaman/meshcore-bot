@@ -41,7 +41,7 @@ class RollCommand(BaseCommand):
         super().__init__(bot)
         self.roll_enabled = self.get_config_value('Roll_Command', 'enabled', fallback=True, value_type='bool')
 
-    def can_execute(self, message: MeshMessage) -> bool:
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Check if this command can be executed with the given message.
 
         Args:
@@ -161,7 +161,7 @@ class RollCommand(BaseCommand):
 
         # Default to 1-100 if no specification
         if content.lower() == "roll":
-            max_num = 100
+            max_num: Optional[int] = 100
         else:
             # Parse roll specification
             roll_part = content[5:].strip()  # Get everything after "roll "

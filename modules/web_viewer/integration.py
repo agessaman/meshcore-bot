@@ -5,6 +5,7 @@ Provides integration between the main bot and the web viewer
 """
 
 import os
+import queue
 import re
 import subprocess
 import sys
@@ -24,16 +25,25 @@ class BotIntegration:
     CIRCUIT_BREAKER_THRESHOLD = 3
     CIRCUIT_BREAKER_COOLDOWN_SEC = 60
 
+    # How often (seconds) the drain thread flushes the write queue
+    DRAIN_INTERVAL = 0.5
+
     def __init__(self, bot):
         self.bot = bot
         self.circuit_breaker_open = False
         self.circuit_breaker_failures = 0
         self.circuit_breaker_last_failure_time = 0.0
         self.is_shutting_down = False
+        # Batched write queue: avoids a per-insert sqlite3.connect() round-trip
+        self._write_queue: queue.Queue = queue.Queue()
+        self._drain_stop = threading.Event()
+        self._drain_thread: Optional[threading.Thread] = None
         # Initialize HTTP session with connection pooling for efficient reuse
         self._init_http_session()
         # Initialize the packet_stream table
         self._init_packet_stream_table()
+        # Start background drain thread after table is confirmed to exist
+        self._start_drain_thread()
 
     def _init_http_session(self):
         """Initialize a requests.Session with connection pooling and keep-alive"""
@@ -169,31 +179,61 @@ class BotIntegration:
             # Don't raise - allow bot to continue even if table init fails
             # The error will be caught when trying to insert data
 
-    def _insert_packet_stream_row(self, data_json: str, row_type: str, log_prefix: str = "packet data"):
-        """Insert one row into packet_stream. Retries on database is locked. Logs and returns on failure."""
+    def _start_drain_thread(self) -> None:
+        """Start the background thread that flushes the write queue every DRAIN_INTERVAL seconds."""
+        self._drain_thread = threading.Thread(
+            target=self._drain_loop,
+            name="packet-stream-drain",
+            daemon=True,
+        )
+        self._drain_thread.start()
+
+    def _drain_loop(self) -> None:
+        """Background loop: flush the write queue every DRAIN_INTERVAL seconds."""
+        while not self._drain_stop.is_set():
+            self._drain_stop.wait(timeout=self.DRAIN_INTERVAL)
+            self._flush_write_queue()
+
+    def _flush_write_queue(self) -> None:
+        """Drain all queued rows and insert them in a single batched transaction."""
         import sqlite3
-        import time
+        if self._write_queue.empty():
+            return
+        rows = []
+        while not self._write_queue.empty():
+            try:
+                rows.append(self._write_queue.get_nowait())
+            except queue.Empty:
+                break
+        if not rows:
+            return
         db_path = self._get_web_viewer_db_path()
         max_retries = 3
         for attempt in range(max_retries):
             try:
                 with closing(sqlite3.connect(str(db_path), timeout=60.0)) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute('''
-                        INSERT INTO packet_stream (timestamp, data, type)
-                        VALUES (?, ?, ?)
-                    ''', (time.time(), data_json, row_type))
+                    conn.executemany(
+                        'INSERT INTO packet_stream (timestamp, data, type) VALUES (?, ?, ?)',
+                        rows,
+                    )
                     conn.commit()
-                    return
+                return
             except sqlite3.OperationalError as e:
                 if "locked" in str(e).lower() and attempt < max_retries - 1:
                     time.sleep(0.15 * (attempt + 1))
                     continue
-                self.bot.logger.warning(f"Error storing {log_prefix} for web viewer: {e}")
+                self.bot.logger.warning(f"Error flushing packet_stream queue ({len(rows)} rows): {e}")
                 return
             except Exception as e:
-                self.bot.logger.warning(f"Error storing {log_prefix} for web viewer: {e}")
+                self.bot.logger.warning(f"Error flushing packet_stream queue ({len(rows)} rows): {e}")
                 return
+
+    def _insert_packet_stream_row(self, data_json: str, row_type: str, log_prefix: str = "packet data"):
+        """Queue one row for batched insertion into packet_stream by the drain thread."""
+        try:
+            self._write_queue.put_nowait((time.time(), data_json, row_type))
+        except Exception as e:
+            self.bot.logger.warning(f"Error queuing {log_prefix} for web viewer: {e}")
 
     def capture_full_packet_data(self, packet_data):
         """Capture full packet data and store in database for web viewer"""
@@ -423,8 +463,13 @@ class BotIntegration:
             self.bot.logger.debug(f"Error sending mesh node update to web viewer: {e}")
 
     def shutdown(self):
-        """Mark as shutting down and close HTTP session"""
+        """Mark as shutting down, stop drain thread, flush remaining rows, and close HTTP session."""
         self.is_shutting_down = True
+        # Stop drain thread and do a final flush of any queued rows
+        self._drain_stop.set()
+        if self._drain_thread and self._drain_thread.is_alive():
+            self._drain_thread.join(timeout=5.0)
+        self._flush_write_queue()
         # Close HTTP session to clean up connections
         if hasattr(self, 'http_session') and self.http_session:
             with suppress(Exception):

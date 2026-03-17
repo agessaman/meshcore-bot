@@ -480,10 +480,12 @@
             }
             
             initializeSocket() {
+                // Use io() without forceNew so that realtime.html's io() shares
+                // this same manager/socket.  forceNew created a second independent
+                // connection that interfered with the realtime-page socket.
                 this.socket = io({
                     transports: ['websocket', 'polling'],
-                    timeout: 5000,
-                    forceNew: true
+                    timeout: 5000
                 });
                 
                 this.setupSocketEvents();

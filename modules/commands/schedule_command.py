@@ -43,7 +43,7 @@ class ScheduleCommand(BaseCommand):
     # BaseCommand interface
     # ------------------------------------------------------------------
 
-    def can_execute(self, message: MeshMessage) -> bool:
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         if not self._enabled:
             return False
         if self._dm_only and not message.is_dm:

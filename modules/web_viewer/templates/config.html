@@ -204,7 +204,8 @@
                                 <label class="form-label" for="db-backup-dir">Backup directory</label>
                                 <input type="text" class="form-control" id="db-backup-dir"
                                        placeholder="/data/backups">
-                                <div class="form-text">Absolute path. The directory will be created if it does not exist.</div>
+                                <div class="form-text">Absolute path. The directory must already exist.</div>
+                                <div id="db-backup-dir-error" class="text-danger small mt-1" style="display:none"></div>
                             </div>
                         </div>
                         <div class="row g-3 mb-4">
@@ -221,6 +222,14 @@
                         <div class="d-flex gap-2 align-items-center">
                             <button type="button" class="btn btn-primary" id="save-db-backup-btn">
                                 <i class="fas fa-save me-1"></i>Save
+                            </button>
+                            <button type="button" class="btn btn-secondary" id="backup-now-btn">
+                                <i class="fas fa-database me-1"></i>Backup Now
+                            </button>
+                            <button type="button" class="btn btn-outline-warning" id="restore-btn"
+                                    data-bs-toggle="modal" data-bs-target="#restoreModal"
+                                    onclick="window.restoreManager && window.restoreManager.load()">
+                                <i class="fas fa-undo me-1"></i>Restore
                             </button>
                             <span id="db-backup-status" class="ms-2 small" style="display:none;"></span>
                         </div>
@@ -255,6 +264,131 @@
         </div>
     </div>
 </div>
+
+<!-- Database Operations Card -->
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-trash-alt me-2"></i>Database Operations</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        Permanently delete old records from time-series tables
+                        (<code>packet_stream</code>, <code>message_stats</code>,
+                        <code>complete_contact_tracking</code>, <code>purging_log</code>,
+                        <code>mesh_connections</code>, <code>daily_stats</code>).
+                        This cannot be undone — back up first if needed.
+                    </p>
+                    <div class="row g-3 align-items-end">
+                        <div class="col-auto">
+                            <label class="form-label" for="purge-keep-days">Keep data for</label>
+                            <select class="form-select" id="purge-keep-days" style="width:auto">
+                                <option value="1">1 day</option>
+                                <option value="7">7 days</option>
+                                <option value="14">14 days</option>
+                                <option value="30" selected>30 days</option>
+                                <option value="60">60 days</option>
+                                <option value="90">90 days</option>
+                            </select>
+                        </div>
+                        <div class="col-auto">
+                            <button type="button" class="btn btn-danger"
+                                    data-bs-toggle="modal" data-bs-target="#purgeModal"
+                                    onclick="window.purgeManager && window.purgeManager.prepareConfirm()">
+                                <i class="fas fa-trash-alt me-1"></i>Purge Now
+                            </button>
+                        </div>
+                        <div class="col-auto">
+                            <span id="purge-status" class="small" style="display:none"></span>
+                        </div>
+                    </div>
+                    <div id="purge-results" class="mt-3" style="display:none">
+                        <h6 class="text-muted">Rows deleted:</h6>
+                        <table class="table table-sm table-bordered" style="max-width:400px">
+                            <thead><tr><th>Table</th><th>Deleted</th></tr></thead>
+                            <tbody id="purge-results-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Purge Confirmation Modal -->
+<div class="modal fade" id="purgeModal" tabindex="-1" aria-labelledby="purgeModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="purgeModalLabel">
+                    <i class="fas fa-exclamation-triangle me-2"></i>Confirm Purge
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>You are about to permanently delete records older than
+                   <strong id="purge-confirm-days"></strong> from all time-series tables.</p>
+                <p class="text-danger"><strong>This cannot be undone.</strong>
+                   Make sure you have a backup if needed.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="purge-confirm-btn">
+                    <i class="fas fa-trash-alt me-1"></i>Delete Records
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Restore Modal -->
+<div class="modal fade" id="restoreModal" tabindex="-1" aria-labelledby="restoreModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="restoreModalLabel">
+                    <i class="fas fa-undo me-2"></i>Restore Database
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Warning:</strong> Restoring will overwrite the active database.
+                    The bot must be restarted after restore for changes to take effect.
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="restore-db-path">Backup file path</label>
+                    <input type="text" class="form-control" id="restore-db-path"
+                           placeholder="/path/to/backup.db">
+                </div>
+                <div id="restore-backup-list-section">
+                    <p class="text-muted small mb-1">Available backups from configured backup directory:</p>
+                    <div id="restore-backup-loading" class="text-center py-2" style="display:none">
+                        <span class="spinner-border spinner-border-sm"></span>
+                    </div>
+                    <div id="restore-backup-empty" class="text-muted small" style="display:none">
+                        No backups found in backup directory.
+                    </div>
+                    <table class="table table-sm table-hover mb-0" id="restore-backup-table" style="display:none">
+                        <thead><tr><th>File</th><th>Size</th><th>Date</th><th></th></tr></thead>
+                        <tbody id="restore-backup-tbody"></tbody>
+                    </table>
+                </div>
+                <div id="restore-status" class="mt-3 small" style="display:none"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-warning" id="restore-confirm-btn">
+                    <i class="fas fa-undo me-1"></i>Restore
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -476,6 +610,7 @@ class DbBackupManager {
         this.timeEl          = document.getElementById('db-backup-time');
         this.retentionEl     = document.getElementById('db-backup-retention-count');
         this.dirEl           = document.getElementById('db-backup-dir');
+        this.dirErrorEl      = document.getElementById('db-backup-dir-error');
         this.attachLogEl     = document.getElementById('email-attach-log');
         this.saveBtn         = document.getElementById('save-db-backup-btn');
         this.statusEl        = document.getElementById('db-backup-status');
@@ -497,12 +632,39 @@ class DbBackupManager {
             this.show('Failed to load: ' + err.message, 'danger');
         }
         this.saveBtn.addEventListener('click', () => this.save());
+        const backupNowBtn = document.getElementById('backup-now-btn');
+        if (backupNowBtn) backupNowBtn.addEventListener('click', () => this.backupNow());
+    }
+
+    async backupNow() {
+        const btn = document.getElementById('backup-now-btn');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Running…';
+        }
+        this.hide();
+        try {
+            const resp = await fetch('/api/maintenance/backup_now', { method: 'POST' });
+            const data = await resp.json();
+            if (!resp.ok || !data.success) throw new Error(data.error || 'Backup failed');
+            const pathInfo = data.path ? ` → ${data.path}` : '';
+            this.show(`Backup complete${pathInfo}`, 'success');
+        } catch (err) {
+            this.show('Backup failed: ' + err.message, 'danger');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-database me-1"></i>Backup Now';
+            }
+        }
     }
 
     async save() {
         this.saveBtn.disabled = true;
         this.saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Saving…';
         this.hide();
+        if (this.dirErrorEl) this.dirErrorEl.style.display = 'none';
+        if (this.dirEl) this.dirEl.classList.remove('is-invalid');
         try {
             const resp = await fetch('/api/config/maintenance', {
                 method: 'POST',
@@ -517,7 +679,16 @@ class DbBackupManager {
                 }),
             });
             const data = await resp.json();
-            if (!resp.ok) throw new Error(data.error || 'Save failed');
+            if (!resp.ok) {
+                if (data.error && data.error.includes('Backup directory')) {
+                    if (this.dirEl) this.dirEl.classList.add('is-invalid');
+                    if (this.dirErrorEl) {
+                        this.dirErrorEl.textContent = data.error;
+                        this.dirErrorEl.style.display = '';
+                    }
+                }
+                throw new Error(data.error || 'Save failed');
+            }
             this.show('Settings saved.', 'success');
         } catch (err) {
             this.show('Save failed: ' + err.message, 'danger');
@@ -576,10 +747,153 @@ class MaintenanceStatusManager {
     }
 }
 
+class RestoreManager {
+    constructor() {
+        this.pathEl     = document.getElementById('restore-db-path');
+        this.confirmBtn = document.getElementById('restore-confirm-btn');
+        this.statusEl   = document.getElementById('restore-status');
+        if (this.confirmBtn) this.confirmBtn.addEventListener('click', () => this.restore());
+        window.restoreManager = this;
+    }
+
+    async load() {
+        const loading = document.getElementById('restore-backup-loading');
+        const empty   = document.getElementById('restore-backup-empty');
+        const table   = document.getElementById('restore-backup-table');
+        const tbody   = document.getElementById('restore-backup-tbody');
+        if (!tbody) return;
+        loading.style.display = '';
+        empty.style.display   = 'none';
+        table.style.display   = 'none';
+        tbody.innerHTML       = '';
+        try {
+            const resp = await fetch('/api/maintenance/list_backups');
+            const data = await resp.json();
+            loading.style.display = 'none';
+            if (!data.backups || data.backups.length === 0) {
+                empty.style.display = '';
+                return;
+            }
+            table.style.display = '';
+            for (const b of data.backups) {
+                const dt = new Date(b.mtime * 1000).toLocaleString();
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><small>${b.name}</small></td>
+                    <td><small>${b.size_mb} MB</small></td>
+                    <td><small>${dt}</small></td>
+                    <td><button class="btn btn-xs btn-outline-secondary btn-sm py-0"
+                        onclick="document.getElementById('restore-db-path').value='${b.path}'">
+                        Use</button></td>`;
+                tbody.appendChild(tr);
+            }
+        } catch (e) {
+            loading.style.display = 'none';
+            empty.style.display   = '';
+            empty.textContent     = 'Failed to load backup list.';
+        }
+    }
+
+    async restore() {
+        const path = this.pathEl ? this.pathEl.value.trim() : '';
+        if (!path) { this.showStatus('Please enter a backup file path.', 'danger'); return; }
+        if (!confirm(`Restore database from:\n${path}\n\nThis will overwrite the active database. Continue?`)) return;
+        this.confirmBtn.disabled = true;
+        this.confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Restoring…';
+        try {
+            const resp = await fetch('/api/maintenance/restore', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ db_file: path }),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Restore failed');
+            this.showStatus(`Restored successfully. ${data.warning || ''}`, 'success');
+        } catch (err) {
+            this.showStatus('Restore failed: ' + err.message, 'danger');
+        } finally {
+            this.confirmBtn.disabled = false;
+            this.confirmBtn.innerHTML = '<i class="fas fa-undo me-1"></i>Restore';
+        }
+    }
+
+    showStatus(msg, type) {
+        if (!this.statusEl) return;
+        this.statusEl.textContent = msg;
+        this.statusEl.className = `mt-3 small text-${type}`;
+        this.statusEl.style.display = '';
+    }
+}
+
+class PurgeManager {
+    constructor() {
+        this.keepDaysEl   = document.getElementById('purge-keep-days');
+        this.confirmDaysEl= document.getElementById('purge-confirm-days');
+        this.confirmBtn   = document.getElementById('purge-confirm-btn');
+        this.statusEl     = document.getElementById('purge-status');
+        this.resultsEl    = document.getElementById('purge-results');
+        this.resultsBody  = document.getElementById('purge-results-body');
+        if (this.confirmBtn) {
+            this.confirmBtn.addEventListener('click', () => this.purge());
+        }
+        window.purgeManager = this;
+    }
+
+    prepareConfirm() {
+        const days = this.keepDaysEl ? this.keepDaysEl.value : '30';
+        if (this.confirmDaysEl) {
+            this.confirmDaysEl.textContent = `${days} day${days === '1' ? '' : 's'}`;
+        }
+    }
+
+    showStatus(msg, type) {
+        if (!this.statusEl) return;
+        this.statusEl.textContent = msg;
+        this.statusEl.className = `small text-${type}`;
+        this.statusEl.style.display = 'inline';
+    }
+
+    async purge() {
+        if (this.confirmBtn) this.confirmBtn.disabled = true;
+        const days = this.keepDaysEl ? parseInt(this.keepDaysEl.value, 10) : 30;
+        const modal = bootstrap.Modal.getInstance(document.getElementById('purgeModal'));
+        if (modal) modal.hide();
+        this.showStatus('Purging…', 'secondary');
+        if (this.resultsEl) this.resultsEl.style.display = 'none';
+        try {
+            const resp = await fetch('/api/maintenance/purge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ keep_days: days }),
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                this.showStatus(`Error: ${data.error || resp.statusText}`, 'danger');
+                return;
+            }
+            const deleted = data.deleted || {};
+            const total = Object.values(deleted).reduce((s, v) => s + v, 0);
+            this.showStatus(`Done — ${total} row${total === 1 ? '' : 's'} deleted`, 'success');
+            if (this.resultsBody && Object.keys(deleted).length > 0) {
+                this.resultsBody.innerHTML = Object.entries(deleted)
+                    .map(([t, c]) => `<tr><td><code>${t}</code></td><td>${c}</td></tr>`)
+                    .join('');
+                if (this.resultsEl) this.resultsEl.style.display = 'block';
+            }
+        } catch (e) {
+            this.showStatus(`Error: ${e.message}`, 'danger');
+        } finally {
+            if (this.confirmBtn) this.confirmBtn.disabled = false;
+        }
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     new LogRotationManager();
     new DbBackupManager();
     new MaintenanceStatusManager();
+    new RestoreManager();
+    new PurgeManager();
 });
 </script>
 {% endblock %}

@@ -10,6 +10,7 @@ import time
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
+from collections.abc import Mapping
 from typing import Any, Optional
 
 # Import meshcore
@@ -20,7 +21,7 @@ try:
     import aiohttp
     AIOHTTP_AVAILABLE = True
 except ImportError:
-    aiohttp = None
+    aiohttp = None  # type: ignore[assignment]
     AIOHTTP_AVAILABLE = False
 
 # Fallback to requests for sync HTTP
@@ -28,7 +29,7 @@ try:
     import requests
     REQUESTS_AVAILABLE = True
 except ImportError:
-    requests = None
+    requests = None  # type: ignore[assignment]
     REQUESTS_AVAILABLE = False
 
 # Import base service
@@ -119,7 +120,7 @@ class DiscordBridgeService(BaseServicePlugin):
 
         # Message queue per webhook to handle rate limits and retries
         # Using list instead of deque for easier removal of arbitrary items
-        self.message_queues: dict[str, list] = {}
+        self.message_queues: dict[str, list[Any]] = {}
         self.max_retries = 5  # Maximum retry attempts per message
         self.retry_delay_base = 1.0  # Base delay in seconds for exponential backoff
         self.max_queue_age = 300  # Max age in seconds before dropping message (5 minutes)
@@ -290,7 +291,7 @@ class DiscordBridgeService(BaseServicePlugin):
 
         # Initialize message queues for each webhook
         for webhook_url in self.channel_webhooks.values():
-            self.message_queues[webhook_url] = deque()
+            self.message_queues[webhook_url] = []
             self.send_times[webhook_url] = deque()
 
         # Start background queue processor task
@@ -403,7 +404,7 @@ class DiscordBridgeService(BaseServicePlugin):
         except Exception as e:
             self.logger.error(f"Error handling mesh channel message: {e}", exc_info=True)
 
-    async def _queue_message(self, webhook_url: str, message: str, channel_name: str, sender_name: str = None) -> None:
+    async def _queue_message(self, webhook_url: str, message: str, channel_name: str, sender_name: Optional[str] = None) -> None:
         """Queue a message for posting to Discord webhook.
 
         Messages are queued and processed by a background task that handles
@@ -586,6 +587,7 @@ class DiscordBridgeService(BaseServicePlugin):
             bool: True if message was successfully posted, False otherwise.
         """
         try:
+            assert self.http_session is not None
             async with self.http_session.post(webhook_url, json=payload, timeout=aiohttp.ClientTimeout(total=10)) as response:
                 # Check response status
                 if response.status == 204:
@@ -677,7 +679,7 @@ class DiscordBridgeService(BaseServicePlugin):
             self.logger.error(f"Error posting to Discord webhook [{channel_name}]: {e}")
             return False
 
-    def _check_rate_limit_headers(self, headers: dict[str, str], webhook_url: str, channel_name: str) -> None:
+    def _check_rate_limit_headers(self, headers: Mapping[str, str], webhook_url: str, channel_name: str) -> None:
         """Check Discord rate limit headers and log warnings if approaching limit.
 
         Discord includes rate limit information in response headers:
@@ -700,20 +702,20 @@ class DiscordBridgeService(BaseServicePlugin):
             reset = headers_dict.get('X-RateLimit-Reset') or headers_dict.get('x-ratelimit-reset')
 
             if limit and remaining:
-                limit = int(limit)
-                remaining = int(remaining)
+                limit_int = int(limit)
+                remaining_int = int(remaining)
 
                 # Calculate percentage remaining
-                if limit > 0:
-                    percent_remaining = remaining / limit
+                if limit_int > 0:
+                    percent_remaining = remaining_int / limit_int
 
                     # Store rate limit info
                     if webhook_url not in self.rate_limit_info:
                         self.rate_limit_info[webhook_url] = {}
 
                     self.rate_limit_info[webhook_url].update({
-                        'limit': limit,
-                        'remaining': remaining,
+                        'limit': limit_int,
+                        'remaining': remaining_int,
                         'reset': reset,
                         'last_check': time.time()
                     })
@@ -723,14 +725,14 @@ class DiscordBridgeService(BaseServicePlugin):
                         reset_time = datetime.fromtimestamp(float(reset)) if reset else 'unknown'
                         self.logger.warning(
                             f"Discord rate limit warning [{channel_name}]: "
-                            f"{remaining}/{limit} requests remaining ({percent_remaining*100:.1f}%). "
+                            f"{remaining_int}/{limit_int} requests remaining ({percent_remaining*100:.1f}%). "
                             f"Resets at: {reset_time}"
                         )
                     else:
                         # Debug log current state
                         self.logger.debug(
                             f"Discord rate limit [{channel_name}]: "
-                            f"{remaining}/{limit} requests remaining ({percent_remaining*100:.1f}%)"
+                            f"{remaining_int}/{limit_int} requests remaining ({percent_remaining*100:.1f}%)"
                         )
 
         except (ValueError, TypeError, KeyError) as e:

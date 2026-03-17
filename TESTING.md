@@ -40,7 +40,7 @@ Test configuration lives in two files:
 | `testpaths` | `tests` |
 | `asyncio_mode` | `auto` — all async tests run automatically, no `@pytest.mark.asyncio` required on each |
 | `addopts` | `-v --tb=short --strict-markers --cov=modules --cov-report=term-missing` |
-| Registered markers | `unit`, `integration`, `slow` |
+| Registered markers | `unit`, `integration`, `slow`, `mqtt` |
 
 **`pyproject.toml`** — coverage settings (`[tool.coverage.*]`):
 
@@ -48,7 +48,7 @@ Test configuration lives in two files:
 |---------|-------|
 | `source` | `modules/` |
 | `omit` | `tests/`, `.venv/` |
-| `fail_under` | 20% (structural ceiling; `web_viewer/app.py` at 2% without Flask test client tests) |
+| `fail_under` | 35% (raised 2026-03-16; current coverage 36.72%; target 40%; hardware-dependent modules cap realistic ceiling at ~40–42%) |
 
 ---
 
@@ -252,6 +252,140 @@ Tests `modules.channel_manager` — `ChannelManager` pure logic.
 
 ---
 
+#### `test_channel_manager.py`
+Expanded coverage of `modules.channel_manager` — 47 tests.
+
+| Class | What it covers |
+|-------|---------------|
+| `TestGenerateHashtagKey` | Prefix normalisation, case-folding, output length, SHA-256 identity, distinct names |
+| `TestGetChannelName` | Cache hit, fallback label, missing field, channel-zero edge case |
+| `TestGetChannelNumber` | Index lookup, case-insensitive, not-found `None`, empty cache |
+| `TestGetChannelKey` | Returns hex, missing channel, missing key field |
+| `TestGetChannelInfo` | Full dict shape, missing channel fallback, info carries full cache entry |
+| `TestGetChannelByName` | Found, case-insensitive, not found, invalid cache, empty cache |
+| `TestGetConfiguredChannels` | Filters empty/whitespace names, invalid cache, all-blank, missing field |
+| `TestInvalidateCache` | Sets `_cache_valid = False`, does not clear data, idempotent |
+| `TestGetCachedChannels` | Sorted by index, empty cache, single-item |
+| `TestAddChannelValidation` | Not connected, meshcore falsy, negative index, index at/beyond max, custom channel missing key, invalid/short hex, wrong byte length, index-0 boundary |
+
+---
+
+#### `test_i18n.py`
+Tests `modules.i18n` — `Translator` class. All tests use `tmp_path`-based JSON translation files.
+
+| Class | What it covers |
+|-------|---------------|
+| `TestExtractBaseLanguage` | Simple/hyphen/underscore locale parsing |
+| `TestMergeTranslations` | Empty primary, primary override, recursive nested merge, flat-wins-over-nested |
+| `TestTranslatorWithRealFiles` | English fallback, missing key returns key, format kwargs, format failure, locale override chain (en→es→es-MX), available languages, get_value, reload, invalid JSON, non-string value, PermissionError in _load_file, fallback inner loop (nested key miss), format KeyError returns unformatted, get_value fallback break |
+
+---
+
+#### `test_announcements_command.py`
+Tests `modules.commands.announcements_command` — `AnnouncementsCommand`.
+
+| Class | What it covers |
+|-------|---------------|
+| `TestParseCommand` | No args, trigger-only, trigger+channel, trigger+override, all three |
+| `TestRecordTrigger` | Sets cooldown timestamp, fresh trigger not locked, just-sent locked, old trigger unlocked |
+| `TestExecute` | No trigger shows list, no configured triggers, list subcommand with/without triggers, unknown trigger, locked/cooldown/override, successful send, failed send, custom channel, exception returns False |
+
+---
+
+#### `test_aurora_command.py`
+Tests `modules.commands.aurora_command` — `AuroraCommand`.
+
+| Class | What it covers |
+|-------|---------------|
+| `TestProbIndicator` | 0/50/100 bar chars, all values 0–100 |
+| `TestFormatKpTime` | Empty/whitespace → dash, space-separated/ISO formats, invalid → dash |
+| `TestGetBotLocation` | Returns lat/lon from config, returns None when not configured |
+| `TestResolveLocation` | Coord string parse, invalid lat/lon, no-location uses bot, no-location no-bot returns error |
+| `TestAuroraCanExecute` | Enabled/disabled |
+| `TestResolveLocationExtended` | Companion location from DB, default lat/lon from config, ValueError returns error |
+| `TestAuroraExecute` | No location error, bot location success, KP G3-severe/G1-G2/unsettled, fetch exception, coords arg, error key variants, response truncated at max length |
+
+---
+
+#### `test_help_command.py`
+Tests `modules.commands.help_command` — `HelpCommand`.
+
+| Class | What it covers |
+|-------|---------------|
+| `TestFormatCommandsListToLength` | No max, zero max, empty, truncation, all-fit, suffix, single item, single exceeds max, negative max |
+| `TestIsCommandValidForChannel` | No message, channel allowed/not, no is_channel_allowed attr, trigger allowed/not, no trigger-check attr |
+| `TestGetSpecificHelp` | Known command, TypeError fallback, unknown command, alias, no get_help_text |
+| `TestCanExecute` | Enabled true/false |
+| `TestGetHelpText` | Returns string |
+| `TestGetGeneralHelp` | Returns string, includes commands.help key |
+| `TestGetAvailableCommandsListFiltered` | Channel filter excludes invalid, command not in keyword_mappings |
+| `TestFormatCommandsListSuffix` | Suffix fits within max, some fit |
+| `TestExecute` | Returns True |
+| `TestGetAvailableCommandsList` | Empty, with commands, max_length, message filter, stats table present, DB exception fallback |
+
+---
+
+#### `test_moon_command.py`
+Tests `modules.commands.moon_command` — `MoonCommand`.
+
+| Class | What it covers |
+|-------|---------------|
+| `TestTranslatePhaseName` | No translation, strips emoji, unknown phase, all 8 known phases |
+| `TestFormatMoonResponse` | Valid parsed, partial fallback, empty fallback, malformed fallback, with dates format, without full/new moon |
+| `TestMoonCommandEnabled` | can_execute enabled/disabled |
+| `TestGetHelpTextMoon` | Returns description |
+| `TestFormatMoonPhaseNoAt` | Phase without @: sign, exception falls back |
+| `TestTranslatePhaseNameFound` | Translation returned when not key |
+| `TestMoonExecute` | Success (mocked get_moon), error returns False |
+
+---
+
+#### `test_trace_command.py`
+Tests `modules.commands.trace_command` — `TraceCommand`.
+
+| Class | What it covers |
+|-------|---------------|
+| `TestExtractPathFromMessage` | No path, Direct, zero hops, single/multi hop, route type stripped, parenthesis stripped, invalid hex ignored |
+| `TestParsePathArg` | No arg, comma-separated, contiguous hex, invalid hex, odd length, tracer prefix |
+| `TestFormatTraceInline` | Basic inline, no SNR |
+| `TestFormatTraceVertical` | Basic two nodes, single node |
+| `TestBuildReciprocalPath` | Empty, single, two-node, three-node |
+| `TestMatchesKeyword` | trace/tracer/trace+path, !trace/!tracer, non-match |
+| `TestCanExecuteTrace` | Enabled/disabled |
+| `TestGetHelpTextTrace` | Returns string with "trace" |
+| `TestExtractPathEdgeCases` | 3-char invalid length, 2-char non-hex |
+| `TestParseBangPrefix` | !trace stripped |
+| `TestFormatTraceResult` | Failed shows error, success inline/vertical |
+| `TestFormatTraceVerticalThreeNodes` | Middle hop present, no SNR shows — |
+| `TestTraceExecute` | No path sends error, not connected, no meshcore commands |
+
+---
+
+#### `test_stats_command.py`
+Tests `modules.commands.stats_command` — `StatsCommand`. 66 tests.
+
+| Class | What it covers |
+|-------|---------------|
+| `TestIsValidPathFormat` | None/empty, hex with commas, continuous hex, descriptive text, single node |
+| `TestFormatPathForDisplay` | None/empty → Direct, commas unchanged, continuous chunked, single unchanged, descriptive as-is |
+| `TestStatsCommandEnabled` | enabled/disabled |
+| `TestRecordMessage` | Inserts row, disabled collect_stats, disabled track_all, anonymize, no sender_id |
+| `TestRecordCommand` | Inserts row, disabled, no track_details, anonymize |
+| `TestRecordPathStats` | Valid path, no hops, None hops, no path, descriptive path skipped, disabled |
+| `TestExecuteStats` | Disabled returns False, enabled returns True, messages/channels/paths/adverts/adverts-hashes/unknown subcommands, !-prefix strip, exception returns False |
+| `TestGetHelpText` | Returns string |
+| `TestFormatPathEdgeCases` | hex_chars=0 uses default, legacy fallback for non-divisible length |
+| `TestRecordExceptionPaths` | record_message exception, record_command exception, record_path_stats anonymize+exception |
+| `TestGetBasicStatsWithData` | top_command/top_user format lines covered with real data |
+| `TestGetUserLeaderboardWithData` | Long name truncation, exception returns error key |
+| `TestGetChannelLeaderboardWithData` | Channel data, exception |
+| `TestGetPathLeaderboardWithData` | Path data, exception |
+| `TestGetAdvertsLeaderboard` | No table → exception, empty → none, fallback no daily_stats (no/with hashes), with daily_stats (no/with hashes), singular count, name truncated, >10 hashes truncated, exception |
+| `TestCleanupOldStats` | Runs without error, exception handled |
+| `TestGetStatsSummary` | Returns dict with 4 keys, exception returns empty dict |
+
+---
+
 #### `test_feed_manager_formatting.py`
 Tests `modules.feed_manager` — `FeedManager` pure formatting (networking disabled).
 
@@ -435,6 +569,38 @@ Tests `modules.core.MeshCoreBot` — config, radio settings, reload, and key hel
 
 ---
 
+#### `test_web_viewer.py`
+Tests `modules.web_viewer.app` — Flask routes and SocketIO handlers via Flask test client. 224 tests total.
+
+| Class | What it covers |
+|-------|---------------|
+| `TestWebViewerAuth` | Password-protected and open endpoints; session management |
+| `TestApiRoutes` | `/api/contacts`, `/api/stats`, `/api/maintenance/status`, radio status/reboot/connect endpoints |
+| `TestChannelRoutes` | `GET/POST /api/channels`, validate, add, update, delete operations |
+| `TestUpdateChannelRoute` | `PUT /api/channels/<n>` — update name/key/number; missing body → 400 |
+| `TestCreateChannelValidation` | Channel creation input validation (index bounds, hex key length, missing fields) |
+| `TestChannelValidateRoute` | `POST /api/channels/validate` — valid/invalid key/index combos |
+| `TestStreamDataTypes` | SocketIO stream type-filter; `data-type` attribute on packet/command/message entries |
+| `TestMaintenanceStatusFields` | `GET /api/maintenance/status` response schema — all expected status fields present |
+| `TestDbPathResolutionFromConfigDir` | TASK-16/BUG-029: `db_path` resolves relative to config file directory; absolute path unchanged; differs from code root when config is elsewhere; startup INFO log captured via patched `_setup_logging` |
+
+---
+
+#### `test_mqtt_live.py`
+Tests MeshCore MQTT packet parsing — schema validation against live and pre-collected fixture packets.
+Config: `tests/mqtt_test_config.ini`. Fixtures: `tests/fixtures/mqtt_packets.json`.
+
+| Class | Marker | What it covers |
+|-------|--------|---------------|
+| `TestPacketSchemaValidation` | (always) | Schema logic: required keys, valid direction/route/type values, rx-only SNR/RSSI/hash, tx packets allowed without RF fields |
+| `TestFixturePackets` | (always) | Loads `mqtt_packets.json` (auto-skipped if absent); validates all fixture packets against schema; checks timestamp plausibility, packet_type and route ranges |
+| `TestLiveMqttPackets` | `@pytest.mark.mqtt` | Connects to LAN broker; collects ≥1 live packet; validates schema, SNR/RSSI ranges (−200…+30 / −200…0), timestamp plausibility, route/direction/type values; auto-saves to fixtures |
+
+Run live tests: `pytest tests/test_mqtt_live.py -v -m mqtt`
+Collect fixtures offline: `python tests/test_mqtt_live.py --collect-fixtures`
+
+---
+
 ### Command tests (`tests/commands/`)
 
 | File | Command tested | Key scenarios |
@@ -543,6 +709,67 @@ class TestMyFeature:
 
 ---
 
+## MQTT Test Framework
+
+Live and offline tests for MeshCore packet parsing using real broker data.
+
+### Architecture
+
+```
+tests/
+  mqtt_test_config.ini        # broker / topic / timeout settings
+  test_mqtt_live.py           # TestPacketSchemaValidation + TestFixturePackets + TestLiveMqttPackets
+  fixtures/
+    mqtt_packets.json         # pre-collected packets (auto-refreshed on live run)
+```
+
+### Running
+
+```bash
+# Offline schema + fixture tests (no network required)
+pytest tests/test_mqtt_live.py -v -m "not mqtt"
+
+# Live integration tests (requires LAN broker at 10.0.2.123:1883)
+pytest tests/test_mqtt_live.py -v -m mqtt
+
+# Collect fresh fixtures and exit
+python tests/test_mqtt_live.py --collect-fixtures
+```
+
+### Broker configuration (`tests/mqtt_test_config.ini`)
+
+| Key | Default | Notes |
+|-----|---------|-------|
+| `broker` | `10.0.2.123` | LAN MQTT broker (plain TCP, no auth) |
+| `port` | `1883` | — |
+| `transport` | `tcp` | Use `websockets` for letsmesh TLS broker |
+| `topic_subscribe` | `meshcore/SEA/+/packets` | `+` wildcard matches any station |
+| `timeout_seconds` | `15` | Seconds to wait for packets |
+| `max_packets` | `10` | Collection limit |
+
+**letsmesh alternative** (commented out in config): `mqtt-us-v1.letsmesh.net:443` WebSocket/TLS — requires JWT auth; not suitable for anonymous CI runs.
+
+### Packet schema
+
+| Field | rx | tx | Notes |
+|-------|----|----|-------|
+| `origin` | ✓ | ✓ | Sender display name |
+| `origin_id` | ✓ | ✓ | 64-char hex pubkey |
+| `timestamp` | ✓ | ✓ | Unix epoch (int or float) |
+| `type` | ✓ | ✓ | Always `"PACKET"` |
+| `direction` | ✓ | ✓ | `"rx"` or `"tx"` |
+| `packet_type` | ✓ | ✓ | `"0"`–`"15"` string |
+| `route` | ✓ | ✓ | `"F"` flood / `"D"` direct / `"T"` tunnel / `"U"` unknown |
+| `SNR` | ✓ | ✗ | String float, −200…+30 dB |
+| `RSSI` | ✓ | ✗ | String int, −200…0 dBm |
+| `hash` | ✓ | ✗ | 16-char uppercase hex |
+
+### Fixture auto-refresh
+
+`test_received_at_least_one_packet` (live test) calls `_save_fixture_packets()` after each successful run — so `mqtt_packets.json` is updated automatically whenever live tests pass.
+
+---
+
 ## CI Integration
 
 Tests run automatically on push/PR via GitHub Actions. Jobs include:
@@ -553,7 +780,7 @@ Tests run automatically on push/PR via GitHub Actions. Jobs include:
 | `typecheck` | `mypy modules/` |
 | `lint-frontend` | ESLint + HTMLHint on `modules/web_viewer/templates/` |
 | `lint-shell` | ShellCheck `--severity=warning` on all `.sh` files |
-| `test` | `pytest tests/ -v --tb=short` with coverage |
+| `test` | `pytest tests/ -v --tb=short` with coverage (excludes `mqtt` marker) |
 
 To keep `TODO.md` in sync locally, run:
 

@@ -492,6 +492,7 @@ class MessageScheduler:
             # DB backup: evaluate schedule every 5 minutes
             if time.time() - self.last_db_backup_run >= 300:
                 self._maybe_run_db_backup()
+                self.last_db_backup_run = time.time()
 
             time.sleep(1)
 
@@ -905,7 +906,7 @@ class MessageScheduler:
                     errors.append(f"set_custom_var(loop.detect, {value}) failed: {result}")
 
             success = len(errors) == 0
-            response = {'results': results}
+            response: dict[str, Any] = {'results': results}
             if errors:
                 response['errors'] = errors
             return success, response
@@ -1231,13 +1232,28 @@ class MessageScheduler:
             bh, bm = 2, 0
 
         scheduled_today = now.replace(hour=bh, minute=bm, second=0, microsecond=0)
-        if now < scheduled_today:
-            return  # Backup time hasn't arrived yet today
+
+        # Only fire within a 2-minute window after the scheduled time.
+        # This allows for scheduler lag while preventing a late bot startup
+        # from triggering an immediate backup for a time that passed hours ago.
+        fire_window_end = scheduled_today + datetime.timedelta(minutes=2)
+        if now < scheduled_today or now > fire_window_end:
+            return
 
         if sched == 'weekly' and now.weekday() != 0:  # Monday only
             return
 
-        # Deduplicate: don't re-run if already ran today (daily) / this week (weekly)
+        # Deduplicate: don't re-run if already ran today (daily) / this week (weekly).
+        # Seed from DB on first check so restarts don't re-trigger a backup that
+        # already ran earlier today.
+        if not self._last_db_backup_stats:
+            try:
+                db_ran_at = self.bot.db_manager.get_metadata('maint.status.db_backup_ran_at') or ''
+                if db_ran_at:
+                    self._last_db_backup_stats['ran_at'] = db_ran_at
+            except Exception:
+                pass
+
         date_key = now.strftime('%Y-%m-%d')
         week_key = f"{now.year}-W{now.isocalendar()[1]}"
         last_ran = self._last_db_backup_stats.get('ran_at', '')

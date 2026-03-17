@@ -149,8 +149,8 @@ class TheSportsDBClient:
             away_abbr = get_team_abbreviation_from_name(away_team)
 
             # Get timestamp for sorting
-            timestamp = 0
-            event_timestamp = None
+            timestamp: float = 0
+            event_timestamp: Optional[float] = None
             if timestamp_str:
                 try:
                     # fromisoformat handles 'Z' in Python 3.11+, but we force UTC if naive
@@ -266,7 +266,7 @@ class TheSportsDBClient:
             self.logger.error(f"TheSportsDB get_league_events_past error: {e}")
             return []
 
-    async def get_events_by_day(self, date_str: str, league_id: str = None) -> list[dict]:
+    async def get_events_by_day(self, date_str: str, league_id: Optional[str] = None) -> list[dict]:
         """Get events for a specific day"""
         await self._rate_limit()
         url = f"{self.BASE_URL}/{self.FREE_API_KEY}/eventsday.php"

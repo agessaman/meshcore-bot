@@ -34,7 +34,7 @@ class RepeaterCommand(BaseCommand):
         super().__init__(bot)
         self.repeater_enabled = self.get_config_value('Repeater_Command', 'enabled', fallback=True, value_type='bool')
 
-    def can_execute(self, message: MeshMessage) -> bool:
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Check if this command can be executed with the given message.
 
         Args:

@@ -485,11 +485,11 @@ class ChannelManager:
                     except TypeError:
                         # If that doesn't work, try with hex string
                         try:
-                            res = await self.bot.meshcore.commands.set_channel(channel_idx, channel_name, channel_secret_hex or channel_secret.hex())
+                            res = await self.bot.meshcore.commands.set_channel(channel_idx, channel_name, channel_secret_hex or (channel_secret.hex() if channel_secret else ""))
                         except TypeError:
                             # Fallback to CLI method if API doesn't support key parameter
                             self.logger.warning("meshcore.commands.set_channel doesn't accept key parameter, using CLI fallback")
-                            return await self._add_channel_via_cli(channel_idx, channel_name, channel_secret.hex() if channel_secret else channel_secret_hex)
+                            return await self._add_channel_via_cli(channel_idx, channel_name, channel_secret.hex() if channel_secret else (channel_secret_hex or ""))
 
                 # Check for errors
                 if hasattr(res, 'type') and res.type == EventType.ERROR:
@@ -540,7 +540,7 @@ class ChannelManager:
                     # For hashtag, generate key ourselves as fallback
                     channel_secret = self.generate_hashtag_key(channel_name)
                     channel_secret_hex = channel_secret.hex()
-                return await self._add_channel_via_cli(channel_idx, channel_name, channel_secret_hex)
+                return await self._add_channel_via_cli(channel_idx, channel_name, channel_secret_hex or "")
 
         except Exception as e:
             self.logger.error(f"Error adding channel {channel_idx}: {e}")

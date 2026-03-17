@@ -182,7 +182,7 @@ class NominatimRateLimiter:
 
     def __init__(self, seconds: float = 1.1):
         self.seconds = seconds
-        self.last_request = 0
+        self.last_request: float = 0.0
         self._lock: Optional[asyncio.Lock] = None
         self._total_requests = 0
         self._total_throttled = 0
