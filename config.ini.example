@@ -1524,7 +1524,7 @@ avatar_style = color
 # Bridge the bot's own channel responses (e.g. command replies) to Discord. true (default) = bridge; false = only bridge other users' messages
 # bridge_bot_responses = true
 
-# Channel mappings: bridge.<meshcore_channel> = <discord_webhook_url>
+# Channel mappings: bridge.<meshcore_channel> = <discord_webhook_url>[, <discord_webhook_url>...]
 # Only channels explicitly listed here will be bridged to Discord
 # Get webhook URLs from Discord: Channel Settings → Integrations → Webhooks → Create Webhook
 #
@@ -1537,6 +1537,9 @@ avatar_style = color
 # bridge.general = https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz1234567890ABCDEFGHIJKLMNOPQRST
 # bridge.emergency = https://discord.com/api/webhooks/987654321098765432/ZYXWVUTSRQPONMLKJIHGFEDCBA0987654321zyxwvutsrqponmlkjihgf
 # bridge.wx = https://discord.com/api/webhooks/111222333444555666/WeatherChannelWebhookTokenGoesHere1234567890abcdefghijklmno
+#
+# Fan out a single MeshCore channel to multiple Discord servers
+# bridge.Public = https://discord.com/api/webhooks/AAA/aaa..., https://discord.com/api/webhooks/BBB/bbb...
 
 [TelegramBridge]
 # Enable Telegram bridge service
