@@ -120,6 +120,8 @@ Thumbs.db
 # Project specific
 *.log
 logs/
+*.log.*
+local/*
 config.ini
 config.min.ini
 *.db
