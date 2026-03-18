@@ -1,0 +1,123 @@
+# TODO
+
+Task list for meshcore-bot development. Auto-updated sections are regenerated
+by running `python scripts/update_todos.py` (see [Auto-Update](#auto-update)).
+
+**Last updated:** 2026-03-14
+
+---
+
+## In Progress
+
+- [ ] Expand test coverage to ≥70% across all modules (Phase 5 of dev setup plan)
+  - [x] `tests/test_enums.py` — enum values and flag combinations
+  - [x] `tests/test_models.py` — MeshMessage dataclass
+  - [x] `tests/test_transmission_tracker.py` — full TransmissionTracker
+  - [x] `tests/test_message_handler.py` — path parsing, cache, message routing
+  - [x] `tests/test_repeater_manager.py` — role detection, ACL, device type
+  - [x] `tests/test_core.py` — config loading, radio settings, reload
+  - [ ] `tests/test_feed_manager.py` — feed polling, deduplication, queue logic
+  - [ ] `tests/test_scheduler.py` — scheduled message dispatch, interval advertising
+  - [ ] `tests/test_command_manager.py` — full command dispatch, keyword matching
+  - [ ] `tests/test_channel_manager.py` — channel fetch, cache lifecycle
+
+---
+
+## Planned Features
+
+### Bridges
+
+- [ ] **Two-way Discord bridge** — receive messages from Discord and relay to MeshCore
+- [ ] **Two-way Telegram bridge** — relay Telegram messages back into MeshCore channels
+- [ ] **Telegram `message_thread_id` support** — route bridged messages to forum topics
+- [ ] **Bridge DM support** — optional, opt-in bridging of DMs (requires consent mechanism)
+
+### Web Viewer
+
+- [ ] **Authentication** — add token or basic-auth to protect the web dashboard (see BUG-001)
+- [ ] **Live packet streaming** — SSE/WebSocket stream of incoming packets on dashboard
+- [ ] **Real-time message monitoring** — live channel message feed in browser
+- [ ] **Interactive contact management** — star/purge contacts from the UI
+- [ ] **Export functionality** — CSV/JSON export of contact and path data
+- [ ] **Mobile-responsive improvements** — optimize layout for small screens
+
+### Commands and Features
+
+- [ ] **Inbound webhook command** — trigger bot responses from external HTTP POST
+- [ ] **Per-channel rate limiting** — different rate limits for different channels
+- [ ] **Command aliases** — allow users to define shorthand aliases for commands
+- [ ] **Scheduled message preview** — `!schedule list` command to show upcoming scheduled messages
+- [ ] **`!wx` non-US improvement** — promote `wx_international.py` to default with US fallback
+- [ ] **`!path` geographic scoring toggle** — runtime config flag without restart
+
+### Infrastructure
+
+- [ ] **Virtual environment setup automation** — `make install` / `make dev` targets
+- [ ] **`ruff check` CI gate** — block merges when linting fails (test.yml updated; needs clean pass)
+- [ ] **`mypy` strict mode** — incrementally add type annotations and raise strictness
+- [ ] **Coverage threshold enforcement** — currently set to 70%; raise to 80% once baseline is met
+- [ ] **Database migration versioning** — replace ad-hoc `ALTER TABLE IF NOT EXISTS` with numbered migrations
+- [ ] **Docker multi-arch build** — publish `linux/arm64` image for Raspberry Pi natively
+
+---
+
+## Backlog
+
+- [ ] Investigate replacing `schedule` library with `APScheduler` for more flexible recurring jobs
+- [ ] Evaluate moving web viewer to a separate installable package
+- [ ] Add structured logging (JSON) mode for log aggregation pipelines
+- [ ] Rate-limiter observability — expose current limiter state via web viewer API
+- [ ] Consider async-safe SQLite wrapper (e.g. `aiosqlite`) for `db_manager`
+- [ ] Repeater auto-purge dry-run mode — log what would be purged without acting
+- [ ] Feed manager: add support for JSON API feeds (not just RSS/Atom)
+- [ ] Map uploader: configurable upload interval (currently hardcoded)
+- [ ] Support custom greeting messages per-channel (greeter command)
+
+---
+
+## Recently Completed
+
+- [x] Added `ruff` and `mypy` linting configuration to `pyproject.toml`
+- [x] Added lint steps to `.github/workflows/test.yml`
+- [x] Fixed `meshcore>=2.2.14` → `meshcore>=2.2.31` version pin in `pyproject.toml`
+- [x] Added `profanity`, `geo`, `pytest-mock`, `pytest-cov` optional dependency groups
+- [x] Added coverage reporting to `pytest.ini`
+- [x] Created 6 new test modules (enums, models, transmission_tracker, message_handler, repeater_manager, core)
+- [x] Fixed `RepeaterManager` ignoring `auto_manage_contacts = false` (commit `58deb12`)
+- [x] Fixed timezone handling in `format_elapsed_display` — issue #75 (commit `5c8ee35`)
+- [x] Fixed `TraceCommand` reversed path nodes and truncated return paths
+- [x] Fixed shutdown log spam after streams closed (commit `2178a80`)
+- [x] Added Discord and Telegram one-way bridges
+- [x] Added chunked message sending for rate-limit-aware large responses
+- [x] Multi-byte prefix (2-byte) support throughout codebase
+
+---
+
+## Auto-Update
+
+The **Inline TODOs** section below is auto-generated by scanning source files for
+`# TODO`, `# FIXME`, and `# HACK` markers. Regenerate it with:
+
+```bash
+python scripts/update_todos.py
+```
+
+Or run it as part of a pre-commit hook by adding to `.pre-commit-config.yaml`:
+
+```yaml
+- repo: local
+  hooks:
+    - id: update-todos
+      name: Update TODO.md inline scan
+      language: python
+      entry: python scripts/update_todos.py
+      pass_filenames: false
+```
+
+---
+
+## Inline TODOs (auto-generated)
+
+> _Last scanned: 2026-03-14. No `# TODO`, `# FIXME`, or `# HACK` markers
+> found in `modules/` or `tests/`. Run `python scripts/update_todos.py` to refresh._
+
