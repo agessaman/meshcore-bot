@@ -3,7 +3,7 @@
 Task list for meshcore-bot development. Auto-updated sections are regenerated
 by running `python scripts/update_todos.py` (see [Auto-Update](#auto-update)).
 
-**Last updated:** 2026-03-17 — coverage at 36.72% (2,140 passed / 29 skipped); `fail_under=35`; target 40%; 22 PR branches pushed to KG7QIN fork
+**Last updated:** 2026-03-17 — coverage at 36.86% (2,139 passed / 29 skipped); `fail_under=35`; target 40%; 22 PR branches pushed to KG7QIN fork; CI matrix fixed (Python 3.9 removed, ruff/mypy/ShellCheck all green)
 
 ---
 
