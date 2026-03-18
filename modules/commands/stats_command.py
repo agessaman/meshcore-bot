@@ -721,7 +721,7 @@ class StatsCommand(BaseCommand):
                         if show_hashes:
                             public_key, name, count, packet_hashes = row
                         else:
-                            public_key, name, count = row
+                            public_key, name, count = row[0], row[1], row[2]
                             packet_hashes = None
 
                         # Truncate name if needed

@@ -222,8 +222,8 @@ class ESPNClient:
 
             # Get timestamp for sorting
             date_str = event.get('date', '')
-            timestamp = 0
-            event_timestamp = None
+            timestamp: float = 0
+            event_timestamp: Optional[float] = None
             if date_str:
                 try:
                     dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))

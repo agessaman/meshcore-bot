@@ -73,7 +73,7 @@ class SolarforecastCommand(BaseCommand):
         # Get database manager for geocoding cache
         self.db_manager = bot.db_manager
 
-    def can_execute(self, message: MeshMessage) -> bool:
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Check if this command can be executed with the given message.
 
         Args:

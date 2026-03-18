@@ -22,6 +22,9 @@ class BaseServicePlugin(ABC):
     # Optional: Service description for metadata
     description: str = ""
 
+    # Optional: Service name for metadata
+    name: str = ""
+
     def __init__(self, bot: Any):
         """Initialize the service plugin.
 

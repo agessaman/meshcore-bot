@@ -63,7 +63,7 @@ class TestCommand(BaseCommand):
         except Exception as e:
             self.logger.warning(f"Error reading bot location from config: {e}")
 
-    def can_execute(self, message: MeshMessage) -> bool:
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Check if this command can be executed with the given message.
 
         Args:

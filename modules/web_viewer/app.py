@@ -16,7 +16,7 @@ import time
 from contextlib import closing, contextmanager, suppress
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from flask import (
     Flask,
@@ -50,7 +50,7 @@ def _apply_werkzeug_websocket_fix() -> None:
         from engineio.async_drivers import _websocket_wsgi  # noqa: PLC0415
         _orig_call = _websocket_wsgi.SimpleWebSocketWSGI.__call__
 
-        def _patched_call(self, environ, start_response):  # type: ignore[misc]
+        def _patched_call(self, environ, start_response):  # noqa: ANN001
             result = _orig_call(self, environ, start_response)
             try:
                 start_response('200 OK', [('Content-Length', '0')])
@@ -101,7 +101,7 @@ class BotDataViewer:
             self.app,
             cors_allowed_origins="*",
             max_http_buffer_size=1000000,  # 1MB buffer limit
-            ping_timeout=5,                # 5 second ping timeout (Flask-SocketIO 5.x default)
+            ping_timeout=20,               # 20 second ping timeout — 5s was too short when subscribe handlers replay DB history
             ping_interval=25,             # 25 second ping interval (Flask-SocketIO 5.x default)
             logger=False,                  # Disable verbose logging
             engineio_logger=False,        # Disable EngineIO logging
@@ -124,6 +124,13 @@ class BotDataViewer:
         # Load configuration
         self.config = self._load_config(config_path)
 
+        # Resolve db_path relative to the config file's directory — matches core.py's bot_root
+        # property which is Path(config_file).parent.resolve().  Using self.bot_root (the project
+        # code root, 2 dirs above app.py) as the base caused a mismatch when config.ini lived
+        # elsewhere (e.g. a separate deployment directory), resulting in a blank realtime monitor
+        # because the web viewer and bot opened different database files.
+        self._config_base = Path(config_path).parent.resolve() if os.path.exists(config_path) else self.bot_root
+
         # Use [Bot] db_path when [Web_Viewer] db_path is unset
         bot_db = self.config.get('Bot', 'db_path', fallback='meshcore_bot.db')
         if (self.config.has_section('Web_Viewer') and self.config.has_option('Web_Viewer', 'db_path')
@@ -131,7 +138,8 @@ class BotDataViewer:
             use_db = self.config.get('Web_Viewer', 'db_path').strip()
         else:
             use_db = bot_db
-        self.db_path = str(resolve_path(use_db, self.bot_root))
+        self.db_path = str(resolve_path(use_db, self._config_base))
+        self.logger.info(f"Using database: {self.db_path}")
 
         # Optional password authentication for web viewer (BUG-001)
         self.web_viewer_password = self.config.get('Web_Viewer', 'web_viewer_password', fallback='').strip()
@@ -215,7 +223,7 @@ class BotDataViewer:
     def _get_version_info(self) -> dict[str, Optional[str]]:
         """Get version info for footer: tag if on a tag, else branch, commit hash and date.
         Checks MESHCORE_BOT_VERSION env (Docker/build), then .version_info, then git. Never raises."""
-        out = {"tag": None, "branch": None, "commit": None, "date": None}
+        out: dict[str, Optional[str]] = {"tag": None, "branch": None, "commit": None, "date": None}
         # Docker / CI: version set at build time (e.g. ARG + ENV in Dockerfile)
         env_version = os.environ.get("MESHCORE_BOT_VERSION", "").strip()
         if env_version:
@@ -292,17 +300,6 @@ class BotDataViewer:
             except Exception as e:
                 self.logger.exception("Template context processor failed: %s", e)
                 return {'greeter_enabled': False, 'feed_manager_enabled': False, 'bot_name': 'MeshCore Bot', 'version_info': version_info}
-
-    def _get_db_path(self):
-        """Get the database path, falling back to [Bot] db_path if [Web_Viewer] db_path is unset"""
-        # Use [Bot] db_path when [Web_Viewer] db_path is unset
-        bot_db = self.config.get('Bot', 'db_path', fallback='meshcore_bot.db')
-        if (self.config.has_section('Web_Viewer') and self.config.has_option('Web_Viewer', 'db_path')
-                and self.config.get('Web_Viewer', 'db_path', fallback='').strip()):
-            use_db = self.config.get('Web_Viewer', 'db_path').strip()
-        else:
-            use_db = bot_db
-        return str(resolve_path(use_db, self.bot_root))
 
     def _init_databases(self):
         """Initialize database connections"""
@@ -1443,6 +1440,13 @@ class BotDataViewer:
         def api_config_maintenance_post():
             """Save DB backup and email hook settings to bot_metadata."""
             data = request.get_json(silent=True) or {}
+            # Validate db_backup_dir before saving anything
+            if 'db_backup_dir' in data:
+                backup_dir = str(data['db_backup_dir']).strip()
+                if backup_dir and not os.path.isdir(backup_dir):
+                    return jsonify({
+                        'error': f"Backup directory does not exist: {backup_dir}",
+                    }), 400
             allowed = {
                 'db_backup_enabled', 'db_backup_schedule', 'db_backup_time',
                 'db_backup_retention_count', 'db_backup_dir', 'email_attach_log',
@@ -1456,6 +1460,166 @@ class BotDataViewer:
             return jsonify({'success': True, 'saved': saved})
 
         # ── Maintenance status ───────────────────────────────────────────────
+
+        @self.app.route('/api/maintenance/backup_now', methods=['POST'])
+        def api_maintenance_backup_now():
+            """Trigger an immediate DB backup outside the normal schedule."""
+            try:
+                bot = getattr(self, 'bot', None)
+                scheduler = getattr(bot, 'scheduler', None) if bot else None
+                if scheduler is None or not hasattr(scheduler, '_run_db_backup'):
+                    return jsonify({'success': False, 'error': 'Scheduler not available'}), 503
+                scheduler._run_db_backup()
+                # Read outcome written by _run_db_backup
+                path = self.db_manager.get_metadata('maint.status.db_backup_path') or ''
+                outcome = self.db_manager.get_metadata('maint.status.db_backup_outcome') or ''
+                if outcome.startswith('error'):
+                    return jsonify({'success': False, 'error': outcome}), 500
+                return jsonify({'success': True, 'path': path, 'outcome': outcome})
+            except Exception as e:
+                self.logger.error(f"Error in backup_now: {e}", exc_info=True)
+                return jsonify({'success': False, 'error': str(e)}), 500
+
+        @self.app.route('/api/maintenance/restore', methods=['POST'])
+        def api_maintenance_restore():
+            """Restore DB from a backup file.
+
+            Body: {"db_file": "/absolute/path/to/backup.db"}
+            The active DB is overwritten; the caller must restart the bot.
+            """
+            try:
+                data = request.get_json(silent=True) or {}
+                db_file = str(data.get('db_file', '')).strip()
+                if not db_file:
+                    return jsonify({'error': 'db_file is required'}), 400
+                src = Path(db_file)
+                if not src.exists():
+                    return jsonify({'error': f'File not found: {db_file}'}), 400
+                # Validate it is a real SQLite file by checking the magic header
+                _SQLITE_MAGIC = b"SQLite format 3\x00"
+                try:
+                    with open(str(src), 'rb') as _fh:
+                        _header = _fh.read(16)
+                    if _header != _SQLITE_MAGIC:
+                        raise ValueError("bad magic")
+                except Exception:
+                    return jsonify({'error': f'Not a valid SQLite file: {db_file}'}), 400
+                # Copy to active DB path
+                import shutil
+                shutil.copy2(str(src), self.db_path)
+                self.logger.info(f"Database restored from {src} to {self.db_path}")
+                return jsonify({
+                    'success': True,
+                    'restored_from': db_file,
+                    'active_db': self.db_path,
+                    'warning': 'Restart the bot for the restored database to take effect.',
+                })
+            except Exception as e:
+                self.logger.error(f"Error in restore: {e}", exc_info=True)
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/maintenance/list_backups')
+        def api_maintenance_list_backups():
+            """List available backup files from the configured backup directory."""
+            try:
+                backup_dir_str = self.db_manager.get_metadata('maint.db_backup_dir') or ''
+                if not backup_dir_str or not os.path.isdir(backup_dir_str):
+                    return jsonify({'backups': []})
+                backup_dir = Path(backup_dir_str)
+                db_stem = Path(self.db_path).stem
+                files = sorted(
+                    backup_dir.glob(f'{db_stem}_*.db'),
+                    key=lambda p: p.stat().st_mtime,
+                    reverse=True,
+                )
+                backups = [
+                    {
+                        'path': str(f),
+                        'name': f.name,
+                        'size_mb': round(f.stat().st_size / 1_048_576, 2),
+                        'mtime': f.stat().st_mtime,
+                    }
+                    for f in files
+                ]
+                return jsonify({'backups': backups})
+            except Exception as e:
+                self.logger.error(f"Error listing backups: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/maintenance/purge', methods=['POST'])
+        def api_maintenance_purge():
+            """Delete aged rows from time-series tables.
+
+            Body: {"keep_days": <int>|"all"}
+            Valid keep_days values: "all", 1, 7, 14, 30, 60, 90
+            Returns: {"deleted": {<table>: <count>, ...}}
+            """
+            _VALID_KEEP_DAYS = {"all", 1, 7, 14, 30, 60, 90}
+            try:
+                data = request.get_json(silent=True) or {}
+                raw = data.get('keep_days', 'all')
+                if raw == 'all' or raw == 'All':
+                    keep_days: Union[str, int] = 'all'
+                else:
+                    try:
+                        keep_days = int(raw)
+                    except (TypeError, ValueError):
+                        return jsonify({'error': f'Invalid keep_days: {raw!r}'}), 400
+                if keep_days not in _VALID_KEEP_DAYS:
+                    return jsonify({'error': f'keep_days must be one of {sorted(v for v in _VALID_KEEP_DAYS if isinstance(v, int))} or "all"'}), 400
+
+                deleted: dict[str, int] = {}
+                if keep_days == 'all':
+                    # Nothing to delete — keep everything
+                    return jsonify({'deleted': deleted})
+
+                assert isinstance(keep_days, int)
+                from datetime import timedelta as _timedelta
+                cutoff_unix = time.time() - keep_days * 86400
+                _cutoff_dt = datetime.utcnow() - _timedelta(days=keep_days)
+                cutoff_iso = _cutoff_dt.strftime('%Y-%m-%d %H:%M:%S')
+                cutoff_date = _cutoff_dt.strftime('%Y-%m-%d')
+
+                # (table, sql, params) — tables created lazily by other modules may not exist
+                _purge_ops = [
+                    ('packet_stream',
+                     'DELETE FROM packet_stream WHERE timestamp < ?',
+                     (cutoff_unix,)),
+                    ('message_stats',
+                     'DELETE FROM message_stats WHERE timestamp < ?',
+                     (int(cutoff_unix),)),
+                    ('complete_contact_tracking',
+                     'DELETE FROM complete_contact_tracking WHERE last_heard < ?',
+                     (cutoff_iso,)),
+                    ('purging_log',
+                     'DELETE FROM purging_log WHERE timestamp < ?',
+                     (cutoff_iso,)),
+                    ('mesh_connections',
+                     'DELETE FROM mesh_connections WHERE last_seen < ?',
+                     (cutoff_iso,)),
+                    ('daily_stats',
+                     'DELETE FROM daily_stats WHERE date < ?',
+                     (cutoff_date,)),
+                ]
+                with self.db_manager.connection() as conn:
+                    cur = conn.cursor()
+                    for tbl, sql, params in _purge_ops:
+                        try:
+                            cur.execute(sql, params)
+                            deleted[tbl] = cur.rowcount
+                        except Exception:
+                            deleted[tbl] = 0
+                    conn.commit()
+
+                total = sum(deleted.values())
+                self.logger.info(
+                    f"Purge completed: keep_days={keep_days}, total_deleted={total}, by_table={deleted}"
+                )
+                return jsonify({'deleted': deleted})
+
+            except Exception as e:
+                self.logger.error(f"Error in purge: {e}", exc_info=True)
+                return jsonify({'error': str(e)}), 500
 
         @self.app.route('/api/maintenance/status')
         def api_maintenance_status():
@@ -1633,6 +1797,24 @@ class BotDataViewer:
                 return jsonify(stats)
             except Exception as e:
                 self.logger.error(f"Error getting rate limiter stats: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/connected_clients')
+        def api_connected_clients():
+            """Return list of currently connected web viewer clients."""
+            try:
+                with self._clients_lock:
+                    clients = [
+                        {
+                            'client_id': cid[:8] + '…' if len(cid) > 8 else cid,
+                            'connected_at': info.get('connected_at'),
+                            'last_activity': info.get('last_activity'),
+                        }
+                        for cid, info in self.connected_clients.items()
+                    ]
+                return jsonify(clients)
+            except Exception as e:
+                self.logger.error(f"Error getting connected clients: {e}")
                 return jsonify({'error': str(e)}), 500
 
         @self.app.route('/api/contacts')
@@ -3177,6 +3359,7 @@ class BotDataViewer:
                         'last_activity': time.time(),
                         'subscribed_commands': False,
                         'subscribed_packets': False,
+                        'subscribed_messages': False,
                         'subscribed_mesh': False,
                         'subscribed_logs': False,
                     }
@@ -3234,7 +3417,7 @@ class BotDataViewer:
                         except Exception:
                             pass
                 except Exception as e:
-                    self.logger.debug(f"Error replaying command history: {e}")
+                    self.logger.warning(f"Error replaying command history: {e}", exc_info=True)
             except Exception as e:
                 self.logger.error(f"Error in handle_subscribe_commands: {e}", exc_info=True)
 
@@ -3267,7 +3450,7 @@ class BotDataViewer:
                         except Exception:
                             pass
                 except Exception as e:
-                    self.logger.debug(f"Error replaying packet history: {e}")
+                    self.logger.warning(f"Error replaying packet history: {e}", exc_info=True)
             except Exception as e:
                 self.logger.error(f"Error in handle_subscribe_packets: {e}", exc_info=True)
 
@@ -3311,7 +3494,7 @@ class BotDataViewer:
                         except Exception:
                             pass
                 except Exception as e:
-                    self.logger.debug(f"Error replaying message history: {e}")
+                    self.logger.warning(f"Error replaying message history: {e}", exc_info=True)
             except Exception as e:
                 self.logger.error(f"Error in handle_subscribe_messages: {e}", exc_info=True)
 
@@ -3330,7 +3513,7 @@ class BotDataViewer:
                 try:
                     log_file = self.config.get('Logging', 'log_file', fallback='').strip()
                     if log_file:
-                        log_file = str(resolve_path(log_file, self.bot_root))
+                        log_file = str(resolve_path(log_file, self._config_base))
                 except Exception:
                     pass
                 if log_file and os.path.exists(log_file):
@@ -3466,7 +3649,7 @@ class BotDataViewer:
         try:
             log_file = self.config.get('Logging', 'log_file', fallback='').strip()
             if log_file:
-                log_file = str(resolve_path(log_file, self.bot_root))
+                log_file = str(resolve_path(log_file, self._config_base))
         except Exception:
             pass
 
@@ -5128,7 +5311,7 @@ class BotDataViewer:
             if conn:
                 conn.close()
 
-    def _preview_feed_items(self, feed_url: str, feed_type: str, output_format: str, api_config: dict = None, filter_config: dict = None, sort_config: dict = None) -> list[dict[str, Any]]:
+    def _preview_feed_items(self, feed_url: str, feed_type: str, output_format: str, api_config: Optional[dict[str, Any]] = None, filter_config: Optional[dict[str, Any]] = None, sort_config: Optional[dict[str, Any]] = None) -> list[dict[str, Any]]:
         """Preview feed items with custom output format (standalone, doesn't require bot)"""
         from datetime import datetime, timezone
 
@@ -5150,7 +5333,8 @@ class BotDataViewer:
                     published = None
                     if hasattr(entry, 'published_parsed') and entry.published_parsed:
                         with suppress(Exception):
-                            published = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+                            pt = entry.published_parsed
+                            published = datetime(pt[0], pt[1], pt[2], pt[3], pt[4], pt[5], tzinfo=timezone.utc)
 
                     items.append({
                         'title': entry.get('title', 'Untitled'),
@@ -5161,6 +5345,8 @@ class BotDataViewer:
 
             elif feed_type == 'api':
                 # Fetch API feed
+                if api_config is None:
+                    raise ValueError("api_config is required for API feed type")
                 method = api_config.get('method', 'GET').upper()
                 headers = api_config.get('headers', {})
                 params = api_config.get('params', {})
@@ -5191,6 +5377,7 @@ class BotDataViewer:
 
                 # Extract items using parser config
                 items_path = parser_config.get('items_path', '')
+                items_data: dict[Any, Any] | list[Any]
                 if items_path:
                     parts = items_path.split('.')
                     items_data = data
@@ -5205,7 +5392,8 @@ class BotDataViewer:
                         items_data = data
                     elif isinstance(data, dict):
                         # If it's a dict, try to find common array fields
-                        items_data = data.get('items', data.get('data', data.get('results', [data])))
+                        _found = data.get('items') or data.get('data') or data.get('results')
+                        items_data = _found if _found is not None else [data]
                     else:
                         items_data = [data]
 

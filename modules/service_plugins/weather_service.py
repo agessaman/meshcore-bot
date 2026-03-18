@@ -623,7 +623,10 @@ class WeatherService(BaseServicePlugin):
                     alert_id_elem = entry.getElementsByTagName("id")
                     if not alert_id_elem or not alert_id_elem[0].childNodes:
                         continue
-                    alert_id = alert_id_elem[0].childNodes[0].nodeValue
+                    alert_id_value = alert_id_elem[0].childNodes[0].nodeValue
+                    if not alert_id_value:
+                        continue
+                    alert_id: str = alert_id_value
 
                     # Skip if we've already seen this alert
                     if alert_id in self.seen_alert_ids:
@@ -634,7 +637,8 @@ class WeatherService(BaseServicePlugin):
                     updated_elem = entry.getElementsByTagName("updated")
                     if updated_elem and updated_elem[0].childNodes:
                         updated_str = updated_elem[0].childNodes[0].nodeValue
-                        entry_updated_time = self._parse_iso_time(updated_str)
+                        if updated_str is not None:
+                            entry_updated_time = self._parse_iso_time(updated_str)
 
                     # Extract full alert metadata (same logic as wx_command)
                     alert_dict = self._parse_alert_entry(entry, alert_id)
@@ -871,7 +875,7 @@ class WeatherService(BaseServicePlugin):
             return
 
         # Count strikes by bucket key
-        counter = {}
+        counter: dict[str, int] = {}
         for blitz in self.blitz_buffer:
             key = blitz['key']
             counter[key] = counter.get(key, 0) + 1
@@ -1413,12 +1417,12 @@ class WeatherService(BaseServicePlugin):
         time_str = re.sub(r'(\d+):00(AM|PM)', r'\1\2', time_str)
 
         # Abbreviate month names
-        month_abbrevs = {
+        month_abbrev_map = {
             "January": "Jan", "February": "Feb", "March": "Mar", "April": "Apr",
             "May": "May", "June": "Jun", "July": "Jul", "August": "Aug",
             "September": "Sep", "October": "Oct", "November": "Nov", "December": "Dec"
         }
-        for full, abbrev in month_abbrevs.items():
+        for full, abbrev in month_abbrev_map.items():
             time_str = time_str.replace(full, abbrev)
 
         # Remove "at" before time

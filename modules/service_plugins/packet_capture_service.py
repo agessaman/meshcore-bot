@@ -334,7 +334,7 @@ class PacketCaptureService(BaseServicePlugin):
 
         # Wait for bot to be connected (with timeout)
         max_wait = 30  # seconds
-        wait_time = 0
+        wait_time: float = 0
         while (not self.bot.connected or not self.meshcore) and wait_time < max_wait:
             await asyncio.sleep(0.5)
             wait_time += 0.5

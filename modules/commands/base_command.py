@@ -37,10 +37,10 @@ class BaseCommand(ABC):
     examples: list[str] = []  # Example commands, e.g., ["wx 98101", "wx seattle tomorrow"]
     parameters: list[dict[str, str]] = []  # Parameter definitions, e.g., [{"name": "location", "description": "US zip code or city name"}]
 
-    def __init__(self, bot):
+    def __init__(self, bot: Any) -> None:
         self.bot = bot
         self.logger = bot.logger
-        self._last_execution_time = 0
+        self._last_execution_time: float = 0.0
 
         # Per-user cooldown tracking (for commands that need per-user rate limiting)
         self._user_cooldowns: dict[str, float] = {}
@@ -54,7 +54,7 @@ class BaseCommand(ABC):
         # Cache command prefix from config
         self._command_prefix = self._load_command_prefix()
 
-    def translate(self, key: str, **kwargs) -> str:
+    def translate(self, key: str, **kwargs: Any) -> str:
         """Translate a key using the bot's translator.
 
         Args:
@@ -585,7 +585,7 @@ class BaseCommand(ABC):
             # Global cooldown (backward compatibility)
             self._last_execution_time = current_time
 
-    def _record_execution(self, user_id: Optional[str] = None):
+    def _record_execution(self, user_id: Optional[str] = None) -> None:
         """Record the execution time for cooldown tracking (backward compatibility).
 
         Args:
@@ -605,7 +605,7 @@ class BaseCommand(ABC):
         _, remaining = self.check_cooldown(user_id)
         return max(0, int(remaining))
 
-    def _load_translated_keywords(self):
+    def _load_translated_keywords(self) -> None:
         """Load translated keywords from translation files"""
         if not hasattr(self.bot, 'translator'):
             self.logger.debug(f"Translator not available for {self.name}, skipping keyword loading")
