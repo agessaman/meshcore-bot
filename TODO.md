@@ -3,7 +3,7 @@
 Task list for meshcore-bot development. Auto-updated sections are regenerated
 by running `python scripts/update_todos.py` (see [Auto-Update](#auto-update)).
 
-**Last updated:** 2026-03-16 — coverage at 36.72% (2,140 passed / 29 skipped); `fail_under=35`; target 40%
+**Last updated:** 2026-03-17 — coverage at 36.72% (2,140 passed / 29 skipped); `fail_under=35`; target 40%; 22 PR branches pushed to KG7QIN fork
 
 ---
 
@@ -175,6 +175,10 @@ by running `python scripts/update_todos.py` (see [Auto-Update](#auto-update)).
 ---
 
 ## Recently Completed
+
+- [x] (2026-03-17) **PR split** — 22 logical PR branches created from `dev-kg7qin-changes` commits and pushed to `KG7QIN/meshcore-bot`; stacked on `pr-base` (upstream/dev + 2 catch-up commits); each targets `agessaman/meshcore-bot:dev`
+- [x] (2026-03-17) **Alias refactor** — aliases moved from global `[Aliases]` config section to per-command `aliases =` key in each command's own section; loaded by `BaseCommand._load_aliases_from_config()` at startup; `CommandManager.load_aliases()` and `_apply_aliases()` removed
+- [x] (2026-03-17) **Discord bridge test fix** — `test_discord_bridge_multi_webhooks.py` assertions corrected: `ConfigParser` lowercases all keys so `bridge.Public` stores as `"public"`; test expectations updated to match actual (correct) lowercase key behaviour
 
 - [x] (2026-03-15) Radio firmware config UI — Migration 6 (`payload_data`); `firmware_read`/`firmware_write` op types; `POST /api/radio/firmware/config/read|write`; Firmware Configuration card (path.hash.mode + loop.detect)
 - [x] (2026-03-15) APScheduler migration — `BackgroundScheduler` + `CronTrigger`; removes `schedule` lib dependency

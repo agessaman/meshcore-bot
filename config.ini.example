@@ -386,26 +386,9 @@ enabled = true
 # dm_only = true: only respond to direct messages (recommended)
 # dm_only = false: allow in monitored channels
 dm_only = true
+# aliases = comma-separated list of additional trigger words for this command
+# aliases = !s, !sched
 
-# ---------------------------------------------------------------------------
-# Command aliases
-# ---------------------------------------------------------------------------
-# Map short aliases to canonical command names.
-# Format:  <alias> = <command_name>
-# Both the alias and command name are case-insensitive.
-# The alias is injected into the command's keyword list at startup, so it
-# responds exactly the same as typing the full command name.
-# Unknown aliases (command not loaded) are logged and silently ignored.
-#
-# Examples:
-#   s  = schedule
-#   wx = weather
-#   h  = help
-#   e  = earthquake
-#
-# [Aliases]
-# s  = schedule
-# wx = weather
 
 [Logging]
 # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
@@ -1122,6 +1105,7 @@ url_timeout = 10
 [Wx_Command]
 enabled = true
 # channels =
+# aliases = comma-separated additional trigger words, e.g.: aliases = !weather, !w
 
 [WebViewer_Command]
 enabled = true

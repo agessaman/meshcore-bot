@@ -452,81 +452,54 @@ class TestSendChannelMessagesChunked:
 
 
 # ---------------------------------------------------------------------------
-# TestLoadAliases
+# TestCommandAliases (per-command config)
 # ---------------------------------------------------------------------------
 
 
-class TestLoadAliases:
-    """Tests for load_aliases() config parsing."""
+class TestCommandAliases:
+    """Tests for per-command aliases via BaseCommand._load_aliases_from_config()."""
 
-    def test_empty_when_no_section(self, cm_bot):
-        manager = make_manager(cm_bot)
-        assert manager.aliases == {}
+    def _make_command(self, bot, section, aliases_value=None):
+        """Create a minimal concrete BaseCommand subclass with aliases config."""
+        if not bot.config.has_section(section):
+            bot.config.add_section(section)
+        if aliases_value is not None:
+            bot.config.set(section, "aliases", aliases_value)
 
-    def test_reads_alias_entries(self, cm_bot):
-        cm_bot.config.add_section("Aliases")
-        cm_bot.config.set("Aliases", "s", "schedule")
-        cm_bot.config.set("Aliases", "wx", "weather")
-        manager = make_manager(cm_bot)
-        assert manager.aliases == {"s": "schedule", "wx": "weather"}
+        from modules.commands.base_command import BaseCommand
 
-    def test_aliases_are_lowercased(self, cm_bot):
-        cm_bot.config.add_section("Aliases")
-        cm_bot.config.set("Aliases", "S", "Schedule")
-        manager = make_manager(cm_bot)
-        assert "s" in manager.aliases
-        assert manager.aliases["s"] == "schedule"
+        class _Cmd(BaseCommand):
+            name = section.lower().replace("_command", "")
+            keywords: list = [name]
+            description = "test"
 
-    def test_empty_alias_key_ignored(self, cm_bot):
-        # ConfigParser won't allow a truly empty key, so this tests whitespace values
-        cm_bot.config.add_section("Aliases")
-        cm_bot.config.set("Aliases", "wx", "")  # empty canonical
-        manager = make_manager(cm_bot)
-        assert "wx" not in manager.aliases
+            async def execute(self, message):  # type: ignore[override]
+                return True
 
+        return _Cmd(bot)
 
-# ---------------------------------------------------------------------------
-# TestApplyAliases
-# ---------------------------------------------------------------------------
+    def test_alias_added_to_keywords(self, cm_bot):
+        cmd = self._make_command(cm_bot, "Schedule_Command", "!s, !sched")
+        assert "!s" in cmd.keywords
+        assert "!sched" in cmd.keywords
 
+    def test_no_aliases_key_leaves_keywords_unchanged(self, cm_bot):
+        cmd = self._make_command(cm_bot, "Schedule_Command")
+        assert cmd.keywords == ["schedule"]
 
-class TestApplyAliases:
-    """Tests for _apply_aliases() keyword injection."""
+    def test_empty_aliases_value_leaves_keywords_unchanged(self, cm_bot):
+        cmd = self._make_command(cm_bot, "Schedule_Command", "")
+        assert cmd.keywords == ["schedule"]
 
-    def _make_mock_command(self, name, keywords):
-        cmd = Mock()
-        cmd.name = name
-        cmd.keywords = list(keywords)
-        return cmd
+    def test_alias_already_present_not_duplicated(self, cm_bot):
+        cmd = self._make_command(cm_bot, "Schedule_Command", "schedule, !s")
+        assert cmd.keywords.count("schedule") == 1
+        assert "!s" in cmd.keywords
 
-    def test_alias_injected_into_command_keywords(self, cm_bot):
-        sched_cmd = self._make_mock_command("schedule", ["schedule"])
-        cm_bot.config.add_section("Aliases")
-        cm_bot.config.set("Aliases", "s", "schedule")
-        make_manager(cm_bot, commands={"schedule": sched_cmd})
-        assert "s" in sched_cmd.keywords
-
-    def test_unknown_alias_logs_warning_and_skipped(self, cm_bot):
-        cm_bot.config.add_section("Aliases")
-        cm_bot.config.set("Aliases", "x", "nonexistent")
-        make_manager(cm_bot)
-        cm_bot.logger.warning.assert_called()
-
-    def test_duplicate_alias_not_added_twice(self, cm_bot):
-        sched_cmd = self._make_mock_command("schedule", ["schedule", "s"])
-        cm_bot.config.add_section("Aliases")
-        cm_bot.config.set("Aliases", "s", "schedule")
-        make_manager(cm_bot, commands={"schedule": sched_cmd})
-        assert sched_cmd.keywords.count("s") == 1
-
-    def test_multiple_aliases_for_same_command(self, cm_bot):
-        wx_cmd = self._make_mock_command("weather", ["weather"])
-        cm_bot.config.add_section("Aliases")
-        cm_bot.config.set("Aliases", "wx", "weather")
-        cm_bot.config.set("Aliases", "w", "weather")
-        make_manager(cm_bot, commands={"weather": wx_cmd})
-        assert "wx" in wx_cmd.keywords
-        assert "w" in wx_cmd.keywords
+    def test_aliases_lowercased(self, cm_bot):
+        cmd = self._make_command(cm_bot, "Schedule_Command", "!S, !Sched")
+        assert "!s" in cmd.keywords
+        assert "!sched" in cmd.keywords
 
 
 class TestSendChannelMessageRetry:
