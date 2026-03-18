@@ -95,10 +95,6 @@ class CommandManager:
         self.plugin_loader = PluginLoader(bot, local_commands_dir=local_commands_dir)
         self.commands = self.plugin_loader.load_all_plugins()
 
-        # Load aliases and inject them into command keyword lists
-        self.aliases = self.load_aliases()
-        self._apply_aliases()
-
         # Cache for internet connectivity status to avoid checking on every command
         # Thread-safe cache with asyncio.Lock
         self._internet_cache = InternetStatusCache(has_internet=True, timestamp=0)
@@ -499,49 +495,6 @@ class CommandManager:
         """
         prefix = self.bot.config.get('Bot', 'command_prefix', fallback='')
         return prefix.strip() if prefix else ''
-
-    def load_aliases(self) -> dict[str, str]:
-        """Load command aliases from the ``[Aliases]`` config section.
-
-        Each entry maps a short alias to a canonical command name, e.g.::
-
-            [Aliases]
-            s  = schedule
-            wx = weather
-
-        Returns:
-            Dict[str, str]: alias → canonical command name (both lowercase).
-        """
-        aliases: dict[str, str] = {}
-        if not self.bot.config.has_section('Aliases'):
-            return aliases
-        for alias, canonical in self.bot.config.items('Aliases'):
-            alias = alias.strip().lower()
-            canonical = canonical.strip().lower()
-            if alias and canonical:
-                aliases[alias] = canonical
-        return aliases
-
-    def _apply_aliases(self) -> None:
-        """Inject each alias into the keyword list of its canonical command.
-
-        This lets the existing ``matches_keyword()`` dispatch handle aliases
-        transparently — no changes needed in ``check_keywords()``.
-
-        Unknown aliases (pointing to commands that are not loaded) are logged
-        and skipped.
-        """
-        for alias, canonical in self.aliases.items():
-            command = self.commands.get(canonical)
-            if command is None:
-                self.logger.warning(
-                    f"Alias '{alias}' → '{canonical}' skipped: "
-                    f"command '{canonical}' is not loaded"
-                )
-                continue
-            if alias not in [k.lower() for k in command.keywords]:
-                command.keywords.append(alias)
-                self.logger.debug(f"Alias '{alias}' → '{canonical}' registered")
 
     def format_keyword_response(self, response_format: str, message: MeshMessage) -> str:
         """Format a keyword response string with message data.

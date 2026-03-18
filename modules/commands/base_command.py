@@ -48,6 +48,9 @@ class BaseCommand(ABC):
         # Load allowed channels from config (standardized channel override)
         self.allowed_channels = self._load_allowed_channels()
 
+        # Load aliases from this command's config section and extend keywords
+        self._load_aliases_from_config()
+
         # Load translated keywords after initialization
         self._load_translated_keywords()
 
@@ -355,6 +358,27 @@ class BaseCommand(ABC):
         # Parse comma-separated list
         channels = [ch.strip() for ch in channels_str.split(',') if ch.strip()]
         return channels if channels else None
+
+    def _load_aliases_from_config(self) -> None:
+        """Load aliases from this command's own config section and extend keywords.
+
+        Config format::
+
+            [Wx_Command]
+            aliases = !weather, !w
+
+        Each alias is appended to ``self.keywords`` if not already present.
+        """
+        section_name = self._derive_config_section_name()
+        aliases_str = self.get_config_value(section_name, 'aliases', fallback=None, value_type='str')
+        if not aliases_str:
+            return
+        for alias in aliases_str.split(','):
+            alias = alias.strip().lower()
+            if alias and alias not in [k.lower() for k in self.keywords]:
+                self.keywords = list(self.keywords)  # ensure instance-level list
+                self.keywords.append(alias)
+                self.logger.debug(f"Alias '{alias}' registered for command '{self.name}'")
 
     def is_channel_allowed(self, message: MeshMessage) -> bool:
         """Check if this command is allowed in the message's channel.
