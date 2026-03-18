@@ -5,74 +5,95 @@ Contains the main bot class and message processing logic
 """
 
 import asyncio
+import atexit
 import configparser
 import json
 import logging
-from logging.handlers import RotatingFileHandler
-import colorlog
-import time
-import threading
-import schedule
 import signal
-import atexit
 import sqlite3
+import struct
+import threading
+import time
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Tuple, Callable
-from dataclasses import dataclass
+from typing import Any, Callable
+
+import colorlog
 
 # Import the official meshcore package
 import meshcore
 from meshcore import EventType
 
-# Import our modules
-from .rate_limiter import RateLimiter, BotTxRateLimiter, PerUserRateLimiter, NominatimRateLimiter
-from .message_handler import MessageHandler
-from .command_manager import CommandManager
 from .channel_manager import ChannelManager
-from .scheduler import MessageScheduler
-from .repeater_manager import RepeaterManager
-from .db_manager import DBManager
-from .i18n import Translator
-from .solar_conditions import set_config
-from .web_viewer.integration import WebViewerIntegration
+from .command_manager import CommandManager
+from .db_manager import AsyncDBManager, DBManager
 from .feed_manager import FeedManager
+from .i18n import Translator
+from .message_handler import MessageHandler
+
+# Import our modules
+from .rate_limiter import BotTxRateLimiter, ChannelRateLimiter, NominatimRateLimiter, PerUserRateLimiter, RateLimiter
+from .repeater_manager import RepeaterManager
+from .scheduler import MessageScheduler
 from .service_plugin_loader import ServicePluginLoader
+from .solar_conditions import set_config
 from .transmission_tracker import TransmissionTracker
 from .utils import resolve_path
+from .web_viewer.integration import WebViewerIntegration
+
+
+class _JsonFormatter(logging.Formatter):
+    """Emit one JSON object per line for log aggregation pipelines (Loki, Elasticsearch, etc.)."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        ts = time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime(record.created))
+        ms = int(record.msecs)
+        obj: dict[str, Any] = {
+            'timestamp': f'{ts}.{ms:03d}Z',
+            'level': record.levelname,
+            'logger': record.name,
+            'message': record.getMessage(),
+        }
+        if record.exc_info:
+            obj['exc_info'] = self.formatException(record.exc_info)
+        if record.stack_info:
+            obj['stack_info'] = self.formatStack(record.stack_info)
+        return json.dumps(obj, ensure_ascii=False)
 
 
 class MeshCoreBot:
     """MeshCore Bot using official meshcore package.
-    
+
     This class handles the core functionality of the bot, including connection management,
     message processing initialization, and module coordination.
     """
-    
+
     def __init__(self, config_file: str = "config.ini"):
         self.config_file = config_file
         self.config = configparser.ConfigParser()
         self.load_config()
-        
+
         # Setup logging
         self.setup_logging()
-        
+
         # Connection
         self.meshcore = None
         self.connected = False
         self.connection_time = None  # Track when connection was established to skip old cached messages
-        
+
         # Bot start time for uptime tracking
         self.start_time = time.time()
-        
+
         # Initialize database manager first (needed by plugins)
         db_path = self.config.get('Bot', 'db_path', fallback='meshcore_bot.db')
-        
+
         # Resolve database path (relative paths resolved from bot root, absolute paths used as-is)
         db_path = resolve_path(db_path, self.bot_root)
-        
+
         self.logger.info(f"Initializing database manager with database: {db_path}")
         try:
             self.db_manager = DBManager(self, db_path)
+            self.async_db_manager = AsyncDBManager(str(db_path), self.logger)
             self.logger.info("Database manager initialized successfully")
         except (OSError, ValueError, sqlite3.Error) as e:
             self.logger.error(f"Failed to initialize database manager: {e}")
@@ -82,14 +103,14 @@ class MeshCoreBot:
         self.prefix_bytes = self.config.getint("Bot", "prefix_bytes", fallback=1)
         self.prefix_hex_chars = self.prefix_bytes * 2
         self.logger.info(f"Prefix mode: {self.prefix_bytes} bytes ({self.prefix_hex_chars} hex chars)")
-        
+
         # Store start time in database for web viewer access
         try:
             self.db_manager.set_bot_start_time(self.start_time)
             self.logger.info("Bot start time stored in database")
         except (OSError, sqlite3.Error, AttributeError) as e:
             self.logger.warning(f"Could not store start time in database: {e}")
-        
+
         # Notify if Web_Viewer uses a different database (split-DB setup)
         if self.config.has_section('Web_Viewer') and self.config.has_option('Web_Viewer', 'db_path'):
             wv_raw = self.config.get('Web_Viewer', 'db_path').strip()
@@ -102,18 +123,18 @@ class MeshCoreBot:
                         "For shared repeater/graph and packet stream data, set [Web_Viewer] db_path to the same as [Bot] db_path or remove it to use the bot database. See docs/web-viewer.md (migrating from a separate database).",
                         wv_path, bot_path
                     )
-        
+
         # Initialize web viewer integration (after database manager)
         try:
             self.web_viewer_integration = WebViewerIntegration(self)
             self.logger.info("Web viewer integration initialized")
-            
+
             # Register cleanup handler for web viewer
             atexit.register(self._cleanup_web_viewer)
         except (OSError, ValueError, AttributeError, ImportError) as e:
             self.logger.warning(f"Web viewer integration failed: {e}")
             self.web_viewer_integration = None
-        
+
         # Initialize modules
         self.rate_limiter = RateLimiter(
             self.config.getint('Bot', 'rate_limit_seconds', fallback=10)
@@ -133,8 +154,10 @@ class MeshCoreBot:
         self.nominatim_rate_limiter = NominatimRateLimiter(
             self.config.getfloat('Bot', 'nominatim_rate_limit_seconds', fallback=1.1)
         )
+        # Per-channel rate limiter: loaded from [Rate_Limits] channel.<name>_seconds keys
+        self.channel_rate_limiter = self._load_channel_rate_limiter()
         self.tx_delay_ms = self.config.getint('Bot', 'tx_delay_ms', fallback=250)
-        
+
         # Initialize translator for localization BEFORE CommandManager
         # This ensures translated keywords are available when commands are loaded
         try:
@@ -155,13 +178,13 @@ class MeshCoreBot:
                 def get_value(self, key):
                     return None
             self.translator = DummyTranslator()
-        
+
         # Initialize solar conditions configuration
         set_config(self.config)
-        
+
         self.message_handler = MessageHandler(self)
         self.command_manager = CommandManager(self)
-        
+
         # Initialize transmission tracker for monitoring TX success
         try:
             self.transmission_tracker = TransmissionTracker(self)
@@ -169,16 +192,16 @@ class MeshCoreBot:
         except Exception as e:
             self.logger.warning(f"Failed to initialize transmission tracker: {e}")
             self.transmission_tracker = None
-        
+
         # Load max_channels from config (default 40, MeshCore supports up to 40 channels)
         max_channels = self.config.getint('Bot', 'max_channels', fallback=40)
         self.channel_manager = ChannelManager(self, max_channels=max_channels)
 
         # Callbacks invoked when the bot sends a channel message (e.g. Discord/Telegram bridges)
-        self.channel_sent_listeners: List[Callable] = []
+        self.channel_sent_listeners: list[Callable] = []
 
         self.scheduler = MessageScheduler(self)
-        
+
         # Initialize feed manager
         self.logger.info("Initializing feed manager")
         try:
@@ -187,7 +210,7 @@ class MeshCoreBot:
         except (OSError, ValueError, AttributeError, ImportError, configparser.NoSectionError) as e:
             self.logger.warning(f"Failed to initialize feed manager: {e}")
             self.feed_manager = None
-        
+
         # Initialize repeater manager
         self.logger.info("Initializing repeater manager")
         try:
@@ -196,21 +219,21 @@ class MeshCoreBot:
         except (OSError, ValueError, AttributeError) as e:
             self.logger.error(f"Failed to initialize repeater manager: {e}")
             raise
-        
+
         # Initialize mesh graph for path validation
         self.logger.info("Initializing mesh graph")
         try:
             from .mesh_graph import MeshGraph
             self.mesh_graph = MeshGraph(self)
             self.logger.info("Mesh graph initialized successfully")
-            
+
             # Register cleanup handler for mesh graph (independent of web viewer)
             # This ensures pending graph writes are flushed during shutdown
             atexit.register(self._cleanup_mesh_graph)
         except (OSError, ValueError, AttributeError, ImportError) as e:
             self.logger.warning(f"Failed to initialize mesh graph: {e}")
             self.mesh_graph = None
-        
+
         # Initialize service plugin loader and load all services
         self.logger.info("Initializing service plugin loader")
         try:
@@ -223,51 +246,51 @@ class MeshCoreBot:
             self.logger.error(f"Failed to initialize service plugin loader: {e}")
             self.service_loader = None
             self.services = {}
-        
+
         # Backward compatibility: expose packet_capture_service for existing code
         # This allows code that references self.packet_capture_service to continue working
         # Try to find by service name first, then by class name
         self.packet_capture_service = None
         for service_name, service_instance in self.services.items():
-            if (service_name == 'packetcapture' or 
+            if (service_name == 'packetcapture' or
                 service_instance.__class__.__name__ == 'PacketCaptureService'):
                 self.packet_capture_service = service_instance
                 break
-        
+
         # Reload translated keywords for all commands now that translator is available
         # This ensures keywords are loaded even if translator wasn't ready during command init
         if hasattr(self, 'command_manager') and hasattr(self, 'translator'):
-            for cmd_name, cmd_instance in self.command_manager.commands.items():
+            for _cmd_name, cmd_instance in self.command_manager.commands.items():
                 if hasattr(cmd_instance, '_load_translated_keywords'):
                     cmd_instance._load_translated_keywords()
-        
+
         # Advert tracking
         self.last_advert_time = None
-        
+
         # Clock sync tracking
         self.last_clock_sync_time = None
-        
+
         # Shutdown event for graceful shutdown
         self._shutdown_event = threading.Event()
 
         # Service plugin restart state (name -> timestamp of last failed restart)
-        self._service_restart_failures: Dict[str, float] = {}
+        self._service_restart_failures: dict[str, float] = {}
         self._service_restarting: set = set()
 
     @property
     def bot_root(self) -> Path:
         """Get bot root directory (where config.ini is located)"""
         return Path(self.config_file).parent.resolve()
-    
+
     def load_config(self) -> None:
         """Load configuration from file.
-        
+
         Reads the configuration file specified in self.config_file. If the file
         does not exist, a default configuration is created first.
         """
         if not Path(self.config_file).exists():
             self.create_default_config()
-        
+
         # Force UTF-8 so emoji and non-ASCII characters in config.ini parse on Windows.
         self.config.read(self.config_file, encoding="utf-8")
         # Resolve local plugins directory from [Bot] local_dir_path (default: local)
@@ -282,9 +305,9 @@ class MeshCoreBot:
         if local_config.exists():
             self.config.read(local_config, encoding="utf-8")
 
-    def _get_radio_settings(self) -> Dict[str, Any]:
+    def _get_radio_settings(self) -> dict[str, Any]:
         """Get current radio/connection settings from config.
-        
+
         Returns:
             Dict[str, Any]: Dictionary containing all radio-related settings.
         """
@@ -296,14 +319,27 @@ class MeshCoreBot:
             'tcp_port': self.config.getint('Connection', 'tcp_port', fallback=5000),
             'timeout': self.config.getint('Connection', 'timeout', fallback=30),
         }
-    
-    def reload_config(self) -> Tuple[bool, str]:
+
+    def _load_channel_rate_limiter(self) -> ChannelRateLimiter:
+        """Build a ChannelRateLimiter from [Rate_Limits] channel.<name>_seconds keys."""
+        limits: dict[str, float] = {}
+        if self.config.has_section('Rate_Limits'):
+            for key, value in self.config.items('Rate_Limits'):
+                if key.startswith('channel.') and key.endswith('_seconds'):
+                    channel_name = key[len('channel.'):-len('_seconds')]
+                    try:
+                        limits[channel_name] = float(value)
+                    except ValueError:
+                        self.logger.warning(f"Invalid channel rate limit for {key}: {value!r}")
+        return ChannelRateLimiter(limits)
+
+    def reload_config(self) -> tuple[bool, str]:
         """Reload configuration from file without restarting the bot.
-        
+
         This method reloads the configuration file and updates all components
         that depend on it. It will reject the reload if radio/connection settings
         have changed, as those require a full restart.
-        
+
         Returns:
             Tuple[bool, str]: (success, message) tuple indicating if reload succeeded
                 and a descriptive message.
@@ -311,15 +347,15 @@ class MeshCoreBot:
         try:
             # Store current radio settings before reload
             old_radio_settings = self._get_radio_settings()
-            
+
             # Create a temporary config parser to check new settings
             import configparser
             new_config = configparser.ConfigParser()
             if not Path(self.config_file).exists():
                 return (False, "Config file not found")
-            
+
             new_config.read(self.config_file, encoding="utf-8")
-            
+
             # Get new radio settings
             new_radio_settings = {
                 'connection_type': new_config.get('Connection', 'connection_type', fallback='ble').lower(),
@@ -329,7 +365,7 @@ class MeshCoreBot:
                 'tcp_port': new_config.getint('Connection', 'tcp_port', fallback=5000),
                 'timeout': new_config.getint('Connection', 'timeout', fallback=30),
             }
-            
+
             # Check if radio settings changed
             if old_radio_settings != new_radio_settings:
                 changed_settings = []
@@ -337,35 +373,37 @@ class MeshCoreBot:
                     if old_radio_settings[key] != new_radio_settings[key]:
                         changed_settings.append(f"{key}: {old_radio_settings[key]} -> {new_radio_settings[key]}")
                 return (False, f"Radio settings changed. Restart required. Changes: {', '.join(changed_settings)}")
-            
+
             # Radio settings unchanged, proceed with reload
             self.logger.info("Reloading configuration (radio settings unchanged)")
-            
+
             # Reload the config
             self.config.read(self.config_file, encoding="utf-8")
             local_config = self._local_root / "config.ini"
             if local_config.exists():
                 self.config.read(local_config, encoding="utf-8")
-            
+
             # Update rate limiters
             new_rate_limit = self.config.getint('Bot', 'rate_limit_seconds', fallback=10)
             self.rate_limiter = RateLimiter(new_rate_limit)
-            
+
             new_bot_tx_rate_limit = self.config.getfloat('Bot', 'bot_tx_rate_limit_seconds', fallback=1.0)
             self.bot_tx_rate_limiter = BotTxRateLimiter(new_bot_tx_rate_limit)
-            
+
             self.per_user_rate_limit_enabled = self.config.getboolean(
                 'Bot', 'per_user_rate_limit_enabled', fallback=True
             )
             new_per_user_seconds = self.config.getfloat('Bot', 'per_user_rate_limit_seconds', fallback=5.0)
             self.per_user_rate_limiter = PerUserRateLimiter(seconds=new_per_user_seconds, max_entries=1000)
-            
+
             new_nominatim_rate_limit = self.config.getfloat('Bot', 'nominatim_rate_limit_seconds', fallback=1.1)
             self.nominatim_rate_limiter = NominatimRateLimiter(new_nominatim_rate_limit)
-            
+
+            self.channel_rate_limiter = self._load_channel_rate_limiter()
+
             # Update transmission delay
             self.tx_delay_ms = self.config.getint('Bot', 'tx_delay_ms', fallback=250)
-            
+
             # Update translator if language changed
             try:
                 if self.config.has_section('Localization'):
@@ -374,23 +412,23 @@ class MeshCoreBot:
                 else:
                     new_language = 'en'
                     new_translation_path = 'translations/'
-                if (not hasattr(self, 'translator') or 
+                if (not hasattr(self, 'translator') or
                     getattr(self.translator, 'language', None) != new_language or
                     getattr(self.translator, 'translation_path', None) != new_translation_path):
                     self.translator = Translator(new_language, new_translation_path)
                     self.logger.info(f"Translator reloaded with language: {new_language}")
-                    
+
                     # Reload translated keywords for all commands
                     if hasattr(self, 'command_manager'):
-                        for cmd_name, cmd_instance in self.command_manager.commands.items():
+                        for _cmd_name, cmd_instance in self.command_manager.commands.items():
                             if hasattr(cmd_instance, '_load_translated_keywords'):
                                 cmd_instance._load_translated_keywords()
             except (OSError, ValueError, FileNotFoundError, json.JSONDecodeError) as e:
                 self.logger.warning(f"Failed to reload translator: {e}")
-            
+
             # Update solar conditions config
             set_config(self.config)
-            
+
             # Update command manager (keywords, custom syntax, banned users, monitor channels)
             if hasattr(self, 'command_manager'):
                 self.command_manager.keywords = self.command_manager.load_keywords()
@@ -399,12 +437,12 @@ class MeshCoreBot:
                 self.command_manager.monitor_channels = self.command_manager.load_monitor_channels()
                 self.command_manager.channel_keywords = self.command_manager.load_channel_keywords()
                 self.logger.info("Command manager config reloaded")
-            
+
             # Update scheduler (scheduled messages)
             if hasattr(self, 'scheduler'):
                 self.scheduler.setup_scheduled_messages()
                 self.logger.info("Scheduler config reloaded")
-            
+
             # Update channel manager max_channels if changed
             if hasattr(self, 'channel_manager'):
                 new_max_channels = self.config.getint('Bot', 'max_channels', fallback=40)
@@ -415,23 +453,23 @@ class MeshCoreBot:
                         self.logger.info(f"Channel manager max_channels updated to {new_max_channels}")
                 # Note: We don't invalidate the channel cache here because channels are fetched
                 # from the device, not from config. The cache should remain valid after reload.
-            
+
             # Note: Service plugins check config on-demand, so they'll pick up changes automatically
             # Feed manager and other services that need explicit reload can be added here if needed
-            
+
             self.logger.info("Configuration reloaded successfully")
             return (True, "Configuration reloaded successfully")
-            
+
         except Exception as e:
             error_msg = f"Error reloading configuration: {e}"
             self.logger.error(error_msg)
             import traceback
             self.logger.error(traceback.format_exc())
             return (False, error_msg)
-    
+
     def create_default_config(self) -> None:
         """Create default configuration file.
-        
+
         Writes a default 'config.ini' file to disk with standard settings
         and comments explaining each option.
         """
@@ -473,7 +511,7 @@ message_correlation_timeout = 10.0
 enable_enhanced_correlation = true
 
 # Bot node ID (leave empty for auto-assignment)
-node_id = 
+node_id =
 
 # Enable/disable bot responses
 # true: Bot will respond to keywords and commands
@@ -511,7 +549,7 @@ dm_flood_after = 2
 # Timezone for bot operations
 # Use standard timezone names (e.g., "America/New_York", "Europe/London", "UTC")
 # Leave empty to use system timezone
-timezone = 
+timezone =
 
 # Bot location for geographic proximity calculations and astronomical data
 # Default latitude for bot location (decimal degrees)
@@ -545,7 +583,7 @@ auto_manage_contacts = false
 # Only users with public keys listed here can execute admin commands
 # Format: comma-separated list of public keys (without spaces)
 # Example: f5d2b56d19b24412756933e917d4632e088cdd5daeadc9002feca73bf5d2b56d,another_key_here
-admin_pubkeys = 
+admin_pubkeys =
 
 # Commands that require admin access (comma-separated)
 # These commands will only work for users in the admin_pubkeys list
@@ -584,7 +622,7 @@ respond_to_dms = true
 [Banned_Users]
 # List of banned sender names (comma-separated). Matching is prefix (starts-with):
 # "Awful Username" also matches "Awful Username 🍆". No bot responses in channels or DMs.
-banned_users = 
+banned_users =
 
 [Feed_Manager]
 # Enable or disable RSS/API feed subscriptions
@@ -630,7 +668,7 @@ meshcore_log_level = INFO
 # Format: pattern = "response_format"
 # Available fields: {sender}, {phrase}, {connection_info}, {snr}, {timestamp}, {path}
 # {phrase}: The text after the trigger (for t_phrase syntax)
-# 
+#
 # Special syntax: Messages starting with "t " or "T " followed by a phrase
 # Example: "t hello world" -> "ack {sender}: hello world | {connection_info}"
 t_phrase = "ack {sender}: {phrase} | {connection_info}"
@@ -638,29 +676,29 @@ t_phrase = "ack {sender}: {phrase} | {connection_info}"
 
 [External_Data]
 # Weather API key (future feature)
-weather_api_key = 
+weather_api_key =
 
 # Weather update interval in seconds (future feature)
 weather_update_interval = 3600
 
 # Tide API key (future feature)
-tide_api_key = 
+tide_api_key =
 
 # Tide update interval in seconds (future feature)
 tide_update_interval = 1800
 
 # N2YO API key for satellite pass information
 # Get free key at: https://www.n2yo.com/login/
-n2yo_api_key = 
+n2yo_api_key =
 
 # AirNow API key for AQI data
 # Get free key at: https://docs.airnowapi.org/
-airnow_api_key = 
+airnow_api_key =
 
 # Repeater prefix API URL for prefix command
 # Leave empty to disable prefix command functionality
 # Configure your own regional API endpoint
-repeater_prefix_api_url = 
+repeater_prefix_api_url =
 
 # Repeater prefix cache duration in hours
 # How long to cache prefix data before refreshing from API
@@ -790,10 +828,10 @@ long_jokes = false
             f.write(default_config)
         # Note: Using print here since logger may not be initialized yet
         print(f"Created default config file: {self.config_file}")
-    
+
     def setup_logging(self) -> None:
         """Setup logging configuration.
-        
+
         Configures the logging system based on settings in the config file.
         Sets up console and file handlers, formatters, and log levels for
         both the bot and the underlying meshcore library.
@@ -804,14 +842,18 @@ long_jokes = false
             colored_output = self.config.getboolean('Logging', 'colored_output', fallback=True)
             log_file = self.config.get('Logging', 'log_file', fallback='meshcore_bot.log')
             meshcore_log_level = getattr(logging, self.config.get('Logging', 'meshcore_log_level', fallback='INFO'))
+            json_logging = self.config.getboolean('Logging', 'json_logging', fallback=False)
         else:
             log_level = logging.INFO
             colored_output = True
             log_file = ''  # Console/journal only when no [Logging] section
             meshcore_log_level = logging.INFO
+            json_logging = False
 
         # Create formatter
-        if colored_output:
+        if json_logging:
+            formatter: logging.Formatter = _JsonFormatter()
+        elif colored_output:
             formatter = colorlog.ColoredFormatter(
                 '%(log_color)s%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                 datefmt='%Y-%m-%d %H:%M:%S',
@@ -828,30 +870,30 @@ long_jokes = false
                 '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                 datefmt='%Y-%m-%d %H:%M:%S'
             )
-        
+
         # Setup logger
         self.logger = logging.getLogger('MeshCoreBot')
         self.logger.setLevel(log_level)
-        
+
         # Clear any existing handlers to prevent duplicates
         self.logger.handlers.clear()
-        
+
         # Console handler
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(formatter)
         self.logger.addHandler(console_handler)
-        
+
         # File handler
         # Strip whitespace and check if empty
         log_file = log_file.strip() if log_file else ''
-        
+
         # If log_file is empty, skip file logging (console only)
         if not log_file:
             self.logger.info("No log file specified, using console logging only")
         else:
             # Resolve log file path (relative paths resolved from bot root, absolute paths used as-is)
             log_file = resolve_path(log_file, self.bot_root)
-            
+
             # Ensure the log directory exists
             log_dir = Path(log_file).parent
             if not log_dir.exists():
@@ -860,34 +902,36 @@ long_jokes = false
                 except (OSError, PermissionError) as e:
                     self.logger.warning(f"Could not create log directory {log_dir}: {e}. Using console logging only.")
                     log_file = None
-            
+
             if log_file:
                 try:
+                    log_max_bytes = self.config.getint('Logging', 'log_max_bytes', fallback=5 * 1024 * 1024)
+                    log_backup_count = self.config.getint('Logging', 'log_backup_count', fallback=3)
                     file_handler = RotatingFileHandler(
                         log_file,
-                        maxBytes=5 * 1024 * 1024,
-                        backupCount=3,
+                        maxBytes=log_max_bytes,
+                        backupCount=log_backup_count,
                         encoding='utf-8',
                     )
                     file_handler.setFormatter(formatter)
                     self.logger.addHandler(file_handler)
                 except (OSError, PermissionError) as e:
                     self.logger.warning(f"Could not open log file {log_file}: {e}. Using console logging only.")
-        
+
         # Prevent propagation to root logger to avoid duplicate output
         self.logger.propagate = False
-        
+
         # Configure meshcore library logging (separate from bot logging)
         # Configure all possible meshcore-related loggers
         meshcore_loggers = [
             'meshcore',
-            'meshcore_cli', 
+            'meshcore_cli',
             'meshcore.meshcore',
             'meshcore_cli.meshcore_cli',
             'meshcore_cli.commands',
             'meshcore_cli.connection'
         ]
-        
+
         for logger_name in meshcore_loggers:
             logger = logging.getLogger(logger_name)
             logger.setLevel(meshcore_log_level)
@@ -898,37 +942,38 @@ long_jokes = false
                 handler = logging.StreamHandler()
                 handler.setFormatter(formatter)
                 logger.addHandler(handler)
-        
+
         # Configure root logger to prevent other libraries from using DEBUG
         root_logger = logging.getLogger()
         root_logger.setLevel(log_level)
-        
+
         # Log the configuration for debugging
-        self.logger.info(f"Logging configured - Bot: {logging.getLevelName(log_level)}, MeshCore: {logging.getLevelName(meshcore_log_level)}")
-        
+        mode = 'json' if json_logging else ('colored' if colored_output else 'plain')
+        self.logger.info(f"Logging configured - Bot: {logging.getLevelName(log_level)}, MeshCore: {logging.getLevelName(meshcore_log_level)}, format: {mode}")
+
         # Setup routing info capture for web viewer
         self._setup_routing_capture()
-        
+
         # Setup signal handlers for graceful shutdown
         self._setup_signal_handlers()
-    
+
     def _setup_routing_capture(self) -> None:
         """Setup routing information capture for web viewer.
-        
+
         Initializes the mechanism to capture message routing information
         if the web viewer integration is enabled.
         """
         # Web viewer doesn't need complex routing capture
         # It uses direct database access instead of complex integration
-        if not (hasattr(self, 'web_viewer_integration') and 
+        if not (hasattr(self, 'web_viewer_integration') and
                 self.web_viewer_integration):
             return
-        
+
         self.logger.info("Web viewer routing capture setup complete")
-    
+
     def _setup_signal_handlers(self) -> None:
         """Setup signal handlers for graceful shutdown.
-        
+
         Registers handlers for SIGTERM and SIGINT to ensure the bot can
         clean up resources and disconnect properly when stopped.
         """
@@ -938,27 +983,27 @@ long_jokes = false
             self._shutdown_event.set()
             # Set connected to False to break the while loop in start()
             self.connected = False
-        
+
         # Register signal handlers
         signal.signal(signal.SIGTERM, signal_handler)
         signal.signal(signal.SIGINT, signal_handler)
-    
+
     async def connect(self) -> bool:
         """Connect to MeshCore node using official package.
-        
+
         Establishes a connection to the mesh node via Serial, TCP, or BLE
         based on the configuration.
-        
+
         Returns:
             bool: True if connection was successful, False otherwise.
         """
         try:
             self.logger.info("Connecting to MeshCore node...")
-            
+
             # Get connection type from config
             connection_type = self.config.get('Connection', 'connection_type', fallback='ble').lower()
             self.logger.info(f"Using connection type: {connection_type}")
-            
+
             if connection_type == 'serial':
                 # Create serial connection
                 serial_port = self.config.get('Connection', 'serial_port', fallback='/dev/ttyUSB0')
@@ -976,45 +1021,112 @@ long_jokes = false
             else:
                 # Create BLE connection (default)
                 ble_device_name = self.config.get('Connection', 'ble_device_name', fallback=None)
-                self.logger.info(f"Connecting via BLE" + (f" to device: {ble_device_name}" if ble_device_name else ""))
+                self.logger.info("Connecting via BLE" + (f" to device: {ble_device_name}" if ble_device_name else ""))
                 self.meshcore = await meshcore.MeshCore.create_ble(ble_device_name, debug=False)
-            
+
             if self.meshcore.is_connected:
                 self.connected = True
+                self._update_radio_connected_metadata(True)
                 # Track connection time to skip processing old cached messages
                 self.connection_time = time.time()
                 self.logger.info(f"Connected to: {self.meshcore.self_info} at {self.connection_time}")
-                
+
                 # Wait for contacts to load
                 await self.wait_for_contacts()
-                
+
                 # Fetch channels
                 await self.channel_manager.fetch_channels()
-                
+
                 # Setup message event handlers
                 await self.setup_message_handlers()
-                
+
                 # Set radio clock if needed
                 await self.set_radio_clock()
-                
+
                 # Set device name to match config if needed
                 await self.set_device_name()
-                
+
                 return True
             else:
                 self.logger.error("Failed to connect to MeshCore node")
                 return False
-                
+
         except (OSError, ConnectionError, TimeoutError, ValueError, AttributeError) as e:
             self.logger.error(f"Connection failed: {e}")
             return False
-    
+
+    def _update_radio_connected_metadata(self, connected: bool) -> None:
+        """Write radio connection state to bot_metadata for the web viewer."""
+        try:
+            self.db_manager.set_metadata('radio_connected', '1' if connected else '0')
+        except Exception as e:
+            self.logger.warning(f"Could not update radio_connected metadata: {e}")
+
+    async def disconnect_radio(self) -> bool:
+        """Disconnect from radio. Called by scheduler via operation queue."""
+        import asyncio
+        try:
+            if self.meshcore:
+                try:
+                    await asyncio.wait_for(self.meshcore.disconnect(), timeout=10)
+                except asyncio.TimeoutError:
+                    self.logger.warning("Radio disconnect timed out after 10s — forcing disconnected state")
+            self.connected = False
+            self._update_radio_connected_metadata(False)
+            self.logger.info("Radio disconnected via web viewer request")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error disconnecting radio: {e}")
+            return False
+
+    async def reboot_radio(self) -> bool:
+        """Send firmware reboot command, disconnect, wait for reboot, then reconnect."""
+        import asyncio
+        try:
+            if self.meshcore and self.meshcore.is_connected:
+                self.logger.info("Sending firmware reboot command")
+                try:
+                    await asyncio.wait_for(self.meshcore.commands.reboot(), timeout=5)
+                except (asyncio.TimeoutError, Exception) as e:
+                    # Reboot command may drop the connection before a reply arrives
+                    self.logger.debug(f"Reboot command response: {e} (expected on firmware reboot)")
+            # Disconnect cleanly (firmware may have already dropped the link)
+            try:
+                if self.meshcore:
+                    await asyncio.wait_for(self.meshcore.disconnect(), timeout=5)
+            except (asyncio.TimeoutError, Exception):
+                pass
+            self.connected = False
+            self._update_radio_connected_metadata(False)
+            self.logger.info("Waiting for radio to reboot (8s)…")
+            await asyncio.sleep(8)
+            return await self.connect()
+        except Exception as e:
+            self.logger.error(f"Error rebooting radio: {e}")
+            return False
+
+    async def reconnect_radio(self) -> bool:
+        """Disconnect then reconnect. Called by scheduler for connect ops."""
+        import asyncio
+        try:
+            if self.meshcore:
+                try:
+                    await asyncio.wait_for(self.meshcore.disconnect(), timeout=10)
+                except asyncio.TimeoutError:
+                    self.logger.warning("Disconnect timed out during reconnect — proceeding")
+            self.connected = False
+            self._update_radio_connected_metadata(False)
+            return await self.connect()
+        except Exception as e:
+            self.logger.error(f"Error reconnecting radio: {e}")
+            return False
+
     async def set_radio_clock(self) -> bool:
         """Set radio clock if device time is earlier than system time.
-        
+
         Checks the connected device's time and updates it to match the system
         time if the device is lagging behind.
-        
+
         Returns:
             bool: True if check/update was successful (or not needed), False on error.
         """
@@ -1022,24 +1134,24 @@ long_jokes = false
             if not self.meshcore or not self.meshcore.is_connected:
                 self.logger.warning("Cannot set radio clock - not connected to device")
                 return False
-            
+
             # Get current device time
             self.logger.info("Checking device time...")
             time_result = await self.meshcore.commands.get_time()
             if time_result.type == EventType.ERROR:
                 self.logger.warning("Device does not support time commands")
                 return False
-            
+
             device_time = time_result.payload.get('time', 0)
             current_time = int(time.time())
-            
+
             self.logger.info(f"Device time: {device_time}, System time: {current_time}")
-            
+
             # Only set time if device time is earlier than current time
             if device_time < current_time:
                 time_diff = current_time - device_time
                 self.logger.info(f"Device time is {time_diff} seconds behind, updating...")
-                
+
                 result = await self.meshcore.commands.set_time(current_time)
                 if result.type == EventType.OK:
                     self.logger.info(f"✓ Radio clock updated to: {current_time}")
@@ -1051,18 +1163,18 @@ long_jokes = false
             else:
                 self.logger.info("Device time is current or ahead - no update needed")
                 return True
-                
+
         except (OSError, AttributeError, ValueError, KeyError) as e:
             self.logger.warning(f"Error checking/setting radio clock: {e}")
             return False
-    
+
     async def set_device_name(self) -> bool:
         """Set device name to match bot_name from config if they differ.
-        
+
         Checks the connected device's name and updates it to match the bot_name
         from config.ini if they differ. This ensures the device name matches the
         configured bot name before any adverts are sent.
-        
+
         Returns:
             bool: True if check/update was successful (or not needed), False on error.
         """
@@ -1070,23 +1182,23 @@ long_jokes = false
             if not self.meshcore or not self.meshcore.is_connected:
                 self.logger.warning("Cannot set device name - not connected to device")
                 return False
-            
+
             # Check if device name updates are enabled
             auto_update_name = self.config.getboolean('Bot', 'auto_update_device_name', fallback=True)
             if not auto_update_name:
                 self.logger.debug("auto_update_device_name is disabled, skipping device name update")
                 return True
-            
+
             # Get desired name from config
             desired_name = self.config.get('Bot', 'bot_name', fallback=None)
             if not desired_name or desired_name.strip() == '':
                 self.logger.debug("bot_name not set in config, skipping device name update")
                 return True
-            
+
             # Get current device name
             self.logger.info("Checking device name...")
             current_name = None
-            
+
             try:
                 if hasattr(self.meshcore, 'self_info') and self.meshcore.self_info:
                     self_info = self.meshcore.self_info
@@ -1099,19 +1211,19 @@ long_jokes = false
                         current_name = self_info.adv_name
             except Exception as e:
                 self.logger.debug(f"Could not get current device name: {e}")
-            
+
             if current_name == desired_name:
                 self.logger.info(f"Device name already matches config: '{desired_name}'")
                 return True
-            
+
             self.logger.info(f"Device name: '{current_name}', Config name: '{desired_name}'")
-            self.logger.info(f"Updating device name to match config...")
-            
+            self.logger.info("Updating device name to match config...")
+
             # Check if set_name command is available
             if not hasattr(self.meshcore, 'commands') or not hasattr(self.meshcore.commands, 'set_name'):
                 self.logger.warning("Device does not support set_name command")
                 return False
-            
+
             # Set the device name
             result = await self.meshcore.commands.set_name(desired_name)
             if result.type == EventType.OK:
@@ -1120,19 +1232,19 @@ long_jokes = false
             else:
                 self.logger.warning(f"Failed to update device name: {result.payload if hasattr(result, 'payload') else result}")
                 return False
-                
+
         except (OSError, AttributeError, ValueError, KeyError) as e:
             self.logger.warning(f"Error checking/setting device name: {e}")
             return False
-    
+
     async def wait_for_contacts(self) -> None:
         """Wait for contacts to be loaded from the device.
-        
+
         Polls the device for contact list or waits for automatic loading.
         Times out after 30 seconds if contacts are not loaded.
         """
         self.logger.info("Waiting for contacts to load...")
-        
+
         # Try to manually load contacts first
         try:
             from meshcore_cli.meshcore_cli import next_cmd
@@ -1141,12 +1253,12 @@ long_jokes = false
             self.logger.info(f"Contacts command result: {len(result) if result else 0} contacts")
         except (OSError, AttributeError, ValueError) as e:
             self.logger.warning(f"Error manually loading contacts: {e}")
-        
+
         # Check if contacts are loaded (even if empty list)
         if hasattr(self.meshcore, 'contacts'):
             self.logger.info(f"Contacts loaded: {len(self.meshcore.contacts)} contacts")
             return
-        
+
         # Wait up to 30 seconds for contacts to load
         max_wait = 30
         wait_time = 0
@@ -1154,74 +1266,99 @@ long_jokes = false
             if hasattr(self.meshcore, 'contacts'):
                 self.logger.info(f"Contacts loaded: {len(self.meshcore.contacts)} contacts")
                 return
-            
+
             await asyncio.sleep(5)
             wait_time += 5
             self.logger.info(f"Still waiting for contacts... ({wait_time}s)")
-        
+
         self.logger.warning(f"Contacts not loaded after {max_wait} seconds, proceeding anyway")
-    
+
     async def setup_message_handlers(self) -> None:
         """Setup event handlers for messages.
-        
+
         Registers callbacks for various meshcore events including contact messages,
         channel messages, RF data, and raw data packets.
         """
         # Handle contact messages (DMs)
         async def on_contact_message(event, metadata=None):
             await self.message_handler.handle_contact_message(event, metadata)
-        
+
         # Handle channel messages
         async def on_channel_message(event, metadata=None):
             await self.message_handler.handle_channel_message(event, metadata)
-        
+
         # Handle RF log data for SNR information
         async def on_rf_data(event, metadata=None):
             await self.message_handler.handle_rf_log_data(event, metadata)
-        
+
         # Handle raw data events (full packet data)
         async def on_raw_data(event, metadata=None):
             await self.message_handler.handle_raw_data(event, metadata)
-        
+
         # Handle new contact events
         async def on_new_contact(event, metadata=None):
             await self.message_handler.handle_new_contact(event, metadata)
-        
+
         # Subscribe to events
         self.meshcore.subscribe(EventType.CONTACT_MSG_RECV, on_contact_message)
         self.meshcore.subscribe(EventType.CHANNEL_MSG_RECV, on_channel_message)
         self.meshcore.subscribe(EventType.RX_LOG_DATA, on_rf_data)
-        
+
         # Subscribe to RAW_DATA events for full packet data
         self.meshcore.subscribe(EventType.RAW_DATA, on_raw_data)
-        
+
         # Note: Debug mode commands are not available in current meshcore-cli version
         # The meshcore library handles debug output automatically when needed
-        
+
         # Start auto message fetching
         await self.meshcore.start_auto_message_fetching()
-        
+
         # Delay NEW_CONTACT subscription to ensure device is fully ready
         self.logger.info("Delaying NEW_CONTACT subscription to ensure device readiness...")
         await asyncio.sleep(5)  # Wait 5 seconds for device to be fully ready
-        
+
         # Subscribe to NEW_CONTACT events for automatic contact management
         self.meshcore.subscribe(EventType.NEW_CONTACT, on_new_contact)
         self.logger.info("NEW_CONTACT subscription active - ready to receive new contact events")
-        
+
         self.logger.info("Message handlers setup complete")
-    
+
     async def start(self) -> None:
         """Start the bot.
-        
+
         Initiates the connection to the node, sets up scheduling, services,
         and starts the main execution loop.
         """
         self.logger.info("Starting MeshCore Bot...")
-        
+
         # Store reference to main event loop for scheduler thread access
         self.main_event_loop = asyncio.get_running_loop()
-        
+
+        # Suppress noisy "Task exception was never retrieved" warnings that
+        # originate from malformed/truncated MeshCore packets.  IndexError and
+        # struct.error are raised deep inside meshcore_parser.parsePacketPayload
+        # and are not programming errors we can fix on this side.
+        _default_handler = self.main_event_loop.get_exception_handler()
+
+        def _loop_exception_handler(
+            loop: asyncio.AbstractEventLoop,
+            context: dict[str, Any],
+        ) -> None:
+            exc = context.get("exception")
+            if isinstance(exc, (IndexError, struct.error)):
+                self.logger.debug(
+                    "Suppressed meshcore parser exception in asyncio task: %s: %s",
+                    type(exc).__name__,
+                    exc,
+                )
+                return
+            if _default_handler is not None:
+                _default_handler(loop, context)
+            else:
+                loop.default_exception_handler(context)
+
+        self.main_event_loop.set_exception_handler(_loop_exception_handler)
+
         # Connect to MeshCore node
         if not await self.connect():
             self.logger.error("Failed to connect to MeshCore node")
@@ -1233,22 +1370,22 @@ long_jokes = false
 
         # Setup scheduled messages
         self.scheduler.setup_scheduled_messages()
-        
+
         # Initialize feed manager (if enabled)
         if self.feed_manager:
             await self.feed_manager.initialize()
-        
+
         # Start scheduler thread
         self.scheduler.start()
-        
+
         # Start web viewer if enabled
         if self.web_viewer_integration and self.web_viewer_integration.enabled:
             self.web_viewer_integration.start_viewer()
             self.logger.info("Web viewer started")
-        
+
         # Send startup advert if enabled
         await self.send_startup_advert()
-        
+
         # Start all loaded services
         for service_name, service_instance in self.services.items():
             try:
@@ -1256,11 +1393,11 @@ long_jokes = false
                 self.logger.info(f"Service '{service_name}' started")
             except Exception as e:
                 self.logger.error(f"Failed to start service '{service_name}': {e}")
-        
+
         # Start command queue processor if needed
         if hasattr(self.command_manager, '_start_queue_processor'):
             self.command_manager._start_queue_processor()
-        
+
         # Keep running
         self.logger.info("Bot is running. Press Ctrl+C to stop.")
         try:
@@ -1268,24 +1405,24 @@ long_jokes = false
                 # Monitor web viewer process and health
                 if self.web_viewer_integration and self.web_viewer_integration.enabled:
                     # Check if process died
-                    if (self.web_viewer_integration and 
-                        self.web_viewer_integration.viewer_process and 
+                    if (self.web_viewer_integration and
+                        self.web_viewer_integration.viewer_process and
                         self.web_viewer_integration.viewer_process.poll() is not None):
                         try:
                             self.logger.warning("Web viewer process died, restarting...")
                         except (AttributeError, TypeError):
                             print("Web viewer process died, restarting...")
                         self.web_viewer_integration.restart_viewer()
-                    
+
                     # Simple health check for web viewer
-                    if (self.web_viewer_integration and 
+                    if (self.web_viewer_integration and
                         not self.web_viewer_integration.is_viewer_healthy()):
                         try:
                             self.logger.warning("Web viewer health check failed, restarting...")
                             self.web_viewer_integration.restart_viewer()
                         except (AttributeError, TypeError) as e:
                             print(f"Web viewer health check failed: {e}")
-                
+
                 # Periodically update system health in database (every 30 seconds)
                 if not hasattr(self, '_last_health_update'):
                     self._last_health_update = 0
@@ -1326,10 +1463,10 @@ long_jokes = false
             self.logger.info("Received interrupt signal")
         finally:
             await self.stop()
-    
+
     async def stop(self) -> None:
         """Stop the bot.
-        
+
         Performs graceful shutdown by stopping services, scheduling, and
         disconnecting from the mesh node.
         """
@@ -1337,20 +1474,21 @@ long_jokes = false
             self.logger.info("Stopping MeshCore Bot...")
         except (AttributeError, TypeError):
             print("Stopping MeshCore Bot...")
-        
+
         self.connected = False
-        
+        self._update_radio_connected_metadata(False)
+
         # Shutdown mesh graph first to flush pending writes
         if hasattr(self, 'mesh_graph') and self.mesh_graph:
             try:
                 self.mesh_graph.shutdown()
             except Exception as e:
                 self.logger.warning(f"Error shutting down mesh graph: {e}")
-        
+
         # Stop feed manager
         if self.feed_manager:
             await self.feed_manager.stop()
-        
+
         # Stop all loaded services
         for service_name, service_instance in self.services.items():
             try:
@@ -1358,7 +1496,7 @@ long_jokes = false
                 self.logger.info(f"Service '{service_name}' stopped")
             except Exception as e:
                 self.logger.error(f"Failed to stop service '{service_name}': {e}")
-        
+
         # Stop web viewer with proper shutdown sequence
         if self.web_viewer_integration:
             # Web viewer has simpler shutdown
@@ -1367,11 +1505,11 @@ long_jokes = false
                 self.logger.info("Web viewer stopped")
             except (AttributeError, TypeError):
                 print("Web viewer stopped")
-        
+
         # Wait for scheduler thread to exit (it checks self.connected)
         if hasattr(self, 'scheduler') and self.scheduler and self.scheduler.scheduler_thread:
             self.scheduler.join(timeout=5.0)
-        
+
         if self.meshcore:
             disconnect_timeout = self.config.getfloat('Bot', 'disconnect_timeout_seconds', fallback=10.0)
             try:
@@ -1383,7 +1521,7 @@ long_jokes = false
                 )
             except Exception as e:
                 self.logger.warning("Error during meshcore disconnect: %s", e)
-        
+
         try:
             self.logger.info("Bot stopped")
         except (AttributeError, TypeError):
@@ -1406,12 +1544,12 @@ long_jokes = false
         finally:
             self._service_restarting.discard(service_name)
 
-    async def get_system_health(self) -> Dict[str, Any]:
+    async def get_system_health(self) -> dict[str, Any]:
         """Aggregate health status from all components.
-        
+
         Collects status information from the meshcore connection, database,
         services, and other components to provide a system health report.
-        
+
         Returns:
             Dict[str, Any]: Dictionary containing overall health status and component details.
         """
@@ -1421,13 +1559,13 @@ long_jokes = false
             'uptime_seconds': time.time() - self.start_time,
             'components': {}
         }
-        
+
         # Check core connection
         health['components']['meshcore'] = {
             'healthy': self.connected and self.meshcore is not None,
             'message': 'Connected' if (self.connected and self.meshcore is not None) else 'Disconnected'
         }
-        
+
         # Check database
         try:
             stats = self.db_manager.get_database_stats()
@@ -1442,7 +1580,7 @@ long_jokes = false
                 'error': str(e),
                 'message': f'Error: {str(e)}'
             }
-        
+
         # Check services
         if hasattr(self, 'services') and self.services:
             for name, service in self.services.items():
@@ -1459,7 +1597,7 @@ long_jokes = false
                         'error': str(e),
                         'message': f'Error: {str(e)}'
                     }
-        
+
         # Check web viewer if available
         if hasattr(self, 'web_viewer_integration') and self.web_viewer_integration:
             try:
@@ -1476,7 +1614,7 @@ long_jokes = false
                     'error': str(e),
                     'message': f'Error: {str(e)}'
                 }
-        
+
         # Determine overall status
         unhealthy = [
             k for k, v in health['components'].items()
@@ -1487,15 +1625,15 @@ long_jokes = false
                 health['status'] = 'degraded'
             else:
                 health['status'] = 'unhealthy'
-        
+
         # Store health data in database for web viewer access
         try:
             self.db_manager.set_system_health(health)
         except Exception as e:
             self.logger.debug(f"Could not store system health in database: {e}")
-        
+
         return health
-    
+
     def _cleanup_web_viewer(self) -> None:
         """Cleanup web viewer resources on exit.
 
@@ -1505,9 +1643,9 @@ long_jokes = false
         try:
             if hasattr(self, 'web_viewer_integration') and self.web_viewer_integration:
                 self.web_viewer_integration.stop_viewer()
-        except (OSError, AttributeError, TypeError, ValueError, IOError):
+        except (OSError, AttributeError, TypeError, ValueError):
             pass  # Do not log; stream may be closed during atexit
-    
+
     def _cleanup_mesh_graph(self) -> None:
         """Cleanup mesh graph resources on exit.
 
@@ -1517,12 +1655,12 @@ long_jokes = false
         try:
             if hasattr(self, 'mesh_graph') and self.mesh_graph:
                 self.mesh_graph.shutdown()
-        except (OSError, AttributeError, TypeError, ValueError, IOError):
+        except (OSError, AttributeError, TypeError, ValueError):
             pass  # Do not log; stream may be closed during atexit
-    
+
     async def send_startup_advert(self) -> None:
         """Send a startup advertisement if configured.
-        
+
         Sends a 'bot online' status message to the mesh network. Can be configured
         as a local zero-hop broadcast or a flood message.
         """
@@ -1532,12 +1670,12 @@ long_jokes = false
             if startup_advert == 'false':
                 self.logger.debug("Startup advert disabled")
                 return
-            
+
             self.logger.info(f"Sending startup advert: {startup_advert}")
-            
+
             # Add a small delay to ensure connection is fully established
             await asyncio.sleep(2)
-            
+
             # Send the appropriate type of advert using meshcore.commands
             if startup_advert == 'zero-hop':
                 self.logger.debug("Sending zero-hop advert")
@@ -1548,13 +1686,13 @@ long_jokes = false
             else:
                 self.logger.warning(f"Unknown startup_advert option: {startup_advert}")
                 return
-            
+
             # Update last advert time
             import time
             self.last_advert_time = time.time()
-            
+
             self.logger.info(f"Startup {startup_advert} advert sent successfully")
-                
+
         except (OSError, AttributeError, ValueError, RuntimeError) as e:
             self.logger.error(f"Error sending startup advert: {e}")
             import traceback
