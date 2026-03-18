@@ -5,13 +5,13 @@ Shared by message_handler (on RX) and trace command (when TRACE_DATA is received
 """
 
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 
 def update_mesh_graph_from_trace_data(
     bot: Any,
-    path_hashes: List[str],
-    packet_info: Dict[str, Any],
+    path_hashes: list[str],
+    packet_info: dict[str, Any],
     *,
     is_our_trace: Optional[bool] = None,
 ) -> None:
@@ -76,7 +76,7 @@ def update_mesh_graph_from_trace_data(
 
     recency_days = bot.config.getint("Path_Command", "graph_edge_expiration_days", fallback=7)
 
-    from .utils import calculate_distance, _get_node_location_from_db
+    from .utils import _get_node_location_from_db, calculate_distance
 
     bot_location = None
     try:

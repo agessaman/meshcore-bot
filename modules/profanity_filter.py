@@ -37,10 +37,7 @@ except ImportError:
 
 def _has_hate_symbols(text: str) -> bool:
     """Return True if text contains any blocked hate-symbol code point."""
-    for cp in _HATE_SYMBOL_CODEPOINTS:
-        if chr(cp) in text:
-            return True
-    return False
+    return any(chr(cp) in text for cp in _HATE_SYMBOL_CODEPOINTS)
 
 
 def _replace_hate_symbols(text: str, replacement: str = "***") -> str:
