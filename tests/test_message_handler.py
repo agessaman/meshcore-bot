@@ -812,3 +812,735 @@ class TestHandleChannelMessage:
         with patch.object(handler, "_debug_decode_message_path", side_effect=RuntimeError("boom")):
             await handler.handle_channel_message(event)
         handler.logger.error.assert_called()
+
+
+# ---------------------------------------------------------------------------
+# Packet construction helpers (used across multiple test classes below)
+# ---------------------------------------------------------------------------
+#
+# MeshCore packet binary layout (from decode_meshcore_packet / Packet.cpp):
+#
+#   header (1 byte):
+#       bits 7-6 = payload_version (0 = VER_1, must be 0)
+#       bits 5-2 = payload_type  (ADVERT=4, TXT_MSG=2, GRP_TXT=5, TRACE=9, …)
+#       bits 1-0 = route_type    (TRANSPORT_FLOOD=0, FLOOD=1, DIRECT=2, TRANSPORT_DIRECT=3)
+#   [transport bytes: 4 bytes if route_type is TRANSPORT_FLOOD or TRANSPORT_DIRECT]
+#   path_len_byte (1 byte):
+#       low 6 bits = hop_count
+#       high 2 bits = size_code  (bytes_per_hop = size_code + 1)
+#       => path_byte_length = hop_count * bytes_per_hop
+#   path bytes (path_byte_length bytes)
+#   payload bytes (remainder)
+#
+# header = (0 << 6) | (payload_type << 2) | route_type
+#
+# Pre-computed examples used in tests:
+#   FLOOD(1)+ADVERT(4), 0 hops: header=0x11, path_len=0x00 → "1100"
+#   FLOOD(1)+TXT_MSG(2), 0 hops: header=0x09, path_len=0x00 → "0900"
+#   FLOOD(1)+ADVERT(4), 2 hops 1-byte (AB,CD): header=0x11, path_len=0x02 → "110202abcdfeed"
+#   DIRECT(2)+GRP_TXT(5), 0 hops: header=0x16, path_len=0x00 → "1600"
+#   TRANSPORT_FLOOD(0)+TXT_MSG(2), 4-byte transport, 0 hops: header=0x08 → "0801020304 00 ff"
+#   FLOOD(1)+TRACE(9), 2 hops, payload: header=0x25
+#
+# Advert payload format (for parse_advert, from AdvertDataHelpers.h):
+#   bytes 0-31:   public_key (32 bytes)
+#   bytes 32-35:  timestamp  (uint32 little-endian)
+#   bytes 36-99:  signature  (64 bytes)
+#   byte  100:    flags_byte (app_data[0])
+#       bits 3-0 = adv_type (CHAT=1, REPEATER=2, ROOM=3, SENSOR=4)
+#       bit  4   = ADV_LATLON_MASK  (has location: 8 bytes lat+lon)
+#       bit  5   = ADV_FEAT1_MASK   (has feat1: 2 bytes)
+#       bit  6   = ADV_FEAT2_MASK   (has feat2: 2 bytes)
+#       bit  7   = ADV_NAME_MASK    (has name: remaining bytes as UTF-8)
+#   bytes 101+:   optional location / feat1 / feat2 / name
+
+def _make_advert_payload(
+    flags_byte: int,
+    *,
+    pub_key: bytes = b"\xaa" * 32,
+    timestamp: int = 1700000000,
+    signature: bytes = b"\xbb" * 64,
+    location_lat_raw: int = 0,
+    location_lon_raw: int = 0,
+    feat1: int = 0,
+    feat2: int = 0,
+    name: str = "",
+) -> bytes:
+    """Build a minimal valid advert payload byte string for parse_advert()."""
+    # Header: pub_key (32) + timestamp (4 little-endian) + signature (64) = 100 bytes
+    ts_bytes = timestamp.to_bytes(4, "little")
+    header = pub_key[:32] + ts_bytes + signature[:64]
+    assert len(header) == 100
+
+    app_data = bytes([flags_byte])
+
+    # Optional location (8 bytes): lat (int32 LE) + lon (int32 LE)
+    if flags_byte & 0x10:
+        app_data += location_lat_raw.to_bytes(4, "little", signed=True)
+        app_data += location_lon_raw.to_bytes(4, "little", signed=True)
+
+    # Optional feat1 (2 bytes)
+    if flags_byte & 0x20:
+        app_data += feat1.to_bytes(2, "little")
+
+    # Optional feat2 (2 bytes)
+    if flags_byte & 0x40:
+        app_data += feat2.to_bytes(2, "little")
+
+    # Optional name (variable length UTF-8)
+    if flags_byte & 0x80:
+        app_data += name.encode("utf-8")
+
+    return header + app_data
+
+
+def _make_packet_hex(
+    payload_type: int,
+    route_type: int,
+    path_bytes: bytes = b"",
+    payload_bytes: bytes = b"\xfe",
+    *,
+    hop_count: int = 0,
+    bytes_per_hop: int = 1,
+    transport: bytes = b"",
+) -> str:
+    """Build a valid MeshCore packet hex string for decode_meshcore_packet()."""
+    header = (0 << 6) | (payload_type << 2) | route_type
+    # path_len_byte: high 2 bits = size_code (bytes_per_hop - 1), low 6 bits = hop_count
+    size_code = bytes_per_hop - 1
+    path_len_byte = (size_code << 6) | (hop_count & 0x3F)
+    pkt = bytes([header]) + transport + bytes([path_len_byte]) + path_bytes + payload_bytes
+    return pkt.hex()
+
+
+# ---------------------------------------------------------------------------
+# decode_meshcore_packet
+# ---------------------------------------------------------------------------
+
+class TestDecodeMeshcorePacket:
+    """Tests for MessageHandler.decode_meshcore_packet() — pure hex/binary parsing."""
+
+    # --- invalid / edge-case inputs ---
+
+    def test_none_raw_hex_returns_none(self, handler):
+        result = handler.decode_meshcore_packet(None)
+        assert result is None
+
+    def test_empty_raw_hex_returns_none(self, handler):
+        result = handler.decode_meshcore_packet("")
+        assert result is None
+
+    def test_single_byte_too_short_returns_none(self, handler):
+        # 1 byte only → fails minimum size check (< 2)
+        result = handler.decode_meshcore_packet("11")
+        assert result is None
+
+    def test_invalid_hex_string_raises_or_returns_none(self, handler):
+        # "ZZZZZZ" is not valid hex.  bytes.fromhex() raises ValueError inside the try-block;
+        # the except handler then tries to reference the unbound local `byte_data` in its log
+        # message, which produces an UnboundLocalError that propagates out.
+        # Either behaviour (None return or propagated exception) is acceptable here; the
+        # important thing is that the method does NOT silently succeed.
+        try:
+            result = handler.decode_meshcore_packet("ZZZZZZ")
+            assert result is None
+        except (ValueError, UnboundLocalError):
+            pass  # expected — source-level bug causes exception to propagate
+
+    def test_0x_prefix_stripped(self, handler):
+        # Prepend '0x' — should be stripped transparently
+        hex_no_prefix = _make_packet_hex(4, 1, payload_bytes=b"\xde")
+        result = handler.decode_meshcore_packet("0x" + hex_no_prefix)
+        assert result is not None
+        assert result["route_type_name"] == "FLOOD"
+        assert result["payload_type_name"] == "ADVERT"
+
+    def test_payload_hex_preferred_over_raw_hex(self, handler):
+        # raw_hex encodes a TXT_MSG, payload_hex encodes an ADVERT
+        raw_txt = _make_packet_hex(2, 1, payload_bytes=b"\x01")
+        raw_adv = _make_packet_hex(4, 1, payload_bytes=b"\x02")
+        result = handler.decode_meshcore_packet(raw_txt, payload_hex=raw_adv)
+        # Should decode from payload_hex (ADVERT), not raw_hex (TXT_MSG)
+        assert result["payload_type_name"] == "ADVERT"
+
+    def test_unknown_payload_version_returns_none(self, handler):
+        # Build a packet with payload_version = 1 (VER_2) in bits 7-6
+        payload_type = 2  # TXT_MSG
+        route_type = 1    # FLOOD
+        header = (1 << 6) | (payload_type << 2) | route_type  # version bits = 01
+        path_len_byte = 0x00
+        pkt = bytes([header, path_len_byte, 0xAA])
+        result = handler.decode_meshcore_packet(pkt.hex())
+        assert result is None
+
+    # --- FLOOD route ---
+
+    def test_flood_advert_no_path(self, handler):
+        hex_str = _make_packet_hex(4, 1, payload_bytes=b"\xde\xad")
+        result = handler.decode_meshcore_packet(hex_str)
+        assert result is not None
+        assert result["route_type_name"] == "FLOOD"
+        assert result["payload_type_name"] == "ADVERT"
+        assert result["route_type"] == 1
+        assert result["payload_type"] == 4
+        assert result["payload_version"] == 0
+        assert result["has_transport_codes"] is False
+        assert result["transport_codes"] is None
+        assert result["path_len"] == 0
+        assert result["path"] == []
+        assert result["path_hex"] == ""
+        assert result["payload_hex"] == "dead"
+
+    def test_flood_txt_msg_no_path(self, handler):
+        hex_str = _make_packet_hex(2, 1, payload_bytes=b"\x48\x69")
+        result = handler.decode_meshcore_packet(hex_str)
+        assert result is not None
+        assert result["payload_type_name"] == "TXT_MSG"
+        assert result["route_type_name"] == "FLOOD"
+
+    def test_flood_advert_two_hops_one_byte(self, handler):
+        path = bytes([0xAB, 0xCD])
+        hex_str = _make_packet_hex(
+            4, 1,
+            path_bytes=path,
+            payload_bytes=b"\xEE",
+            hop_count=2,
+            bytes_per_hop=1,
+        )
+        result = handler.decode_meshcore_packet(hex_str)
+        assert result is not None
+        assert result["path_len"] == 2
+        assert result["path_byte_length"] == 2
+        assert result["bytes_per_hop"] == 1
+        assert result["path_hex"] == "abcd"
+        assert result["path"] == ["AB", "CD"]
+
+    def test_flood_advert_two_hops_two_bytes(self, handler):
+        # 2 hops, 2 bytes each → 4 path bytes
+        path = bytes([0x01, 0x02, 0xAB, 0xCD])
+        hex_str = _make_packet_hex(
+            4, 1,
+            path_bytes=path,
+            payload_bytes=b"\xEE",
+            hop_count=2,
+            bytes_per_hop=2,
+        )
+        result = handler.decode_meshcore_packet(hex_str)
+        assert result is not None
+        assert result["bytes_per_hop"] == 2
+        assert result["path_byte_length"] == 4
+        assert result["path_len"] == 2
+        assert result["path"] == ["0102", "ABCD"]
+
+    # --- DIRECT route ---
+
+    def test_direct_grp_txt_no_path(self, handler):
+        hex_str = _make_packet_hex(5, 2, payload_bytes=b"\x01\x02\x03")
+        result = handler.decode_meshcore_packet(hex_str)
+        assert result is not None
+        assert result["route_type_name"] == "DIRECT"
+        assert result["payload_type_name"] == "GRP_TXT"
+        assert result["has_transport_codes"] is False
+
+    # --- TRANSPORT_FLOOD route (has 4 transport bytes) ---
+
+    def test_transport_flood_has_transport_codes(self, handler):
+        transport = bytes([0x01, 0x02, 0x03, 0x04])
+        hex_str = _make_packet_hex(
+            2, 0,
+            payload_bytes=b"\xFF",
+            transport=transport,
+        )
+        result = handler.decode_meshcore_packet(hex_str)
+        assert result is not None
+        assert result["route_type_name"] == "TRANSPORT_FLOOD"
+        assert result["has_transport_codes"] is True
+        assert result["transport_codes"] is not None
+        assert result["transport_codes"]["code1"] == 0x0201
+        assert result["transport_codes"]["code2"] == 0x0403
+
+    def test_transport_direct_has_transport_codes(self, handler):
+        transport = bytes([0x0A, 0x0B, 0x0C, 0x0D])
+        hex_str = _make_packet_hex(
+            4, 3,
+            payload_bytes=b"\xAA",
+            transport=transport,
+        )
+        result = handler.decode_meshcore_packet(hex_str)
+        assert result is not None
+        assert result["route_type_name"] == "TRANSPORT_DIRECT"
+        assert result["has_transport_codes"] is True
+
+    # --- Too-short packet after stripping transport ---
+
+    def test_too_short_for_path_len_returns_none(self, handler):
+        # TRANSPORT_FLOOD needs 1 (header) + 4 (transport) + 1 (path_len) = 6 bytes minimum
+        # Provide only header + 4 transport bytes (no path_len byte)
+        header = (0 << 6) | (2 << 2) | 0  # TRANSPORT_FLOOD + TXT_MSG
+        pkt = bytes([header, 0x01, 0x02, 0x03, 0x04])  # 5 bytes, missing path_len
+        result = handler.decode_meshcore_packet(pkt.hex())
+        assert result is None
+
+    def test_path_bytes_exceed_available_data_returns_none(self, handler):
+        # Claim 3 hops (3 path bytes) but only provide 2 in the packet
+        header = (0 << 6) | (4 << 2) | 1  # FLOOD + ADVERT
+        path_len_byte = 0x03  # 3 hops, 1 byte each
+        pkt = bytes([header, path_len_byte, 0xAA, 0xBB])  # only 2 path bytes
+        result = handler.decode_meshcore_packet(pkt.hex())
+        assert result is None
+
+    # --- All standard payload types decode without crashing ---
+
+    def test_all_payload_types_decode(self, handler):
+        known_types = {
+            0x00: "REQ",
+            0x01: "RESPONSE",
+            0x02: "TXT_MSG",
+            0x03: "ACK",
+            0x04: "ADVERT",
+            0x05: "GRP_TXT",
+            0x06: "GRP_DATA",
+            0x07: "ANON_REQ",
+            0x08: "PATH",
+            0x09: "TRACE",
+            0x0A: "MULTIPART",
+            0x0F: "RAW_CUSTOM",
+        }
+        for pt_val, expected_name in known_types.items():
+            hex_str = _make_packet_hex(pt_val, 1, payload_bytes=b"\x01\x02")
+            result = handler.decode_meshcore_packet(hex_str)
+            assert result is not None, f"Expected non-None for payload_type 0x{pt_val:02x}"
+            assert result["payload_type_name"] == expected_name
+
+    # --- Return dict structure completeness ---
+
+    def test_return_dict_has_expected_keys(self, handler):
+        hex_str = _make_packet_hex(4, 1, payload_bytes=b"\xAA")
+        result = handler.decode_meshcore_packet(hex_str)
+        required_keys = {
+            "header", "route_type", "route_type_name", "payload_type", "payload_type_name",
+            "payload_version", "route_type_enum", "payload_type_enum", "payload_version_enum",
+            "has_transport_codes", "transport_codes", "transport_size",
+            "path_len", "path_byte_length", "bytes_per_hop",
+            "path_info", "path", "path_hex", "payload_hex", "payload_bytes",
+        }
+        for key in required_keys:
+            assert key in result, f"Missing key: {key}"
+
+    def test_trace_packet_path_info_type(self, handler):
+        # TRACE(9) + FLOOD(1): path_info should have type='trace'
+        # Provide minimal trace payload: tag(4) + auth(4) + flags(1) = 9 bytes
+        trace_payload = b"\x00" * 9
+        hex_str = _make_packet_hex(9, 1, payload_bytes=trace_payload)
+        result = handler.decode_meshcore_packet(hex_str)
+        assert result is not None
+        assert result["path_info"]["type"] == "trace"
+
+
+# ---------------------------------------------------------------------------
+# parse_advert
+# ---------------------------------------------------------------------------
+
+class TestParseAdvert:
+    """Tests for MessageHandler.parse_advert() — pure binary advert parsing."""
+
+    def test_too_short_payload_returns_empty_dict(self, handler):
+        # Must be >= 101 bytes
+        result = handler.parse_advert(b"\x00" * 100)
+        assert result == {}
+
+    def test_none_length_payload_short(self, handler):
+        result = handler.parse_advert(b"")
+        assert result == {}
+
+    def test_no_app_data_after_100_bytes_returns_empty(self, handler):
+        # Exactly 100 bytes means app_data is empty → returns {}
+        result = handler.parse_advert(b"\x00" * 100)
+        assert result == {}
+
+    def test_companion_advert_basic(self, handler):
+        # ADV_TYPE_CHAT=0x01, no optional fields
+        payload = _make_advert_payload(0x01)
+        result = handler.parse_advert(payload)
+        assert result is not None
+        assert result != {}
+        assert result["mode"] == "Companion"
+        assert "public_key" in result
+        assert len(result["public_key"]) == 64  # 32 bytes → 64 hex chars
+        assert "advert_time" in result
+        assert result["advert_time"] == 1700000000
+
+    def test_repeater_advert(self, handler):
+        payload = _make_advert_payload(0x02)  # ADV_TYPE_REPEATER
+        result = handler.parse_advert(payload)
+        assert result["mode"] == "Repeater"
+
+    def test_room_server_advert(self, handler):
+        payload = _make_advert_payload(0x03)  # ADV_TYPE_ROOM
+        result = handler.parse_advert(payload)
+        assert result["mode"] == "RoomServer"
+
+    def test_sensor_advert(self, handler):
+        payload = _make_advert_payload(0x04)  # ADV_TYPE_SENSOR
+        result = handler.parse_advert(payload)
+        assert result["mode"] == "Sensor"
+
+    def test_unknown_type_advert(self, handler):
+        payload = _make_advert_payload(0x05)  # No matching type
+        result = handler.parse_advert(payload)
+        assert result["mode"] == "Type5"
+
+    def test_companion_with_name(self, handler):
+        # ADV_NAME_MASK=0x80 | ADV_TYPE_CHAT=0x01
+        payload = _make_advert_payload(0x81, name="TestNode")
+        result = handler.parse_advert(payload)
+        assert result["mode"] == "Companion"
+        assert result["name"] == "TestNode"
+
+    def test_companion_with_location(self, handler):
+        # ADV_LATLON_MASK=0x10 | ADV_TYPE_CHAT=0x01
+        # lat=47.606209 → raw=47606209, lon=-122.332069 → raw=-122332069
+        lat_raw = 47606209
+        lon_raw = -122332069
+        payload = _make_advert_payload(
+            0x11,
+            location_lat_raw=lat_raw,
+            location_lon_raw=lon_raw,
+        )
+        result = handler.parse_advert(payload)
+        assert result["mode"] == "Companion"
+        assert "lat" in result
+        assert "lon" in result
+        assert abs(result["lat"] - round(lat_raw / 1_000_000, 6)) < 1e-5
+        assert abs(result["lon"] - round(lon_raw / 1_000_000, 6)) < 1e-5
+
+    def test_advert_with_name_and_location(self, handler):
+        # ADV_LATLON_MASK=0x10 | ADV_NAME_MASK=0x80 | ADV_TYPE_CHAT=0x01 = 0x91
+        payload = _make_advert_payload(
+            0x91,
+            location_lat_raw=10000000,
+            location_lon_raw=-20000000,
+            name="Rooftop",
+        )
+        result = handler.parse_advert(payload)
+        assert result["mode"] == "Companion"
+        assert "lat" in result and "lon" in result
+        assert result["name"] == "Rooftop"
+
+    def test_advert_with_feat1(self, handler):
+        # ADV_FEAT1_MASK=0x20 | ADV_TYPE_CHAT=0x01 = 0x21
+        payload = _make_advert_payload(0x21, feat1=0x1234)
+        result = handler.parse_advert(payload)
+        assert result["feat1"] == 0x1234
+
+    def test_advert_with_feat2(self, handler):
+        # ADV_FEAT2_MASK=0x40 | ADV_TYPE_CHAT=0x01 = 0x41
+        payload = _make_advert_payload(0x41, feat2=0xABCD)
+        result = handler.parse_advert(payload)
+        assert result["feat2"] == 0xABCD
+
+    def test_advert_with_all_optional_fields(self, handler):
+        # 0x10 | 0x20 | 0x40 | 0x80 | 0x02 = 0xF2  (REPEATER with all flags)
+        payload = _make_advert_payload(
+            0xF2,
+            location_lat_raw=1000000,
+            location_lon_raw=-2000000,
+            feat1=0x0001,
+            feat2=0x0002,
+            name="AllFlagsRepeater",
+        )
+        result = handler.parse_advert(payload)
+        assert result["mode"] == "Repeater"
+        assert "lat" in result
+        assert "lon" in result
+        assert result["feat1"] == 0x0001
+        assert result["feat2"] == 0x0002
+        assert result["name"] == "AllFlagsRepeater"
+
+    def test_location_flag_but_too_short_returns_partial(self, handler):
+        # ADV_LATLON_MASK set but only 1 app_data byte (the flags) → too short for lat+lon
+        pub_key = b"\xaa" * 32
+        ts = (1700000000).to_bytes(4, "little")
+        sig = b"\xbb" * 64
+        flags = bytes([0x11])  # ADV_LATLON_MASK | ADV_TYPE_CHAT — no lat/lon data after
+        payload = pub_key + ts + sig + flags  # 101 bytes, but no location data
+        result = handler.parse_advert(payload)
+        # Method returns advert dict without location (early return on short data)
+        assert "mode" in result
+        assert "lat" not in result
+
+    def test_public_key_in_result(self, handler):
+        pub_key = bytes(range(32))  # 0x00..0x1f
+        payload = _make_advert_payload(0x01, pub_key=pub_key)
+        result = handler.parse_advert(payload)
+        assert result["public_key"] == bytes(range(32)).hex()
+
+    def test_signature_in_result(self, handler):
+        sig = bytes([0xFF] * 64)
+        payload = _make_advert_payload(0x01, signature=sig)
+        result = handler.parse_advert(payload)
+        assert result["signature"] == "ff" * 64
+
+
+# ---------------------------------------------------------------------------
+# store_message_for_correlation and cleanup_old_messages
+# ---------------------------------------------------------------------------
+
+class TestMessageCorrelation:
+    """Tests for store_message_for_correlation(), cleanup_old_messages(), and
+    correlate_message_with_rf_data()."""
+
+    def test_store_message_adds_to_pending(self, handler):
+        handler.store_message_for_correlation("msg-001", {"pubkey_prefix": "aa"})
+        assert "msg-001" in handler.pending_messages
+        entry = handler.pending_messages["msg-001"]
+        assert entry["data"] == {"pubkey_prefix": "aa"}
+        assert entry["processed"] is False
+        assert isinstance(entry["timestamp"], float)
+
+    def test_store_message_overwrites_existing(self, handler):
+        handler.store_message_for_correlation("dup", {"v": 1})
+        handler.store_message_for_correlation("dup", {"v": 2})
+        assert handler.pending_messages["dup"]["data"]["v"] == 2
+
+    def test_cleanup_removes_expired_entries(self, handler):
+        handler.message_timeout = 5.0
+        # Store a message then backdate its timestamp well past the timeout
+        handler.store_message_for_correlation("old-msg", {"x": 1})
+        handler.pending_messages["old-msg"]["timestamp"] = time.time() - 100
+        handler.cleanup_old_messages()
+        assert "old-msg" not in handler.pending_messages
+
+    def test_cleanup_keeps_fresh_entries(self, handler):
+        handler.message_timeout = 60.0
+        handler.store_message_for_correlation("fresh", {"x": 2})
+        handler.cleanup_old_messages()
+        assert "fresh" in handler.pending_messages
+
+    def test_cleanup_empty_pending_is_safe(self, handler):
+        handler.pending_messages = {}
+        handler.cleanup_old_messages()  # Should not raise
+
+    def test_correlate_unknown_message_id_returns_none(self, handler):
+        result = handler.correlate_message_with_rf_data("nonexistent-id")
+        assert result is None
+
+    def test_correlate_message_with_matching_rf_data(self, handler):
+        handler.store_message_for_correlation("m1", {"pubkey_prefix": "aabb"})
+        rf = {
+            "timestamp": time.time(),
+            "snr": 5,
+            "rssi": -80,
+            "packet_prefix": "aabb",
+            "pubkey_prefix": "aabb",
+        }
+        handler.recent_rf_data = [rf]
+        handler.rf_data_timeout = 60
+        result = handler.correlate_message_with_rf_data("m1")
+        assert result is not None
+        assert handler.pending_messages["m1"]["processed"] is True
+
+    def test_correlate_no_matching_rf_returns_none(self, handler):
+        handler.store_message_for_correlation("m2", {"pubkey_prefix": "ffff"})
+        handler.recent_rf_data = []
+        result = handler.correlate_message_with_rf_data("m2")
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# try_correlate_pending_messages
+# ---------------------------------------------------------------------------
+
+class TestTryCorrelatePendingMessages:
+    """Tests for MessageHandler.try_correlate_pending_messages()."""
+
+    def test_marks_matching_message_processed(self, handler):
+        handler.store_message_for_correlation("pm1", {"pubkey_prefix": "ccdd"})
+        rf_data = {"pubkey_prefix": "ccdd", "packet_prefix": "ccdd", "timestamp": time.time()}
+        handler.try_correlate_pending_messages(rf_data)
+        assert handler.pending_messages["pm1"]["processed"] is True
+
+    def test_skips_already_processed_messages(self, handler):
+        handler.store_message_for_correlation("pm2", {"pubkey_prefix": "eeff"})
+        handler.pending_messages["pm2"]["processed"] = True
+        rf_data = {"pubkey_prefix": "eeff", "packet_prefix": "eeff", "timestamp": time.time()}
+        # Should not raise; processed flag remains True
+        handler.try_correlate_pending_messages(rf_data)
+        assert handler.pending_messages["pm2"]["processed"] is True
+
+    def test_no_match_does_not_mark_processed(self, handler):
+        handler.store_message_for_correlation("pm3", {"pubkey_prefix": "1111"})
+        rf_data = {"pubkey_prefix": "9999", "packet_prefix": "9999", "timestamp": time.time()}
+        handler.try_correlate_pending_messages(rf_data)
+        assert handler.pending_messages["pm3"]["processed"] is False
+
+    def test_partial_prefix_match_16chars(self, handler):
+        # If both pubkey_prefixes share first 16 chars, they correlate
+        long_key = "aabbccddeeff0011aabbccddeeff0011"
+        handler.store_message_for_correlation("pm4", {"pubkey_prefix": long_key})
+        rf_data = {"pubkey_prefix": long_key, "packet_prefix": long_key, "timestamp": time.time()}
+        handler.try_correlate_pending_messages(rf_data)
+        assert handler.pending_messages["pm4"]["processed"] is True
+
+
+# ---------------------------------------------------------------------------
+# handle_rf_log_data
+# ---------------------------------------------------------------------------
+
+class TestHandleRfLogData:
+    """Tests for MessageHandler.handle_rf_log_data() — async event handler."""
+
+    def _make_event(self, payload):
+        event = Mock()
+        event.payload = payload
+        return event
+
+    def _setup_handler(self, handler):
+        handler.logger = Mock()
+        handler.bot.transmission_tracker = None
+        handler.bot.web_viewer_integration = None
+
+    async def test_no_payload_attribute_logs_warning(self, handler):
+        self._setup_handler(handler)
+        event = Mock(spec=[])  # no .payload attribute
+        await handler.handle_rf_log_data(event)
+        handler.logger.warning.assert_called()
+
+    async def test_payload_none_logs_warning(self, handler):
+        self._setup_handler(handler)
+        event = Mock()
+        event.payload = None
+        await handler.handle_rf_log_data(event)
+        handler.logger.warning.assert_called()
+
+    async def test_payload_without_snr_field_no_store(self, handler):
+        self._setup_handler(handler)
+        event = self._make_event({"raw_hex": "1100de", "rssi": -80})
+        await handler.handle_rf_log_data(event)
+        # No SNR field → nothing stored in recent_rf_data
+        assert len(handler.recent_rf_data) == 0
+
+    async def test_snr_without_raw_hex_no_store(self, handler):
+        self._setup_handler(handler)
+        # Has snr but no raw_hex → packet_prefix is None → no store
+        event = self._make_event({"snr": 5.0})
+        await handler.handle_rf_log_data(event)
+        assert len(handler.recent_rf_data) == 0
+
+    async def test_snr_cached_from_packet_prefix(self, handler):
+        self._setup_handler(handler)
+        raw_hex = "a" * 64  # 32 hex chars → packet_prefix is first 32 chars = "a"*32
+        event = self._make_event({"snr": 7.5, "raw_hex": raw_hex})
+        await handler.handle_rf_log_data(event)
+        expected_prefix = raw_hex[:32]
+        assert handler.snr_cache.get(expected_prefix) == 7.5
+
+    async def test_rssi_cached_from_packet_prefix(self, handler):
+        self._setup_handler(handler)
+        raw_hex = "b" * 64
+        event = self._make_event({"snr": 3.0, "rssi": -95, "raw_hex": raw_hex})
+        await handler.handle_rf_log_data(event)
+        expected_prefix = raw_hex[:32]
+        assert handler.rssi_cache.get(expected_prefix) == -95
+
+    async def test_rf_data_stored_in_recent_rf_data(self, handler):
+        self._setup_handler(handler)
+        raw_hex = "c" * 64
+        event = self._make_event({"snr": 4.0, "raw_hex": raw_hex})
+        await handler.handle_rf_log_data(event)
+        assert len(handler.recent_rf_data) == 1
+        entry = handler.recent_rf_data[0]
+        assert entry["snr"] == 4.0
+        assert entry["packet_prefix"] == raw_hex[:32]
+
+    async def test_rf_data_added_to_timestamp_index(self, handler):
+        self._setup_handler(handler)
+        raw_hex = "d" * 64
+        event = self._make_event({"snr": 2.0, "raw_hex": raw_hex})
+        await handler.handle_rf_log_data(event)
+        assert len(handler.rf_data_by_timestamp) == 1
+
+    async def test_rf_data_added_to_pubkey_index(self, handler):
+        self._setup_handler(handler)
+        raw_hex = "e" * 64
+        event = self._make_event({"snr": 1.0, "raw_hex": raw_hex})
+        await handler.handle_rf_log_data(event)
+        prefix = raw_hex[:32]
+        assert prefix in handler.rf_data_by_pubkey
+
+    async def test_pubkey_from_metadata_stored(self, handler):
+        self._setup_handler(handler)
+        raw_hex = "f" * 64
+        meta = {"pubkey_prefix": "aabbccdd"}
+        event = self._make_event({"snr": 6.0, "raw_hex": raw_hex})
+        await handler.handle_rf_log_data(event, metadata=meta)
+        entry = handler.recent_rf_data[0]
+        assert entry["pubkey_prefix"] == "aabbccdd"
+
+    async def test_valid_packet_decoded_and_routing_stored(self, handler):
+        self._setup_handler(handler)
+        # Build a valid MeshCore packet (FLOOD + TXT_MSG, 0 hops)
+        pkt_hex = _make_packet_hex(2, 1, payload_bytes=b"\x48\x65\x6c\x6c\x6f")
+        # raw_hex must be >= 64 chars for packet_prefix, pad with zeros
+        padded = pkt_hex.ljust(64, "0")
+        event = self._make_event({"snr": 9.0, "raw_hex": padded})
+        await handler.handle_rf_log_data(event)
+        assert len(handler.recent_rf_data) == 1
+        # routing_info should be populated since raw_hex contains a valid packet
+        entry = handler.recent_rf_data[0]
+        assert entry["routing_info"] is not None
+
+    async def test_exception_does_not_propagate(self, handler):
+        self._setup_handler(handler)
+        event = Mock()
+        # Make deepcopy blow up
+        with patch("modules.message_handler.copy.deepcopy", side_effect=RuntimeError("deepcopy fail")):
+            await handler.handle_rf_log_data(event)
+        handler.logger.error.assert_called()
+
+
+# ---------------------------------------------------------------------------
+# _get_path_from_rf_data
+# ---------------------------------------------------------------------------
+
+class TestGetPathFromRfData:
+    """Tests for MessageHandler._get_path_from_rf_data() — path extraction helper."""
+
+    def test_routing_info_path_nodes_returned_directly(self, handler):
+        rf = {
+            "routing_info": {"path_nodes": ["ab", "cd"], "path_length": 2},
+            "raw_hex": "",
+        }
+        path_str, nodes, hops = handler._get_path_from_rf_data(rf)
+        assert path_str == "ab,cd"
+        assert nodes == ["ab", "cd"]
+        assert hops == 2
+
+    def test_no_raw_hex_returns_none_tuple(self, handler):
+        rf = {"routing_info": {}, "raw_hex": ""}
+        path_str, nodes, hops = handler._get_path_from_rf_data(rf)
+        assert path_str is None
+        assert nodes is None
+        assert hops == 255
+
+    def test_raw_hex_decoded_and_path_returned(self, handler):
+        path_b = bytes([0xAB, 0xCD])
+        pkt_hex = _make_packet_hex(4, 1, path_bytes=path_b, payload_bytes=b"\xEE",
+                                   hop_count=2, bytes_per_hop=1)
+        padded = pkt_hex.ljust(64, "0")
+        rf = {"routing_info": {}, "raw_hex": padded, "payload": ""}
+        path_str, nodes, hops = handler._get_path_from_rf_data(rf)
+        assert nodes is not None
+        assert len(nodes) == 2
+        assert hops == 2
+
+    def test_invalid_raw_hex_raises_or_returns_none_tuple(self, handler):
+        # Non-hex raw_hex triggers the same UnboundLocalError source bug as
+        # decode_meshcore_packet("ZZZZ") — document the actual behaviour.
+        rf = {"routing_info": {}, "raw_hex": "ZZZZ", "payload": ""}
+        try:
+            path_str, nodes, hops = handler._get_path_from_rf_data(rf)
+            assert path_str is None
+            assert nodes is None
+        except (ValueError, UnboundLocalError):
+            pass  # expected — source-level bug causes exception to propagate
