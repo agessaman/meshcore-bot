@@ -30,10 +30,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # QEMU is required for cross-platform builds (arm64, arm/v7).
+      # Without it, BuildKit cannot emulate non-native architectures.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        with:
-          platforms: linux/amd64,linux/arm64
 
       - name: Log in to Container Registry
         if: github.event_name != 'pull_request'
@@ -67,16 +72,23 @@ jobs:
           fi
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
+          # Push on all non-PR events; PRs only validate the build.
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             MESHCORE_BOT_VERSION=${{ steps.version.outputs.version }}
+          # BuildKit layer cache via GitHub Actions cache backend.
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
-          # Build for both amd64 and arm64 architectures
-          # This enables the image to run on both x86_64 and ARM devices (Raspberry Pi, Orange Pi, etc.)
+          # Supported platforms:
+          #   linux/amd64  — x86-64 servers / desktops
+          #   linux/arm64  — Raspberry Pi 4/5 (64-bit OS), Apple M-series via Rosetta
+          #   linux/arm/v7 — Raspberry Pi 3 and older (32-bit Raspbian / Raspberry Pi OS)
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          # Provenance attestations improve supply-chain transparency (SLSA level 1).
+          provenance: true
+          sbom: true
