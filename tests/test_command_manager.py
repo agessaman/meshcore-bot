@@ -1,14 +1,13 @@
 """Tests for modules.command_manager."""
 
 import time
-
-import pytest
 from configparser import ConfigParser
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
+import pytest
 
 from modules.command_manager import CommandManager, InternetStatusCache
-from modules.models import MeshMessage
 from tests.conftest import mock_message
 
 
@@ -256,7 +255,7 @@ class TestGetHelpForCommand:
 
     def test_unknown_command_returns_error(self, cm_bot):
         manager = make_manager(cm_bot)
-        result = manager.get_help_for_command("nonexistent")
+        manager.get_help_for_command("nonexistent")
         # Translator receives 'commands.help.unknown' key with command name
         cm_bot.translator.translate.assert_called()
         call_args = cm_bot.translator.translate.call_args
@@ -290,6 +289,7 @@ class TestSendChannelMessageListeners:
     async def test_successful_send_invokes_listeners_with_synthetic_event(self, cm_bot, mock_logger):
         """When send_channel_message succeeds, each channel_sent_listener is called with event.payload shape (channel_idx, text)."""
         import asyncio
+
         from meshcore import EventType
 
         cm_bot.connected = True
@@ -449,3 +449,81 @@ class TestSendChannelMessagesChunked:
 
         assert result is False
         manager.send_channel_message.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# TestLoadAliases
+# ---------------------------------------------------------------------------
+
+
+class TestLoadAliases:
+    """Tests for load_aliases() config parsing."""
+
+    def test_empty_when_no_section(self, cm_bot):
+        manager = make_manager(cm_bot)
+        assert manager.aliases == {}
+
+    def test_reads_alias_entries(self, cm_bot):
+        cm_bot.config.add_section("Aliases")
+        cm_bot.config.set("Aliases", "s", "schedule")
+        cm_bot.config.set("Aliases", "wx", "weather")
+        manager = make_manager(cm_bot)
+        assert manager.aliases == {"s": "schedule", "wx": "weather"}
+
+    def test_aliases_are_lowercased(self, cm_bot):
+        cm_bot.config.add_section("Aliases")
+        cm_bot.config.set("Aliases", "S", "Schedule")
+        manager = make_manager(cm_bot)
+        assert "s" in manager.aliases
+        assert manager.aliases["s"] == "schedule"
+
+    def test_empty_alias_key_ignored(self, cm_bot):
+        # ConfigParser won't allow a truly empty key, so this tests whitespace values
+        cm_bot.config.add_section("Aliases")
+        cm_bot.config.set("Aliases", "wx", "")  # empty canonical
+        manager = make_manager(cm_bot)
+        assert "wx" not in manager.aliases
+
+
+# ---------------------------------------------------------------------------
+# TestApplyAliases
+# ---------------------------------------------------------------------------
+
+
+class TestApplyAliases:
+    """Tests for _apply_aliases() keyword injection."""
+
+    def _make_mock_command(self, name, keywords):
+        cmd = Mock()
+        cmd.name = name
+        cmd.keywords = list(keywords)
+        return cmd
+
+    def test_alias_injected_into_command_keywords(self, cm_bot):
+        sched_cmd = self._make_mock_command("schedule", ["schedule"])
+        cm_bot.config.add_section("Aliases")
+        cm_bot.config.set("Aliases", "s", "schedule")
+        make_manager(cm_bot, commands={"schedule": sched_cmd})
+        assert "s" in sched_cmd.keywords
+
+    def test_unknown_alias_logs_warning_and_skipped(self, cm_bot):
+        cm_bot.config.add_section("Aliases")
+        cm_bot.config.set("Aliases", "x", "nonexistent")
+        make_manager(cm_bot)
+        cm_bot.logger.warning.assert_called()
+
+    def test_duplicate_alias_not_added_twice(self, cm_bot):
+        sched_cmd = self._make_mock_command("schedule", ["schedule", "s"])
+        cm_bot.config.add_section("Aliases")
+        cm_bot.config.set("Aliases", "s", "schedule")
+        make_manager(cm_bot, commands={"schedule": sched_cmd})
+        assert sched_cmd.keywords.count("s") == 1
+
+    def test_multiple_aliases_for_same_command(self, cm_bot):
+        wx_cmd = self._make_mock_command("weather", ["weather"])
+        cm_bot.config.add_section("Aliases")
+        cm_bot.config.set("Aliases", "wx", "weather")
+        cm_bot.config.set("Aliases", "w", "weather")
+        make_manager(cm_bot, commands={"weather": wx_cmd})
+        assert "wx" in wx_cmd.keywords
+        assert "w" in wx_cmd.keywords

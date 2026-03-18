@@ -1,8 +1,9 @@
 """Tests for bridge bot-responses: channel_sent_listeners registration and cleanup."""
 
-import pytest
 from configparser import ConfigParser
-from unittest.mock import Mock, MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from modules.service_plugins.discord_bridge_service import DiscordBridgeService
 from modules.service_plugins.telegram_bridge_service import TelegramBridgeService

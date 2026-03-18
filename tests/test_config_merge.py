@@ -1,6 +1,5 @@
 """Tests for config loading and merging of local/config.ini."""
 
-import pytest
 from pathlib import Path
 
 from modules.core import MeshCoreBot
