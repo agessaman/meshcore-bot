@@ -154,7 +154,7 @@ class WxCommand(BaseCommand):
         content_lower = content.lower()
         return any(content_lower.startswith(keyword + ' ') or content_lower == keyword for keyword in self.keywords)
 
-    def can_execute(self, message: MeshMessage) -> bool:
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Override to delegate or use base class cooldown"""
         # Check if wx command is enabled
         if not self.wx_enabled:
@@ -170,7 +170,7 @@ class WxCommand(BaseCommand):
         # Use base class for cooldown and other checks
         return super().can_execute(message)
 
-    def get_remaining_cooldown(self, user_id: str) -> int:
+    def get_remaining_cooldown(self, user_id: Optional[str] = None) -> int:
         """Get remaining cooldown time for a specific user"""
         if self.delegate_command:
             return self.delegate_command.get_remaining_cooldown(user_id)

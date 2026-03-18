@@ -24,7 +24,7 @@ import threading
 import time
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Any, Optional
 
 
 class MeshGraph:
@@ -598,7 +598,7 @@ class MeshGraph:
         Prefers starred repeaters if there are somehow multiple entries (shouldn't happen with full key).
         """
         cache_key = f"pk:{public_key}" if location_cache is not None else None
-        if cache_key is not None and cache_key in location_cache:
+        if cache_key is not None and location_cache is not None and cache_key in location_cache:
             return location_cache[cache_key]
         try:
             query = '''
@@ -621,7 +621,7 @@ class MeshGraph:
                 lon = row.get('longitude')
                 if lat is not None and lon is not None:
                     result = (float(lat), float(lon))
-                    if cache_key is not None:
+                    if cache_key is not None and location_cache is not None:
                         location_cache[cache_key] = result
                     return result
         except Exception as e:
@@ -763,6 +763,8 @@ class MeshGraph:
                 self.logger.debug(f"Mesh graph: Recalculated distance for {edge_key} using public keys: {recalculated_distance:.1f} km")
 
         try:
+            query: str
+            params: tuple[Any, ...]
             if is_new:
                 # Upsert new edge.
                 # Use INSERT ... ON CONFLICT DO UPDATE so that if the row already exists

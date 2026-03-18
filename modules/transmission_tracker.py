@@ -7,7 +7,7 @@ Tracks transmitted message hashes and detects repeats from neighboring repeaters
 import time
 from contextlib import closing
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
 
 @dataclass
@@ -196,7 +196,7 @@ class TransmissionTracker:
                 db_path = resolve_path(self.bot.config.get('Web_Viewer', 'db_path').strip(), base_dir)
             else:
                 from pathlib import Path
-                db_path = Path(self.bot.db_manager.db_path).resolve()
+                db_path = str(Path(self.bot.db_manager.db_path).resolve())
 
             with closing(sqlite3.connect(str(db_path), timeout=30.0)) as conn:
                 cursor = conn.cursor()
@@ -249,7 +249,7 @@ class TransmissionTracker:
             self.logger.debug(f"Error updating command in database: {e}")
 
     def get_repeat_info(self, command_id: Optional[str] = None,
-                       packet_hash: Optional[str] = None) -> dict[str, any]:
+                       packet_hash: Optional[str] = None) -> dict[str, Any]:
         """Get repeat information for a command or packet hash.
 
         Args:

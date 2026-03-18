@@ -158,7 +158,7 @@ class AnnouncementsCommand(BaseCommand):
 
         return has_access
 
-    def can_execute(self, message: MeshMessage) -> bool:
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Check if announcements command can be executed.
 
         Args:

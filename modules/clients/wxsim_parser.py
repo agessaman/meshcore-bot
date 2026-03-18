@@ -31,7 +31,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 import requests
 
@@ -319,7 +319,7 @@ class WXSIMParser:
         Returns:
             List[ForecastPeriod]: Forecast periods
         """
-        periods = []
+        periods: list[Any] = []
 
         if not hourly_data:
             return periods
@@ -328,14 +328,14 @@ class WXSIMParser:
         day_separators = self._find_day_separators(lines)
 
         # Group hourly data by day
-        current_day = None
-        current_period_data = []
+        current_day: Optional[str] = None
+        current_period_data: list[Any] = []
 
         for data in hourly_data:
             # Check if this is a new day (by date string or hour reset)
             if current_day is None or data.date != current_day:
                 # Save previous period if exists
-                if current_period_data:
+                if current_period_data and current_day is not None:
                     period = self._create_period_from_hourly(current_day, current_period_data, day_separators)
                     if period:
                         periods.append(period)
@@ -347,7 +347,7 @@ class WXSIMParser:
                 current_period_data.append(data)
 
         # Add final period
-        if current_period_data:
+        if current_period_data and current_day is not None:
             period = self._create_period_from_hourly(current_day, current_period_data, day_separators)
             if period:
                 periods.append(period)
@@ -481,7 +481,7 @@ class WXSIMParser:
             return "Unknown"
 
         # Count condition occurrences
-        condition_counts = {}
+        condition_counts: dict[str, int] = {}
         for data in hourly_data:
             # Normalize condition text
             condition = data.weather.strip().upper()

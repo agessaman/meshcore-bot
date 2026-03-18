@@ -91,7 +91,7 @@ class JokeCommand(BaseCommand):
         content_lower = content.lower()
         return any(content_lower == keyword or content_lower.startswith(keyword + ' ') for keyword in self.keywords)
 
-    def can_execute(self, message: MeshMessage) -> bool:
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Override to add custom checks (joke_enabled, dark joke) while using base class cooldown"""
         # Use base class for channel access, DM requirements, and cooldown
         if not super().can_execute(message):

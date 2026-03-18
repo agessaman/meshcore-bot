@@ -32,7 +32,7 @@ def is_valid_timezone(tz_str: str) -> bool:
         except ZoneInfoNotFoundError:
             return False
     try:
-        import pytz
+        import pytz  # type: ignore[import-untyped]
         pytz.timezone(tz_str.strip())
         return True
     except Exception:
@@ -349,7 +349,7 @@ def decode_path_len_byte(path_len_byte: int, max_path_size: int = 64) -> tuple:
     return (path_byte_length, bytes_per_hop)
 
 
-def calculate_packet_hash(raw_hex: str, payload_type: int = None) -> str:
+def calculate_packet_hash(raw_hex: str, payload_type: Optional[int] = None) -> str:
     """Calculate hash for packet identification - based on packet.cpp.
 
     Packet hashes are unique to the originally sent message, allowing
@@ -794,7 +794,7 @@ def rate_limited_nominatim_reverse_sync(bot: Any, coordinates: str, timeout: int
     return result
 
 
-async def geocode_zipcode(bot: Any, zipcode: str, default_country: str = None, timeout: int = 10) -> tuple[Optional[float], Optional[float]]:
+async def geocode_zipcode(bot: Any, zipcode: str, default_country: Optional[str] = None, timeout: int = 10) -> tuple[Optional[float], Optional[float]]:
     """Shared function to geocode a ZIP code to lat/lon coordinates.
 
     Checks cache first, then makes rate-limited API call if needed.
@@ -832,7 +832,7 @@ async def geocode_zipcode(bot: Any, zipcode: str, default_country: str = None, t
         return None, None
 
 
-def geocode_zipcode_sync(bot: Any, zipcode: str, default_country: str = None, timeout: int = 10) -> tuple[Optional[float], Optional[float]]:
+def geocode_zipcode_sync(bot: Any, zipcode: str, default_country: Optional[str] = None, timeout: int = 10) -> tuple[Optional[float], Optional[float]]:
     """Synchronous version of geocode_zipcode.
 
     Args:
@@ -868,8 +868,8 @@ def geocode_zipcode_sync(bot: Any, zipcode: str, default_country: str = None, ti
         return None, None
 
 
-async def geocode_city(bot: Any, city: str, default_state: str = None,
-                       default_country: str = None,
+async def geocode_city(bot: Any, city: str, default_state: Optional[str] = None,
+                       default_country: Optional[str] = None,
                        include_address_info: bool = False,
                        timeout: int = 10) -> tuple[Optional[float], Optional[float], Optional[dict]]:
     """Shared function to geocode a city name to lat/lon coordinates.
@@ -1174,8 +1174,8 @@ async def geocode_city(bot: Any, city: str, default_state: str = None,
         return None, None, None
 
 
-def geocode_city_sync(bot: Any, city: str, default_state: str = None,
-                      default_country: str = None,
+def geocode_city_sync(bot: Any, city: str, default_state: Optional[str] = None,
+                      default_country: Optional[str] = None,
                       include_address_info: bool = False,
                       timeout: int = 10) -> tuple[Optional[float], Optional[float], Optional[dict]]:
     """Synchronous version of geocode_city.
@@ -1687,7 +1687,7 @@ def calculate_path_distances(bot: Any, path_str: str) -> tuple[str, str]:
 
         # Look up locations for each node ID
         # _get_node_location_from_db returns ((lat, lon), public_key) or None
-        node_locations = []
+        node_locations: list[Optional[tuple[float, float]]] = []
         for node_id in node_ids:
             result = _get_node_location_from_db(bot, node_id)
             if result:
@@ -1837,7 +1837,7 @@ def _get_node_location_from_db(bot: Any, node_id: str, reference_location: Optio
                 # First sort by starred and distance, then stable sort by recency in reverse
                 from datetime import datetime
 
-                def get_timestamp_key(ts_str):
+                def get_timestamp_key(ts_str: Optional[str]) -> float:
                     """Convert timestamp string to sortable key (newer = smaller key for reverse sort)"""
                     if not ts_str:
                         return float('inf')  # Empty timestamps sort last
@@ -1875,7 +1875,7 @@ def _get_node_location_from_db(bot: Any, node_id: str, reference_location: Optio
         # For recency, parse timestamps properly to ensure newer comes first
         from datetime import datetime
 
-        def get_timestamp_key_no_ref(ts_str):
+        def get_timestamp_key_no_ref(ts_str: Optional[str]) -> float:
             """Convert timestamp string to sortable key (newer = smaller key)"""
             if not ts_str:
                 return float('inf')  # Empty timestamps sort last

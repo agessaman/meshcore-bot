@@ -113,7 +113,7 @@ class AqiCommand(BaseCommand):
         region = self.default_state or self.default_country
         return f"Usage: aqi <city|neighborhood|city country|lat,lon|help> - Get AQI for city/neighborhood in {region}, intl cities, coordinates, or help"
 
-    def can_execute(self, message: MeshMessage) -> bool:
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Check if this command can be executed with the given message.
 
         Args:

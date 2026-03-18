@@ -57,7 +57,7 @@ class MultitestCommand(BaseCommand):
             self._execution_lock = asyncio.Lock()
         return self._execution_lock
 
-    def can_execute(self, message: MeshMessage) -> bool:
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Check if this command can be executed with the given message.
 
         Args:

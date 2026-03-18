@@ -38,7 +38,7 @@ class AuroraCommand(BaseCommand):
         self.default_country = self.bot.config.get("Weather", "default_country", fallback="US")
         self.url_timeout = 10
 
-    def can_execute(self, message: MeshMessage) -> bool:
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         if not self.aurora_enabled:
             return False
         return super().can_execute(message)

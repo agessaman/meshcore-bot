@@ -77,7 +77,7 @@ def validate_external_url(url: str, allow_localhost: bool = False, timeout: floa
             old_timeout = socket.getdefaulttimeout()
             socket.setdefaulttimeout(timeout)
             try:
-                ip = socket.gethostbyname(parsed.hostname)
+                ip = socket.gethostbyname(parsed.hostname or "")
             finally:
                 # Restore original timeout (None means no timeout, which is correct)
                 socket.setdefaulttimeout(old_timeout)

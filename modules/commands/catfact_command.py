@@ -125,7 +125,7 @@ class CatfactCommand(BaseCommand):
         # Return empty string so it doesn't appear in help
         return ""
 
-    def can_execute(self, message: MeshMessage) -> bool:
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Check if this command can be executed with the given message.
 
         Args:
