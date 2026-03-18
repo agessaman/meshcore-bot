@@ -1,16 +1,16 @@
 """Tests for modules.security_utils."""
 
-import pytest
-from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from modules.security_utils import (
-    validate_pubkey_format,
-    validate_safe_path,
-    validate_external_url,
     sanitize_input,
     validate_api_key_format,
+    validate_external_url,
     validate_port_number,
+    validate_pubkey_format,
+    validate_safe_path,
 )
 
 

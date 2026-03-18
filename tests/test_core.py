@@ -1,10 +1,13 @@
 """Tests for MeshCoreBot logic (config loading, radio settings, helpers)."""
 
-import pytest
+import asyncio
+import struct
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from modules.core import MeshCoreBot
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -185,3 +188,95 @@ monitor_channels = #general
         assert b.prefix_hex_chars == 4
         assert b.is_valid_prefix("dead") is True
         assert b.is_valid_prefix("de") is False
+
+
+# ---------------------------------------------------------------------------
+# Loop exception handler (TASK-00 / BUG-022)
+# ---------------------------------------------------------------------------
+
+class TestLoopExceptionHandler:
+    """Verify the custom asyncio exception handler installed by start()."""
+
+    def _make_bot(self, tmp_path: Path) -> MeshCoreBot:
+        config_file = tmp_path / "config.ini"
+        db_path = tmp_path / "bot.db"
+        _write_config(config_file, db_path)
+        return MeshCoreBot(config_file=str(config_file))
+
+    def _extract_handler(self, bot: MeshCoreBot) -> object:
+        """Run a fake start() up to the set_exception_handler call and return the handler."""
+        mock_loop = MagicMock(spec=asyncio.AbstractEventLoop)
+        mock_loop.get_exception_handler.return_value = None
+
+        captured: list = []
+
+        def capture_handler(h):
+            captured.append(h)
+
+        mock_loop.set_exception_handler.side_effect = capture_handler
+
+        with patch.object(bot, "connect", return_value=False):
+            with patch("asyncio.get_running_loop", return_value=mock_loop):
+                asyncio.run(bot.start())
+
+        assert captured, "set_exception_handler was never called"
+        return captured[0], mock_loop
+
+    def test_handler_is_installed_on_start(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        handler, mock_loop = self._extract_handler(bot)
+        mock_loop.set_exception_handler.assert_called_once()
+        assert callable(handler)
+
+    def test_index_error_logged_at_debug_not_propagated(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        handler, mock_loop = self._extract_handler(bot)
+
+        with patch.object(bot.logger, "debug") as mock_debug:
+            handler(mock_loop, {"exception": IndexError("index out of range")})
+
+        mock_debug.assert_called_once()
+        assert "IndexError" in mock_debug.call_args[0][1]
+        # default handler must NOT be invoked for IndexError
+        mock_loop.default_exception_handler.assert_not_called()
+
+    def test_struct_error_logged_at_debug_not_propagated(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        handler, mock_loop = self._extract_handler(bot)
+
+        with patch.object(bot.logger, "debug") as mock_debug:
+            handler(mock_loop, {"exception": struct.error("unpack requires")})
+
+        mock_debug.assert_called_once()
+        mock_loop.default_exception_handler.assert_not_called()
+
+    def test_other_exception_passes_to_default_handler(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+
+        # Use a real previous handler to verify passthrough
+        previous_handler = MagicMock()
+        mock_loop = MagicMock(spec=asyncio.AbstractEventLoop)
+        mock_loop.get_exception_handler.return_value = previous_handler
+
+        captured: list = []
+        mock_loop.set_exception_handler.side_effect = lambda h: captured.append(h)
+
+        with patch.object(bot, "connect", return_value=False):
+            with patch("asyncio.get_running_loop", return_value=mock_loop):
+                asyncio.run(bot.start())
+
+        handler = captured[0]
+        ctx = {"exception": RuntimeError("something else")}
+        handler(mock_loop, ctx)
+
+        previous_handler.assert_called_once_with(mock_loop, ctx)
+        mock_loop.default_exception_handler.assert_not_called()
+
+    def test_no_exception_key_passes_to_default_handler(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        handler, mock_loop = self._extract_handler(bot)
+
+        ctx = {"message": "Task destroyed but pending"}
+        handler(mock_loop, ctx)
+
+        mock_loop.default_exception_handler.assert_called_once_with(ctx)

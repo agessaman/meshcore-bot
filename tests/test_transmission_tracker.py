@@ -1,8 +1,9 @@
 """Tests for modules/transmission_tracker.py."""
 
 import time
+from unittest.mock import Mock
+
 import pytest
-from unittest.mock import Mock, MagicMock
 
 from modules.transmission_tracker import TransmissionRecord, TransmissionTracker
 
@@ -71,7 +72,7 @@ class TestRecordTransmission:
     def test_multiple_records_same_second(self, tracker):
         rec1 = tracker.record_transmission("a", "ch", "channel")
         rec2 = tracker.record_transmission("b", "ch", "channel")
-        key = int(rec1.timestamp)
+        int(rec1.timestamp)
         # Both records should be in the same (or nearby) bucket
         assert rec1 in tracker.pending_transmissions.get(int(rec1.timestamp), [])
         assert rec2 in tracker.pending_transmissions.get(int(rec2.timestamp), [])
