@@ -635,3 +635,54 @@ class TestMultiBytePathDisplayContract:
         display = ",".join(n.lower() for n in nodes)
         assert display == "01,02,5f,ab"
 
+
+class TestCalculatePacketHashEdgeCases:
+    """Additional calculate_packet_hash branch coverage."""
+
+    def test_payload_type_with_value_attr_handled(self):
+        """Lines 376-378: payload_type object with .value attribute is accepted."""
+        # FLOOD+TXT_MSG header: (0<<6)|(2<<2)|1 = 0x09, no transport, 0 hops, 1 payload byte
+        raw = "090000ff"
+
+        class FakeEnum:
+            value = 2  # TXT_MSG
+
+        h = calculate_packet_hash(raw, payload_type=FakeEnum())
+        assert h != "0000000000000000"
+        assert len(h) == 16
+
+    def test_too_short_for_path_len_returns_default(self):
+        """Line 391: packet with only header byte (and transport if applicable) → default hash."""
+        # Header only, no path_len_byte: just "09" (1 byte, offset=1, len<=1 → too short)
+        h = calculate_packet_hash("09")
+        assert h == "0000000000000000"
+
+    def test_not_enough_path_bytes_returns_default(self):
+        """Line 399: path_len_byte says N hops but fewer bytes available → default hash."""
+        # Header 0x09 (FLOOD+TXT_MSG), path_len_byte=0x02 (2 hops 1-byte), but only 1 path byte
+        h = calculate_packet_hash("09020100")  # header, path_len(2 hops), 1 path byte + 1 'payload'?
+        # Actually: header(09), path_len(02)=2 hops → needs 2 path bytes + 1 payload byte = 5 bytes total
+        # We provide 4 bytes: 09 02 01 00 → path bytes = 01 00 but payload missing?
+        # Let's check: offset=1, path_len_byte=02 → path_byte_length=2, offset after path_len=2
+        # need len>=2+2=4 for path, but payload needed too: len>=5
+        # Exactly 4 bytes → payload_start=4 → len==4 not > 4 → return default
+        assert h == "0000000000000000"
+
+    def test_exception_in_packet_hash_returns_default(self):
+        """Lines 427-429: exception during processing returns default hash."""
+        h = calculate_packet_hash("not-valid-hex!!!")
+        assert h == "0000000000000000"
+
+    def test_non_transport_type_skips_transport_bytes(self):
+        """Route type 1 (FLOOD) → no transport bytes; hash succeeds."""
+        # Header 0x09 = FLOOD + TXT_MSG, path_len=0, payload=0xFF
+        h = calculate_packet_hash("090000ff")
+        assert h != "0000000000000000"
+        assert len(h) == 16
+
+    def test_transport_type_skips_4_bytes(self):
+        """Route type 0 (TRANSPORT_FLOOD) → offset +=4; packet big enough."""
+        # Header 0x08 = TRANSPORT_FLOOD + TXT_MSG, 4 transport bytes, path_len=0, payload=0xFF
+        h = calculate_packet_hash("0800000000" + "00" + "ff")
+        assert h != "0000000000000000"
+
