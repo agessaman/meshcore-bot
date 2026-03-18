@@ -144,10 +144,17 @@ if [[ "$PLATFORM" == "Linux" ]]; then
     if [ -d "/dev/serial/by-id" ] && [ -n "$(ls -A /dev/serial/by-id 2>/dev/null)" ]; then
         # Look for common MeshCore device patterns (case-insensitive)
         # Prioritize devices that might be MeshCore-related
-        DEVICE=$(ls /dev/serial/by-id/* 2>/dev/null | grep -iE "(meshcore|heltec|rak|ch340|cp210|ft232)" | head -1)
+        DEVICE=""
+        for _d in /dev/serial/by-id/*; do
+            case "${_d,,}" in
+                *meshcore*|*heltec*|*rak*|*ch340*|*cp210*|*ft232*) DEVICE="$_d"; break ;;
+            esac
+        done
         # If no specific match, take the first USB serial device
         if [ -z "$DEVICE" ]; then
-            DEVICE=$(ls /dev/serial/by-id/* 2>/dev/null | grep -i "usb" | head -1)
+            for _d in /dev/serial/by-id/*; do
+                case "${_d,,}" in *usb*) DEVICE="$_d"; break ;; esac
+            done
         fi
         # Last resort: any serial device
         if [ -z "$DEVICE" ]; then
@@ -389,7 +396,8 @@ if [ ! -f "$ENV_FILE" ]; then
 DOCKER_IMAGE_REGISTRY=$DOCKER_IMAGE_REGISTRY
 DOCKER_IMAGE_TAG=$DOCKER_IMAGE_TAG
 EOF
-    if [ $? -eq 0 ]; then
+    _rc=$?
+    if [ $_rc -eq 0 ]; then
         echo "  ✓ Created .env file with image tag: $DOCKER_IMAGE_TAG"
     else
         echo "  ⚠️  Warning: Failed to create .env file"
@@ -402,7 +410,8 @@ elif ! grep -q "^DOCKER_IMAGE_TAG=" "$ENV_FILE" 2>/dev/null; then
         echo "DOCKER_IMAGE_REGISTRY=$DOCKER_IMAGE_REGISTRY"
         echo "DOCKER_IMAGE_TAG=$DOCKER_IMAGE_TAG"
     } >> "$ENV_FILE"
-    if [ $? -eq 0 ]; then
+    _rc=$?
+    if [ $_rc -eq 0 ]; then
         echo "  ✓ Added Docker image configuration to .env file with tag: $DOCKER_IMAGE_TAG"
     else
         echo "  ⚠️  Warning: Failed to append to .env file"
