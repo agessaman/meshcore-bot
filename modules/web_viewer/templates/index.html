@@ -312,6 +312,38 @@
     </div>
 </div>
 
+<!-- Live Activity Feed -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-satellite-dish me-2"></i>Live Activity
+                    <span id="live-dot" class="status-indicator status-disconnected ms-2" title="SocketIO connection"></span>
+                </span>
+                <div class="d-flex gap-2 align-items-center">
+                    <span id="live-count" class="badge bg-secondary">0</span>
+                    <button class="btn btn-sm btn-outline-secondary" id="live-pause-btn" onclick="toggleLivePause()">
+                        <i class="fas fa-pause" id="live-pause-icon"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="clearLiveFeed()">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                    <a href="/realtime" class="btn btn-sm btn-outline-primary">
+                        Full Monitor <i class="fas fa-external-link-alt ms-1"></i>
+                    </a>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div id="live-feed" style="height:260px;overflow-y:auto;background:var(--bg-secondary,#f8f9fa);padding:0.5rem;">
+                    <div class="text-muted text-center py-3" id="live-placeholder">
+                        <i class="fas fa-hourglass-half"></i> Connecting…
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -740,6 +772,81 @@ window.addEventListener('beforeunload', () => {
         window.dashboard.destroy();
     }
 });
+</script>
+
+<script>
+// ── Live Activity Feed (SocketIO) ─────────────────────────────────────────────
+(function () {
+    const feed      = document.getElementById('live-feed');
+    const dot       = document.getElementById('live-dot');
+    const countBadge = document.getElementById('live-count');
+    const placeholder = document.getElementById('live-placeholder');
+    let paused   = false;
+    let total    = 0;
+    const MAX_ENTRIES = 100;
+
+    const TYPE_COLORS = {
+        packet:  '#fd7e14',
+        command: '#198754',
+        message: '#0dcaf0',
+    };
+
+    function escHtml(s) {
+        return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function addEntry(label, text, type) {
+        if (paused) return;
+        if (placeholder && placeholder.parentNode) placeholder.remove();
+        const ts = new Date().toLocaleTimeString();
+        const color = TYPE_COLORS[type] || '#6c757d';
+        const el = document.createElement('div');
+        el.style.cssText = `border-left:3px solid ${color};padding:3px 8px;margin-bottom:3px;font-size:0.82rem;border-radius:2px;`;
+        el.innerHTML = `<span class="text-muted me-2">${ts}</span><strong>${escHtml(label)}</strong> <span class="text-muted">${escHtml(text)}</span>`;
+        feed.insertBefore(el, feed.firstChild);
+        total++;
+        countBadge.textContent = total;
+        // Trim
+        const items = feed.children;
+        while (items.length > MAX_ENTRIES) feed.removeChild(feed.lastChild);
+    }
+
+    window.toggleLivePause = function () {
+        paused = !paused;
+        const icon = document.getElementById('live-pause-icon');
+        icon.className = paused ? 'fas fa-play' : 'fas fa-pause';
+    };
+    window.clearLiveFeed = function () {
+        feed.innerHTML = '';
+        total = 0;
+        countBadge.textContent = '0';
+    };
+
+    const socket = io({ transports: ['websocket', 'polling'] });
+
+    socket.on('connect', () => {
+        dot.className = 'status-indicator status-connected ms-2';
+        socket.emit('subscribe_packets');
+        socket.emit('subscribe_commands');
+        socket.emit('subscribe_messages');
+    });
+    socket.on('disconnect', () => {
+        dot.className = 'status-indicator status-disconnected ms-2';
+    });
+
+    socket.on('packet_data', d => {
+        const ptype = d.payload_type_name || d.type_name || 'Packet';
+        const src   = d.from_name || d.pubkey_prefix || '';
+        addEntry(ptype, src, 'packet');
+    });
+    socket.on('command_data', d => {
+        addEntry('Cmd: ' + (d.command || '?'), (d.user || '') + ' → ' + (d.channel || ''), 'command');
+    });
+    socket.on('message_data', d => {
+        const ch = d.channel ? `[${d.channel}] ` : (d.is_dm ? '[DM] ' : '');
+        addEntry(d.sender || '?', ch + (d.content || ''), 'message');
+    });
+})();
 </script>
 
 <style>
