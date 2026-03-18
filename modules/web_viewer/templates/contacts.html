@@ -135,6 +135,38 @@
                         <button class="btn btn-sm btn-primary" id="refresh-contacts">
                             <i class="fas fa-sync"></i> Refresh
                         </button>
+                        <button class="btn btn-sm btn-outline-danger" id="purge-contacts-btn"
+                                data-bs-toggle="modal" data-bs-target="#purgeContactsModal"
+                                title="Delete contacts not heard recently">
+                            <i class="fas fa-broom"></i> Purge Inactive
+                        </button>
+                        <div class="btn-group">
+                            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" title="Export data">
+                                <i class="fas fa-download me-1"></i>Export
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><h6 class="dropdown-header">Contacts</h6></li>
+                                <li><a class="dropdown-item" href="#" onclick="exportData('contacts','csv');return false;"><i class="fas fa-file-csv me-2 text-success"></i>CSV</a></li>
+                                <li><a class="dropdown-item" href="#" onclick="exportData('contacts','json');return false;"><i class="fas fa-file-code me-2 text-warning"></i>JSON</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><h6 class="dropdown-header">Paths</h6></li>
+                                <li><a class="dropdown-item" href="#" onclick="exportData('paths','csv');return false;"><i class="fas fa-file-csv me-2 text-success"></i>CSV</a></li>
+                                <li><a class="dropdown-item" href="#" onclick="exportData('paths','json');return false;"><i class="fas fa-file-code me-2 text-warning"></i>JSON</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><h6 class="dropdown-header">Time range</h6></li>
+                                <li>
+                                    <div class="px-3 py-1">
+                                        <select class="form-select form-select-sm" id="export-since">
+                                            <option value="24h">Last 24 hours</option>
+                                            <option value="7d">Last 7 days</option>
+                                            <option value="30d" selected>Last 30 days</option>
+                                            <option value="90d">Last 90 days</option>
+                                            <option value="all">All time</option>
+                                        </select>
+                                    </div>
+                                </li>
+                            </ul>
+                        </div>
                     </div>
                 </div>
             <div class="table-responsive">
@@ -184,6 +216,40 @@
                 </table>
             </div>
         </div>
+        </div>
+    </div>
+</div>
+
+<!-- Purge Inactive Contacts Modal -->
+<div class="modal fade" id="purgeContactsModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-broom text-danger me-2"></i>Purge Inactive Contacts</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Delete contacts that have not been heard within a threshold. This removes them from the database entirely.</p>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Remove contacts not heard in:</label>
+                    <select class="form-select" id="purge-days-select">
+                        <option value="7">7 days</option>
+                        <option value="14">14 days</option>
+                        <option value="30" selected>30 days</option>
+                        <option value="60">60 days</option>
+                        <option value="90">90 days</option>
+                    </select>
+                </div>
+                <div id="purge-preview-area" class="alert alert-secondary py-2 mb-0" style="min-height:2.5rem;">
+                    <span id="purge-preview-text"><i class="fas fa-spinner fa-spin me-1"></i>Loading preview...</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirm-purge-btn" disabled>
+                    <i class="fas fa-broom me-1"></i><span id="confirm-purge-label">Purge</span>
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -480,12 +546,9 @@ class ModernContactsManager {
                 <td><span class="badge bg-success">${contact.advert_count || 0}</span></td>
                 <td>
                     <div class="btn-group" role="group">
-                        ${contact.role && (contact.role.toLowerCase() === 'repeater' || contact.role.toLowerCase() === 'roomserver') ? 
-                            `<button class="btn btn-sm ${contact.is_starred ? 'btn-warning' : 'btn-outline-warning'}" onclick="contactsManager.toggleStar('${contact.user_id.replace(/'/g, "\\'")}', this)" title="${contact.is_starred ? 'Unstar contact (removes path bias)' : 'Star contact (adds strong path bias)'}">
-                                <i class="fas ${contact.is_starred ? 'fa-star' : 'fa-star'}"></i>
-                            </button>` : 
-                            ''
-                        }
+                        <button class="btn btn-sm ${contact.is_starred ? 'btn-warning' : 'btn-outline-warning'}" onclick="contactsManager.toggleStar('${contact.user_id.replace(/'/g, "\\'")}', this)" title="${contact.is_starred ? 'Unstar contact' : 'Star contact'}">
+                            <i class="fas fa-star"></i>
+                        </button>
                         <button class="btn btn-sm btn-outline-info" onclick="contactsManager.viewAdvertData('${contact.user_id}')" title="View Advertisement Data">
                             <i class="fas fa-info-circle"></i>
                         </button>
@@ -1930,11 +1993,93 @@ class ModernContactsManager {
             }, 5000);
         }
     }
+
+    // ── Purge Inactive Contacts ──────────────────────────────────────────────
+
+    async loadPurgePreview(days) {
+        const previewText = document.getElementById('purge-preview-text');
+        const confirmBtn = document.getElementById('confirm-purge-btn');
+        const confirmLabel = document.getElementById('confirm-purge-label');
+        if (!previewText) return;
+        previewText.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Loading...';
+        confirmBtn.disabled = true;
+        try {
+            const resp = await fetch(`/api/contacts/purge-preview?days=${days}`);
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Failed to load preview');
+            if (data.count === 0) {
+                previewText.innerHTML = `<i class="fas fa-check-circle text-success me-1"></i>No contacts found that are older than <strong>${days} days</strong>.`;
+                confirmBtn.disabled = true;
+            } else {
+                const sampleNames = (data.samples || []).map(s => `<em>${s.name}</em>`).join(', ');
+                const more = data.count > 5 ? ` and ${data.count - 5} more` : '';
+                previewText.innerHTML = `<i class="fas fa-exclamation-triangle text-warning me-1"></i><strong>${data.count}</strong> contact(s) will be deleted: ${sampleNames}${more}.`;
+                confirmLabel.textContent = `Purge ${data.count} contact(s)`;
+                confirmBtn.disabled = false;
+            }
+        } catch (err) {
+            previewText.innerHTML = `<i class="fas fa-times-circle text-danger me-1"></i>Error: ${err.message}`;
+            confirmBtn.disabled = true;
+        }
+    }
+
+    async executePurge(days) {
+        const confirmBtn = document.getElementById('confirm-purge-btn');
+        const confirmLabel = document.getElementById('confirm-purge-label');
+        const originalLabel = confirmLabel.textContent;
+        confirmBtn.disabled = true;
+        confirmLabel.textContent = 'Purging...';
+        try {
+            const resp = await fetch('/api/contacts/purge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ days })
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Purge failed');
+            bootstrap.Modal.getInstance(document.getElementById('purgeContactsModal')).hide();
+            this.showSuccess(data.message || `Purged ${data.deleted} contact(s)`);
+            await this.loadContactsData();
+        } catch (err) {
+            this.showError('Purge failed: ' + err.message);
+            confirmLabel.textContent = originalLabel;
+            confirmBtn.disabled = false;
+        }
+    }
+
+    setupPurgeModal() {
+        const modal = document.getElementById('purgeContactsModal');
+        const select = document.getElementById('purge-days-select');
+        const confirmBtn = document.getElementById('confirm-purge-btn');
+        if (!modal) return;
+
+        modal.addEventListener('show.bs.modal', () => {
+            this.loadPurgePreview(parseInt(select.value));
+        });
+        select.addEventListener('change', () => {
+            this.loadPurgePreview(parseInt(select.value));
+        });
+        confirmBtn.addEventListener('click', () => {
+            this.executePurge(parseInt(select.value));
+        });
+    }
+}
+
+function exportData(dataset, fmt) {
+    const since = document.getElementById('export-since').value || '30d';
+    const url = `/api/export/${dataset}?format=${fmt}&since=${since}`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
 }
 
 // Initialize contacts manager when page loads
 document.addEventListener('DOMContentLoaded', () => {
     window.contactsManager = new ModernContactsManager();
+    window.contactsManager.setupPurgeModal();
         });
         </script>
 
