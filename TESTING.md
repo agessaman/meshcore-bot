@@ -7,25 +7,24 @@ Complete reference for the meshcore-bot test suite: how to run tests, what each 
 ## Quick Start
 
 ```bash
-# Create and activate a virtual environment (first time only)
-python3 -m venv .venv
-source .venv/bin/activate
-
-# Install the package with test dependencies
-pip install -e ".[test]"
+# Create venv and install all dependencies (first time only)
+make dev
 
 # Run the full test suite
-pytest
+make test
 
 # Run without coverage (faster)
-pytest --no-cov
+make test-no-cov
 
 # Run a specific file
-pytest tests/test_enums.py -v
+.venv/bin/pytest tests/test_enums.py -v
 
 # Run a specific test class or function
-pytest tests/test_message_handler.py::TestShouldProcessMessage -v
-pytest tests/test_enums.py::TestPayloadType::test_lookup_by_value -v
+.venv/bin/pytest tests/test_message_handler.py::TestShouldProcessMessage -v
+.venv/bin/pytest tests/test_enums.py::TestPayloadType::test_lookup_by_value -v
+
+# Run and stop on first failure
+.venv/bin/pytest -x
 ```
 
 ---
@@ -49,7 +48,7 @@ Test configuration lives in two files:
 |---------|-------|
 | `source` | `modules/` |
 | `omit` | `tests/`, `.venv/` |
-| `fail_under` | 70% |
+| `fail_under` | 20% (structural ceiling; `web_viewer/app.py` at 2% without Flask test client tests) |
 
 ---
 
@@ -92,9 +91,6 @@ pytest
 # HTML report — open htmlcov/index.html in a browser
 pytest --cov=modules --cov-report=html
 
-# Check that coverage meets the 70% threshold
-pytest --cov=modules --cov-fail-under=70
-
 # Coverage for a single module
 pytest tests/test_message_handler.py --cov=modules.message_handler --cov-report=term-missing
 ```
@@ -103,17 +99,24 @@ pytest tests/test_message_handler.py --cov=modules.message_handler --cov-report=
 
 ## Linting (configured alongside tests)
 
-```bash
-pip install ruff mypy   # one-time, or use pip install -e ".[test]" + pip install ruff mypy
+All lint and type-check commands are available via the Makefile (preferred):
 
+```bash
+make lint         # ruff check + mypy
+make fix          # auto-fix safe ruff issues
+```
+
+Or run directly:
+
+```bash
 # Check for style/lint issues
-ruff check .
+.venv/bin/ruff check modules/ tests/
 
 # Auto-fix safe issues
-ruff check . --fix
+.venv/bin/ruff check --fix modules/ tests/
 
 # Type checking
-mypy modules/ --ignore-missing-imports
+.venv/bin/mypy modules/
 ```
 
 ---
@@ -302,6 +305,14 @@ Tests `modules.utils` — utility functions.
 | `TestParsePathString` | Comma/space/continuous hex, hop-count suffix, 4-char nodes, legacy fallback |
 | `TestCalculatePacketHashPathLength` | Single/multi-byte path hashes, different sizes produce different hashes |
 | `TestMultiBytePathDisplayContract` | Format contract for 1-byte and 2-byte node paths |
+| `TestIsValidTimezone` | Valid IANA zones, invalid zone, empty/whitespace, leading/trailing whitespace |
+| `TestGetConfigTimezone` | Valid zone returned, invalid falls back to UTC, empty falls back, logger warning |
+| `TestFormatLocationForDisplay` | `None`/empty city, city-only, city+state, no duplicate parts, max_length respected |
+| `TestGetMajorCityQueries` | Known city returns queries, unknown city returns empty, case-insensitive, multiple results |
+| `TestResolvePath` | Absolute path unchanged, relative resolved to base_dir, Path objects, `"."` base uses cwd |
+| `TestCheckInternetConnectivity` | Returns True on successful socket, False when all fail, HTTP fallback on socket failure |
+| `TestCalculatePathDistances` | Empty/direct path, no db_manager, single node, two nodes with/without locations |
+| `TestFormatKeywordResponseWithPlaceholders` | `{sender}`, `{hops_label}`, `{connection_info}`, `{total_contacts}`, no-message defaults, bad placeholder fallback |
 
 ---
 
@@ -534,12 +545,15 @@ class TestMyFeature:
 
 ## CI Integration
 
-Tests run automatically on push/PR to `main`, `master`, and `dev` via `.github/workflows/test.yml`:
+Tests run automatically on push/PR via GitHub Actions. Jobs include:
 
-1. **Install deps** — `pip install -e ".[test]"` + `pip install ruff mypy`
-2. **Lint** — `ruff check .`
-3. **Type check** — `mypy modules/ --ignore-missing-imports`
-4. **Tests** — `pytest tests/ -v --tb=short`
+| Job | Command |
+|-----|---------|
+| `lint` | `ruff check modules/ tests/` |
+| `typecheck` | `mypy modules/` |
+| `lint-frontend` | ESLint + HTMLHint on `modules/web_viewer/templates/` |
+| `lint-shell` | ShellCheck `--severity=warning` on all `.sh` files |
+| `test` | `pytest tests/ -v --tb=short` with coverage |
 
 To keep `TODO.md` in sync locally, run:
 

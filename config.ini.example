@@ -378,6 +378,35 @@ prefix.funfact = 💡
 #1200 = Public:Midday status check - all systems operational.
 #1800 = Public:Evening update - bot status: Good
 
+[Schedule_Command]
+# Show scheduled messages and advert interval via the 'schedule' command
+# Responds with a compact list of scheduled times, channels, and message previews
+# Default: enabled, DM-only (exposes bot configuration — restrict access)
+enabled = true
+# dm_only = true: only respond to direct messages (recommended)
+# dm_only = false: allow in monitored channels
+dm_only = true
+
+# ---------------------------------------------------------------------------
+# Command aliases
+# ---------------------------------------------------------------------------
+# Map short aliases to canonical command names.
+# Format:  <alias> = <command_name>
+# Both the alias and command name are case-insensitive.
+# The alias is injected into the command's keyword list at startup, so it
+# responds exactly the same as typing the full command name.
+# Unknown aliases (command not loaded) are logged and silently ignored.
+#
+# Examples:
+#   s  = schedule
+#   wx = weather
+#   h  = help
+#   e  = earthquake
+#
+# [Aliases]
+# s  = schedule
+# wx = weather
+
 [Logging]
 # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
 # DEBUG: Most verbose, shows all details
@@ -401,6 +430,18 @@ colored_output = true
 # Controls debug output from the meshcore library itself
 # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
 meshcore_log_level = INFO
+
+# Structured JSON logging mode for log aggregation pipelines (Loki, Elasticsearch, Splunk, etc.)
+# When enabled, each log line is a JSON object:
+#   {"timestamp":"2026-03-14T12:00:00.000Z","level":"INFO","logger":"MeshCoreBot","message":"..."}
+# colored_output is ignored when json_logging = true.
+json_logging = false
+
+# Log rotation settings (can also be changed at runtime via the web viewer Configuration tab)
+# log_max_bytes: rotate when the log file exceeds this size (default 5 MB = 5242880)
+log_max_bytes = 5242880
+# log_backup_count: number of rotated backup files to keep (e.g. meshcore_bot.log.1 … .3)
+log_backup_count = 3
 
 [Custom_Syntax]
 # Custom syntax patterns for special message formats
@@ -1201,22 +1242,25 @@ enabled = false
 
 [Web_Viewer]
 # Enable or disable the web data viewer
-# SECURITY NOTE: Web viewer has NO AUTHENTICATION built-in
-# Enable web viewer (true/false). SECURITY: only enable if you understand implications; false recommended for production
+# Enable web viewer (true/false). false recommended unless you have configured web_viewer_password.
 enabled = false
+
+# Password to protect the web viewer UI (BUG-001 fix)
+# If set, a login page is shown and all routes + SocketIO connections require authentication.
+# If left empty, the web viewer is accessible without any authentication.
+# Recommendation: always set a password when host != 127.0.0.1
+# web_viewer_password = changeme
 
 # Web viewer host address
 # SECURITY WARNING:
 # - 127.0.0.1: Only accessible from localhost (SECURE - recommended)
-# - 0.0.0.0: Accessible from any network interface (INSECURE - exposes all bot data to network)
-# 
-# Using 0.0.0.0 will expose:
+# - 0.0.0.0: Accessible from any network interface (use only with web_viewer_password set)
+#
+# Using 0.0.0.0 without web_viewer_password will expose:
 # - All messages and their contents
 # - Contact list and repeater information
 # - Real-time packet stream
 # - Bot configuration details
-#
-# WITHOUT ANY AUTHENTICATION OR ENCRYPTION
 host = 127.0.0.1
 
 # Web viewer port
@@ -1489,6 +1533,58 @@ maxlongitude = -114.0
 # When true: notification message then link-only message. When false: no link sent.
 # Default: true
 send_link = true
+
+[Rate_Limits]
+# Per-channel rate limiting: minimum seconds between bot messages on a specific channel.
+# Format: channel.<channel_name>_seconds = <seconds>
+# Channels without an explicit entry are unrestricted.
+# Example: limit "BotCmds" channel to one bot response every 15 seconds:
+#channel.BotCmds_seconds = 15
+# Example: limit the default channel to 10 seconds between responses:
+#channel.BroadcastCh_seconds = 10
+
+[Webhook]
+# Inbound webhook receiver — accept HTTP POST requests and relay them as MeshCore messages.
+# Useful for integrating external systems (alerts, monitoring, scripts) with the mesh.
+#
+# Enable the webhook HTTP server (true/false). Default: false
+enabled = false
+
+# Bind address. Use 127.0.0.1 to accept connections only from localhost (recommended).
+# Use 0.0.0.0 to accept from any interface (ensure your firewall restricts access).
+host = 127.0.0.1
+
+# Listen port (must not conflict with the web viewer port, default 8080).
+port = 8765
+
+# Optional shared secret. If set, every request must include one of:
+#   Authorization: Bearer <secret_token>
+#   X-Webhook-Token: <secret_token>
+# Leave empty to disable authentication (NOT recommended for production).
+# secret_token = changeme
+
+# Maximum message length in characters (excess is silently truncated). Default: 200
+# max_message_length = 200
+
+# Comma-separated channel whitelist. If set, only these channels may be posted to.
+# Leave empty to allow any channel.
+# allowed_channels = general,alerts
+
+# ---------------------------------------------------------------------------
+# HTTP API
+# ---------------------------------------------------------------------------
+# POST http://<host>:<port>/webhook
+#   Content-Type: application/json
+#   Authorization: Bearer <secret_token>
+#
+# Channel message:
+#   {"channel": "general", "message": "Hello from webhook!"}
+#
+# Direct message:
+#   {"dm_to": "SomeUser", "message": "Private message"}
+#
+# Response: {"ok": true}  or  {"error": "..."}
+# ---------------------------------------------------------------------------
 
 [DiscordBridge]
 # Enable Discord bridge service
