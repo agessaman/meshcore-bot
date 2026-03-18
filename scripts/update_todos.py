@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 """
 update_todos.py — Scans source files for TODO/FIXME/HACK markers and rewrites
-the "Inline TODOs" section of TODO.md.
+the "Inline TODOs" section of TODO.md.  Also updates the "Last updated:" date
+at the top of the file.
 
 Usage:
     python scripts/update_todos.py          # from project root
     python scripts/update_todos.py --check  # exit 1 if TODO.md would change (CI use)
 
-The script only touches the content between the two sentinel comments:
-    <!-- inline-todos-start -->
-    <!-- inline-todos-end -->
+Completed item date format in TODO.md:
+    - [x] (YYYY-MM-DD) description of completed item
+
+The script manages two things in TODO.md:
+  1. The "**Last updated:**" line near the top — set to today's date.
+  2. The "## Inline TODOs (auto-generated)" section at the bottom — replaced
+     wholesale with a fresh scan of # TODO / # FIXME / # HACK markers.
 Everything else in TODO.md is left exactly as-is.
 """
 
@@ -94,9 +99,9 @@ def build_section(todos, today: str) -> str:
     return "\n".join(lines)
 
 
-def rewrite_todo_md(new_section: str, check_only: bool = False) -> bool:
+def rewrite_todo_md(new_section: str, today: str, check_only: bool = False) -> bool:
     """
-    Replace the Inline TODOs section in TODO.md.
+    Replace the Inline TODOs section and update the Last updated date in TODO.md.
 
     Returns True if the file was (or would be) changed.
     """
@@ -106,6 +111,13 @@ def rewrite_todo_md(new_section: str, check_only: bool = False) -> bool:
 
     content = TODO_FILE.read_text(encoding="utf-8")
 
+    # Update "**Last updated:**" line
+    content = re.sub(
+        r"(\*\*Last updated:\*\*\s*)[\d-]+",
+        rf"\g<1>{today}",
+        content,
+    )
+
     # Find the section heading and replace everything from it to EOF
     idx = content.find(f"\n{SECTION_START}")
     if idx == -1:
@@ -114,7 +126,7 @@ def rewrite_todo_md(new_section: str, check_only: bool = False) -> bool:
     else:
         new_content = content[: idx + 1] + new_section + "\n"
 
-    changed = new_content != content
+    changed = new_content != TODO_FILE.read_text(encoding="utf-8")
 
     if check_only:
         if changed:
@@ -142,7 +154,7 @@ def main():
     today = datetime.date.today().isoformat()
     todos = scan_todos()
     section = build_section(todos, today)
-    changed = rewrite_todo_md(section, check_only=args.check)
+    changed = rewrite_todo_md(section, today, check_only=args.check)
 
     if args.check and changed:
         sys.exit(1)
