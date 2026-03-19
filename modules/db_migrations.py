@@ -15,6 +15,7 @@ Never modify or remove an existing migration — add a new one instead.
 """
 
 import logging
+import re
 import sqlite3
 from typing import Callable
 
@@ -22,10 +23,28 @@ from typing import Callable
 # Helper utilities
 # ---------------------------------------------------------------------------
 
+VALID_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _validate_ident(name: str, kind: str) -> None:
+    if not VALID_IDENT.match(name):
+        raise ValueError(f"Invalid {kind} identifier: {name!r}")
+
+
+def _table_exists(cursor: sqlite3.Cursor, table: str) -> bool:
+    _validate_ident(table, "table")
+    cursor.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        (table,),
+    )
+    return cursor.fetchone() is not None
+
 
 def _column_exists(cursor: sqlite3.Cursor, table: str, column: str) -> bool:
     """Return True if *column* already exists in *table*."""
-    cursor.execute(f"PRAGMA table_info({table})")
+    _validate_ident(table, "table")
+    _validate_ident(column, "column")
+    cursor.execute(f'PRAGMA table_info("{table}")')
     return any(row[1] == column for row in cursor.fetchall())
 
 
@@ -33,6 +52,8 @@ def _add_column(
     cursor: sqlite3.Cursor, table: str, column: str, definition: str
 ) -> None:
     """Add *column* to *table* if it does not already exist."""
+    _validate_ident(table, "table")
+    _validate_ident(column, "column")
     if not _column_exists(cursor, table, column):
         cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
@@ -195,6 +216,257 @@ def _m0006_channel_operations_payload_data(cursor: sqlite3.Cursor) -> None:
     _add_column(cursor, "channel_operations", "payload_data", "TEXT")
 
 
+# NOTE: Higher-numbered migrations can safely depend on tables created by other
+# subsystems (e.g., repeater manager) by checking for table existence and then
+# applying idempotent ALTER/CREATE INDEX statements.
+
+
+def _m0007_packet_stream_table(cursor: sqlite3.Cursor) -> None:
+    """Create packet_stream table and indexes (shared DB with web viewer)."""
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS packet_stream (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp REAL NOT NULL,
+            data TEXT NOT NULL,
+            type TEXT NOT NULL
+        )
+        """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_packet_stream_timestamp ON packet_stream(timestamp)"
+    )
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_packet_stream_type ON packet_stream(type)")
+
+
+def _m0008_repeater_tables_optional_columns(cursor: sqlite3.Cursor) -> None:
+    """Bring repeater/graph tables up to date if they exist."""
+    # repeater_contacts: add location columns only if table exists
+    if _table_exists(cursor, "repeater_contacts"):
+        for column_name, column_def in [
+            ("latitude", "REAL"),
+            ("longitude", "REAL"),
+            ("city", "TEXT"),
+            ("state", "TEXT"),
+            ("country", "TEXT"),
+        ]:
+            _add_column(cursor, "repeater_contacts", column_name, column_def)
+
+    # complete_contact_tracking: path columns + is_starred and out_bytes_per_hop
+    if _table_exists(cursor, "complete_contact_tracking"):
+        for column_name, column_def in [
+            ("out_path", "TEXT"),
+            ("out_path_len", "INTEGER"),
+            ("snr", "REAL"),
+            ("is_starred", "BOOLEAN DEFAULT 0"),
+            ("out_bytes_per_hop", "INTEGER"),
+        ]:
+            _add_column(cursor, "complete_contact_tracking", column_name, column_def)
+
+    # observed_paths: packet_hash + bytes_per_hop
+    if _table_exists(cursor, "observed_paths"):
+        for column_name, column_def in [
+            ("packet_hash", "TEXT"),
+            ("bytes_per_hop", "INTEGER"),
+        ]:
+            _add_column(cursor, "observed_paths", column_name, column_def)
+
+    # mesh_connections: graph/viewer columns
+    if _table_exists(cursor, "mesh_connections"):
+        for column_name, column_def in [
+            ("from_public_key", "TEXT"),
+            ("to_public_key", "TEXT"),
+            ("avg_hop_position", "REAL"),
+            ("geographic_distance", "REAL"),
+        ]:
+            _add_column(cursor, "mesh_connections", column_name, column_def)
+
+
+def _m0009_repeater_optional_indexes(cursor: sqlite3.Cursor) -> None:
+    """Create optional indexes for repeater/graph tables if they exist."""
+    if _table_exists(cursor, "unique_advert_packets"):
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_unique_advert_date_pubkey ON unique_advert_packets(date, public_key)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_unique_advert_hash ON unique_advert_packets(packet_hash)"
+        )
+
+    if _table_exists(cursor, "mesh_connections"):
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_from_prefix ON mesh_connections(from_prefix)"
+        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_to_prefix ON mesh_connections(to_prefix)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_last_seen ON mesh_connections(last_seen)")
+
+    if _table_exists(cursor, "observed_paths"):
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_observed_paths_public_key ON observed_paths(public_key, packet_type)"
+        )
+        if _column_exists(cursor, "observed_paths", "packet_hash"):
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_observed_paths_packet_hash ON observed_paths(packet_hash) WHERE packet_hash IS NOT NULL"
+            )
+        cursor.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_observed_paths_advert_unique ON observed_paths(public_key, path_hex, packet_type) WHERE public_key IS NOT NULL"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_observed_paths_endpoints ON observed_paths(from_prefix, to_prefix, packet_type)"
+        )
+        cursor.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_observed_paths_message_unique ON observed_paths(from_prefix, to_prefix, path_hex, packet_type) WHERE public_key IS NULL"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_observed_paths_last_seen ON observed_paths(last_seen)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_observed_paths_type_seen ON observed_paths(packet_type, last_seen)"
+        )
+
+
+def _m0010_create_repeater_and_graph_tables(cursor: sqlite3.Cursor) -> None:
+    """Create repeater/graph tables used by the web viewer and repeater manager."""
+    cursor.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS repeater_contacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            public_key TEXT UNIQUE NOT NULL,
+            name TEXT NOT NULL,
+            device_type TEXT NOT NULL,
+            first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            contact_data TEXT,
+            latitude REAL,
+            longitude REAL,
+            city TEXT,
+            state TEXT,
+            country TEXT,
+            is_active BOOLEAN DEFAULT 1,
+            purge_count INTEGER DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS complete_contact_tracking (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            public_key TEXT NOT NULL,
+            name TEXT NOT NULL,
+            role TEXT NOT NULL,
+            device_type TEXT,
+            first_heard TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_heard TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            advert_count INTEGER DEFAULT 1,
+            latitude REAL,
+            longitude REAL,
+            city TEXT,
+            state TEXT,
+            country TEXT,
+            raw_advert_data TEXT,
+            signal_strength REAL,
+            snr REAL,
+            hop_count INTEGER,
+            is_currently_tracked BOOLEAN DEFAULT 0,
+            last_advert_timestamp TIMESTAMP,
+            location_accuracy REAL,
+            contact_source TEXT DEFAULT 'advertisement',
+            out_path TEXT,
+            out_path_len INTEGER,
+            out_bytes_per_hop INTEGER,
+            is_starred INTEGER DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS daily_stats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date DATE NOT NULL,
+            public_key TEXT NOT NULL,
+            advert_count INTEGER DEFAULT 1,
+            first_advert_time TIMESTAMP,
+            last_advert_time TIMESTAMP,
+            UNIQUE(date, public_key)
+        );
+
+        CREATE TABLE IF NOT EXISTS unique_advert_packets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date DATE NOT NULL,
+            public_key TEXT NOT NULL,
+            packet_hash TEXT NOT NULL,
+            first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(date, public_key, packet_hash)
+        );
+
+        CREATE TABLE IF NOT EXISTS purging_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            action TEXT NOT NULL,
+            public_key TEXT NOT NULL,
+            name TEXT NOT NULL,
+            reason TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS mesh_connections (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            from_prefix TEXT NOT NULL,
+            to_prefix TEXT NOT NULL,
+            from_public_key TEXT,
+            to_public_key TEXT,
+            observation_count INTEGER DEFAULT 1,
+            first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            avg_hop_position REAL,
+            geographic_distance REAL,
+            UNIQUE(from_prefix, to_prefix)
+        );
+
+        CREATE TABLE IF NOT EXISTS observed_paths (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            public_key TEXT,
+            packet_hash TEXT,
+            from_prefix TEXT NOT NULL,
+            to_prefix TEXT NOT NULL,
+            path_hex TEXT NOT NULL,
+            path_length INTEGER NOT NULL,
+            bytes_per_hop INTEGER,
+            packet_type TEXT NOT NULL,
+            first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            observation_count INTEGER DEFAULT 1
+        );
+        """
+    )
+
+
+def _m0011_repeater_and_graph_indexes(cursor: sqlite3.Cursor) -> None:
+    """Create indexes for repeater/graph tables (safe to run repeatedly)."""
+    cursor.executescript(
+        """
+        CREATE INDEX IF NOT EXISTS idx_public_key ON repeater_contacts(public_key);
+        CREATE INDEX IF NOT EXISTS idx_device_type ON repeater_contacts(device_type);
+        CREATE INDEX IF NOT EXISTS idx_last_seen ON repeater_contacts(last_seen);
+        CREATE INDEX IF NOT EXISTS idx_is_active ON repeater_contacts(is_active);
+
+        CREATE INDEX IF NOT EXISTS idx_complete_public_key ON complete_contact_tracking(public_key);
+        CREATE INDEX IF NOT EXISTS idx_complete_role ON complete_contact_tracking(role);
+        CREATE INDEX IF NOT EXISTS idx_complete_last_heard ON complete_contact_tracking(last_heard);
+        CREATE INDEX IF NOT EXISTS idx_complete_currently_tracked ON complete_contact_tracking(is_currently_tracked);
+        CREATE INDEX IF NOT EXISTS idx_complete_location ON complete_contact_tracking(latitude, longitude);
+        CREATE INDEX IF NOT EXISTS idx_complete_role_tracked ON complete_contact_tracking(role, is_currently_tracked);
+
+        CREATE INDEX IF NOT EXISTS idx_unique_advert_date_pubkey ON unique_advert_packets(date, public_key);
+        CREATE INDEX IF NOT EXISTS idx_unique_advert_hash ON unique_advert_packets(packet_hash);
+
+        CREATE INDEX IF NOT EXISTS idx_from_prefix ON mesh_connections(from_prefix);
+        CREATE INDEX IF NOT EXISTS idx_to_prefix ON mesh_connections(to_prefix);
+        CREATE INDEX IF NOT EXISTS idx_last_seen ON mesh_connections(last_seen);
+
+        CREATE INDEX IF NOT EXISTS idx_observed_paths_public_key ON observed_paths(public_key, packet_type);
+        CREATE INDEX IF NOT EXISTS idx_observed_paths_packet_hash ON observed_paths(packet_hash) WHERE packet_hash IS NOT NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_observed_paths_advert_unique ON observed_paths(public_key, path_hex, packet_type) WHERE public_key IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_observed_paths_endpoints ON observed_paths(from_prefix, to_prefix, packet_type);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_observed_paths_message_unique ON observed_paths(from_prefix, to_prefix, path_hex, packet_type) WHERE public_key IS NULL;
+        CREATE INDEX IF NOT EXISTS idx_observed_paths_last_seen ON observed_paths(last_seen);
+        CREATE INDEX IF NOT EXISTS idx_observed_paths_type_seen ON observed_paths(packet_type, last_seen);
+        """
+    )
+
+
 # ---------------------------------------------------------------------------
 # Migration registry — append new entries here, never remove or reorder.
 # ---------------------------------------------------------------------------
@@ -208,6 +480,11 @@ MIGRATIONS: list[MigrationEntry] = [
     (4, "channel_operations: result_data, processed_at", _m0004_channel_operations_result_processed),
     (5, "feed_message_queue: item_id, item_title, priority", _m0005_feed_message_queue_item_fields),
     (6, "channel_operations: payload_data", _m0006_channel_operations_payload_data),
+    (7, "packet_stream table for web viewer", _m0007_packet_stream_table),
+    (8, "optional repeater/graph columns", _m0008_repeater_tables_optional_columns),
+    (9, "optional repeater/graph indexes", _m0009_repeater_optional_indexes),
+    (10, "create repeater/graph tables", _m0010_create_repeater_and_graph_tables),
+    (11, "repeater/graph indexes", _m0011_repeater_and_graph_indexes),
 ]
 
 
@@ -239,11 +516,24 @@ class MigrationRunner:
                 applied_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Legacy DBs may have been created without a uniqueness constraint.
+        self.conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_schema_version_version ON schema_version(version)"
+        )
 
-    def _current_version(self) -> int:
-        cursor = self.conn.execute("SELECT MAX(version) FROM schema_version")
-        row = cursor.fetchone()
-        return row[0] if row[0] is not None else 0
+    def _applied_versions(self) -> set[int]:
+        cursor = self.conn.execute("SELECT version FROM schema_version")
+        return {int(row[0]) for row in cursor.fetchall() if row and row[0] is not None}
+
+    def _validate_versions(self, applied: set[int]) -> None:
+        known = {v for v, _, _ in MIGRATIONS}
+        unknown = sorted(v for v in applied if v not in known)
+        if unknown:
+            raise RuntimeError(
+                "Database schema is newer or inconsistent with this codebase. "
+                f"Unknown applied migration version(s): {unknown}. "
+                "Upgrade the bot to a newer version that includes these migrations."
+            )
 
     def _apply(self, version: int, description: str, fn: Callable[[sqlite3.Cursor], None]) -> None:
         cursor = self.conn.cursor()
@@ -257,13 +547,23 @@ class MigrationRunner:
     def run(self) -> None:
         """Apply all pending migrations in version order."""
         self._ensure_version_table()
-        current = self._current_version()
-        pending = [(v, d, f) for v, d, f in MIGRATIONS if v > current]
+        applied = self._applied_versions()
+        self._validate_versions(applied)
+        pending = [(v, d, f) for v, d, f in MIGRATIONS if v not in applied]
+        pending.sort(key=lambda x: x[0])
         if not pending:
             self.logger.debug("Database schema is up to date")
             return
-        for version, description, fn in pending:
-            self._apply(version, description, fn)
+
+        try:
+            self.conn.execute("BEGIN IMMEDIATE")
+            for version, description, fn in pending:
+                self._apply(version, description, fn)
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
+
         self.logger.info(
             f"Database migrations complete: {len(pending)} applied, "
             f"schema now at version {pending[-1][0]}"

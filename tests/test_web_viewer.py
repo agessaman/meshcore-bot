@@ -2115,8 +2115,17 @@ class TestBotIntegrationQueue:
         bot.logger = logging.getLogger("test_integration")
         bot.logger.addHandler(logging.NullHandler())
         bot.config = cfg
-        bot.db_manager.db_path = db_path
         bot.bot_root = str(tmp_path)
+
+        # Ensure schema exists (packet_stream is migration-owned).
+        from modules.db_manager import DBManager
+
+        class MinimalBot:
+            def __init__(self, logger, config):
+                self.logger = logger
+                self.config = config
+
+        bot.db_manager = DBManager(MinimalBot(bot.logger, cfg), db_path)
 
         from modules.web_viewer.integration import BotIntegration
         bi = BotIntegration(bot)

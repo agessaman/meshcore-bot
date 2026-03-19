@@ -40,8 +40,6 @@ class BotIntegration:
         self._drain_thread: Optional[threading.Thread] = None
         # Initialize HTTP session with connection pooling for efficient reuse
         self._init_http_session()
-        # Initialize the packet_stream table
-        self._init_packet_stream_table()
         # Start background drain thread after table is confirmed to exist
         self._start_drain_thread()
 
@@ -133,51 +131,54 @@ class BotIntegration:
         return str(Path(self.bot.db_manager.db_path).resolve())
 
     def _init_packet_stream_table(self):
-        """Initialize the packet_stream table in the web viewer database (same as [Bot] db_path by default)."""
+        """Backward-compatible initializer (now handled by migrations).
+
+        Kept for older call sites and tests that patch this method. Safe to call
+        multiple times and safe to ignore failures.
+        """
         try:
             import sqlite3
 
             db_path = self._get_web_viewer_db_path()
-
             with closing(sqlite3.connect(str(db_path), timeout=60.0)) as conn:
-                cursor = conn.cursor()
-
-                # Create packet_stream table with schema matching the INSERT statements
-                cursor.execute('''
+                cur = conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='packet_stream'"
+                )
+                if cur.fetchone() is not None:
+                    return
+                try:
+                    foreign_keys = self.bot.config.getboolean("Web_Viewer", "sqlite_foreign_keys", fallback=True)
+                    busy_timeout_ms = self.bot.config.getint("Web_Viewer", "sqlite_busy_timeout_ms", fallback=60000)
+                    journal_mode = self.bot.config.get("Web_Viewer", "sqlite_journal_mode", fallback="WAL").strip() or "WAL"
+                except Exception:
+                    foreign_keys = True
+                    busy_timeout_ms = 60000
+                    journal_mode = "WAL"
+                conn.execute(f"PRAGMA foreign_keys={'ON' if foreign_keys else 'OFF'}")
+                conn.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)}")
+                try:
+                    conn.execute(f"PRAGMA journal_mode={journal_mode}")
+                except sqlite3.OperationalError:
+                    pass
+                conn.execute(
+                    """
                     CREATE TABLE IF NOT EXISTS packet_stream (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         timestamp REAL NOT NULL,
                         data TEXT NOT NULL,
                         type TEXT NOT NULL
                     )
-                ''')
-
-                # Create index on timestamp for faster queries
-                cursor.execute('''
-                    CREATE INDEX IF NOT EXISTS idx_packet_stream_timestamp
-                    ON packet_stream(timestamp)
-                ''')
-
-                # Create index on type for filtering by type
-                cursor.execute('''
-                    CREATE INDEX IF NOT EXISTS idx_packet_stream_type
-                    ON packet_stream(type)
-                ''')
-
-                # Enable WAL for better concurrent access (bot + web viewer use same DB)
-                try:
-                    cursor.execute('PRAGMA journal_mode=WAL')
-                except sqlite3.OperationalError:
-                    pass  # Ignore if locked; WAL may already be set
-
+                    """
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_packet_stream_timestamp ON packet_stream(timestamp)"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_packet_stream_type ON packet_stream(type)"
+                )
                 conn.commit()
-
-            self.bot.logger.info(f"Initialized packet_stream table in {db_path}")
-
-        except Exception as e:
-            self.bot.logger.error(f"Failed to initialize packet_stream table: {e}")
-            # Don't raise - allow bot to continue even if table init fails
-            # The error will be caught when trying to insert data
+        except Exception:
+            pass
 
     def _start_drain_thread(self) -> None:
         """Start the background thread that flushes the write queue every DRAIN_INTERVAL seconds."""

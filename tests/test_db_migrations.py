@@ -90,6 +90,51 @@ class TestMigrationRunner:
         cursor = conn.execute("SELECT COUNT(*) FROM schema_version")
         assert cursor.fetchone()[0] == len(MIGRATIONS)
 
+    def test_non_contiguous_history_applies_missing_versions(self, conn, logger):
+        """If schema_version has gaps, runner should apply missing versions."""
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS schema_version (
+                version INTEGER NOT NULL,
+                description TEXT,
+                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("INSERT INTO schema_version (version, description) VALUES (1, 'initial schema')")
+        conn.execute("INSERT INTO schema_version (version, description) VALUES (3, 'feed_subscriptions: filter_config, sort_config')")
+
+        # Seed minimal tables so migrations that ALTER them have something to work with.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS feed_subscriptions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                feed_url TEXT NOT NULL,
+                channel_name TEXT NOT NULL,
+                UNIQUE(feed_url, channel_name)
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS channel_operations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                operation_type TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS feed_message_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                feed_id INTEGER NOT NULL,
+                channel_name TEXT NOT NULL,
+                message TEXT NOT NULL,
+                queued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                sent_at TIMESTAMP
+            )
+        """)
+        conn.commit()
+
+        runner = MigrationRunner(conn, logger)
+        runner.run()
+
+        applied = {row[0] for row in conn.execute("SELECT version FROM schema_version").fetchall()}
+        assert set(range(1, len(MIGRATIONS) + 1)).issubset(applied)
+
     def test_partial_history_applies_only_pending(self, conn, logger):
         """Simulate a DB that already had migration 1 applied."""
         conn.execute("""
@@ -142,9 +187,9 @@ class TestMigrationRunner:
         assert _column_exists(cursor2, "feed_subscriptions", "output_format") is True
         assert _column_exists(cursor2, "feed_message_queue", "priority") is True
 
-    def test_current_version_zero_on_empty_table(self, runner, conn):
+    def test_applied_versions_empty_on_empty_table(self, runner, conn):
         runner._ensure_version_table()
-        assert runner._current_version() == 0
+        assert runner._applied_versions() == set()
 
 
 # ---------------------------------------------------------------------------
@@ -187,3 +232,57 @@ class TestSchema:
         runner.run()
         cursor = conn.cursor()
         assert _column_exists(cursor, "feed_message_queue", "item_id") is True
+
+    def test_foreign_key_cascade_works_when_enabled(self, runner, conn):
+        conn.execute("PRAGMA foreign_keys=ON")
+        runner.run()
+
+        # Create a subscription and activity, then delete subscription.
+        sub_id = conn.execute(
+            "INSERT INTO feed_subscriptions (feed_type, feed_url, channel_name) VALUES (?, ?, ?)",
+            ("rss", "https://example.com/feed.xml", "chan"),
+        ).lastrowid
+        conn.execute(
+            "INSERT INTO feed_activity (feed_id, item_id, item_title) VALUES (?, ?, ?)",
+            (sub_id, "item-1", "title"),
+        )
+        conn.commit()
+
+        conn.execute("DELETE FROM feed_subscriptions WHERE id = ?", (sub_id,))
+        conn.commit()
+
+        remaining = conn.execute("SELECT COUNT(*) FROM feed_activity WHERE feed_id = ?", (sub_id,)).fetchone()[0]
+        assert remaining == 0
+
+    def test_repeater_tables_created_by_migrations(self, runner, conn):
+        runner.run()
+        for table in [
+            "repeater_contacts",
+            "complete_contact_tracking",
+            "daily_stats",
+            "unique_advert_packets",
+            "purging_log",
+            "mesh_connections",
+            "observed_paths",
+        ]:
+            cur = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (table,),
+            )
+            assert cur.fetchone() is not None
+
+    def test_repeater_indexes_created(self, runner, conn):
+        runner.run()
+        # Spot-check a few key indexes (not exhaustive).
+        for idx in [
+            "idx_public_key",
+            "idx_complete_public_key",
+            "idx_unique_advert_hash",
+            "idx_from_prefix",
+            "idx_observed_paths_endpoints",
+        ]:
+            cur = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name=?",
+                (idx,),
+            )
+            assert cur.fetchone() is not None

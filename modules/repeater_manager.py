@@ -26,9 +26,6 @@ class RepeaterManager:
         # Use the shared database manager
         self.db_manager = bot.db_manager
 
-        # Check for and handle database schema migration FIRST (before creating indexes)
-        self._migrate_database_schema()
-
         # Initialize repeater-specific tables
         self._init_repeater_tables()
 
@@ -50,263 +47,41 @@ class RepeaterManager:
         self.geocoding_cache_window = 60  # 1 minute window
 
     def _init_repeater_tables(self):
-        """Initialize repeater-specific database tables"""
+        """Ensure repeater-specific tables exist (created by migrations)."""
         try:
-            # Create repeater_contacts table
-            self.db_manager.create_table('repeater_contacts', '''
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                public_key TEXT UNIQUE NOT NULL,
-                name TEXT NOT NULL,
-                device_type TEXT NOT NULL,
-                first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                contact_data TEXT,
-                latitude REAL,
-                longitude REAL,
-                city TEXT,
-                state TEXT,
-                country TEXT,
-                is_active BOOLEAN DEFAULT 1,
-                purge_count INTEGER DEFAULT 0
-            ''')
-
-            # Create complete_contact_tracking table for all heard contacts
-            self.db_manager.create_table('complete_contact_tracking', '''
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                public_key TEXT NOT NULL,
-                name TEXT NOT NULL,
-                role TEXT NOT NULL,
-                device_type TEXT,
-                first_heard TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_heard TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                advert_count INTEGER DEFAULT 1,
-                latitude REAL,
-                longitude REAL,
-                city TEXT,
-                state TEXT,
-                country TEXT,
-                raw_advert_data TEXT,
-                signal_strength REAL,
-                snr REAL,
-                hop_count INTEGER,
-                is_currently_tracked BOOLEAN DEFAULT 0,
-                last_advert_timestamp TIMESTAMP,
-                location_accuracy REAL,
-                contact_source TEXT DEFAULT 'advertisement',
-                out_path TEXT,
-                out_path_len INTEGER,
-                is_starred INTEGER DEFAULT 0
-            ''')
-
-            # Create daily_stats table for daily statistics tracking
-            self.db_manager.create_table('daily_stats', '''
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date DATE NOT NULL,
-                public_key TEXT NOT NULL,
-                advert_count INTEGER DEFAULT 1,
-                first_advert_time TIMESTAMP,
-                last_advert_time TIMESTAMP,
-                UNIQUE(date, public_key)
-            ''')
-
-            # Create unique_advert_packets table for tracking unique packet hashes
-            # This allows us to count unique advert packets (deduplicate by packet_hash)
-            self.db_manager.create_table('unique_advert_packets', '''
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date DATE NOT NULL,
-                public_key TEXT NOT NULL,
-                packet_hash TEXT NOT NULL,
-                first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(date, public_key, packet_hash)
-            ''')
-
-            # Create purging_log table for audit trail
-            self.db_manager.create_table('purging_log', '''
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                action TEXT NOT NULL,
-                public_key TEXT NOT NULL,
-                name TEXT NOT NULL,
-                reason TEXT
-            ''')
-
-            # Create mesh_connections table for graph-based path validation
-            self.db_manager.create_table('mesh_connections', '''
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                from_prefix TEXT NOT NULL,
-                to_prefix TEXT NOT NULL,
-                from_public_key TEXT,
-                to_public_key TEXT,
-                observation_count INTEGER DEFAULT 1,
-                first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                avg_hop_position REAL,
-                geographic_distance REAL,
-                UNIQUE(from_prefix, to_prefix)
-            ''')
-
-            # Create observed_paths table for storing complete paths from adverts and messages
-            self.db_manager.create_table('observed_paths', '''
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                public_key TEXT,
-                packet_hash TEXT,
-                from_prefix TEXT NOT NULL,
-                to_prefix TEXT NOT NULL,
-                path_hex TEXT NOT NULL,
-                path_length INTEGER NOT NULL,
-                bytes_per_hop INTEGER,
-                packet_type TEXT NOT NULL,
-                first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                observation_count INTEGER DEFAULT 1
-            ''')
-
-            # Create indexes for better performance
             with self.db_manager.connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute('CREATE INDEX IF NOT EXISTS idx_public_key ON repeater_contacts(public_key)')
-                cursor.execute('CREATE INDEX IF NOT EXISTS idx_device_type ON repeater_contacts(device_type)')
-                cursor.execute('CREATE INDEX IF NOT EXISTS idx_last_seen ON repeater_contacts(last_seen)')
-                cursor.execute('CREATE INDEX IF NOT EXISTS idx_is_active ON repeater_contacts(is_active)')
+                required_tables = [
+                    "repeater_contacts",
+                    "complete_contact_tracking",
+                    "daily_stats",
+                    "unique_advert_packets",
+                    "purging_log",
+                    "mesh_connections",
+                    "observed_paths",
+                ]
+                missing = []
+                for t in required_tables:
+                    cur = conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                        (t,),
+                    )
+                    if cur.fetchone() is None:
+                        missing.append(t)
 
-                # Indexes for contact tracking table
-                cursor.execute('CREATE INDEX IF NOT EXISTS idx_complete_public_key ON complete_contact_tracking(public_key)')
-                cursor.execute('CREATE INDEX IF NOT EXISTS idx_complete_role ON complete_contact_tracking(role)')
-                cursor.execute('CREATE INDEX IF NOT EXISTS idx_complete_last_heard ON complete_contact_tracking(last_heard)')
-                cursor.execute('CREATE INDEX IF NOT EXISTS idx_complete_currently_tracked ON complete_contact_tracking(is_currently_tracked)')
-                cursor.execute('CREATE INDEX IF NOT EXISTS idx_complete_location ON complete_contact_tracking(latitude, longitude)')
-                cursor.execute('CREATE INDEX IF NOT EXISTS idx_complete_role_tracked ON complete_contact_tracking(role, is_currently_tracked)')
-
-                # Indexes for unique_advert_packets table
-                cursor.execute('CREATE INDEX IF NOT EXISTS idx_unique_advert_date_pubkey ON unique_advert_packets(date, public_key)')
-                cursor.execute('CREATE INDEX IF NOT EXISTS idx_unique_advert_hash ON unique_advert_packets(packet_hash)')
-
-                # Indexes for mesh_connections table
-                cursor.execute('CREATE INDEX IF NOT EXISTS idx_from_prefix ON mesh_connections(from_prefix)')
-                cursor.execute('CREATE INDEX IF NOT EXISTS idx_to_prefix ON mesh_connections(to_prefix)')
-                cursor.execute('CREATE INDEX IF NOT EXISTS idx_last_seen ON mesh_connections(last_seen)')
-
-                # Indexes for observed_paths table
-                # Index for advert path lookups by repeater (where public_key IS NOT NULL)
-                cursor.execute('CREATE INDEX IF NOT EXISTS idx_observed_paths_public_key ON observed_paths(public_key, packet_type)')
-                # Index for grouping paths by packet hash (same packet via different paths)
-                # Only create if packet_hash column exists (migration may have just added it)
-                cursor.execute("PRAGMA table_info(observed_paths)")
-                observed_paths_columns = [row[1] for row in cursor.fetchall()]
-                if 'packet_hash' in observed_paths_columns:
-                    cursor.execute('CREATE INDEX IF NOT EXISTS idx_observed_paths_packet_hash ON observed_paths(packet_hash) WHERE packet_hash IS NOT NULL')
-                # Unique index for adverts: one entry per repeater per unique path
-                cursor.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_observed_paths_advert_unique ON observed_paths(public_key, path_hex, packet_type) WHERE public_key IS NOT NULL')
-                # Index for general path lookups by endpoints
-                cursor.execute('CREATE INDEX IF NOT EXISTS idx_observed_paths_endpoints ON observed_paths(from_prefix, to_prefix, packet_type)')
-                # Unique index for messages: one entry per unique path between endpoints
-                cursor.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_observed_paths_message_unique ON observed_paths(from_prefix, to_prefix, path_hex, packet_type) WHERE public_key IS NULL')
-                # Index for recency filtering
-                cursor.execute('CREATE INDEX IF NOT EXISTS idx_observed_paths_last_seen ON observed_paths(last_seen)')
-                # Index for type-specific queries
-                cursor.execute('CREATE INDEX IF NOT EXISTS idx_observed_paths_type_seen ON observed_paths(packet_type, last_seen)')
-                conn.commit()
+                if missing:
+                    msg = (
+                        "Missing repeater/graph database tables: "
+                        + ", ".join(missing)
+                        + ". Run the bot once to apply migrations."
+                    )
+                    self.logger.error(msg)
+                    raise RuntimeError(msg)
 
             self.logger.info("Repeater contacts database initialized successfully")
 
         except Exception as e:
             self.logger.error(f"Failed to initialize repeater database: {e}")
             raise
-
-    def _migrate_database_schema(self):
-        """Handle database schema migration for existing installations.
-        Each table is migrated in isolation so one missing table or error does not block the rest.
-        Important for web viewer: migration runs when RepeaterManager is created, so contacts page
-        works for users who open the viewer without having started the bot after upgrade.
-        """
-        with self.db_manager.connection() as conn:
-            cursor = conn.cursor()
-
-            # repeater_contacts: add location columns only if table exists
-            try:
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='repeater_contacts'")
-                if cursor.fetchone():
-                    cursor.execute("PRAGMA table_info(repeater_contacts)")
-                    columns = [row[1] for row in cursor.fetchall()]
-                    for column_name, column_type in [
-                        ('latitude', 'REAL'), ('longitude', 'REAL'), ('city', 'TEXT'),
-                        ('state', 'TEXT'), ('country', 'TEXT')
-                    ]:
-                        if column_name not in columns:
-                            self.logger.info(f"Adding missing column to repeater_contacts: {column_name}")
-                            cursor.execute(f"ALTER TABLE repeater_contacts ADD COLUMN {column_name} {column_type}")
-                            conn.commit()
-            except Exception as e:
-                self.logger.warning(f"Migration repeater_contacts: {e}")
-
-            # complete_contact_tracking: path columns and is_starred (required for contacts page)
-            try:
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='complete_contact_tracking'")
-                if cursor.fetchone():
-                    cursor.execute("PRAGMA table_info(complete_contact_tracking)")
-                    tracking_columns = [row[1] for row in cursor.fetchall()]
-                    for column_name, column_type in [
-                        ('out_path', 'TEXT'), ('out_path_len', 'INTEGER'), ('snr', 'REAL')
-                    ]:
-                        if column_name not in tracking_columns:
-                            self.logger.info(f"Adding missing column to complete_contact_tracking: {column_name}")
-                            cursor.execute(f"ALTER TABLE complete_contact_tracking ADD COLUMN {column_name} {column_type}")
-                            conn.commit()
-                    if 'is_starred' not in tracking_columns:
-                        self.logger.info("Adding is_starred column to complete_contact_tracking")
-                        cursor.execute("ALTER TABLE complete_contact_tracking ADD COLUMN is_starred BOOLEAN DEFAULT 0")
-                        conn.commit()
-            except Exception as e:
-                self.logger.warning(f"Migration complete_contact_tracking: {e}")
-
-            # observed_paths: packet_hash
-            try:
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='observed_paths'")
-                if cursor.fetchone():
-                    cursor.execute("PRAGMA table_info(observed_paths)")
-                    observed_paths_columns = [row[1] for row in cursor.fetchall()]
-                    if 'packet_hash' not in observed_paths_columns:
-                        self.logger.info("Adding packet_hash column to observed_paths")
-                        cursor.execute("ALTER TABLE observed_paths ADD COLUMN packet_hash TEXT")
-                        conn.commit()
-                    if 'bytes_per_hop' not in observed_paths_columns:
-                        self.logger.info("Adding bytes_per_hop column to observed_paths")
-                        cursor.execute("ALTER TABLE observed_paths ADD COLUMN bytes_per_hop INTEGER")
-                        conn.commit()
-            except Exception as e:
-                self.logger.warning(f"Migration observed_paths: {e}")
-
-            # complete_contact_tracking: out_bytes_per_hop (multi-byte path decode)
-            try:
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='complete_contact_tracking'")
-                if cursor.fetchone():
-                    cursor.execute("PRAGMA table_info(complete_contact_tracking)")
-                    cct_columns = [row[1] for row in cursor.fetchall()]
-                    if 'out_bytes_per_hop' not in cct_columns:
-                        self.logger.info("Adding out_bytes_per_hop column to complete_contact_tracking")
-                        cursor.execute("ALTER TABLE complete_contact_tracking ADD COLUMN out_bytes_per_hop INTEGER")
-                        conn.commit()
-            except Exception as e:
-                self.logger.warning(f"Migration complete_contact_tracking out_bytes_per_hop: {e}")
-
-            # mesh_connections: graph/viewer columns
-            try:
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='mesh_connections'")
-                if cursor.fetchone():
-                    cursor.execute("PRAGMA table_info(mesh_connections)")
-                    mc_columns = [row[1] for row in cursor.fetchall()]
-                    for col_name, col_type in [
-                        ('from_public_key', 'TEXT'), ('to_public_key', 'TEXT'),
-                        ('avg_hop_position', 'REAL'), ('geographic_distance', 'REAL'),
-                    ]:
-                        if col_name not in mc_columns:
-                            self.logger.info(f"Adding missing column to mesh_connections: {col_name}")
-                            cursor.execute(f"ALTER TABLE mesh_connections ADD COLUMN {col_name} {col_type}")
-                            conn.commit()
-            except Exception as e:
-                self.logger.warning(f"Migration mesh_connections: {e}")
-
-        self.logger.info("Database schema migration completed")
 
     async def track_contact_advertisement(self, advert_data: dict, signal_info: Optional[dict] = None, packet_hash: Optional[str] = None) -> bool:
         """Track any contact advertisement in the complete tracking database"""

@@ -449,6 +449,44 @@ class DBManager:
         """Set bot start time in metadata"""
         self.set_metadata('start_time', str(start_time))
 
+    def _apply_sqlite_pragmas(self, conn: sqlite3.Connection, for_web_viewer: bool = False) -> None:
+        config = getattr(self.bot, "config", None)
+        section = "Web_Viewer" if for_web_viewer else "Bot"
+
+        foreign_keys = True
+        default_busy_timeout_ms = 60000 if for_web_viewer else 30000
+        busy_timeout_ms: Any = default_busy_timeout_ms
+        journal_mode = "WAL"
+
+        try:
+            if config is not None:
+                foreign_keys = config.getboolean(section, "sqlite_foreign_keys", fallback=True)
+                busy_timeout_ms = config.getint(
+                    section,
+                    "sqlite_busy_timeout_ms",
+                    fallback=default_busy_timeout_ms,
+                )
+                journal_mode = config.get(section, "sqlite_journal_mode", fallback=journal_mode).strip() or journal_mode
+        except Exception:
+            # Config parsing should never prevent DB access.
+            pass
+
+        # Be resilient to mocks / unexpected types.
+        try:
+            busy_timeout_ms = int(busy_timeout_ms)
+        except (TypeError, ValueError):
+            busy_timeout_ms = default_busy_timeout_ms
+        foreign_keys = bool(foreign_keys)
+        journal_mode = str(journal_mode).strip() or "WAL"
+
+        try:
+            conn.execute(f"PRAGMA foreign_keys={'ON' if foreign_keys else 'OFF'}")
+            conn.execute(f"PRAGMA busy_timeout={busy_timeout_ms}")
+            conn.execute(f"PRAGMA journal_mode={journal_mode}")
+        except sqlite3.OperationalError:
+            # journal_mode can fail if DB is locked; others are best-effort.
+            pass
+
     @contextmanager
     def connection(self) -> Generator[sqlite3.Connection, None, None]:
         """Context manager that yields a configured connection and closes it on exit.
@@ -456,6 +494,7 @@ class DBManager:
         """
         conn = sqlite3.connect(str(self.db_path), timeout=30.0)
         conn.row_factory = sqlite3.Row
+        self._apply_sqlite_pragmas(conn, for_web_viewer=False)
         try:
             yield conn
         finally:
@@ -471,6 +510,7 @@ class DBManager:
         """
         conn = sqlite3.connect(str(self.db_path), timeout=30.0)
         conn.row_factory = sqlite3.Row
+        self._apply_sqlite_pragmas(conn, for_web_viewer=False)
         return conn
 
     def set_system_health(self, health_data: dict[str, Any]) -> None:

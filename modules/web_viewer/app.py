@@ -328,9 +328,6 @@ class BotDataViewer:
             minimal_bot.mesh_graph = MeshGraph(minimal_bot)
             self.mesh_graph = minimal_bot.mesh_graph
 
-            # Initialize packet_stream table for real-time monitoring
-            self._init_packet_stream_table()
-
             # Store database paths for direct connection
             self.db_path = self.db_path
             self.repeater_db_path = self.repeater_db_path
@@ -339,53 +336,20 @@ class BotDataViewer:
             self.logger.error(f"Failed to initialize databases: {e}")
             raise
 
-    def _init_packet_stream_table(self):
-        """Initialize the packet_stream table in the web viewer database (same as [Bot] db_path by default)."""
-        try:
-            with closing(sqlite3.connect(self.db_path, timeout=60)) as conn:
-                cursor = conn.cursor()
-
-                # Create packet_stream table with schema matching the INSERT statements
-                cursor.execute('''
-                    CREATE TABLE IF NOT EXISTS packet_stream (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        timestamp REAL NOT NULL,
-                        data TEXT NOT NULL,
-                        type TEXT NOT NULL
-                    )
-                ''')
-
-                # Create index on timestamp for faster queries
-                cursor.execute('''
-                    CREATE INDEX IF NOT EXISTS idx_packet_stream_timestamp
-                    ON packet_stream(timestamp)
-                ''')
-
-                # Create index on type for filtering by type
-                cursor.execute('''
-                    CREATE INDEX IF NOT EXISTS idx_packet_stream_type
-                    ON packet_stream(type)
-                ''')
-
-                # Enable WAL for better concurrent access (bot + web viewer use same DB)
-                try:
-                    cursor.execute('PRAGMA journal_mode=WAL')
-                except sqlite3.OperationalError:
-                    pass  # Ignore if locked; WAL may already be set
-
-                conn.commit()
-
-                self.logger.info(f"Initialized packet_stream table in {self.db_path}")
-
-        except Exception as e:
-            self.logger.error(f"Failed to initialize packet_stream table: {e}")
-            # Don't raise - allow web viewer to continue even if table init fails
-
     def _get_db_connection(self):
         """Get database connection - create new connection for each request to avoid threading issues"""
         try:
             conn = sqlite3.connect(self.db_path, timeout=60)
             conn.row_factory = sqlite3.Row
+            try:
+                foreign_keys = self.config.getboolean("Web_Viewer", "sqlite_foreign_keys", fallback=True)
+                busy_timeout_ms = self.config.getint("Web_Viewer", "sqlite_busy_timeout_ms", fallback=60000)
+                journal_mode = self.config.get("Web_Viewer", "sqlite_journal_mode", fallback="WAL").strip() or "WAL"
+                conn.execute(f"PRAGMA foreign_keys={'ON' if foreign_keys else 'OFF'}")
+                conn.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)}")
+                conn.execute(f"PRAGMA journal_mode={journal_mode}")
+            except sqlite3.OperationalError:
+                pass
             return conn
         except Exception as e:
             self.logger.error(f"Failed to create database connection: {e}")
@@ -398,6 +362,15 @@ class BotDataViewer:
         """
         conn = sqlite3.connect(self.db_path, timeout=60)
         conn.row_factory = sqlite3.Row
+        try:
+            foreign_keys = self.config.getboolean("Web_Viewer", "sqlite_foreign_keys", fallback=True)
+            busy_timeout_ms = self.config.getint("Web_Viewer", "sqlite_busy_timeout_ms", fallback=60000)
+            journal_mode = self.config.get("Web_Viewer", "sqlite_journal_mode", fallback="WAL").strip() or "WAL"
+            conn.execute(f"PRAGMA foreign_keys={'ON' if foreign_keys else 'OFF'}")
+            conn.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)}")
+            conn.execute(f"PRAGMA journal_mode={journal_mode}")
+        except sqlite3.OperationalError:
+            pass
         try:
             yield conn
         finally:
