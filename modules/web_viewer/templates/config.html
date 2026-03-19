@@ -1,0 +1,585 @@
+{% extends "base.html" %}
+
+{% block title %}Configuration - MeshCore Bot{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mb-4">
+                <i class="fas fa-cog"></i> Configuration
+            </h1>
+
+            <!-- Email / Notifications -->
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-envelope me-2"></i>Email &amp; Notifications</h5>
+                    <div class="form-check form-switch mb-0">
+                        <input class="form-check-input" type="checkbox" id="nightly-enabled-toggle" role="switch">
+                        <label class="form-check-label" for="nightly-enabled-toggle">
+                            Nightly maintenance email
+                        </label>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-4">
+                        When enabled, a nightly digest is sent summarising maintenance activity
+                        (log rotation, database backup, data retention, error counts).
+                        All fields are stored in the bot database — no config.ini edit required.
+                    </p>
+
+                    <form id="notifications-form" novalidate>
+
+                        <!-- SMTP server -->
+                        <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
+                            SMTP Server
+                        </h6>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <label class="form-label" for="smtp-host">Server hostname</label>
+                                <input type="text" class="form-control" id="smtp-host"
+                                       placeholder="smtp.example.com" autocomplete="off">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" for="smtp-port">Port</label>
+                                <input type="number" class="form-control" id="smtp-port"
+                                       placeholder="587" min="1" max="65535">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" for="smtp-security">Security</label>
+                                <select class="form-select" id="smtp-security">
+                                    <option value="starttls">STARTTLS (port 587)</option>
+                                    <option value="ssl">SSL / TLS (port 465)</option>
+                                    <option value="none">None / plain (port 25)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Credentials -->
+                        <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
+                            Credentials
+                        </h6>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <label class="form-label" for="smtp-user">Username / email</label>
+                                <input type="text" class="form-control" id="smtp-user"
+                                       placeholder="user@example.com" autocomplete="username">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="smtp-password">Password</label>
+                                <div class="input-group">
+                                    <input type="password" class="form-control" id="smtp-password"
+                                           placeholder="••••••••" autocomplete="current-password">
+                                    <button class="btn btn-outline-secondary" type="button"
+                                            id="toggle-password" title="Show / hide password">
+                                        <i class="fas fa-eye" id="toggle-password-icon"></i>
+                                    </button>
+                                </div>
+                                <div class="form-text">
+                                    Stored in the bot database. Use an app-specific password where supported.
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Sender -->
+                        <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
+                            Sender
+                        </h6>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <label class="form-label" for="from-name">Sender display name</label>
+                                <input type="text" class="form-control" id="from-name"
+                                       placeholder="MeshCore Bot">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="from-email">Sender email address</label>
+                                <input type="email" class="form-control" id="from-email"
+                                       placeholder="bot@example.com">
+                            </div>
+                        </div>
+
+                        <!-- Recipients -->
+                        <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
+                            Recipients
+                        </h6>
+                        <div class="row g-3 mb-4">
+                            <div class="col-12">
+                                <label class="form-label" for="recipients">
+                                    Recipient email address(es)
+                                </label>
+                                <input type="text" class="form-control" id="recipients"
+                                       placeholder="admin@example.com, ops@example.com">
+                                <div class="form-text">Separate multiple addresses with commas.</div>
+                            </div>
+                        </div>
+
+                        <!-- Actions -->
+                        <div class="d-flex gap-2 align-items-center">
+                            <button type="button" class="btn btn-primary" id="save-notifications-btn">
+                                <i class="fas fa-save me-1"></i>Save settings
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" id="test-email-btn">
+                                <i class="fas fa-paper-plane me-1"></i>Send test email
+                            </button>
+                            <span id="save-status" class="ms-2 small" style="display:none;"></span>
+                        </div>
+
+                    </form>
+                </div>
+            </div><!-- /.card -->
+
+            <!-- Log Rotation -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-sync-alt me-2"></i>Log Rotation</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-4">
+                        Controls when the log file is rotated and how many backup files are kept.
+                        Changes apply within 60&nbsp;seconds without a restart.
+                    </p>
+                    <form id="log-rotation-form" novalidate>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <label class="form-label" for="log-max-bytes">Max file size (bytes)</label>
+                                <input type="number" class="form-control" id="log-max-bytes"
+                                       placeholder="5242880" min="102400">
+                                <div class="form-text">Default: 5&nbsp;242&nbsp;880 (5&nbsp;MB). Minimum: 100&nbsp;KB.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="log-backup-count">Backup file count</label>
+                                <input type="number" class="form-control" id="log-backup-count"
+                                       placeholder="3" min="1" max="20">
+                                <div class="form-text">Number of rotated backups to keep (e.g. .log.1, .log.2…).</div>
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2 align-items-center">
+                            <button type="button" class="btn btn-primary" id="save-log-rotation-btn">
+                                <i class="fas fa-save me-1"></i>Save
+                            </button>
+                            <span id="log-rotation-status" class="ms-2 small" style="display:none;"></span>
+                        </div>
+                    </form>
+                </div>
+            </div><!-- /.card -->
+
+            <!-- Database Backup -->
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-database me-2"></i>Database Backup</h5>
+                    <div class="form-check form-switch mb-0">
+                        <input class="form-check-input" type="checkbox" id="db-backup-enabled-toggle" role="switch">
+                        <label class="form-check-label" for="db-backup-enabled-toggle">
+                            Automatic backup enabled
+                        </label>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-4">
+                        Creates a consistent SQLite backup using the native backup API.
+                        Old backups beyond the retention count are automatically pruned.
+                    </p>
+                    <form id="db-backup-form" novalidate>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-4">
+                                <label class="form-label" for="db-backup-schedule">Schedule</label>
+                                <select class="form-select" id="db-backup-schedule">
+                                    <option value="daily">Daily</option>
+                                    <option value="weekly">Weekly (Monday)</option>
+                                    <option value="manual">Manual only</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="db-backup-time">Backup time (HH:MM)</label>
+                                <input type="time" class="form-control" id="db-backup-time" value="02:00">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="db-backup-retention-count">Backups to keep</label>
+                                <input type="number" class="form-control" id="db-backup-retention-count"
+                                       placeholder="7" min="1" max="90">
+                            </div>
+                        </div>
+                        <div class="row g-3 mb-4">
+                            <div class="col-12">
+                                <label class="form-label" for="db-backup-dir">Backup directory</label>
+                                <input type="text" class="form-control" id="db-backup-dir"
+                                       placeholder="/data/backups">
+                                <div class="form-text">Absolute path. The directory will be created if it does not exist.</div>
+                            </div>
+                        </div>
+                        <div class="row g-3 mb-4">
+                            <div class="col-12">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="email-attach-log">
+                                    <label class="form-check-label" for="email-attach-log">
+                                        Attach current log file to nightly email
+                                        <span class="text-muted small">(only if file is ≤ 5&nbsp;MB)</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2 align-items-center">
+                            <button type="button" class="btn btn-primary" id="save-db-backup-btn">
+                                <i class="fas fa-save me-1"></i>Save
+                            </button>
+                            <span id="db-backup-status" class="ms-2 small" style="display:none;"></span>
+                        </div>
+                    </form>
+                </div>
+            </div><!-- /.card -->
+
+            <!-- Maintenance Status -->
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-tasks me-2"></i>Maintenance Status</h5>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="refresh-status-btn">
+                        <i class="fas fa-redo me-1"></i>Refresh
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm table-hover mb-0" id="maintenance-status-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Job</th>
+                                <th>Last ran (UTC)</th>
+                                <th>Outcome</th>
+                            </tr>
+                        </thead>
+                        <tbody id="maintenance-status-body">
+                            <tr><td colspan="3" class="text-center text-muted py-3">Loading…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div><!-- /.card -->
+
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+class ConfigManager {
+    constructor() {
+        this.fields = {
+            smtp_host:      document.getElementById('smtp-host'),
+            smtp_port:      document.getElementById('smtp-port'),
+            smtp_security:  document.getElementById('smtp-security'),
+            smtp_user:      document.getElementById('smtp-user'),
+            smtp_password:  document.getElementById('smtp-password'),
+            from_name:      document.getElementById('from-name'),
+            from_email:     document.getElementById('from-email'),
+            recipients:     document.getElementById('recipients'),
+        };
+        this.nightlyToggle   = document.getElementById('nightly-enabled-toggle');
+        this.saveBtn         = document.getElementById('save-notifications-btn');
+        this.testBtn         = document.getElementById('test-email-btn');
+        this.saveStatus      = document.getElementById('save-status');
+        this.togglePwdBtn    = document.getElementById('toggle-password');
+        this.togglePwdIcon   = document.getElementById('toggle-password-icon');
+
+        this.initialize();
+    }
+
+    async initialize() {
+        await this.loadSettings();
+        this.setupEventHandlers();
+    }
+
+    async loadSettings() {
+        try {
+            const resp = await fetch('/api/config/notifications');
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+
+            if (data.smtp_host)     this.fields.smtp_host.value     = data.smtp_host;
+            if (data.smtp_port)     this.fields.smtp_port.value     = data.smtp_port;
+            if (data.smtp_security) this.fields.smtp_security.value = data.smtp_security;
+            if (data.smtp_user)     this.fields.smtp_user.value     = data.smtp_user;
+            // Never pre-fill password from server; server returns it but we show placeholder
+            if (data.smtp_password && data.smtp_password !== '') {
+                this.fields.smtp_password.placeholder = '(saved — enter new value to change)';
+            }
+            if (data.from_name)     this.fields.from_name.value     = data.from_name;
+            if (data.from_email)    this.fields.from_email.value    = data.from_email;
+            if (data.recipients)    this.fields.recipients.value    = data.recipients;
+
+            this.nightlyToggle.checked = data.nightly_enabled === 'true';
+        } catch (err) {
+            this.showStatus('Failed to load settings: ' + err.message, 'danger');
+        }
+    }
+
+    setupEventHandlers() {
+        this.saveBtn.addEventListener('click', () => this.saveSettings());
+
+        this.testBtn.addEventListener('click', () => this.sendTestEmail());
+
+        // Security preset — update port suggestion when security changes
+        this.fields.smtp_security.addEventListener('change', () => {
+            const portField = this.fields.smtp_port;
+            const sec = this.fields.smtp_security.value;
+            if (!portField.value || ['25','465','587'].includes(portField.value)) {
+                if (sec === 'ssl')      portField.value = '465';
+                else if (sec === 'none') portField.value = '25';
+                else                    portField.value = '587';
+            }
+        });
+
+        // Password reveal toggle
+        this.togglePwdBtn.addEventListener('click', () => {
+            const pwdField = this.fields.smtp_password;
+            if (pwdField.type === 'password') {
+                pwdField.type = 'text';
+                this.togglePwdIcon.classList.replace('fa-eye', 'fa-eye-slash');
+            } else {
+                pwdField.type = 'password';
+                this.togglePwdIcon.classList.replace('fa-eye-slash', 'fa-eye');
+            }
+        });
+    }
+
+    buildPayload() {
+        const payload = {
+            nightly_enabled: this.nightlyToggle.checked ? 'true' : 'false',
+        };
+        for (const [key, el] of Object.entries(this.fields)) {
+            // Only send password if the user actually typed something
+            if (key === 'smtp_password' && !el.value) continue;
+            payload[key] = el.value.trim();
+        }
+        return payload;
+    }
+
+    async saveSettings() {
+        this.saveBtn.disabled = true;
+        this.saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Saving...';
+        this.hideStatus();
+        try {
+            const resp = await fetch('/api/config/notifications', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(this.buildPayload()),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Save failed');
+            this.showStatus('Settings saved.', 'success');
+            // Clear password field after save so it shows placeholder again
+            if (this.fields.smtp_password.value) {
+                this.fields.smtp_password.value = '';
+                this.fields.smtp_password.placeholder = '(saved — enter new value to change)';
+            }
+        } catch (err) {
+            this.showStatus('Save failed: ' + err.message, 'danger');
+        } finally {
+            this.saveBtn.disabled = false;
+            this.saveBtn.innerHTML = '<i class="fas fa-save me-1"></i>Save settings';
+        }
+    }
+
+    async sendTestEmail() {
+        this.testBtn.disabled = true;
+        this.testBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Sending...';
+        this.hideStatus();
+        try {
+            const resp = await fetch('/api/config/notifications/test', { method: 'POST' });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Send failed');
+            this.showStatus('Test email sent successfully.', 'success');
+        } catch (err) {
+            this.showStatus('Test failed: ' + err.message, 'danger');
+        } finally {
+            this.testBtn.disabled = false;
+            this.testBtn.innerHTML = '<i class="fas fa-paper-plane me-1"></i>Send test email';
+        }
+    }
+
+    showStatus(msg, type) {
+        this.saveStatus.textContent = msg;
+        this.saveStatus.className = `ms-2 small text-${type}`;
+        this.saveStatus.style.display = 'inline';
+        if (type === 'success') {
+            setTimeout(() => this.hideStatus(), 4000);
+        }
+    }
+
+    hideStatus() {
+        this.saveStatus.style.display = 'none';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    new ConfigManager();
+});
+
+// ── Log Rotation ─────────────────────────────────────────────────────────────
+class LogRotationManager {
+    constructor() {
+        this.maxBytesEl    = document.getElementById('log-max-bytes');
+        this.backupCountEl = document.getElementById('log-backup-count');
+        this.saveBtn       = document.getElementById('save-log-rotation-btn');
+        this.statusEl      = document.getElementById('log-rotation-status');
+        this.initialize();
+    }
+
+    async initialize() {
+        try {
+            const resp = await fetch('/api/config/logging');
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            if (data.log_max_bytes)    this.maxBytesEl.value    = data.log_max_bytes;
+            if (data.log_backup_count) this.backupCountEl.value = data.log_backup_count;
+        } catch (err) {
+            this.show('Failed to load: ' + err.message, 'danger');
+        }
+        this.saveBtn.addEventListener('click', () => this.save());
+    }
+
+    async save() {
+        this.saveBtn.disabled = true;
+        this.saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Saving…';
+        this.hide();
+        try {
+            const resp = await fetch('/api/config/logging', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    log_max_bytes:    this.maxBytesEl.value,
+                    log_backup_count: this.backupCountEl.value,
+                }),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Save failed');
+            this.show('Saved. Changes apply within 60 seconds.', 'success');
+        } catch (err) {
+            this.show('Save failed: ' + err.message, 'danger');
+        } finally {
+            this.saveBtn.disabled = false;
+            this.saveBtn.innerHTML = '<i class="fas fa-save me-1"></i>Save';
+        }
+    }
+
+    show(msg, type) {
+        this.statusEl.textContent = msg;
+        this.statusEl.className = `ms-2 small text-${type}`;
+        this.statusEl.style.display = 'inline';
+        if (type === 'success') setTimeout(() => this.hide(), 4000);
+    }
+    hide() { this.statusEl.style.display = 'none'; }
+}
+
+// ── DB Backup ─────────────────────────────────────────────────────────────────
+class DbBackupManager {
+    constructor() {
+        this.enabledToggle   = document.getElementById('db-backup-enabled-toggle');
+        this.scheduleEl      = document.getElementById('db-backup-schedule');
+        this.timeEl          = document.getElementById('db-backup-time');
+        this.retentionEl     = document.getElementById('db-backup-retention-count');
+        this.dirEl           = document.getElementById('db-backup-dir');
+        this.attachLogEl     = document.getElementById('email-attach-log');
+        this.saveBtn         = document.getElementById('save-db-backup-btn');
+        this.statusEl        = document.getElementById('db-backup-status');
+        this.initialize();
+    }
+
+    async initialize() {
+        try {
+            const resp = await fetch('/api/config/maintenance');
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            this.enabledToggle.checked       = data.db_backup_enabled === 'true';
+            if (data.db_backup_schedule)     this.scheduleEl.value  = data.db_backup_schedule;
+            if (data.db_backup_time)         this.timeEl.value      = data.db_backup_time;
+            if (data.db_backup_retention_count) this.retentionEl.value = data.db_backup_retention_count;
+            if (data.db_backup_dir)          this.dirEl.value       = data.db_backup_dir;
+            this.attachLogEl.checked         = data.email_attach_log === 'true';
+        } catch (err) {
+            this.show('Failed to load: ' + err.message, 'danger');
+        }
+        this.saveBtn.addEventListener('click', () => this.save());
+    }
+
+    async save() {
+        this.saveBtn.disabled = true;
+        this.saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Saving…';
+        this.hide();
+        try {
+            const resp = await fetch('/api/config/maintenance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    db_backup_enabled:         this.enabledToggle.checked ? 'true' : 'false',
+                    db_backup_schedule:        this.scheduleEl.value,
+                    db_backup_time:            this.timeEl.value,
+                    db_backup_retention_count: this.retentionEl.value,
+                    db_backup_dir:             this.dirEl.value.trim(),
+                    email_attach_log:          this.attachLogEl.checked ? 'true' : 'false',
+                }),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Save failed');
+            this.show('Settings saved.', 'success');
+        } catch (err) {
+            this.show('Save failed: ' + err.message, 'danger');
+        } finally {
+            this.saveBtn.disabled = false;
+            this.saveBtn.innerHTML = '<i class="fas fa-save me-1"></i>Save';
+        }
+    }
+
+    show(msg, type) {
+        this.statusEl.textContent = msg;
+        this.statusEl.className = `ms-2 small text-${type}`;
+        this.statusEl.style.display = 'inline';
+        if (type === 'success') setTimeout(() => this.hide(), 4000);
+    }
+    hide() { this.statusEl.style.display = 'none'; }
+}
+
+// ── Maintenance Status ────────────────────────────────────────────────────────
+class MaintenanceStatusManager {
+    constructor() {
+        this.tbody      = document.getElementById('maintenance-status-body');
+        this.refreshBtn = document.getElementById('refresh-status-btn');
+        this.refreshBtn.addEventListener('click', () => this.load());
+        this.load();
+    }
+
+    async load() {
+        this.refreshBtn.disabled = true;
+        try {
+            const resp = await fetch('/api/maintenance/status');
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const d = await resp.json();
+
+            const jobs = [
+                { label: 'Data retention',        ran: d.data_retention_ran_at,  outcome: d.data_retention_outcome },
+                { label: 'Nightly email',          ran: d.nightly_email_ran_at,   outcome: d.nightly_email_outcome },
+                { label: 'Database backup',        ran: d.db_backup_ran_at,       outcome: d.db_backup_outcome },
+                { label: 'Log rotation (applied)', ran: d.log_rotation_applied_at, outcome: '' },
+            ];
+
+            this.tbody.innerHTML = jobs.map(j => {
+                const badge = !j.ran ? '<span class="text-muted">never</span>'
+                    : `<span class="text-muted">${j.ran.replace('T', ' ').split('.')[0]}</span>`;
+                const outBadge = !j.outcome ? ''
+                    : j.outcome === 'ok'
+                        ? '<span class="badge bg-success">ok</span>'
+                        : `<span class="badge bg-danger" title="${j.outcome}">error</span>`;
+                return `<tr><td>${j.label}</td><td>${badge}</td><td>${outBadge}</td></tr>`;
+            }).join('');
+        } catch (err) {
+            this.tbody.innerHTML = `<tr><td colspan="3" class="text-danger text-center">Failed to load: ${err.message}</td></tr>`;
+        } finally {
+            this.refreshBtn.disabled = false;
+        }
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    new LogRotationManager();
+    new DbBackupManager();
+    new MaintenanceStatusManager();
+});
+</script>
+{% endblock %}

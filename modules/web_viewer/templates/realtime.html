@@ -433,10 +433,13 @@
 
 {% block content %}
 <div class="row">
-    <div class="col-12">
-        <h1 class="mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-center mb-4">
+        <h1 class="mb-0">
             <i class="fas fa-broadcast-tower"></i> Real-time Monitoring
         </h1>
+        <a href="/logs" class="btn btn-outline-secondary">
+            <i class="fas fa-file-alt"></i> Live Log Viewer
+        </a>
     </div>
 </div>
 
@@ -474,6 +477,31 @@
                 <div id="packet-stream" class="stream-container">
                     <div class="text-muted text-center py-3">
                         <i class="fas fa-hourglass-half"></i> Waiting for packet data...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Message Monitor -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6><i class="fas fa-comment-dots"></i> Live Channel Messages</h6>
+                <div>
+                    <span class="badge bg-success" id="message-status">Active</span>
+                    <button class="btn btn-sm btn-outline-secondary ms-2" onclick="clearMessages()">Clear</button>
+                    <button class="btn btn-sm btn-outline-secondary ms-1" id="msg-pause-btn" onclick="toggleMessagePause()">
+                        <i class="fas fa-pause" id="msg-pause-icon"></i> Pause
+                    </button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div id="message-stream" class="stream-container" style="height:320px;">
+                    <div class="text-muted text-center py-3">
+                        <i class="fas fa-hourglass-half"></i> Waiting for channel messages…
                     </div>
                 </div>
             </div>
@@ -897,7 +925,8 @@
         console.log('Connected to server');
         socket.emit('subscribe_commands');
         socket.emit('subscribe_packets');
-        
+        socket.emit('subscribe_messages');
+
         // Load recent commands when connected
         loadRecentCommands();
         
@@ -912,6 +941,7 @@
         console.log('Disconnected from server');
         updateStatus('command-status', 'Disconnected', 'danger');
         updateStatus('packet-status', 'Disconnected', 'danger');
+        updateStatus('message-status', 'Disconnected', 'danger');
         
         // Stop ping interval on disconnect
         stopPingInterval();
@@ -942,7 +972,82 @@
     socket.on('packet_data', function(data) {
         addPacketEntry(data);
     });
-    
+
+    socket.on('message_data', function(data) {
+        addMessageEntry(data);
+    });
+
+    // ── Live Channel Messages ──────────────────────────────────────────────
+
+    let messagePaused = false;
+    const MAX_MESSAGES = 200;
+
+    function toggleMessagePause() {
+        messagePaused = !messagePaused;
+        const icon = document.getElementById('msg-pause-icon');
+        const btn  = document.getElementById('msg-pause-btn');
+        if (messagePaused) {
+            icon.className = 'fas fa-play';
+            btn.innerHTML  = '<i class="fas fa-play"></i> Resume';
+            updateStatus('message-status', 'Paused', 'warning');
+        } else {
+            icon.className = 'fas fa-pause';
+            btn.innerHTML  = '<i class="fas fa-pause"></i> Pause';
+            updateStatus('message-status', 'Active', 'success');
+        }
+    }
+
+    function clearMessages() {
+        document.getElementById('message-stream').innerHTML =
+            '<div class="text-muted text-center py-3"><i class="fas fa-hourglass-half"></i> Waiting for channel messages…</div>';
+    }
+
+    function addMessageEntry(data) {
+        if (messagePaused) return;
+        const container = document.getElementById('message-stream');
+
+        // Remove placeholder
+        const placeholder = container.querySelector('.text-muted.text-center');
+        if (placeholder) placeholder.remove();
+
+        const ts  = new Date(data.timestamp * 1000).toLocaleTimeString();
+        const ch  = data.channel ? `<span class="badge bg-info text-dark me-1">${escapeHtml(data.channel)}</span>` : '';
+        const dm  = data.is_dm   ? '<span class="badge bg-secondary me-1">DM</span>' : '';
+        const snr = data.snr && data.snr !== 'unknown' ? `<small class="text-muted ms-1">SNR ${data.snr}</small>` : '';
+        const hops = (data.hops != null && data.hops !== '' && data.hops !== 255)
+            ? `<small class="text-muted ms-1">${data.hops} hop${data.hops !== 1 ? 's' : ''}</small>` : '';
+
+        const entry = document.createElement('div');
+        entry.className = 'stream-entry p-2 mb-1 rounded';
+        entry.style.borderLeftColor = data.is_dm ? '#6f42c1' : '#0dcaf0';
+        entry.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center mb-1">
+                <span>${ch}${dm}<strong>${escapeHtml(data.sender || '?')}</strong>${snr}${hops}</span>
+                <small class="text-muted">${ts}</small>
+            </div>
+            <div class="text-break">${escapeHtml(data.content || '')}</div>
+        `;
+
+        container.insertBefore(entry, container.firstChild);
+
+        // Trim old entries
+        const entries = container.querySelectorAll('.stream-entry');
+        if (entries.length > MAX_MESSAGES) {
+            entries[entries.length - 1].remove();
+        }
+    }
+
+    function escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    window.clearMessages = clearMessages;
+    window.toggleMessagePause = toggleMessagePause;
+
     // Ping mechanism to keep connection alive
     let pingInterval = null;
     
@@ -1156,8 +1261,10 @@
         // Format timestamp
         const timestamp = data.datetime ? new Date(data.datetime).toLocaleTimeString() : new Date().toLocaleTimeString();
         
-        // Format path display as comma-separated list
-        const pathDisplay = data.path ? data.path.join(',') : 'No path';
+        // Format path display as comma-separated list (path may be array or string)
+        const pathDisplay = data.path
+            ? (Array.isArray(data.path) ? data.path.join(',') : String(data.path))
+            : 'No path';
         
         // Format header with resolved components (human-readable with names and numbers)
         let headerInfo = '';
