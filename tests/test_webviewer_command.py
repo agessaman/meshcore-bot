@@ -4,11 +4,8 @@ import asyncio
 import configparser
 from unittest.mock import AsyncMock, MagicMock, Mock
 
-import pytest
-
 from modules.commands.webviewer_command import WebViewerCommand
 from tests.conftest import mock_message
-
 
 # ---------------------------------------------------------------------------
 # Bot factory

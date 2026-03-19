@@ -1,6 +1,5 @@
 """Tests for FeedManager queue logic, deduplication, and DB operations."""
 
-import asyncio
 import sqlite3
 import time
 from configparser import ConfigParser
@@ -360,7 +359,7 @@ class TestFormatTimestamp:
     def test_5_days_ago(self):
         dt = datetime.now(timezone.utc) - timedelta(days=5)
         result = self.fm._format_timestamp(dt)
-        assert "5d ago" == result
+        assert result == "5d ago"
 
     def test_naive_datetime(self):
         dt = datetime.now() - timedelta(hours=2)

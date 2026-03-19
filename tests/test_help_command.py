@@ -2,13 +2,10 @@
 
 import configparser
 from contextlib import contextmanager
-from unittest.mock import MagicMock, Mock, patch
-
-import pytest
+from unittest.mock import MagicMock, Mock
 
 from modules.commands.help_command import HelpCommand
 from tests.conftest import mock_message
-
 
 # ---------------------------------------------------------------------------
 # Bot factory

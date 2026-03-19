@@ -3,8 +3,6 @@
 import configparser
 from unittest.mock import MagicMock, Mock
 
-import pytest
-
 from modules.commands.dadjoke_command import DadJokeCommand
 from tests.conftest import mock_message
 

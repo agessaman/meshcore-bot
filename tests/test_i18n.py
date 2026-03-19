@@ -1,10 +1,7 @@
 """Tests for modules.i18n — Translator class."""
 
 import json
-from pathlib import Path
 from unittest.mock import patch
-
-import pytest
 
 from modules.i18n import Translator
 
@@ -164,7 +161,6 @@ class TestTranslatorWithRealFiles:
         en_file.write_text('{"key": "value"}')
         t = Translator(language="en", translation_path=str(tmp_path))
         # Now simulate generic exception by patching open
-        from unittest.mock import patch, mock_open
         with patch("builtins.open", side_effect=PermissionError("denied")):
             result = t._load_file("en")
         assert result == {}

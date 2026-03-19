@@ -1,8 +1,7 @@
 """Tests for DiscordBridgeService multi-webhook channel fan-out."""
 
-import asyncio
 from configparser import ConfigParser
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 

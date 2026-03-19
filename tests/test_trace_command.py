@@ -3,8 +3,6 @@
 import configparser
 from unittest.mock import MagicMock, Mock
 
-import pytest
-
 from modules.commands.trace_command import TraceCommand
 from tests.conftest import mock_message
 
@@ -342,8 +340,8 @@ class TestTraceExecute:
     """Tests for execute() reachable paths (no real radio)."""
 
     def test_execute_no_path_sends_error(self):
-        from unittest.mock import AsyncMock
         import asyncio
+        from unittest.mock import AsyncMock
         bot = _make_bot()
         cmd = TraceCommand(bot)
         cmd.send_response = AsyncMock(return_value=True)
@@ -355,8 +353,8 @@ class TestTraceExecute:
         assert "path" in call_text.lower()
 
     def test_execute_not_connected(self):
-        from unittest.mock import AsyncMock
         import asyncio
+        from unittest.mock import AsyncMock
         bot = _make_bot()
         bot.connected = False
         bot.meshcore = None
@@ -368,8 +366,8 @@ class TestTraceExecute:
         cmd.send_response.assert_called_once()
 
     def test_execute_no_meshcore_commands(self):
-        from unittest.mock import AsyncMock
         import asyncio
+        from unittest.mock import AsyncMock
         bot = _make_bot()
         bot.connected = True
         bot.meshcore = MagicMock()

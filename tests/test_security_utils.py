@@ -1,11 +1,10 @@
 """Tests for modules.security_utils."""
 
+import os
+import socket
 from unittest.mock import patch
 
 import pytest
-
-import os
-import socket
 
 from modules.security_utils import (
     sanitize_input,
@@ -247,7 +246,6 @@ class TestValidateSafePathExtra:
                 validate_safe_path("/etc/passwd", allow_absolute=True)
 
     def test_unexpected_exception_wrapped_as_value_error(self, tmp_path):
-        import modules.security_utils as su
         with patch("modules.security_utils.Path.resolve", side_effect=OSError("disk fail")):
             with pytest.raises(ValueError, match="Invalid or unsafe file path"):
                 validate_safe_path("some_file.db", base_dir=str(tmp_path))

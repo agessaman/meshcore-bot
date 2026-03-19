@@ -1,12 +1,11 @@
 """Tests for modules.graph_trace_helper — update_mesh_graph_from_trace_data."""
 
 import configparser
-from unittest.mock import MagicMock, Mock, call, patch
+from unittest.mock import MagicMock, Mock
 
 import pytest
 
 from modules.graph_trace_helper import update_mesh_graph_from_trace_data
-
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -3,8 +3,6 @@
 import configparser
 from unittest.mock import MagicMock, Mock
 
-import pytest
-
 from modules.commands.multitest_command import MultitestCommand
 from tests.conftest import mock_message
 

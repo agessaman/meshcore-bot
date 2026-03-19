@@ -4,8 +4,6 @@ import configparser
 import time
 from unittest.mock import MagicMock, Mock
 
-import pytest
-
 from modules.commands.announcements_command import AnnouncementsCommand
 from tests.conftest import mock_message
 

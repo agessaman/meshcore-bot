@@ -4,8 +4,6 @@ import configparser
 from contextlib import contextmanager
 from unittest.mock import MagicMock, Mock, patch
 
-import pytest
-
 from modules.commands.stats_command import StatsCommand
 from tests.conftest import mock_message
 
@@ -112,7 +110,6 @@ class TestStatsCommandEnabled:
     def test_enabled(self):
         bot = _make_bot(enabled=True)
         cmd = StatsCommand(bot)
-        msg = mock_message(content="stats", channel="general")
         # can_execute uses the base class logic (enabled flag lives elsewhere)
         # Actually, stats doesn't override can_execute beyond base — it checks at execute
         assert cmd.stats_enabled is True
@@ -139,8 +136,6 @@ class TestRecordMessage:
         msg.path = "aa,bb"
         cmd.record_message(msg)
         # Verify row inserted
-        import sqlite3
-        conn = sqlite3.connect(":memory:")
         # Since we used in-memory DB in _make_db_manager, we just assert no exception was raised
 
     def test_record_message_disabled_collect_stats(self):
@@ -369,7 +364,7 @@ class TestExecuteStats:
 
     def test_execute_exception_returns_false(self):
         import asyncio
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import AsyncMock
         bot = _make_bot(enabled=True)
         cmd = StatsCommand(bot)
         cmd.send_response = AsyncMock(return_value=False)
@@ -495,7 +490,8 @@ class TestRecordExceptionPaths:
 class TestGetBasicStatsWithData:
     def test_top_command_and_user_set(self):
         """When command_stats has rows, covers top_command and top_user format lines."""
-        import asyncio, time
+        import asyncio
+        import time
         bot = _make_bot()
         cmd = StatsCommand(bot)  # creates tables
         with bot.db_manager.connection() as conn:
@@ -515,7 +511,8 @@ class TestGetBasicStatsWithData:
 
 class TestGetUserLeaderboardWithData:
     def test_with_users_shows_data(self):
-        import asyncio, time
+        import asyncio
+        import time
         bot = _make_bot()
         cmd = StatsCommand(bot)  # creates tables
         with bot.db_manager.connection() as conn:
@@ -553,7 +550,8 @@ class TestGetUserLeaderboardWithData:
 
 class TestGetChannelLeaderboardWithData:
     def test_with_channels_shows_data(self):
-        import asyncio, time
+        import asyncio
+        import time
         bot = _make_bot()
         cmd = StatsCommand(bot)  # creates tables
         with bot.db_manager.connection() as conn:
@@ -590,7 +588,8 @@ class TestGetChannelLeaderboardWithData:
 
 class TestGetPathLeaderboardWithData:
     def test_with_paths_shows_data(self):
-        import asyncio, time
+        import asyncio
+        import time
         bot = _make_bot()
         cmd = StatsCommand(bot)  # creates tables
         with bot.db_manager.connection() as conn:

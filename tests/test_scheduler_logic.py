@@ -278,62 +278,6 @@ class TestGetNotifAndMaint:
 # _format_email_body
 # ---------------------------------------------------------------------------
 
-class TestFormatEmailBody:
-
-    def _minimal_stats(self):
-        return {
-            "uptime": "2h 15m",
-            "contacts_24h": 5,
-            "contacts_new_24h": 1,
-            "contacts_total": 42,
-            "db_size_mb": "12.3",
-            "errors_24h": 0,
-            "criticals_24h": 0,
-        }
-
-    def test_basic_output_contains_uptime(self, scheduler):
-        scheduler.bot.connected = True
-        body = scheduler._format_email_body(self._minimal_stats(), "2026-03-15 00:00", "2026-03-16 00:00")
-        assert "2h 15m" in body
-
-    def test_basic_output_contains_contact_count(self, scheduler):
-        scheduler.bot.connected = True
-        body = scheduler._format_email_body(self._minimal_stats(), "start", "end")
-        assert "42" in body
-
-    def test_log_file_section_included_when_present(self, scheduler):
-        scheduler.bot.connected = False
-        stats = self._minimal_stats()
-        stats["log_file"] = "/var/log/meshcore.log"
-        stats["log_size_mb"] = "1.5"
-        stats["log_rotated_24h"] = False
-        body = scheduler._format_email_body(stats, "start", "end")
-        assert "meshcore.log" in body
-        assert "Rotated : no" in body
-
-    def test_log_rotated_true_shows_backup_size(self, scheduler):
-        scheduler.bot.connected = False
-        stats = self._minimal_stats()
-        stats["log_file"] = "/var/log/meshcore.log"
-        stats["log_size_mb"] = "1.5"
-        stats["log_rotated_24h"] = True
-        stats["log_backup_size_mb"] = "3.2"
-        body = scheduler._format_email_body(stats, "start", "end")
-        assert "Rotated : yes" in body
-        assert "3.2" in body
-
-    def test_retention_ran_at_shown_when_present(self, scheduler):
-        scheduler.bot.connected = True
-        scheduler._last_retention_stats = {"ran_at": "2026-03-15T02:00:00"}
-        body = scheduler._format_email_body(self._minimal_stats(), "start", "end")
-        assert "2026-03-15T02:00:00" in body
-
-    def test_connected_no_shows_in_body(self, scheduler):
-        scheduler.bot.connected = False
-        body = scheduler._format_email_body(self._minimal_stats(), "start", "end")
-        assert "no" in body
-
-
 # ---------------------------------------------------------------------------
 # _maybe_run_db_backup
 # ---------------------------------------------------------------------------

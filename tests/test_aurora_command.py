@@ -1,7 +1,6 @@
 """Tests for modules.commands.aurora_command — pure logic functions."""
 
 import configparser
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -203,8 +202,8 @@ class TestAuroraExecute:
     """Tests for execute()."""
 
     def test_no_location_no_bot_returns_error(self):
-        from unittest.mock import AsyncMock
         import asyncio
+        from unittest.mock import AsyncMock
         bot = _make_bot(with_location=False)
         cmd = AuroraCommand(bot)
         cmd.send_response = AsyncMock(return_value=True)
@@ -215,8 +214,8 @@ class TestAuroraExecute:
         cmd.send_response.assert_called_once()
 
     def test_execute_with_bot_location_success(self):
-        from unittest.mock import AsyncMock, MagicMock, patch
         import asyncio
+        from unittest.mock import AsyncMock, MagicMock
         bot = _make_bot(with_location=True)
         cmd = AuroraCommand(bot)
         cmd.send_response = AsyncMock(return_value=True)
@@ -236,8 +235,8 @@ class TestAuroraExecute:
         cmd.send_response.assert_called_once()
 
     def test_execute_kp_g3_severe(self):
-        from unittest.mock import AsyncMock, MagicMock, patch
         import asyncio
+        from unittest.mock import AsyncMock, MagicMock
         bot = _make_bot(with_location=True)
         cmd = AuroraCommand(bot)
         cmd.send_response = AsyncMock(return_value=True)
@@ -255,8 +254,8 @@ class TestAuroraExecute:
         assert result is True
 
     def test_execute_kp_g1_g2(self):
-        from unittest.mock import AsyncMock, MagicMock, patch
         import asyncio
+        from unittest.mock import AsyncMock, MagicMock
         bot = _make_bot(with_location=True)
         cmd = AuroraCommand(bot)
         cmd.send_response = AsyncMock(return_value=True)
@@ -274,8 +273,8 @@ class TestAuroraExecute:
         assert result is True
 
     def test_execute_kp_unsettled(self):
-        from unittest.mock import AsyncMock, MagicMock, patch
         import asyncio
+        from unittest.mock import AsyncMock, MagicMock
         bot = _make_bot(with_location=True)
         cmd = AuroraCommand(bot)
         cmd.send_response = AsyncMock(return_value=True)
@@ -293,8 +292,8 @@ class TestAuroraExecute:
         assert result is True
 
     def test_execute_aurora_fetch_exception(self):
-        from unittest.mock import AsyncMock, patch
         import asyncio
+        from unittest.mock import AsyncMock
         bot = _make_bot(with_location=True)
         cmd = AuroraCommand(bot)
         cmd.send_response = AsyncMock(return_value=True)
@@ -308,8 +307,8 @@ class TestAuroraExecute:
         cmd.send_response.assert_called_once()
 
     def test_execute_with_coords_arg(self):
-        from unittest.mock import AsyncMock, MagicMock, patch
         import asyncio
+        from unittest.mock import AsyncMock, MagicMock
         bot = _make_bot()
         cmd = AuroraCommand(bot)
         cmd.send_response = AsyncMock(return_value=True)
@@ -326,8 +325,8 @@ class TestAuroraExecute:
         assert result is True
 
     def test_execute_no_location_error_key(self):
-        from unittest.mock import AsyncMock, patch
         import asyncio
+        from unittest.mock import AsyncMock
         bot = _make_bot(with_location=False)
         cmd = AuroraCommand(bot)
         cmd.send_response = AsyncMock(return_value=True)
@@ -340,8 +339,8 @@ class TestAuroraExecute:
         assert result is True
 
     def test_execute_error_key_zipcode(self):
-        from unittest.mock import AsyncMock, patch
         import asyncio
+        from unittest.mock import AsyncMock
         bot = _make_bot()
         cmd = AuroraCommand(bot)
         cmd.send_response = AsyncMock(return_value=True)
@@ -352,8 +351,8 @@ class TestAuroraExecute:
         assert result is True
 
     def test_execute_error_key_city(self):
-        from unittest.mock import AsyncMock, patch
         import asyncio
+        from unittest.mock import AsyncMock
         bot = _make_bot()
         cmd = AuroraCommand(bot)
         cmd.send_response = AsyncMock(return_value=True)
@@ -364,8 +363,8 @@ class TestAuroraExecute:
         assert result is True
 
     def test_execute_error_key_other(self):
-        from unittest.mock import AsyncMock, patch
         import asyncio
+        from unittest.mock import AsyncMock
         bot = _make_bot()
         cmd = AuroraCommand(bot)
         cmd.send_response = AsyncMock(return_value=True)
@@ -376,8 +375,8 @@ class TestAuroraExecute:
         assert result is True
 
     def test_execute_response_truncated_at_max_length(self):
-        from unittest.mock import AsyncMock, MagicMock, patch
         import asyncio
+        from unittest.mock import AsyncMock, MagicMock
         bot = _make_bot(with_location=True)
         cmd = AuroraCommand(bot)
         cmd.send_response = AsyncMock(return_value=True)
@@ -389,7 +388,6 @@ class TestAuroraExecute:
         mock_data.aurora_probability = 1.0
 
         # Make translate return a very long string
-        original_translate = cmd.translate
         cmd.translate = Mock(side_effect=lambda key, **kw: "x" * 300 if key == "commands.aurora.response" else key)
         cmd.get_max_message_length = Mock(return_value=100)
 

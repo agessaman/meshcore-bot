@@ -4,8 +4,6 @@ import configparser
 from datetime import datetime
 from unittest.mock import MagicMock, Mock, patch
 
-import pytest
-
 from modules.commands.joke_command import JokeCommand
 from tests.conftest import mock_message
 

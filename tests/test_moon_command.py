@@ -3,8 +3,6 @@
 import configparser
 from unittest.mock import MagicMock, Mock
 
-import pytest
-
 from modules.commands.moon_command import MoonCommand
 from tests.conftest import mock_message
 
@@ -186,8 +184,8 @@ class TestMoonExecute:
     """Tests for execute()."""
 
     def test_execute_success(self):
-        from unittest.mock import AsyncMock, patch
         import asyncio
+        from unittest.mock import AsyncMock, patch
         bot = _make_bot()
         cmd = MoonCommand(bot)
         cmd.send_response = AsyncMock(return_value=True)
@@ -198,8 +196,8 @@ class TestMoonExecute:
         cmd.send_response.assert_called_once()
 
     def test_execute_error_returns_false(self):
-        from unittest.mock import AsyncMock, patch
         import asyncio
+        from unittest.mock import AsyncMock, patch
         bot = _make_bot()
         cmd = MoonCommand(bot)
         cmd.send_response = AsyncMock(return_value=True)

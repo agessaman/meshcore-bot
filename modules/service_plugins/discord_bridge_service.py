@@ -8,9 +8,9 @@ import asyncio
 import copy
 import time
 from collections import deque
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from collections.abc import Mapping
 from typing import Any, Optional
 
 # Import meshcore
@@ -86,7 +86,7 @@ class DiscordBridgeService(BaseServicePlugin):
 
         # Load channel mappings from config (bridge.* pattern)
         # Map MeshCore channel name → list of Discord webhook URLs
-        self.channel_webhooks: Dict[str, list] = {}
+        self.channel_webhooks: dict[str, list[str]] = {}
         self._load_channel_mappings()
 
         # NEVER bridge DMs (hardcoded for privacy)
@@ -384,11 +384,9 @@ class DiscordBridgeService(BaseServicePlugin):
 
             # Check if this channel is configured for bridging (case-insensitive)
             webhook_urls = None
-            matched_config_name = None
             for config_channel, url in self.channel_webhooks.items():
                 if config_channel.lower() == channel_name.lower():
                     webhook_urls = url
-                    matched_config_name = config_channel
                     break
 
             if not webhook_urls:

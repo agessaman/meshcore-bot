@@ -1477,7 +1477,7 @@ def geocode_city_sync(bot: Any, city: str, default_state: Optional[str] = None,
 def resolve_path(file_path: Union[str, Path], base_dir: Union[str, Path] = '.') -> str:
     """Resolve a file path relative to a base directory.
 
-    If the path is absolute, it is resolved and returned as-is.
+    If the path is absolute, it is returned as-is (no symlink/canonical resolution).
     If the path is relative, it is resolved relative to the base directory.
 
     Args:
@@ -1497,7 +1497,9 @@ def resolve_path(file_path: Union[str, Path], base_dir: Union[str, Path] = '.') 
     base_dir = Path(base_dir) if not isinstance(base_dir, Path) else base_dir
 
     if file_path.is_absolute():
-        return str(file_path.resolve())
+        # Important on macOS: `/var/...` may be a symlink to `/private/var/...`.
+        # Tests (and callers) expect the absolute path string to stay stable.
+        return str(file_path)
     else:
         return str((base_dir.resolve() / file_path).resolve())
 

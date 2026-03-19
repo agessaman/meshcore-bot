@@ -4,12 +4,9 @@ import json
 import queue
 import time
 from configparser import ConfigParser
-from contextlib import suppress
 from unittest.mock import MagicMock, Mock, patch
 
-
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Factory helpers

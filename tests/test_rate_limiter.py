@@ -3,7 +3,13 @@
 import asyncio
 import time
 
-from modules.rate_limiter import BotTxRateLimiter, ChannelRateLimiter, NominatimRateLimiter, PerUserRateLimiter, RateLimiter
+from modules.rate_limiter import (
+    BotTxRateLimiter,
+    ChannelRateLimiter,
+    NominatimRateLimiter,
+    PerUserRateLimiter,
+    RateLimiter,
+)
 
 
 class TestRateLimiter:
