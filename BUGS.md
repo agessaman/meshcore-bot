@@ -18,7 +18,6 @@ Tracking of known bugs, fixed issues, and outstanding defects in meshcore-bot.
 | `26d18c1` | Fixed BUG-029 (second pass): `config_base` was a local variable — stored as `self._config_base` instance attribute; removed dead `_get_db_path()` method that still used `self.bot_root`; fixed `subscribe_logs` and `_start_log_tailing` to resolve log file path via `self._config_base` instead of `self.bot_root`; fixed misleading hardcoded "Connected"/"Active" status badges in `realtime.html` (now start as "Connecting…" and update dynamically on actual SocketIO connect). |
 | `26d18c1` | Fixed BUG-029 (first pass): `app.py` resolved `db_path` relative to the code root (2 dirs above `app.py`) instead of relative to the config file's parent directory, causing the web viewer and bot to open different database files. Fixed: `config_base = Path(config_path).parent.resolve()` used as base for `resolve_path()`; also elevated subscribe-handler replay errors from DEBUG to WARNING and added INFO log of resolved db_path on startup. 4 new tests in `TestDbPathResolutionFromConfigDir`. |
 | `26d18c1` | Fixed BUG-027: `test_weekly_on_wrong_day_does_not_run` was patching `get_current_time` with real `now` (Monday) instead of `fake_now` (mocked Tuesday) — test always passed on non-Monday but failed on Mondays; fixed in `tests/test_scheduler_logic.py:430` |
-| `26d18c1` | Fixed BUG-026: Help and long keyword responses cut off — added `split_text_into_chunks()` and `get_max_message_length()` to `CommandManager`; `message_handler.py` keyword dispatch now splits responses and sends via `send_response_chunked()`; 10 tests |
 | `26d18c1` | Fixed BUG-025: `send_channel_message` did not retry on `no_event_received` — added retry loop in `command_manager.py` (max 2 retries, 2s delay); `_is_no_event_received()` helper; 5 tests |
 | `ab72be9` | Fixed BUG-024: DB backup scheduler fired every second — `last_db_backup_run` now updated after each call; 2-min fire window prevents triggering on late startup; last-run seeded from DB on restart |
 | `ab72be9` | Fixed BUG-023: Realtime monitoring command stream blank on load — added 50-row history replay to `subscribe_commands` handler; fixed `last_timestamp = 0` → `time.time() - 300` in polling thread |
@@ -58,7 +57,6 @@ Tracking of known bugs, fixed issues, and outstanding defects in meshcore-bot.
 | ID | Task | Module | Description | Workaround |
 |----|------|--------|-------------|------------|
 | ~~BUG-025~~ | TASK-10 ✅ | Fixed — see Fixed section above |
-| ~~BUG-026~~ | TASK-11 ✅ | Fixed — see Fixed section above |
 
 ### Medium Priority
 
@@ -76,6 +74,7 @@ Tracking of known bugs, fixed issues, and outstanding defects in meshcore-bot.
 |----|--------|-------------|-------|
 | ~~BUG-029~~ | TASK-16/T1-A ✅ | Fixed (third pass) — see Fixed section above | |
 | BUG-028 | `message_handler` | `decode_meshcore_packet()` except-handler references `byte_data` before assignment — when `bytes.fromhex()` itself raises, the handler throws `UnboundLocalError` instead of returning `None`. Discovered 2026-03-16 via test coverage analysis. | Affects any caller passing invalid hex (e.g. non-hex characters). Fix: initialise `byte_data = b""` before the `try` block in `message_handler.py`. |
+| BUG-026 | `message_handler` | Keyword-dispatched help/command responses are sent as a single message (no auto-chunking). Long responses may be truncated by transport limits to avoid sending extra multipart messages. | Design choice. Commands can explicitly use `send_response_chunked()` if they want multi-part replies. |
 | BUG-009 | `discord_bridge_service` | DMs are never bridged to Discord or Telegram — hardcoded exclusion | By design; DMs contain private communications |
 | BUG-010 | `wx_command` | Weather alerts and NOAA data are US-only | Use `wx_international.py` alternative in `modules/commands/alternatives/` for non-US deployments |
 | BUG-011 | `repeater_manager` | MeshCore device hard-limits contacts to 300; auto-purge threshold is 280 — purging 20 contacts at a time may not be enough on very busy meshes | Tune `auto_purge_threshold` and ensure `auto_manage_contacts` is enabled |

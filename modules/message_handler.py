@@ -2704,22 +2704,16 @@ class MessageHandler:
                 import time
                 command_id = f"keyword_{keyword}_{message.sender_id}_{int(time.time())}"
 
-                # Send response — split into chunks so long responses are not truncated
                 try:
-                    max_len = self.bot.command_manager.get_max_message_length(message)
-                    chunks = self.bot.command_manager.split_text_into_chunks(response, max_len)
-                    if len(chunks) == 1:
-                        rate_limit_key = self.bot.command_manager.get_rate_limit_key(message)
-                        if message.is_dm:
-                            success = await self.bot.command_manager.send_dm(
-                                message.sender_id, chunks[0], command_id, rate_limit_key=rate_limit_key
-                            )
-                        else:
-                            success = await self.bot.command_manager.send_channel_message(
-                                message.channel, chunks[0], command_id, rate_limit_key=rate_limit_key
-                            )
+                    rate_limit_key = self.bot.command_manager.get_rate_limit_key(message)
+                    if message.is_dm:
+                        success = await self.bot.command_manager.send_dm(
+                            message.sender_id, response, command_id, rate_limit_key=rate_limit_key
+                        )
                     else:
-                        success = await self.bot.command_manager.send_response_chunked(message, chunks)
+                        success = await self.bot.command_manager.send_channel_message(
+                            message.channel, response, command_id, rate_limit_key=rate_limit_key
+                        )
 
                     if not success:
                         self.logger.warning(f"Failed to send keyword response for '{keyword}' to {message.sender_id if message.is_dm else message.channel}")
