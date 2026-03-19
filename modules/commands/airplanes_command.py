@@ -53,7 +53,7 @@ class AirplanesCommand(BaseCommand):
         if self.api_url and not self.api_url.endswith('/'):
             self.api_url += '/'
 
-    def can_execute(self, message: MeshMessage) -> bool:
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Check if this command can be executed with the given message.
 
         Args:
@@ -572,7 +572,7 @@ class AirplanesCommand(BaseCommand):
             lines.append(line)
 
         # Build response, truncating if necessary
-        response_lines = []
+        response_lines: list[str] = []
         current_length = 0
 
         for line in lines:

@@ -44,7 +44,7 @@ class AdvertCommand(BaseCommand):
         """
         return self.translate('commands.advert.description')
 
-    def can_execute(self, message: MeshMessage) -> bool:
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Check if advert command can be executed.
 
         Verifies both the standard command cooldowns and checks against the

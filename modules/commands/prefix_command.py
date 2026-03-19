@@ -108,7 +108,7 @@ class PrefixCommand(BaseCommand):
             self.prefix_best_location_radius_km = 50.0
             self.prefix_best_do_not_suggest = []
 
-    def can_execute(self, message: MeshMessage) -> bool:
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Check if this command can be executed with the given message.
 
         Args:

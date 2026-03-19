@@ -1130,7 +1130,7 @@ class MessageHandler:
 
 
 
-    def decode_meshcore_packet(self, raw_hex: str, payload_hex: str = None) -> Optional[dict]:
+    def decode_meshcore_packet(self, raw_hex: str, payload_hex: Optional[str] = None) -> Optional[dict]:
         """
         Decode a MeshCore packet from raw hex data - matches Packet.cpp exactly
 
@@ -1360,7 +1360,7 @@ class MessageHandler:
             self.logger.error(f"Error parsing ADVERT payload: {e}", exc_info=True)
             return {}
 
-    def _path_bytes_to_nodes(self, path_bytes: bytes, prefix_hex_chars: int = None) -> tuple:
+    def _path_bytes_to_nodes(self, path_bytes: bytes, prefix_hex_chars: Optional[int] = None) -> tuple:
         """Chunk path bytes into hex node IDs using configured prefix length, with legacy 2-char fallback.
 
         Args:
@@ -1419,8 +1419,8 @@ class MessageHandler:
         if not raw_hex:
             return (None, None, 255)
         if packet_info is None:
-            payload = payload_hex or rf_data.get('payload')
-            packet_info = self.decode_meshcore_packet(raw_hex, payload)
+            payload = payload_hex or rf_data.get('payload') or None
+            packet_info = self.decode_meshcore_packet(raw_hex, str(payload) if payload is not None else None)
         if not packet_info:
             return (None, None, 255)
         hops = packet_info.get('path_len', 255)
@@ -2213,6 +2213,7 @@ class MessageHandler:
                 # Use bot location as fallback reference to ensure distance-based selection
                 bot_location_ref = self._get_bot_location_fallback()
                 first_hop_temp_result = _get_node_location_from_db(self.bot, first_hop, bot_location_ref, recency_days)
+                first_hop_location_temp: Optional[tuple[float, float]]
                 if first_hop_temp_result:
                     first_hop_location_temp, _ = first_hop_temp_result
                 else:
@@ -2464,7 +2465,7 @@ class MessageHandler:
 
         except Exception as e:
             self.logger.error(f"Error discovering message path: {e}")
-            return 255
+            return 255, "Error"
 
     # CLI path discovery removed - focusing only on packet decoding
 
@@ -2703,17 +2704,22 @@ class MessageHandler:
                 import time
                 command_id = f"keyword_{keyword}_{message.sender_id}_{int(time.time())}"
 
-                # Send response (pass command_id so transmission record uses it directly)
+                # Send response — split into chunks so long responses are not truncated
                 try:
-                    rate_limit_key = self.bot.command_manager.get_rate_limit_key(message)
-                    if message.is_dm:
-                        success = await self.bot.command_manager.send_dm(
-                            message.sender_id, response, command_id, rate_limit_key=rate_limit_key
-                        )
+                    max_len = self.bot.command_manager.get_max_message_length(message)
+                    chunks = self.bot.command_manager.split_text_into_chunks(response, max_len)
+                    if len(chunks) == 1:
+                        rate_limit_key = self.bot.command_manager.get_rate_limit_key(message)
+                        if message.is_dm:
+                            success = await self.bot.command_manager.send_dm(
+                                message.sender_id, chunks[0], command_id, rate_limit_key=rate_limit_key
+                            )
+                        else:
+                            success = await self.bot.command_manager.send_channel_message(
+                                message.channel, chunks[0], command_id, rate_limit_key=rate_limit_key
+                            )
                     else:
-                        success = await self.bot.command_manager.send_channel_message(
-                            message.channel, response, command_id, rate_limit_key=rate_limit_key
-                        )
+                        success = await self.bot.command_manager.send_response_chunked(message, chunks)
 
                     if not success:
                         self.logger.warning(f"Failed to send keyword response for '{keyword}' to {message.sender_id if message.is_dm else message.channel}")

@@ -1,6 +1,5 @@
 """Tests for modules/enums.py — enum values and flag combinations."""
 
-import pytest
 
 from modules.enums import AdvertFlags, DeviceRole, PayloadType, PayloadVersion, RouteType
 

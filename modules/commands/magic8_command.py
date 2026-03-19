@@ -42,7 +42,7 @@ class Magic8Command(BaseCommand):
         super().__init__(bot)
         self.magic8_enabled = self.get_config_value('Magic8_Command', 'enabled', fallback=True, value_type='bool')
 
-    def can_execute(self, message: MeshMessage) -> bool:
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Check if this command can be executed with the given message.
 
         Args:

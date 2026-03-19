@@ -1,8 +1,12 @@
 """Tests for modules/transmission_tracker.py."""
 
+import json
+import sqlite3
 import time
+from contextlib import closing
+from unittest.mock import Mock
+
 import pytest
-from unittest.mock import Mock, MagicMock
 
 from modules.transmission_tracker import TransmissionRecord, TransmissionTracker
 
@@ -71,7 +75,7 @@ class TestRecordTransmission:
     def test_multiple_records_same_second(self, tracker):
         rec1 = tracker.record_transmission("a", "ch", "channel")
         rec2 = tracker.record_transmission("b", "ch", "channel")
-        key = int(rec1.timestamp)
+        int(rec1.timestamp)
         # Both records should be in the same (or nearby) bucket
         assert rec1 in tracker.pending_transmissions.get(int(rec1.timestamp), [])
         assert rec2 in tracker.pending_transmissions.get(int(rec2.timestamp), [])
@@ -249,3 +253,273 @@ class TestCleanupOldRecords:
         tracker.confirmed_transmissions["repeat_hash"] = old_rec
         tracker.cleanup_old_records()
         assert "repeat_hash" in tracker.confirmed_transmissions
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _make_bot_with_device(mock_logger, pubkey, prefix_hex_chars=2):
+    """Build a minimal bot mock whose meshcore.device.public_key == pubkey."""
+    device = Mock()
+    device.public_key = pubkey
+    meshcore = Mock()
+    meshcore.device = device
+    bot = Mock()
+    bot.logger = mock_logger
+    bot.meshcore = meshcore
+    bot.prefix_hex_chars = prefix_hex_chars
+    return bot
+
+
+def _make_db_with_packet_stream(db_path: str) -> None:
+    """Create a minimal packet_stream table in a SQLite file."""
+    with closing(sqlite3.connect(db_path)) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS packet_stream (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT,
+                timestamp REAL,
+                data TEXT
+            )
+        """)
+        conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# Tests for _update_bot_prefix (lines 57-67)
+# ---------------------------------------------------------------------------
+
+class TestUpdateBotPrefix:
+    """Cover lines 57-67: _update_bot_prefix with str and bytes public_key."""
+
+    def test_str_pubkey_sets_bot_prefix(self, mock_logger):
+        """When public_key is a str, bot_prefix is set to its first prefix_hex_chars."""
+        bot = _make_bot_with_device(mock_logger, pubkey="abcdef1234")
+        tracker = TransmissionTracker(bot)
+        assert tracker.bot_prefix == "ab"
+
+    def test_str_pubkey_prefix_hex_chars_4(self, mock_logger):
+        """prefix_hex_chars=4 slices the first 4 characters."""
+        bot = _make_bot_with_device(mock_logger, pubkey="deadbeef99", prefix_hex_chars=4)
+        tracker = TransmissionTracker(bot)
+        assert tracker.bot_prefix == "dead"
+
+    def test_bytes_pubkey_sets_bot_prefix(self, mock_logger):
+        """When public_key is bytes, bot_prefix is the hex of the first byte."""
+        bot = _make_bot_with_device(mock_logger, pubkey=b"\xab\xcd\xef")
+        tracker = TransmissionTracker(bot)
+        assert tracker.bot_prefix == "ab"
+
+    def test_bytes_pubkey_zero_byte(self, mock_logger):
+        """Bytes public key starting with 0x00 produces '00'."""
+        bot = _make_bot_with_device(mock_logger, pubkey=b"\x00\xff")
+        tracker = TransmissionTracker(bot)
+        assert tracker.bot_prefix == "00"
+
+    def test_str_pubkey_too_short_stays_none(self, mock_logger):
+        """A one-character str pubkey does not satisfy len >= 2; prefix stays None."""
+        bot = _make_bot_with_device(mock_logger, pubkey="a")
+        tracker = TransmissionTracker(bot)
+        assert tracker.bot_prefix is None
+
+    def test_no_meshcore_leaves_prefix_none(self, mock_logger):
+        """When bot.meshcore is None the prefix is never set."""
+        bot = Mock()
+        bot.logger = mock_logger
+        bot.meshcore = None
+        bot.prefix_hex_chars = 2
+        tracker = TransmissionTracker(bot)
+        assert tracker.bot_prefix is None
+
+    def test_exception_during_prefix_update_leaves_prefix_none(self, mock_logger):
+        """If accessing device.public_key raises an exception bot_prefix remains None."""
+        device = Mock()
+        # Make accessing public_key raise an exception.
+        type(device).public_key = property(lambda s: (_ for _ in ()).throw(RuntimeError("boom")))
+        meshcore = Mock()
+        meshcore.device = device
+        bot = Mock()
+        bot.logger = mock_logger
+        bot.meshcore = meshcore
+        bot.prefix_hex_chars = 2
+        tracker = TransmissionTracker(bot)
+        assert tracker.bot_prefix is None
+
+
+# ---------------------------------------------------------------------------
+# Tests for _update_command_in_database (lines 190, 198-246)
+# ---------------------------------------------------------------------------
+
+def _build_tracker_with_db(mock_logger, tmp_path):
+    """Build a tracker whose bot has a real SQLite DB at tmp_path/test.db."""
+    db_path = str(tmp_path / "test.db")
+    _make_db_with_packet_stream(db_path)
+
+    config = Mock()
+    config.has_section = Mock(return_value=False)
+    config.has_option = Mock(return_value=False)
+    config.get = Mock(return_value="")
+
+    db_manager = Mock()
+    db_manager.db_path = db_path
+
+    bot = Mock()
+    bot.logger = mock_logger
+    bot.meshcore = None
+    bot.prefix_hex_chars = 2
+    bot.config = config
+    bot.bot_root = str(tmp_path)
+    bot.db_manager = db_manager
+    bot.web_viewer_integration = Mock()  # truthy so the DB path is reached
+
+    return TransmissionTracker(bot), db_path
+
+
+class TestUpdateCommandInDatabase:
+    """Cover lines 190 and 198-246: _update_command_in_database."""
+
+    def test_early_return_when_command_id_is_none(self, mock_logger, tmp_path):
+        """Line 190: method returns immediately when record.command_id is None."""
+        tracker, db_path = _build_tracker_with_db(mock_logger, tmp_path)
+        rec = TransmissionRecord(
+            timestamp=time.time(),
+            content="msg",
+            target="ch",
+            message_type="channel",
+            command_id=None,
+        )
+        # No exception and the DB is untouched (table stays empty).
+        tracker._update_command_in_database(rec)
+        with closing(sqlite3.connect(db_path)) as conn:
+            count = conn.execute("SELECT COUNT(*) FROM packet_stream").fetchone()[0]
+        assert count == 0
+
+    def test_updates_matching_row_in_database(self, mock_logger, tmp_path):
+        """Lines 198-246: a matching command row is found and updated."""
+        tracker, db_path = _build_tracker_with_db(mock_logger, tmp_path)
+
+        command_id = "cmd-update-test"
+        initial_data = {
+            "command_id": command_id,
+            "repeat_count": 0,
+            "repeater_prefixes": [],
+            "repeater_counts": {},
+        }
+
+        # Insert a row into packet_stream.
+        with closing(sqlite3.connect(db_path)) as conn:
+            conn.execute(
+                "INSERT INTO packet_stream (type, timestamp, data) VALUES (?, ?, ?)",
+                ("command", time.time(), json.dumps(initial_data)),
+            )
+            conn.commit()
+
+        # Build a record whose command_id matches.
+        rec = TransmissionRecord(
+            timestamp=time.time(),
+            content="hello",
+            target="general",
+            message_type="channel",
+            command_id=command_id,
+            repeat_count=3,
+        )
+        rec.repeater_prefixes = {"7e", "ab"}
+        rec.repeater_counts = {"7e": 2, "ab": 1}
+
+        tracker._update_command_in_database(rec)
+
+        # Verify the row was updated.
+        with closing(sqlite3.connect(db_path)) as conn:
+            row = conn.execute(
+                "SELECT data FROM packet_stream WHERE type = 'command'"
+            ).fetchone()
+
+        assert row is not None
+        updated = json.loads(row[0])
+        assert updated["repeat_count"] == 3
+        assert sorted(updated["repeater_prefixes"]) == ["7e", "ab"] or set(updated["repeater_prefixes"]) == {"7e", "ab"}
+        assert updated["repeater_counts"]["7e"] == 2
+        assert updated["repeater_counts"]["ab"] == 1
+
+    def test_no_matching_row_leaves_db_unchanged(self, mock_logger, tmp_path):
+        """If no row matches command_id, the DB is not modified."""
+        tracker, db_path = _build_tracker_with_db(mock_logger, tmp_path)
+
+        other_data = {"command_id": "other-cmd", "repeat_count": 0}
+        with closing(sqlite3.connect(db_path)) as conn:
+            conn.execute(
+                "INSERT INTO packet_stream (type, timestamp, data) VALUES (?, ?, ?)",
+                ("command", time.time(), json.dumps(other_data)),
+            )
+            conn.commit()
+
+        rec = TransmissionRecord(
+            timestamp=time.time(),
+            content="msg",
+            target="ch",
+            message_type="channel",
+            command_id="no-match-cmd",
+            repeat_count=1,
+        )
+        tracker._update_command_in_database(rec)
+
+        with closing(sqlite3.connect(db_path)) as conn:
+            row = conn.execute(
+                "SELECT data FROM packet_stream WHERE type = 'command'"
+            ).fetchone()
+        assert json.loads(row[0])["command_id"] == "other-cmd"
+
+    def test_malformed_json_row_is_skipped(self, mock_logger, tmp_path):
+        """A row with invalid JSON is silently skipped (json.JSONDecodeError path)."""
+        tracker, db_path = _build_tracker_with_db(mock_logger, tmp_path)
+
+        with closing(sqlite3.connect(db_path)) as conn:
+            conn.execute(
+                "INSERT INTO packet_stream (type, timestamp, data) VALUES (?, ?, ?)",
+                ("command", time.time(), "NOT VALID JSON"),
+            )
+            conn.commit()
+
+        rec = TransmissionRecord(
+            timestamp=time.time(),
+            content="msg",
+            target="ch",
+            message_type="channel",
+            command_id="cmd-x",
+            repeat_count=1,
+        )
+        # Should not raise even though JSON is malformed.
+        tracker._update_command_in_database(rec)
+
+
+# ---------------------------------------------------------------------------
+# Tests for line 314: path with parenthesis hop-count annotation
+# ---------------------------------------------------------------------------
+
+class TestExtractRepeaterPrefixesParenPath:
+    """Cover line 314: path containing '(' (hop-count annotation) is stripped."""
+
+    def test_path_with_paren_stripped_before_split(self, mock_logger):
+        """'01,7e,86(3)' should extract '86' after stripping the parenthesised part."""
+        bot = Mock()
+        bot.logger = mock_logger
+        bot.meshcore = None
+        bot.prefix_hex_chars = 2
+        tracker = TransmissionTracker(bot)
+        tracker.bot_prefix = None
+
+        result = tracker.extract_repeater_prefixes_from_path("01,7e,86(3)")
+        assert result == ["86"]
+
+    def test_path_with_paren_and_via(self, mock_logger):
+        """Combined annotation: ' via ROUTE_TYPE_*' and '(' in the path part."""
+        bot = Mock()
+        bot.logger = mock_logger
+        bot.meshcore = None
+        bot.prefix_hex_chars = 2
+        tracker = TransmissionTracker(bot)
+        tracker.bot_prefix = None
+
+        result = tracker.extract_repeater_prefixes_from_path("01,7e,ab(2) via ROUTE_TYPE_FLOOD")
+        assert result == ["ab"]

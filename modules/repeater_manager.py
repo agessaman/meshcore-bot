@@ -8,7 +8,7 @@ import asyncio
 import json
 import time
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Any, Optional
 
 from meshcore import EventType
 
@@ -308,7 +308,7 @@ class RepeaterManager:
 
         self.logger.info("Database schema migration completed")
 
-    async def track_contact_advertisement(self, advert_data: dict, signal_info: dict = None, packet_hash: Optional[str] = None) -> bool:
+    async def track_contact_advertisement(self, advert_data: dict, signal_info: Optional[dict] = None, packet_hash: Optional[str] = None) -> bool:
         """Track any contact advertisement in the complete tracking database"""
         try:
             # Extract basic information
@@ -445,8 +445,8 @@ class RepeaterManager:
             return False
 
     async def _track_daily_advertisement(self, public_key: str, name: str, role: str, device_type: str,
-                                       location_info: dict, signal_strength: float, snr: float,
-                                       hop_count: int, timestamp: datetime, packet_hash: Optional[str] = None):
+                                       location_info: dict, signal_strength: Optional[float], snr: Optional[float],
+                                       hop_count: Optional[int], timestamp: datetime, packet_hash: Optional[str] = None):
         """Track daily advertisement statistics for accurate time-based reporting.
 
         Args:
@@ -579,7 +579,7 @@ class RepeaterManager:
             # Default to companion for unknown contacts (human users)
             return 'companion'
 
-    def _determine_device_type(self, device_type: int, name: str, advert_data: dict = None) -> str:
+    def _determine_device_type(self, device_type: int, name: str, advert_data: Optional[dict] = None) -> str:
         """Determine device type string from numeric type and name following MeshCore specs"""
         from .enums import DeviceRole
 
@@ -596,7 +596,7 @@ class RepeaterManager:
                 return 'Sensor'
             else:
                 # Handle any other mode values
-                return mode
+                return str(mode)
 
         # Fallback to legacy detection methods
         if device_type == 3:
@@ -641,7 +641,7 @@ class RepeaterManager:
         except Exception as e:
             self.logger.error(f"Error updating currently tracked status: {e}")
 
-    async def get_complete_contact_database(self, role_filter: str = None, include_historical: bool = True) -> list[dict]:
+    async def get_complete_contact_database(self, role_filter: Optional[str] = None, include_historical: bool = True) -> list[dict]:
         """Get complete contact database for path estimation and analysis"""
         try:
             if include_historical:
@@ -1161,9 +1161,9 @@ class RepeaterManager:
             self.logger.error(f"Error getting companions for purging: {e}")
             return []
 
-    def _extract_location_data(self, contact_data: dict, should_geocode: bool = True, packet_hash: Optional[str] = None) -> dict[str, Optional[str]]:
+    def _extract_location_data(self, contact_data: dict, should_geocode: bool = True, packet_hash: Optional[str] = None) -> dict[str, Any]:
         """Extract location data from contact_data JSON"""
-        location_info = {
+        location_info: dict[str, Any] = {
             'latitude': None,
             'longitude': None,
             'city': None,
@@ -1305,7 +1305,7 @@ class RepeaterManager:
 
         return location_info
 
-    def _should_geocode_location(self, location_info: dict, existing_data: dict = None, name: str = "Unknown", packet_hash: Optional[str] = None) -> tuple[bool, dict]:
+    def _should_geocode_location(self, location_info: dict, existing_data: Optional[dict] = None, name: str = "Unknown", packet_hash: Optional[str] = None) -> tuple[bool, dict]:
         """
         Determine if geocoding should be performed based on location changes.
 
@@ -1549,7 +1549,7 @@ class RepeaterManager:
 
     def _get_full_location_from_coordinates(self, latitude: float, longitude: float, packet_hash: Optional[str] = None) -> dict[str, Optional[str]]:
         """Get complete location information (city, state, country) from coordinates using reverse geocoding"""
-        location_info = {
+        location_info: dict[str, Optional[str]] = {
             'city': None,
             'state': None,
             'country': None
@@ -1731,7 +1731,7 @@ class RepeaterManager:
         try:
             # Primary detection: Check device type field
             # Based on the actual contact data structure:
-            # type: 2 = repeater, type: 3 = room server
+            # device_type 2 = repeater, device_type 3 = room server
             device_type = contact_data.get('type')
             if device_type in [2, 3]:
                 return True
@@ -1815,7 +1815,7 @@ class RepeaterManager:
             self.logger.error(f"Error checking ACL membership: {e}")
             return False  # Default to not in ACL on error (safer)
 
-    def _get_last_dm_activity(self, public_key: str, sender_id: str = None) -> Optional[datetime]:
+    def _get_last_dm_activity(self, public_key: str, sender_id: Optional[str] = None) -> Optional[datetime]:
         """Get the timestamp of the last DM from a contact"""
         try:
 
@@ -2070,9 +2070,9 @@ class RepeaterManager:
             self.logger.error(f"Error retrieving repeater contacts: {e}")
             return []
 
-    async def test_meshcore_cli_commands(self) -> dict[str, bool]:
+    async def test_meshcore_cli_commands(self) -> dict[str, Any]:
         """Test if meshcore-cli commands are working properly"""
-        results = {}
+        results: dict[str, Any] = {}
 
         try:
             from meshcore_cli.meshcore_cli import next_cmd
@@ -2788,7 +2788,7 @@ class RepeaterManager:
             self.logger.error(f"Error in aggressive contact cleanup: {e}")
             return 0
 
-    async def add_discovered_contact(self, contact_name: str, public_key: str = None, reason: str = "Manual addition") -> bool:
+    async def add_discovered_contact(self, contact_name: str, public_key: Optional[str] = None, reason: str = "Manual addition") -> bool:
         """Add a discovered contact to the contact list using multiple methods"""
         try:
             self.logger.info(f"Adding discovered contact: {contact_name}")
@@ -3099,7 +3099,7 @@ class RepeaterManager:
         """Remove expired geocoding cache entries"""
         self.db_manager.cleanup_geocoding_cache()
 
-    async def populate_missing_geolocation_data(self, dry_run: bool = False, batch_size: int = 10) -> dict[str, int]:
+    async def populate_missing_geolocation_data(self, dry_run: bool = False, batch_size: int = 10) -> dict[str, Any]:
         """Populate missing geolocation data (state, country) for repeaters that have coordinates but missing location info"""
         try:
             # Check network connectivity first
@@ -3426,7 +3426,7 @@ class RepeaterManager:
             for key, contact_data in self.bot.meshcore.contacts.items():
                 if self._is_repeater_device(contact_data):
                     test_contact = contact_data
-                    test_public_key = contact_data.get('public_key', key)
+                    test_public_key = str(contact_data.get('public_key', key))
                     break
 
             if not test_contact:
@@ -3441,7 +3441,8 @@ class RepeaterManager:
 
             self.logger.info(f"Testing purge system with contact: {contact_name}")
 
-            # Test the purge
+            # Test the purge (test_public_key is guaranteed non-None here; set in the loop above)
+            assert test_public_key is not None
             success = await self.purge_repeater_from_contacts(test_public_key, "Test purge - system validation")
 
             final_count = len(self.bot.meshcore.contacts)

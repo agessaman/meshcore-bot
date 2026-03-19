@@ -72,7 +72,7 @@ class DadJokeCommand(BaseCommand):
         content_lower = content.lower()
         return any(content_lower == keyword or content_lower.startswith(keyword + ' ') for keyword in self.keywords)
 
-    def can_execute(self, message: MeshMessage) -> bool:
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Override to add custom check (dadjoke_enabled) while using base class cooldown.
 
         Args:

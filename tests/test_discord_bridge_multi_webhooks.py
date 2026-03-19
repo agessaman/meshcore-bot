@@ -32,7 +32,7 @@ async def test_single_webhook_backward_compatible(multi_webhook_bot):
 
     service = DiscordBridgeService(multi_webhook_bot)
 
-    assert service.channel_webhooks == {"Public": [url]}
+    assert service.channel_webhooks == {"public": [url]}
 
 
 @pytest.mark.asyncio
@@ -50,7 +50,7 @@ async def test_multiple_webhooks_parsed_and_queued(multi_webhook_bot):
     service = DiscordBridgeService(multi_webhook_bot)
 
     # Both URLs should be registered for the same channel
-    assert service.channel_webhooks == {"Public": [url1, url2]}
+    assert service.channel_webhooks == {"public": [url1, url2]}
 
     # Patch queue_message to observe fan-out behaviour
     with patch.object(service, "_queue_message", new_callable=AsyncMock) as mock_queue:

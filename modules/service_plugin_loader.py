@@ -19,12 +19,13 @@ from .service_plugins.base_service import BaseServicePlugin
 class ServicePluginLoader:
     """Handles dynamic loading and discovery of service plugins"""
 
-    def __init__(self, bot, services_dir: str = None, local_services_dir: Optional[str] = None):
+    def __init__(self, bot, services_dir: Optional[str] = None, local_services_dir: Optional[str] = None):
         self.bot = bot
         self.logger = bot.logger
-        self.services_dir = services_dir or os.path.join(
+        self.services_dir: str = services_dir or os.path.join(
             os.path.dirname(__file__), 'service_plugins'
         )
+        self.local_services_dir: Optional[str]
         if local_services_dir is not None:
             self.local_services_dir = local_services_dir
         else:
@@ -54,7 +55,7 @@ class ServicePluginLoader:
 
     def discover_services(self) -> list[str]:
         """Discover all Python files in the service_plugins directory"""
-        service_files = []
+        service_files: list[str] = []
         services_path = Path(self.services_dir)
 
         if not services_path.exists():
@@ -296,7 +297,7 @@ class ServicePluginLoader:
         """Get all loaded services"""
         return self.loaded_services.copy()
 
-    def get_service_metadata(self, service_name: str = None) -> dict[str, Any]:
+    def get_service_metadata(self, service_name: Optional[str] = None) -> dict[str, Any]:
         """Get metadata for a specific service or all services"""
         if service_name:
             return self.service_metadata.get(service_name, {})

@@ -143,9 +143,52 @@ class TestPageRoutes:
         resp = client.get("/")
         assert resp.status_code == 200
 
+    def test_index_live_activity_controls(self, client):
+        """Dashboard index page contains scroll buttons and type-filter checkboxes."""
+        resp = client.get("/")
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        # Scroll buttons
+        assert 'id="live-scroll-top"' in html
+        assert 'id="live-scroll-bottom"' in html
+        assert 'scrollLiveFeed' in html
+        # Filter checkboxes with data-type attributes
+        assert 'data-type="packet"' in html
+        assert 'data-type="command"' in html
+        assert 'data-type="message"' in html
+        assert 'live-filter-cb' in html
+        # [#channel] prefix logic present in JS
+        assert 'applyFilters' in html
+
     def test_realtime(self, client):
         resp = client.get("/realtime")
         assert resp.status_code == 200
+
+    def test_realtime_scroll_controls(self, client):
+        """Realtime page has scroll buttons, type filters, and channel labels in messages."""
+        resp = client.get("/realtime")
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        # Scroll buttons present for all three streams
+        assert 'id="cmd-scroll-top"' in html
+        assert 'id="cmd-scroll-bottom"' in html
+        assert 'id="pkt-scroll-top"' in html
+        assert 'id="pkt-scroll-bottom"' in html
+        assert 'id="msg-scroll-top"' in html
+        assert 'id="msg-scroll-bottom"' in html
+        # scrollStream JS function present
+        assert 'scrollStream' in html
+        # Type filter checkboxes for each stream panel
+        assert 'rt-filter-cb' in html
+        assert 'id="rt-filter-command"' in html
+        assert 'id="rt-filter-packet"' in html
+        assert 'id="rt-filter-message"' in html
+        assert 'id="command-card"' in html
+        assert 'id="packet-card"' in html
+        assert 'id="message-card"' in html
+        # Channel label placeholder in message entry template
+        assert 'channelLabel' in html
+        assert '[#' in html
 
     def test_logs(self, client):
         resp = client.get("/logs")
@@ -922,7 +965,7 @@ class TestConfigMaintenanceRoutes:
             "db_backup_schedule": "weekly",
             "db_backup_time": "03:00",
             "db_backup_retention_count": "14",
-            "db_backup_dir": "/tmp/backups",
+            "db_backup_dir": "/tmp",  # /tmp always exists
             "email_attach_log": "true",
         }
         resp = client.post(
@@ -1618,4 +1661,1168 @@ class TestSubscribeCommandsHistoryReplay:
         # The source should reference time.time() - 300, not "= 0"
         assert "time() - 300" in src or "_time.time() - 300" in src, (
             "last_timestamp must be initialized to time.time()-300, not 0"
+        )
+
+
+# ---------------------------------------------------------------------------
+# TASK-03: GET /api/connected_clients
+# ---------------------------------------------------------------------------
+
+class TestConnectedClientsApi:
+    """Tests for GET /api/connected_clients endpoint."""
+
+    def test_empty_when_no_clients(self, viewer):
+        """Returns empty list when no clients connected."""
+        viewer.connected_clients.clear()
+        with viewer.app.test_client() as c:
+            resp = c.get("/api/connected_clients")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data == []
+
+    def test_returns_client_list(self, viewer):
+        """Returns list with client_id, connected_at, last_activity fields."""
+        import time
+        now = time.time()
+        viewer.connected_clients["abcdef1234567890"] = {
+            "connected_at": now - 60,
+            "last_activity": now - 5,
+            "subscribed_commands": False,
+        }
+        try:
+            with viewer.app.test_client() as c:
+                resp = c.get("/api/connected_clients")
+            assert resp.status_code == 200
+            data = resp.get_json()
+            assert isinstance(data, list)
+            assert len(data) == 1
+            entry = data[0]
+            assert "client_id" in entry
+            assert "connected_at" in entry
+            assert "last_activity" in entry
+            # ID is truncated to first 8 chars + ellipsis
+            assert entry["client_id"] == "abcdef12\u2026"
+            assert abs(entry["connected_at"] - (now - 60)) < 1
+            assert abs(entry["last_activity"] - (now - 5)) < 1
+        finally:
+            viewer.connected_clients.pop("abcdef1234567890", None)
+
+    def test_multiple_clients(self, viewer):
+        """Returns all connected clients."""
+        import time
+        now = time.time()
+        viewer.connected_clients["aaa"] = {"connected_at": now, "last_activity": now}
+        viewer.connected_clients["bbb"] = {"connected_at": now, "last_activity": now}
+        try:
+            with viewer.app.test_client() as c:
+                resp = c.get("/api/connected_clients")
+            assert resp.status_code == 200
+            data = resp.get_json()
+            ids = [entry["client_id"] for entry in data]
+            assert "aaa" in ids
+            assert "bbb" in ids
+        finally:
+            viewer.connected_clients.pop("aaa", None)
+            viewer.connected_clients.pop("bbb", None)
+
+    def test_short_id_not_truncated(self, viewer):
+        """Client IDs of 8 chars or fewer are returned as-is."""
+        import time
+        now = time.time()
+        viewer.connected_clients["short"] = {"connected_at": now, "last_activity": now}
+        try:
+            with viewer.app.test_client() as c:
+                resp = c.get("/api/connected_clients")
+            assert resp.status_code == 200
+            data = resp.get_json()
+            match = [entry for entry in data if entry["client_id"] == "short"]
+            assert len(match) == 1
+        finally:
+            viewer.connected_clients.pop("short", None)
+
+    def test_dashboard_contains_modal_and_link(self, viewer):
+        """Dashboard page includes the connected-clients modal and clickable link."""
+        with viewer.app.test_client() as c:
+            resp = c.get("/")
+        html = resp.data.decode()
+        assert "connectedClientsModal" in html
+        assert "connected-clients-table" in html
+        assert "loadConnectedClients" in html
+
+
+# ---------------------------------------------------------------------------
+# TASK-04: DB backup dir validation on POST /api/config/maintenance
+# ---------------------------------------------------------------------------
+
+class TestDbBackupDirValidation:
+    """Tests for backup directory validation in POST /api/config/maintenance."""
+
+    def test_nonexistent_dir_returns_400(self, viewer):
+        """Returns 400 with error message when backup_dir does not exist."""
+        with viewer.app.test_client() as c:
+            resp = c.post(
+                "/api/config/maintenance",
+                json={"db_backup_dir": "/nonexistent/path/that/does/not/exist"},
+                content_type="application/json",
+            )
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert "error" in data
+        assert "/nonexistent/path/that/does/not/exist" in data["error"]
+
+    def test_existing_dir_returns_200(self, viewer, tmp_path):
+        """Returns 200 when backup_dir exists."""
+        with viewer.app.test_client() as c:
+            resp = c.post(
+                "/api/config/maintenance",
+                json={"db_backup_dir": str(tmp_path)},
+                content_type="application/json",
+            )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["success"] is True
+        assert "db_backup_dir" in data["saved"]
+
+    def test_empty_dir_skips_validation(self, viewer):
+        """Empty string for db_backup_dir skips the isdir check and saves."""
+        with viewer.app.test_client() as c:
+            resp = c.post(
+                "/api/config/maintenance",
+                json={"db_backup_dir": ""},
+                content_type="application/json",
+            )
+        assert resp.status_code == 200
+
+    def test_other_fields_save_when_no_dir(self, viewer):
+        """Other maintenance fields save normally when db_backup_dir is absent."""
+        with viewer.app.test_client() as c:
+            resp = c.post(
+                "/api/config/maintenance",
+                json={"db_backup_enabled": "true", "db_backup_schedule": "daily"},
+                content_type="application/json",
+            )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert "db_backup_enabled" in data["saved"]
+        assert "db_backup_schedule" in data["saved"]
+
+    def test_error_message_contains_path(self, viewer):
+        """Error message specifically mentions the invalid path."""
+        bad_path = "/absolutely/does/not/exist/xyz"
+        with viewer.app.test_client() as c:
+            resp = c.post(
+                "/api/config/maintenance",
+                json={"db_backup_dir": bad_path},
+                content_type="application/json",
+            )
+        assert resp.status_code == 400
+        assert bad_path in resp.get_json()["error"]
+
+
+# ---------------------------------------------------------------------------
+# TASK-06: POST /api/maintenance/backup_now
+# ---------------------------------------------------------------------------
+
+class TestBackupNowRoute:
+    """Tests for POST /api/maintenance/backup_now endpoint."""
+
+    def test_returns_503_when_no_scheduler(self, viewer):
+        """Returns 503 when bot/scheduler is not attached."""
+        # viewer fixture has no bot attached
+        with viewer.app.test_client() as c:
+            resp = c.post("/api/maintenance/backup_now")
+        assert resp.status_code == 503
+        data = resp.get_json()
+        assert data["success"] is False
+        assert "Scheduler not available" in data["error"]
+
+    def test_returns_200_on_successful_backup(self, viewer, tmp_path):
+        """Returns 200 with success=True and path when backup succeeds."""
+        from unittest.mock import MagicMock, patch
+
+        mock_scheduler = MagicMock()
+
+        def fake_run_db_backup():
+            # Simulate what _run_db_backup writes to metadata
+            viewer.db_manager.set_metadata(
+                'maint.status.db_backup_path', str(tmp_path / "test.db")
+            )
+            viewer.db_manager.set_metadata('maint.status.db_backup_outcome', 'ok')
+
+        mock_scheduler._run_db_backup = fake_run_db_backup
+        mock_bot = MagicMock()
+        mock_bot.scheduler = mock_scheduler
+
+        with patch.object(viewer, 'bot', mock_bot, create=True):
+            with viewer.app.test_client() as c:
+                resp = c.post("/api/maintenance/backup_now")
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["success"] is True
+        assert "test.db" in data["path"]
+
+    def test_returns_500_on_backup_error(self, viewer):
+        """Returns 500 with success=False when backup writes an error outcome."""
+        from unittest.mock import MagicMock, patch
+
+        mock_scheduler = MagicMock()
+
+        def fake_run_db_backup():
+            viewer.db_manager.set_metadata('maint.status.db_backup_path', '')
+            viewer.db_manager.set_metadata(
+                'maint.status.db_backup_outcome', 'error: cannot create dir'
+            )
+
+        mock_scheduler._run_db_backup = fake_run_db_backup
+        mock_bot = MagicMock()
+        mock_bot.scheduler = mock_scheduler
+
+        with patch.object(viewer, 'bot', mock_bot, create=True):
+            with viewer.app.test_client() as c:
+                resp = c.post("/api/maintenance/backup_now")
+
+        assert resp.status_code == 500
+        data = resp.get_json()
+        assert data["success"] is False
+
+    def test_config_page_contains_backup_now_button(self, viewer):
+        """Config page HTML includes the Backup Now button."""
+        with viewer.app.test_client() as c:
+            resp = c.get("/config")
+        html = resp.data.decode()
+        assert "backup-now-btn" in html
+        assert "backup_now" in html
+
+
+# ---------------------------------------------------------------------------
+# TASK-07: POST /api/maintenance/restore + GET /api/maintenance/list_backups
+# ---------------------------------------------------------------------------
+
+class TestRestoreRoute:
+    """Tests for the DB restore endpoint."""
+
+    def test_missing_db_file_returns_400(self, viewer):
+        """Returns 400 when db_file is absent."""
+        with viewer.app.test_client() as c:
+            resp = c.post("/api/maintenance/restore", json={},
+                          content_type="application/json")
+        assert resp.status_code == 400
+        assert "db_file" in resp.get_json()["error"]
+
+    def test_nonexistent_file_returns_400(self, viewer):
+        """Returns 400 when db_file path does not exist."""
+        with viewer.app.test_client() as c:
+            resp = c.post("/api/maintenance/restore",
+                          json={"db_file": "/no/such/file.db"},
+                          content_type="application/json")
+        assert resp.status_code == 400
+        assert "not found" in resp.get_json()["error"].lower()
+
+    def test_non_sqlite_file_returns_400(self, viewer, tmp_path):
+        """Returns 400 when the file is not a valid SQLite database."""
+        bad = tmp_path / "bad.db"
+        bad.write_bytes(b"not a sqlite file!!")
+        with viewer.app.test_client() as c:
+            resp = c.post("/api/maintenance/restore",
+                          json={"db_file": str(bad)},
+                          content_type="application/json")
+        assert resp.status_code == 400
+        assert "valid SQLite" in resp.get_json()["error"]
+
+    def test_valid_sqlite_restore_returns_200(self, viewer, tmp_path):
+        """Returns 200 with warning when a valid SQLite backup is restored."""
+        import sqlite3 as _sql
+        backup = tmp_path / "backup.db"
+        conn = _sql.connect(str(backup))
+        conn.execute("CREATE TABLE t (id INTEGER)")
+        conn.commit()
+        conn.close()
+        # Patch db_path to a temp destination so the real test DB is not overwritten
+        dest = str(tmp_path / "restored.db")
+        with patch.object(viewer, "db_path", dest):
+            with viewer.app.test_client() as c:
+                resp = c.post("/api/maintenance/restore",
+                              json={"db_file": str(backup)},
+                              content_type="application/json")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["success"] is True
+        assert "warning" in data
+        assert "Restart" in data["warning"]
+
+    def test_list_backups_empty_when_no_dir(self, viewer):
+        """list_backups returns empty list when backup dir not configured."""
+        viewer.db_manager.set_metadata('maint.db_backup_dir', '')
+        with viewer.app.test_client() as c:
+            resp = c.get("/api/maintenance/list_backups")
+        assert resp.status_code == 200
+        assert resp.get_json()["backups"] == []
+
+    def test_list_backups_returns_files(self, viewer, tmp_path):
+        """list_backups returns matching .db files from the backup directory."""
+        import sqlite3 as _sql
+        db_stem = Path(viewer.db_path).stem
+        for i in range(2):
+            f = tmp_path / f"{db_stem}_2026010{i}T000000.db"
+            conn = _sql.connect(str(f))
+            conn.execute("CREATE TABLE t (id INTEGER)")
+            conn.commit()
+            conn.close()
+        viewer.db_manager.set_metadata('maint.db_backup_dir', str(tmp_path))
+        with viewer.app.test_client() as c:
+            resp = c.get("/api/maintenance/list_backups")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert len(data["backups"]) == 2
+        assert all("path" in b and "size_mb" in b for b in data["backups"])
+
+    def test_config_page_contains_restore_modal(self, viewer):
+        """Config page HTML includes the restore modal and button."""
+        with viewer.app.test_client() as c:
+            resp = c.get("/config")
+        html = resp.data.decode()
+        assert "restoreModal" in html
+        assert "restore-btn" in html
+        assert "restore-db-path" in html
+
+
+# ---------------------------------------------------------------------------
+# TASK-08: Database purge by age
+# ---------------------------------------------------------------------------
+
+class TestPurgeRoute:
+    """Tests for POST /api/maintenance/purge."""
+
+    def test_keep_all_returns_empty_deleted(self, viewer):
+        """keep_days='all' returns 200 with empty deleted dict."""
+        with viewer.app.test_client() as c:
+            resp = c.post("/api/maintenance/purge",
+                          json={"keep_days": "all"},
+                          content_type="application/json")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["deleted"] == {}
+
+    def test_invalid_keep_days_returns_400(self, viewer):
+        """keep_days=3 (not in valid set) returns 400."""
+        with viewer.app.test_client() as c:
+            resp = c.post("/api/maintenance/purge",
+                          json={"keep_days": 3},
+                          content_type="application/json")
+        assert resp.status_code == 400
+        assert "keep_days" in resp.get_json()["error"]
+
+    def test_non_integer_keep_days_returns_400(self, viewer):
+        """keep_days='invalid' returns 400."""
+        with viewer.app.test_client() as c:
+            resp = c.post("/api/maintenance/purge",
+                          json={"keep_days": "invalid"},
+                          content_type="application/json")
+        assert resp.status_code == 400
+
+    def test_valid_keep_days_returns_deleted_counts(self, viewer):
+        """keep_days=30 returns 200 with per-table deleted counts."""
+        with viewer.app.test_client() as c:
+            resp = c.post("/api/maintenance/purge",
+                          json={"keep_days": 30},
+                          content_type="application/json")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert "deleted" in data
+        # All six purgeable tables should be present in the response
+        expected_tables = {
+            "packet_stream", "message_stats", "complete_contact_tracking",
+            "purging_log", "mesh_connections", "daily_stats",
+        }
+        assert expected_tables == set(data["deleted"].keys())
+
+    def test_all_valid_keep_days_values_accepted(self, viewer):
+        """All documented valid keep_days values (1,7,14,30,60,90) return 200."""
+        for days in [1, 7, 14, 30, 60, 90]:
+            with viewer.app.test_client() as c:
+                resp = c.post("/api/maintenance/purge",
+                              json={"keep_days": days},
+                              content_type="application/json")
+            assert resp.status_code == 200, f"Failed for keep_days={days}"
+
+    def test_old_rows_deleted_recent_rows_kept(self, viewer):
+        """Rows older than cutoff are deleted; recent rows are kept."""
+        import sqlite3 as _sql
+        import time as _time
+
+        old_ts = _time.time() - 40 * 86400    # 40 days ago
+        new_ts = _time.time() - 1 * 86400     # 1 day ago
+
+        # Insert one old and one new row into packet_stream
+        with _sql.connect(viewer.db_path) as conn:
+            conn.execute(
+                "INSERT INTO packet_stream (timestamp, data, type) VALUES (?, ?, ?)",
+                (old_ts, '{"test": "old"}', "test"),
+            )
+            conn.execute(
+                "INSERT INTO packet_stream (timestamp, data, type) VALUES (?, ?, ?)",
+                (new_ts, '{"test": "new"}', "test"),
+            )
+            conn.commit()
+
+        with viewer.app.test_client() as c:
+            resp = c.post("/api/maintenance/purge",
+                          json={"keep_days": 30},
+                          content_type="application/json")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        # At least the one old packet_stream row should be deleted
+        assert data["deleted"]["packet_stream"] >= 1
+
+        # Recent row must still be present
+        with _sql.connect(viewer.db_path) as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM packet_stream WHERE data = ?",
+                ('{"test": "new"}',),
+            ).fetchone()
+        assert row[0] == 1
+
+    def test_config_page_contains_purge_card(self, viewer):
+        """Config page HTML includes the purge card and confirmation modal."""
+        with viewer.app.test_client() as c:
+            resp = c.get("/config")
+        html = resp.data.decode()
+        assert "purgeModal" in html
+        assert "purge-keep-days" in html
+        assert "purge-confirm-btn" in html
+
+
+# ---------------------------------------------------------------------------
+# TASK-09: BotIntegration write queue (batch packet_stream inserts)
+# ---------------------------------------------------------------------------
+
+class TestBotIntegrationQueue:
+    """Tests for BotIntegration's batched packet_stream write queue."""
+
+    @pytest.fixture()
+    def bot_integration(self, tmp_path):
+        """Create a BotIntegration with a real temp SQLite DB and a fake bot."""
+        import configparser as _cp
+        from unittest.mock import MagicMock
+
+        db_path = str(tmp_path / "test.db")
+        cfg = _cp.ConfigParser()
+        cfg["Connection"] = {"connection_type": "serial", "serial_port": "/dev/null"}
+        cfg["Bot"] = {"bot_name": "Test", "db_path": db_path, "prefix_bytes": "1"}
+
+        bot = MagicMock()
+        bot.logger = logging.getLogger("test_integration")
+        bot.logger.addHandler(logging.NullHandler())
+        bot.config = cfg
+        bot.db_manager.db_path = db_path
+        bot.bot_root = str(tmp_path)
+
+        from modules.web_viewer.integration import BotIntegration
+        bi = BotIntegration(bot)
+        yield bi
+        bi.shutdown()
+
+    def test_insert_queues_row_without_db_open(self, bot_integration):
+        """_insert_packet_stream_row puts item in queue, does not open DB immediately."""
+        # Queue should start empty
+        assert bot_integration._write_queue.empty()
+        bot_integration._insert_packet_stream_row('{"x":1}', 'packet')
+        assert bot_integration._write_queue.qsize() == 1
+
+    def test_flush_writes_row_to_db(self, bot_integration, tmp_path):
+        """_flush_write_queue inserts queued rows into packet_stream."""
+        bot_integration._insert_packet_stream_row('{"test":"flush"}', 'packet')
+        bot_integration._flush_write_queue()
+
+        db_path = bot_integration._get_web_viewer_db_path()
+        with sqlite3.connect(db_path) as conn:
+            rows = conn.execute(
+                "SELECT data, type FROM packet_stream WHERE type='packet'"
+            ).fetchall()
+        assert any(r[0] == '{"test":"flush"}' for r in rows)
+
+    def test_flush_batches_multiple_rows(self, bot_integration):
+        """_flush_write_queue inserts multiple queued rows in one transaction."""
+        for i in range(5):
+            bot_integration._insert_packet_stream_row(f'{{"n":{i}}}', 'command')
+        assert bot_integration._write_queue.qsize() == 5
+        bot_integration._flush_write_queue()
+        assert bot_integration._write_queue.empty()
+
+        db_path = bot_integration._get_web_viewer_db_path()
+        with sqlite3.connect(db_path) as conn:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM packet_stream WHERE type='command'"
+            ).fetchone()[0]
+        assert count == 5
+
+    def test_flush_empty_queue_is_noop(self, bot_integration):
+        """_flush_write_queue on empty queue does not raise."""
+        assert bot_integration._write_queue.empty()
+        bot_integration._flush_write_queue()  # should not raise
+
+    def test_shutdown_flushes_remaining_rows(self, bot_integration):
+        """shutdown() flushes rows that were queued but not yet drained."""
+        # Stop the drain thread early so rows stay in queue
+        bot_integration._drain_stop.set()
+        if bot_integration._drain_thread:
+            bot_integration._drain_thread.join(timeout=2.0)
+
+        bot_integration._insert_packet_stream_row('{"shutdown":"test"}', 'message')
+        assert not bot_integration._write_queue.empty()
+
+        # shutdown() must flush the remaining row
+        bot_integration.shutdown()
+
+        db_path = bot_integration._get_web_viewer_db_path()
+        with sqlite3.connect(db_path) as conn:
+            rows = conn.execute(
+                "SELECT data FROM packet_stream WHERE type='message'"
+            ).fetchall()
+        assert any(r[0] == '{"shutdown":"test"}' for r in rows)
+
+    def test_drain_thread_is_running(self, bot_integration):
+        """Drain thread is alive after construction."""
+        assert bot_integration._drain_thread is not None
+        assert bot_integration._drain_thread.is_alive()
+
+
+# ===========================================================================
+# PUT /api/channels/<idx> — update channel endpoint
+# ===========================================================================
+
+class TestUpdateChannelRoute:
+    """Tests for PUT /api/channels/<channel_idx>."""
+
+    def test_update_channel_no_body_returns_400(self, viewer):
+        with viewer.app.test_client() as c:
+            resp = c.put(
+                "/api/channels/0",
+                json={},
+                content_type="application/json",
+            )
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert "error" in data
+
+    def test_update_channel_with_body_returns_200(self, viewer):
+        with viewer.app.test_client() as c:
+            resp = c.put(
+                "/api/channels/0",
+                json={"name": "#newname"},
+                content_type="application/json",
+            )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["success"] is True
+
+    def test_update_channel_index_5_returns_200(self, viewer):
+        with viewer.app.test_client() as c:
+            resp = c.put(
+                "/api/channels/5",
+                json={"name": "#updated"},
+                content_type="application/json",
+            )
+        assert resp.status_code == 200
+
+
+# ===========================================================================
+# POST /api/channels — create channel validation branches
+# ===========================================================================
+
+class TestCreateChannelValidation:
+    """Additional POST /api/channels validation paths not covered elsewhere."""
+
+    def test_empty_name_returns_400(self, viewer):
+        with viewer.app.test_client() as c:
+            resp = c.post(
+                "/api/channels",
+                json={"name": "   "},
+                content_type="application/json",
+            )
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert "error" in data
+
+    def test_custom_channel_without_key_returns_400(self, viewer):
+        """Non-hashtag channel name without a key must be rejected."""
+        with viewer.app.test_client() as c:
+            resp = c.post(
+                "/api/channels",
+                json={"name": "mychannel"},
+                content_type="application/json",
+            )
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert "key" in data["error"].lower()
+
+    def test_channel_key_wrong_length_returns_400(self, viewer):
+        """A key shorter than 32 hex chars must be rejected."""
+        with viewer.app.test_client() as c:
+            resp = c.post(
+                "/api/channels",
+                json={"name": "mychan", "channel_key": "deadbeef"},
+                content_type="application/json",
+            )
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert "32" in data["error"]
+
+    def test_channel_key_non_hex_returns_400(self, viewer):
+        """A 32-char key containing non-hex characters must be rejected."""
+        with viewer.app.test_client() as c:
+            resp = c.post(
+                "/api/channels",
+                json={"name": "mychan", "channel_key": "Z" * 32},
+                content_type="application/json",
+            )
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert "hexadecimal" in data["error"].lower()
+
+
+# ===========================================================================
+# POST /api/channels/validate — with a valid name
+# ===========================================================================
+
+class TestChannelValidateRoute:
+    """Tests for POST /api/channels/validate."""
+
+    def test_validate_missing_name_returns_400(self, viewer):
+        with viewer.app.test_client() as c:
+            resp = c.post(
+                "/api/channels/validate",
+                json={},
+                content_type="application/json",
+            )
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert "error" in data
+
+    def test_validate_known_channel_name(self, viewer):
+        with viewer.app.test_client() as c:
+            resp = c.post(
+                "/api/channels/validate",
+                json={"name": "#general"},
+                content_type="application/json",
+            )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert "exists" in data
+
+    def test_validate_nonexistent_channel_exists_false(self, viewer):
+        with viewer.app.test_client() as c:
+            resp = c.post(
+                "/api/channels/validate",
+                json={"name": "#channel_that_does_not_exist_xyz"},
+                content_type="application/json",
+            )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["exists"] is False
+        assert data["channel_num"] is None
+
+
+# ===========================================================================
+# POST /api/stream_data — additional type branches
+# ===========================================================================
+
+class TestStreamDataTypes:
+    """POST /api/stream_data with all supported type values."""
+
+    def test_packet_type_returns_success(self, viewer):
+        with viewer.app.test_client() as c:
+            resp = c.post(
+                "/api/stream_data",
+                json={"type": "packet", "data": {"raw": "aabbcc"}},
+                content_type="application/json",
+            )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["status"] == "success"
+
+    def test_mesh_edge_type_returns_success(self, viewer):
+        with viewer.app.test_client() as c:
+            resp = c.post(
+                "/api/stream_data",
+                json={"type": "mesh_edge", "data": {"from": "aa", "to": "bb"}},
+                content_type="application/json",
+            )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["status"] == "success"
+
+    def test_mesh_node_type_returns_success(self, viewer):
+        with viewer.app.test_client() as c:
+            resp = c.post(
+                "/api/stream_data",
+                json={"type": "mesh_node", "data": {"node_id": "cc"}},
+                content_type="application/json",
+            )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["status"] == "success"
+
+    def test_unknown_type_returns_400(self, viewer):
+        with viewer.app.test_client() as c:
+            resp = c.post(
+                "/api/stream_data",
+                json={"type": "unknown_type", "data": {}},
+                content_type="application/json",
+            )
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert "error" in data
+
+    def test_missing_body_returns_400(self, viewer):
+        with viewer.app.test_client() as c:
+            resp = c.post(
+                "/api/stream_data",
+                json={},
+                content_type="application/json",
+            )
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert "error" in data
+
+    def test_command_type_returns_success(self, viewer):
+        """Verify the already-exercised command type still returns success."""
+        with viewer.app.test_client() as c:
+            resp = c.post(
+                "/api/stream_data",
+                json={"type": "command", "data": {"cmd": "ping"}},
+                content_type="application/json",
+            )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["status"] == "success"
+
+
+# ===========================================================================
+# GET /api/maintenance/status — detailed field verification
+# ===========================================================================
+
+class TestMaintenanceStatusFields:
+    """Verify all expected keys are present in GET /api/maintenance/status."""
+
+    def test_status_contains_all_keys(self, viewer):
+        with viewer.app.test_client() as c:
+            resp = c.get("/api/maintenance/status")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        expected = {
+            "data_retention_ran_at",
+            "data_retention_outcome",
+            "nightly_email_ran_at",
+            "nightly_email_outcome",
+            "db_backup_ran_at",
+            "db_backup_outcome",
+            "db_backup_path",
+            "log_rotation_applied_at",
+        }
+        assert expected == set(data.keys())
+
+    def test_status_values_are_strings(self, viewer):
+        """All values in the status response must be strings (empty or populated)."""
+        with viewer.app.test_client() as c:
+            resp = c.get("/api/maintenance/status")
+        data = resp.get_json()
+        for key, value in data.items():
+            assert isinstance(value, str), f"Key {key!r} has non-string value: {value!r}"
+
+    def test_status_written_metadata_is_reflected(self, viewer):
+        """Metadata written via set_metadata appears in status response."""
+        viewer.db_manager.set_metadata(
+            "maint.status.db_backup_ran_at", "2026-01-01T02:00:00"
+        )
+        with viewer.app.test_client() as c:
+            resp = c.get("/api/maintenance/status")
+        data = resp.get_json()
+        assert data["db_backup_ran_at"] == "2026-01-01T02:00:00"
+
+
+# ===========================================================================
+# T1-A: subscribe_packets and subscribe_messages history replay
+# ===========================================================================
+
+class TestSubscribePacketsHistoryReplay:
+    """subscribe_packets must replay last 50 packet/command/routing rows on connect (T1-A)."""
+
+    def test_subscribe_packets_replays_packet_history(self, socketio_viewer):
+        """Packet-type history rows are emitted as packet_data events on subscribe."""
+        import json as _json
+        import time as _time
+
+        from flask_socketio import SocketIOTestClient
+
+        now = _time.time()
+        rows = [
+            (now - 10 + i, _json.dumps({"seq": i, "type": "rf_data"}), "packet")
+            for i in range(3)
+        ]
+        _insert_packet_stream_rows(socketio_viewer.db_path, rows)
+
+        sio_client = SocketIOTestClient(socketio_viewer.app, socketio_viewer.socketio)
+        sio_client.emit("subscribe_packets")
+
+        received = sio_client.get_received()
+        packet_events = [e for e in received if e["name"] == "packet_data"]
+        assert len(packet_events) == 3
+        seq_values = [e["args"][0]["seq"] for e in packet_events]
+        assert seq_values == [0, 1, 2]
+
+    def test_subscribe_packets_replays_command_as_command_data(self, socketio_viewer):
+        """Command-type rows in packet_stream are replayed as command_data events."""
+        import json as _json
+        import time as _time
+
+        from flask_socketio import SocketIOTestClient
+
+        now = _time.time()
+        rows = [
+            (now - 5, _json.dumps({"command": "ping", "seq": 0}), "command"),
+        ]
+        _insert_packet_stream_rows(socketio_viewer.db_path, rows)
+
+        sio_client = SocketIOTestClient(socketio_viewer.app, socketio_viewer.socketio)
+        sio_client.emit("subscribe_packets")
+
+        received = sio_client.get_received()
+        command_events = [e for e in received if e["name"] == "command_data"]
+        assert len(command_events) == 1
+
+    def test_subscribe_packets_excludes_message_type(self, socketio_viewer):
+        """Message-type rows are NOT included in subscribe_packets replay."""
+        import json as _json
+        import time as _time
+
+        from flask_socketio import SocketIOTestClient
+
+        now = _time.time()
+        rows = [
+            (now - 5, _json.dumps({"content": "hello", "seq": 0}), "message"),
+        ]
+        _insert_packet_stream_rows(socketio_viewer.db_path, rows)
+
+        sio_client = SocketIOTestClient(socketio_viewer.app, socketio_viewer.socketio)
+        sio_client.emit("subscribe_packets")
+
+        received = sio_client.get_received()
+        packet_events = [e for e in received if e["name"] == "packet_data"]
+        message_events = [e for e in received if e["name"] == "message_data"]
+        assert len(packet_events) == 0
+        assert len(message_events) == 0
+
+    def test_subscribe_packets_empty_history(self, socketio_viewer):
+        """subscribe_packets with no history emits only status, no packet_data."""
+        from flask_socketio import SocketIOTestClient
+
+        sio_client = SocketIOTestClient(socketio_viewer.app, socketio_viewer.socketio)
+        sio_client.emit("subscribe_packets")
+
+        received = sio_client.get_received()
+        packet_events = [e for e in received if e["name"] == "packet_data"]
+        assert len(packet_events) == 0
+
+    def test_subscribe_packets_sets_subscription_flag(self, socketio_viewer):
+        """subscribed_packets flag is set to True after subscribe event."""
+        from flask_socketio import SocketIOTestClient
+
+        sio_client = SocketIOTestClient(socketio_viewer.app, socketio_viewer.socketio)
+        sio_client.emit("subscribe_packets")
+
+        with socketio_viewer._clients_lock:
+            flags = [
+                v.get("subscribed_packets", False)
+                for v in socketio_viewer.connected_clients.values()
+            ]
+        assert any(flags), "At least one client should have subscribed_packets=True"
+
+    def test_subscribe_packets_emits_status_ack(self, socketio_viewer):
+        """subscribe_packets always emits a status acknowledgement."""
+        from flask_socketio import SocketIOTestClient
+
+        sio_client = SocketIOTestClient(socketio_viewer.app, socketio_viewer.socketio)
+        sio_client.emit("subscribe_packets")
+
+        received = sio_client.get_received()
+        status_events = [e for e in received if e["name"] == "status"]
+        assert len(status_events) >= 1
+
+    def test_subscribe_packets_routing_type_replayed(self, socketio_viewer):
+        """Routing-type rows are replayed as packet_data events."""
+        import json as _json
+        import time as _time
+
+        from flask_socketio import SocketIOTestClient
+
+        now = _time.time()
+        rows = [
+            (now - 5, _json.dumps({"route": "aa->bb", "seq": 0}), "routing"),
+        ]
+        _insert_packet_stream_rows(socketio_viewer.db_path, rows)
+
+        sio_client = SocketIOTestClient(socketio_viewer.app, socketio_viewer.socketio)
+        sio_client.emit("subscribe_packets")
+
+        received = sio_client.get_received()
+        packet_events = [e for e in received if e["name"] == "packet_data"]
+        assert len(packet_events) == 1
+
+    def test_subscribe_packets_chronological_order(self, socketio_viewer):
+        """Replayed rows are in chronological order (oldest first)."""
+        import json as _json
+        import time as _time
+
+        from flask_socketio import SocketIOTestClient
+
+        now = _time.time()
+        rows = [
+            (now - 20, _json.dumps({"seq": 0}), "packet"),
+            (now - 10, _json.dumps({"seq": 1}), "packet"),
+            (now - 5, _json.dumps({"seq": 2}), "packet"),
+        ]
+        _insert_packet_stream_rows(socketio_viewer.db_path, rows)
+
+        sio_client = SocketIOTestClient(socketio_viewer.app, socketio_viewer.socketio)
+        sio_client.emit("subscribe_packets")
+
+        received = sio_client.get_received()
+        packet_events = [e for e in received if e["name"] == "packet_data"]
+        seq_values = [e["args"][0]["seq"] for e in packet_events]
+        assert seq_values == [0, 1, 2]
+
+
+class TestSubscribeMessagesHistoryReplay:
+    """subscribe_messages must replay last 50 message rows on connect (T1-A)."""
+
+    def test_subscribe_messages_replays_history(self, socketio_viewer):
+        """Message-type history rows are emitted as message_data events on subscribe."""
+        import json as _json
+        import time as _time
+
+        from flask_socketio import SocketIOTestClient
+
+        now = _time.time()
+        rows = [
+            (now - 10 + i, _json.dumps({"content": f"hello{i}", "seq": i}), "message")
+            for i in range(4)
+        ]
+        _insert_packet_stream_rows(socketio_viewer.db_path, rows)
+
+        sio_client = SocketIOTestClient(socketio_viewer.app, socketio_viewer.socketio)
+        sio_client.emit("subscribe_messages")
+
+        received = sio_client.get_received()
+        message_events = [e for e in received if e["name"] == "message_data"]
+        assert len(message_events) == 4
+        seq_values = [e["args"][0]["seq"] for e in message_events]
+        assert seq_values == [0, 1, 2, 3]
+
+    def test_subscribe_messages_excludes_packet_type(self, socketio_viewer):
+        """Packet-type rows are NOT replayed on subscribe_messages."""
+        import json as _json
+        import time as _time
+
+        from flask_socketio import SocketIOTestClient
+
+        now = _time.time()
+        rows = [
+            (now - 5, _json.dumps({"seq": 0}), "packet"),
+        ]
+        _insert_packet_stream_rows(socketio_viewer.db_path, rows)
+
+        sio_client = SocketIOTestClient(socketio_viewer.app, socketio_viewer.socketio)
+        sio_client.emit("subscribe_messages")
+
+        received = sio_client.get_received()
+        message_events = [e for e in received if e["name"] == "message_data"]
+        assert len(message_events) == 0
+
+    def test_subscribe_messages_excludes_command_type(self, socketio_viewer):
+        """Command-type rows are NOT replayed on subscribe_messages."""
+        import json as _json
+        import time as _time
+
+        from flask_socketio import SocketIOTestClient
+
+        now = _time.time()
+        rows = [
+            (now - 5, _json.dumps({"command": "ping"}), "command"),
+        ]
+        _insert_packet_stream_rows(socketio_viewer.db_path, rows)
+
+        sio_client = SocketIOTestClient(socketio_viewer.app, socketio_viewer.socketio)
+        sio_client.emit("subscribe_messages")
+
+        received = sio_client.get_received()
+        message_events = [e for e in received if e["name"] == "message_data"]
+        assert len(message_events) == 0
+
+    def test_subscribe_messages_empty_history(self, socketio_viewer):
+        """subscribe_messages with no history emits only status, no message_data."""
+        from flask_socketio import SocketIOTestClient
+
+        sio_client = SocketIOTestClient(socketio_viewer.app, socketio_viewer.socketio)
+        sio_client.emit("subscribe_messages")
+
+        received = sio_client.get_received()
+        message_events = [e for e in received if e["name"] == "message_data"]
+        assert len(message_events) == 0
+
+    def test_subscribe_messages_sets_subscription_flag(self, socketio_viewer):
+        """subscribed_messages flag is set to True after subscribe event."""
+        from flask_socketio import SocketIOTestClient
+
+        sio_client = SocketIOTestClient(socketio_viewer.app, socketio_viewer.socketio)
+        sio_client.emit("subscribe_messages")
+
+        with socketio_viewer._clients_lock:
+            flags = [
+                v.get("subscribed_messages", False)
+                for v in socketio_viewer.connected_clients.values()
+            ]
+        assert any(flags), "At least one client should have subscribed_messages=True"
+
+    def test_subscribe_messages_emits_status_ack(self, socketio_viewer):
+        """subscribe_messages always emits a status acknowledgement."""
+        from flask_socketio import SocketIOTestClient
+
+        sio_client = SocketIOTestClient(socketio_viewer.app, socketio_viewer.socketio)
+        sio_client.emit("subscribe_messages")
+
+        received = sio_client.get_received()
+        status_events = [e for e in received if e["name"] == "status"]
+        assert len(status_events) >= 1
+
+    def test_subscribe_messages_chronological_order(self, socketio_viewer):
+        """Replayed message rows are in chronological order."""
+        import json as _json
+        import time as _time
+
+        from flask_socketio import SocketIOTestClient
+
+        now = _time.time()
+        rows = [
+            (now - 30, _json.dumps({"seq": 0}), "message"),
+            (now - 15, _json.dumps({"seq": 1}), "message"),
+            (now - 5, _json.dumps({"seq": 2}), "message"),
+        ]
+        _insert_packet_stream_rows(socketio_viewer.db_path, rows)
+
+        sio_client = SocketIOTestClient(socketio_viewer.app, socketio_viewer.socketio)
+        sio_client.emit("subscribe_messages")
+
+        received = sio_client.get_received()
+        message_events = [e for e in received if e["name"] == "message_data"]
+        seq_values = [e["args"][0]["seq"] for e in message_events]
+        assert seq_values == [0, 1, 2]
+
+    def test_subscribe_messages_limit_50(self, socketio_viewer):
+        """Only up to 50 message rows are replayed."""
+        import json as _json
+        import time as _time
+
+        from flask_socketio import SocketIOTestClient
+
+        now = _time.time()
+        rows = [
+            (now - (100 - i), _json.dumps({"seq": i}), "message")
+            for i in range(60)
+        ]
+        _insert_packet_stream_rows(socketio_viewer.db_path, rows)
+
+        sio_client = SocketIOTestClient(socketio_viewer.app, socketio_viewer.socketio)
+        sio_client.emit("subscribe_messages")
+
+        received = sio_client.get_received()
+        message_events = [e for e in received if e["name"] == "message_data"]
+        assert len(message_events) <= 50
+
+
+# ===========================================================================
+# TASK-16: db_path resolved relative to config file directory (BUG-023 regression)
+# ===========================================================================
+
+class TestDbPathResolutionFromConfigDir:
+    """BotDataViewer must resolve db_path relative to the config file's parent directory,
+    matching core.py's bot_root = Path(config_file).parent.resolve(), not relative to
+    the hardcoded code root (2 dirs above app.py).  This was the root cause of the blank
+    realtime monitor when config.ini lived outside the project tree."""
+
+    def _make_viewer(self, tmp_path: Path, db_rel: str = "meshcore_bot.db") -> BotDataViewer:
+        """Create a BotDataViewer whose config lives in tmp_path with a relative db_path."""
+        config_dir = tmp_path / "deployment"
+        config_dir.mkdir()
+        cfg = configparser.ConfigParser()
+        cfg["Connection"] = {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"}
+        cfg["Bot"] = {"bot_name": "TestBot", "db_path": db_rel, "prefix_bytes": "1"}
+        cfg["Channels"] = {"monitor_channels": "general"}
+        cfg["Path_Command"] = {"max_hops": "5", "timeout": "30"}
+        config_path = str(config_dir / "config.ini")
+        with open(config_path, "w") as fh:
+            cfg.write(fh)
+        with (
+            patch.object(BotDataViewer, "_start_database_polling", lambda self: None),
+            patch.object(BotDataViewer, "_start_log_tailing", lambda self: None),
+            patch.object(BotDataViewer, "_start_cleanup_scheduler", lambda self: None),
+        ):
+            return BotDataViewer(config_path=config_path)
+
+    def test_relative_db_path_resolved_to_config_dir(self, tmp_path: Path) -> None:
+        """Relative [Bot] db_path is joined to the config file's parent, not the code root."""
+        v = self._make_viewer(tmp_path, db_rel="meshcore_bot.db")
+        expected = str((tmp_path / "deployment" / "meshcore_bot.db").resolve())
+        assert v.db_path == expected
+
+    def test_absolute_db_path_unchanged(self, tmp_path: Path) -> None:
+        """Absolute db_path is kept as-is regardless of config location."""
+        abs_dir = tmp_path / "absolute"
+        abs_dir.mkdir()
+        abs_db = str(abs_dir / "bot.db")
+        v = self._make_viewer(tmp_path, db_rel=abs_db)
+        assert v.db_path == abs_db
+
+    def test_db_path_differs_from_code_root_when_config_elsewhere(self, tmp_path: Path) -> None:
+        """When config.ini is not in the code root, the resolved db_path must NOT point
+        inside the code root (the old, broken behaviour)."""
+        v = self._make_viewer(tmp_path, db_rel="bot.db")
+        code_root = Path(
+            __file__  # tests/test_web_viewer.py
+        ).parent.parent.resolve()  # project root
+        # The resolved db_path must be under tmp_path/deployment, not under the code root
+        assert not v.db_path.startswith(str(code_root)), (
+            f"db_path {v.db_path!r} still resolves inside the code root {code_root} — "
+            "the config_base fix is not working"
+        )
+
+    def test_startup_logs_db_path_at_info(self, tmp_path: Path) -> None:
+        """BotDataViewer logs the resolved database path at INFO level on startup.
+
+        _setup_logging() calls handlers.clear() before adding its own handlers, so
+        any handler attached before __init__ is removed.  We patch _setup_logging to
+        add a capture handler immediately after the original runs so we see log records
+        emitted during the rest of __init__.
+        """
+        import logging as _logging
+
+        logged: list[str] = []
+
+        class _Capture(_logging.Handler):
+            def emit(self, record: _logging.LogRecord) -> None:
+                logged.append(record.getMessage())
+
+        original_setup_logging = BotDataViewer._setup_logging
+        capture_handler = _Capture(level=_logging.INFO)
+
+        def patched_setup_logging(viewer_self: BotDataViewer) -> None:  # type: ignore[type-arg]
+            original_setup_logging(viewer_self)
+            viewer_self.logger.addHandler(capture_handler)
+
+        with patch.object(BotDataViewer, "_setup_logging", patched_setup_logging):
+            self._make_viewer(tmp_path)
+
+        assert any("Using database:" in msg for msg in logged), (
+            f"Expected 'Using database:' INFO log at startup; got: {logged}"
         )

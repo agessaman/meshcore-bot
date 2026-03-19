@@ -95,10 +95,6 @@ class CommandManager:
         self.plugin_loader = PluginLoader(bot, local_commands_dir=local_commands_dir)
         self.commands = self.plugin_loader.load_all_plugins()
 
-        # Load aliases and inject them into command keyword lists
-        self.aliases = self.load_aliases()
-        self._apply_aliases()
-
         # Cache for internet connectivity status to avoid checking on every command
         # Thread-safe cache with asyncio.Lock
         self._internet_cache = InternetStatusCache(has_internet=True, timestamp=0)
@@ -330,6 +326,15 @@ class CommandManager:
 
         return True, ""
 
+    def _is_no_event_received(self, result) -> bool:
+        """Return True when result is an ERROR event with reason 'no_event_received'."""
+        if not result or not hasattr(result, 'type'):
+            return False
+        if result.type != EventType.ERROR:
+            return False
+        payload = result.payload if hasattr(result, 'payload') else {}
+        return isinstance(payload, dict) and payload.get('reason') == 'no_event_received'
+
     def _handle_send_result(
         self,
         result,
@@ -491,49 +496,6 @@ class CommandManager:
         prefix = self.bot.config.get('Bot', 'command_prefix', fallback='')
         return prefix.strip() if prefix else ''
 
-    def load_aliases(self) -> dict[str, str]:
-        """Load command aliases from the ``[Aliases]`` config section.
-
-        Each entry maps a short alias to a canonical command name, e.g.::
-
-            [Aliases]
-            s  = schedule
-            wx = weather
-
-        Returns:
-            Dict[str, str]: alias → canonical command name (both lowercase).
-        """
-        aliases: dict[str, str] = {}
-        if not self.bot.config.has_section('Aliases'):
-            return aliases
-        for alias, canonical in self.bot.config.items('Aliases'):
-            alias = alias.strip().lower()
-            canonical = canonical.strip().lower()
-            if alias and canonical:
-                aliases[alias] = canonical
-        return aliases
-
-    def _apply_aliases(self) -> None:
-        """Inject each alias into the keyword list of its canonical command.
-
-        This lets the existing ``matches_keyword()`` dispatch handle aliases
-        transparently — no changes needed in ``check_keywords()``.
-
-        Unknown aliases (pointing to commands that are not loaded) are logged
-        and skipped.
-        """
-        for alias, canonical in self.aliases.items():
-            command = self.commands.get(canonical)
-            if command is None:
-                self.logger.warning(
-                    f"Alias '{alias}' → '{canonical}' skipped: "
-                    f"command '{canonical}' is not loaded"
-                )
-                continue
-            if alias not in [k.lower() for k in command.keywords]:
-                command.keywords.append(alias)
-                self.logger.debug(f"Alias '{alias}' → '{canonical}' registered")
-
     def format_keyword_response(self, response_format: str, message: MeshMessage) -> str:
         """Format a keyword response string with message data.
 
@@ -552,6 +514,29 @@ class CommandManager:
             mesh_info=None  # Keywords don't use mesh info placeholders
         )
 
+    def get_max_message_length(self, message: MeshMessage) -> int:
+        """Return the effective max message length for *message* (DM=150, channel=150-prefix).
+
+        Mirrors ``BaseCommand.get_max_message_length`` but works on the manager level so it
+        can be called outside of a specific command instance.
+        """
+        if message.is_dm:
+            return 150
+        username: str | None = None
+        try:
+            if hasattr(self.bot, 'meshcore') and self.bot.meshcore:
+                self_info = getattr(self.bot.meshcore, 'self_info', None)
+                if self_info:
+                    if isinstance(self_info, dict):
+                        username = self_info.get('name') or self_info.get('user_name')
+                    else:
+                        username = getattr(self_info, 'name', None) or getattr(self_info, 'user_name', None)
+        except Exception:
+            pass
+        if not username:
+            username = self.bot.config.get('Bot', 'bot_name', fallback='Bot')
+        return max(1, 150 - len(username) - 2)
+
     def check_keywords(self, message: MeshMessage) -> list[tuple]:
         """Check message content for keywords and return matching responses.
 
@@ -564,7 +549,7 @@ class CommandManager:
         Returns:
             List[tuple]: List of (trigger, response) tuples for matched keywords.
         """
-        matches = []
+        matches: list[tuple[str, Optional[str]]] = []
         content = message.content.strip()
 
         # Check for command prefix if configured
@@ -1022,15 +1007,29 @@ class CommandManager:
             if not scope_is_global and hasattr(self.bot.meshcore.commands, "set_flood_scope"):
                 await self.bot.meshcore.commands.set_flood_scope(scope_to_use)
 
-            try:
-                # Use meshcore_py directly (no meshcore-cli for channel sends)
-                result = await self.bot.meshcore.commands.send_chan_msg(channel_num, content)
-            finally:
-                if not scope_is_global and hasattr(self.bot.meshcore.commands, "set_flood_scope"):
-                    await self.bot.meshcore.commands.set_flood_scope("*")
+            target = f"{channel} (channel {channel_num})"
+            # Retry on no_event_received: max 2 extra attempts, 2s apart
+            _max_retries = 2
+            for _attempt in range(_max_retries + 1):
+                try:
+                    result = await self.bot.meshcore.commands.send_chan_msg(channel_num, content)
+                finally:
+                    if not scope_is_global and hasattr(self.bot.meshcore.commands, "set_flood_scope"):
+                        await self.bot.meshcore.commands.set_flood_scope("*")
+
+                if self._is_no_event_received(result) and _attempt < _max_retries:
+                    self.logger.warning(
+                        f"Channel message to {target}: no_event_received "
+                        f"(attempt {_attempt + 1}/{_max_retries + 1}), retrying in 2s"
+                    )
+                    await asyncio.sleep(2)
+                    # Re-apply scope for next attempt
+                    if not scope_is_global and hasattr(self.bot.meshcore.commands, "set_flood_scope"):
+                        await self.bot.meshcore.commands.set_flood_scope(scope_to_use)
+                    continue
+                break
 
             # Handle result using unified handler
-            target = f"{channel} (channel {channel_num})"
             success = self._handle_send_result(
                 result, "Channel message", target, rate_limit_key=rate_limit_key
             )
@@ -1110,7 +1109,7 @@ class CommandManager:
                 return False
         return True
 
-    def get_help_for_command(self, command_name: str, message: MeshMessage = None) -> str:
+    def get_help_for_command(self, command_name: str, message: Optional[MeshMessage] = None) -> str:
         """Get help text for a specific command (LoRa-friendly compact format).
 
         Args:
@@ -1191,7 +1190,7 @@ class CommandManager:
     _HELP_PREFIX = "Bot Help: "
     _HELP_SUFFIX = " | More: 'help <command>'"
 
-    def get_general_help(self, message: MeshMessage = None) -> str:
+    def get_general_help(self, message: Optional[MeshMessage] = None) -> str:
         """Get general help text from config (LoRa-friendly compact format).
 
         When message is provided, only lists commands valid for the message's channel.
@@ -1313,19 +1312,50 @@ class CommandManager:
             rate_limit_key = self.get_rate_limit_key(message)
             if message.is_dm:
                 return await self.send_dm(
-                    message.sender_id, content,
+                    message.sender_id or "", content,
                     skip_user_rate_limit=skip_user_rate_limit,
                     rate_limit_key=rate_limit_key,
                 )
             else:
                 return await self.send_channel_message(
-                    message.channel, content,
+                    message.channel or "", content,
                     skip_user_rate_limit=skip_user_rate_limit,
                     rate_limit_key=rate_limit_key,
                 )
         except Exception as e:
             self.logger.error(f"Failed to send response: {e}")
             return False
+
+    @staticmethod
+    def split_text_into_chunks(text: str, max_len: int) -> list[str]:
+        """Split *text* into a list of strings each at most *max_len* characters.
+
+        Splitting prefers the last space within the limit so words are not broken;
+        if no space is found the chunk is hard-split at *max_len*.
+
+        Args:
+            text: The text to split.
+            max_len: Maximum length of each chunk (must be >= 1).
+
+        Returns:
+            List of non-empty chunk strings.  Returns ``[""]`` when *text* is empty.
+        """
+        if max_len < 1:
+            max_len = 1
+        if len(text) <= max_len:
+            return [text]
+        chunks: list[str] = []
+        while text:
+            if len(text) <= max_len:
+                chunks.append(text)
+                break
+            # Try to split on the last space within the window
+            split_at = text.rfind(' ', 0, max_len + 1)
+            if split_at <= 0:
+                split_at = max_len
+            chunks.append(text[:split_at].rstrip())
+            text = text[split_at:].lstrip()
+        return chunks
 
     async def send_response_chunked(
         self, message: MeshMessage, chunks: list[str], *, skip_user_rate_limit_first: bool = True
@@ -1357,7 +1387,7 @@ class CommandManager:
                     await asyncio.sleep(sleep_time)
                 skip = skip_user_rate_limit_first if i == 0 else True
                 success = await self.send_dm(
-                    message.sender_id,
+                    message.sender_id or "",
                     chunk,
                     skip_user_rate_limit=skip,
                     rate_limit_key=rate_limit_key,
@@ -1370,7 +1400,7 @@ class CommandManager:
                     return False
             return True
         return await self.send_channel_messages_chunked(
-            message.channel,
+            message.channel or "",
             chunks,
             skip_user_rate_limit=skip_user_rate_limit_first,
             rate_limit_key=rate_limit_key,
@@ -1651,6 +1681,6 @@ class CommandManager:
         """Reload a specific plugin"""
         return self.plugin_loader.reload_plugin(plugin_name)
 
-    def get_plugin_metadata(self, plugin_name: str = None) -> dict[str, Any]:
+    def get_plugin_metadata(self, plugin_name: Optional[str] = None) -> dict[str, Any]:
         """Get plugin metadata"""
         return self.plugin_loader.get_plugin_metadata(plugin_name)

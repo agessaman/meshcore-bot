@@ -1,16 +1,14 @@
 """Tests for modules.commands.base_command."""
 
-import pytest
-from unittest.mock import MagicMock
 
-from modules.commands.base_command import BaseCommand
-from modules.commands.ping_command import PingCommand
-from modules.commands.dadjoke_command import DadJokeCommand
-from modules.commands.joke_command import JokeCommand
-from modules.commands.stats_command import StatsCommand
-from modules.commands.hacker_command import HackerCommand
-from modules.commands.sports_command import SportsCommand
 from modules.commands.alert_command import AlertCommand
+from modules.commands.base_command import BaseCommand
+from modules.commands.dadjoke_command import DadJokeCommand
+from modules.commands.hacker_command import HackerCommand
+from modules.commands.joke_command import JokeCommand
+from modules.commands.ping_command import PingCommand
+from modules.commands.sports_command import SportsCommand
+from modules.commands.stats_command import StatsCommand
 from modules.models import MeshMessage
 from tests.conftest import mock_message
 

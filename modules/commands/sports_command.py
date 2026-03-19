@@ -126,7 +126,7 @@ class SportsCommand(BaseCommand):
 
         return any(first_word == keyword.lower() for keyword in self.keywords)
 
-    def can_execute(self, message: MeshMessage) -> bool:
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Check if this command can execute with the given message"""
         if not self.sports_enabled:
             return False

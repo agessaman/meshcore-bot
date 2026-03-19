@@ -6,10 +6,31 @@ Tracking of known bugs, fixed issues, and outstanding defects in meshcore-bot.
 
 ## Fixed Bugs
 
-### v0.8.3 and recent history
+### v0.9.0 and recent history
 
 | Commit | Summary |
 |--------|---------|
+| pending | Refactored command aliases from global `[Aliases]` config section to per-command `aliases =` key in each command's own config section; `BaseCommand._load_aliases_from_config()` reads and injects aliases at startup; `CommandManager.load_aliases()` and `_apply_aliases()` removed |
+| pending | Fixed pre-existing test failure in `test_discord_bridge_multi_webhooks.py`: `ConfigParser` lowercases all config keys so `bridge.Public` is stored as `"public"` — test assertions updated to match actual lowercase key behaviour; runtime matching was already case-insensitive |
+| `26d18c1` | Fixed BUG-029 (third pass): Realtime monitor panels stuck at "Connecting…" — root cause was `<script type="module">` in `realtime.html` creating a second Socket.IO manager that raced with `base.html`'s `forceNew: true` manager; the module-socket's `connect` event never fired. Also: `ping_timeout=5` (5 s) was too short for subscribe handlers that replay DB history; `subscribed_messages` key was missing from `connected_clients` initial dict. Fixed: changed `<script type="module">` to regular `<script>` with dynamic `import()` for the decoder; removed `forceNew: true` from `base.html` so both pages share one Socket.IO manager; raised `ping_timeout` 5→20 s; added `subscribed_messages: False` to client tracking dict. |
+| `26d18c1` | Fixed BUG-029 (second pass): `config_base` was a local variable — stored as `self._config_base` instance attribute; removed dead `_get_db_path()` method that still used `self.bot_root`; fixed `subscribe_logs` and `_start_log_tailing` to resolve log file path via `self._config_base` instead of `self.bot_root`; fixed misleading hardcoded "Connected"/"Active" status badges in `realtime.html` (now start as "Connecting…" and update dynamically on actual SocketIO connect). |
+| `26d18c1` | Fixed BUG-029 (first pass): `app.py` resolved `db_path` relative to the code root (2 dirs above `app.py`) instead of relative to the config file's parent directory, causing the web viewer and bot to open different database files. Fixed: `config_base = Path(config_path).parent.resolve()` used as base for `resolve_path()`; also elevated subscribe-handler replay errors from DEBUG to WARNING and added INFO log of resolved db_path on startup. 4 new tests in `TestDbPathResolutionFromConfigDir`. |
+| `26d18c1` | Fixed BUG-027: `test_weekly_on_wrong_day_does_not_run` was patching `get_current_time` with real `now` (Monday) instead of `fake_now` (mocked Tuesday) — test always passed on non-Monday but failed on Mondays; fixed in `tests/test_scheduler_logic.py:430` |
+| `26d18c1` | Fixed BUG-026: Help and long keyword responses cut off — added `split_text_into_chunks()` and `get_max_message_length()` to `CommandManager`; `message_handler.py` keyword dispatch now splits responses and sends via `send_response_chunked()`; 10 tests |
+| `26d18c1` | Fixed BUG-025: `send_channel_message` did not retry on `no_event_received` — added retry loop in `command_manager.py` (max 2 retries, 2s delay); `_is_no_event_received()` helper; 5 tests |
+| `ab72be9` | Fixed BUG-024: DB backup scheduler fired every second — `last_db_backup_run` now updated after each call; 2-min fire window prevents triggering on late startup; last-run seeded from DB on restart |
+| `ab72be9` | Fixed BUG-023: Realtime monitoring command stream blank on load — added 50-row history replay to `subscribe_commands` handler; fixed `last_timestamp = 0` → `time.time() - 300` in polling thread |
+| `ab72be9` | Fixed BUG-022: `IndexError` from meshcore parser silently discarded in asyncio task — installed custom loop exception handler in `core.py:start()` to suppress at DEBUG level |
+| `ab72be9` | Fixed BUG-020: Config TUI `[Scheduled_Messages]` keys showed `?` marker — dynamic sections (no fixed example keys) now suppress unknown-key marker |
+| `ab72be9` | Fixed BUG-021: Config TUI had no way to edit the time portion of a scheduled message — added `r` (rename key), `a` (add key+value), `d`/Delete (delete key with confirmation) bindings in keys pane |
+| `ab72be9` | Fixed BUG-019: `addPacketEntry` in `realtime.html` crashed with TypeError when `data.path` is a string — guarded with `Array.isArray()` |
+| `ab72be9` | Fixed BUG-018: Real-time monitoring SocketIO connections dropped due to Werkzeug 3.1 WebSocket teardown assertion (see BUG-012 fix); DB polling and subscription replay confirmed correct |
+| `ab72be9` | Fixed BUG-017: `disconnect_radio()` now uses `asyncio.wait_for(..., timeout=10)` — no longer hangs indefinitely |
+| `ab72be9` | Fixed BUG-016: `reboot_radio()` now sends `meshcore.commands.reboot()` firmware command before disconnecting/reconnecting |
+| `ab72be9` | Fixed BUG-015: scheduler thread blocked on `future.result(timeout=X)` causing `TimeoutError` spam and stalling the loop — replaced all four blocking waits with `add_done_callback` (fire-and-forget) in `run_scheduler` |
+| `ab72be9` | Fixed BUG-001: web viewer now supports optional password authentication via `web_viewer_password` in `[Web_Viewer]` config |
+| `ab72be9` | Fixed BUG-002: `db_manager` now runs ALTER TABLE migrations for `channel_operations` (`result_data`, `processed_at`) and `feed_message_queue` (`item_id`, `item_title`, `priority`) on startup |
+| `ab72be9` | Fixed BUG-003: geocoding rate-limit skip in `repeater_manager` now logs at INFO level instead of DEBUG so it is visible in production logs |
 | `1264f49` | Fixed repeater manager auto-purge ignoring `auto_manage_contacts` config — purge ran unconditionally regardless of setting (issue #50) |
 | `1264f49` | Fixed web viewer responses returning stale or incorrect repeater data |
 | `5c8ee35` | Fixed timezone handling in `format_elapsed_display` — elapsed times displayed incorrectly in non-UTC timezones (issue #75) |
@@ -32,19 +53,18 @@ Tracking of known bugs, fixed issues, and outstanding defects in meshcore-bot.
 
 ### High Priority
 
-| ID | Module | Description | Workaround |
-|----|--------|-------------|------------|
-| BUG-001 | `web_viewer` | Web viewer has **no authentication** — exposes all contact data and packet history on the configured host/port | Set `host = 127.0.0.1` in `[Web_Viewer]` config; use firewall rules or SSH tunnel for remote access |
-| BUG-002 | `db_manager` | Moving a database from an older install can cause `"no such column"` errors at startup if schema migrations haven't run yet | Start bot once to trigger migrations; if errors persist, clear stale `feed_message_queue` and `channel_operations` rows |
-| BUG-003 | `repeater_manager` | Geocoding runs at most once per packet hash within a 60-second window, but concurrent adverts from the same node within that window skip geocoding silently | None; by design for rate limiting, but location may lag for rapid-fire adverts |
+| ID | Task | Module | Description | Workaround |
+|----|------|--------|-------------|------------|
+| ~~BUG-025~~ | TASK-10 ✅ | Fixed — see Fixed section above |
+| ~~BUG-026~~ | TASK-11 ✅ | Fixed — see Fixed section above |
 
 ### Medium Priority
 
-| ID | Module | Description | Workaround |
-|----|--------|-------------|------------|
+| ID | Task | Module | Description | Workaround |
+|----|------|--------|-------------|------------|
 | BUG-004 | `message_handler` | RF data correlation (SNR/RSSI) can miss messages if the RF log event arrives more than `rf_data_timeout` (default 15s) after the message | Increase `rf_data_timeout` in `[Bot]` config |
 | BUG-005 | `scheduler` | On Raspberry Pi Zero 2 W, bot + web viewer together use ~300 MB RAM, leaving little headroom under load | Disable web viewer (`[Web_Viewer] enabled = false`) or tune mesh graph settings (`graph_startup_load_days = 7`) |
-| BUG-006 | `feed_manager` | Stale rows in `feed_message_queue` from an old install can cause repeated scheduler errors after a database migration | Clear pending queue: `DELETE FROM feed_message_queue WHERE sent_at IS NULL` |
+| BUG-006 | `feed_manager` | Stale rows in `feed_message_queue` from an old install can cause repeated queue-processing errors after a database migration (note: scheduler `TimeoutError` spam from the same area is fixed — see BUG-015) | Clear pending queue: `DELETE FROM feed_message_queue WHERE sent_at IS NULL` |
 | BUG-007 | `discord_bridge_service` | Discord webhook rate limit is 30 requests/minute; bot warns at 20% exhaustion but does not queue excess messages — they are dropped | Keep bridged channels low-traffic; consider rate-limiting at mesh level |
 | BUG-008 | `telegram_bridge_service` | Telegram `message_thread_id` (forum/topic support) is not implemented — messages go to the main group channel only | Manual: add thread ID mapping in a future plugin iteration |
 
@@ -52,6 +72,8 @@ Tracking of known bugs, fixed issues, and outstanding defects in meshcore-bot.
 
 | ID | Module | Description | Notes |
 |----|--------|-------------|-------|
+| ~~BUG-029~~ | TASK-16/T1-A ✅ | Fixed (third pass) — see Fixed section above | |
+| BUG-028 | `message_handler` | `decode_meshcore_packet()` except-handler references `byte_data` before assignment — when `bytes.fromhex()` itself raises, the handler throws `UnboundLocalError` instead of returning `None`. Discovered 2026-03-16 via test coverage analysis. | Affects any caller passing invalid hex (e.g. non-hex characters). Fix: initialise `byte_data = b""` before the `try` block in `message_handler.py`. |
 | BUG-009 | `discord_bridge_service` | DMs are never bridged to Discord or Telegram — hardcoded exclusion | By design; DMs contain private communications |
 | BUG-010 | `wx_command` | Weather alerts and NOAA data are US-only | Use `wx_international.py` alternative in `modules/commands/alternatives/` for non-US deployments |
 | BUG-011 | `repeater_manager` | MeshCore device hard-limits contacts to 300; auto-purge threshold is 280 — purging 20 contacts at a time may not be enough on very busy meshes | Tune `auto_purge_threshold` and ensure `auto_manage_contacts` is enabled |

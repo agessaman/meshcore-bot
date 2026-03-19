@@ -1,10 +1,11 @@
 """Tests for modules.commands.hello_command."""
 
-import pytest
 from unittest.mock import patch
 
+import pytest
+
 from modules.commands.hello_command import HelloCommand
-from tests.conftest import command_mock_bot, mock_message
+from tests.conftest import mock_message
 
 
 class TestHelloCommand:

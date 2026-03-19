@@ -19,11 +19,12 @@ from .commands.base_command import BaseCommand
 class PluginLoader:
     """Handles dynamic loading and discovery of command plugins"""
 
-    def __init__(self, bot, commands_dir: str = None, local_commands_dir: Optional[str] = None):
+    def __init__(self, bot: Any, commands_dir: Optional[str] = None, local_commands_dir: Optional[str] = None) -> None:
         self.bot = bot
         self.logger = bot.logger
         self.commands_dir = commands_dir or os.path.join(os.path.dirname(__file__), 'commands')
         self.alternatives_dir = os.path.join(self.commands_dir, 'alternatives')
+        self.local_commands_dir: Optional[str]
         if local_commands_dir is not None:
             self.local_commands_dir = local_commands_dir
         else:
@@ -40,7 +41,7 @@ class PluginLoader:
         self._failed_plugins: dict[str, str] = {}  # plugin_name -> error_message
         self._load_plugin_overrides()
 
-    def _load_plugin_overrides(self):
+    def _load_plugin_overrides(self) -> None:
         """Load plugin override configuration from config file"""
         self.plugin_overrides = {}
         try:
@@ -58,7 +59,7 @@ class PluginLoader:
 
     def discover_plugins(self) -> list[str]:
         """Discover all Python files in the commands directory that could be plugins"""
-        plugin_files = []
+        plugin_files: list[str] = []
         commands_path = Path(self.commands_dir)
 
         if not commands_path.exists():
@@ -77,7 +78,7 @@ class PluginLoader:
         """Discover all Python files in the alternatives directory that could be plugins
         Note: Plugins in the 'inactive' subdirectory are ignored
         """
-        plugin_files = []
+        plugin_files: list[str] = []
         alternatives_path = Path(self.alternatives_dir)
 
         if not alternatives_path.exists():
@@ -432,7 +433,7 @@ class PluginLoader:
 
         return loaded_plugins
 
-    def _build_keyword_mappings(self, plugin_name: str, metadata: dict[str, Any]):
+    def _build_keyword_mappings(self, plugin_name: str, metadata: dict[str, Any]) -> None:
         """Build keyword to plugin name mappings"""
         # Map keywords to plugin name
         for keyword in metadata.get('keywords', []):
@@ -457,7 +458,7 @@ class PluginLoader:
         """Get all loaded plugins"""
         return self.loaded_plugins.copy()
 
-    def get_plugin_metadata(self, plugin_name: str = None) -> dict[str, Any]:
+    def get_plugin_metadata(self, plugin_name: Optional[str] = None) -> dict[str, Any]:
         """Get metadata for a specific plugin or all plugins"""
         if plugin_name:
             return self.plugin_metadata.get(plugin_name, {})

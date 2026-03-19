@@ -117,6 +117,10 @@ module = [
     "modules.commands.schedule_command",
     "modules.service_plugins.webhook_service",
     "modules.service_plugins.base_service",
+    "modules.utils",
+    "modules.plugin_loader",
+    "modules.security_utils",
+    "modules.commands.base_command",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
@@ -135,5 +139,5 @@ source = ["modules"]
 omit = ["tests/*", ".venv/*"]
 
 [tool.coverage.report]
-fail_under = 27
+fail_under = 35
 show_missing = true

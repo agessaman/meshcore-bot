@@ -24,7 +24,7 @@ try:
     import aiohttp
     AIOHTTP_AVAILABLE = True
 except ImportError:
-    aiohttp = None
+    aiohttp = None  # type: ignore[assignment]
     AIOHTTP_AVAILABLE = False
 
 # Import cryptography for signature verification
@@ -143,16 +143,16 @@ class MapUploaderService(BaseServicePlugin):
 
         # HTTP session
         # HTTP session
-        self.http_session: Optional[aiohttp.ClientSession] = None  # type: ignore
+        self.http_session: Optional[aiohttp.ClientSession] = None
 
         # Event subscriptions
-        self.event_subscriptions = []
+        self.event_subscriptions: list[Any] = []
 
         # Exit flag
         self.should_exit = False
 
         # Cleanup tracking
-        self._last_cleanup_time = 0
+        self._last_cleanup_time: float = 0
         self._cleanup_interval = 3600  # Clean up every hour
 
         self.logger.info("Map uploader service initialized")
@@ -214,7 +214,7 @@ class MapUploaderService(BaseServicePlugin):
 
         # Wait for bot to be connected
         max_wait = 30  # seconds
-        wait_time = 0
+        wait_time: float = 0
         while (not self.bot.connected or not self.meshcore) and wait_time < max_wait:
             await asyncio.sleep(0.5)
             wait_time += 0.5
@@ -238,7 +238,7 @@ class MapUploaderService(BaseServicePlugin):
             return
 
         # Create HTTP session
-        self.http_session = aiohttp.ClientSession()  # type: ignore
+        self.http_session = aiohttp.ClientSession()
 
         # Setup event handlers
         await self._setup_event_handlers()
@@ -839,6 +839,8 @@ class MapUploaderService(BaseServicePlugin):
             ValueError: If private key length is invalid.
         """
         try:
+            if not self.private_key_hex or not self.public_key_hex:
+                raise ValueError("Private or public key not available")
             # Convert private key to bytes
             private_key_bytes = hex_to_bytes(self.private_key_hex)
             public_key_bytes = hex_to_bytes(self.public_key_hex)

@@ -1,6 +1,5 @@
 """Tests for modules/models.py — MeshMessage dataclass."""
 
-import pytest
 
 from modules.models import MeshMessage
 

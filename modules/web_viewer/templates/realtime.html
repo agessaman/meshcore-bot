@@ -443,15 +443,38 @@
     </div>
 </div>
 
+<!-- Stream Filters -->
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="d-flex align-items-center flex-wrap gap-2">
+            <small class="text-muted me-1">Show:</small>
+            <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input rt-filter-cb" type="checkbox" id="rt-filter-command" data-target="command-card" checked>
+                <label class="form-check-label" for="rt-filter-command" style="font-size:0.8rem;color:#6c757d">Commands</label>
+            </div>
+            <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input rt-filter-cb" type="checkbox" id="rt-filter-packet" data-target="packet-card" checked>
+                <label class="form-check-label" for="rt-filter-packet" style="font-size:0.8rem;color:#0dcaf0">Packets</label>
+            </div>
+            <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input rt-filter-cb" type="checkbox" id="rt-filter-message" data-target="message-card" checked>
+                <label class="form-check-label" for="rt-filter-message" style="font-size:0.8rem;color:#0d6efd">Messages</label>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Stream Controls -->
 <div class="row mb-4">
     <div class="col-md-6">
-        <div class="card">
+        <div class="card" id="command-card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h6><i class="fas fa-comments"></i> Command Stream</h6>
-                <div>
-                    <span class="badge bg-success" id="command-status">Connected</span>
-                    <button class="btn btn-sm btn-outline-secondary ms-2" onclick="clearCommands()">Clear</button>
+                <div class="d-flex align-items-center gap-1">
+                    <span class="badge bg-warning" id="command-status">Connecting…</span>
+                    <button class="btn btn-sm btn-outline-secondary ms-2" id="cmd-scroll-top" onclick="scrollStream('command-stream','top')" title="Scroll to newest"><i class="fas fa-arrow-up"></i></button>
+                    <button class="btn btn-sm btn-outline-secondary" id="cmd-scroll-bottom" onclick="scrollStream('command-stream','bottom')" title="Scroll to oldest"><i class="fas fa-arrow-down"></i></button>
+                    <button class="btn btn-sm btn-outline-secondary ms-1" onclick="clearCommands()">Clear</button>
                 </div>
             </div>
             <div class="card-body">
@@ -465,12 +488,14 @@
     </div>
     
     <div class="col-md-6">
-        <div class="card">
+        <div class="card" id="packet-card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h6><i class="fas fa-route"></i> Packet Stream</h6>
-                <div>
-                    <span class="badge bg-success" id="packet-status">Active</span>
-                    <button class="btn btn-sm btn-outline-secondary ms-2" onclick="clearPackets()">Clear</button>
+                <div class="d-flex align-items-center gap-1">
+                    <span class="badge bg-warning" id="packet-status">Connecting…</span>
+                    <button class="btn btn-sm btn-outline-secondary ms-2" id="pkt-scroll-top" onclick="scrollStream('packet-stream','top')" title="Scroll to newest"><i class="fas fa-arrow-up"></i></button>
+                    <button class="btn btn-sm btn-outline-secondary" id="pkt-scroll-bottom" onclick="scrollStream('packet-stream','bottom')" title="Scroll to oldest"><i class="fas fa-arrow-down"></i></button>
+                    <button class="btn btn-sm btn-outline-secondary ms-1" onclick="clearPackets()">Clear</button>
                 </div>
             </div>
             <div class="card-body">
@@ -487,12 +512,14 @@
 <!-- Message Monitor -->
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card">
+        <div class="card" id="message-card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h6><i class="fas fa-comment-dots"></i> Live Channel Messages</h6>
-                <div>
-                    <span class="badge bg-success" id="message-status">Active</span>
-                    <button class="btn btn-sm btn-outline-secondary ms-2" onclick="clearMessages()">Clear</button>
+                <div class="d-flex align-items-center gap-1">
+                    <span class="badge bg-warning" id="message-status">Connecting…</span>
+                    <button class="btn btn-sm btn-outline-secondary ms-2" id="msg-scroll-top" onclick="scrollStream('message-stream','top')" title="Scroll to newest"><i class="fas fa-arrow-up"></i></button>
+                    <button class="btn btn-sm btn-outline-secondary" id="msg-scroll-bottom" onclick="scrollStream('message-stream','bottom')" title="Scroll to oldest"><i class="fas fa-arrow-down"></i></button>
+                    <button class="btn btn-sm btn-outline-secondary ms-1" onclick="clearMessages()">Clear</button>
                     <button class="btn btn-sm btn-outline-secondary ms-1" id="msg-pause-btn" onclick="toggleMessagePause()">
                         <i class="fas fa-pause" id="msg-pause-icon"></i> Pause
                     </button>
@@ -707,14 +734,21 @@
 {% endblock %}
 
 {% block extra_js %}
-<script type="module">
-    // Import meshcore-decoder for client-side packet decoding
-    import { decodePacket, MeshCoreKeyStore } from '/static/js/meshcore-browser.mjs';
-    
-    // Make decoder available globally for use in functions
-    window.meshCoreDecoder = { decodePacket, MeshCoreKeyStore };
-    
-    // Initialize Socket.IO connection
+<script>
+    // Load meshcore-decoder asynchronously so it doesn't block socket init.
+    // Dynamic import() works in regular <script> tags on all modern browsers and
+    // avoids the <script type="module"> scope/timing issues that prevented
+    // socket.on('connect') from firing (the module deferred execution caused a
+    // race between two Socket.IO managers, with the module's socket never
+    // receiving its connect event).
+    import('/static/js/meshcore-browser.mjs').then(function(m) {
+        window.meshCoreDecoder = m;
+        window._MeshCoreKeyStore = m.MeshCoreKeyStore;
+    }).catch(function(e) {
+        console.warn('MeshCore decoder unavailable:', e);
+    });
+
+    // Initialize Socket.IO connection (plain io() with same defaults as base.html)
     const socket = io();
     
     // Connection status
@@ -754,7 +788,7 @@
         for (const entry of channelEntries) {
             try {
                 // Create a key store with just this one secret
-                const testKeyStore = new MeshCoreKeyStore({
+                const testKeyStore = new (window._MeshCoreKeyStore || class { addChannelSecrets(){} })({
                     channelSecrets: [entry.secret]
                 });
                 
@@ -845,9 +879,9 @@
             }
 
             // Create the decoder key store with all channel secrets
-            decoderKeyStore = new MeshCoreKeyStore({
+            decoderKeyStore = window._MeshCoreKeyStore ? new window._MeshCoreKeyStore({
                 channelSecrets: channelSecrets
-            });
+            }) : null;
             window.decoderKeyStore = decoderKeyStore;
 
             let logMsg = `Initialized MeshCore decoder with ${channelSecrets.length} channel keys (Public`;
@@ -923,6 +957,9 @@
     // Socket event handlers
     socket.on('connect', function() {
         console.log('Connected to server');
+        updateStatus('command-status', 'Connected', 'success');
+        updateStatus('packet-status', 'Connected', 'success');
+        updateStatus('message-status', 'Connected', 'success');
         socket.emit('subscribe_commands');
         socket.emit('subscribe_packets');
         socket.emit('subscribe_messages');
@@ -1017,6 +1054,8 @@
         const hops = (data.hops != null && data.hops !== '' && data.hops !== 255)
             ? `<small class="text-muted ms-1">${data.hops} hop${data.hops !== 1 ? 's' : ''}</small>` : '';
 
+        const channelLabel = data.channel && !data.is_dm
+            ? `<span class="text-info me-1">[#${escapeHtml(data.channel)}]</span>` : '';
         const entry = document.createElement('div');
         entry.className = 'stream-entry p-2 mb-1 rounded';
         entry.style.borderLeftColor = data.is_dm ? '#6f42c1' : '#0dcaf0';
@@ -1025,7 +1064,7 @@
                 <span>${ch}${dm}<strong>${escapeHtml(data.sender || '?')}</strong>${snr}${hops}</span>
                 <small class="text-muted">${ts}</small>
             </div>
-            <div class="text-break">${escapeHtml(data.content || '')}</div>
+            <div class="text-break">${channelLabel}${escapeHtml(data.content || '')}</div>
         `;
 
         container.insertBefore(entry, container.firstChild);
@@ -1047,6 +1086,26 @@
 
     window.clearMessages = clearMessages;
     window.toggleMessagePause = toggleMessagePause;
+
+    window.scrollStream = function(containerId, dir) {
+        const c = document.getElementById(containerId);
+        if (!c) return;
+        if (dir === 'top') {
+            c.scrollTop = 0;
+        } else {
+            c.scrollTop = c.scrollHeight;
+        }
+    };
+
+    // Stream panel visibility filters
+    document.querySelectorAll('.rt-filter-cb').forEach(function(cb) {
+        cb.addEventListener('change', function() {
+            const card = document.getElementById(this.dataset.target);
+            if (card) {
+                card.style.display = this.checked ? '' : 'none';
+            }
+        });
+    });
 
     // Ping mechanism to keep connection alive
     let pingInterval = null;

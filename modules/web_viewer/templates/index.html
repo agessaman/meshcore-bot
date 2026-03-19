@@ -28,7 +28,11 @@
                             <span class="status-indicator status-connected me-2"></span>
                             <span id="system-status" class="fw-bold">Online</span>
                         </div>
-                        <h3 id="connected-clients" class="text-primary mb-1">0</h3>
+                        <h3 class="text-primary mb-1">
+                            <a href="#" id="connected-clients" class="text-primary text-decoration-none"
+                               data-bs-toggle="modal" data-bs-target="#connectedClientsModal"
+                               onclick="window.dashboard && window.dashboard.loadConnectedClients()">0</a>
+                        </h3>
                         <small class="text-muted text-uppercase">Connected Clients</small>
                     </div>
                     
@@ -316,11 +320,34 @@
 <div class="row mt-4">
     <div class="col-12">
         <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <span><i class="fas fa-satellite-dish me-2"></i>Live Activity
                     <span id="live-dot" class="status-indicator status-disconnected ms-2" title="SocketIO connection"></span>
                 </span>
-                <div class="d-flex gap-2 align-items-center">
+                <div class="d-flex gap-2 align-items-center flex-wrap">
+                    <!-- Type filters -->
+                    <div class="d-flex gap-2 align-items-center" id="live-filters">
+                        <small class="text-muted">Filter:</small>
+                        <div class="form-check form-check-inline mb-0">
+                            <input class="form-check-input live-filter-cb" type="checkbox" id="filter-packet" data-type="packet" checked>
+                            <label class="form-check-label" for="filter-packet" style="font-size:0.8rem;color:#fd7e14">Packets</label>
+                        </div>
+                        <div class="form-check form-check-inline mb-0">
+                            <input class="form-check-input live-filter-cb" type="checkbox" id="filter-command" data-type="command" checked>
+                            <label class="form-check-label" for="filter-command" style="font-size:0.8rem;color:#198754">Commands</label>
+                        </div>
+                        <div class="form-check form-check-inline mb-0">
+                            <input class="form-check-input live-filter-cb" type="checkbox" id="filter-message" data-type="message" checked>
+                            <label class="form-check-label" for="filter-message" style="font-size:0.8rem;color:#0dcaf0">Messages</label>
+                        </div>
+                    </div>
+                    <!-- Scroll buttons -->
+                    <button class="btn btn-sm btn-outline-secondary" id="live-scroll-top" onclick="scrollLiveFeed('top')" title="Scroll to newest">
+                        <i class="fas fa-arrow-up"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" id="live-scroll-bottom" onclick="scrollLiveFeed('bottom')" title="Scroll to oldest">
+                        <i class="fas fa-arrow-down"></i>
+                    </button>
                     <span id="live-count" class="badge bg-secondary">0</span>
                     <button class="btn btn-sm btn-outline-secondary" id="live-pause-btn" onclick="toggleLivePause()">
                         <i class="fas fa-pause" id="live-pause-icon"></i>
@@ -339,6 +366,39 @@
                         <i class="fas fa-hourglass-half"></i> Connecting…
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Connected Clients Modal -->
+<div class="modal fade" id="connectedClientsModal" tabindex="-1" aria-labelledby="connectedClientsModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="connectedClientsModalLabel">
+                    <i class="fas fa-users me-2"></i>Connected Clients
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="connected-clients-loading" class="text-center py-3">
+                    <div class="spinner-border spinner-border-sm" role="status"></div>
+                    <span class="ms-2">Loading…</span>
+                </div>
+                <div id="connected-clients-empty" class="text-center text-muted py-3" style="display:none">
+                    No clients currently connected.
+                </div>
+                <table class="table table-sm mb-0" id="connected-clients-table" style="display:none">
+                    <thead>
+                        <tr>
+                            <th>Client ID</th>
+                            <th>Connected At</th>
+                            <th>Last Activity</th>
+                        </tr>
+                    </thead>
+                    <tbody id="connected-clients-tbody"></tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -737,6 +797,43 @@ class ModernDashboard {
         }
     }
     
+    async loadConnectedClients() {
+        const loading = document.getElementById('connected-clients-loading');
+        const empty   = document.getElementById('connected-clients-empty');
+        const table   = document.getElementById('connected-clients-table');
+        const tbody   = document.getElementById('connected-clients-tbody');
+        if (!loading) return;
+        loading.style.display = '';
+        empty.style.display   = 'none';
+        table.style.display   = 'none';
+        tbody.innerHTML       = '';
+        try {
+            const resp = await fetch('/api/connected_clients');
+            const clients = await resp.json();
+            loading.style.display = 'none';
+            if (!Array.isArray(clients) || clients.length === 0) {
+                empty.style.display = '';
+                return;
+            }
+            table.style.display = '';
+            for (const c of clients) {
+                const connAt = c.connected_at
+                    ? new Date(c.connected_at * 1000).toLocaleTimeString()
+                    : '—';
+                const lastAct = c.last_activity
+                    ? new Date(c.last_activity * 1000).toLocaleTimeString()
+                    : '—';
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td><code>${c.client_id}</code></td><td>${connAt}</td><td>${lastAct}</td>`;
+                tbody.appendChild(tr);
+            }
+        } catch (e) {
+            loading.style.display = 'none';
+            empty.style.display   = '';
+            empty.textContent     = 'Failed to load client list.';
+        }
+    }
+
     showError(message) {
         const errorDiv = document.createElement('div');
         errorDiv.className = 'alert alert-danger alert-dismissible fade show';
@@ -795,14 +892,35 @@ window.addEventListener('beforeunload', () => {
         return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
 
+    // Track active type filters
+    const activeFilters = { packet: true, command: true, message: true };
+
+    function applyFilters() {
+        Array.from(feed.children).forEach(el => {
+            const t = el.dataset.type;
+            if (!t) return; // placeholder or unknown
+            el.style.display = activeFilters[t] ? '' : 'none';
+        });
+    }
+
+    // Wire filter checkboxes
+    document.querySelectorAll('.live-filter-cb').forEach(cb => {
+        cb.addEventListener('change', () => {
+            activeFilters[cb.dataset.type] = cb.checked;
+            applyFilters();
+        });
+    });
+
     function addEntry(label, text, type) {
         if (paused) return;
         if (placeholder && placeholder.parentNode) placeholder.remove();
         const ts = new Date().toLocaleTimeString();
         const color = TYPE_COLORS[type] || '#6c757d';
         const el = document.createElement('div');
+        el.dataset.type = type;
         el.style.cssText = `border-left:3px solid ${color};padding:3px 8px;margin-bottom:3px;font-size:0.82rem;border-radius:2px;`;
         el.innerHTML = `<span class="text-muted me-2">${ts}</span><strong>${escHtml(label)}</strong> <span class="text-muted">${escHtml(text)}</span>`;
+        if (!activeFilters[type]) el.style.display = 'none';
         feed.insertBefore(el, feed.firstChild);
         total++;
         countBadge.textContent = total;
@@ -820,6 +938,9 @@ window.addEventListener('beforeunload', () => {
         feed.innerHTML = '';
         total = 0;
         countBadge.textContent = '0';
+    };
+    window.scrollLiveFeed = function (dir) {
+        feed.scrollTop = dir === 'top' ? 0 : feed.scrollHeight;
     };
 
     const socket = io({ transports: ['websocket', 'polling'] });

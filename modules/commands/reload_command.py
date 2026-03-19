@@ -27,7 +27,7 @@ class ReloadCommand(BaseCommand):
         """
         super().__init__(bot)
 
-    def can_execute(self, message: MeshMessage) -> bool:
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Check if this command can be executed (admin only)"""
         if not self.requires_admin_access():
             return False

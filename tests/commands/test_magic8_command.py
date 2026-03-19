@@ -3,7 +3,7 @@
 import pytest
 
 from modules.commands.magic8_command import Magic8Command, magic8_responses
-from tests.conftest import command_mock_bot, mock_message
+from tests.conftest import mock_message
 
 
 class TestMagic8Command:
