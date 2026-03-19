@@ -54,6 +54,14 @@ Examples of sections that configure specific commands or features:
 - **`[Sports_Command]`** – Sports scores (teams, leagues).
 - **`[Joke_Command]`**, **`[DadJoke_Command]`** – Joke sources and options.
 
+Common per-command options (when supported by that command):
+
+- **`channels`** – Restrict where that command runs in channels:
+  - Omit key: follow global `[Channels] monitor_channels`
+  - Empty (`channels =`): DM-only
+  - Comma list: only those channels
+- **`aliases`** – Extra trigger words for that command, comma-separated **stems only** (e.g. `aliases = weather, w`). Do not put the bot's **`command_prefix`** or punctuation in this value (no `!` or `.`)
+
 Full reference: see `config.ini.example` in the repository for every section and option, with inline comments.
 
 ## Data retention

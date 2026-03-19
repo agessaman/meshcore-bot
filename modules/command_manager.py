@@ -1124,20 +1124,11 @@ class CommandManager:
             # User is asking for a list of commands, show general help
             return self.get_general_help(message)
 
-        # Map command aliases to their actual command names
-        command_aliases = {
-            't': 't_phrase',
-            'advert': 'advert',
-            'test': 'test',
-            'ping': 'ping',
-            'help': 'help'
-        }
-
-        # Normalize the command name using aliases
-        normalized_name = command_aliases.get(command_name, command_name)
+        requested_name = command_name.strip()
+        normalized_name = requested_name.lower()
 
         # First, try to find a command by exact name
-        command = self.commands.get(normalized_name)
+        command = self.commands.get(normalized_name) or self.commands.get(requested_name)
         if command:
             # Try to pass message context to get_help_text if supported
             try:
@@ -1150,10 +1141,28 @@ class CommandManager:
                 return self.bot.translator.translate('commands.help.specific', command=command_name, help_text=help_text)
             return f"Help {command_name}: {help_text}"
 
-        # If not found, search through all commands and their keywords
+        # Next, consult plugin_loader keyword mappings (if available)
+        mapped_name: Optional[str] = None
+        if hasattr(self, 'plugin_loader') and hasattr(self.plugin_loader, 'keyword_mappings'):
+            mapped_name = self.plugin_loader.keyword_mappings.get(normalized_name)
+        if mapped_name:
+            command = self.commands.get(mapped_name)
+            if command:
+                try:
+                    help_text = command.get_help_text(message)
+                except TypeError:
+                    help_text = command.get_help_text()
+                if hasattr(self.bot, 'translator'):
+                    return self.bot.translator.translate('commands.help.specific', command=command_name, help_text=help_text)
+                return f"Help {command_name}: {help_text}"
+
+        # If still not found, search through all commands and their keywords
         for _cmd_name, cmd_instance in self.commands.items():
             # Check if the requested command name matches any of this command's keywords
-            if hasattr(cmd_instance, 'keywords') and command_name in cmd_instance.keywords:
+            if (
+                hasattr(cmd_instance, 'keywords')
+                and normalized_name in [k.lower() for k in cmd_instance.keywords]
+            ):
                 # Try to pass message context to get_help_text if supported
                 try:
                     help_text = cmd_instance.get_help_text(message)

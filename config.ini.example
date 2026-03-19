@@ -387,7 +387,7 @@ enabled = true
 # dm_only = false: allow in monitored channels
 dm_only = true
 # aliases = comma-separated list of additional trigger words for this command
-# aliases = !s, !sched
+# aliases = s, sched
 
 
 [Logging]
@@ -1105,7 +1105,7 @@ url_timeout = 10
 [Wx_Command]
 enabled = true
 # channels =
-# aliases = comma-separated additional trigger words, e.g.: aliases = !weather, !w
+# aliases = comma-separated additional trigger words, e.g.: aliases = weather, w
 
 [WebViewer_Command]
 enabled = true

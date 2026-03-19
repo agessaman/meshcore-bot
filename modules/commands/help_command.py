@@ -93,20 +93,31 @@ class HelpCommand(BaseCommand):
         Returns:
             str: The formatted help text for the specific command.
         """
-        # Map command aliases to their actual command names
-        command_aliases = {
-            't': 't_phrase',
-            'advert': 'advert',
-            'test': 'test',
-            'ping': 'ping',
-            'help': 'help'
-        }
+        requested_name = command_name.strip()
+        normalized_name = requested_name.lower()
 
-        # Normalize the command name
-        normalized_name = command_aliases.get(command_name, command_name)
+        # Get the command instance by direct name first
+        command = (
+            self.bot.command_manager.commands.get(normalized_name)
+            or self.bot.command_manager.commands.get(requested_name)
+        )
 
-        # Get the command instance
-        command = self.bot.command_manager.commands.get(normalized_name)
+        # Then through plugin keyword mappings (if available)
+        if not command and hasattr(self.bot.command_manager, 'plugin_loader'):
+            mappings = getattr(self.bot.command_manager.plugin_loader, 'keyword_mappings', {})
+            mapped_name = mappings.get(normalized_name)
+            if mapped_name:
+                command = self.bot.command_manager.commands.get(mapped_name)
+
+        # Final fallback: resolve through runtime command keywords
+        if not command:
+            for cmd_instance in self.bot.command_manager.commands.values():
+                if (
+                    hasattr(cmd_instance, 'keywords')
+                    and normalized_name in [k.lower() for k in cmd_instance.keywords]
+                ):
+                    command = cmd_instance
+                    break
 
         if command:
             # Pass message context to get_help_text if the method supports it

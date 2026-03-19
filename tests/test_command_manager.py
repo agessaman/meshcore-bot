@@ -262,6 +262,24 @@ class TestGetHelpForCommand:
         assert call_args[0][0] == "commands.help.unknown"
         assert call_args[1]["command"] == "nonexistent"
 
+    def test_keyword_mapping_alias_resolves_command(self, cm_bot):
+        mock_cmd = MagicMock()
+        mock_cmd.keywords = ["schedule"]
+        mock_cmd.get_help_text = Mock(return_value="Schedule help")
+        manager = make_manager(cm_bot, commands={"schedule": mock_cmd})
+        manager.plugin_loader.keyword_mappings = {"sched": "schedule"}
+        result = manager.get_help_for_command("sched")
+        assert "Schedule help" in result
+
+    def test_runtime_alias_in_keywords_resolves_command(self, cm_bot):
+        mock_cmd = MagicMock()
+        mock_cmd.keywords = ["schedule", "sched"]
+        mock_cmd.get_help_text = Mock(return_value="Schedule help")
+        manager = make_manager(cm_bot, commands={"schedule": mock_cmd})
+        manager.plugin_loader.keyword_mappings = {}
+        result = manager.get_help_for_command("sched")
+        assert "Schedule help" in result
+
 
 class TestInternetStatusCache:
     """Tests for InternetStatusCache."""
@@ -478,10 +496,10 @@ class TestCommandAliases:
 
         return _Cmd(bot)
 
-    def test_alias_added_to_keywords(self, cm_bot):
+    def test_alias_added_to_keywords_without_legacy_prefix(self, cm_bot):
         cmd = self._make_command(cm_bot, "Schedule_Command", "!s, !sched")
-        assert "!s" in cmd.keywords
-        assert "!sched" in cmd.keywords
+        assert "s" in cmd.keywords
+        assert "sched" in cmd.keywords
 
     def test_no_aliases_key_leaves_keywords_unchanged(self, cm_bot):
         cmd = self._make_command(cm_bot, "Schedule_Command")
@@ -494,12 +512,22 @@ class TestCommandAliases:
     def test_alias_already_present_not_duplicated(self, cm_bot):
         cmd = self._make_command(cm_bot, "Schedule_Command", "schedule, !s")
         assert cmd.keywords.count("schedule") == 1
-        assert "!s" in cmd.keywords
+        assert "s" in cmd.keywords
 
     def test_aliases_lowercased(self, cm_bot):
         cmd = self._make_command(cm_bot, "Schedule_Command", "!S, !Sched")
-        assert "!s" in cmd.keywords
-        assert "!sched" in cmd.keywords
+        assert "s" in cmd.keywords
+        assert "sched" in cmd.keywords
+
+    def test_alias_with_configured_prefix_is_normalized(self, cm_bot):
+        cm_bot.config.set("Bot", "command_prefix", "!")
+        cmd = self._make_command(cm_bot, "Schedule_Command", "!S")
+        assert "s" in cmd.keywords
+
+    def test_decorative_dot_prefix_stripped_without_command_prefix(self, cm_bot):
+        cm_bot.config.set("Bot", "command_prefix", "")
+        cmd = self._make_command(cm_bot, "Schedule_Command", ".sched")
+        assert "sched" in cmd.keywords
 
 
 class TestSendChannelMessageRetry:

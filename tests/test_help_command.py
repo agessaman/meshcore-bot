@@ -208,6 +208,28 @@ class TestGetSpecificHelp:
         result = cmd.get_specific_help("ping")
         assert isinstance(result, str)
 
+    def test_alias_from_keyword_mappings_resolves(self):
+        bot = _make_bot()
+        mock_schedule = MagicMock()
+        mock_schedule.get_help_text = Mock(return_value="Schedule help")
+        mock_schedule.keywords = ["schedule"]
+        bot.command_manager.commands = {"schedule": mock_schedule}
+        bot.command_manager.plugin_loader.keyword_mappings = {"sched": "schedule"}
+        cmd = HelpCommand(bot)
+        result = cmd.get_specific_help("sched")
+        assert isinstance(result, str)
+
+    def test_alias_from_runtime_keywords_resolves_without_mapping(self):
+        bot = _make_bot()
+        mock_schedule = MagicMock()
+        mock_schedule.get_help_text = Mock(return_value="Schedule help")
+        mock_schedule.keywords = ["schedule", "sched"]
+        bot.command_manager.commands = {"schedule": mock_schedule}
+        bot.command_manager.plugin_loader.keyword_mappings = {}
+        cmd = HelpCommand(bot)
+        result = cmd.get_specific_help("sched")
+        assert isinstance(result, str)
+
     def test_no_get_help_text_attribute(self):
         """Command without get_help_text returns no_help key."""
         bot = _make_bot()

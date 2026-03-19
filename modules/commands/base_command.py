@@ -359,13 +359,50 @@ class BaseCommand(ABC):
         channels = [ch.strip() for ch in channels_str.split(',') if ch.strip()]
         return channels if channels else None
 
+    def _normalize_alias_from_config(self, alias: str) -> str:
+        """Normalize a config ``aliases`` token to the stem used after message parsing.
+
+        Config should list stems only; this also strips a duplicated
+        ``[Bot] command_prefix`` or leading punctuation from legacy configs so
+        values align with ``matches_keyword``.
+
+        Args:
+            alias: One alias token, already lowercased (may still contain separators).
+
+        Returns:
+            Normalized trigger stem, or empty string if nothing remains.
+        """
+        if not alias:
+            return ''
+        command_prefix = self.bot.config.get('Bot', 'command_prefix', fallback='').strip()
+        cp_lower = command_prefix.lower() if command_prefix else ''
+
+        # Legacy / mistaken leading punctuation (prefer stem-only in config)
+        decorative = frozenset('!.,/')
+
+        for _ in range(32):
+            if not alias:
+                break
+            if cp_lower and alias.startswith(cp_lower):
+                alias = alias[len(cp_lower):].strip()
+                continue
+            if not cp_lower and alias and alias[0] in decorative:
+                alias = alias[1:].strip()
+                continue
+            if cp_lower and alias and alias[0] in decorative:
+                alias = alias[1:].strip()
+                continue
+            break
+
+        return alias.strip()
+
     def _load_aliases_from_config(self) -> None:
         """Load aliases from this command's own config section and extend keywords.
 
         Config format::
 
             [Wx_Command]
-            aliases = !weather, !w
+            aliases = weather, w
 
         Each alias is appended to ``self.keywords`` if not already present.
         """
@@ -374,7 +411,10 @@ class BaseCommand(ABC):
         if not aliases_str:
             return
         for alias in aliases_str.split(','):
-            alias = alias.strip().lower()
+            alias = self._normalize_alias_from_config(alias.strip().lower())
+            if not alias:
+                continue
+
             if alias and alias not in [k.lower() for k in self.keywords]:
                 self.keywords = list(self.keywords)  # ensure instance-level list
                 self.keywords.append(alias)
