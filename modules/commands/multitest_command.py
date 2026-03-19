@@ -7,11 +7,12 @@ Listens for a period of time and collects all unique paths from incoming message
 import asyncio
 import re
 import time
-from typing import Set, Optional, Dict
 from dataclasses import dataclass
-from .base_command import BaseCommand
+from typing import Optional
+
 from ..models import MeshMessage
 from ..utils import calculate_packet_hash, parse_path_string
+from .base_command import BaseCommand
 
 
 @dataclass
@@ -22,53 +23,53 @@ class MultitestSession:
     triggering_timestamp: float
     listening_start_time: float
     listening_duration: float
-    collected_paths: Set[str]
+    collected_paths: set[str]
     initial_path: Optional[str] = None
 
 
 class MultitestCommand(BaseCommand):
     """Handles the multitest command - listens for multiple path variations"""
-    
+
     # Plugin metadata
     name = "multitest"
     keywords = ['multitest', 'mt']
     description = "Listens for 6 seconds and collects all unique paths from incoming messages"
     category = "meshcore_info"
-    
+
     # Documentation
     short_description = "Listens for 6 seconds and collects all unique paths your incoming messages took to reach the bot"
     usage = "multitest"
     examples = ["multitest", "mt"]
-    
+
     def __init__(self, bot):
         super().__init__(bot)
         self.multitest_enabled = self.get_config_value('Multitest_Command', 'enabled', fallback=True, value_type='bool')
         # Track active sessions per user to prevent race conditions
         # Key: user_id, Value: MultitestSession
-        self._active_sessions: Dict[str, MultitestSession] = {}
+        self._active_sessions: dict[str, MultitestSession] = {}
         # Lock to prevent concurrent execution from interfering (lazily initialized)
         self._execution_lock: Optional[asyncio.Lock] = None
         self._load_config()
-    
+
     def _get_execution_lock(self) -> asyncio.Lock:
         """Get or create the execution lock (lazy initialization)"""
         if self._execution_lock is None:
             self._execution_lock = asyncio.Lock()
         return self._execution_lock
-    
+
     def can_execute(self, message: MeshMessage) -> bool:
         """Check if this command can be executed with the given message.
-        
+
         Args:
             message: The message triggering the command.
-            
+
         Returns:
             bool: True if command is enabled and checks pass, False otherwise.
         """
         if not self.multitest_enabled:
             return False
         return super().can_execute(message)
-    
+
     def _load_config(self):
         """Load configuration for multitest command"""
         response_format = self.get_config_value('Multitest_Command', 'response_format', fallback='')
@@ -84,25 +85,25 @@ class MultitestCommand(BaseCommand):
                 self.response_format = response_format
         else:
             self.response_format = None  # Use default format
-    
+
     def get_help_text(self) -> str:
         return self.translate('commands.multitest.help', fallback="Listens for 6 seconds and collects all unique paths from incoming messages")
-    
+
     def matches_keyword(self, message: MeshMessage) -> bool:
         """Check if message matches multitest keyword"""
         content = message.content.strip()
-        
+
         # Handle exclamation prefix
         if content.startswith('!'):
             content = content[1:].strip()
-        
+
         content_lower = content.lower()
-        
+
         # Check for exact match or keyword followed by space
         for keyword in self.keywords:
             if content_lower == keyword or content_lower.startswith(keyword + ' '):
                 return True
-        
+
         # Check for variants: "mt long", "mt xlong", "multitest long", "multitest xlong"
         if content_lower.startswith('mt ') or content_lower.startswith('multitest '):
             parts = content_lower.split()
@@ -110,9 +111,9 @@ class MultitestCommand(BaseCommand):
                 variant = parts[1]
                 if variant in ['long', 'xlong']:
                     return True
-        
+
         return False
-    
+
     def extract_path_from_rf_data(self, rf_data: dict) -> Optional[str]:
         """Extract path in prefix string format from RF data routing_info.
         Supports 1-, 2-, and 3-byte-per-hop (2, 4, or 6 hex chars per node).
@@ -148,7 +149,7 @@ class MultitestCommand(BaseCommand):
         except Exception as e:
             self.logger.debug(f"Error extracting path from RF data: {e}")
             return None
-    
+
     def extract_path_from_message(self, message: MeshMessage) -> Optional[str]:
         """Extract path in prefix string format from a message.
         Prefers message.routing_info.path_nodes when present (multi-byte).
@@ -218,7 +219,7 @@ class MultitestCommand(BaseCommand):
         if node_ids:
             return ','.join(n.lower() for n in node_ids)
         return None
-    
+
     def get_rf_data_for_message(self, message: MeshMessage) -> Optional[dict]:
         """Get RF data for a message by looking it up in recent RF data"""
         try:
@@ -229,14 +230,14 @@ class MultitestCommand(BaseCommand):
                 recent_rf_data = self.bot.message_handler.find_recent_rf_data(message.sender_pubkey)
                 if recent_rf_data:
                     return recent_rf_data
-                
+
                 # Try pubkey prefix (first 16 chars)
                 if len(message.sender_pubkey) >= 16:
                     pubkey_prefix = message.sender_pubkey[:16]
                     recent_rf_data = self.bot.message_handler.find_recent_rf_data(pubkey_prefix)
                     if recent_rf_data:
                         return recent_rf_data
-            
+
             # Strategy 2: Look through recent RF data for matching pubkey
             if message.sender_pubkey and self.bot.message_handler.recent_rf_data:
                 # Search recent RF data for matching pubkey
@@ -244,7 +245,7 @@ class MultitestCommand(BaseCommand):
                     rf_pubkey = rf_data.get('pubkey_prefix', '')
                     if rf_pubkey and message.sender_pubkey.startswith(rf_pubkey):
                         return rf_data
-            
+
             # Strategy 3: Use most recent RF data as fallback
             # This is less reliable but might work if timing is very close
             if self.bot.message_handler.recent_rf_data:
@@ -257,27 +258,27 @@ class MultitestCommand(BaseCommand):
                 if recent_entries:
                     most_recent = max(recent_entries, key=lambda x: x.get('timestamp', 0))
                     return most_recent
-            
+
             return None
         except Exception as e:
             self.logger.debug(f"Error getting RF data for message: {e}")
             return None
-    
+
     def on_message_received(self, message: MeshMessage):
         """Callback method called by message handler when a message is received during listening.
-        
+
         Checks all active sessions to see if this message matches any of them.
         """
         if not self._active_sessions:
             return
-        
+
         # Get RF data for this message (contains pre-calculated packet hash)
         rf_data = self.get_rf_data_for_message(message)
         if not rf_data:
             # Can't get RF data, skip this message
             self.logger.debug(f"Skipping message - no RF data found (sender: {message.sender_id})")
             return
-        
+
         # Use pre-calculated packet hash if available, otherwise calculate it
         message_hash = rf_data.get('packet_hash')
         if not message_hash and rf_data.get('raw_hex'):
@@ -292,12 +293,12 @@ class MultitestCommand(BaseCommand):
             except Exception as e:
                 self.logger.debug(f"Error calculating packet hash: {e}")
                 message_hash = None
-        
+
         if not message_hash:
             # Can't determine hash, skip this message
             self.logger.debug(f"Skipping message - could not determine packet hash (sender: {message.sender_id})")
             return
-        
+
         # Check all active sessions to see if this message matches any of them
         current_time = time.time()
         for user_id, session in list(self._active_sessions.items()):
@@ -305,17 +306,17 @@ class MultitestCommand(BaseCommand):
             elapsed = current_time - session.listening_start_time
             if elapsed >= session.listening_duration:
                 continue  # Session expired, skip it
-            
+
             # CRITICAL: Only collect paths if this message has the same hash as the target
             # This ensures we only track variations of the same original message
             if message_hash == session.target_packet_hash:
                 # Try to extract path from RF data first (more reliable)
                 path = self.extract_path_from_rf_data(rf_data)
-                
+
                 # Fallback to message path if RF data extraction failed
                 if not path:
                     path = self.extract_path_from_message(message)
-                
+
                 if path:
                     session.collected_paths.add(path)
                     self.logger.info(f"✓ Collected path for user {user_id}: {path} (hash: {message_hash[:8]}...)")
@@ -330,32 +331,32 @@ class MultitestCommand(BaseCommand):
             else:
                 # Log hash mismatches for debugging (but limit to avoid spam)
                 self.logger.debug(f"✗ Hash mismatch for user {user_id} - target: {session.target_packet_hash[:8]}..., received: {message_hash[:8]}... (sender: {message.sender_id})")
-    
+
     def _scan_recent_rf_data(self, session: MultitestSession):
         """Scan recent RF data for packets with matching hash (for messages that haven't been processed yet)
-        
+
         Args:
             session: The multitest session to scan for
         """
         if not session.target_packet_hash:
             return
-        
+
         try:
             current_time = time.time()
             matching_count = 0
             mismatching_count = 0
-            
+
             # Look at RF data from the last few seconds (before listening started, in case packets arrived just before)
             for rf_data in self.bot.message_handler.recent_rf_data:
                 # Check if this RF data is recent enough
                 rf_timestamp = rf_data.get('timestamp', 0)
                 time_diff = current_time - rf_timestamp
-                
+
                 # Only include RF data from the triggering message timestamp onwards
                 # This prevents collecting packets from earlier messages that happen to have the same hash
                 if rf_timestamp >= session.triggering_timestamp and time_diff <= session.listening_duration:
                     packet_hash = rf_data.get('packet_hash')
-                    
+
                     # CRITICAL: Only process if hash matches exactly and is not None/empty
                     if packet_hash and packet_hash == session.target_packet_hash:
                         matching_count += 1
@@ -371,16 +372,16 @@ class MultitestCommand(BaseCommand):
                         # Only log first few mismatches to avoid spam
                         if mismatching_count <= 3:
                             self.logger.debug(f"✗ RF scan hash mismatch for user {session.user_id} - target: {session.target_packet_hash[:8]}..., found: {packet_hash[:8]}... (time: {time_diff:.2f}s)")
-            
+
             if matching_count > 0 or mismatching_count > 0:
                 self.logger.debug(f"RF scan complete for user {session.user_id}: {matching_count} matching, {mismatching_count} mismatching packets")
         except Exception as e:
             self.logger.debug(f"Error scanning recent RF data for user {session.user_id}: {e}")
-    
+
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the multitest command"""
         user_id = message.sender_id or "unknown"
-        
+
         # Use lock to prevent concurrent execution from interfering
         async with self._get_execution_lock():
             # Check if user already has an active session
@@ -391,15 +392,15 @@ class MultitestCommand(BaseCommand):
                     # User already has an active session - silently ignore second Mt
                     # so the first session can complete and send its response
                     return True
-            
+
             # Record execution time BEFORE starting async work to prevent race conditions
             self.record_execution(user_id)
-            
+
             # Determine listening duration based on command variant
             content = message.content.strip()
             if content.startswith('!'):
                 content = content[1:].strip()
-            
+
             content_lower = content.lower()
             listening_duration = 6.0  # Default
             # Check for variants: "mt long", "mt xlong", "multitest long", "multitest xlong"
@@ -419,14 +420,14 @@ class MultitestCommand(BaseCommand):
                     self.logger.info(f"Multitest command executed by {user_id} - starting 6 second listening window")
             else:
                 self.logger.info(f"Multitest command executed by {user_id} - starting 6 second listening window")
-            
+
             # Get RF data for the triggering message (contains pre-calculated packet hash)
             rf_data = self.get_rf_data_for_message(message)
             if not rf_data:
                 response = "Error: Could not find packet data for this message. Please try again."
                 await self.send_response(message, response)
                 return True
-            
+
             # Use pre-calculated packet hash if available, otherwise calculate it
             packet_hash = rf_data.get('packet_hash')
             if not packet_hash and rf_data.get('raw_hex'):
@@ -437,24 +438,24 @@ class MultitestCommand(BaseCommand):
                 if routing_info:
                     payload_type = routing_info.get('payload_type')
                 packet_hash = calculate_packet_hash(rf_data['raw_hex'], payload_type)
-            
+
             if not packet_hash:
                 response = "Error: Could not calculate packet hash for this message. Please try again."
                 await self.send_response(message, response)
                 return True
-            
+
             # Store the timestamp of the triggering message to avoid collecting older packets
             triggering_rf_timestamp = rf_data.get('timestamp', time.time())
-            
+
             # Also extract path from the triggering message itself
             initial_path = self.extract_path_from_message(message)
             # Also try to extract from RF data (more reliable)
             if not initial_path and rf_data:
                 initial_path = self.extract_path_from_rf_data(rf_data)
-            
+
             if initial_path:
                 self.logger.debug(f"Initial path from triggering message for user {user_id}: {initial_path}")
-            
+
             # Create a new session for this user
             session = MultitestSession(
                 user_id=user_id,
@@ -465,27 +466,27 @@ class MultitestCommand(BaseCommand):
                 collected_paths=set(),
                 initial_path=initial_path
             )
-            
+
             # Add initial path if available
             if initial_path:
                 session.collected_paths.add(initial_path)
-            
+
             # Register this session
             self._active_sessions[user_id] = session
-            
+
             # Register this command instance as the active listener (if not already registered)
             # Store reference in message handler so it can call on_message_received
             if self.bot.message_handler.multitest_listener is None:
                 self.bot.message_handler.multitest_listener = self
-            
+
             self.logger.info(f"Tracking packet hash for user {user_id}: {packet_hash[:16]}... (full: {packet_hash})")
             self.logger.debug(f"Triggering message timestamp for user {user_id}: {triggering_rf_timestamp}")
-        
+
         # Release lock before async sleep to allow other users to start their sessions
         # Also scan recent RF data for matching hashes (in case messages haven't been processed yet)
         # But only include packets that arrived at or after the triggering message
         self._scan_recent_rf_data(session)
-        
+
         try:
             # Wait for the listening duration
             await asyncio.sleep(session.listening_duration)
@@ -495,24 +496,24 @@ class MultitestCommand(BaseCommand):
                 # Remove this session
                 if user_id in self._active_sessions:
                     del self._active_sessions[user_id]
-                
+
                 # Unregister listener if no more active sessions
                 if not self._active_sessions and self.bot.message_handler.multitest_listener == self:
                     self.bot.message_handler.multitest_listener = None
-        
+
         # Do a final scan of RF data in case any matching packets arrived
         self._scan_recent_rf_data(session)
-        
+
         # Store hash for error message before clearing it
         tracking_hash = session.target_packet_hash
-        
+
         # Format the collected paths
         if session.collected_paths:
             # Sort paths for consistent output
             sorted_paths = sorted(session.collected_paths)
             paths_text = "\n".join(sorted_paths)
             path_count = len(sorted_paths)
-            
+
             # Use configured format if available, otherwise use default
             if self.response_format:
                 try:
@@ -536,7 +537,7 @@ class MultitestCommand(BaseCommand):
                 for rf_data in self.bot.message_handler.recent_rf_data:
                     if rf_data.get('packet_hash') == tracking_hash:
                         matching_packets += 1
-            
+
             if tracking_hash is None:
                 response = ("Error: Could not determine packet hash for tracking. "
                            "The triggering message may not have valid packet data.")
@@ -547,20 +548,20 @@ class MultitestCommand(BaseCommand):
             else:
                 response = (f"No matching packets found during {session.listening_duration}s window. "
                            f"Tracking hash: {tracking_hash}. ")
-        
+
         # Wait for bot TX rate limiter cooldown to expire before sending
         # This ensures we respond even if another command put the bot on cooldown
         await self.bot.bot_tx_rate_limiter.wait_for_tx()
-        
+
         # Also wait for user rate limiter if needed
         if not self.bot.rate_limiter.can_send():
             wait_time = self.bot.rate_limiter.time_until_next()
             if wait_time > 0:
                 self.logger.info(f"Waiting {wait_time:.1f} seconds for rate limiter")
                 await asyncio.sleep(wait_time + 0.1)  # Small buffer
-        
+
         # Send the response
         await self.send_response(message, response)
-        
+
         return True
 

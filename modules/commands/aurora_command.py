@@ -6,9 +6,7 @@ Aurora command - NOAA KP index and Ovation aurora probability for a location.
 import asyncio
 import re
 from datetime import datetime, timezone
-from typing import Optional, Tuple
-
-import pytz
+from typing import Optional
 
 from ..clients.noaa_aurora_client import NOAAAuroraClient
 from ..models import MeshMessage
@@ -45,7 +43,7 @@ class AuroraCommand(BaseCommand):
             return False
         return super().can_execute(message)
 
-    def _get_companion_location(self, message: MeshMessage) -> Optional[Tuple[float, float]]:
+    def _get_companion_location(self, message: MeshMessage) -> Optional[tuple[float, float]]:
         """Get companion/sender location from database."""
         try:
             sender_pubkey = getattr(message, "sender_pubkey", None)
@@ -69,7 +67,7 @@ class AuroraCommand(BaseCommand):
             self.logger.debug(f"Error getting companion location: {e}")
             return None
 
-    def _get_bot_location(self) -> Optional[Tuple[float, float]]:
+    def _get_bot_location(self) -> Optional[tuple[float, float]]:
         """Get bot location from config ([Bot] bot_latitude, bot_longitude)."""
         try:
             lat = self.bot.config.getfloat("Bot", "bot_latitude", fallback=None)
@@ -131,7 +129,7 @@ class AuroraCommand(BaseCommand):
 
     def _resolve_location(
         self, message: MeshMessage, location: Optional[str]
-    ) -> Tuple[Optional[float], Optional[float], Optional[str], Optional[str]]:
+    ) -> tuple[Optional[float], Optional[float], Optional[str], Optional[str]]:
         """
         Resolve to (lat, lon, location_label, error_key).
         location_label is for display; error_key is a translation key if resolution failed.
@@ -188,7 +186,6 @@ class AuroraCommand(BaseCommand):
             timeout=self.url_timeout,
         )
         if lat is None or lon is None:
-            region = self.default_state or self.default_country
             return (None, None, None, "commands.aurora.no_location_city")  # needs location, state
         return (lat, lon, loc, None)
 

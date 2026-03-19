@@ -1,15 +1,17 @@
-import aiohttp
 import logging
-import asyncio
 from datetime import datetime, timezone
-from typing import List, Dict, Optional
-from .sports_mappings import is_womens_league, get_team_abbreviation, format_clean_date, format_clean_date_time
+from typing import Optional
+
+import aiohttp
+
+from .sports_mappings import format_clean_date, format_clean_date_time, get_team_abbreviation
+
 
 class ESPNClient:
     """Client for ESPN API using aiohttp for asynchronous requests"""
-    
+
     BASE_URL = "http://site.api.espn.com/apis/site/v2/sports"
-    
+
     def __init__(self, logger: Optional[logging.Logger] = None, timeout: int = 10, session: Optional[aiohttp.ClientSession] = None):
         """Initialize the ESPN API client.
 
@@ -28,7 +30,7 @@ class ESPNClient:
             self.session = aiohttp.ClientSession(timeout=self.timeout)
         return self.session
 
-    async def fetch_scoreboard(self, sport: str, league: str) -> List[Dict]:
+    async def fetch_scoreboard(self, sport: str, league: str) -> list[dict]:
         """Fetch and parse scoreboard data for a league"""
         url = f"{self.BASE_URL}/{sport}/{league}/scoreboard"
         try:
@@ -37,7 +39,7 @@ class ESPNClient:
                 response.raise_for_status()
                 data = await response.json()
                 events = data.get('events', [])
-                
+
                 parsed_events = []
                 for event in events:
                     parsed = self.parse_league_game_event(event, sport, league)
@@ -48,7 +50,7 @@ class ESPNClient:
             self.logger.error(f"ESPN fetch_scoreboard error for {sport}/{league}: {e}")
             return []
 
-    async def fetch_team_schedule(self, sport: str, league: str, team_id: str) -> List[Dict]:
+    async def fetch_team_schedule(self, sport: str, league: str, team_id: str) -> list[dict]:
         """Fetch and parse schedule data for a team
 
         For soccer teams, if the team schedule has no upcoming games, we fall back
@@ -87,7 +89,7 @@ class ESPNClient:
             self.logger.error(f"ESPN fetch_team_schedule error for {team_id}: {e}")
             return []
 
-    async def _find_team_in_scoreboard(self, sport: str, league: str, team_id: str) -> List[Dict]:
+    async def _find_team_in_scoreboard(self, sport: str, league: str, team_id: str) -> list[dict]:
         """Find games for a specific team in the league scoreboard"""
         url = f"{self.BASE_URL}/{sport}/{league}/scoreboard"
         try:
@@ -124,7 +126,7 @@ class ESPNClient:
             self.logger.error(f"Error finding team in scoreboard: {e}")
             return []
 
-    async def fetch_live_event_data(self, event_id: str, sport: str, league: str) -> Optional[Dict]:
+    async def fetch_live_event_data(self, event_id: str, sport: str, league: str) -> Optional[dict]:
         """Fetch live event data from the scoreboard endpoint for real-time scores
 
         The scoreboard endpoint provides more up-to-date scores for live games than the schedule endpoint.
@@ -152,7 +154,7 @@ class ESPNClient:
             self.logger.error(f"ESPN fetch_live_event_data error for {event_id}: {e}")
             return None
 
-    def extract_score(self, competitor: Dict) -> str:
+    def extract_score(self, competitor: dict) -> str:
         """Extract score value from competitor data"""
         score = competitor.get('score', '0')
         if isinstance(score, dict):
@@ -172,7 +174,7 @@ class ESPNClient:
             return str(score)
         return '0'
 
-    def extract_shootout_score(self, competitor: Dict) -> Optional[int]:
+    def extract_shootout_score(self, competitor: dict) -> Optional[int]:
         """Extract penalty shootout score from competitor data"""
         score = competitor.get('score', {})
         if isinstance(score, dict) and 'shootoutScore' in score:
@@ -181,43 +183,43 @@ class ESPNClient:
                 return int(shootout)
         return None
 
-    def parse_game_event_with_timestamp(self, event: Dict, team_id: str, sport: str, league: str) -> Optional[Dict]:
+    def parse_game_event_with_timestamp(self, event: dict, team_id: str, sport: str, league: str) -> Optional[dict]:
         """Parse a game event and return structured data with timestamp for sorting"""
         try:
             competitions = event.get('competitions', [])
             if not competitions:
                 return None
-            
+
             competition = competitions[0]
             competitors = competition.get('competitors', [])
-            
+
             if len(competitors) != 2:
                 return None
-            
+
             # Extract team info
             team1 = competitors[0]
             team2 = competitors[1]
-            
+
             # Determine home/away
             home_team = team1 if team1.get('homeAway') == 'home' else team2
             away_team = team2 if team1.get('homeAway') == 'home' else team1
-            
+
             home_id = home_team.get('team', {}).get('id', '')
             away_id = away_team.get('team', {}).get('id', '')
             home_abbr = home_team.get('team', {}).get('abbreviation', 'UNK')
             away_abbr = away_team.get('team', {}).get('abbreviation', 'UNK')
-            
+
             home_name = get_team_abbreviation(home_id, home_abbr, sport, league)
             away_name = get_team_abbreviation(away_id, away_abbr, sport, league)
-            
+
             home_score = self.extract_score(home_team)
             away_score = self.extract_score(away_team)
-            
+
             # Get game status
             status_obj = competition.get('status', event.get('status', {}))
             status_type = status_obj.get('type', {})
             status_name = status_type.get('name', 'UNKNOWN')
-            
+
             # Get timestamp for sorting
             date_str = event.get('date', '')
             timestamp = 0
@@ -231,7 +233,7 @@ class ESPNClient:
                     timestamp = event_timestamp
                 except:
                     pass
-            
+
             # Format based on game status
             formatted = ""
             if status_name in ['STATUS_IN_PROGRESS', 'STATUS_FIRST_HALF', 'STATUS_SECOND_HALF', 'STATUS_END_PERIOD']:
@@ -239,7 +241,7 @@ class ESPNClient:
                 clock = status_obj.get('displayClock', '')
                 period = status_obj.get('period', 0)
                 is_end_period = (status_name == 'STATUS_END_PERIOD')
-                
+
                 if sport == 'soccer':
                     # Soccer: @Home Score-Score Away (Clock)
                     period_str = clock if (clock and clock != '0:00' and clock != "0'") else f"{period}H"
@@ -257,9 +259,9 @@ class ESPNClient:
                     period_str = f"P{period}"
                     if is_end_period: period_str = f"End {period_str}"
                     formatted = f"{away_name} {away_score}-{home_score} @{home_name} ({clock} {period_str})"
-                
+
                 timestamp = -1 # Live games first
-                
+
             elif status_name == 'STATUS_SCHEDULED':
                 # Scheduled
                 if event_timestamp:
@@ -272,21 +274,21 @@ class ESPNClient:
                 else:
                     formatted = f"{away_abbr} @ {home_abbr} (TBD)" if sport != 'soccer' else f"@{home_name} vs. {away_name} (TBD)"
                     timestamp = 9999999999
-                    
+
             elif status_name == 'STATUS_HALFTIME':
                 if sport == 'soccer':
                     formatted = f"@{home_name} {home_score}-{away_score} {away_name} (HT)"
                 else:
                     formatted = f"{away_abbr} {away_score}-{home_score} @{home_abbr} (HT)"
                 timestamp = -2
-                
+
             elif status_name in ['STATUS_FINAL', 'STATUS_FULL_TIME', 'STATUS_FINAL_PEN', 'STATUS_POSTPONED']:
                 date_suffix = ""
                 if event_timestamp:
                     dt = datetime.fromtimestamp(event_timestamp, tz=timezone.utc).astimezone()
                     if dt.date() != datetime.now().date():
                         date_suffix = f", {format_clean_date(dt)}"
-                
+
                 if status_name == 'STATUS_FINAL_PEN':
                     home_shootout = self.extract_shootout_score(home_team)
                     away_shootout = self.extract_shootout_score(away_team)
@@ -298,11 +300,9 @@ class ESPNClient:
                     formatted = f"{away_abbr} @ {home_abbr} (Postponed{date_suffix})"
                 else:
                     formatted = f"{away_abbr} {away_score}-{home_score} @{home_abbr} (F{date_suffix})"
-                
+
                 timestamp = 9999999998
             else:
-                prefix = "@" if sport == 'soccer' else ""
-                suffix = " vs. " if sport == 'soccer' else " @ "
                 if sport == 'soccer':
                     formatted = f"@{home_name} {home_score}-{away_score} {away_name} ({status_name})"
                 else:
@@ -322,6 +322,6 @@ class ESPNClient:
             self.logger.error(f"Error parsing ESPN event {event.get('id')}: {e}")
             return None
 
-    def parse_league_game_event(self, event: Dict, sport: str, league: str) -> Optional[Dict]:
+    def parse_league_game_event(self, event: dict, sport: str, league: str) -> Optional[dict]:
         """Parse a league game event (scoreboard)"""
         return self.parse_game_event_with_timestamp(event, "", sport, league)
