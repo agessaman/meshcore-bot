@@ -28,7 +28,6 @@ if [[ "$OS" == "Darwin" ]]; then
     SERVICE_TYPE="launchd"
 elif [[ "$OS" == "Linux" ]]; then
     IS_LINUX=true
-    SERVICE_TYPE="systemd"
 else
     echo "Error: Unsupported operating system: $OS"
     echo "This script supports Linux (systemd) and macOS (launchd)"
@@ -48,7 +47,6 @@ if [[ "$IS_MACOS" == true ]]; then
     LAUNCHD_DIR="/Library/LaunchDaemons"
 else
     SERVICE_USER="meshcore"
-    SERVICE_GROUP="meshcore"
     INSTALL_DIR="/opt/meshcore-bot"
     LOG_DIR="/var/log/meshcore-bot"
     SERVICE_FILE="meshcore-bot.service"

@@ -34,14 +34,11 @@ NC='\033[0m' # No Color
 # Detect operating system
 OS="$(uname -s)"
 IS_MACOS=false
-IS_LINUX=false
 
 if [[ "$OS" == "Darwin" ]]; then
     IS_MACOS=true
-    SERVICE_TYPE="launchd"
 elif [[ "$OS" == "Linux" ]]; then
-    IS_LINUX=true
-    SERVICE_TYPE="systemd"
+    : # Linux detected; service paths configured below
 else
     echo "Error: Unsupported operating system: $OS"
     echo "This script supports Linux (systemd) and macOS (launchd)"
@@ -384,7 +381,8 @@ copy_files_smart() {
     while IFS= read -r file; do
         local rel_path="${file#$source_dir/}"
         local dest_file="$dest_dir/$rel_path"
-        local dest_dir_path="$(dirname "$dest_file")"
+        local dest_dir_path
+        dest_dir_path="$(dirname "$dest_file")"
         
         # Skip excluded patterns
         [[ "$rel_path" == *".git"* ]] && continue
