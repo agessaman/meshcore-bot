@@ -51,6 +51,7 @@ echo "==> Copying application files…"
 rsync -a \
     --exclude='.git' \
     --exclude='.github' \
+    --exclude='.cursor' \
     --exclude='__pycache__' \
     --exclude='*.pyc' \
     --exclude='*.egg-info' \
@@ -75,7 +76,7 @@ echo "==> Installing systemd unit…"
 cat > "${BUILD_DIR}${SYSTEMD_DIR}/${PACKAGE_NAME}.service" << 'UNIT'
 [Unit]
 Description=MeshCore Bot - Mesh Network Bot Service
-Documentation=https://github.com/your-repo/meshcore-bot
+Documentation=https://github.com/agessaman/meshcore-bot
 After=network.target
 Wants=network.target
 
@@ -130,7 +131,7 @@ Description: MeshCore Bot - Mesh Network Automation Bot
  A feature-rich bot for MeshCore mesh radio networks.
  Supports command handling, scheduled messages, web viewer,
  Discord/Telegram bridges, inbound webhooks, and more.
-Homepage: https://github.com/your-repo/meshcore-bot
+Homepage: https://github.com/agessaman/meshcore-bot
 EOF
 
 # ── DEBIAN/conffiles ──────────────────────────────────────────────────────────
@@ -169,7 +170,7 @@ if [ ! -d "${INSTALL_ROOT}/venv" ]; then
 fi
 echo "Installing Python dependencies…"
 "${INSTALL_ROOT}/venv/bin/pip" install --quiet --upgrade pip
-"${INSTALL_ROOT}/venv/bin/pip" install --quiet -e "${INSTALL_ROOT}[all]"
+"${INSTALL_ROOT}/venv/bin/pip" install --quiet -r "${INSTALL_ROOT}/requirements.txt"
 
 # Enable and start systemd service
 if command -v systemctl >/dev/null 2>&1; then
