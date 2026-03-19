@@ -872,6 +872,13 @@ long_jokes = false
                 datefmt='%Y-%m-%d %H:%M:%S'
             )
 
+        # Normalize root logger early to avoid duplicate/basicConfig output from dependencies.
+        # We intentionally keep root handlerless; modules that want logging should attach
+        # handlers explicitly (MeshCoreBot and meshcore loggers below).
+        root_logger = logging.getLogger()
+        root_logger.handlers.clear()
+        root_logger.setLevel(log_level)
+
         # Setup logger
         self.logger = logging.getLogger('MeshCoreBot')
         self.logger.setLevel(log_level)
@@ -943,10 +950,32 @@ long_jokes = false
                 handler = logging.StreamHandler()
                 handler.setFormatter(formatter)
                 logger.addHandler(handler)
+            # Prevent duplicate output if root is later configured elsewhere.
+            logger.propagate = False
 
-        # Configure root logger to prevent other libraries from using DEBUG
-        root_logger = logging.getLogger()
-        root_logger.setLevel(log_level)
+        # Silence noisy third-party loggers that can emit unformatted console output.
+        # APScheduler: keep INFO (but route through our formatter) and prevent propagation.
+        # tzlocal: keep WARNING+ (it can be very chatty at DEBUG).
+        apsched_logger_names = (
+            "apscheduler",
+            "apscheduler.scheduler",
+            "apscheduler.executors",
+            "apscheduler.jobstores",
+        )
+        for name in apsched_logger_names:
+            third = logging.getLogger(name)
+            third.handlers.clear()
+            third.setLevel(logging.INFO)
+            third.propagate = False
+            if not third.handlers:
+                handler = logging.StreamHandler()
+                handler.setFormatter(formatter)
+                third.addHandler(handler)
+
+        tzlocal_logger = logging.getLogger("tzlocal")
+        tzlocal_logger.handlers.clear()
+        tzlocal_logger.setLevel(logging.WARNING)
+        tzlocal_logger.propagate = False
 
         # Log the configuration for debugging
         mode = 'json' if json_logging else ('colored' if colored_output else 'plain')
