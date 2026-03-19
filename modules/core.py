@@ -328,7 +328,8 @@ class MeshCoreBot:
                 if key.startswith('channel.') and key.endswith('_seconds'):
                     channel_name = key[len('channel.'):-len('_seconds')]
                     try:
-                        limits[channel_name] = float(value)
+                        # Normalize now; limiter will also normalize at use-time.
+                        limits[channel_name.strip().lower()] = float(value)
                     except ValueError:
                         self.logger.warning(f"Invalid channel rate limit for {key}: {value!r}")
         return ChannelRateLimiter(limits)
