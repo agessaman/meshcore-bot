@@ -1440,9 +1440,9 @@ class BotDataViewer:
             try:
                 bot = getattr(self, 'bot', None)
                 scheduler = getattr(bot, 'scheduler', None) if bot else None
-                if scheduler is None or not hasattr(scheduler, '_run_db_backup'):
+                if scheduler is None or not hasattr(scheduler, 'run_db_backup'):
                     return jsonify({'success': False, 'error': 'Scheduler not available'}), 503
-                scheduler._run_db_backup()
+                scheduler.run_db_backup()
                 # Read outcome written by _run_db_backup
                 path = self.db_manager.get_metadata('maint.status.db_backup_path') or ''
                 outcome = self.db_manager.get_metadata('maint.status.db_backup_outcome') or ''

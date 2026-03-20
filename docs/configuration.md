@@ -20,6 +20,14 @@ The main sections include:
 | `[Weather]` | Units and settings shared by `wx` / `gwx` and Weather Service |
 | `[Logging]` | Log file path and level |
 
+### Logging and log rotation
+
+- **Startup (config.ini):** Under `[Logging]`, `log_file`, `log_max_bytes`, and `log_backup_count` are read when the bot starts. They control the initial `RotatingFileHandler` for the bot log file (see `config.ini.example`).
+
+- **Live changes (web viewer):** The Config tab can store **`maint.log_max_bytes`** and **`maint.log_backup_count`** in the database (`bot_metadata`). The scheduler’s maintenance loop applies those values to the existing rotating file handler **without restarting** the bot—**but only after** you save rotation settings from the web UI (which writes the metadata keys). Editing `config.ini` alone does not update `bot_metadata`, so hot-apply will not see a change until you save from the viewer (or set the keys another way).
+
+If you rely on config-file-only workflows, restart the bot after changing `[Logging]` rotation options.
+
 ## Channels section
 
 `[Channels]` controls where the bot responds:

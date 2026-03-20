@@ -34,7 +34,7 @@ Shorter retention (e.g. 2–3 days for `packet_stream`) is enough for the web vi
 
 ## How cleanup runs
 
-1. The **scheduler** (in the main bot process) runs a single data-retention task once every 24 hours.
+1. The **scheduler** (in the main bot process) runs a single data-retention task on a **24-hour interval** after startup (the first run is not immediate on boot; it aligns with the nightly maintenance email cadence).
 2. That task:
    - Cleans **packet_stream** (via web viewer integration when enabled).
    - Cleans **purging_log**, **daily_stats**, **unique_advert_packets**, and **observed_paths** (repeater manager).

@@ -1843,13 +1843,13 @@ class TestBackupNowRoute:
         mock_scheduler = MagicMock()
 
         def fake_run_db_backup():
-            # Simulate what _run_db_backup writes to metadata
+            # Simulate what run_db_backup writes to metadata
             viewer.db_manager.set_metadata(
                 'maint.status.db_backup_path', str(tmp_path / "test.db")
             )
             viewer.db_manager.set_metadata('maint.status.db_backup_outcome', 'ok')
 
-        mock_scheduler._run_db_backup = fake_run_db_backup
+        mock_scheduler.run_db_backup = fake_run_db_backup
         mock_bot = MagicMock()
         mock_bot.scheduler = mock_scheduler
 
@@ -1874,7 +1874,7 @@ class TestBackupNowRoute:
                 'maint.status.db_backup_outcome', 'error: cannot create dir'
             )
 
-        mock_scheduler._run_db_backup = fake_run_db_backup
+        mock_scheduler.run_db_backup = fake_run_db_backup
         mock_bot = MagicMock()
         mock_bot.scheduler = mock_scheduler
 

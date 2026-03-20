@@ -294,18 +294,18 @@ class TestMaybeRunDbBackup:
                 "db_backup_retention_count": "7",
                 "db_backup_dir": "/tmp/backup",
             }.get(key, "")
-        scheduler._get_maint = Mock(side_effect=maint)
+        scheduler.maintenance.get_maint = Mock(side_effect=maint)
         scheduler._last_db_backup_stats = {"ran_at": last_ran}
 
     def test_disabled_does_not_run(self, scheduler):
         self._setup(scheduler, enabled="false")
-        with patch.object(scheduler, "_run_db_backup") as mock_run:
+        with patch.object(scheduler.maintenance, "run_db_backup") as mock_run:
             scheduler._maybe_run_db_backup()
         mock_run.assert_not_called()
 
     def test_manual_schedule_does_not_run(self, scheduler):
         self._setup(scheduler, schedule="manual")
-        with patch.object(scheduler, "_run_db_backup") as mock_run:
+        with patch.object(scheduler.maintenance, "run_db_backup") as mock_run:
             scheduler._maybe_run_db_backup()
         mock_run.assert_not_called()
 
@@ -316,7 +316,7 @@ class TestMaybeRunDbBackup:
         sched_time = now - datetime.timedelta(minutes=1)
         time_str = sched_time.strftime("%H:%M")
         self._setup(scheduler, time_str=time_str, last_ran=f"{today}T00:01:00")
-        with patch.object(scheduler, "_run_db_backup") as mock_run:
+        with patch.object(scheduler.maintenance, "run_db_backup") as mock_run:
             scheduler._maybe_run_db_backup()
         mock_run.assert_not_called()
 
@@ -328,7 +328,7 @@ class TestMaybeRunDbBackup:
         time_str = sched_time.strftime("%H:%M")
         yesterday = (now - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
         self._setup(scheduler, time_str=time_str, last_ran=f"{yesterday}T00:01:00")
-        with patch.object(scheduler, "_run_db_backup") as mock_run:
+        with patch.object(scheduler.maintenance, "run_db_backup") as mock_run:
             scheduler._maybe_run_db_backup()
         mock_run.assert_called_once()
 
@@ -340,7 +340,7 @@ class TestMaybeRunDbBackup:
         time_str = sched_time.strftime("%H:%M")
         yesterday = (now - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
         self._setup(scheduler, time_str=time_str, last_ran=f"{yesterday}T00:01:00")
-        with patch.object(scheduler, "_run_db_backup") as mock_run:
+        with patch.object(scheduler.maintenance, "run_db_backup") as mock_run:
             scheduler._maybe_run_db_backup()
         mock_run.assert_not_called()
 
@@ -350,7 +350,7 @@ class TestMaybeRunDbBackup:
         sched_time = now + datetime.timedelta(minutes=30)
         time_str = sched_time.strftime("%H:%M")
         self._setup(scheduler, time_str=time_str, last_ran="")
-        with patch.object(scheduler, "_run_db_backup") as mock_run:
+        with patch.object(scheduler.maintenance, "run_db_backup") as mock_run:
             scheduler._maybe_run_db_backup()
         mock_run.assert_not_called()
 
@@ -372,7 +372,7 @@ class TestMaybeRunDbBackup:
         fake_now.strftime = now.strftime
         fake_now.isocalendar.return_value = (2026, 11, 2)
         with patch.object(scheduler, "get_current_time", return_value=fake_now):
-            with patch.object(scheduler, "_run_db_backup") as mock_run:
+            with patch.object(scheduler.maintenance, "run_db_backup") as mock_run:
                 scheduler._maybe_run_db_backup()
         mock_run.assert_not_called()
 
@@ -560,9 +560,9 @@ class TestDbBackupIntervalGuard:
                 "db_backup_retention_count": "7",
                 "db_backup_dir": "/tmp",
             }.get(key, "")
-        scheduler._get_maint = Mock(side_effect=maint)
+        scheduler.maintenance.get_maint = Mock(side_effect=maint)
 
-        with patch.object(scheduler, "_run_db_backup") as mock_run:
+        with patch.object(scheduler.maintenance, "run_db_backup") as mock_run:
             scheduler._maybe_run_db_backup()
         # Should NOT run because DB says it already ran today
         mock_run.assert_not_called()
@@ -1209,15 +1209,8 @@ class TestCollectEmailStats:
         conn_mock.__enter__ = Mock(return_value=conn_mock)
         conn_mock.__exit__ = Mock(return_value=False)
 
-        row_total = MagicMock()
-        row_total.get = Mock(side_effect=lambda k, d=0: {"n": 50}.get(k, d))
-        row_24h = MagicMock()
-        row_24h.get = Mock(side_effect=lambda k, d=0: {"n": 10}.get(k, d))
-        row_new = MagicMock()
-        row_new.get = Mock(side_effect=lambda k, d=0: {"n": 3}.get(k, d))
-
         cursor_mock = MagicMock()
-        cursor_mock.fetchone.side_effect = [row_total, row_24h, row_new]
+        cursor_mock.fetchone.side_effect = [{"n": 50}, {"n": 10}, {"n": 3}]
         conn_mock.cursor.return_value = cursor_mock
         scheduler.bot.db_manager.connection.return_value = conn_mock
 

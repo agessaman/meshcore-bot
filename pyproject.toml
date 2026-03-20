@@ -141,6 +141,7 @@ module = [
     "modules.feed_manager",
     "modules.mesh_graph",
     "modules.scheduler",
+    "modules.maintenance",
     "modules.transmission_tracker",
     "modules.commands.alert_command",
     "modules.commands.announcements_command",
