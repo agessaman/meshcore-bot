@@ -2943,7 +2943,13 @@ class MessageHandler:
 
                     # Add companion to device contact list
                     try:
-                        result = await self.bot.meshcore.commands.add_contact(contact_data)
+                        # Only pass the fields required by `add_contact` (name + optional public_key).
+                        # `contact_data` may include RSSI/SNR values (often negative in dBm) which some
+                        # device APIs treat as unsigned integers.
+                        if public_key:
+                            result = await self.bot.meshcore.commands.add_contact(contact_name, public_key)
+                        else:
+                            result = await self.bot.meshcore.commands.add_contact(contact_name)
                         if hasattr(result, 'type') and result.type.name == 'OK':
                             self.logger.info(f"✅ Companion {contact_name} added to device contacts")
                         else:
