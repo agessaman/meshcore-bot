@@ -61,6 +61,9 @@ class MeshCoreBot:
         self.connected = False
         self.connection_time = None  # Track when connection was established to skip old cached messages
         
+        # Volatile: DM-only admin command (channelpause) toggles this; not persisted across restarts.
+        self.channel_responses_enabled = True
+        
         # Bot start time for uptime tracking
         self.start_time = time.time()
         

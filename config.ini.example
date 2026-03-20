@@ -211,7 +211,8 @@ admin_pubkeys =
 # Commands that require admin access (comma-separated)
 # These commands will only work for users in the admin_pubkeys list
 # reload: Reload configuration without restarting (radio settings cannot be changed)
-admin_commands = repeater,webviewer,reload
+# channelpause: DM-only; channelpause / channelresume — pause or resume bot responses on channels (not persisted)
+admin_commands = repeater,webviewer,reload,channelpause
 
 [Plugin_Overrides]
 # Plugin Overrides - Use alternative plugin implementations

@@ -77,3 +77,7 @@ Before starting the bot, you can validate section names and path writability. Se
 ## Reloading configuration
 
 Some configuration can be reloaded without restarting the bot using the **`reload`** command (admin only). Radio/connection settings are not changed by reload; restart the bot for those.
+
+## Pausing channel responses (remote)
+
+Admins can DM **`channelpause`** or **`channelresume`** (see `[Admin_ACL]` in `config.ini`) to stop or resume bot reactions on **public channels** only—greeter, keywords, and commands on channels are skipped; DMs still work. The setting is **in memory only** (back to responding on channels after restart). Scheduled channel posts from the scheduler are **not** blocked by this toggle.
