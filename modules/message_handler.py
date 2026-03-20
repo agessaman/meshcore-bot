@@ -2628,7 +2628,7 @@ class MessageHandler:
 
         # Check greeter command for public channel messages (BEFORE general message filtering)
         # This allows greeter to work on its own configured channels even if not in monitor_channels
-        if 'greeter' in self.bot.command_manager.commands:
+        if self._channel_responses_allowed(message) and 'greeter' in self.bot.command_manager.commands:
             greeter_command = self.bot.command_manager.commands['greeter']
             # First, check if this message should cancel a pending greeting (human greeting detection)
             if greeter_command:
@@ -2779,6 +2779,11 @@ class MessageHandler:
             self.logger.debug(f"Ignoring message from banned user: {message.sender_id}")
             return False
 
+        # Channel-only pause (DM-only admin command); DMs still processed
+        if not message.is_dm and not getattr(self.bot, "channel_responses_enabled", True):
+            self.logger.debug("Ignoring non-DM message: channel responses paused")
+            return False
+
         # Check if channel is monitored (with command override support)
         if not message.is_dm and message.channel:
             # Check if channel is in global monitor_channels
@@ -2803,6 +2808,12 @@ class MessageHandler:
             return False
 
         return True
+
+    def _channel_responses_allowed(self, message: MeshMessage) -> bool:
+        """True if channel-driven bot responses are allowed for this message (DMs always True here)."""
+        if message.is_dm:
+            return True
+        return getattr(self.bot, "channel_responses_enabled", True)
 
     async def handle_new_contact(self, event, metadata=None):
         """Handle NEW_CONTACT events for automatic contact management"""

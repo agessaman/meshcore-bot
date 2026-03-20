@@ -1201,6 +1201,15 @@ class GreeterCommand(BaseCommand):
                 self.logger.debug(f"Waiting {self.dead_air_delay_seconds} seconds before greeting {message.sender_id} on {message.channel}")
                 await asyncio.sleep(self.dead_air_delay_seconds)
 
+            if not getattr(self.bot, "channel_responses_enabled", True):
+                self.logger.info(
+                    f"Skipping delayed greeting for {message.sender_id} on {message.channel} "
+                    "(channel responses paused)"
+                )
+                if key in self.pending_greetings:
+                    del self.pending_greetings[key]
+                return
+
             # Check if greeting was cancelled (user was already greeted or human responded)
             if key not in self.pending_greetings:
                 self.logger.debug(f"Greeting for {message.sender_id} on {message.channel} was cancelled")

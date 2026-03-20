@@ -25,7 +25,7 @@ banned_users =
 [Admin_ACL]
 # 64-char hex public keys (comma-separated). Leave blank to disable admin commands.
 admin_pubkeys = 
-admin_commands = repeater,webviewer,reload
+admin_commands = repeater,webviewer,reload,channelpause
 
 [Keywords]
 test = "ack @[{sender}]{phrase_part} | {connection_info} | Received at: {timestamp}"

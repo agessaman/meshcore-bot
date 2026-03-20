@@ -177,7 +177,7 @@ def validate_config(config_path: str) -> list[tuple[str, str]]:
     if ADMIN_ACL_SECTION not in sections_present:
         results.append((
             SEVERITY_INFO,
-            f"Section [{ADMIN_ACL_SECTION}] absent; admin commands (repeater, webviewer, reload) disabled.",
+            f"Section [{ADMIN_ACL_SECTION}] absent; admin commands (repeater, webviewer, reload, channelpause) disabled.",
         ))
     if BANNED_USERS_SECTION not in sections_present:
         results.append((
