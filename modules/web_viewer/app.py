@@ -1799,13 +1799,18 @@ class BotDataViewer:
             with self._clients_lock:
                 client_count = len(self.connected_clients)
 
+            radio_zombie = self.db_manager.get_metadata('bot.radio_zombie') == 'true'
+            radio_zombie_since = self.db_manager.get_metadata('bot.radio_zombie_since') or None
+
             return jsonify({
-                'status': 'healthy',
+                'status': 'degraded' if radio_zombie else 'healthy',
                 'connected_clients': client_count,
                 'max_clients': self.max_clients,
                 'timestamp': time.time(),
                 'bot_uptime': bot_uptime,
-                'version': 'modern_2.0'
+                'version': 'modern_2.0',
+                'radio_zombie': radio_zombie,
+                'radio_zombie_since': radio_zombie_since,
             })
 
         @self.app.route('/api/system-health')
@@ -1831,6 +1836,15 @@ class BotDataViewer:
                 start_time = self.db_manager.get_bot_start_time()
                 if start_time:
                     health_data['uptime_seconds'] = time.time() - start_time
+
+                # Inject zombie radio state from shared metadata
+                radio_zombie = self.db_manager.get_metadata('bot.radio_zombie') == 'true'
+                health_data['radio_zombie'] = radio_zombie
+                health_data['radio_zombie_since'] = (
+                    self.db_manager.get_metadata('bot.radio_zombie_since') or None
+                )
+                if radio_zombie:
+                    health_data['status'] = 'degraded'
 
                 return jsonify(health_data)
 
