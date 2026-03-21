@@ -575,7 +575,7 @@ class TestDbBackupIntervalGuard:
 # ---------------------------------------------------------------------------
 
 
-class TestFormatEmailBody:
+class TestFormatEmailBodyPure:
     """Tests for _format_email_body — pure string builder."""
 
     def setup_method(self):
@@ -1229,3 +1229,154 @@ class TestCollectEmailStats:
         assert result.get("contacts_total") == 50
         assert result.get("contacts_24h") == 10
         assert result.get("contacts_new_24h") == 3
+
+
+# ---------------------------------------------------------------------------
+# _send_interval_advert_async (PR2 fix — Event-based error detection)
+# ---------------------------------------------------------------------------
+
+
+def _make_sched_with_logger(mock_logger):
+    """Return a MessageScheduler backed by a mock bot with the given logger."""
+    bot = Mock()
+    bot.logger = mock_logger
+    bot.config = ConfigParser()
+    bot.config.add_section("Bot")
+    return MessageScheduler(bot)
+
+
+class TestSendIntervalAdvertAsyncFixed:
+    """Tests for MessageScheduler._send_interval_advert_async() (PR2 fix)."""
+
+    def test_error_event_raises_runtime_error(self, mock_logger):
+        from meshcore.events import EventType
+
+        sched = _make_sched_with_logger(mock_logger)
+        error_event = MagicMock()
+        error_event.type = EventType.ERROR
+        error_event.payload = {"reason": "no_event_received"}
+        sched.bot.meshcore.commands.send_advert = AsyncMock(return_value=error_event)
+
+        with pytest.raises(RuntimeError, match="send_advert failed"):
+            asyncio.run(sched._send_interval_advert_async())
+
+    def test_error_event_includes_reason_in_message(self, mock_logger):
+        from meshcore.events import EventType
+
+        sched = _make_sched_with_logger(mock_logger)
+        error_event = MagicMock()
+        error_event.type = EventType.ERROR
+        error_event.payload = {"reason": "no_event_received"}
+        sched.bot.meshcore.commands.send_advert = AsyncMock(return_value=error_event)
+
+        with pytest.raises(RuntimeError, match="no_event_received"):
+            asyncio.run(sched._send_interval_advert_async())
+
+    def test_ok_event_logs_success(self, mock_logger):
+        from meshcore.events import EventType
+
+        sched = _make_sched_with_logger(mock_logger)
+        ok_event = MagicMock()
+        ok_event.type = EventType.OK
+        sched.bot.meshcore.commands.send_advert = AsyncMock(return_value=ok_event)
+
+        asyncio.run(sched._send_interval_advert_async())
+
+        sched.bot.logger.info.assert_called_with(
+            "Interval-based flood advert sent successfully"
+        )
+
+    def test_send_interval_advert_logs_exception_type_name(self, mock_logger):
+        """Error log must include type(e).__name__ so blank TimeoutError is visible."""
+        from concurrent.futures import TimeoutError as FuturesTimeoutError
+
+        sched = _make_sched_with_logger(mock_logger)
+
+        future_mock = MagicMock()
+        future_mock.result = MagicMock(side_effect=FuturesTimeoutError())
+
+        loop_mock = MagicMock()
+        loop_mock.is_running.return_value = True
+        sched.bot.main_event_loop = loop_mock
+
+        with patch("asyncio.run_coroutine_threadsafe", return_value=future_mock):
+            sched.send_interval_advert()
+
+        # The error log must include the class name, not just str(e) which
+        # would be empty for concurrent.futures.TimeoutError
+        call_args_list = mock_logger.error.call_args_list
+        assert call_args_list, "logger.error was never called"
+        logged = str(call_args_list[0])
+        assert "TimeoutError" in logged
+
+
+# ---------------------------------------------------------------------------
+# _send_scheduled_message_async (PR2 fix — asyncio.wait_for wrapping)
+# ---------------------------------------------------------------------------
+
+
+class TestSendScheduledMessageAsyncTimeout:
+    """Tests for _send_scheduled_message_async() asyncio.wait_for wrapping (PR2)."""
+
+    def test_success_calls_send_channel_message(self, mock_logger):
+        sched = _make_sched_with_logger(mock_logger)
+        sched.bot.command_manager.send_channel_message = AsyncMock(return_value=None)
+
+        asyncio.run(sched._send_scheduled_message_async("#general", "hello"))
+
+        sched.bot.command_manager.send_channel_message.assert_awaited_once_with(
+            "#general", "hello"
+        )
+
+    def test_timeout_raises_asyncio_timeout_error(self, mock_logger):
+        sched = _make_sched_with_logger(mock_logger)
+
+        async def run():
+            async def fake_wait_for(coro, timeout):
+                raise asyncio.TimeoutError()
+
+            with patch("asyncio.wait_for", side_effect=fake_wait_for):
+                await sched._send_scheduled_message_async("#general", "hello")
+
+        with pytest.raises(asyncio.TimeoutError):
+            asyncio.run(run())
+
+    def test_send_timeout_seconds_config_used(self, mock_logger):
+        """send_timeout_seconds from config is passed to wait_for."""
+        sched = _make_sched_with_logger(mock_logger)
+        sched.bot.config.set("Bot", "send_timeout_seconds", "45")
+        sched.bot.command_manager.send_channel_message = AsyncMock(return_value=None)
+
+        captured_timeout = []
+
+        async def spy_wait_for(coro, timeout):
+            captured_timeout.append(timeout)
+            return await coro
+
+        async def run():
+            with patch("asyncio.wait_for", side_effect=spy_wait_for):
+                await sched._send_scheduled_message_async("#general", "hello")
+
+        asyncio.run(run())
+        assert captured_timeout == [45]
+
+    def test_send_scheduled_message_logs_exception_type_name(self, mock_logger):
+        """Error log must include type(e).__name__."""
+        from concurrent.futures import TimeoutError as FuturesTimeoutError
+
+        sched = _make_sched_with_logger(mock_logger)
+
+        future_mock = MagicMock()
+        future_mock.result = MagicMock(side_effect=FuturesTimeoutError())
+
+        loop_mock = MagicMock()
+        loop_mock.is_running.return_value = True
+        sched.bot.main_event_loop = loop_mock
+
+        with patch("asyncio.run_coroutine_threadsafe", return_value=future_mock):
+            sched.send_scheduled_message("#general", "hello")
+
+        call_args_list = mock_logger.error.call_args_list
+        assert call_args_list, "logger.error was never called"
+        logged = str(call_args_list[0])
+        assert "TimeoutError" in logged
