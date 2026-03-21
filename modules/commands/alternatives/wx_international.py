@@ -27,6 +27,9 @@ except ImportError:
     WXSIM_PARSER_AVAILABLE = False
     WXSIMParser = None
 
+# Multiday: plain digits, 7day/7-day, or suffix form 7d/10d (min 2, max below). Open-Meteo allows up to 16 forecast days.
+GWX_MULTIDAY_MAX_DAYS = 16
+
 
 class GlobalWxCommand(BaseCommand):
     """Handles global weather commands with city/location support"""
@@ -41,11 +44,11 @@ class GlobalWxCommand(BaseCommand):
 
     # Documentation
     short_description = "Get weather for any global location using Open-Meteo API"
-    usage = "gwx <location> [tomorrow|7d|hourly]"
+    usage = "gwx <location> [tomorrow|<N>d|hourly]"
     examples = ["gwx Tokyo", "gwx Paris, France"]
     parameters = [
         {"name": "location", "description": "City name, country, or coordinates"},
-        {"name": "option", "description": "tomorrow, 7d, or hourly (optional)"}
+        {"name": "option", "description": "tomorrow, Nd (e.g. 7d, 10d), or hourly (optional)"}
     ]
 
     # Error constants - will use translations instead
@@ -395,7 +398,7 @@ class GlobalWxCommand(BaseCommand):
                 await self.send_response(message, self.translate('commands.gwx.usage'))
                 return True
 
-        # Check for forecast type options: "tomorrow", or a number 2-7
+        # Check for forecast type options: "tomorrow", Nd (7d, 10d), or plain digit days 2–GWX_MULTIDAY_MAX_DAYS
         forecast_type = "default"
         num_days = 7  # Default for multi-day forecast
         location_parts = parts[1:]
@@ -406,17 +409,24 @@ class GlobalWxCommand(BaseCommand):
             if last_part == "tomorrow":
                 forecast_type = "tomorrow"
                 location_parts = location_parts[:-1]
-            elif last_part.isdigit():
-                # Check if it's a number between 2-7
-                days = int(last_part)
-                if 2 <= days <= 7:
-                    forecast_type = "multiday"
-                    num_days = days
-                    location_parts = location_parts[:-1]
             elif last_part in ["7day", "7-day"]:
                 forecast_type = "multiday"
                 num_days = 7
                 location_parts = location_parts[:-1]
+            else:
+                nd_match = re.fullmatch(r"(\d+)d", last_part)
+                if nd_match:
+                    days = int(nd_match.group(1))
+                    if 2 <= days <= GWX_MULTIDAY_MAX_DAYS:
+                        forecast_type = "multiday"
+                        num_days = days
+                        location_parts = location_parts[:-1]
+                elif last_part.isdigit():
+                    days = int(last_part)
+                    if 2 <= days <= GWX_MULTIDAY_MAX_DAYS:
+                        forecast_type = "multiday"
+                        num_days = days
+                        location_parts = location_parts[:-1]
 
         # Join remaining parts to handle "city, country" format
         location = ' '.join(location_parts).strip()
@@ -481,7 +491,7 @@ class GlobalWxCommand(BaseCommand):
         Args:
             location: The location (city name, etc.).
             forecast_type: "default", "tomorrow", or "multiday".
-            num_days: Number of days for multiday forecast (2-7).
+            num_days: Number of days for multiday forecast (2–16).
             message: The MeshMessage for dynamic length calculation.
 
         Returns:
@@ -770,7 +780,7 @@ class GlobalWxCommand(BaseCommand):
             lat: Latitude.
             lon: Longitude.
             forecast_type: "default", "tomorrow", or "multiday".
-            num_days: Number of days for multiday forecast (2-7).
+            num_days: Number of days for multiday forecast (2–16).
             message: The MeshMessage for dynamic length calculation.
             location_prefix_len: Length of location prefix (e.g., "City, CC: ") that will be added later.
 
@@ -786,7 +796,7 @@ class GlobalWxCommand(BaseCommand):
 
             # Determine forecast_days based on type
             if forecast_type == "multiday":
-                forecast_days = min(num_days, 7)  # Open-Meteo supports up to 7 days
+                forecast_days = min(num_days, 16)  # Open-Meteo supports up to 16 days
             elif forecast_type == "tomorrow":
                 forecast_days = 2  # Need today and tomorrow
             else:
