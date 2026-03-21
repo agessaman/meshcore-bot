@@ -19,6 +19,8 @@ import sqlite3
 import feedparser
 from urllib.parse import urlparse
 
+from modules.feed_filter_eval import item_passes_filter_config
+
 
 class FeedManager:
     """Manages RSS and API feed subscriptions"""
@@ -974,118 +976,18 @@ class FeedManager:
             self._record_feed_error(feed['id'], 'queue', str(e))
     
     def _should_send_item(self, feed: Dict[str, Any], item: Dict[str, Any]) -> bool:
-        """Check if an item should be sent based on filter configuration
-        
-        Filter config format:
-        {
-            "conditions": [
-                {"field": "Priority", "operator": "in", "values": ["highest", "high"]},
-                {"field": "EventStatus", "operator": "equals", "value": "open"},
-                {"field": "EventCategory", "operator": "not_equals", "value": "Maintenance"},
-                {"field": "raw.Priority", "operator": "matches", "pattern": "^(highest|high)$"}
-            ],
-            "logic": "AND"  # or "OR"
-        }
-        
-        Supported operators:
-        - equals: exact match
-        - not_equals: not exact match
-        - in: value is in list
-        - not_in: value is not in list
-        - matches: regex match
-        - not_matches: regex doesn't match
-        - contains: substring match
-        - not_contains: substring doesn't match
+        """Check if an item should be sent based on filter configuration.
+
+        See modules/feed_filter_eval.py and docs/FEEDS.md for operators.
         """
-        filter_config_str = feed.get('filter_config')
-        if not filter_config_str:
-            # No filter configured, send all items
-            return True
-        
-        try:
-            filter_config = json.loads(filter_config_str) if isinstance(filter_config_str, str) else filter_config_str
-        except (json.JSONDecodeError, TypeError):
-            self.logger.warning(f"Invalid filter_config for feed {feed['id']}, sending all items")
-            return True
-        
-        conditions = filter_config.get('conditions', [])
-        if not conditions:
-            # Empty conditions, send all items
-            return True
-        
-        logic = filter_config.get('logic', 'AND').upper()
-        
-        # Get raw data for field access
-        raw_data = item.get('raw', {})
-        
-        # Evaluate each condition
-        results = []
-        for condition in conditions:
-            field_path = condition.get('field')
-            operator = condition.get('operator', 'equals')
-            
-            if not field_path:
-                # Invalid condition, skip it
-                continue
-            
-            # Get field value using nested access
-            field_value = self._get_nested_value(raw_data, field_path, '')
-            if not field_value and field_path.startswith('raw.'):
-                # Try without 'raw.' prefix
-                field_value = self._get_nested_value(raw_data, field_path[4:], '')
-            
-            # If still not found, try top-level item fields
-            if not field_value:
-                field_value = self._get_nested_value(item, field_path, '')
-            
-            # Convert to string for comparison
-            field_value_str = str(field_value).lower() if field_value is not None else ''
-            
-            # Evaluate condition
-            result = False
-            if operator == 'equals':
-                compare_value = str(condition.get('value', '')).lower()
-                result = field_value_str == compare_value
-            elif operator == 'not_equals':
-                compare_value = str(condition.get('value', '')).lower()
-                result = field_value_str != compare_value
-            elif operator == 'in':
-                values = [str(v).lower() for v in condition.get('values', [])]
-                result = field_value_str in values
-            elif operator == 'not_in':
-                values = [str(v).lower() for v in condition.get('values', [])]
-                result = field_value_str not in values
-            elif operator == 'matches':
-                pattern = condition.get('pattern', '')
-                if pattern:
-                    try:
-                        result = bool(re.search(pattern, str(field_value), re.IGNORECASE))
-                    except re.error:
-                        result = False
-            elif operator == 'not_matches':
-                pattern = condition.get('pattern', '')
-                if pattern:
-                    try:
-                        result = not bool(re.search(pattern, str(field_value), re.IGNORECASE))
-                    except re.error:
-                        result = True
-            elif operator == 'contains':
-                compare_value = str(condition.get('value', '')).lower()
-                result = compare_value in field_value_str
-            elif operator == 'not_contains':
-                compare_value = str(condition.get('value', '')).lower()
-                result = compare_value not in field_value_str
-            else:
-                self.logger.warning(f"Unknown filter operator: {operator}")
-                result = True  # Default to allowing if operator is unknown
-            
-            results.append(result)
-        
-        # Apply logic (AND or OR)
-        if logic == 'OR':
-            return any(results)
-        else:  # AND (default)
-            return all(results)
+        def _warn(msg: str) -> None:
+            self.logger.warning(f"{msg} (feed id {feed.get('id')})")
+
+        return item_passes_filter_config(
+            item,
+            feed.get('filter_config'),
+            log_warning=_warn,
+        )
     
     async def _send_feed_item(self, feed: Dict[str, Any], item: Dict[str, Any]):
         """Queue a feed item message instead of sending immediately"""

@@ -264,6 +264,42 @@ Filter configuration determines which items are sent to channels.
 - `not_matches` - Regex does not match
 - `contains` - String contains value
 - `not_contains` - String does not contain value
+- `within_days` - Item timestamp is within the last **N** calendar days (rolling window from **now**, UTC)
+- `within_weeks` - Same as `within_days` with **N** × 7 days (e.g. four weeks ≈ `within_weeks` `4` or `within_days` `28`)
+
+`within_days` / `within_weeks` require a `field` pointing at a date (same paths as sort: `published` for RSS, or `raw.SomeTimeField` for APIs). They also require `days` or `weeks` respectively.
+
+If the date is missing or cannot be parsed, the condition **fails** (item is excluded). Set `"include_if_missing": true` on that condition to treat missing/unparseable dates as a pass instead.
+
+**Examples:**
+
+```json
+{
+  "conditions": [
+    {
+      "field": "published",
+      "operator": "within_days",
+      "days": 28
+    }
+  ],
+  "logic": "AND"
+}
+```
+
+```json
+{
+  "conditions": [
+    {
+      "field": "raw.LastUpdatedTime",
+      "operator": "within_weeks",
+      "weeks": 4
+    }
+  ],
+  "logic": "AND"
+}
+```
+
+Date parsing for filters matches sorting: ISO strings, Microsoft `/Date(...)/`, Unix timestamps (seconds or milliseconds), and common string formats.
 
 ### Logic
 
@@ -276,6 +312,8 @@ For API feeds, use `raw.field` or `raw.nested.field` to access API response fiel
 - `raw.Priority`
 - `raw.EventStatus`
 - `raw.StartRoadwayLocation.RoadName`
+
+For RSS feeds, use `published` for the item publication time in `within_days` / `within_weeks` conditions.
 
 ## Sort Configuration
 

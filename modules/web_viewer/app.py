@@ -3983,6 +3983,8 @@ class BotDataViewer:
             api_config = data.get('api_config')
             output_format = data.get('output_format')
             message_send_interval = data.get('message_send_interval_seconds')
+            filter_config = data.get('filter_config')
+            sort_config = data.get('sort_config')
             
             if not all([feed_type, feed_url, channel_name]):
                 raise ValueError("feed_type, feed_url, and channel_name are required")
@@ -3991,12 +3993,14 @@ class BotDataViewer:
             cursor = conn.cursor()
             
             api_config_str = json.dumps(api_config) if api_config else None
+            filter_config_str = json.dumps(filter_config) if filter_config else None
+            sort_config_str = json.dumps(sort_config) if sort_config else None
             
             cursor.execute('''
                 INSERT INTO feed_subscriptions 
-                (feed_type, feed_url, channel_name, feed_name, check_interval_seconds, api_config, output_format, message_send_interval_seconds)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (feed_type, feed_url, channel_name, feed_name, check_interval, api_config_str, output_format, message_send_interval))
+                (feed_type, feed_url, channel_name, feed_name, check_interval_seconds, api_config, output_format, message_send_interval_seconds, filter_config, sort_config)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (feed_type, feed_url, channel_name, feed_name, check_interval, api_config_str, output_format, message_send_interval, filter_config_str, sort_config_str))
             
             conn.commit()
             return cursor.lastrowid
@@ -4051,10 +4055,6 @@ class BotDataViewer:
             if 'sort_config' in data:
                 updates.append('sort_config = ?')
                 params.append(json.dumps(data['sort_config']) if data['sort_config'] else None)
-            
-            if 'message_send_interval_seconds' in data:
-                updates.append('message_send_interval_seconds = ?')
-                params.append(data['message_send_interval_seconds'])
             
             if not updates:
                 return True  # Nothing to update
@@ -4557,115 +4557,10 @@ class BotDataViewer:
             raise
     
     def _should_include_item(self, item: Dict[str, Any], filter_config: dict) -> bool:
-        """Check if an item should be included based on filter configuration (standalone version for preview)"""
-        import json
-        import re
-        
-        if not filter_config:
-            return True
-        
-        try:
-            filter_config_dict = json.loads(filter_config) if isinstance(filter_config, str) else filter_config
-        except (json.JSONDecodeError, TypeError):
-            return True
-        
-        conditions = filter_config_dict.get('conditions', [])
-        if not conditions:
-            return True
-        
-        logic = filter_config_dict.get('logic', 'AND').upper()
-        
-        # Get raw data for field access
-        raw_data = item.get('raw', {})
-        
-        # Helper to get nested values
-        def get_nested_value(data, path, default=''):
-            if not path or not data:
-                return default
-            parts = path.split('.')
-            value = data
-            for part in parts:
-                if isinstance(value, dict):
-                    value = value.get(part)
-                elif isinstance(value, list):
-                    try:
-                        idx = int(part)
-                        if 0 <= idx < len(value):
-                            value = value[idx]
-                        else:
-                            return default
-                    except (ValueError, TypeError):
-                        return default
-                else:
-                    return default
-                if value is None:
-                    return default
-            return value if value is not None else default
-        
-        # Evaluate each condition
-        results = []
-        for condition in conditions:
-            field_path = condition.get('field')
-            operator = condition.get('operator', 'equals')
-            
-            if not field_path:
-                continue
-            
-            # Get field value using nested access
-            field_value = get_nested_value(raw_data, field_path, '')
-            if not field_value and field_path.startswith('raw.'):
-                field_value = get_nested_value(raw_data, field_path[4:], '')
-            
-            if not field_value:
-                field_value = get_nested_value(item, field_path, '')
-            
-            # Convert to string for comparison
-            field_value_str = str(field_value).lower() if field_value is not None else ''
-            
-            # Evaluate condition
-            result = False
-            if operator == 'equals':
-                compare_value = str(condition.get('value', '')).lower()
-                result = field_value_str == compare_value
-            elif operator == 'not_equals':
-                compare_value = str(condition.get('value', '')).lower()
-                result = field_value_str != compare_value
-            elif operator == 'in':
-                values = [str(v).lower() for v in condition.get('values', [])]
-                result = field_value_str in values
-            elif operator == 'not_in':
-                values = [str(v).lower() for v in condition.get('values', [])]
-                result = field_value_str not in values
-            elif operator == 'matches':
-                pattern = condition.get('pattern', '')
-                if pattern:
-                    try:
-                        result = bool(re.search(pattern, str(field_value), re.IGNORECASE))
-                    except re.error:
-                        result = False
-            elif operator == 'not_matches':
-                pattern = condition.get('pattern', '')
-                if pattern:
-                    try:
-                        result = not bool(re.search(pattern, str(field_value), re.IGNORECASE))
-                    except re.error:
-                        result = True
-            elif operator == 'contains':
-                compare_value = str(condition.get('value', '')).lower()
-                result = compare_value in field_value_str
-            elif operator == 'not_contains':
-                compare_value = str(condition.get('value', '')).lower()
-                result = compare_value not in field_value_str
-            else:
-                result = True  # Default to allowing if operator is unknown
-            
-            results.append(result)
-        
-        # Apply logic (AND or OR)
-        if logic == 'OR':
-            return any(results)
-        else:  # AND (default)
-            return all(results)
+        """Check if an item should be included based on filter configuration (preview; same rules as FeedManager)."""
+        from modules.feed_filter_eval import item_passes_filter_config
+
+        return item_passes_filter_config(item, filter_config)
     
     def _parse_microsoft_date(self, date_str: str) -> Optional[datetime]:
         """Parse Microsoft JSON date format: /Date(timestamp-offset)/"""
