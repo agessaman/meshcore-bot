@@ -1,0 +1,107 @@
+<section class="card mb-4 config-panel-card" id="notifications">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-envelope me-2"></i>Email &amp; Notifications</h5>
+        <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" id="nightly-enabled-toggle" role="switch">
+            <label class="form-check-label" for="nightly-enabled-toggle">
+                Nightly maintenance email
+            </label>
+        </div>
+    </div>
+    <div class="card-body">
+        <p class="text-muted small mb-4">
+            When enabled, a nightly digest is sent summarising maintenance activity
+            (log rotation, database backup, data retention, error counts).
+            All fields are stored in the bot database -- no config.ini edit required.
+        </p>
+
+        <form id="notifications-form" novalidate>
+            <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
+                SMTP Server
+            </h6>
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <label class="form-label" for="smtp-host">Server hostname</label>
+                    <input type="text" class="form-control" id="smtp-host"
+                           placeholder="smtp.example.com" autocomplete="off">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label" for="smtp-port">Port</label>
+                    <input type="number" class="form-control" id="smtp-port"
+                           placeholder="587" min="1" max="65535">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label" for="smtp-security">Security</label>
+                    <select class="form-select" id="smtp-security">
+                        <option value="starttls">STARTTLS (port 587)</option>
+                        <option value="ssl">SSL / TLS (port 465)</option>
+                        <option value="none">None / plain (port 25)</option>
+                    </select>
+                </div>
+            </div>
+
+            <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
+                Credentials
+            </h6>
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <label class="form-label" for="smtp-user">Username / email</label>
+                    <input type="text" class="form-control" id="smtp-user"
+                           placeholder="user@example.com" autocomplete="username">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="smtp-password">Password</label>
+                    <div class="input-group">
+                        <input type="password" class="form-control" id="smtp-password"
+                               placeholder="••••••••" autocomplete="current-password">
+                        <button class="btn btn-outline-secondary" type="button"
+                                id="toggle-password" title="Show / hide password">
+                            <i class="fas fa-eye" id="toggle-password-icon"></i>
+                        </button>
+                    </div>
+                    <div class="form-text">
+                        Stored in the bot database. Use an app-specific password where supported.
+                    </div>
+                </div>
+            </div>
+
+            <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
+                Sender
+            </h6>
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <label class="form-label" for="from-name">Sender display name</label>
+                    <input type="text" class="form-control" id="from-name"
+                           placeholder="MeshCore Bot">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="from-email">Sender email address</label>
+                    <input type="email" class="form-control" id="from-email"
+                           placeholder="bot@example.com">
+                </div>
+            </div>
+
+            <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
+                Recipients
+            </h6>
+            <div class="row g-3 mb-4">
+                <div class="col-12">
+                    <label class="form-label" for="recipients">Recipient email address(es)</label>
+                    <input type="text" class="form-control" id="recipients"
+                           placeholder="admin@example.com, ops@example.com">
+                    <div class="form-text">Separate multiple addresses with commas.</div>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 align-items-center">
+                <button type="button" class="btn btn-primary" id="save-notifications-btn">
+                    <i class="fas fa-save me-1"></i>Save settings
+                </button>
+                <button type="button" class="btn btn-outline-secondary" id="test-email-btn">
+                    <i class="fas fa-paper-plane me-1"></i>Send test email
+                </button>
+                <span id="save-status" class="ms-2 small" style="display:none;"></span>
+            </div>
+        </form>
+    </div>
+</section>

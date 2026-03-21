@@ -2,316 +2,289 @@
 
 {% block title %}Configuration - MeshCore Bot{% endblock %}
 
+{% block extra_css %}
+<style>
+    /* Layout */
+    .config-layout {
+        display: grid;
+        grid-template-columns: 260px minmax(0, 1fr);
+        gap: 1rem;
+    }
+    .config-nav.card {
+        border: 1px solid var(--border-color);
+        background-color: var(--card-bg);
+    }
+    .config-nav {
+        position: sticky;
+        top: 1rem;
+        align-self: start;
+        max-height: calc(100vh - 2rem);
+        overflow-y: auto;
+    }
+    .config-nav .nav-link {
+        color: var(--text-color);
+        border-radius: 0.375rem;
+    }
+    .config-nav .nav-link:hover,
+    .config-nav .nav-link:focus {
+        background-color: var(--bg-secondary);
+    }
+    .config-nav .nav-link.active {
+        background-color: var(--bg-tertiary);
+        font-weight: 600;
+    }
+    .config-panel-card {
+        scroll-margin-top: 1rem;
+        border: 1px solid var(--border-color);
+        background-color: var(--card-bg);
+    }
+    .config-panel-card .card-header {
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    /* Stat tiles (database overview) */
+    .config-stat-tile {
+        background-color: var(--bg-secondary);
+        border-color: var(--border-color) !important;
+    }
+
+    /* Database table rows (JS-rendered) */
+    .config-db-table-row {
+        border-color: var(--border-color) !important;
+        background-color: var(--bg-secondary);
+    }
+    .config-table-name-icon {
+        color: var(--text-color);
+        opacity: 0.85;
+    }
+    .config-table-metric {
+        color: var(--text-color);
+    }
+    .config-tables-list .loading {
+        color: var(--text-muted);
+    }
+
+    /* Maintenance + generic config tables */
+    .config-table-thead th {
+        background-color: var(--card-header-bg);
+        color: var(--text-color);
+        border-bottom: 1px solid var(--border-color);
+        font-weight: 600;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        padding-top: 0.75rem;
+        padding-bottom: 0.75rem;
+    }
+
+    /* Maintenance Status panel */
+    .config-maintenance-panel-body {
+        padding: 1rem 1.25rem 1.25rem;
+    }
+    .config-maintenance-table {
+        --maint-row-border: color-mix(in srgb, var(--border-color) 55%, transparent);
+    }
+    .config-maintenance-table tbody td {
+        padding-top: 0.65rem;
+        padding-bottom: 0.65rem;
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+        border-color: var(--maint-row-border);
+        vertical-align: middle;
+    }
+    .config-maintenance-table thead th {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+    .config-maint-col-job {
+        min-width: 11rem;
+    }
+    .config-maint-col-ran {
+        font-variant-numeric: tabular-nums;
+    }
+    .config-maint-time {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 0.9em;
+    }
+    .config-outcome-cell {
+        white-space: nowrap;
+    }
+    .config-outcome-dash {
+        opacity: 0.55;
+    }
+
+    [data-theme="dark"] .config-maintenance-table.table {
+        color: var(--text-color);
+    }
+    [data-theme="dark"] .config-maintenance-table td,
+    [data-theme="dark"] .config-maintenance-table th {
+        border-color: var(--border-color);
+    }
+
+    /* btn-info / btn-warning: improve contrast on dark card backgrounds */
+    [data-theme="dark"] .config-btn-info.btn-info {
+        background-color: #0dcaf0;
+        border-color: #0dcaf0;
+        color: #052c33;
+    }
+    [data-theme="dark"] .config-btn-info.btn-info:hover {
+        background-color: #31d2f2;
+        border-color: #25cff2;
+        color: #052c33;
+    }
+    [data-theme="dark"] .config-btn-warning.btn-warning {
+        background-color: #ffc107;
+        border-color: #ffc107;
+        color: #332701;
+    }
+    [data-theme="dark"] .config-btn-warning.btn-warning:hover {
+        background-color: #ffca2c;
+        border-color: #ffc720;
+        color: #332701;
+    }
+
+    @media (max-width: 992px) {
+        .config-layout {
+            grid-template-columns: 1fr;
+        }
+        .config-nav {
+            position: static;
+            max-height: none;
+        }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
-    <div class="row">
-        <div class="col-12">
-            <h1 class="mb-4">
-                <i class="fas fa-cog"></i> Configuration
-            </h1>
-
-            <!-- Email / Notifications -->
-            <div class="card mb-4">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fas fa-envelope me-2"></i>Email &amp; Notifications</h5>
-                    <div class="form-check form-switch mb-0">
-                        <input class="form-check-input" type="checkbox" id="nightly-enabled-toggle" role="switch">
-                        <label class="form-check-label" for="nightly-enabled-toggle">
-                            Nightly maintenance email
-                        </label>
-                    </div>
+    <h1 class="mb-4">
+        <i class="fas fa-cog"></i> Configuration
+    </h1>
+    <div class="config-layout">
+        <aside class="config-nav card">
+            <div class="card-body p-3">
+                {% for category_key, category_label in panel_categories %}
+                {% set category_panels = config_panels | selectattr('category', 'equalto', category_key) | list %}
+                {% if category_panels %}
+                <div class="mb-3">
+                    <h6 class="text-uppercase text-muted fw-semibold mb-2" style="font-size:.75rem;letter-spacing:.05em;">
+                        {{ category_label }}
+                    </h6>
+                    <nav class="nav flex-column">
+                        {% for panel in category_panels %}
+                        <a class="nav-link px-2 py-1" href="#{{ panel.id }}" data-config-target="{{ panel.id }}">
+                            <i class="{{ panel.icon }} me-2"></i>{{ panel.title }}
+                        </a>
+                        {% endfor %}
+                    </nav>
                 </div>
-                <div class="card-body">
-                    <p class="text-muted small mb-4">
-                        When enabled, a nightly digest is sent summarising maintenance activity
-                        (log rotation, database backup, data retention, error counts).
-                        All fields are stored in the bot database — no config.ini edit required.
-                    </p>
-
-                    <form id="notifications-form" novalidate>
-
-                        <!-- SMTP server -->
-                        <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
-                            SMTP Server
-                        </h6>
-                        <div class="row g-3 mb-4">
-                            <div class="col-md-6">
-                                <label class="form-label" for="smtp-host">Server hostname</label>
-                                <input type="text" class="form-control" id="smtp-host"
-                                       placeholder="smtp.example.com" autocomplete="off">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label" for="smtp-port">Port</label>
-                                <input type="number" class="form-control" id="smtp-port"
-                                       placeholder="587" min="1" max="65535">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label" for="smtp-security">Security</label>
-                                <select class="form-select" id="smtp-security">
-                                    <option value="starttls">STARTTLS (port 587)</option>
-                                    <option value="ssl">SSL / TLS (port 465)</option>
-                                    <option value="none">None / plain (port 25)</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <!-- Credentials -->
-                        <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
-                            Credentials
-                        </h6>
-                        <div class="row g-3 mb-4">
-                            <div class="col-md-6">
-                                <label class="form-label" for="smtp-user">Username / email</label>
-                                <input type="text" class="form-control" id="smtp-user"
-                                       placeholder="user@example.com" autocomplete="username">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label" for="smtp-password">Password</label>
-                                <div class="input-group">
-                                    <input type="password" class="form-control" id="smtp-password"
-                                           placeholder="••••••••" autocomplete="current-password">
-                                    <button class="btn btn-outline-secondary" type="button"
-                                            id="toggle-password" title="Show / hide password">
-                                        <i class="fas fa-eye" id="toggle-password-icon"></i>
-                                    </button>
-                                </div>
-                                <div class="form-text">
-                                    Stored in the bot database. Use an app-specific password where supported.
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Sender -->
-                        <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
-                            Sender
-                        </h6>
-                        <div class="row g-3 mb-4">
-                            <div class="col-md-6">
-                                <label class="form-label" for="from-name">Sender display name</label>
-                                <input type="text" class="form-control" id="from-name"
-                                       placeholder="MeshCore Bot">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label" for="from-email">Sender email address</label>
-                                <input type="email" class="form-control" id="from-email"
-                                       placeholder="bot@example.com">
-                            </div>
-                        </div>
-
-                        <!-- Recipients -->
-                        <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
-                            Recipients
-                        </h6>
-                        <div class="row g-3 mb-4">
-                            <div class="col-12">
-                                <label class="form-label" for="recipients">
-                                    Recipient email address(es)
-                                </label>
-                                <input type="text" class="form-control" id="recipients"
-                                       placeholder="admin@example.com, ops@example.com">
-                                <div class="form-text">Separate multiple addresses with commas.</div>
-                            </div>
-                        </div>
-
-                        <!-- Actions -->
-                        <div class="d-flex gap-2 align-items-center">
-                            <button type="button" class="btn btn-primary" id="save-notifications-btn">
-                                <i class="fas fa-save me-1"></i>Save settings
-                            </button>
-                            <button type="button" class="btn btn-outline-secondary" id="test-email-btn">
-                                <i class="fas fa-paper-plane me-1"></i>Send test email
-                            </button>
-                            <span id="save-status" class="ms-2 small" style="display:none;"></span>
-                        </div>
-
-                    </form>
-                </div>
-            </div><!-- /.card -->
-
-            <!-- Log Rotation -->
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="fas fa-sync-alt me-2"></i>Log Rotation</h5>
-                </div>
-                <div class="card-body">
-                    <p class="text-muted small mb-4">
-                        Controls when the log file is rotated and how many backup files are kept.
-                        Changes apply within 60&nbsp;seconds without a restart.
-                    </p>
-                    <form id="log-rotation-form" novalidate>
-                        <div class="row g-3 mb-4">
-                            <div class="col-md-6">
-                                <label class="form-label" for="log-max-bytes">Max file size (bytes)</label>
-                                <input type="number" class="form-control" id="log-max-bytes"
-                                       placeholder="5242880" min="102400">
-                                <div class="form-text">Default: 5&nbsp;242&nbsp;880 (5&nbsp;MB). Minimum: 100&nbsp;KB.</div>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label" for="log-backup-count">Backup file count</label>
-                                <input type="number" class="form-control" id="log-backup-count"
-                                       placeholder="3" min="1" max="20">
-                                <div class="form-text">Number of rotated backups to keep (e.g. .log.1, .log.2…).</div>
-                            </div>
-                        </div>
-                        <div class="d-flex gap-2 align-items-center">
-                            <button type="button" class="btn btn-primary" id="save-log-rotation-btn">
-                                <i class="fas fa-save me-1"></i>Save
-                            </button>
-                            <span id="log-rotation-status" class="ms-2 small" style="display:none;"></span>
-                        </div>
-                    </form>
-                </div>
-            </div><!-- /.card -->
-
-            <!-- Database Backup -->
-            <div class="card mb-4">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fas fa-database me-2"></i>Database Backup</h5>
-                    <div class="form-check form-switch mb-0">
-                        <input class="form-check-input" type="checkbox" id="db-backup-enabled-toggle" role="switch">
-                        <label class="form-check-label" for="db-backup-enabled-toggle">
-                            Automatic backup enabled
-                        </label>
-                    </div>
-                </div>
-                <div class="card-body">
-                    <p class="text-muted small mb-4">
-                        Creates a consistent SQLite backup using the native backup API.
-                        Old backups beyond the retention count are automatically pruned.
-                    </p>
-                    <form id="db-backup-form" novalidate>
-                        <div class="row g-3 mb-4">
-                            <div class="col-md-4">
-                                <label class="form-label" for="db-backup-schedule">Schedule</label>
-                                <select class="form-select" id="db-backup-schedule">
-                                    <option value="daily">Daily</option>
-                                    <option value="weekly">Weekly (Monday)</option>
-                                    <option value="manual">Manual only</option>
-                                </select>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label" for="db-backup-time">Backup time (HH:MM)</label>
-                                <input type="time" class="form-control" id="db-backup-time" value="02:00">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label" for="db-backup-retention-count">Backups to keep</label>
-                                <input type="number" class="form-control" id="db-backup-retention-count"
-                                       placeholder="7" min="1" max="90">
-                            </div>
-                        </div>
-                        <div class="row g-3 mb-4">
-                            <div class="col-12">
-                                <label class="form-label" for="db-backup-dir">Backup directory</label>
-                                <input type="text" class="form-control" id="db-backup-dir"
-                                       placeholder="/data/backups">
-                                <div class="form-text">Absolute path. The directory must already exist.</div>
-                                <div id="db-backup-dir-error" class="text-danger small mt-1" style="display:none"></div>
-                            </div>
-                        </div>
-                        <div class="row g-3 mb-4">
-                            <div class="col-12">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="email-attach-log">
-                                    <label class="form-check-label" for="email-attach-log">
-                                        Attach current log file to nightly email
-                                        <span class="text-muted small">(only if file is ≤ 5&nbsp;MB)</span>
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="d-flex gap-2 align-items-center">
-                            <button type="button" class="btn btn-primary" id="save-db-backup-btn">
-                                <i class="fas fa-save me-1"></i>Save
-                            </button>
-                            <button type="button" class="btn btn-secondary" id="backup-now-btn">
-                                <i class="fas fa-database me-1"></i>Backup Now
-                            </button>
-                            <button type="button" class="btn btn-outline-warning" id="restore-btn"
-                                    data-bs-toggle="modal" data-bs-target="#restoreModal"
-                                    onclick="window.restoreManager && window.restoreManager.load()">
-                                <i class="fas fa-undo me-1"></i>Restore
-                            </button>
-                            <span id="db-backup-status" class="ms-2 small" style="display:none;"></span>
-                        </div>
-                    </form>
-                </div>
-            </div><!-- /.card -->
-
-            <!-- Maintenance Status -->
-            <div class="card mb-4">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fas fa-tasks me-2"></i>Maintenance Status</h5>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="refresh-status-btn">
-                        <i class="fas fa-redo me-1"></i>Refresh
-                    </button>
-                </div>
-                <div class="card-body p-0">
-                    <table class="table table-sm table-hover mb-0" id="maintenance-status-table">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Job</th>
-                                <th>Last ran (UTC)</th>
-                                <th>Outcome</th>
-                            </tr>
-                        </thead>
-                        <tbody id="maintenance-status-body">
-                            <tr><td colspan="3" class="text-center text-muted py-3">Loading…</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div><!-- /.card -->
-
-        </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </aside>
+        <main>
+            {% for panel in config_panels %}
+            {% include panel.template %}
+            {% endfor %}
+        </main>
     </div>
 </div>
 
-<!-- Database Operations Card -->
-<div class="container-fluid mt-4">
-    <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="fas fa-trash-alt me-2"></i>Database Operations</h5>
-                </div>
-                <div class="card-body">
-                    <p class="text-muted small mb-3">
-                        Permanently delete old records from time-series tables
-                        (<code>packet_stream</code>, <code>message_stats</code>,
-                        <code>complete_contact_tracking</code>, <code>purging_log</code>,
-                        <code>mesh_connections</code>, <code>daily_stats</code>).
-                        This cannot be undone — back up first if needed.
-                    </p>
-                    <div class="row g-3 align-items-end">
-                        <div class="col-auto">
-                            <label class="form-label" for="purge-keep-days">Keep data for</label>
-                            <select class="form-select" id="purge-keep-days" style="width:auto">
-                                <option value="1">1 day</option>
-                                <option value="7">7 days</option>
-                                <option value="14">14 days</option>
-                                <option value="30" selected>30 days</option>
-                                <option value="60">60 days</option>
-                                <option value="90">90 days</option>
-                            </select>
-                        </div>
-                        <div class="col-auto">
-                            <button type="button" class="btn btn-danger"
-                                    data-bs-toggle="modal" data-bs-target="#purgeModal"
-                                    onclick="window.purgeManager && window.purgeManager.prepareConfirm()">
-                                <i class="fas fa-trash-alt me-1"></i>Purge Now
-                            </button>
-                        </div>
-                        <div class="col-auto">
-                            <span id="purge-status" class="small" style="display:none"></span>
+<!-- Purge Records (database operations) -->
+<div class="modal fade" id="purgeRecordsModal" tabindex="-1" aria-labelledby="purgeRecordsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="purgeRecordsModalLabel">
+                    <i class="fas fa-trash-alt me-2"></i>Purge Records
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">
+                    Permanently delete <strong>old</strong> records from the SQLite tables you select below.
+                    This cannot be undone — back up first if needed.
+                </p>
+                <fieldset class="mb-3">
+                    <legend class="form-label fw-semibold mb-2">Tables to purge</legend>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="purge-all-tables" checked>
+                        <label class="form-check-label" for="purge-all-tables">All listed tables</label>
+                    </div>
+                    <div id="purge-tables-list" class="border rounded p-3 config-purge-tables-list" style="background-color: var(--bg-secondary); border-color: var(--border-color) !important;">
+                        <div class="row row-cols-1 row-cols-md-2 g-2 small">
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input purge-table-cb" type="checkbox" value="packet_stream" id="purge-t-packet_stream" checked disabled>
+                                    <label class="form-check-label" for="purge-t-packet_stream"><code>packet_stream</code> — raw packet history</label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input purge-table-cb" type="checkbox" value="message_stats" id="purge-t-message_stats" checked disabled>
+                                    <label class="form-check-label" for="purge-t-message_stats"><code>message_stats</code> — message statistics</label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input purge-table-cb" type="checkbox" value="complete_contact_tracking" id="purge-t-complete_contact_tracking" checked disabled>
+                                    <label class="form-check-label" for="purge-t-complete_contact_tracking"><code>complete_contact_tracking</code> — contact rows</label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input purge-table-cb" type="checkbox" value="purging_log" id="purge-t-purging_log" checked disabled>
+                                    <label class="form-check-label" for="purge-t-purging_log"><code>purging_log</code> — purge audit log</label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input purge-table-cb" type="checkbox" value="mesh_connections" id="purge-t-mesh_connections" checked disabled>
+                                    <label class="form-check-label" for="purge-t-mesh_connections"><code>mesh_connections</code> — mesh graph edges</label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input purge-table-cb" type="checkbox" value="daily_stats" id="purge-t-daily_stats" checked disabled>
+                                    <label class="form-check-label" for="purge-t-daily_stats"><code>daily_stats</code> — daily aggregates</label>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div id="purge-results" class="mt-3" style="display:none">
-                        <h6 class="text-muted">Rows deleted:</h6>
-                        <table class="table table-sm table-bordered" style="max-width:400px">
+                </fieldset>
+                <div class="row g-3 align-items-end flex-wrap">
+                    <div class="col-auto">
+                        <label class="form-label" for="purge-keep-days">Keep data for</label>
+                        <select class="form-select" id="purge-keep-days" style="width:auto;min-width:10rem">
+                            <option value="1">1 day</option>
+                            <option value="7">7 days</option>
+                            <option value="14">14 days</option>
+                            <option value="30" selected>30 days</option>
+                            <option value="60">60 days</option>
+                            <option value="90">90 days</option>
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <button type="button" class="btn btn-danger" id="purge-open-confirm-btn">
+                            <i class="fas fa-trash-alt me-1"></i>Purge Now
+                        </button>
+                    </div>
+                    <div class="col-auto">
+                        <span id="purge-status" class="small" style="display:none"></span>
+                    </div>
+                </div>
+                <div id="purge-results" class="mt-3" style="display:none">
+                    <h6 class="text-muted">Rows deleted</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered mb-0" style="max-width:100%">
                             <thead><tr><th>Table</th><th>Deleted</th></tr></thead>
                             <tbody id="purge-results-body"></tbody>
                         </table>
                     </div>
                 </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
@@ -329,7 +302,8 @@
             </div>
             <div class="modal-body">
                 <p>You are about to permanently delete records older than
-                   <strong id="purge-confirm-days"></strong> from all time-series tables.</p>
+                   <strong id="purge-confirm-days"></strong>
+                   <span id="purge-confirm-tables-desc">from all listed time-series tables.</span></p>
                 <p class="text-danger"><strong>This cannot be undone.</strong>
                    Make sure you have a backup if needed.</p>
             </div>
@@ -731,13 +705,23 @@ class MaintenanceStatusManager {
             ];
 
             this.tbody.innerHTML = jobs.map(j => {
-                const badge = !j.ran ? '<span class="text-muted">never</span>'
-                    : `<span class="text-muted">${j.ran.replace('T', ' ').split('.')[0]}</span>`;
-                const outBadge = !j.outcome ? ''
-                    : j.outcome === 'ok'
-                        ? '<span class="badge bg-success">ok</span>'
-                        : `<span class="badge bg-danger" title="${j.outcome}">error</span>`;
-                return `<tr><td>${j.label}</td><td>${badge}</td><td>${outBadge}</td></tr>`;
+                const ranDisplay = !j.ran
+                    ? '<span class="text-muted">never</span>'
+                    : `<span class="text-muted config-maint-time">${j.ran.replace('T', ' ').split('.')[0]}</span>`;
+                let outHtml;
+                if (j.outcome === 'ok') {
+                    outHtml = '<span class="badge bg-success">ok</span>';
+                } else if (j.outcome) {
+                    const esc = String(j.outcome).replace(/"/g, '&quot;');
+                    outHtml = `<span class="badge bg-danger" title="${esc}">error</span>`;
+                } else {
+                    outHtml = '<span class="text-muted config-outcome-dash" aria-hidden="true">—</span>';
+                }
+                return `<tr>
+                    <td class="fw-medium">${j.label}</td>
+                    <td class="text-center config-maint-col-ran">${ranDisplay}</td>
+                    <td class="text-end config-outcome-cell">${outHtml}</td>
+                </tr>`;
             }).join('');
         } catch (err) {
             this.tbody.innerHTML = `<tr><td colspan="3" class="text-danger text-center">Failed to load: ${err.message}</td></tr>`;
@@ -829,20 +813,76 @@ class PurgeManager {
     constructor() {
         this.keepDaysEl   = document.getElementById('purge-keep-days');
         this.confirmDaysEl= document.getElementById('purge-confirm-days');
+        this.confirmTablesEl = document.getElementById('purge-confirm-tables-desc');
         this.confirmBtn   = document.getElementById('purge-confirm-btn');
+        this.openConfirmBtn = document.getElementById('purge-open-confirm-btn');
+        this.allTablesEl  = document.getElementById('purge-all-tables');
         this.statusEl     = document.getElementById('purge-status');
         this.resultsEl    = document.getElementById('purge-results');
         this.resultsBody  = document.getElementById('purge-results-body');
         if (this.confirmBtn) {
             this.confirmBtn.addEventListener('click', () => this.purge());
         }
+        if (this.openConfirmBtn) {
+            this.openConfirmBtn.addEventListener('click', () => this.openConfirmModal());
+        }
+        if (this.allTablesEl) {
+            this.allTablesEl.addEventListener('change', () => this.syncAllTablesCheckbox());
+        }
+        document.querySelectorAll('.purge-table-cb').forEach(cb => {
+            cb.addEventListener('change', () => this.onIndividualTableChange());
+        });
         window.purgeManager = this;
+    }
+
+    syncAllTablesCheckbox() {
+        const all = this.allTablesEl && this.allTablesEl.checked;
+        document.querySelectorAll('.purge-table-cb').forEach(cb => {
+            cb.disabled = !!all;
+            if (all) cb.checked = true;
+        });
+    }
+
+    onIndividualTableChange() {
+        if (!this.allTablesEl) return;
+        const boxes = Array.from(document.querySelectorAll('.purge-table-cb'));
+        if (!boxes.every(b => b.checked)) {
+            this.allTablesEl.checked = false;
+        }
+    }
+
+    /** Returns undefined when all tables (omit `tables` in API); else list of names. */
+    getTablesPayload() {
+        if (this.allTablesEl && this.allTablesEl.checked) {
+            return undefined;
+        }
+        const sel = Array.from(document.querySelectorAll('.purge-table-cb:checked')).map(cb => cb.value);
+        return sel;
+    }
+
+    openConfirmModal() {
+        const tables = this.getTablesPayload();
+        if (Array.isArray(tables) && tables.length === 0) {
+            alert('Select at least one table, or choose "All listed tables".');
+            return;
+        }
+        this.prepareConfirm();
+        const el = document.getElementById('purgeModal');
+        if (el) bootstrap.Modal.getOrCreateInstance(el).show();
     }
 
     prepareConfirm() {
         const days = this.keepDaysEl ? this.keepDaysEl.value : '30';
         if (this.confirmDaysEl) {
             this.confirmDaysEl.textContent = `${days} day${days === '1' ? '' : 's'}`;
+        }
+        if (this.confirmTablesEl) {
+            const payload = this.getTablesPayload();
+            if (payload === undefined) {
+                this.confirmTablesEl.textContent = 'from all listed time-series tables.';
+            } else {
+                this.confirmTablesEl.textContent = `from these tables: ${payload.map(t => t).join(', ')}.`;
+            }
         }
     }
 
@@ -861,10 +901,15 @@ class PurgeManager {
         this.showStatus('Purging…', 'secondary');
         if (this.resultsEl) this.resultsEl.style.display = 'none';
         try {
+            const tablesPayload = this.getTablesPayload();
+            const body = { keep_days: days };
+            if (tablesPayload !== undefined) {
+                body.tables = tablesPayload;
+            }
             const resp = await fetch('/api/maintenance/purge', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ keep_days: days }),
+                body: JSON.stringify(body),
             });
             const data = await resp.json();
             if (!resp.ok) {
@@ -888,12 +933,176 @@ class PurgeManager {
     }
 }
 
+class DatabaseInfoManager {
+    constructor() {
+        this.dbData = {};
+        this.initializeDatabase();
+    }
+
+    async initializeDatabase() {
+        await this.loadDatabaseData();
+        this.setupEventHandlers();
+        this.updateStatistics();
+        this.renderTablesInfo();
+    }
+
+    async loadDatabaseData() {
+        try {
+            const response = await fetch('/api/database');
+            const data = await response.json();
+            if (data.error) {
+                this.showError('Failed to load database data: ' + data.error);
+                return;
+            }
+            this.dbData = data;
+        } catch (error) {
+            this.showError('Failed to load database data: ' + error.message);
+        }
+    }
+
+    setupEventHandlers() {
+        const refreshBtn = document.getElementById('refresh-db');
+        const exportBtn = document.getElementById('export-db');
+        const optimizeBtn = document.getElementById('optimize-db');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => {
+                this.loadDatabaseData().then(() => {
+                    this.updateStatistics();
+                    this.renderTablesInfo();
+                });
+            });
+        }
+        if (exportBtn) exportBtn.addEventListener('click', () => this.exportDatabase());
+        if (optimizeBtn) optimizeBtn.addEventListener('click', () => this.optimizeDatabase());
+    }
+
+    updateStatistics() {
+        const setText = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        };
+        setText('total-tables', this.dbData.total_tables || 0);
+        setText('total-records', this.dbData.total_records || 0);
+        setText('last-updated', this.dbData.last_updated || '-');
+        setText('db-size', this.dbData.db_size || '-');
+    }
+
+    renderTablesInfo() {
+        const infoElement = document.getElementById('tables-info');
+        if (!infoElement) return;
+        if (!this.dbData.tables || this.dbData.tables.length === 0) {
+            infoElement.innerHTML = '<div class="text-muted">No tables found</div>';
+            return;
+        }
+        infoElement.innerHTML = this.dbData.tables.map(table => `
+            <div class="row mb-3 p-3 border rounded config-db-table-row g-2 align-items-center">
+                <div class="col-md-4">
+                    <h6 class="mb-1"><i class="fas fa-table config-table-name-icon me-1"></i>${table.name}</h6>
+                    <small class="text-muted">${table.description || 'Database table'}</small>
+                </div>
+                <div class="col-md-2 text-center">
+                    <div class="h5 mb-0 config-table-metric">${table.record_count || 0}</div>
+                    <small class="text-muted">Records</small>
+                </div>
+                <div class="col-md-3 text-center">
+                    <div class="h6 mb-0">${table.size || 'Unknown'}</div>
+                    <small class="text-muted">Size</small>
+                </div>
+                <div class="col-md-3 text-center">
+                    <span class="badge bg-${this.getTableStatusClass(table)}">${this.getTableStatus(table)}</span>
+                    <br><small class="text-muted">Status</small>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    getTableStatus(table) {
+        const count = table.record_count || 0;
+        if (count === 0) return 'Empty';
+        if (count < 100) return 'Small';
+        if (count < 1000) return 'Medium';
+        if (count < 10000) return 'Large';
+        return 'Very Large';
+    }
+
+    getTableStatusClass(table) {
+        const count = table.record_count || 0;
+        if (count === 0) return 'secondary';
+        if (count < 100) return 'success';
+        if (count < 1000) return 'info';
+        if (count < 10000) return 'warning';
+        return 'danger';
+    }
+
+    exportDatabase() {
+        const headers = ['Table Name', 'Record Count', 'Size', 'Status', 'Timestamp'];
+        const rows = (this.dbData.tables || []).map(table => [
+            table.name, table.record_count || 0, table.size || 'Unknown', this.getTableStatus(table), new Date().toISOString(),
+        ]);
+        const csv = [headers, ...rows].map(row => row.map(field => `"${field}"`).join(',')).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `database_export_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+    }
+
+    async optimizeDatabase() {
+        if (!confirm('Are you sure you want to optimize the database? This may take a few moments.')) return;
+        const optimizeBtn = document.getElementById('optimize-db');
+        const originalText = optimizeBtn ? optimizeBtn.innerHTML : '';
+        try {
+            if (optimizeBtn) {
+                optimizeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Optimizing...';
+                optimizeBtn.disabled = true;
+            }
+            const response = await fetch('/api/optimize-database', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            });
+            const result = await response.json();
+            if (result.success) {
+                alert(`Database optimization completed successfully!\n\nResults:\n- ${result.vacuum_result}\n- ${result.analyze_result}\n- ${result.reindex_result}`);
+                await this.loadDatabaseData();
+                this.updateStatistics();
+                this.renderTablesInfo();
+            } else {
+                alert('Database optimization failed: ' + (result.error || 'Unknown error'));
+            }
+        } catch (error) {
+            alert('Database optimization failed: ' + error.message);
+        } finally {
+            if (optimizeBtn) {
+                optimizeBtn.innerHTML = originalText || '<i class="fas fa-tools"></i> Optimize';
+                optimizeBtn.disabled = false;
+            }
+        }
+    }
+
+    showError(message) {
+        const tablesInfo = document.getElementById('tables-info');
+        if (tablesInfo) tablesInfo.innerHTML = `<div class="alert alert-danger">${message}</div>`;
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+    const navLinks = Array.from(document.querySelectorAll('[data-config-target]'));
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (!entry.isIntersecting) return;
+            navLinks.forEach(link => link.classList.toggle('active', link.dataset.configTarget === entry.target.id));
+        });
+    }, { rootMargin: '-25% 0px -65% 0px', threshold: [0.1, 0.5] });
+    document.querySelectorAll('.config-panel-card[id]').forEach(section => observer.observe(section));
+
     new LogRotationManager();
     new DbBackupManager();
     new MaintenanceStatusManager();
     new RestoreManager();
     new PurgeManager();
+    window.databaseManager = new DatabaseInfoManager();
 });
 </script>
 {% endblock %}

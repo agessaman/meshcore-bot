@@ -200,7 +200,8 @@ class TestPageRoutes:
 
     def test_cache(self, client):
         resp = client.get("/cache")
-        assert resp.status_code == 200
+        assert resp.status_code == 302
+        assert resp.headers["Location"].endswith("/config#database")
 
     def test_stats(self, client):
         resp = client.get("/stats")
@@ -2036,6 +2037,40 @@ class TestPurgeRoute:
             "purging_log", "mesh_connections", "daily_stats",
         }
         assert expected_tables == set(data["deleted"].keys())
+
+    def test_purge_subset_tables_only_purges_those(self, viewer):
+        """tables=[packet_stream] returns deleted counts only for that table."""
+        with viewer.app.test_client() as c:
+            resp = c.post(
+                "/api/maintenance/purge",
+                json={"keep_days": 30, "tables": ["packet_stream"]},
+                content_type="application/json",
+            )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert set(data["deleted"].keys()) == {"packet_stream"}
+
+    def test_purge_empty_tables_list_returns_400(self, viewer):
+        """tables=[] returns 400."""
+        with viewer.app.test_client() as c:
+            resp = c.post(
+                "/api/maintenance/purge",
+                json={"keep_days": 30, "tables": []},
+                content_type="application/json",
+            )
+        assert resp.status_code == 400
+        assert "tables" in resp.get_json()["error"].lower()
+
+    def test_purge_invalid_table_name_returns_400(self, viewer):
+        """Unknown table name in tables returns 400."""
+        with viewer.app.test_client() as c:
+            resp = c.post(
+                "/api/maintenance/purge",
+                json={"keep_days": 30, "tables": ["not_a_table"]},
+                content_type="application/json",
+            )
+        assert resp.status_code == 400
+        assert "Invalid" in resp.get_json()["error"] or "invalid" in resp.get_json()["error"].lower()
 
     def test_all_valid_keep_days_values_accepted(self, viewer):
         """All documented valid keep_days values (1,7,14,30,60,90) return 200."""

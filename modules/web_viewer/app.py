@@ -71,6 +71,7 @@ sys.path.insert(0, project_root)
 
 from modules.repeater_manager import RepeaterManager
 from modules.utils import calculate_distance, resolve_path
+from modules.web_viewer.config_panels import CONFIG_PANELS, PANEL_CATEGORIES
 
 
 class BotDataViewer:
@@ -1219,8 +1220,8 @@ class BotDataViewer:
 
         @self.app.route('/cache')
         def cache():
-            """Cache management page"""
-            return render_template('cache.html')
+            """Legacy cache URL redirects to the database config panel."""
+            return redirect('/config#database')
 
 
         @self.app.route('/stats')
@@ -1246,7 +1247,11 @@ class BotDataViewer:
         @self.app.route('/config')
         def config_page():
             """Bot configuration page"""
-            return render_template('config.html')
+            return render_template(
+                'config.html',
+                config_panels=sorted(CONFIG_PANELS, key=lambda panel: panel['order']),
+                panel_categories=PANEL_CATEGORIES,
+            )
 
         @self.app.route('/api/config/notifications')
         def api_config_notifications_get():
@@ -1523,11 +1528,39 @@ class BotDataViewer:
         def api_maintenance_purge():
             """Delete aged rows from time-series tables.
 
-            Body: {"keep_days": <int>|"all"}
+            Body: {"keep_days": <int>|"all", "tables": [<name>, ...] optional}
+
+            If ``tables`` is omitted or null, all purgeable tables are included.
+            If ``tables`` is a non-empty list, only those table names are purged
+            (each must be one of the known purgeable tables).
+            An empty ``tables`` list is invalid (400).
+
             Valid keep_days values: "all", 1, 7, 14, 30, 60, 90
-            Returns: {"deleted": {<table>: <count>, ...}}
+            Returns: {"deleted": {<table>: <count>, ...}} — only tables that were purged
             """
             _VALID_KEEP_DAYS = {"all", 1, 7, 14, 30, 60, 90}
+            # (table, sql, params) — tables created lazily by other modules may not exist
+            _purge_ops = [
+                ('packet_stream',
+                 'DELETE FROM packet_stream WHERE timestamp < ?',
+                 None),
+                ('message_stats',
+                 'DELETE FROM message_stats WHERE timestamp < ?',
+                 None),
+                ('complete_contact_tracking',
+                 'DELETE FROM complete_contact_tracking WHERE last_heard < ?',
+                 None),
+                ('purging_log',
+                 'DELETE FROM purging_log WHERE timestamp < ?',
+                 None),
+                ('mesh_connections',
+                 'DELETE FROM mesh_connections WHERE last_seen < ?',
+                 None),
+                ('daily_stats',
+                 'DELETE FROM daily_stats WHERE date < ?',
+                 None),
+            ]
+            _PURGEABLE = {t for t, _, _ in _purge_ops}
             try:
                 data = request.get_json(silent=True) or {}
                 raw = data.get('keep_days', 'all')
@@ -1541,6 +1574,28 @@ class BotDataViewer:
                 if keep_days not in _VALID_KEEP_DAYS:
                     return jsonify({'error': f'keep_days must be one of {sorted(v for v in _VALID_KEEP_DAYS if isinstance(v, int))} or "all"'}), 400
 
+                tables_filter: Optional[list[str]] = None
+                if 'tables' in data:
+                    tf = data.get('tables')
+                    if tf is None:
+                        tables_filter = None
+                    elif not isinstance(tf, list):
+                        return jsonify({'error': 'tables must be a list of table names or null'}), 400
+                    elif len(tf) == 0:
+                        return jsonify({'error': 'tables cannot be empty; omit tables to purge all tables'}), 400
+                    else:
+                        bad = [x for x in tf if not isinstance(x, str) or x not in _PURGEABLE]
+                        if bad:
+                            return jsonify({
+                                'error': f'Invalid table name(s): {bad!r}; allowed: {sorted(_PURGEABLE)}',
+                            }), 400
+                        seen: set[str] = set()
+                        tables_filter = []
+                        for name in tf:
+                            if name not in seen:
+                                seen.add(name)
+                                tables_filter.append(name)
+
                 deleted: dict[str, int] = {}
                 if keep_days == 'all':
                     # Nothing to delete — keep everything
@@ -1553,30 +1608,28 @@ class BotDataViewer:
                 cutoff_iso = _cutoff_dt.strftime('%Y-%m-%d %H:%M:%S')
                 cutoff_date = _cutoff_dt.strftime('%Y-%m-%d')
 
-                # (table, sql, params) — tables created lazily by other modules may not exist
-                _purge_ops = [
-                    ('packet_stream',
-                     'DELETE FROM packet_stream WHERE timestamp < ?',
-                     (cutoff_unix,)),
-                    ('message_stats',
-                     'DELETE FROM message_stats WHERE timestamp < ?',
-                     (int(cutoff_unix),)),
-                    ('complete_contact_tracking',
-                     'DELETE FROM complete_contact_tracking WHERE last_heard < ?',
-                     (cutoff_iso,)),
-                    ('purging_log',
-                     'DELETE FROM purging_log WHERE timestamp < ?',
-                     (cutoff_iso,)),
-                    ('mesh_connections',
-                     'DELETE FROM mesh_connections WHERE last_seen < ?',
-                     (cutoff_iso,)),
-                    ('daily_stats',
-                     'DELETE FROM daily_stats WHERE date < ?',
-                     (cutoff_date,)),
-                ]
+                _params_for = {
+                    'packet_stream': (cutoff_unix,),
+                    'message_stats': (int(cutoff_unix),),
+                    'complete_contact_tracking': (cutoff_iso,),
+                    'purging_log': (cutoff_iso,),
+                    'mesh_connections': (cutoff_iso,),
+                    'daily_stats': (cutoff_date,),
+                }
+
+                if tables_filter is None:
+                    ops_to_run = [(t, sql, _params_for[t]) for t, sql, _ in _purge_ops]
+                else:
+                    want = set(tables_filter)
+                    ops_to_run = [
+                        (t, sql, _params_for[t])
+                        for t, sql, _ in _purge_ops
+                        if t in want
+                    ]
+
                 with self.db_manager.connection() as conn:
                     cur = conn.cursor()
-                    for tbl, sql, params in _purge_ops:
+                    for tbl, sql, params in ops_to_run:
                         try:
                             cur.execute(sql, params)
                             deleted[tbl] = cur.rowcount
@@ -1586,7 +1639,8 @@ class BotDataViewer:
 
                 total = sum(deleted.values())
                 self.logger.info(
-                    f"Purge completed: keep_days={keep_days}, total_deleted={total}, by_table={deleted}"
+                    f"Purge completed: keep_days={keep_days}, tables={tables_filter!r}, "
+                    f"total_deleted={total}, by_table={deleted}"
                 )
                 return jsonify({'deleted': deleted})
 
