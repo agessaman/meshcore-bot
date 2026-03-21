@@ -289,6 +289,16 @@ class MeshCoreBot:
         """Get bot root directory (where config.ini is located)"""
         return Path(self.config_file).parent.resolve()
 
+    @property
+    def is_radio_zombie(self) -> bool:
+        """True when the radio firmware has been confirmed unresponsive.
+
+        All outbound radio sends should check this flag and abort immediately.
+        Only a physical power cycle can recover the radio; the flag is cleared
+        automatically when connect() succeeds after a power cycle.
+        """
+        return bool(getattr(self, '_radio_zombie_detected', False))
+
     def load_config(self) -> None:
         """Load configuration from file.
 
@@ -1131,6 +1141,14 @@ long_jokes = false
                 self._update_radio_connected_metadata(True)
                 # Track connection time to skip processing old cached messages
                 self.connection_time = time.time()
+                # Clear zombie state — a successful connect means the radio is alive again
+                self._radio_zombie_detected = False
+                self._radio_fail_count = 0
+                try:
+                    self.db_manager.set_metadata('bot.radio_zombie', 'false')
+                    self.db_manager.set_metadata('bot.radio_zombie_since', '')
+                except Exception:
+                    pass
                 self.logger.info(f"Connected to: {self.meshcore.self_info} at {self.connection_time}")
 
                 # Wait for contacts to load
@@ -1244,6 +1262,87 @@ long_jokes = false
                         f"To override, add to [Bot]: {PUBLIC_CHANNEL_OVERRIDE_KEY} = true"
                     )
                     raise SystemExit(1)
+
+    async def _probe_radio_health(self) -> bool:
+        """Send a lightweight get_time() probe to verify the radio is responding.
+
+        A connected serial transport does not guarantee the firmware is alive and
+        processing commands.  This probe detects the 'zombie connection' state
+        where the port is open and messages are received but all outgoing commands
+        time out with no_event_received.
+
+        When the configured fail threshold is reached the bot logs a CRITICAL
+        message and sends an immediate alert email (if enabled).  It does NOT
+        attempt to reconnect — a zombie radio requires a physical power cycle;
+        disconnect/reconnect of the transport does nothing.  Probing stops once
+        a zombie is confirmed to avoid log spam; it resumes automatically after
+        the next successful connect() call.
+
+        Returns True if the device responded, False otherwise.
+        """
+        # Stop probing once a zombie has been confirmed — only a power cycle
+        # can recover it; further probes just generate noise.
+        if getattr(self, '_radio_zombie_detected', False):
+            return False
+
+        if not self.meshcore or not self.meshcore.is_connected:
+            return False
+        try:
+            from meshcore.events import EventType
+            result = await asyncio.wait_for(
+                self.meshcore.commands.get_time(), timeout=10.0
+            )
+            if result.type == EventType.ERROR:
+                self._radio_fail_count = getattr(self, '_radio_fail_count', 0) + 1
+                threshold = self.config.getint('Bot', 'radio_probe_fail_threshold', fallback=3)
+                interval  = max(300, min(900, self.config.getint(
+                    'Bot', 'radio_probe_interval_seconds', fallback=300
+                )))
+                self.logger.warning(
+                    f"Radio health probe failed "
+                    f"({self._radio_fail_count}/{threshold}): no response to get_time"
+                )
+                if self._radio_fail_count >= threshold:
+                    fail_count = self._radio_fail_count
+                    self._radio_fail_count = 0
+                    self._radio_zombie_detected = True
+                    self.logger.critical(
+                        "ZOMBIE RADIO DETECTED after %d consecutive failed probes "
+                        "(probe interval %ds). The radio firmware is unresponsive. "
+                        "A physical POWER CYCLE is required — disconnect/reconnect "
+                        "will NOT fix this. Probing suspended until next reconnect.",
+                        fail_count, interval,
+                    )
+                    # Persist zombie state to db so the web viewer health API reflects it
+                    try:
+                        import datetime as _dt
+                        self.db_manager.set_metadata('bot.radio_zombie', 'true')
+                        self.db_manager.set_metadata(
+                            'bot.radio_zombie_since',
+                            _dt.datetime.utcnow().isoformat(),
+                        )
+                    except Exception:
+                        pass
+                    # Send immediate alert email via scheduler (non-blocking)
+                    scheduler = getattr(self, 'scheduler', None)
+                    if scheduler is not None:
+                        loop = asyncio.get_event_loop()
+                        loop.run_in_executor(
+                            None,
+                            scheduler.send_zombie_alert_email,
+                            fail_count, threshold, interval,
+                        )
+                return False
+            if getattr(self, '_radio_fail_count', 0) > 0:
+                self.logger.info("Radio health probe recovered — resetting fail counter")
+            self._radio_fail_count = 0
+            return True
+        except asyncio.TimeoutError:
+            self.logger.warning("Radio health probe timed out")
+            return False
+        except Exception as e:
+            self.logger.warning(f"Radio health probe error: {e}")
+            return False
 
     async def set_radio_clock(self) -> bool:
         """Set radio clock if device time is earlier than system time.
@@ -1554,6 +1653,19 @@ long_jokes = false
                             self.web_viewer_integration.restart_viewer()
                         except (AttributeError, TypeError) as e:
                             print(f"Web viewer health check failed: {e}")
+
+                # Periodically probe radio responsiveness
+                # Skip entirely once a zombie is confirmed — only a power cycle
+                # can recover the firmware; probing just generates log noise.
+                if not getattr(self, '_radio_zombie_detected', False):
+                    if not hasattr(self, '_last_radio_probe'):
+                        self._last_radio_probe = time.time()
+                    probe_interval = max(300, min(900, self.config.getint(
+                        'Bot', 'radio_probe_interval_seconds', fallback=300
+                    )))
+                    if time.time() - self._last_radio_probe >= probe_interval:
+                        self._last_radio_probe = time.time()
+                        asyncio.create_task(self._probe_radio_health())
 
                 # Periodically update system health in database (every 30 seconds)
                 if not hasattr(self, '_last_health_update'):

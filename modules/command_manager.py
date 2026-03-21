@@ -925,6 +925,10 @@ class CommandManager:
         if not self.bot.connected or not self.bot.meshcore:
             return False
 
+        if self.bot.is_radio_zombie:
+            self.bot.logger.warning("send_dm suppressed — radio is in zombie state; power cycle required")
+            return False
+
         # Check all rate limits
         can_send, reason = await self._check_rate_limits(
             skip_user_rate_limit=skip_user_rate_limit, rate_limit_key=rate_limit_key
@@ -1020,6 +1024,10 @@ class CommandManager:
         for this send then restores global flood. Scope values "" / "*" / "0" mean global.
         """
         if not self.bot.connected or not self.bot.meshcore:
+            return False
+
+        if self.bot.is_radio_zombie:
+            self.bot.logger.warning("send_channel_message suppressed — radio is in zombie state; power cycle required")
             return False
 
         # Check all rate limits (including per-channel)
