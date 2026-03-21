@@ -558,6 +558,11 @@ default_state = WA
 # Use 2-letter country code (e.g., US, CA, GB, AU)
 default_country = US
 
+# When true, a bare "wx" or "gwx" (no location) uses bot_latitude/bot_longitude from [Bot]
+# if there is no default WXSIM source and no companion location in the database.
+# Default: false (show usage instead)
+use_bot_location_when_no_location = false
+
 # Temperature unit for weather display
 # Options: fahrenheit, celsius
 # Default: fahrenheit

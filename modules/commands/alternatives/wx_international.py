@@ -393,10 +393,36 @@ class GlobalWxCommand(BaseCommand):
                     parts = [parts[0], location_str]
                     self.logger.info(f"Using companion coordinates: {location_str}")
             else:
-                # No companion location available, show usage
-                self.logger.debug("No companion location found, showing usage")
-                await self.send_response(message, self.translate('commands.gwx.usage'))
-                return True
+                # No companion location: optionally use bot's configured coordinates
+                use_bot = self.get_config_value(
+                    'Wx_Command',
+                    'use_bot_location_when_no_location',
+                    fallback=False,
+                    value_type='bool',
+                )
+                bot_loc = self._get_bot_location() if use_bot else None
+                if bot_loc:
+                    location_str = self._coordinates_to_location_string(bot_loc[0], bot_loc[1])
+                    if location_str:
+                        parts = [parts[0], location_str]
+                        self.logger.info(
+                            f"Using bot location (no args): {location_str} "
+                            f"({bot_loc[0]}, {bot_loc[1]})"
+                        )
+                    else:
+                        location_str = f"{bot_loc[0]},{bot_loc[1]}"
+                        parts = [parts[0], location_str]
+                        self.logger.info(f"Using bot coordinates (no args): {location_str}")
+                else:
+                    if use_bot:
+                        self.logger.debug(
+                            "use_bot_location_when_no_location enabled but bot_latitude/bot_longitude "
+                            "not set; showing usage"
+                        )
+                    else:
+                        self.logger.debug("No companion location found, showing usage")
+                    await self.send_response(message, self.translate('commands.gwx.usage'))
+                    return True
 
         # Check for forecast type options: "tomorrow", Nd (7d, 10d), or plain digit days 2–GWX_MULTIDAY_MAX_DAYS
         forecast_type = "default"

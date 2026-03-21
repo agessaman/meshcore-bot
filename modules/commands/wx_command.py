@@ -473,10 +473,34 @@ class WxCommand(BaseCommand):
                 else:
                     self.logger.info(f"Using companion coordinates: {location_str}")
             else:
-                # No companion location available, show usage
-                self.logger.debug("No companion location found, showing usage")
-                await self.send_response(message, self.translate('commands.wx.usage'))
-                return True
+                # No companion location: optionally use bot's configured coordinates
+                use_bot = self.get_config_value(
+                    'Wx_Command',
+                    'use_bot_location_when_no_location',
+                    fallback=False,
+                    value_type='bool',
+                )
+                bot_loc = self._get_bot_location() if use_bot else None
+                if bot_loc:
+                    location_str = f"{bot_loc[0]},{bot_loc[1]}"
+                    parts = [parts[0], location_str]
+                    display_name = self._coordinates_to_location_string(bot_loc[0], bot_loc[1])
+                    if display_name:
+                        self.logger.info(
+                            f"Using bot location (no args): {display_name} ({bot_loc[0]}, {bot_loc[1]})"
+                        )
+                    else:
+                        self.logger.info(f"Using bot coordinates (no args): {location_str}")
+                else:
+                    if use_bot:
+                        self.logger.debug(
+                            "use_bot_location_when_no_location enabled but bot_latitude/bot_longitude "
+                            "not set; showing usage"
+                        )
+                    else:
+                        self.logger.debug("No companion location found, showing usage")
+                    await self.send_response(message, self.translate('commands.wx.usage'))
+                    return True
 
         # Check for "alerts" keyword first (special handling)
         show_full_alerts = False
