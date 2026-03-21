@@ -242,9 +242,9 @@
 }'></textarea>
                                     <small class="form-text text-muted mt-2 d-block">
                                         Only send items that match these conditions. Leave empty to send all items.<br>
-                                        <strong>Operators:</strong> equals, not_equals, in, not_in, matches (regex), not_matches, contains, not_contains<br>
+                                        <strong>Operators:</strong> equals, not_equals, in, not_in, matches (regex), not_matches, contains, not_contains, within_days, within_weeks (see docs/FEEDS.md)<br>
                                         <strong>Logic:</strong> AND (all conditions) or OR (any condition)<br>
-                                        <strong>Fields:</strong> Use raw.field or raw.nested.field for API fields
+                                        <strong>Fields:</strong> Use raw.field or raw.nested.field for API fields; use <code>published</code> for RSS time filters
                                     </small>
                                 </div>
                             </div>
