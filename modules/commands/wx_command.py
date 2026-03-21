@@ -34,6 +34,9 @@ except ImportError:
     WXSIM_PARSER_AVAILABLE = False
     WXSIMParser = None
 
+# Multiday: plain digits (e.g. 7), 7day/7-day, or suffix form 7d/10d (min 2, max below).
+WX_MULTIDAY_MAX_DAYS = 16
+
 
 class WxCommand(BaseCommand):
     """Handles weather commands with zipcode support"""
@@ -48,11 +51,11 @@ class WxCommand(BaseCommand):
     
     # Documentation
     short_description = "Get weather for a US location using NOAA weather data"
-    usage = "wx <zipcode|city> [tomorrow|7d|hourly|alerts]"
+    usage = "wx <zipcode|city> [tomorrow|<N>d|hourly|alerts]"
     examples = ["wx 98101", "wx seattle", "wx 90210 7d"]
     parameters = [
         {"name": "location", "description": "US zip code or city name"},
-        {"name": "option", "description": "tomorrow, 7d, hourly, or alerts (optional)"}
+        {"name": "option", "description": "tomorrow, Nd (e.g. 7d, 10d), hourly, or alerts (optional)"}
     ]
     
     # Error constants
@@ -434,7 +437,7 @@ class WxCommand(BaseCommand):
         
         # Parse the command to extract location and forecast type
         # Support formats: "wx 12345", "wx seattle", "wx paris, tx", "weather everett", "wxa bellingham"
-        # New formats: "wx 12345 tomorrow", "wx 12345 7", "wx 12345 7day", "wx 12345 alerts"
+        # New formats: "wx 12345 tomorrow", "wx 12345 7", "wx 12345 7d", "wx 12345 7day", "wx 12345 alerts"
         parts = content.split()
         
         # Track if we're using companion location (so we always show location in response)
@@ -482,7 +485,7 @@ class WxCommand(BaseCommand):
         else:
             location_parts = parts[1:]
         
-        # Check for forecast type options: "tomorrow", or a number 2-7
+        # Check for forecast type options: "tomorrow", Nd (7d, 10d), or plain digit days 2–WX_MULTIDAY_MAX_DAYS
         forecast_type = "default"
         num_days = 7  # Default for multi-day forecast
         
@@ -495,17 +498,24 @@ class WxCommand(BaseCommand):
             elif last_part == "hourly":
                 forecast_type = "hourly"
                 location_parts = location_parts[:-1]
-            elif last_part.isdigit():
-                # Check if it's a number between 2-7
-                days = int(last_part)
-                if 2 <= days <= 7:
-                    forecast_type = "multiday"
-                    num_days = days
-                    location_parts = location_parts[:-1]
             elif last_part in ["7day", "7-day"]:
                 forecast_type = "multiday"
                 num_days = 7
                 location_parts = location_parts[:-1]
+            else:
+                nd_match = re.fullmatch(r"(\d+)d", last_part)
+                if nd_match:
+                    days = int(nd_match.group(1))
+                    if 2 <= days <= WX_MULTIDAY_MAX_DAYS:
+                        forecast_type = "multiday"
+                        num_days = days
+                        location_parts = location_parts[:-1]
+                elif last_part.isdigit():
+                    days = int(last_part)
+                    if 2 <= days <= WX_MULTIDAY_MAX_DAYS:
+                        forecast_type = "multiday"
+                        num_days = days
+                        location_parts = location_parts[:-1]
         
         # Join remaining parts to handle "city, state" format
         location = ' '.join(location_parts).strip()
@@ -624,7 +634,7 @@ class WxCommand(BaseCommand):
             location: The location (coordinates "lat,lon", zipcode, or city name)
             location_type: "coordinates", "zipcode", or "city"
             forecast_type: "default", "tomorrow", "multiday", or "hourly"
-            num_days: Number of days for multiday forecast (2-7)
+            num_days: Number of days for multiday forecast (2–16)
             message: The MeshMessage for dynamic length calculation
             using_companion_location: If True, always include location prefix even if same state
         """
