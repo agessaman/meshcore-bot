@@ -1438,10 +1438,17 @@ class CommandManager:
             if content.startswith('!'):
                 content = content[1:].strip()
 
-        content.lower()
+        content = content.lower()
 
         # Check each command to see if it should execute
         for command_name, command in self.commands.items():
+            # Skip commands not allowed in this channel (silent - no stats, no error)
+            # This mirrors the check_keywords() path which calls can_execute() before matching.
+            # Messages may reach execute_commands() via a per-command channel override (e.g.
+            # greeter allowing Public) even when other commands aren't configured for that channel.
+            if not command.is_channel_allowed(message):
+                continue
+
             if command.should_execute(message):
                 # Only execute commands that don't have a response format (they handle their own responses)
                 response_format = command.get_response_format()

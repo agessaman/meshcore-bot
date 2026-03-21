@@ -2943,21 +2943,7 @@ class MessageHandler:
 
                     # Add companion to device contact list
                     try:
-                        # Avoid passing `contact_data` wholesale: it can include RSSI/SNR values
-                        # (often negative in dBm). Some device bindings cast those to unsigned
-                        # ints and fail.
-                        #
-                        # The meshcore binding for `add_contact` is not consistent across versions,
-                        # so we try (name, public_key) first, but fall back to (name) on
-                        # signature mismatches.
-                        try:
-                            if public_key:
-                                result = await self.bot.meshcore.commands.add_contact(contact_name, public_key)
-                            else:
-                                result = await self.bot.meshcore.commands.add_contact(contact_name)
-                        except TypeError:
-                            # Binding expects a single positional arg: `add_contact(name)`
-                            result = await self.bot.meshcore.commands.add_contact(contact_name)
+                        result = await self.bot.meshcore.commands.add_contact(contact_data)
                         if hasattr(result, 'type') and result.type.name == 'OK':
                             self.logger.info(f"✅ Companion {contact_name} added to device contacts")
                         else:
