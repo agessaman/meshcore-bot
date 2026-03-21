@@ -143,7 +143,8 @@ service_restart_backoff_seconds = 300
 # Channels to monitor (comma-separated)
 # Bot will only respond to messages on these channels
 # Use exact channel names as configured on your MeshCore node
-monitor_channels = general,test,emergency
+# Use hashtags for hashtag channels (i.e. #mybotchannel, #weather, etc.)
+monitor_channels = #mybotchannel
 
 # Enable DM responses
 # true: Bot will respond to direct messages
