@@ -53,4 +53,4 @@ packages = ["modules", "modules.commands", "modules.commands.alternatives",
 
 [tool.setuptools.package-data]
 "*" = ["*.json"]
-modules = ["web_viewer/templates/*.html"]
+modules = ["web_viewer/templates/*.html", "web_viewer/static/js/*.js"]
