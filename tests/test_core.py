@@ -524,6 +524,158 @@ class TestRadioOfflineState:
         assert bot.is_radio_offline is False
         bot._record_send_failure()
         assert bot.is_radio_offline is True
+class TestBotAdminServer:
+    """Admin HTTP server: /api/admin/reload and /api/admin/health."""
+
+    def _make_bot_with_admin(self, tmp_path, port=15001):
+        """Write config with [Admin] enabled and return a bot + token."""
+        token = "test-secret-token"
+        config_file = tmp_path / "config.ini"
+        db_path = tmp_path / "bot.db"
+        config_file.write_text(
+            f"""[Connection]
+connection_type = serial
+serial_port = /dev/ttyUSB0
+timeout = 30
+
+[Bot]
+db_path = {db_path.as_posix()}
+prefix_bytes = 1
+
+[Channels]
+monitor_channels = #general
+
+[Admin]
+enabled = true
+port = {port}
+token = {token}
+""",
+            encoding="utf-8",
+        )
+        bot = MeshCoreBot(config_file=str(config_file))
+        return bot, token, port
+
+    def test_admin_server_created_when_enabled(self, tmp_path):
+        bot, _token, _port = self._make_bot_with_admin(tmp_path)
+        assert bot._admin_server is not None
+
+    def test_admin_server_none_when_disabled(self, tmp_path):
+        config_file = tmp_path / "config.ini"
+        db_path = tmp_path / "bot.db"
+        _write_config(config_file, db_path)
+        bot = MeshCoreBot(config_file=str(config_file))
+        assert bot._admin_server is None
+
+    def test_admin_server_none_when_token_missing(self, tmp_path):
+        config_file = tmp_path / "config.ini"
+        db_path = tmp_path / "bot.db"
+        config_file.write_text(
+            f"""[Connection]
+connection_type = serial
+serial_port = /dev/ttyUSB0
+timeout = 30
+
+[Bot]
+db_path = {db_path.as_posix()}
+prefix_bytes = 1
+
+[Channels]
+monitor_channels = #general
+
+[Admin]
+enabled = true
+port = 15002
+token =
+""",
+            encoding="utf-8",
+        )
+        bot = MeshCoreBot(config_file=str(config_file))
+        assert bot._admin_server is None
+
+    def test_reload_endpoint_success(self, tmp_path):
+        """POST /api/admin/reload returns 200 and success=true when reload succeeds."""
+        import time
+        import urllib.request
+
+        bot, token, port = self._make_bot_with_admin(tmp_path, port=15003)
+
+        with patch.object(bot, "reload_config", return_value=(True, "Config reloaded")):
+            server = bot._admin_server
+            server.start()
+            time.sleep(0.4)
+
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{port}/api/admin/reload",
+                method="POST",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                import json
+                body = json.loads(resp.read())
+            assert body["success"] is True
+            assert "Config reloaded" in body["message"]
+
+    def test_reload_endpoint_failure(self, tmp_path):
+        """POST /api/admin/reload returns 409 when reload is rejected."""
+        import time
+        import urllib.request
+        from urllib.error import HTTPError
+
+        bot, token, port = self._make_bot_with_admin(tmp_path, port=15004)
+
+        with patch.object(bot, "reload_config", return_value=(False, "Radio settings changed")):
+            server = bot._admin_server
+            server.start()
+            time.sleep(0.4)
+
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{port}/api/admin/reload",
+                method="POST",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            with pytest.raises(HTTPError) as exc_info:
+                urllib.request.urlopen(req, timeout=5)
+            assert exc_info.value.code == 409
+
+    def test_reload_endpoint_rejects_bad_token(self, tmp_path):
+        """POST /api/admin/reload returns 401 with wrong token."""
+        import time
+        import urllib.request
+        from urllib.error import HTTPError
+
+        bot, _token, port = self._make_bot_with_admin(tmp_path, port=15005)
+        server = bot._admin_server
+        server.start()
+        time.sleep(0.4)
+
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/admin/reload",
+            method="POST",
+            headers={"Authorization": "Bearer wrong-token"},
+        )
+        with pytest.raises(HTTPError) as exc_info:
+            urllib.request.urlopen(req, timeout=5)
+        assert exc_info.value.code == 401
+
+    def test_health_endpoint_returns_ok(self, tmp_path):
+        """GET /api/admin/health returns 200 and status=ok."""
+        import time
+        import urllib.request
+
+        bot, token, port = self._make_bot_with_admin(tmp_path, port=15006)
+        server = bot._admin_server
+        server.start()
+        time.sleep(0.4)
+
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/admin/health",
+            method="GET",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            import json
+            body = json.loads(resp.read())
+        assert body["status"] == "ok"
 
 
 # ---------------------------------------------------------------------------
