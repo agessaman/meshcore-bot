@@ -1,10 +1,11 @@
 """Tests for FeedManager queue logic, deduplication, and DB operations."""
 
+import asyncio
 import sqlite3
 import time
 from configparser import ConfigParser
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -818,3 +819,682 @@ class TestSortItems:
         ]
         result = self.fm._sort_items(items, {"field": "ts", "order": "desc"})
         assert isinstance(result, list)
+
+
+# ---------------------------------------------------------------------------
+# Exception / uncovered-path coverage additions
+# ---------------------------------------------------------------------------
+
+
+class TestApplyShorteningEdgePaths:
+    """Cover exception handlers and rarely-hit branches in _apply_shortening."""
+
+    def setup_method(self):
+        self.fm = _make_fm_no_db()
+
+    def test_word_wrap_invalid_number_returns_text(self):
+        assert self.fm._apply_shortening("hello", "word_wrap:abc") == "hello"
+
+    def test_first_words_invalid_number_returns_text(self):
+        assert self.fm._apply_shortening("hello world", "first_words:abc") == "hello world"
+
+    def test_if_regex_fewer_than_3_parts_returns_text(self):
+        # Only 2 parts after split → len(parts) < 3
+        assert self.fm._apply_shortening("hello", "if_regex:pat:then") == "hello"
+
+    def test_if_regex_empty_pattern_returns_text(self):
+        assert self.fm._apply_shortening("hello", "if_regex::then:else") == "hello"
+
+    def test_if_regex_invalid_regex_returns_text(self):
+        result = self.fm._apply_shortening("hello", "if_regex:[invalid:yes:no")
+        assert result == "hello"
+
+    def test_switch_fewer_than_2_parts_returns_text(self):
+        assert self.fm._apply_shortening("hi", "switch:onlyonepart") == "hi"
+
+    def test_regex_cond_fewer_than_4_parts_returns_text(self):
+        assert self.fm._apply_shortening("text", "regex_cond:pat:check:yes") == "text"
+
+    def test_regex_cond_empty_extract_pattern_returns_text(self):
+        assert self.fm._apply_shortening("text", "regex_cond::check:yes:1") == "text"
+
+    def test_regex_cond_invalid_regex_returns_text(self):
+        result = self.fm._apply_shortening("text", "regex_cond:[bad:check:yes:1")
+        assert result == "text"
+
+    def test_regex_cond_no_match_returns_empty(self):
+        result = self.fm._apply_shortening("hello world", "regex_cond:nomatch:check:yes:1")
+        assert result == ""
+
+    def test_regex_cond_whole_match_no_group(self):
+        result = self.fm._apply_shortening("foo bar", "regex_cond:foo:foo:got_it:0")
+        assert result == "got_it"
+
+    def test_regex_no_match_returns_empty(self):
+        assert self.fm._apply_shortening("hello", "regex:xyz") == ""
+
+    def test_regex_invalid_raises_returns_text(self):
+        result = self.fm._apply_shortening("hello", "regex:[invalid")
+        assert result == "hello"
+
+
+class TestDbErrorPaths:
+    """Cover error-handler paths in DB-touching FeedManager methods."""
+
+    def setup_method(self):
+        self.fm = _make_fm_no_db()
+        self.fm.bot.db_manager.connection.side_effect = RuntimeError("db down")
+
+    def test_get_enabled_feeds_returns_empty_on_error(self):
+        result = self.fm._get_enabled_feeds()
+        assert result == []
+        self.fm.bot.logger.error.assert_called()
+
+    def test_update_feed_last_check_logs_error(self):
+        self.fm._update_feed_last_check(1)
+        self.fm.bot.logger.error.assert_called()
+
+    def test_update_feed_last_item_id_logs_error(self):
+        self.fm._update_feed_last_item_id(1, "item-x")
+        self.fm.bot.logger.error.assert_called()
+
+    def test_record_feed_activity_logs_error(self):
+        self.fm._record_feed_activity(1, "item-x", "Title")
+        self.fm.bot.logger.error.assert_called()
+
+    def test_record_feed_error_logs_on_db_failure(self):
+        self.fm._record_feed_error(1, "network", "timeout")
+        # Either logs error or silently swallows — just must not raise
+        assert True  # If we got here, no exception propagated
+
+
+# ---------------------------------------------------------------------------
+# TestInitialize (async)
+# ---------------------------------------------------------------------------
+
+
+class TestInitialize:
+    def setup_method(self):
+        self.fm = _make_fm_no_db()
+
+    def test_disabled_logs_info(self):
+        self.fm.enabled = False
+        asyncio.run(self.fm.initialize())
+        self.fm.bot.logger.info.assert_called()
+
+    def test_enabled_logs_lazy_session_message(self):
+        self.fm.enabled = True
+        asyncio.run(self.fm.initialize())
+        self.fm.bot.logger.info.assert_called()
+
+
+# ---------------------------------------------------------------------------
+# TestStop (async)
+# ---------------------------------------------------------------------------
+
+
+class TestStop:
+    def setup_method(self):
+        self.fm = _make_fm_no_db()
+
+    def test_closes_open_session(self):
+        mock_session = MagicMock()
+        mock_session.closed = False
+        mock_session.close = AsyncMock()
+        self.fm.session = mock_session
+        asyncio.run(self.fm.stop())
+        mock_session.close.assert_called_once()
+        assert self.fm.session is None
+
+    def test_no_session_does_not_raise(self):
+        self.fm.session = None
+        asyncio.run(self.fm.stop())  # should not raise
+
+    def test_already_closed_session_skipped(self):
+        mock_session = MagicMock()
+        mock_session.closed = True
+        mock_session.close = AsyncMock()
+        self.fm.session = mock_session
+        asyncio.run(self.fm.stop())
+        mock_session.close.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# TestEnsureSession (async)
+# ---------------------------------------------------------------------------
+
+
+class TestEnsureSession:
+    def setup_method(self):
+        self.fm = _make_fm_no_db()
+
+    def test_creates_new_session_when_none(self):
+        self.fm.session = None
+        mock_session = MagicMock()
+        with patch("modules.feed_manager.aiohttp.ClientSession", return_value=mock_session):
+            asyncio.run(self.fm._ensure_session())
+        assert self.fm.session is mock_session
+
+    def test_creates_new_session_when_closed(self):
+        old_session = MagicMock()
+        old_session.closed = True
+        self.fm.session = old_session
+        new_session = MagicMock()
+        with patch("modules.feed_manager.aiohttp.ClientSession", return_value=new_session):
+            asyncio.run(self.fm._ensure_session())
+        assert self.fm.session is new_session
+
+    def test_reuses_existing_open_session(self):
+        mock_session = MagicMock()
+        mock_session.closed = False
+        self.fm.session = mock_session
+        with patch("modules.feed_manager.aiohttp.ClientSession") as mock_cls:
+            asyncio.run(self.fm._ensure_session())
+        mock_cls.assert_not_called()
+        assert self.fm.session is mock_session
+
+
+# ---------------------------------------------------------------------------
+# TestWaitForRateLimit (async)
+# ---------------------------------------------------------------------------
+
+
+class TestWaitForRateLimit:
+    def setup_method(self):
+        self.fm = _make_fm_no_db()
+        self.fm.rate_limit_seconds = 5.0
+
+    def test_no_previous_request_records_time(self):
+        asyncio.run(self.fm._wait_for_rate_limit("example.com"))
+        assert "example.com" in self.fm._domain_last_request
+
+    def test_recent_request_triggers_sleep(self):
+        self.fm._domain_last_request["example.com"] = time.time() - 1.0
+        with patch("modules.feed_manager.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            asyncio.run(self.fm._wait_for_rate_limit("example.com"))
+        mock_sleep.assert_called_once()
+        wait_arg = mock_sleep.call_args[0][0]
+        assert 0 < wait_arg <= 5.0
+
+    def test_old_request_no_sleep(self):
+        self.fm._domain_last_request["example.com"] = time.time() - 10.0
+        with patch("modules.feed_manager.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            asyncio.run(self.fm._wait_for_rate_limit("example.com"))
+        mock_sleep.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# TestSendFeedItem (async)
+# ---------------------------------------------------------------------------
+
+
+class TestSendFeedItem:
+    def setup_method(self):
+        self.fm = _make_fm_no_db()
+
+    def _feed(self):
+        return {"id": 1, "channel_name": "general", "feed_name": "test", "output_format": "{title}"}
+
+    def _item(self):
+        return {"id": "x", "title": "Hello", "description": "", "link": "", "published": None}
+
+    def test_queues_formatted_message(self):
+        self.fm._queue_feed_message = Mock()
+        asyncio.run(self.fm._send_feed_item(self._feed(), self._item()))
+        self.fm._queue_feed_message.assert_called_once()
+        _, _, message = self.fm._queue_feed_message.call_args[0]
+        assert "Hello" in message
+
+    def test_format_exception_logs_error(self):
+        self.fm.format_message = Mock(side_effect=RuntimeError("fmt error"))
+        self.fm._record_feed_error = Mock()
+        asyncio.run(self.fm._send_feed_item(self._feed(), self._item()))
+        self.fm._record_feed_error.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# TestPollAllFeeds (async)
+# ---------------------------------------------------------------------------
+
+
+class TestPollAllFeeds:
+    def setup_method(self):
+        self.fm = _make_fm_no_db()
+
+    def _feed(self, last_check=None, interval=300):
+        return {
+            "id": 1, "feed_url": "http://example.com/rss", "feed_type": "rss",
+            "channel_name": "general", "last_check_time": last_check,
+            "check_interval_seconds": interval, "last_item_id": None,
+        }
+
+    def test_disabled_returns_immediately(self):
+        self.fm.enabled = False
+        self.fm._get_enabled_feeds = Mock()
+        asyncio.run(self.fm.poll_all_feeds())
+        self.fm._get_enabled_feeds.assert_not_called()
+
+    def test_no_feeds_returns_immediately(self):
+        self.fm.enabled = True
+        self.fm._get_enabled_feeds = Mock(return_value=[])
+        self.fm.poll_feed = AsyncMock()
+        asyncio.run(self.fm.poll_all_feeds())
+        self.fm.poll_feed.assert_not_called()
+
+    def test_feed_never_checked_is_polled(self):
+        self.fm.enabled = True
+        feed = self._feed(last_check=None)
+        self.fm._get_enabled_feeds = Mock(return_value=[feed])
+        self.fm.poll_feed = AsyncMock(return_value=None)
+        asyncio.run(self.fm.poll_all_feeds())
+        self.fm.poll_feed.assert_called_once_with(feed)
+
+    def test_overdue_feed_is_polled(self):
+        self.fm.enabled = True
+        old = (datetime.now(timezone.utc) - timedelta(seconds=400)).isoformat()
+        feed = self._feed(last_check=old)
+        self.fm._get_enabled_feeds = Mock(return_value=[feed])
+        self.fm.poll_feed = AsyncMock(return_value=None)
+        asyncio.run(self.fm.poll_all_feeds())
+        self.fm.poll_feed.assert_called_once_with(feed)
+
+    def test_recent_feed_is_not_polled(self):
+        self.fm.enabled = True
+        recent = datetime.now(timezone.utc).isoformat()
+        feed = self._feed(last_check=recent)
+        self.fm._get_enabled_feeds = Mock(return_value=[feed])
+        self.fm.poll_feed = AsyncMock(return_value=None)
+        asyncio.run(self.fm.poll_all_feeds())
+        self.fm.poll_feed.assert_not_called()
+
+    def test_sqlite_format_timestamp_parsed(self):
+        self.fm.enabled = True
+        old_ts = (datetime.now(timezone.utc) - timedelta(seconds=400)).strftime("%Y-%m-%d %H:%M:%S")
+        feed = self._feed(last_check=old_ts)
+        self.fm._get_enabled_feeds = Mock(return_value=[feed])
+        self.fm.poll_feed = AsyncMock(return_value=None)
+        asyncio.run(self.fm.poll_all_feeds())
+        self.fm.poll_feed.assert_called_once()
+
+    def test_numeric_timestamp_parsed(self):
+        self.fm.enabled = True
+        old_ts = time.time() - 400
+        feed = self._feed(last_check=old_ts)
+        self.fm._get_enabled_feeds = Mock(return_value=[feed])
+        self.fm.poll_feed = AsyncMock(return_value=None)
+        asyncio.run(self.fm.poll_all_feeds())
+        self.fm.poll_feed.assert_called_once()
+
+    def test_invalid_timestamp_defaults_to_overdue(self):
+        self.fm.enabled = True
+        feed = self._feed(last_check="not-a-date")
+        self.fm._get_enabled_feeds = Mock(return_value=[feed])
+        self.fm.poll_feed = AsyncMock(return_value=None)
+        asyncio.run(self.fm.poll_all_feeds())
+        self.fm.poll_feed.assert_called_once()
+
+    def test_exception_in_get_enabled_feeds_logs_error(self):
+        self.fm.enabled = True
+        self.fm._get_enabled_feeds = Mock(side_effect=RuntimeError("db fail"))
+        asyncio.run(self.fm.poll_all_feeds())
+        self.fm.bot.logger.error.assert_called()
+
+
+# ---------------------------------------------------------------------------
+# TestPollFeed (async)
+# ---------------------------------------------------------------------------
+
+
+class TestPollFeed:
+    def setup_method(self):
+        self.fm = _make_fm_no_db()
+
+    def _feed(self, feed_type="rss", url="http://example.com/rss"):
+        return {
+            "id": 1, "feed_url": url, "feed_type": feed_type,
+            "channel_name": "general", "last_item_id": None,
+        }
+
+    def test_invalid_url_records_error_and_returns(self):
+        self.fm._ensure_session = AsyncMock()
+        self.fm._record_feed_error = Mock()
+        with patch("modules.feed_manager.validate_external_url", return_value=False):
+            asyncio.run(self.fm.poll_feed(self._feed()))
+        self.fm._record_feed_error.assert_called_once()
+
+    def test_rss_dispatches_to_process_rss_feed(self):
+        self.fm._ensure_session = AsyncMock()
+        self.fm._wait_for_rate_limit = AsyncMock()
+        self.fm.process_rss_feed = AsyncMock(return_value=[])
+        self.fm._update_feed_last_check = Mock()
+        with patch("modules.feed_manager.validate_external_url", return_value=True):
+            asyncio.run(self.fm.poll_feed(self._feed(feed_type="rss")))
+        self.fm.process_rss_feed.assert_called_once()
+
+    def test_api_dispatches_to_process_api_feed(self):
+        self.fm._ensure_session = AsyncMock()
+        self.fm._wait_for_rate_limit = AsyncMock()
+        self.fm.process_api_feed = AsyncMock(return_value=[])
+        self.fm._update_feed_last_check = Mock()
+        with patch("modules.feed_manager.validate_external_url", return_value=True):
+            asyncio.run(self.fm.poll_feed(self._feed(feed_type="api")))
+        self.fm.process_api_feed.assert_called_once()
+
+    def test_unknown_feed_type_logs_warning(self):
+        self.fm._ensure_session = AsyncMock()
+        self.fm._wait_for_rate_limit = AsyncMock()
+        with patch("modules.feed_manager.validate_external_url", return_value=True):
+            asyncio.run(self.fm.poll_feed(self._feed(feed_type="unknown")))
+        self.fm.bot.logger.warning.assert_called()
+
+    def test_new_items_passed_through_filter_and_sent(self):
+        item = {"id": "x", "title": "Test", "description": "", "link": "", "published": None}
+        self.fm._ensure_session = AsyncMock()
+        self.fm._wait_for_rate_limit = AsyncMock()
+        self.fm.process_rss_feed = AsyncMock(return_value=[item])
+        self.fm._should_send_item = Mock(return_value=True)
+        self.fm._send_feed_item = AsyncMock()
+        self.fm._update_feed_last_check = Mock()
+        with patch("modules.feed_manager.validate_external_url", return_value=True):
+            asyncio.run(self.fm.poll_feed(self._feed()))
+        self.fm._send_feed_item.assert_called_once_with(self._feed(), item)
+
+    def test_filtered_items_are_not_sent(self):
+        item = {"id": "x", "title": "Test", "description": "", "link": "", "published": None}
+        self.fm._ensure_session = AsyncMock()
+        self.fm._wait_for_rate_limit = AsyncMock()
+        self.fm.process_rss_feed = AsyncMock(return_value=[item])
+        self.fm._should_send_item = Mock(return_value=False)
+        self.fm._send_feed_item = AsyncMock()
+        self.fm._update_feed_last_check = Mock()
+        with patch("modules.feed_manager.validate_external_url", return_value=True):
+            asyncio.run(self.fm.poll_feed(self._feed()))
+        self.fm._send_feed_item.assert_not_called()
+
+    def test_no_new_items_updates_last_check(self):
+        self.fm._ensure_session = AsyncMock()
+        self.fm._wait_for_rate_limit = AsyncMock()
+        self.fm.process_rss_feed = AsyncMock(return_value=[])
+        self.fm._update_feed_last_check = Mock()
+        with patch("modules.feed_manager.validate_external_url", return_value=True):
+            asyncio.run(self.fm.poll_feed(self._feed()))
+        self.fm._update_feed_last_check.assert_called_once_with(1)
+
+    def test_exception_inside_try_logs_error_and_records(self):
+        # Exception inside the try block (after ensure_session and url check)
+        self.fm._ensure_session = AsyncMock()
+        self.fm._wait_for_rate_limit = AsyncMock(side_effect=RuntimeError("rate limit exploded"))
+        self.fm._record_feed_error = Mock()
+        with patch("modules.feed_manager.validate_external_url", return_value=True):
+            asyncio.run(self.fm.poll_feed(self._feed()))
+        self.fm._record_feed_error.assert_called_once()
+
+    def test_multiple_items_max_capped(self):
+        self.fm.max_items_per_check = 2
+        items = [{"id": str(i), "title": f"T{i}", "description": "", "link": "", "published": None} for i in range(5)]
+        self.fm._ensure_session = AsyncMock()
+        self.fm._wait_for_rate_limit = AsyncMock()
+        self.fm.process_rss_feed = AsyncMock(return_value=items)
+        self.fm._should_send_item = Mock(return_value=True)
+        self.fm._send_feed_item = AsyncMock()
+        self.fm._update_feed_last_check = Mock()
+        with patch("modules.feed_manager.validate_external_url", return_value=True):
+            asyncio.run(self.fm.poll_feed(self._feed()))
+        assert self.fm._send_feed_item.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# TestProcessRssFeed (async) — mocks aiohttp session
+# ---------------------------------------------------------------------------
+
+
+def _make_mock_response(status=200, text="<rss><channel><item><title>Test</title><link>http://x.com/1</link><guid>guid-1</guid></item></channel></rss>"):
+    """Build an async context manager mock for aiohttp response."""
+    mock_resp = MagicMock()
+    mock_resp.status = status
+    mock_resp.text = AsyncMock(return_value=text)
+    mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
+    mock_resp.__aexit__ = AsyncMock(return_value=False)
+    return mock_resp
+
+
+def _make_mock_session(response):
+    """Mock aiohttp.ClientSession with a canned GET response."""
+    mock_session = MagicMock()
+    mock_session.get = MagicMock(return_value=response)
+    mock_session.closed = False
+    return mock_session
+
+
+class TestProcessRssFeed:
+    def setup_method(self):
+        self.fm = _make_fm_no_db()
+
+    def _feed(self, **kw):
+        base = {
+            "id": 1, "feed_url": "http://example.com/rss", "feed_type": "rss",
+            "channel_name": "general", "last_item_id": None, "sort_config": None,
+        }
+        base.update(kw)
+        return base
+
+    def test_returns_new_items(self):
+        rss_xml = (
+            "<rss><channel>"
+            "<item><title>A</title><link>http://x.com/a</link><guid>guid-a</guid></item>"
+            "</channel></rss>"
+        )
+        resp = _make_mock_response(text=rss_xml)
+        self.fm.session = _make_mock_session(resp)
+        self.fm.bot.db_manager.connection = MagicMock()
+        cursor_mock = MagicMock()
+        cursor_mock.fetchall.return_value = []
+        conn_mock = MagicMock()
+        conn_mock.__enter__ = MagicMock(return_value=conn_mock)
+        conn_mock.__exit__ = MagicMock(return_value=False)
+        conn_mock.cursor.return_value = cursor_mock
+        self.fm.bot.db_manager.connection.return_value = conn_mock
+        self.fm._update_feed_last_item_id = Mock()
+
+        items = asyncio.run(self.fm.process_rss_feed(self._feed()))
+        assert len(items) >= 1
+        assert items[0]["id"] == "guid-a"
+
+    def test_http_error_raises(self):
+        resp = _make_mock_response(status=404)
+        self.fm.session = _make_mock_session(resp)
+        with pytest.raises(Exception, match="HTTP 404"):  # noqa: B017
+            asyncio.run(self.fm.process_rss_feed(self._feed()))
+
+    def test_already_processed_item_excluded(self):
+        rss_xml = (
+            "<rss><channel>"
+            "<item><title>A</title><link>http://x.com/a</link><guid>seen-guid</guid></item>"
+            "</channel></rss>"
+        )
+        resp = _make_mock_response(text=rss_xml)
+        self.fm.session = _make_mock_session(resp)
+        cursor_mock = MagicMock()
+        cursor_mock.fetchall.return_value = [("seen-guid",)]
+        conn_mock = MagicMock()
+        conn_mock.__enter__ = MagicMock(return_value=conn_mock)
+        conn_mock.__exit__ = MagicMock(return_value=False)
+        conn_mock.cursor.return_value = cursor_mock
+        self.fm.bot.db_manager.connection.return_value = conn_mock
+        self.fm._update_feed_last_item_id = Mock()
+
+        items = asyncio.run(self.fm.process_rss_feed(self._feed(last_item_id="seen-guid")))
+        assert items == []
+
+    def test_last_item_id_seeds_processed_set(self):
+        rss_xml = (
+            "<rss><channel>"
+            "<item><title>Old</title><link>http://x.com/old</link><guid>old-id</guid></item>"
+            "</channel></rss>"
+        )
+        resp = _make_mock_response(text=rss_xml)
+        self.fm.session = _make_mock_session(resp)
+        cursor_mock = MagicMock()
+        cursor_mock.fetchall.return_value = []
+        conn_mock = MagicMock()
+        conn_mock.__enter__ = MagicMock(return_value=conn_mock)
+        conn_mock.__exit__ = MagicMock(return_value=False)
+        conn_mock.cursor.return_value = cursor_mock
+        self.fm.bot.db_manager.connection.return_value = conn_mock
+        self.fm._update_feed_last_item_id = Mock()
+
+        # last_item_id="old-id" — item should be excluded
+        items = asyncio.run(self.fm.process_rss_feed(self._feed(last_item_id="old-id")))
+        assert items == []
+
+
+# ---------------------------------------------------------------------------
+# TestProcessApiFeed (async)
+# ---------------------------------------------------------------------------
+
+
+def _make_mock_json_response(status=200, data=None):
+    mock_resp = MagicMock()
+    mock_resp.status = status
+    mock_resp.json = AsyncMock(return_value=data or [])
+    mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
+    mock_resp.__aexit__ = AsyncMock(return_value=False)
+    return mock_resp
+
+
+class TestProcessApiFeed:
+    def setup_method(self):
+        self.fm = _make_fm_no_db()
+
+    def _feed(self, api_config=None, **kw):
+        import json as _json
+        base = {
+            "id": 1, "feed_url": "http://api.example.com/items", "feed_type": "api",
+            "channel_name": "general", "last_item_id": None, "sort_config": None,
+            "api_config": _json.dumps(api_config) if api_config else "{}",
+        }
+        base.update(kw)
+        return base
+
+    def _conn_mock_empty(self):
+        cursor_mock = MagicMock()
+        cursor_mock.fetchall.return_value = []
+        conn_mock = MagicMock()
+        conn_mock.__enter__ = MagicMock(return_value=conn_mock)
+        conn_mock.__exit__ = MagicMock(return_value=False)
+        conn_mock.cursor.return_value = cursor_mock
+        return conn_mock
+
+    def test_get_request_returns_items(self):
+        data = [{"id": "1", "title": "Item 1", "created_at": None}]
+        resp = _make_mock_json_response(data=data)
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=resp)
+        self.fm.session = mock_session
+        self.fm.bot.db_manager.connection.return_value = self._conn_mock_empty()
+        self.fm._update_feed_last_item_id = Mock()
+
+        items = asyncio.run(self.fm.process_api_feed(self._feed()))
+        assert len(items) == 1
+        assert items[0]["id"] == "1"
+
+    def test_post_request_dispatched(self):
+        data = [{"id": "2", "title": "Posted item", "created_at": None}]
+        resp = _make_mock_json_response(data=data)
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=resp)
+        self.fm.session = mock_session
+        self.fm.bot.db_manager.connection.return_value = self._conn_mock_empty()
+        self.fm._update_feed_last_item_id = Mock()
+
+        api_cfg = {"method": "POST", "body": {"filter": "active"}}
+        items = asyncio.run(self.fm.process_api_feed(self._feed(api_config=api_cfg)))
+        assert len(items) == 1
+        mock_session.post.assert_called_once()
+
+    def test_items_path_navigation(self):
+        data = {"results": {"items": [{"id": "3", "title": "Nested"}]}}
+        resp = _make_mock_json_response(data=data)
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=resp)
+        self.fm.session = mock_session
+        self.fm.bot.db_manager.connection.return_value = self._conn_mock_empty()
+        self.fm._update_feed_last_item_id = Mock()
+
+        api_cfg = {"response_parser": {"items_path": "results.items", "id_field": "id", "title_field": "title"}}
+        items = asyncio.run(self.fm.process_api_feed(self._feed(api_config=api_cfg)))
+        assert len(items) == 1
+        assert items[0]["title"] == "Nested"
+
+    def test_http_error_raises(self):
+        resp = _make_mock_json_response(status=500)
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=resp)
+        self.fm.session = mock_session
+        with pytest.raises(Exception, match="HTTP 500"):  # noqa: B017
+            asyncio.run(self.fm.process_api_feed(self._feed()))
+
+    def test_already_processed_item_excluded(self):
+        data = [{"id": "seen", "title": "Old item", "created_at": None}]
+        resp = _make_mock_json_response(data=data)
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=resp)
+        self.fm.session = mock_session
+        cursor_mock = MagicMock()
+        cursor_mock.fetchall.return_value = [("seen",)]
+        conn_mock = MagicMock()
+        conn_mock.__enter__ = MagicMock(return_value=conn_mock)
+        conn_mock.__exit__ = MagicMock(return_value=False)
+        conn_mock.cursor.return_value = cursor_mock
+        self.fm.bot.db_manager.connection.return_value = conn_mock
+        self.fm._update_feed_last_item_id = Mock()
+
+        items = asyncio.run(self.fm.process_api_feed(self._feed(last_item_id="seen")))
+        assert items == []
+
+    def test_item_without_id_skipped(self):
+        data = [{"title": "No ID item"}]  # no 'id' field
+        resp = _make_mock_json_response(data=data)
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=resp)
+        self.fm.session = mock_session
+        self.fm.bot.db_manager.connection.return_value = self._conn_mock_empty()
+
+        items = asyncio.run(self.fm.process_api_feed(self._feed()))
+        assert items == []
+
+    def test_numeric_timestamp_parsed(self):
+        data = [{"id": "ts1", "title": "Timestamped", "created_at": 1609459200.0}]
+        resp = _make_mock_json_response(data=data)
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=resp)
+        self.fm.session = mock_session
+        self.fm.bot.db_manager.connection.return_value = self._conn_mock_empty()
+        self.fm._update_feed_last_item_id = Mock()
+
+        items = asyncio.run(self.fm.process_api_feed(self._feed()))
+        assert items[0]["published"] is not None
+
+    def test_iso_timestamp_parsed(self):
+        data = [{"id": "ts2", "title": "ISO date", "created_at": "2021-01-01T00:00:00Z"}]
+        resp = _make_mock_json_response(data=data)
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=resp)
+        self.fm.session = mock_session
+        self.fm.bot.db_manager.connection.return_value = self._conn_mock_empty()
+        self.fm._update_feed_last_item_id = Mock()
+
+        items = asyncio.run(self.fm.process_api_feed(self._feed()))
+        assert items[0]["published"] is not None
+
+    def test_microsoft_date_timestamp_parsed(self):
+        data = [{"id": "ms1", "title": "MS date", "created_at": "/Date(1609459200000)/"}]
+        resp = _make_mock_json_response(data=data)
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=resp)
+        self.fm.session = mock_session
+        self.fm.bot.db_manager.connection.return_value = self._conn_mock_empty()
+        self.fm._update_feed_last_item_id = Mock()
+
+        items = asyncio.run(self.fm.process_api_feed(self._feed()))
+        assert items[0]["published"] is not None

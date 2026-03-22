@@ -1,7 +1,7 @@
 """Tests for modules.graph_trace_helper — update_mesh_graph_from_trace_data."""
 
 import configparser
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -316,4 +316,156 @@ class TestMultiHopEdges:
         bot = _make_bot(bot_prefix="cc")
         bot.meshcore = None
         update_mesh_graph_from_trace_data(bot, ["aa", "bb"], {})
+        assert bot.mesh_graph.add_edge.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Geo-location paths (lines 85-87, 108-150, 185-226, 258-296)
+# ---------------------------------------------------------------------------
+
+class TestGeolocationPaths:
+    """Cover branches that execute when _get_node_location_from_db returns data."""
+
+    def test_bot_location_resolved_immediate_neighbor_with_distance(self):
+        """Bot has location + neighbor has location → distance calculated, edges added."""
+        bot = _make_bot(bot_prefix="aa")
+        bot_loc = (47.6, -122.3)
+        neighbor_loc = (47.7, -122.4)
+        with patch("modules.utils._get_node_location_from_db") as mock_loc, \
+             patch("modules.utils.calculate_distance", return_value=12.5):
+            mock_loc.side_effect = [
+                (bot_loc, None),       # bot location
+                (neighbor_loc, "bb" * 32),  # neighbor location + key
+            ]
+            update_mesh_graph_from_trace_data(bot, ["bb"], {}, is_our_trace=True)
+        assert bot.mesh_graph.add_edge.call_count == 2
+        # Verify geographic_distance was passed
+        calls = bot.mesh_graph.add_edge.call_args_list
+        assert any(c.kwargs.get("geographic_distance") == 12.5 for c in calls)
+
+    def test_immediate_neighbor_key_from_location_db(self):
+        """Neighbor key resolved from _get_node_location_from_db when count query ambiguous."""
+        bot = _make_bot(bot_prefix="aa")
+        bot_loc = (47.6, -122.3)
+        neighbor_loc = (47.7, -122.4)
+        with patch("modules.utils._get_node_location_from_db") as mock_loc, \
+             patch("modules.utils.calculate_distance", return_value=5.0):
+            mock_loc.side_effect = [
+                (bot_loc, None),
+                (neighbor_loc, "cc" * 32),
+            ]
+            update_mesh_graph_from_trace_data(bot, ["bb"], {}, is_our_trace=True)
+        assert bot.mesh_graph.add_edge.call_count == 2
+
+    def test_immediate_neighbor_location_exception_handled(self):
+        """Exception in distance calc for immediate neighbor is swallowed."""
+        bot = _make_bot(bot_prefix="aa")
+        with patch("modules.utils._get_node_location_from_db") as mock_loc:
+            mock_loc.side_effect = [
+                ((47.6, -122.3), None),   # bot location ok
+                Exception("geo fail"),     # neighbor location raises
+            ]
+            update_mesh_graph_from_trace_data(bot, ["bb"], {}, is_our_trace=True)
+        assert bot.mesh_graph.add_edge.call_count == 2
+
+    def test_immediate_neighbor_no_location_result(self):
+        """When neighbor location lookup returns None, no distance, edges still added."""
+        bot = _make_bot(bot_prefix="aa")
+        with patch("modules.utils._get_node_location_from_db") as mock_loc:
+            mock_loc.side_effect = [
+                ((47.6, -122.3), None),  # bot location
+                None,                    # neighbor: no location
+            ]
+            update_mesh_graph_from_trace_data(bot, ["bb"], {}, is_our_trace=True)
+        assert bot.mesh_graph.add_edge.call_count == 2
+
+    def test_regular_trace_last_node_with_distance(self):
+        """Regular trace: last_node has location → distance calculated."""
+        bot = _make_bot(bot_prefix="cc")
+        bot_loc = (47.6, -122.3)
+        last_node_loc = (47.5, -122.2)
+        with patch("modules.utils._get_node_location_from_db") as mock_loc, \
+             patch("modules.utils.calculate_distance", return_value=8.0):
+            mock_loc.side_effect = [
+                (bot_loc, None),              # bot location
+                (last_node_loc, "aa" * 32),   # last_node location + key
+            ]
+            update_mesh_graph_from_trace_data(bot, ["aa"], {})
+        assert bot.mesh_graph.add_edge.call_count == 1
+        call_kwargs = bot.mesh_graph.add_edge.call_args.kwargs
+        assert call_kwargs.get("geographic_distance") == 8.0
+
+    def test_regular_trace_last_node_key_from_location(self):
+        """last_node key fallback from location DB when count query returns nothing."""
+        bot = _make_bot(bot_prefix="cc")
+        with patch("modules.utils._get_node_location_from_db") as mock_loc, \
+             patch("modules.utils.calculate_distance", return_value=3.0):
+            mock_loc.side_effect = [
+                ((47.6, -122.3), None),
+                ((47.5, -122.2), "aa" * 32),
+            ]
+            update_mesh_graph_from_trace_data(bot, ["aa"], {})
+        assert bot.mesh_graph.add_edge.call_count == 1
+
+    def test_regular_trace_bot_key_bytes(self):
+        """Bot public key as bytes is hex-encoded in regular trace path."""
+        bot = _make_bot(bot_prefix="cc")
+        bot.meshcore.device.public_key = b"\xcc\xdd"
+        update_mesh_graph_from_trace_data(bot, ["aa"], {})
+        assert bot.mesh_graph.add_edge.call_count == 1
+
+    def test_regular_trace_distance_exception_handled(self):
+        """Exception in last_node distance calc is swallowed."""
+        bot = _make_bot(bot_prefix="cc")
+        with patch("modules.utils._get_node_location_from_db") as mock_loc:
+            mock_loc.side_effect = [
+                ((47.6, -122.3), None),
+                Exception("geo fail"),
+            ]
+            update_mesh_graph_from_trace_data(bot, ["aa"], {})
+        assert bot.mesh_graph.add_edge.call_count == 1
+
+    def test_multihop_intermediate_key_resolved(self):
+        """Intermediate node count=1 DB path: key resolved for both from/to nodes."""
+        bot = _make_bot(bot_prefix="dd")
+        bot.db_manager.execute_query = Mock(side_effect=[
+            # last_node count query
+            [{"count": 0}],
+            # intermediate loop: from_node count=1, key
+            [{"count": 1}],
+            [{"public_key": "aa" * 32}],
+            # to_node count=1, key
+            [{"count": 1}],
+            [{"public_key": "bb" * 32}],
+        ])
+        update_mesh_graph_from_trace_data(bot, ["aa", "bb"], {})
+        assert bot.mesh_graph.add_edge.call_count == 2
+
+    def test_multihop_intermediate_distance_calculated(self):
+        """Intermediate nodes with locations get distance set on edge."""
+        bot = _make_bot(bot_prefix="dd")
+        loc_a = (47.0, -122.0)
+        loc_b = (47.1, -122.1)
+        loc_c = (47.2, -122.2)
+        with patch("modules.utils._get_node_location_from_db") as mock_loc, \
+             patch("modules.utils.calculate_distance", return_value=5.5):
+            mock_loc.side_effect = [
+                (loc_c, None),           # bot location
+                (loc_b, "bb" * 32),      # last_node (bb) location
+                (loc_a, "aa" * 32),      # from_node in loop
+                (loc_b, "bb" * 32),      # to_node in loop
+            ]
+            update_mesh_graph_from_trace_data(bot, ["aa", "bb"], {})
+        assert bot.mesh_graph.add_edge.call_count == 2
+
+    def test_multihop_intermediate_distance_exception_handled(self):
+        """Exception in intermediate distance calc is swallowed; edges still added."""
+        bot = _make_bot(bot_prefix="dd")
+        with patch("modules.utils._get_node_location_from_db") as mock_loc:
+            mock_loc.side_effect = [
+                ((47.0, -122.0), None),  # bot location
+                ((47.1, -122.1), None),  # last_node location
+                Exception("geo fail"),   # intermediate raises
+            ]
+            update_mesh_graph_from_trace_data(bot, ["aa", "bb"], {})
         assert bot.mesh_graph.add_edge.call_count == 2

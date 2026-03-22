@@ -1,7 +1,8 @@
 """Tests for modules.commands.channels_command."""
 
+import asyncio
 import configparser
-from unittest.mock import MagicMock, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 from modules.commands.channels_command import ChannelsCommand
 from tests.conftest import mock_message
@@ -280,3 +281,199 @@ class TestChannelsGetHelpText:
         cmd = ChannelsCommand(bot)
         result = cmd.get_help_text()
         assert isinstance(result, str)
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage — uncovered branches
+# ---------------------------------------------------------------------------
+
+
+class TestMatchesKeywordNoKeywords:
+    def test_no_keywords_returns_false(self):
+        bot = _make_bot_with_channels()
+        cmd = ChannelsCommand(bot)
+        cmd.keywords = []
+        msg = mock_message(content="channels")
+        assert cmd.matches_keyword(msg) is False
+
+
+class TestLoadChannelsGeneralFilter:
+    def test_general_subcategory_skips_dot_channels(self):
+        bot = _make_bot_with_channels({
+            "mesh": "General mesh",
+            "seattle.nw": "Northwest",
+        })
+        cmd = ChannelsCommand(bot)
+        result = cmd._load_channels_from_config("general")
+        assert "#mesh" in result
+        assert "#nw" not in result
+
+    def test_subcommand_strips_prefix(self):
+        bot = _make_bot_with_channels({"seattle.nw": "Northwest", "seattle.se": "Southeast"})
+        cmd = ChannelsCommand(bot)
+        result = cmd._load_channels_from_config("seattle")
+        assert "#nw" in result
+        assert "#se" in result
+
+
+class TestShowAllCategories:
+    def test_execute_list_shows_categories(self):
+        bot = _make_bot_with_channels({
+            "mesh": "General",
+            "seattle.nw": "Northwest",
+            "seattle.se": "Southeast",
+        })
+        bot.command_manager.send_response = AsyncMock(return_value=True)
+        cmd = ChannelsCommand(bot)
+        msg = mock_message(content="channels list", channel="general")
+        result = asyncio.run(cmd.execute(msg))
+        assert result is True
+
+    def test_execute_list_no_categories_sends_message(self):
+        bot = _make_bot_with_channels({"mesh": "General"})
+        bot.command_manager.send_response = AsyncMock(return_value=True)
+        cmd = ChannelsCommand(bot)
+        msg = mock_message(content="channels list", channel="general")
+        result = asyncio.run(cmd.execute(msg))
+        assert result is True
+
+
+class TestShowSpecificChannelInCategory:
+    def test_specific_channel_in_category_resolved(self):
+        bot = _make_bot_with_channels({
+            "seattle.nw": '"Northwest Seattle"',
+        })
+        bot.command_manager.send_response = AsyncMock(return_value=True)
+        cmd = ChannelsCommand(bot)
+        msg = mock_message(content="channels #nw", channel="general")
+        result = asyncio.run(cmd.execute(msg))
+        assert result is True
+
+    def test_channel_not_found_sends_not_found_message(self):
+        bot = _make_bot_with_channels({"mesh": "Mesh"})
+        bot.command_manager.send_response = AsyncMock(return_value=True)
+        cmd = ChannelsCommand(bot)
+        msg = mock_message(content="channels #nonexistent", channel="general")
+        result = asyncio.run(cmd.execute(msg))
+        assert result is True
+
+
+class TestExecuteExceptionPath:
+    def test_exception_in_execute_returns_false(self):
+        bot = _make_bot_with_channels()
+        bot.command_manager.send_response = AsyncMock(return_value=True)
+        cmd = ChannelsCommand(bot)
+        with patch.object(cmd, "_load_channels_from_config", side_effect=RuntimeError("boom")):
+            msg = mock_message(content="channels", channel="general")
+            result = asyncio.run(cmd.execute(msg))
+        assert result is False
+
+
+class TestSplitIntoMessagesEdgePaths:
+    def test_very_long_single_channel_name(self):
+        bot = _make_bot_with_channels()
+        bot.command_manager.send_response = AsyncMock()
+        cmd = ChannelsCommand(bot)
+        # A channel name so long it exceeds the limit on its own
+        long_name = "#" + "x" * 130
+        result = cmd._split_into_messages([long_name], None)
+        assert isinstance(result, list)
+        assert len(result) >= 1
+
+    def test_split_with_subcommand_header(self):
+        bot = _make_bot_with_channels()
+        cmd = ChannelsCommand(bot)
+        channels = [f"#ch{i}" for i in range(30)]
+        result = cmd._split_into_messages(channels, "seattle")
+        assert len(result) >= 1
+
+
+class TestParseConfigChannelsQuotedDescriptions:
+    def test_quoted_description_stripped(self):
+        bot = _make_bot_with_channels({"mesh": '"The mesh channel"'})
+        cmd = ChannelsCommand(bot)
+        pairs = list(cmd._parse_config_channels())
+        assert pairs[0][1] == "The mesh channel"
+
+
+class TestIsValidCategory:
+    def test_empty_category_returns_false(self):
+        bot = _make_bot_with_channels()
+        cmd = ChannelsCommand(bot)
+        assert cmd._is_valid_category("") is False
+
+    def test_valid_category_returns_true(self):
+        bot = _make_bot_with_channels({"seattle.nw": "NW"})
+        cmd = ChannelsCommand(bot)
+        assert cmd._is_valid_category("seattle") is True
+
+    def test_invalid_category_returns_false(self):
+        bot = _make_bot_with_channels({"mesh": "General"})
+        cmd = ChannelsCommand(bot)
+        assert cmd._is_valid_category("seattle") is False
+
+
+class TestExecuteChannelNameSearch:
+    """Lines 149-150: sub_command is a channel name, not a category."""
+
+    def test_search_by_channel_name_resolves_to_specific(self):
+        # "nw" is not a valid category but IS a channel name in seattle.nw
+        bot = _make_bot_with_channels({"seattle.nw": "Northwest Seattle"})
+        bot.command_manager.send_response = AsyncMock(return_value=True)
+        cmd = ChannelsCommand(bot)
+        msg = mock_message(content="channels nw", channel="general")
+        result = asyncio.run(cmd.execute(msg))
+        assert result is True
+
+
+class TestShowAllCategoriesEdge:
+    """Lines 235-236, 249-251."""
+
+    def test_no_dot_channels_shows_no_categories(self):
+        # No dot channels → categories dict has only 'general' → _show_all_categories
+        # Actually 'list' subcommand triggers _show_all_categories
+        # but with no dot channels, categories = {'general': N} — still has content
+        # To get the empty path, need config with no channels at all
+        bot = _make_bot_with_channels()
+        bot.command_manager.send_response = AsyncMock(return_value=True)
+        cmd = ChannelsCommand(bot)
+        with patch.object(cmd, "_get_all_categories", return_value={}):
+            msg = mock_message(content="channels list", channel="general")
+            result = asyncio.run(cmd.execute(msg))
+        assert result is True
+
+    def test_exception_in_show_all_categories_handled(self):
+        bot = _make_bot_with_channels({"seattle.nw": "NW"})
+        bot.command_manager.send_response = AsyncMock(return_value=True)
+        cmd = ChannelsCommand(bot)
+        with patch.object(cmd, "_get_all_categories", side_effect=RuntimeError("boom")):
+            msg = mock_message(content="channels list", channel="general")
+            result = asyncio.run(cmd.execute(msg))
+        assert result is True
+
+
+class TestShowSpecificChannelException:
+    """Lines 345-347."""
+
+    def test_exception_in_show_specific_channel_handled(self):
+        bot = _make_bot_with_channels({"mesh": "Mesh"})
+        bot.command_manager.send_response = AsyncMock(return_value=True)
+        cmd = ChannelsCommand(bot)
+        with patch.object(cmd, "_parse_config_channels", side_effect=RuntimeError("parse error")):
+            msg = mock_message(content="channels #mesh", channel="general")
+            result = asyncio.run(cmd.execute(msg))
+        assert result is True
+
+
+class TestSendMultipleMessagesDelay:
+    """Line 449: asyncio.sleep in _send_multiple_messages when i > 0."""
+
+    def test_multiple_messages_triggers_sleep(self):
+        bot = _make_bot_with_channels({"mesh": "General"})
+        bot.command_manager.send_response = AsyncMock(return_value=True)
+        cmd = ChannelsCommand(bot)
+        msg = mock_message(content="channels", channel="general")
+        with patch("modules.commands.channels_command.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            # Force 3 messages by injecting many short channels
+            asyncio.run(cmd._send_multiple_messages(msg, ["Channels: #a", "More: #b", "More: #c"]))
+        assert mock_sleep.call_count == 2  # called for i=1 and i=2

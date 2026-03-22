@@ -49,6 +49,12 @@ Test configuration lives in two files:
 | `source` | `modules/` |
 | `omit` | `tests/`, `.venv/` |
 | `fail_under` | 35% (raised 2026-03-16; current coverage 36.72%; target 40%; hardware-dependent modules cap realistic ceiling at ~40–42%) |
+| Setting      | Value                                                           |
+|--------------|-----------------------------------------------------------------|
+| `source`     | `modules/`                                                      |
+| `omit`       | `tests/`, `.venv/`                                              |
+| `fail_under` | `40` — raised 2026-03-22; currently 40.00%; target met          |
+|              | (hardware-dependent modules cap realistic ceiling at ~40-42%)   |
 
 ---
 

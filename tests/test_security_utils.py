@@ -249,3 +249,67 @@ class TestValidateSafePathExtra:
         with patch("modules.security_utils.Path.resolve", side_effect=OSError("disk fail")):
             with pytest.raises(ValueError, match="Invalid or unsafe file path"):
                 validate_safe_path("some_file.db", base_dir=str(tmp_path))
+
+
+class TestSanitizeName:
+    """Tests for sanitize_name() — log-safe identifier sanitization."""
+
+    def test_newline_stripped(self):
+        from modules.security_utils import sanitize_name
+        assert "\n" not in sanitize_name("Evil\nNode")
+
+    def test_carriage_return_stripped(self):
+        from modules.security_utils import sanitize_name
+        assert "\r" not in sanitize_name("Evil\rNode")
+
+    def test_tab_stripped(self):
+        from modules.security_utils import sanitize_name
+        assert "\t" not in sanitize_name("Tab\tNode")
+
+    def test_null_byte_stripped(self):
+        from modules.security_utils import sanitize_name
+        assert "\x00" not in sanitize_name("Bad\x00Name")
+
+    def test_ansi_escape_stripped(self):
+        from modules.security_utils import sanitize_name
+        assert "\x1b" not in sanitize_name("\x1b[31mRed\x1b[0m")
+
+    def test_truncated_to_max_length(self):
+        from modules.security_utils import sanitize_name
+        result = sanitize_name("A" * 100, max_length=64)
+        assert len(result) <= 64
+
+    def test_normal_name_unchanged(self):
+        from modules.security_utils import sanitize_name
+        assert sanitize_name("Alice") == "Alice"
+
+    def test_non_string_coerced(self):
+        from modules.security_utils import sanitize_name
+        assert sanitize_name(42) == "42"
+
+    def test_negative_max_length_raises(self):
+        from modules.security_utils import sanitize_name
+        with pytest.raises(ValueError):
+            sanitize_name("test", max_length=-1)
+
+
+class TestValidateExternalUrlEdgePaths:
+    """Cover remaining branches in validate_external_url."""
+
+    def test_allow_loopback_blocks_link_local_ip(self):
+        """Lines 119-120: link-local IP blocked even with allow_loopback=True."""
+        with patch("socket.gethostbyname", return_value="169.254.1.1"):
+            result = validate_external_url("http://somehost.local/path", allow_loopback=True)
+        assert result is False
+
+    def test_default_blocks_multicast_ip(self):
+        """Lines 137-138: multicast IP blocked in default mode."""
+        with patch("socket.gethostbyname", return_value="224.0.0.1"):
+            result = validate_external_url("http://multicast.example.com/path")
+        assert result is False
+
+    def test_unexpected_exception_returns_false(self):
+        """Lines 152-154: top-level exception handler — unexpected non-socket exception."""
+        with patch("socket.gethostbyname", side_effect=RuntimeError("unexpected internal error")):
+            result = validate_external_url("http://somehost.local/path")
+        assert result is False
