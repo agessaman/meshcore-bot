@@ -149,21 +149,43 @@ class MqttCollector:
     def _on_disconnect(self, client: Any, userdata: Any, rc: int) -> None:
         pass  # Graceful disconnects are fine
 
+    def _on_connect_v2(self, client: Any, userdata: Any, connect_flags: Any, reason: Any, properties: Any) -> None:
+        """paho-mqtt Callback API v2 (ReasonCode instead of rc)."""
+        if not reason.is_failure:
+            self._connected.set()
+            client.subscribe(self.topic)
+        else:
+            self._error = f"MQTT connect failed: {reason}"
+            self._connected.set()
+
+    def _on_disconnect_v2(
+        self, client: Any, userdata: Any, disconnect_flags: Any, reason: Any, properties: Any
+    ) -> None:
+        pass  # Graceful disconnects are fine
+
     # ------------------------------------------------------------------
     def collect(self) -> list[dict[str, Any]]:
         """Connect, subscribe, collect up to max_packets, return them."""
         if not PAHO_AVAILABLE:
             raise RuntimeError("paho-mqtt is not installed; run: pip install paho-mqtt")
 
-        client = mqtt_lib.Client(
-            client_id=self.client_id,
-            transport=self.transport,
-        )
+        if hasattr(mqtt_lib, "CallbackAPIVersion"):
+            client = mqtt_lib.Client(
+                mqtt_lib.CallbackAPIVersion.VERSION2,
+                client_id=self.client_id,
+                transport=self.transport,
+            )
+            client.on_connect = self._on_connect_v2
+            client.on_disconnect = self._on_disconnect_v2
+        else:
+            client = mqtt_lib.Client(
+                client_id=self.client_id,
+                transport=self.transport,
+            )
+            client.on_connect = self._on_connect
+            client.on_disconnect = self._on_disconnect
         self._client = client
-
-        client.on_connect = self._on_connect
         client.on_message = self._on_message
-        client.on_disconnect = self._on_disconnect
 
         if self.username:
             client.username_pw_set(self.username, self.password or None)

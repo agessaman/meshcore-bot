@@ -15,6 +15,11 @@ if TYPE_CHECKING:
     pass
 
 
+def _utc_now() -> datetime.datetime:
+    """Current time in UTC (timezone-aware; replaces deprecated utcnow())."""
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
 def _iso_week_key_from_ran_at(ran_at: str) -> str:
     """Derive YYYY-Www from maint.status db_backup_ran_at ISO string for weekly dedup."""
     if not ran_at:
@@ -190,7 +195,7 @@ class MaintenanceRunner:
             if hasattr(self.bot, 'mesh_graph') and self.bot.mesh_graph and hasattr(self.bot.mesh_graph, 'delete_expired_edges_from_db'):
                 self.bot.mesh_graph.delete_expired_edges_from_db(mesh_connections_days)
 
-            ran_at = datetime.datetime.utcnow().isoformat()
+            ran_at = _utc_now().isoformat()
             self._last_retention_stats['ran_at'] = ran_at
             try:
                 self.bot.db_manager.set_metadata('maint.status.data_retention_ran_at', ran_at)
@@ -202,7 +207,7 @@ class MaintenanceRunner:
             self.logger.exception(f"Error during data retention cleanup: {e}")
             self._last_retention_stats['error'] = str(e)
             try:
-                ran_at = datetime.datetime.utcnow().isoformat()
+                ran_at = _utc_now().isoformat()
                 self.bot.db_manager.set_metadata('maint.status.data_retention_ran_at', ran_at)
                 self.bot.db_manager.set_metadata('maint.status.data_retention_outcome', f'error: {e}')
             except Exception:
@@ -359,7 +364,7 @@ class MaintenanceRunner:
         except ValueError:
             smtp_port = 587
 
-        now_utc = datetime.datetime.utcnow()
+        now_utc = _utc_now()
         yesterday = now_utc - datetime.timedelta(days=1)
         period_start = yesterday.strftime('%Y-%m-%d %H:%M UTC')
         period_end = now_utc.strftime('%Y-%m-%d %H:%M UTC')
@@ -410,7 +415,7 @@ class MaintenanceRunner:
                 f"errors={stats.get('errors_24h')})"
             )
             try:
-                ran_at = datetime.datetime.utcnow().isoformat()
+                ran_at = _utc_now().isoformat()
                 self.bot.db_manager.set_metadata('maint.status.nightly_email_ran_at', ran_at)
                 self.bot.db_manager.set_metadata('maint.status.nightly_email_outcome', 'ok')
             except Exception:
@@ -419,7 +424,7 @@ class MaintenanceRunner:
         except Exception as e:
             self.logger.error(f"Failed to send nightly maintenance email: {e}")
             try:
-                ran_at = datetime.datetime.utcnow().isoformat()
+                ran_at = _utc_now().isoformat()
                 self.bot.db_manager.set_metadata('maint.status.nightly_email_ran_at', ran_at)
                 self.bot.db_manager.set_metadata('maint.status.nightly_email_outcome', f'error: {e}')
             except Exception:
@@ -460,7 +465,7 @@ class MaintenanceRunner:
                 self._last_log_rotation_applied = new_cfg
                 self.logger.info(f"Log rotation config applied: maxBytes={max_bytes}, backupCount={backup_count}")
                 try:
-                    ran_at = datetime.datetime.utcnow().isoformat()
+                    ran_at = _utc_now().isoformat()
                     self.bot.db_manager.set_metadata('maint.status.log_rotation_applied_at', ran_at)
                 except Exception:
                     pass
@@ -526,7 +531,7 @@ class MaintenanceRunner:
             retention_count = 7
 
         backup_dir = Path(backup_dir_str)
-        ran_at = datetime.datetime.utcnow().isoformat()
+        ran_at = _utc_now().isoformat()
 
         try:
             backup_dir.mkdir(parents=True, exist_ok=True)
@@ -542,7 +547,7 @@ class MaintenanceRunner:
             return
 
         db_path = Path(str(self.bot.db_manager.db_path))
-        ts = datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%S')
+        ts = _utc_now().strftime('%Y%m%dT%H%M%S')
         backup_path = backup_dir / f"{db_path.stem}_{ts}.db"
 
         try:
@@ -567,7 +572,7 @@ class MaintenanceRunner:
                 except OSError:
                     pass
 
-            ran_at = datetime.datetime.utcnow().isoformat()
+            ran_at = _utc_now().isoformat()
             wk = _iso_week_key_from_ran_at(ran_at)
             self._last_db_backup_stats = {
                 'ran_at': ran_at,

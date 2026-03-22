@@ -3,7 +3,7 @@
 import datetime
 import time
 from configparser import ConfigParser
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -707,7 +707,6 @@ class TestSendNightlyEmailDisabled:
 
 import asyncio
 import configparser as _configparser
-from unittest.mock import AsyncMock, MagicMock
 
 
 def _make_scheduler():
@@ -979,7 +978,11 @@ class TestSendScheduledMessageWrapper:
         fake_future = Mock()
         fake_future.result.return_value = None
 
-        with patch("asyncio.run_coroutine_threadsafe", return_value=fake_future) as mock_rct:
+        def _run_coro_threadsafe(coro, loop):
+            coro.close()
+            return fake_future
+
+        with patch("asyncio.run_coroutine_threadsafe", side_effect=_run_coro_threadsafe) as mock_rct:
             scheduler.send_scheduled_message("general", "hi")
 
         mock_rct.assert_called_once()
@@ -994,7 +997,11 @@ class TestSendScheduledMessageWrapper:
         fake_future = Mock()
         fake_future.result.side_effect = Exception("timeout")
 
-        with patch("asyncio.run_coroutine_threadsafe", return_value=fake_future):
+        def _run_coro_threadsafe(coro, loop):
+            coro.close()
+            return fake_future
+
+        with patch("asyncio.run_coroutine_threadsafe", side_effect=_run_coro_threadsafe):
             scheduler.send_scheduled_message("general", "hi")
 
         scheduler.bot.logger.error.assert_called()
@@ -1004,20 +1011,22 @@ class TestSendScheduledMessageWrapper:
         scheduler.bot.main_event_loop = None
 
         mock_loop = Mock()
-        mock_loop.run_until_complete = Mock()
 
-        async def _noop():
+        async def _fake_send(channel: str, message: str) -> None:
             return None
 
+        def _run_until_complete(coro):
+            if asyncio.iscoroutine(coro):
+                asyncio.run(coro)
+
+        mock_loop.run_until_complete = Mock(side_effect=_run_until_complete)
+
         with patch("asyncio.get_event_loop", return_value=mock_loop):
-            with patch.object(
-                scheduler,
-                "_send_scheduled_message_async",
-                return_value=_noop(),
-            ):
+            with patch.object(scheduler, "_send_scheduled_message_async", side_effect=_fake_send) as mock_send:
                 scheduler.send_scheduled_message("general", "test message")
 
         mock_loop.run_until_complete.assert_called_once()
+        mock_send.assert_called_once_with("general", "test message")
 
 
 # ---------------------------------------------------------------------------

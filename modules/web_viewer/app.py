@@ -14,7 +14,7 @@ import sys
 import threading
 import time
 from contextlib import closing, contextmanager, suppress
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional, Union
 
@@ -1605,7 +1605,7 @@ class BotDataViewer:
                 assert isinstance(keep_days, int)
                 from datetime import timedelta as _timedelta
                 cutoff_unix = time.time() - keep_days * 86400
-                _cutoff_dt = datetime.utcnow() - _timedelta(days=keep_days)
+                _cutoff_dt = datetime.now(timezone.utc) - _timedelta(days=keep_days)
                 cutoff_iso = _cutoff_dt.strftime('%Y-%m-%d %H:%M:%S')
                 cutoff_date = _cutoff_dt.strftime('%Y-%m-%d')
 
