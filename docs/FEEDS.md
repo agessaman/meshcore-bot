@@ -193,6 +193,8 @@ The output format string controls how feed items are formatted before sending to
 
 Apply functions to placeholders using the pipe operator:
 
+- `{field|auto}` - Use the **remaining** characters up to `max_message_length` (from `[Feed_Manager]`). The format string is read **left to right**: every placeholder **before** `{field|auto}` is rendered, then every placeholder **after** it; the space left in the message is filled with that field’s text. If the text is longer than that space, it is cut with `...` (same idea as `truncate:N`). Use **at most one** `{field|auto}` per format. If more than one appears, the bot logs a warning, **only the first** expands, and any extra `{field|auto}` render **empty**. If the fixed prefix and suffix already exceed `max_message_length`, the auto segment is empty and the normal end-of-message truncation may still run.
+
 - `{field|truncate:N}` - Truncate to N characters
 - `{field|word_wrap:N}` - Wrap at N characters, breaking at word boundaries
 - `{field|first_words:N}` - Take first N words

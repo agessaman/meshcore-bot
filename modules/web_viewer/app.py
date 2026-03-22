@@ -69,10 +69,11 @@ _apply_werkzeug_websocket_fix()
 project_root = os.path.join(os.path.dirname(__file__), '..', '..')
 sys.path.insert(0, project_root)
 
+from modules.feed_manager import FeedManager
 from modules.repeater_manager import RepeaterManager
+from modules.url_shortener import _coerce_url_string
 from modules.utils import calculate_distance, resolve_path
 from modules.web_viewer.config_panels import CONFIG_PANELS, PANEL_CATEGORIES
-
 
 class BotDataViewer:
     """Complete web interface using Flask-SocketIO 5.x best practices"""
@@ -5700,7 +5701,7 @@ class BotDataViewer:
             body = '\n'.join(' '.join(line.split()) for line in lines)  # Normalize spaces per line
             body = body.strip()
 
-        link = item.get('link', '')
+        link_original = _coerce_url_string(item.get('link', ''))
         published = item.get('published')
 
         # Format timestamp
@@ -5741,7 +5742,7 @@ class BotDataViewer:
             'title': title,
             'body': body,
             'date': date_str,
-            'link': link,
+            'link': link_original,
             'emoji': emoji
         }
 
@@ -5948,6 +5949,21 @@ class BotDataViewer:
                     return text
             return text
 
+        def _preview_auto_base_value(field_name: str) -> str:
+            if field_name.startswith('raw.'):
+                value = get_nested_value(raw_data, field_name[4:], '')
+                if value is None:
+                    return ''
+                if isinstance(value, (dict, list)):
+                    try:
+                        return json.dumps(value)
+                    except Exception:
+                        return str(value)
+                return str(value)
+            if field_name == 'link':
+                return link_original or ''
+            return str(replacements.get(field_name, '') or '')
+
         # Process format string
         def replace_placeholder(match):
             content = match.group(1)
@@ -5955,6 +5971,8 @@ class BotDataViewer:
                 field_name, function = content.split('|', 1)
                 field_name = field_name.strip()
                 function = function.strip()
+                if function == 'auto':
+                    return ''
 
                 # Check if it's a raw field access
                 if field_name.startswith('raw.'):
@@ -5982,10 +6000,34 @@ class BotDataViewer:
                 else:
                     return replacements.get(field_name, '')
 
-        message = re.sub(r'\{([^}]+)\}', replace_placeholder, format_str)
+        try:
+            max_length = self.config.getint(
+                'Feed_Manager', 'max_message_length', fallback=130
+            )
+        except Exception:
+            max_length = 130
 
-        # Final truncation (130 char limit)
-        max_length = 130
+        auto_slots = FeedManager._feed_format_auto_slots(format_str)
+        if len(auto_slots) > 1:
+            self.logger.warning(
+                'Multiple {field|auto} placeholders in feed output format; '
+                'only the first expands. Others render empty.'
+            )
+
+        if len(auto_slots) >= 1:
+            start, end, auto_field = auto_slots[0]
+            prefix = format_str[:start]
+            suffix = format_str[end:]
+            prefix_r = re.sub(r'\{([^}]+)\}', replace_placeholder, prefix)
+            suffix_r = re.sub(r'\{([^}]+)\}', replace_placeholder, suffix)
+            budget = max_length - len(prefix_r) - len(suffix_r)
+            raw_auto = _preview_auto_base_value(auto_field)
+            auto_text = FeedManager._truncate_to_budget(raw_auto, budget)
+            message = prefix_r + auto_text + suffix_r
+        else:
+            message = re.sub(r'\{([^}]+)\}', replace_placeholder, format_str)
+
+        # Final truncation (mesh limit)
         if len(message) > max_length:
             lines = message.split('\n')
             if len(lines) > 1:

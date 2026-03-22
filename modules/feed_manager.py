@@ -505,6 +505,54 @@ class FeedManager:
         except Exception:
             return ""
 
+    @staticmethod
+    def _feed_format_auto_slots(format_str: str) -> list[tuple[int, int, str]]:
+        """Return (start, end, field_name) for each {field|auto} placeholder (left-to-right)."""
+        slots: list[tuple[int, int, str]] = []
+        for m in re.finditer(r"\{([^}]+)\}", format_str):
+            content = m.group(1)
+            if "|" not in content:
+                continue
+            field_name, function = content.split("|", 1)
+            if function.strip() == "auto":
+                slots.append((m.start(), m.end(), field_name.strip()))
+        return slots
+
+    @staticmethod
+    def _truncate_to_budget(text: str, budget: int) -> str:
+        """Fit text to at most budget characters; ellipsis when budget > 3 (same idea as truncate:N)."""
+        if budget <= 0:
+            return ""
+        if not text:
+            return ""
+        if len(text) <= budget:
+            return text
+        if budget > 3:
+            return text[: budget - 3] + "..."
+        return text[:budget]
+
+    def _feed_format_auto_base_value(
+        self,
+        field_name: str,
+        raw_data: Any,
+        replacements: dict[str, str],
+        link_original: str,
+    ) -> str:
+        """Full string for one field before |auto (long link, no shorten)."""
+        if field_name.startswith("raw."):
+            value = self._get_nested_value(raw_data, field_name[4:], "")
+            if value is None:
+                return ""
+            if isinstance(value, (dict, list)):
+                try:
+                    return json.dumps(value)
+                except Exception:
+                    return str(value)
+            return str(value)
+        if field_name == "link":
+            return link_original or ""
+        return str(replacements.get(field_name, "") or "")
+
     def _apply_shortening(self, text: str, function: str) -> str:
         """Apply a shortening, parsing, or conditional function to text
 
@@ -869,6 +917,7 @@ class FeedManager:
         - {field|if_regex:pattern:then:else} - if pattern matches, return "then", else "else"
         - {field|switch:value1:result1:value2:result2:...:default} - exact match switch (e.g., switch:highest:🔴:high:🟠:medium:🟡:⚪)
         - {field|regex_cond:extract_pattern:check_pattern:then:group} - extract text, check if it matches check_pattern, return "then" if match else extracted text
+        - {field|auto} - fill remaining characters up to max_message_length (at most one per format; see docs)
         """
 
         # Get format string from feed config or use default
@@ -931,6 +980,8 @@ class FeedManager:
                 field_name, function = content.split('|', 1)
                 field_name = field_name.strip()
                 function = function.strip()
+                if function == 'auto':
+                    return ''
 
                 # Check if it's a raw field access
                 if field_name.startswith('raw.'):
@@ -979,8 +1030,28 @@ class FeedManager:
                 else:
                     return replacements.get(field_name, '')
 
-        # Replace all placeholders
-        message = re.sub(r'\{([^}]+)\}', replace_placeholder, format_str)
+        auto_slots = self._feed_format_auto_slots(format_str)
+        if len(auto_slots) > 1:
+            self.logger.warning(
+                "Multiple {field|auto} placeholders in feed output format; "
+                "only the first expands. Others render empty. (feed id %s)",
+                feed.get("id"),
+            )
+
+        if len(auto_slots) >= 1:
+            start, end, auto_field = auto_slots[0]
+            prefix = format_str[:start]
+            suffix = format_str[end:]
+            prefix_r = re.sub(r"\{([^}]+)\}", replace_placeholder, prefix)
+            suffix_r = re.sub(r"\{([^}]+)\}", replace_placeholder, suffix)
+            budget = self.max_message_length - len(prefix_r) - len(suffix_r)
+            raw_auto = self._feed_format_auto_base_value(
+                auto_field, raw_data, replacements, link_original
+            )
+            auto_text = self._truncate_to_budget(raw_auto, budget)
+            message = prefix_r + auto_text + suffix_r
+        else:
+            message = re.sub(r"\{([^}]+)\}", replace_placeholder, format_str)
 
         # Final truncation if message is too long
         if len(message) > self.max_message_length:

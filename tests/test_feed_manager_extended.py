@@ -267,6 +267,69 @@ class TestFormatMessage:
         assert len(msg) <= 15  # 12 + "..."
         assert msg.endswith("...")
 
+    def test_title_auto_fits_max_message_length(self, fm_with_db):
+        fm = fm_with_db
+        fm.max_message_length = 40
+        feed = {"output_format": "{emoji} {title|auto}\nD", "feed_name": "x"}
+        item = {
+            "title": "A" * 100,
+            "link": "",
+            "description": "",
+            "published": None,
+            "raw": {},
+        }
+        msg = fm.format_message(item, feed)
+        assert len(msg) <= 40
+
+    def test_auto_when_prefix_exceeds_max_uses_final_truncation(self, fm_with_db):
+        fm = fm_with_db
+        fm.max_message_length = 20
+        feed = {"output_format": "{title}{title|auto}", "feed_name": "x"}
+        item = {
+            "title": "B" * 25,
+            "link": "",
+            "description": "",
+            "published": None,
+            "raw": {},
+        }
+        msg = fm.format_message(item, feed)
+        assert len(msg) <= 23  # max_message_length + "..."
+
+    def test_multiple_auto_warning_second_renders_empty(self, fm_with_db, mock_logger):
+        fm = fm_with_db
+        fm.max_message_length = 120
+        feed = {
+            "output_format": "{title|auto}|X|{body|auto}",
+            "feed_name": "x",
+            "id": 99,
+        }
+        item = {
+            "title": "Hello",
+            "link": "",
+            "description": "ignored",
+            "published": None,
+            "raw": {},
+        }
+        msg = fm.format_message(item, feed)
+        mock_logger.warning.assert_called()
+        assert msg == "Hello|X|"
+
+    def test_body_auto_multiline(self, fm_with_db):
+        fm = fm_with_db
+        fm.max_message_length = 30
+        feed = {"output_format": "H\n{body|auto}\nT", "feed_name": "x"}
+        item = {
+            "title": "t",
+            "link": "",
+            "description": "line1\nline2\n" + "Z" * 50,
+            "published": None,
+            "raw": {},
+        }
+        msg = fm.format_message(item, feed)
+        assert len(msg) <= 30
+        assert msg.startswith("H\n")
+        assert msg.endswith("\nT")
+
 
 class TestProcessRssFeed:
     @pytest.mark.asyncio
