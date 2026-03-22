@@ -127,8 +127,13 @@
                                 </button>
                             </div>
                             <div id="newChannelGroup" style="display: none;" class="mt-2">
-                                <input type="text" class="form-control form-control-sm" id="newChannelName" placeholder="#channelname">
-                                <small class="form-text text-muted">Channel will be created as hashtag channel</small>
+                                <div class="input-group input-group-sm">
+                                    <input type="text" class="form-control" id="newChannelName" placeholder="#channelname" autocomplete="off">
+                                    <button type="button" class="btn btn-primary" id="submitNewChannelBtn" title="Create channel on the bot (same as Radio page)">
+                                        <i class="fas fa-check"></i> Create channel
+                                    </button>
+                                </div>
+                                <small class="form-text text-muted">Creates a hashtag channel on the bot. <code>#</code> is added if missing.</small>
                             </div>
                         </div>
                         <div class="col-md-3">
@@ -307,10 +312,12 @@ class FeedManager {
     constructor() {
         this.feeds = [];
         this.channels = [];
+        this.maxChannels = 40;
         this.initialize();
     }
     
     async initialize() {
+        await this.loadChannelStats();
         await this.loadChannels();
         await this.loadFeeds();
         await this.loadStatistics();
@@ -321,15 +328,138 @@ class FeedManager {
         setInterval(() => this.loadStatistics(), 60000);
     }
     
+    async loadChannelStats() {
+        try {
+            const response = await fetch('/api/channels/stats');
+            const data = await response.json();
+            this.maxChannels = data.max_channels || 40;
+        } catch (error) {
+            console.error('Error loading channel stats:', error);
+        }
+    }
+    
     async loadChannels() {
         try {
             const response = await fetch('/api/channels');
             const data = await response.json();
-            this.channels = data.channels || [];
+            this.channels = (data.channels || []).filter(c => !c.decode_only);
             this.updateChannelSelect();
         } catch (error) {
             console.error('Error loading channels:', error);
         }
+    }
+    
+    getLowestAvailableChannelIndex() {
+        if (typeof MeshCoreChannelOps === 'undefined') {
+            return null;
+        }
+        return MeshCoreChannelOps.getLowestAvailableChannelIndex(this.channels, this.maxChannels);
+    }
+    
+    /**
+     * Create a hashtag channel on the bot; refresh dropdown and select it.
+     * @param {string} channelName — e.g. #news
+     * @param {object} [opts] — optional .button (HTMLElement) for loading state
+     * @returns {Promise<boolean>}
+     */
+    async createMeshChannel(channelName, opts) {
+        opts = opts || {};
+        if (typeof MeshCoreChannelOps === 'undefined') {
+            this.showError('Channel helper not loaded. Refresh the page.');
+            return false;
+        }
+        const name = channelName.trim().startsWith('#') ? channelName.trim() : '#' + channelName.trim();
+        const idx = this.getLowestAvailableChannelIndex();
+        if (idx === null) {
+            const limitMsg = this.maxChannels < 40
+                ? `No available channel slots. All ${this.maxChannels} channels are in use (limited by bot.max_channels). Increase [Bot] max_channels in config.ini (max 40).`
+                : `No available channel slots. All ${this.maxChannels} channels are in use.`;
+            this.showError(limitMsg);
+            return false;
+        }
+        const btn = opts.button || null;
+        const originalHtml = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Creating...';
+        }
+        try {
+            const pr = await MeshCoreChannelOps.postChannel({ name: name, channel_idx: idx });
+            const result = pr.result;
+            if (!pr.ok) {
+                this.showError(result.error || 'Failed to create channel');
+                return false;
+            }
+            if (result.pending && result.operation_id) {
+                if (btn) {
+                    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Processing...';
+                }
+                const pollStatus = await MeshCoreChannelOps.pollChannelOperation(result.operation_id, {
+                    button: btn,
+                    originalButtonText: originalHtml,
+                    onFailed: (msg) => { this.showError(msg); },
+                    onSlowOperationWarning: () => {
+                        this.showError('Channel operation is taking longer than expected. Check the Radio page if this stalls.');
+                    },
+                    onFinalTimeout: async () => {
+                        this.showError('Channel operation timed out. Check the Radio page or channel list.');
+                        await this.loadChannels();
+                    }
+                });
+                if (pollStatus !== 'completed') {
+                    return false;
+                }
+            }
+            await this.loadChannels();
+            await this.loadChannelStats();
+            this.updateChannelSelect();
+            document.getElementById('channelSelect').value = name;
+            document.getElementById('newChannelName').value = '';
+            document.getElementById('newChannelGroup').style.display = 'none';
+            this.showSuccess('Channel created');
+            return true;
+        } catch (e) {
+            this.showError('Error creating channel: ' + e.message);
+            return false;
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
+            }
+        }
+    }
+    
+    async createChannelFromFeedModal() {
+        const raw = document.getElementById('newChannelName').value.trim();
+        if (!raw) {
+            this.showError('Enter a channel name (e.g. #onion)');
+            return;
+        }
+        const submitBtn = document.getElementById('submitNewChannelBtn');
+        await this.createMeshChannel(raw, { button: submitBtn });
+    }
+    
+    /**
+     * If the user typed a new channel name, create it on the bot before saving the feed.
+     * @returns {Promise<boolean>}
+     */
+    async ensureChannelReadyForFeedSave() {
+        const raw = document.getElementById('newChannelName').value.trim();
+        const select = document.getElementById('channelSelect');
+        if (!raw) {
+            if (!select.value) {
+                this.showError('Select a channel or create a new one.');
+                return false;
+            }
+            return true;
+        }
+        const name = raw.startsWith('#') ? raw : '#' + raw;
+        const exists = this.channels.some(c => (c.name || c.channel_name) === name);
+        if (exists) {
+            select.value = name;
+            return true;
+        }
+        return await this.createMeshChannel(name, { button: document.getElementById('saveFeedBtn') });
     }
     
     async loadFeeds() {
@@ -445,10 +575,14 @@ class FeedManager {
             }
         });
         
-        // Create channel button
+        // Create channel button (toggle extra row)
         document.getElementById('createChannelBtn').addEventListener('click', () => {
             const newChannelGroup = document.getElementById('newChannelGroup');
             newChannelGroup.style.display = newChannelGroup.style.display === 'none' ? 'block' : 'none';
+        });
+        
+        document.getElementById('submitNewChannelBtn').addEventListener('click', () => {
+            this.createChannelFromFeedModal();
         });
         
         // Save feed
@@ -459,6 +593,7 @@ class FeedManager {
         
         // Load default format when opening add modal
         document.getElementById('addFeedModal').addEventListener('show.bs.modal', () => {
+            this.loadChannelStats();
             if (!document.getElementById('feedId').value) {
                 // Only load default if it's a new feed (not editing)
                 this.loadDefaultFormat();
@@ -483,6 +618,8 @@ class FeedManager {
             document.getElementById('feedUrl').value = feed.feed_url;
             document.getElementById('feedUrl').disabled = true; // Don't allow changing URL
             document.getElementById('channelSelect').value = feed.channel_name;
+            document.getElementById('newChannelName').value = '';
+            document.getElementById('newChannelGroup').style.display = 'none';
             document.getElementById('feedName').value = feed.feed_name || '';
             document.getElementById('checkInterval').value = feed.check_interval_seconds || 300;
             
@@ -537,15 +674,24 @@ class FeedManager {
     }
     
     async saveFeed() {
+        if (!(await this.ensureChannelReadyForFeedSave())) {
+            return;
+        }
         const form = document.getElementById('addFeedForm');
         const formData = new FormData(form);
         const feedId = document.getElementById('feedId').value;
         const isEdit = !!feedId;
         
+        const channelName = document.getElementById('channelSelect').value;
+        if (!channelName) {
+            this.showError('Select a channel');
+            return;
+        }
+        
         const data = {
             feed_type: formData.get('feed_type'),
             feed_url: formData.get('feed_url'),
-            channel_name: formData.get('channel_name') || document.getElementById('newChannelName').value,
+            channel_name: channelName,
             feed_name: formData.get('feed_name') || null,
             check_interval_seconds: parseInt(formData.get('check_interval_seconds')) || 300,
             output_format: formData.get('output_format') || null,
@@ -723,6 +869,7 @@ class FeedManager {
         document.getElementById('feedUrl').disabled = false;
         document.getElementById('apiConfigGroup').style.display = 'none';
         document.getElementById('newChannelGroup').style.display = 'none';
+        document.getElementById('newChannelName').value = '';
         document.getElementById('previewResults').style.display = 'none';
         document.getElementById('filterConfig').value = '';
         document.getElementById('sortConfig').value = '';
