@@ -19,6 +19,9 @@ from apscheduler.triggers.cron import CronTrigger
 from .maintenance import MaintenanceRunner
 from .utils import decode_escape_sequences, format_keyword_response_with_placeholders, get_config_timezone
 
+# process_message_queue may await long per-feed intervals across many queued items; 30s is too short.
+_FEED_MESSAGE_QUEUE_FUTURE_TIMEOUT = 600
+
 
 class MessageScheduler:
     """Manages scheduled messages and timing"""
@@ -459,10 +462,16 @@ class MessageScheduler:
                             self.bot.feed_manager.process_message_queue(),
                             self.bot.main_event_loop
                         )
-                        future.add_done_callback(
-                            lambda f: self.logger.exception("Error processing message queue: %s", f.exception())
-                            if not f.cancelled() and f.exception() else None
-                        )
+                        try:
+                            future.result(timeout=_FEED_MESSAGE_QUEUE_FUTURE_TIMEOUT)
+                        except TimeoutError:
+                            self.logger.warning(
+                                "Timed out waiting for feed message queue after %ss; "
+                                "work may still be running on the main loop (per-feed send spacing).",
+                                _FEED_MESSAGE_QUEUE_FUTURE_TIMEOUT,
+                            )
+                        except Exception as e:
+                            self.logger.exception(f"Error processing message queue: {e}")
                     else:
                         # Fallback: create new event loop if main loop not available
                         try:

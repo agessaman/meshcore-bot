@@ -68,6 +68,9 @@ class FeedManager:
         # Semaphore to limit concurrent requests
         self._request_semaphore = asyncio.Semaphore(5)
 
+        # Serialize process_message_queue (scheduler may schedule another run if result() times out)
+        self._process_queue_lock: Optional[asyncio.Lock] = None
+
         self.logger.info("FeedManager initialized")
 
     async def initialize(self):
@@ -1211,6 +1214,13 @@ class FeedManager:
 
     async def process_message_queue(self):
         """Process queued feed messages and send them at configured intervals"""
+        if self._process_queue_lock is None:
+            self._process_queue_lock = asyncio.Lock()
+        async with self._process_queue_lock:
+            await self._process_message_queue_inner()
+
+    async def _process_message_queue_inner(self):
+        """Body of process_message_queue (runs under _process_queue_lock)."""
         try:
             # Get all unsent messages, ordered by priority and queue time
             db_path = str(self.db_path)  # Ensure string, not Path object
