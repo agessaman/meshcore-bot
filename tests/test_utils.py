@@ -4,6 +4,8 @@ import configparser
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
+import pytest
+
 from modules.utils import (
     abbreviate_location,
     calculate_distance,
@@ -12,6 +14,7 @@ from modules.utils import (
     check_internet_connectivity,
     decode_escape_sequences,
     decode_path_len_byte,
+    encode_path_len_byte,
     format_elapsed_display,
     format_keyword_response_with_placeholders,
     format_location_for_display,
@@ -225,6 +228,33 @@ class TestDecodePathLenByte:
         path_byte_length, bytes_per_hop = decode_path_len_byte(0x00)
         assert path_byte_length == 0
         assert bytes_per_hop == 1
+
+
+class TestEncodePathLenByte:
+    """Tests for encode_path_len_byte() (inverse of decode_path_len_byte for valid encodings)."""
+
+    def test_four_hops_one_byte_per_hop(self):
+        assert encode_path_len_byte(4, 1) == 0x04
+        assert (0x04 >> 6) == 0
+        assert (0x04 & 0x3F) == 4
+
+    def test_three_hops_two_bytes_per_hop(self):
+        assert encode_path_len_byte(3, 2) == 0x43
+        pbl, bph = decode_path_len_byte(0x43)
+        assert pbl == 6
+        assert bph == 2
+
+    def test_roundtrip_with_decode(self):
+        for pb in (0x01, 0x03, 0x41, 0x43, 0x82, 0x00):
+            pbl, bph = decode_path_len_byte(pb)
+            if bph == 1 and pbl == pb:
+                continue  # legacy fallback path
+            hop_count = pb & 0x3F
+            assert encode_path_len_byte(hop_count, bph) == pb
+
+    def test_invalid_bytes_per_hop_raises(self):
+        with pytest.raises(ValueError):
+            encode_path_len_byte(4, 4)
 
 
 class TestParsePathString:

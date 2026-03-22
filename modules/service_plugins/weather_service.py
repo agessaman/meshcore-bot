@@ -12,7 +12,6 @@ import time
 import xml.dom.minidom
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
-from urllib.parse import quote
 
 import ephem
 import requests
@@ -31,6 +30,7 @@ except ImportError:
 import contextlib
 
 from .base_service import BaseServicePlugin
+from ..url_shortener import shorten_url
 
 
 class WeatherService(BaseServicePlugin):
@@ -1632,61 +1632,11 @@ class WeatherService(BaseServicePlugin):
         return cap_url
 
     async def _shorten_url(self, url: str) -> str:
-        """Shorten URL using is.gd service.
-
-        Args:
-            url: Full URL to shorten.
-
-        Returns:
-            str: Shortened URL string, or empty string on error.
-        """
-        if not url:
-            return ""
-
-        try:
-            # Use is.gd URL shortener API
-            # Run the synchronous request in a thread pool to avoid blocking
-            loop = asyncio.get_event_loop()
-            encoded_url = quote(url, safe='')
-            shortener_url = f"https://is.gd/create.php?format=simple&url={encoded_url}"
-
-            # Run the synchronous request in executor to avoid blocking
-            response = await loop.run_in_executor(
-                None,
-                lambda: self.api_session.get(shortener_url, timeout=5)
-            )
-
-            if response.ok:
-                short_url = response.text.strip()
-                # is.gd returns the shortened URL or an error message
-                # Check if it looks like a valid URL
-                if short_url.startswith('http'):
-                    return short_url
-                else:
-                    # Error message from is.gd - log it
-                    self.logger.debug(f"is.gd returned error: {short_url}")
-                    # Try alternative: use v.gd (is.gd's alternative)
-                    try:
-                        alt_url = f"https://v.gd/create.php?format=simple&url={encoded_url}"
-                        alt_response = await loop.run_in_executor(
-                            None,
-                            lambda: self.api_session.get(alt_url, timeout=5)
-                        )
-                        if alt_response.ok:
-                            alt_short = alt_response.text.strip()
-                            if alt_short.startswith('http'):
-                                return alt_short
-                    except Exception:
-                        pass
-                    return ""
-            else:
-                self.logger.debug(f"Error shortening URL: HTTP {response.status_code}")
-                return ""
-
-        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-            self.logger.debug(f"Error shortening URL: {e}")
-            return ""
-        except Exception as e:
-            self.logger.debug(f"Unexpected error shortening URL: {e}")
-            return ""
+        """Shorten URL using [External_Data] short_url_website (default v.gd)."""
+        return await shorten_url(
+            url,
+            config=self.bot.config,
+            session=self.api_session,
+            logger=self.logger,
+        )
 

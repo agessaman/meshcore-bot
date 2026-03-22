@@ -349,6 +349,19 @@ def decode_path_len_byte(path_len_byte: int, max_path_size: int = 64) -> tuple:
     return (path_byte_length, bytes_per_hop)
 
 
+def encode_path_len_byte(hop_count: int, bytes_per_hop: int) -> int:
+    """Pack hop count and hash size into the single path_len wire byte (inverse of decode_path_len_byte).
+
+    Firmware: low 6 bits = hop count, high 2 bits = size code with bytes_per_hop = (code + 1).
+    Valid bytes_per_hop are 1, 2, or 3 (size code 4 is reserved).
+    """
+    if bytes_per_hop not in (1, 2, 3):
+        raise ValueError(f"bytes_per_hop must be 1, 2, or 3, got {bytes_per_hop}")
+    hop_count = int(hop_count) & 0x3F
+    size_code = (int(bytes_per_hop) - 1) & 0x03
+    return (size_code << 6) | hop_count
+
+
 def calculate_packet_hash(raw_hex: str, payload_type: Optional[int] = None) -> str:
     """Calculate hash for packet identification - based on packet.cpp.
 

@@ -22,6 +22,7 @@ import aiohttp
 import feedparser
 
 from modules.feed_filter_eval import item_passes_filter_config
+from modules.url_shortener import _coerce_url_string, shorten_url_sync
 
 
 class FeedManager:
@@ -43,6 +44,7 @@ class FeedManager:
             self.max_message_length = 130
             self.default_output_format = '{emoji} {body|truncate:100} - {date}\n{link|truncate:50}'
             self.default_send_interval = 2.0
+            self.shorten_feed_urls = False
         else:
             self.enabled = bot.config.getboolean('Feed_Manager', 'feed_manager_enabled', fallback=False)
             self.default_check_interval = bot.config.getint('Feed_Manager', 'default_check_interval_seconds', fallback=300)
@@ -53,6 +55,9 @@ class FeedManager:
             self.max_message_length = bot.config.getint('Feed_Manager', 'max_message_length', fallback=130)
             self.default_output_format = bot.config.get('Feed_Manager', 'default_output_format', fallback='{emoji} {body|truncate:100} - {date}\n{link|truncate:50}')
             self.default_send_interval = bot.config.getfloat('Feed_Manager', 'default_message_send_interval_seconds', fallback=2.0)
+            self.shorten_feed_urls = bot.config.getboolean(
+                'Feed_Manager', 'shorten_urls', fallback=False
+            )
 
         # Rate limiting per domain
         self._domain_last_request: dict[str, float] = {}
@@ -504,6 +509,8 @@ class FeedManager:
         """Apply a shortening, parsing, or conditional function to text
 
         Supported functions:
+        - shorten - URL-shorten via [External_Data] short_url_website (v.gd / is.gd API)
+        - shorten|truncate:N (etc.) - shorten first, then apply the rest (e.g. shorten|truncate:40)
         - truncate:N - truncate to N characters
         - word_wrap:N - wrap at N characters, breaking at word boundaries
         - first_words:N - take first N words
@@ -511,6 +518,28 @@ class FeedManager:
         - regex:pattern:group - extract specific capture group (0 = whole match, 1 = first group, etc.)
         - if_regex:pattern:then:else - if pattern matches, return "then", else return "else"
         """
+        if not function or not str(function).strip():
+            return text or ""
+        function = str(function).strip()
+
+        if function == 'shorten':
+            if not text:
+                return ""
+            out = shorten_url_sync(
+                text, config=self.bot.config, logger=self.logger
+            )
+            return out if out else text
+
+        if function.startswith('shorten|'):
+            if not text:
+                return ""
+            out = shorten_url_sync(
+                text, config=self.bot.config, logger=self.logger
+            )
+            base = out if out else text
+            rest = function.split('|', 1)[1].strip()
+            return self._apply_shortening(base, rest)
+
         if not text:
             return ""
 
@@ -825,11 +854,13 @@ class FeedManager:
         - {title} - item title
         - {body} - item description/body
         - {date} - relative time (e.g., "5m ago")
-        - {link} - item link URL
+        - {link} - item link URL; optional [Feed_Manager] shorten_urls shortens every plain {link}
+        - {link|shorten} - shorten this URL only (uses [External_Data] short_url_website); combine as {link|shorten|truncate:N}
         - {emoji} - emoji based on feed type
         - {raw.field} - access any field from raw API response (e.g., {raw.Priority}, {raw.StartRoadwayLocation.RoadName})
 
         Supported shortening functions:
+        - {field|shorten} - URL-shorten text (v.gd / is.gd); chain: {link|shorten|truncate:N}
         - {field|truncate:N} - truncate to N characters
         - {field|word_wrap:N} - wrap at N characters
         - {field|first_words:N} - take first N words
@@ -843,8 +874,8 @@ class FeedManager:
         # Get format string from feed config or use default
         format_str = feed.get('output_format') or self.default_output_format
 
-        # Extract field values
-        title = item.get('title', 'Untitled')
+        # Extract field values (DB/feed may store NULL; .get('k', default) still returns None if key present)
+        title = item.get('title') or 'Untitled'
         body = item.get('description', '') or item.get('body', '')
         # Clean HTML from body if present
         if body:
@@ -864,13 +895,13 @@ class FeedManager:
             body = '\n'.join(' '.join(line.split()) for line in lines)  # Normalize spaces per line
             body = body.strip()
 
-        link = item.get('link', '')
+        link_original = _coerce_url_string(item.get('link', ''))
         published = item.get('published')
         date_str = self._format_timestamp(published)
 
         # Choose emoji based on feed type or content
         emoji = "📢"
-        feed_name = feed.get('feed_name', '').lower()
+        feed_name = (feed.get('feed_name') or '').lower()
         if 'emergency' in feed_name or 'alert' in feed_name:
             emoji = "🚨"
         elif 'warning' in feed_name:
@@ -878,12 +909,12 @@ class FeedManager:
         elif 'info' in feed_name or 'news' in feed_name:
             emoji = "ℹ️"
 
-        # Build replacement dictionary
+        # Build replacement dictionary (link is always long URL; shortening is per-placeholder or global)
         replacements = {
             'title': title,
             'body': body,
             'date': date_str,
-            'link': link,
+            'link': link_original,
             'emoji': emoji
         }
 
@@ -907,6 +938,19 @@ class FeedManager:
                 else:
                     value = replacements.get(field_name, '')
 
+                # Link field: start from long URL; global shorten applies to {link|...} except explicit |shorten|
+                if field_name == 'link':
+                    value = link_original
+                    fn = function
+                    if self.shorten_feed_urls and fn != 'shorten' and not fn.startswith('shorten|'):
+                        s = shorten_url_sync(
+                            link_original,
+                            config=self.bot.config,
+                            logger=self.logger,
+                        )
+                        if s:
+                            value = s
+
                 return self._apply_shortening(value, function)
             else:
                 field_name = content.strip()
@@ -925,6 +969,13 @@ class FeedManager:
                             return str(value)
                     else:
                         return str(value)
+                elif field_name == 'link' and self.shorten_feed_urls:
+                    s = shorten_url_sync(
+                        link_original,
+                        config=self.bot.config,
+                        logger=self.logger,
+                    )
+                    return s if s else link_original
                 else:
                     return replacements.get(field_name, '')
 

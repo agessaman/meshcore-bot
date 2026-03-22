@@ -13,7 +13,12 @@ from .enums import AdvertFlags, DeviceRole, PayloadType, PayloadVersion, RouteTy
 from .graph_trace_helper import update_mesh_graph_from_trace_data
 from .models import MeshMessage
 from .security_utils import sanitize_input
-from .utils import calculate_packet_hash, decode_path_len_byte, format_elapsed_display
+from .utils import (
+    calculate_packet_hash,
+    decode_path_len_byte,
+    encode_path_len_byte,
+    format_elapsed_display,
+)
 
 
 class MessageHandler:
@@ -749,6 +754,7 @@ class MessageHandler:
 
                             routing_info = {
                                 'path_length': decoded_packet.get('path_len', 0),
+                                'path_len_byte': decoded_packet.get('path_len_byte'),
                                 'path_byte_length': decoded_packet.get('path_byte_length'),
                                 'bytes_per_hop': decoded_packet.get('bytes_per_hop', 1),
                                 'path_hex': decoded_packet.get('path_hex', ''),
@@ -1246,6 +1252,7 @@ class MessageHandler:
                 'transport_codes': transport_codes,
                 'transport_size': 4 if has_transport else 0,
                 'path_len': len(path_values),  # Hop count for display / routing_info
+                'path_len_byte': path_len_byte,  # Raw wire byte (same as firmware Packet path_len)
                 'path_byte_length': path_byte_length,  # Path bytes (for logs showing "X bytes")
                 'bytes_per_hop': bytes_per_hop,  # For multi-byte path storage/retrieval
                 'path_info': path_info,
@@ -2815,6 +2822,25 @@ class MessageHandler:
             return True
         return getattr(self.bot, "channel_responses_enabled", True)
 
+    def _ensure_contact_meshcore_path_encoding(self, contact_data: dict[str, Any]) -> None:
+        """If out_path_len is set but out_path_hash_mode is still flood (-1), rebuild wire fields.
+
+        meshcore update_contact uses out_path_len | (out_path_hash_mode << 6); hash_mode -1 with
+        non-negative hop count produces a negative int and OverflowError on unsigned to_bytes.
+        """
+        if contact_data.get('out_path_hash_mode', 0) != -1:
+            return
+        opl = contact_data.get('out_path_len')
+        if opl is None or opl < 0 or opl == -1:
+            return
+        bph = contact_data.get('out_bytes_per_hop', 1) or 1
+        try:
+            pb = encode_path_len_byte(opl, bph)
+        except ValueError:
+            pb = encode_path_len_byte(min(opl, 0x3F), 1)
+        contact_data['out_path_hash_mode'] = (pb >> 6) & 0x03
+        contact_data['out_path_len'] = pb & 0x3F
+
     async def handle_new_contact(self, event, metadata=None):
         """Handle NEW_CONTACT events for automatic contact management"""
         try:
@@ -2868,11 +2894,20 @@ class MessageHandler:
                             if 'out_path' not in contact_data or not contact_data.get('out_path'):
                                 if path_hex and path_length > 0:
                                     contact_data['out_path'] = path_hex
-                                    contact_data['out_path_len'] = path_length
-                                    contact_data['out_bytes_per_hop'] = routing_info.get('bytes_per_hop', 1)
+                                    contact_data['out_bytes_per_hop'] = routing_info.get('bytes_per_hop', 1) or 1
+                                    bph = contact_data['out_bytes_per_hop']
+                                    pb = routing_info.get('path_len_byte')
+                                    if pb is None or pb == 255:
+                                        try:
+                                            pb = encode_path_len_byte(path_length, bph)
+                                        except ValueError:
+                                            pb = encode_path_len_byte(path_length, 1)
+                                    contact_data['out_path_hash_mode'] = (pb >> 6) & 0x03
+                                    contact_data['out_path_len'] = pb & 0x3F
                                 elif path_length == 0:
                                     contact_data['out_path'] = ''
                                     contact_data['out_path_len'] = 0
+                                    contact_data['out_path_hash_mode'] = 0
 
                             # Update mesh graph with this NEW_CONTACT event's path information
                             # This captures public keys for edges that we might not see in regular message paths
@@ -2954,6 +2989,7 @@ class MessageHandler:
 
                     # Add companion to device contact list
                     try:
+                        self._ensure_contact_meshcore_path_encoding(contact_data)
                         result = await self.bot.meshcore.commands.add_contact(contact_data)
                         if hasattr(result, 'type') and result.type.name == 'OK':
                             self.logger.info(f"✅ Companion {contact_name} added to device contacts")
