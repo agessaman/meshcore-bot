@@ -417,6 +417,12 @@ meshcore_log_level = INFO
 # Example: "t hello world" -> "ack {sender}: hello world | {connection_info}"
 
 [External_Data]
+# URL shortener API base (v.gd / is.gd-compatible create.php). Default: https://v.gd
+# See https://v.gd/apishorteningreference.php
+short_url_website = https://v.gd
+# Optional API key for alternate shortener hosts (unused for public v.gd/is.gd)
+short_url_website_api_key = 
+
 # Weather API key (future feature)
 weather_api_key = 
 

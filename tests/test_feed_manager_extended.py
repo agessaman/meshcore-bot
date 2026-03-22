@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from configparser import ConfigParser
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -99,6 +99,32 @@ class TestFormatMessage:
         assert "https://ex.com/a" in msg
         assert "📢" in msg or "ℹ️" in msg  # emoji from feed_name or default
 
+    def test_link_dict_href_coerced_like_feedparser(self, fm_with_db):
+        fm = fm_with_db
+        fm.shorten_feed_urls = False
+        feed = {"output_format": "{link}", "feed_name": "x"}
+        item = {
+            "title": "t",
+            "link": {"href": "https://ex.com/from-dict"},
+            "description": "",
+            "published": None,
+            "raw": {},
+        }
+        assert fm.format_message(item, feed) == "https://ex.com/from-dict"
+
+    def test_feed_name_null_from_db_does_not_crash(self, fm_with_db):
+        fm = fm_with_db
+        feed = {"output_format": "{emoji}{title}", "feed_name": None}
+        item = {
+            "title": "Hi",
+            "link": "",
+            "description": "",
+            "published": None,
+            "raw": {},
+        }
+        msg = fm.format_message(item, feed)
+        assert "Hi" in msg
+
     def test_strips_br_and_html_from_body(self, fm_with_db):
         fm = fm_with_db
         feed = {"output_format": "{body}"}
@@ -131,6 +157,114 @@ class TestFormatMessage:
         item = {"title": "x" * 40, "description": "", "published": None, "raw": {}}
         msg = fm.format_message(item, feed)
         assert len(msg) <= 23  # 20 + "..."
+        assert msg.endswith("...")
+
+    def test_shorten_urls_disabled_keeps_original_link(self, fm_with_db):
+        fm = fm_with_db
+        fm.shorten_feed_urls = False
+        feed = {"output_format": "{link}", "feed_name": "x"}
+        item = {
+            "title": "t",
+            "link": "https://example.com/long/path",
+            "description": "",
+            "published": None,
+            "raw": {},
+        }
+        with patch("modules.feed_manager.shorten_url_sync") as mock_shorten:
+            msg = fm.format_message(item, feed)
+        mock_shorten.assert_not_called()
+        assert msg == "https://example.com/long/path"
+
+    def test_shorten_urls_replaces_link_when_shortener_returns_value(self, fm_with_db):
+        fm = fm_with_db
+        fm.shorten_feed_urls = True
+        feed = {"output_format": "{link}", "feed_name": "x"}
+        item = {
+            "title": "t",
+            "link": "https://example.com/long/path",
+            "description": "",
+            "published": None,
+            "raw": {},
+        }
+        with patch(
+            "modules.feed_manager.shorten_url_sync",
+            return_value="https://v.gd/abc",
+        ) as mock_shorten:
+            msg = fm.format_message(item, feed)
+        mock_shorten.assert_called_once()
+        assert msg == "https://v.gd/abc"
+
+    def test_shorten_urls_keeps_original_when_shortener_fails(self, fm_with_db):
+        fm = fm_with_db
+        fm.shorten_feed_urls = True
+        feed = {"output_format": "{link}", "feed_name": "x"}
+        item = {
+            "title": "t",
+            "link": "https://example.com/long/path",
+            "description": "",
+            "published": None,
+            "raw": {},
+        }
+        with patch("modules.feed_manager.shorten_url_sync", return_value=""):
+            msg = fm.format_message(item, feed)
+        assert msg == "https://example.com/long/path"
+
+    def test_link_shorten_placeholder_without_global(self, fm_with_db):
+        fm = fm_with_db
+        fm.shorten_feed_urls = False
+        feed = {"output_format": "{link|shorten}", "feed_name": "x"}
+        item = {
+            "title": "t",
+            "link": "https://example.com/long/path",
+            "description": "",
+            "published": None,
+            "raw": {},
+        }
+        with patch(
+            "modules.feed_manager.shorten_url_sync",
+            return_value="https://v.gd/x",
+        ) as mock_shorten:
+            msg = fm.format_message(item, feed)
+        mock_shorten.assert_called_once()
+        assert msg == "https://v.gd/x"
+
+    def test_link_shorten_with_global_only_one_shorten_call(self, fm_with_db):
+        fm = fm_with_db
+        fm.shorten_feed_urls = True
+        feed = {"output_format": "{link|shorten}", "feed_name": "x"}
+        item = {
+            "title": "t",
+            "link": "https://example.com/long/path",
+            "description": "",
+            "published": None,
+            "raw": {},
+        }
+        with patch(
+            "modules.feed_manager.shorten_url_sync",
+            return_value="https://v.gd/x",
+        ) as mock_shorten:
+            msg = fm.format_message(item, feed)
+        mock_shorten.assert_called_once()
+        assert msg == "https://v.gd/x"
+
+    def test_link_shorten_then_truncate_chain(self, fm_with_db):
+        fm = fm_with_db
+        fm.shorten_feed_urls = False
+        feed = {"output_format": "{link|shorten|truncate:12}", "feed_name": "x"}
+        item = {
+            "title": "t",
+            "link": "https://example.com/long/path",
+            "description": "",
+            "published": None,
+            "raw": {},
+        }
+        with patch(
+            "modules.feed_manager.shorten_url_sync",
+            return_value="https://v.gd/abcdefghijklmnop",
+        ) as mock_shorten:
+            msg = fm.format_message(item, feed)
+        mock_shorten.assert_called_once()
+        assert len(msg) <= 15  # 12 + "..."
         assert msg.endswith("...")
 
 

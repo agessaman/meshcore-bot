@@ -50,7 +50,14 @@ default_output_format = {emoji} {body|truncate:100} - {date}\n{link|truncate:50}
 
 # Default interval between sending queued messages (seconds)
 default_message_send_interval_seconds = 2.0
+
+# Shorten item link URLs via [External_Data] short_url_website (v.gd / is.gd)
+shorten_urls = false
+
+# Or shorten only where the format says {link|shorten} (see placeholders below)
 ```
+
+Per-output-format URL shortening: use `{link|shorten}` for a single shortened link, or `{link|shorten|truncate:N}` to shorten then cap length. `shorten_urls = true` shortens every plain `{link}`.
 
 ## RSS Feed Configuration
 

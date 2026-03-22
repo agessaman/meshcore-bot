@@ -12,6 +12,7 @@ from modules.utils import (
     format_elapsed_display,
     parse_path_string,
     decode_path_len_byte,
+    encode_path_len_byte,
     calculate_packet_hash,
 )
 
@@ -216,6 +217,33 @@ class TestDecodePathLenByte:
         path_byte_length, bytes_per_hop = decode_path_len_byte(0x00)
         assert path_byte_length == 0
         assert bytes_per_hop == 1
+
+
+class TestEncodePathLenByte:
+    """Tests for encode_path_len_byte() (inverse of decode_path_len_byte for valid encodings)."""
+
+    def test_four_hops_one_byte_per_hop(self):
+        assert encode_path_len_byte(4, 1) == 0x04
+        assert (0x04 >> 6) == 0
+        assert (0x04 & 0x3F) == 4
+
+    def test_three_hops_two_bytes_per_hop(self):
+        assert encode_path_len_byte(3, 2) == 0x43
+        pbl, bph = decode_path_len_byte(0x43)
+        assert pbl == 6
+        assert bph == 2
+
+    def test_roundtrip_with_decode(self):
+        for pb in (0x01, 0x03, 0x41, 0x43, 0x82, 0x00):
+            pbl, bph = decode_path_len_byte(pb)
+            if bph == 1 and pbl == pb:
+                continue  # legacy fallback path
+            hop_count = pb & 0x3F
+            assert encode_path_len_byte(hop_count, bph) == pb
+
+    def test_invalid_bytes_per_hop_raises(self):
+        with pytest.raises(ValueError):
+            encode_path_len_byte(4, 4)
 
 
 class TestParsePathString:

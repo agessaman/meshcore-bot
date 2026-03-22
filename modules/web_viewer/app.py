@@ -4695,8 +4695,8 @@ class BotDataViewer:
         import re
         from datetime import datetime, timezone
         
-        # Extract field values
-        title = item.get('title', 'Untitled')
+        # Extract field values (NULL/missing fields must not become None for str ops)
+        title = item.get('title') or 'Untitled'
         body = item.get('description', '') or item.get('body', '')
         
         # Clean HTML from body if present
@@ -4748,7 +4748,7 @@ class BotDataViewer:
         
         # Choose emoji
         emoji = "📢"
-        feed_name_lower = feed_name.lower()
+        feed_name_lower = (feed_name or '').lower()
         if 'emergency' in feed_name_lower or 'alert' in feed_name_lower:
             emoji = "🚨"
         elif 'warning' in feed_name_lower:
@@ -4794,6 +4794,23 @@ class BotDataViewer:
         
         # Apply shortening, parsing, and conditional functions
         def apply_shortening(text: str, function: str) -> str:
+            fn = (function or "").strip()
+            if fn == 'shorten' or fn.startswith('shorten|'):
+                from modules.url_shortener import shorten_url_sync
+                if not (text or "").strip():
+                    return ""
+                if fn == 'shorten':
+                    out = shorten_url_sync(
+                        text, config=self.config, logger=self.logger
+                    )
+                    return out if out else text
+                rest = fn.split('|', 1)[1].strip()
+                out = shorten_url_sync(
+                    text, config=self.config, logger=self.logger
+                )
+                base = out if out else text
+                return apply_shortening(base, rest)
+
             if not text:
                 return ""
             
