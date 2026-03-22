@@ -32,6 +32,20 @@ def fm_with_db(mock_logger, tmp_path):
     return FeedManager(bot)
 
 
+def _seed_feed_subscription(db_manager: DBManager, feed_id: int = 1, channel_name: str = "general") -> None:
+    """Insert a minimal feed_subscriptions row so feed_activity / feed_errors FK inserts succeed."""
+    with db_manager.connection() as conn:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO feed_subscriptions
+            (id, feed_type, feed_url, channel_name, enabled)
+            VALUES (?, 'rss', 'http://example.com/feed.xml', ?, 1)
+            """,
+            (feed_id, channel_name),
+        )
+        conn.commit()
+
+
 def _fake_aiohttp_response(*, text_body: str | None = None, json_body: dict | list | None = None):
     """Build a minimal async context manager compatible with async with session.get/post."""
     resp = Mock()
@@ -363,6 +377,7 @@ class TestProcessRssFeed:
         fm.session.get = Mock(return_value=ctx)
         fm.session.closed = False
 
+        _seed_feed_subscription(fm.bot.db_manager, feed_id=1)
         with fm.bot.db_manager.connection() as conn:
             conn.execute(
                 "INSERT INTO feed_activity (feed_id, item_id, item_title, message_sent) VALUES (?,?,?,1)",
