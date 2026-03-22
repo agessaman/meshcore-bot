@@ -186,9 +186,9 @@ class TestPageRoutes:
         assert 'id="command-card"' in html
         assert 'id="packet-card"' in html
         assert 'id="message-card"' in html
-        # Channel label placeholder in message entry template
-        assert 'channelLabel' in html
-        assert '[#' in html
+        # Live message helpers: strip duplicate bracket tags, per-channel accent
+        assert 'stripLeadingChannelBracketTag' in html
+        assert 'channelAccentStyles' in html
 
     def test_logs(self, client):
         resp = client.get("/logs")

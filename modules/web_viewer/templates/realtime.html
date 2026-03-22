@@ -31,6 +31,36 @@
         border-left: 3px solid #6c757d;
         color: var(--text-color);
     }
+
+    /* SNR / hops: compact chips; colors match Packet Stream (bg-primary / bg-info). */
+    .live-msg-meta-badge {
+        font-size: 0.62rem;
+        font-weight: 500;
+        line-height: 1.15;
+        padding: 0.18em 0.42em;
+        vertical-align: middle;
+    }
+
+    .live-msg-meta-stack {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 0.2rem;
+        max-width: 100%;
+    }
+
+    .live-msg-meta-badges-row {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 0.25rem;
+    }
+
+    .live-msg-time {
+        font-size: 0.58rem;
+        line-height: 1.2;
+        opacity: 0.88;
+    }
     
     .stream-entry:hover {
         box-shadow: 0 2px 8px var(--shadow-color);
@@ -464,10 +494,10 @@
     </div>
 </div>
 
-<!-- Stream Controls -->
-<div class="row mb-4">
-    <div class="col-md-6">
-        <div class="card" id="command-card">
+<!-- Stream panels: XL = 3 columns; MD–LG = Command + Messages, then Packet; XS = Command, Packet, Messages -->
+<div class="row realtime-streams align-items-stretch g-3 mb-4">
+    <div class="col-12 col-md-6 col-xl-4 order-1 order-md-1 order-xl-1">
+        <div class="card h-100" id="command-card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h6><i class="fas fa-comments"></i> Command Stream</h6>
                 <div class="d-flex align-items-center gap-1">
@@ -486,9 +516,33 @@
             </div>
         </div>
     </div>
-    
-    <div class="col-md-6">
-        <div class="card" id="packet-card">
+
+    <div class="col-12 col-md-6 col-xl-4 order-3 order-md-2 order-xl-3">
+        <div class="card h-100" id="message-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6><i class="fas fa-comment-dots"></i> Live Channel Messages</h6>
+                <div class="d-flex align-items-center gap-1">
+                    <span class="badge bg-warning" id="message-status">Connecting…</span>
+                    <button class="btn btn-sm btn-outline-secondary ms-2" id="msg-scroll-top" onclick="scrollStream('message-stream','top')" title="Scroll to newest"><i class="fas fa-arrow-up"></i></button>
+                    <button class="btn btn-sm btn-outline-secondary" id="msg-scroll-bottom" onclick="scrollStream('message-stream','bottom')" title="Scroll to oldest"><i class="fas fa-arrow-down"></i></button>
+                    <button class="btn btn-sm btn-outline-secondary ms-1" onclick="clearMessages()">Clear</button>
+                    <button class="btn btn-sm btn-outline-secondary ms-1" id="msg-pause-btn" onclick="toggleMessagePause()">
+                        <i class="fas fa-pause" id="msg-pause-icon"></i> Pause
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div id="message-stream" class="stream-container">
+                    <div class="text-muted text-center py-3">
+                        <i class="fas fa-hourglass-half"></i> Waiting for channel messages…
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-md-12 col-xl-4 order-2 order-md-3 order-xl-2">
+        <div class="card h-100" id="packet-card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h6><i class="fas fa-route"></i> Packet Stream</h6>
                 <div class="d-flex align-items-center gap-1">
@@ -502,33 +556,6 @@
                 <div id="packet-stream" class="stream-container">
                     <div class="text-muted text-center py-3">
                         <i class="fas fa-hourglass-half"></i> Waiting for packet data...
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Message Monitor -->
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card" id="message-card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h6><i class="fas fa-comment-dots"></i> Live Channel Messages</h6>
-                <div class="d-flex align-items-center gap-1">
-                    <span class="badge bg-warning" id="message-status">Connecting…</span>
-                    <button class="btn btn-sm btn-outline-secondary ms-2" id="msg-scroll-top" onclick="scrollStream('message-stream','top')" title="Scroll to newest"><i class="fas fa-arrow-up"></i></button>
-                    <button class="btn btn-sm btn-outline-secondary" id="msg-scroll-bottom" onclick="scrollStream('message-stream','bottom')" title="Scroll to oldest"><i class="fas fa-arrow-down"></i></button>
-                    <button class="btn btn-sm btn-outline-secondary ms-1" onclick="clearMessages()">Clear</button>
-                    <button class="btn btn-sm btn-outline-secondary ms-1" id="msg-pause-btn" onclick="toggleMessagePause()">
-                        <i class="fas fa-pause" id="msg-pause-icon"></i> Pause
-                    </button>
-                </div>
-            </div>
-            <div class="card-body p-0">
-                <div id="message-stream" class="stream-container" style="height:320px;">
-                    <div class="text-muted text-center py-3">
-                        <i class="fas fa-hourglass-half"></i> Waiting for channel messages…
                     </div>
                 </div>
             </div>
@@ -1039,6 +1066,70 @@
             '<div class="text-muted text-center py-3"><i class="fas fa-hourglass-half"></i> Waiting for channel messages…</div>';
     }
 
+    function normalizeChannelKeyForColor(channel) {
+        if (!channel) return '';
+        let s = String(channel).trim().toLowerCase();
+        if (s.startsWith('#')) s = s.slice(1);
+        return s;
+    }
+
+    function hashStringToUint(str) {
+        let h = 2166136261;
+        for (let i = 0; i < str.length; i++) {
+            h ^= str.charCodeAt(i);
+            h = Math.imul(h, 16777619);
+        }
+        return h >>> 0;
+    }
+
+    /** Hue 0–359: mix normalized + raw label so e.g. Public vs #testing rarely collide or look identical. */
+    function channelHueFromRaw(channelRaw) {
+        if (!channelRaw) return 200;
+        const s = String(channelRaw).trim();
+        const norm = normalizeChannelKeyForColor(s);
+        const mixed = norm + '\x1e' + s;
+        let h = hashStringToUint(mixed);
+        h ^= h >>> 16;
+        h = Math.imul(h, 2246822519);
+        h ^= h >>> 13;
+        h = Math.imul(h, 3266489917);
+        h ^= h >>> 16;
+        return (h >>> 0) % 360;
+    }
+
+    function isLightThemeActive() {
+        return document.documentElement.getAttribute('data-theme') === 'light';
+    }
+
+    /** Stable HSL per channel — saturated enough to feel lively, not maxed-out neon (DM uses fixed purple). */
+    function channelAccentStyles(channelRaw) {
+        const hue = channelHueFromRaw(channelRaw);
+        const h32 = hashStringToUint(normalizeChannelKeyForColor(String(channelRaw || '')) + '\x1e' + String(channelRaw || ''));
+        const t = (h32 >>> 8) % 11;
+        if (isLightThemeActive()) {
+            const borderSat = 42 + (t % 10);
+            const badgeSat = 34 + (t % 12);
+            return {
+                border: 'hsl(' + hue + ', ' + borderSat + '%, 42%)',
+                badgeBg: 'hsl(' + hue + ', ' + badgeSat + '%, 91%)',
+                badgeFg: 'hsl(' + hue + ', 45%, 20%)'
+            };
+        }
+        const borderSat = 48 + (t % 14);
+        const badgeSat = 42 + (t % 14);
+        return {
+            border: 'hsl(' + hue + ', ' + borderSat + '%, 56%)',
+            badgeBg: 'hsl(' + hue + ', ' + badgeSat + '%, 32%)',
+            badgeFg: 'hsl(' + hue + ', 15%, 97%)'
+        };
+    }
+
+    /** Remove redundant leading [#chan] / [##chan] already shown in the header badge. */
+    function stripLeadingChannelBracketTag(content, isDm) {
+        if (isDm || content == null || content === '') return content;
+        return String(content).replace(/^\s*\[[#]+[^\]]*\]\s*/u, '');
+    }
+
     function addMessageEntry(data) {
         if (messagePaused) return;
         const container = document.getElementById('message-stream');
@@ -1048,23 +1139,54 @@
         if (placeholder) placeholder.remove();
 
         const ts  = new Date(data.timestamp * 1000).toLocaleTimeString();
-        const ch  = data.channel ? `<span class="badge bg-info text-dark me-1">${escapeHtml(data.channel)}</span>` : '';
-        const dm  = data.is_dm   ? '<span class="badge bg-secondary me-1">DM</span>' : '';
-        const snr = data.snr && data.snr !== 'unknown' ? `<small class="text-muted ms-1">SNR ${data.snr}</small>` : '';
-        const hops = (data.hops != null && data.hops !== '' && data.hops !== 255)
-            ? `<small class="text-muted ms-1">${data.hops} hop${data.hops !== 1 ? 's' : ''}</small>` : '';
+        const isDm = !!data.is_dm;
+        const accent = isDm
+            ? { border: '#6f42c1', badgeBg: '#6f42c1', badgeFg: '#fff' }
+            : channelAccentStyles(data.channel || '');
 
-        const channelLabel = data.channel && !data.is_dm
-            ? `<span class="text-info me-1">[#${escapeHtml(data.channel)}]</span>` : '';
+        let ch = '';
+        if (data.channel) {
+            ch = '<span class="badge live-msg-channel-badge me-1" style="background-color:' + accent.badgeBg + ';color:' + accent.badgeFg + ';">' +
+                escapeHtml(data.channel) + '</span>';
+        }
+        const dm = isDm ? '<span class="badge bg-secondary me-1">DM</span>' : '';
+
+        const snr = (data.snr && data.snr !== 'unknown')
+            ? '<span class="badge rounded-pill bg-primary live-msg-meta-badge">SNR ' + escapeHtml(String(data.snr)) + '</span>'
+            : '';
+
+        // 255 = unknown hop count from radio; omit badge (same as before).
+        let hopsHtml = '';
+        const h = data.hops;
+        if (h != null && h !== '' && h !== 255) {
+            if (h === 0) {
+                hopsHtml = '<span class="badge rounded-pill bg-info text-dark live-msg-meta-badge">Direct</span>';
+            } else {
+                hopsHtml = '<span class="badge rounded-pill bg-info text-dark live-msg-meta-badge">' +
+                    escapeHtml(String(h)) + ' hop' + (h !== 1 ? 's' : '') + '</span>';
+            }
+        }
+
+        const badgesRow = (snr || hopsHtml)
+            ? '<div class="live-msg-meta-badges-row">' + snr + hopsHtml + '</div>'
+            : '';
+
+        const bodyRaw = stripLeadingChannelBracketTag(data.content || '', isDm);
+
         const entry = document.createElement('div');
         entry.className = 'stream-entry p-2 mb-1 rounded';
-        entry.style.borderLeftColor = data.is_dm ? '#6f42c1' : '#0dcaf0';
+        entry.style.borderLeftColor = accent.border;
+        entry.style.borderLeftWidth = '3px';
+        entry.style.borderLeftStyle = 'solid';
         entry.innerHTML = `
-            <div class="d-flex justify-content-between align-items-center mb-1">
-                <span>${ch}${dm}<strong>${escapeHtml(data.sender || '?')}</strong>${snr}${hops}</span>
-                <small class="text-muted">${ts}</small>
+            <div class="d-flex justify-content-between align-items-start mb-1 flex-wrap gap-2 w-100">
+                <span class="d-flex flex-wrap align-items-center gap-1 min-w-0">${ch}${dm}<strong>${escapeHtml(data.sender || '?')}</strong></span>
+                <div class="live-msg-meta-stack ms-auto flex-shrink-0 text-end">
+                    ${badgesRow}
+                    <small class="text-muted live-msg-time">${ts}</small>
+                </div>
             </div>
-            <div class="text-break">${channelLabel}${escapeHtml(data.content || '')}</div>
+            <div class="text-break">${escapeHtml(bodyRaw)}</div>
         `;
 
         container.insertBefore(entry, container.firstChild);
