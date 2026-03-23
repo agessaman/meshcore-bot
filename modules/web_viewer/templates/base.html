@@ -455,6 +455,63 @@
         </div>
     </nav>
     
+    <!-- Zombie Radio Banner (persistent — shown on all pages when radio is in zombie state) -->
+    {% if radio_zombie %}
+    <div id="zombie-banner" class="alert alert-danger mb-0 rounded-0 border-0 border-bottom border-danger" role="alert" style="border-width: 2px !important;">
+        <div class="container-fluid">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <div>
+                    <i class="fas fa-skull-crossbones me-2"></i>
+                    <strong>Radio Zombie State Detected</strong> — The bot radio firmware is unresponsive.
+                    A physical <strong>power cycle</strong> of the radio hardware is required.
+                    Disconnect/reconnect will <em>not</em> fix this.
+                    {% if radio_zombie_since %}
+                    <span class="ms-3 text-danger-emphasis small opacity-75">
+                        <i class="fas fa-clock me-1"></i>Since: {{ radio_zombie_since }}
+                    </span>
+                    {% endif %}
+                </div>
+                <div class="d-flex gap-2 align-items-center flex-shrink-0">
+                    <span class="small opacity-75">After power cycling:</span>
+                    <button id="zombie-recover-btn" class="btn btn-warning btn-sm fw-semibold"
+                            onclick="zombieRecover()" type="button">
+                        <i class="fas fa-power-off me-1"></i>Restart Bot Processing
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+    function zombieRecover() {
+        var btn = document.getElementById('zombie-recover-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Restarting\u2026';
+        fetch('/api/admin/zombie-recover', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var banner = document.getElementById('zombie-banner');
+            if (data.success) {
+                banner.className = 'alert alert-success mb-0 rounded-0 border-0 border-bottom border-success';
+                banner.innerHTML = '<div class="container-fluid"><i class="fas fa-check-circle me-2"></i>' +
+                    '<strong>Reconnect scheduled.</strong> Refresh this page in a few seconds to confirm the radio is back online.</div>';
+            } else {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-power-off me-1"></i>Restart Bot Processing';
+                alert('Error: ' + (data.error || 'Unknown error — check server logs'));
+            }
+        })
+        .catch(function() {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-power-off me-1"></i>Restart Bot Processing';
+            alert('Network error — could not reach the server.');
+        });
+    }
+    </script>
+    {% endif %}
+
     <!-- Main Content -->
     <div class="container-fluid mt-4">
         {% block content %}{% endblock %}
