@@ -146,6 +146,7 @@ class BotDataViewer:
 
         # Load configuration
         self.config = self._load_config(config_path)
+        self.config_path = config_path  # kept for config.ini write-back endpoints
 
         # Resolve db_path relative to the config file's directory — matches core.py's bot_root
         # property which is Path(config_file).parent.resolve().  Using self.bot_root (the project
@@ -281,15 +282,30 @@ class BotDataViewer:
                     bot_name = (self.config.get('Bot', 'bot_name', fallback='MeshCore Bot') or '').strip() or 'MeshCore Bot'
                 except (configparser.NoSectionError, configparser.NoOptionError):
                     bot_name = 'MeshCore Bot'
+                try:
+                    radio_zombie = self.db_manager.get_metadata('bot.radio_zombie') == 'true'
+                    radio_zombie_since = self.db_manager.get_metadata('bot.radio_zombie_since') or None
+                except Exception:
+                    radio_zombie = False
+                    radio_zombie_since = None
                 return {
                     'greeter_enabled': greeter_enabled,
                     'feed_manager_enabled': feed_manager_enabled,
                     'bot_name': bot_name,
                     'version_info': version_info,
+                    'radio_zombie': radio_zombie,
+                    'radio_zombie_since': radio_zombie_since,
                 }
             except Exception as e:
                 self.logger.exception("Template context processor failed: %s", e)
-                return {'greeter_enabled': False, 'feed_manager_enabled': False, 'bot_name': 'MeshCore Bot', 'version_info': version_info}
+                return {
+                    'greeter_enabled': False,
+                    'feed_manager_enabled': False,
+                    'bot_name': 'MeshCore Bot',
+                    'version_info': version_info,
+                    'radio_zombie': False,
+                    'radio_zombie_since': None,
+                }
 
     def _init_databases(self):
         """Initialize database connections"""
@@ -1491,6 +1507,101 @@ class BotDataViewer:
                     saved.append(field)
             self.logger.info(f"Maintenance config updated: {', '.join(saved)}")
             return jsonify({'success': True, 'saved': saved})
+
+        # ── Zombie radio alert config ────────────────────────────────────────
+
+        @self.app.route('/api/config/zombie-alert')
+        def api_config_zombie_alert_get() -> "Response":
+            """Return zombie alert settings.
+
+            Response includes both ``bot_metadata`` values (set via web UI) and
+            ``config_ini`` values (read from config.ini) so the browser can
+            show config.ini as the baseline defaults.
+            """
+            meta: dict[str, str] = {}
+            for key in ('zombie.alert_enabled', 'zombie.alert_email'):
+                short = key.split('.', 1)[1]
+                val = self.db_manager.get_metadata(key)
+                meta[short] = val if isinstance(val, str) else ''
+            if not meta.get('alert_enabled'):
+                meta['alert_enabled'] = 'false'
+            ini: dict[str, str] = {
+                'alert_enabled': (
+                    'true'
+                    if self.config.getboolean('Bot', 'radio_zombie_alert_enabled', fallback=False)
+                    else 'false'
+                ),
+                'alert_email': self.config.get('Bot', 'radio_zombie_alert_email', fallback=''),
+            }
+            return jsonify({'meta': meta, 'config_ini': ini})
+
+        @self.app.route('/api/config/zombie-alert', methods=['POST'])
+        def api_config_zombie_alert_post() -> "Response":
+            """Save zombie alert settings to bot_metadata.
+
+            If ``write_to_config`` is ``true`` in the request body, the values
+            are also written back to config.ini under ``[Bot]``.  The config
+            object in memory is updated immediately so the scheduler reads the
+            new values without a restart.
+            """
+            data = request.get_json(silent=True) or {}
+            allowed = {'alert_enabled', 'alert_email'}
+            saved = []
+            for field in allowed:
+                if field in data:
+                    self.db_manager.set_metadata(f'zombie.{field}', str(data[field]))
+                    saved.append(field)
+            self.logger.info("Zombie alert config updated (metadata): %s", ', '.join(saved))
+
+            write_to_config = str(data.get('write_to_config', '')).lower() == 'true'
+            config_saved = False
+            if write_to_config:
+                try:
+                    if not self.config.has_section('Bot'):
+                        self.config.add_section('Bot')
+                    if 'alert_enabled' in data:
+                        self.config.set(
+                            'Bot', 'radio_zombie_alert_enabled',
+                            'true' if str(data['alert_enabled']).lower() == 'true' else 'false',
+                        )
+                    if 'alert_email' in data:
+                        self.config.set('Bot', 'radio_zombie_alert_email', str(data['alert_email']))
+                    with open(self.config_path, 'w') as fh:
+                        self.config.write(fh)
+                    config_saved = True
+                    self.logger.info("Zombie alert settings written to config.ini")
+                except OSError as exc:
+                    self.logger.error("Failed to write zombie alert settings to config.ini: %s", exc)
+                    return jsonify({
+                        'success': False,
+                        'error': 'Could not write config.ini — check file permissions',
+                    }), 500
+
+            return jsonify({'success': True, 'saved': saved, 'config_saved': config_saved})
+
+        # ── Zombie recover ───────────────────────────────────────────────────
+
+        @self.app.route('/api/admin/zombie-recover', methods=['POST'])
+        def api_admin_zombie_recover() -> "Response":
+            """Clear zombie state so bot resumes processing after a radio power cycle.
+
+            Clears the ``_radio_zombie_detected`` flag on the live bot object (if
+            accessible) and removes the persisted flag from bot_metadata so the
+            web-viewer banner disappears on the next page load.
+            """
+            try:
+                self.db_manager.set_metadata('bot.radio_zombie', 'false')
+                self.db_manager.set_metadata('bot.radio_zombie_since', '')
+                bot = getattr(self, 'bot', None)
+                if bot is not None:
+                    bot._radio_zombie_detected = False
+                    bot._radio_fail_count = 0
+                    bot._last_radio_probe = 0  # force probe on next cycle
+                self.logger.info("Zombie state cleared via web UI recover action")
+                return jsonify({'success': True, 'message': 'Zombie state cleared; bot will resume'})
+            except Exception:
+                self.logger.exception("Error clearing zombie state")
+                return jsonify({'success': False, 'error': 'Internal error — see server logs'}), 500
 
         # ── Maintenance status ───────────────────────────────────────────────
 
