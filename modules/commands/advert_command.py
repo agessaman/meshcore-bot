@@ -4,6 +4,7 @@ Advert command for the MeshCore Bot
 Handles the 'advert' command for sending flood adverts
 """
 
+import asyncio
 import time
 from typing import Any
 
@@ -96,8 +97,12 @@ class AdvertCommand(BaseCommand):
 
             self.logger.info(f"User {message.sender_id} requested flood advert")
 
-            # Send flood advert using meshcore.commands
-            await self.bot.meshcore.commands.send_advert(flood=True)
+            # Send flood advert using meshcore.commands (guarded to prevent
+            # blocking the event loop if the radio is unresponsive)
+            await asyncio.wait_for(
+                self.bot.meshcore.commands.send_advert(flood=True),
+                timeout=30.0,
+            )
 
             # Update last advert time
             if hasattr(self.bot, 'last_advert_time'):
