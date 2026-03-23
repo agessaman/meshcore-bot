@@ -648,7 +648,20 @@ class MessageScheduler:
             self.bot.logger.warning("send_advert suppressed — radio is in zombie state; power cycle required")
             return
         from meshcore.events import EventType
-        result = await self.bot.meshcore.commands.send_advert(flood=True)
+        try:
+            result = await asyncio.wait_for(
+                self.bot.meshcore.commands.send_advert(flood=True),
+                timeout=30.0,
+            )
+        except asyncio.TimeoutError:
+            # Radio did not respond — increment the zombie fail counter so that
+            # repeated timeouts eventually trigger zombie detection via the
+            # normal _probe_radio_health threshold.
+            self.bot._radio_fail_count = getattr(self.bot, '_radio_fail_count', 0) + 1
+            raise RuntimeError(
+                f"send_advert timed out after 30 s "
+                f"(radio_fail_count={self.bot._radio_fail_count})"
+            )
         if result.type == EventType.ERROR:
             reason = result.payload.get('reason', 'unknown')
             raise RuntimeError(f"send_advert failed: {reason}")
