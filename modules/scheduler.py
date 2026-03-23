@@ -1201,7 +1201,18 @@ class MessageScheduler:
         import ssl as _ssl
         from email.message import EmailMessage
 
-        if not self.bot.config.getboolean('Bot', 'radio_zombie_alert_enabled', fallback=True):
+        # Prefer bot_metadata (set via web UI) over config.ini so the config page
+        # takes effect without requiring a config.ini edit or bot restart.
+        # Use isinstance(…, str) so a missing/mock value safely falls through.
+        try:
+            alert_enabled_meta = self.bot.db_manager.get_metadata('zombie.alert_enabled')
+        except Exception:
+            alert_enabled_meta = None
+        if isinstance(alert_enabled_meta, str) and alert_enabled_meta:
+            alert_enabled = alert_enabled_meta.lower() == 'true'
+        else:
+            alert_enabled = self.bot.config.getboolean('Bot', 'radio_zombie_alert_enabled', fallback=True)
+        if not alert_enabled:
             return
 
         smtp_host     = self._get_notif('smtp_host')
@@ -1211,8 +1222,16 @@ class MessageScheduler:
         from_name     = self._get_notif('from_name') or 'MeshCore Bot'
         from_email    = self._get_notif('from_email')
 
-        # Alert recipients: dedicated config key, falls back to nightly recipients
-        alert_email_cfg = self.bot.config.get('Bot', 'radio_zombie_alert_email', fallback='').strip()
+        # Alert recipients: bot_metadata first, then config.ini, then nightly recipients
+        try:
+            _email_meta = self.bot.db_manager.get_metadata('zombie.alert_email')
+            alert_email_meta = _email_meta.strip() if isinstance(_email_meta, str) else ''
+        except Exception:
+            alert_email_meta = ''
+        alert_email_cfg = (
+            alert_email_meta
+            or self.bot.config.get('Bot', 'radio_zombie_alert_email', fallback='').strip()
+        )
         if alert_email_cfg:
             recipients = [r.strip() for r in alert_email_cfg.split(',') if r.strip()]
         else:
