@@ -226,7 +226,7 @@
         });
     }
 
-    const socket = io({ transports: ['websocket', 'polling'] });
+    const socket = window.connectionManager.socket;
 
     socket.on('connect', function () {
         updateStatus('log-status', 'Connected', 'success');
