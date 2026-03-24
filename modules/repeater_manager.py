@@ -2924,6 +2924,15 @@ class RepeaterManager:
     async def cleanup_database(self, days_to_keep_logs: int = 90):
         """Clean up old purging log entries"""
         try:
+            # Guard: purging_log table may not exist on older installs
+            with self.db_manager.connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='purging_log'"
+                )
+                if not cursor.fetchone():
+                    return
+
             cutoff_date = datetime.now() - timedelta(days=days_to_keep_logs)
 
             deleted_count = self.db_manager.execute_update(
@@ -2935,7 +2944,7 @@ class RepeaterManager:
                 self.logger.info(f"Cleaned up {deleted_count} old purging log entries")
 
         except Exception as e:
-            self.logger.error(f"Error cleaning up database: {e}")
+            self.logger.error(f"Error cleaning up database: {type(e).__name__}: {e}")
 
     def cleanup_repeater_retention(
         self,

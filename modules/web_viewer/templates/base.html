@@ -795,13 +795,14 @@
             }
         }
 
-        // Initialize connection manager when page loads
+        // Create connection manager synchronously so page scripts in the extra_js
+        // block can share the same socket without calling io() a second time.
+        window.connectionManager = new ModernConnectionManager();
+
         document.addEventListener('DOMContentLoaded', () => {
             // Initialize dark mode manager first
             window.darkModeManager = new DarkModeManager();
-            
-            window.connectionManager = new ModernConnectionManager();
-            
+
             // Update timestamp immediately and every second
             updateTimestamp();
             setInterval(updateTimestamp, 1000);

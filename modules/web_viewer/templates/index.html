@@ -1325,7 +1325,7 @@ window.addEventListener('beforeunload', () => {
         feed.scrollTop = dir === 'top' ? 0 : feed.scrollHeight;
     };
 
-    const socket = io({ transports: ['websocket', 'polling'] });
+    const socket = window.connectionManager.socket;
 
     socket.on('connect', () => {
         dot.className = 'status-indicator status-connected ms-2';
