@@ -121,6 +121,13 @@ class MessageScheduler:
 
     def send_scheduled_message(self, channel: str, message: str):
         """Send a scheduled message (synchronous wrapper for schedule library)"""
+        if self.bot.is_radio_zombie:
+            self.logger.warning("send_scheduled_message suppressed — radio is in zombie state")
+            return
+        if self.bot.is_radio_offline:
+            self.logger.warning("send_scheduled_message suppressed — radio is offline (repeated send timeouts)")
+            return
+
         current_time = self.get_current_time()
         self.logger.info(f"📅 Sending scheduled message at {current_time.strftime('%H:%M:%S')} to {channel}: {message}")
 
@@ -137,8 +144,10 @@ class MessageScheduler:
             # Wait for completion (with timeout to prevent indefinite blocking)
             try:
                 future.result(timeout=60)  # 60 second timeout
+                self.bot._record_send_success()
             except Exception as e:
                 self.logger.error(f"Error sending scheduled message: {type(e).__name__}: {e}", exc_info=True)
+                self.bot._record_send_failure(scheduler=self)
         else:
             # Fallback: create new event loop if main loop not available
             try:
@@ -613,6 +622,10 @@ class MessageScheduler:
 
     def send_interval_advert(self):
         """Send an interval-based advert (synchronous wrapper)"""
+        if self.bot.is_radio_offline:
+            self.logger.warning("send_interval_advert suppressed — radio is offline (repeated send timeouts)")
+            return
+
         current_time = self.get_current_time()
         self.logger.info(f"📢 Sending interval-based flood advert at {current_time.strftime('%H:%M:%S')}")
 
@@ -629,8 +642,10 @@ class MessageScheduler:
             # Wait for completion (with timeout to prevent indefinite blocking)
             try:
                 future.result(timeout=60)  # 60 second timeout
+                self.bot._record_send_success()
             except Exception as e:
                 self.logger.error(f"Error sending interval advert: {type(e).__name__}: {e}", exc_info=True)
+                self.bot._record_send_failure(scheduler=self)
         else:
             # Fallback: create new event loop if main loop not available
             try:
@@ -1318,6 +1333,124 @@ class MessageScheduler:
             )
         except Exception as e:
             self.bot.logger.error(f"Failed to send zombie radio alert email: {e}")
+
+    # ── Radio offline alert email ────────────────────────────────────────────
+
+    def send_radio_offline_alert_email(self, fail_count: int, threshold: int) -> None:
+        """Send an immediate alert email when the radio-offline state is entered.
+
+        Uses the same SMTP settings as the nightly digest.  Recipients are taken
+        from the ``radio_offline_alert_email`` config key; if that key is empty the
+        nightly maintenance recipients are used as a fallback.
+
+        Intentionally synchronous — intended to be run in a daemon thread.
+        """
+        import smtplib
+        import ssl as _ssl
+        from email.message import EmailMessage
+
+        alert_enabled = self.bot.config.getboolean('Bot', 'radio_offline_alert_enabled', fallback=True)
+        if not alert_enabled:
+            return
+
+        smtp_host     = self._get_notif('smtp_host')
+        smtp_security = self._get_notif('smtp_security') or 'starttls'
+        smtp_user     = self._get_notif('smtp_user')
+        smtp_password = self._get_notif('smtp_password')
+        from_name     = self._get_notif('from_name') or 'MeshCore Bot'
+        from_email    = self._get_notif('from_email')
+
+        alert_email_cfg = self.bot.config.get('Bot', 'radio_offline_alert_email', fallback='').strip()
+        if alert_email_cfg:
+            recipients = [r.strip() for r in alert_email_cfg.split(',') if r.strip()]
+        else:
+            recipients = [r.strip() for r in self._get_notif('recipients').split(',') if r.strip()]
+
+        if not smtp_host or not from_email or not recipients:
+            self.bot.logger.warning(
+                "Radio-offline alert email enabled but SMTP settings incomplete "
+                f"(host={smtp_host!r}, from={from_email!r}, recipients={recipients}) "
+                "— alert email not sent"
+            )
+            return
+
+        allow_local = self._get_notif('allow_local_smtp').lower() == 'true'
+        if not validate_external_url(f'http://{smtp_host}', allow_private=allow_local):
+            self.bot.logger.error(
+                "Radio-offline alert email aborted: SMTP host %r resolves to a private or reserved address",
+                smtp_host,
+            )
+            return
+
+        try:
+            smtp_port = int(self._get_notif('smtp_port') or (465 if smtp_security == 'ssl' else 587))
+        except ValueError:
+            smtp_port = 587
+
+        now_utc         = datetime.datetime.utcnow()
+        connection_type = self.bot.config.get('Connection', 'connection_type', fallback='unknown')
+        serial_port     = self.bot.config.get('Connection', 'serial_port', fallback='n/a')
+
+        subject = (
+            f'ALERT: MeshCore Bot — Radio Offline '
+            f'[{now_utc.strftime("%Y-%m-%d %H:%M UTC")}]'
+        )
+        body = '\n'.join([
+            'MeshCore Bot — Radio Offline Alert',
+            '=' * 44,
+            f'Time          : {now_utc.strftime("%Y-%m-%d %H:%M:%S UTC")}',
+            '',
+            'RADIO STATUS',
+            '─' * 30,
+            f'  Connection      : {connection_type}',
+            f'  Port / Device   : {serial_port}',
+            f'  Failed sends    : {fail_count} of {threshold} (threshold)',
+            '',
+            'WHAT THIS MEANS',
+            '─' * 30,
+            '  The bot can no longer send outbound messages to the mesh.',
+            '  Inbound packets from the radio may still be arriving normally.',
+            '  This is NOT a zombie (firmware lock-up) — the radio is responsive',
+            '  but outbound sends are timing out.',
+            '',
+            'ACTION REQUIRED',
+            '─' * 30,
+            '  Check the radio power supply and physical connection.',
+            '  Use the dashboard "Clear Offline Flag" button once the issue',
+            '  is resolved, or restart the bot to auto-probe.',
+            '',
+            '─' * 44,
+            'Outbound sends will be suppressed until the offline flag is cleared.',
+        ])
+
+        try:
+            msg = EmailMessage()
+            msg['Subject'] = subject
+            msg['From']    = f'{from_name} <{from_email}>'
+            msg['To']      = ', '.join(recipients)
+            msg.set_content(body)
+
+            context = _ssl.create_default_context()
+            _smtp_timeout = 30
+
+            if smtp_security == 'ssl':
+                with smtplib.SMTP_SSL(smtp_host, smtp_port, context=context, timeout=_smtp_timeout) as s:
+                    if smtp_user and smtp_password:
+                        s.login(smtp_user, smtp_password)
+                    s.send_message(msg)
+            else:
+                with smtplib.SMTP(smtp_host, smtp_port, timeout=_smtp_timeout) as s:
+                    if smtp_security == 'starttls':
+                        s.ehlo()
+                        s.starttls(context=context)
+                        s.ehlo()
+                    if smtp_user and smtp_password:
+                        s.login(smtp_user, smtp_password)
+                    s.send_message(msg)
+
+            self.bot.logger.info(f"Radio-offline alert email sent to {recipients}")
+        except Exception as e:
+            self.bot.logger.error(f"Failed to send radio-offline alert email: {e}")
 
     # ── Maintenance helpers ──────────────────────────────────────────────────
 
