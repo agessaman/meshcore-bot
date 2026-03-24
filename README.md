@@ -321,6 +321,9 @@ radio_probe_fail_threshold = 3       # consecutive failures before zombie is dec
 send_timeout_seconds = 30            # max seconds to wait for a channel message send
 radio_zombie_alert_enabled = false   # send immediate alert email on zombie detection (default: log only)
 radio_zombie_alert_email =           # alert recipient(s); falls back to nightly email if blank
+radio_offline_threshold = 3          # consecutive send timeouts before radio-offline state is entered
+radio_offline_alert_enabled = true   # send alert email when radio-offline state is entered
+radio_offline_alert_email =          # alert recipient(s); falls back to nightly email if blank
 ```
 
 ### Keywords
