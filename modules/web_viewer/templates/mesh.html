@@ -2411,7 +2411,7 @@
     // re-stabilization layout (nodes clumping, edges tangling) that occurs when vis-network
     // runs physics again. User can refresh or switch to map and back to see updated graph.
     function setupSocketIO() {
-        const socket = io();
+        const socket = window.connectionManager.socket;
         
         socket.emit('subscribe_mesh');
         
