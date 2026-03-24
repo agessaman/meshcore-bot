@@ -13,6 +13,7 @@ A Python bot that connects to MeshCore mesh networks via serial port, BLE, or TC
 - **Scheduled Messages**: Send messages at configured times
 - **Direct Message Support**: Respond to private messages
 - **Inbound Webhook**: Accept HTTP POST payloads and relay to MeshCore channels or DMs
+- **Admin HTTP Server**: Built-in admin API (port 5001, bearer token auth) — reload config without restarting; `scripts/reload_config.sh` CLI wrapper
 - **Web Viewer**: Browser-based dashboard for monitoring contacts, mesh graph, radio settings, feeds, live packets, and logs
 - **Radio Control**: Reboot or connect/disconnect the radio connection from the web viewer
 - **Database Migrations**: Versioned schema migrations via `MigrationRunner` — safe upgrades across versions
@@ -428,6 +429,38 @@ db_backup_retention_count = 7
 db_backup_dir = /data/backups
 email_attach_log = false        # attach current log file (≤ 5 MB) to nightly email before rotation
 ```
+
+### Admin Server
+
+The bot includes a minimal HTTP admin server for operational control. Disabled by default.
+
+```ini
+[Admin]
+enabled = true
+port    = 5001
+token   = your-secret-token   # required; requests without a matching Bearer token are rejected
+```
+
+**Endpoints** (all require `Authorization: Bearer <token>`):
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/admin/reload` | Reload `config.ini` in-process (same as `!reload` DM command). Returns `{"success": bool, "message": str}`. Radio/connection changes are rejected (restart required). |
+| `GET`  | `/api/admin/health` | Returns `{"status": "ok"}` when the server is reachable. |
+
+**CLI wrapper** (`scripts/reload_config.sh`):
+```bash
+# reads port + token from config.ini [Admin] section automatically
+./scripts/reload_config.sh
+
+# explicit config path
+./scripts/reload_config.sh /path/to/config.ini
+
+# env overrides
+ADMIN_PORT=5001 ADMIN_TOKEN=xyz ./scripts/reload_config.sh
+```
+
+The server binds to `127.0.0.1` only and is not reachable from the network.
 
 ### Notifications
 ```ini
