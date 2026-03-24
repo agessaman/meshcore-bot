@@ -281,9 +281,13 @@ class BotDataViewer:
                 try:
                     radio_zombie = self.db_manager.get_metadata('bot.radio_zombie') == 'true'
                     radio_zombie_since = self.db_manager.get_metadata('bot.radio_zombie_since') or None
+                    radio_offline = self.db_manager.get_metadata('bot.radio_offline') == 'true'
+                    radio_offline_since = self.db_manager.get_metadata('bot.radio_offline_since') or None
                 except Exception:
                     radio_zombie = False
                     radio_zombie_since = None
+                    radio_offline = False
+                    radio_offline_since = None
                 return {
                     'greeter_enabled': greeter_enabled,
                     'feed_manager_enabled': feed_manager_enabled,
@@ -291,6 +295,8 @@ class BotDataViewer:
                     'version_info': version_info,
                     'radio_zombie': radio_zombie,
                     'radio_zombie_since': radio_zombie_since,
+                    'radio_offline': radio_offline,
+                    'radio_offline_since': radio_offline_since,
                 }
             except Exception as e:
                 self.logger.exception("Template context processor failed: %s", e)
@@ -301,6 +307,8 @@ class BotDataViewer:
                     'version_info': version_info,
                     'radio_zombie': False,
                     'radio_zombie_since': None,
+                    'radio_offline': False,
+                    'radio_offline_since': None,
                 }
 
     def _init_databases(self):
@@ -1597,6 +1605,24 @@ class BotDataViewer:
                 return jsonify({'success': True, 'message': 'Zombie state cleared; bot will resume'})
             except Exception:
                 self.logger.exception("Error clearing zombie state")
+                return jsonify({'success': False, 'error': 'Internal error — see server logs'}), 500
+
+        # ── Radio offline clear ──────────────────────────────────────────────
+
+        @self.app.route('/api/admin/radio-offline-clear', methods=['POST'])
+        def api_admin_radio_offline_clear() -> "Response":
+            """Clear the radio-offline flag so the bot resumes outbound sends."""
+            try:
+                self.db_manager.set_metadata('bot.radio_offline', 'false')
+                self.db_manager.set_metadata('bot.radio_offline_since', '')
+                bot = getattr(self, 'bot', None)
+                if bot is not None:
+                    bot._radio_offline = False
+                    bot._send_consecutive_failures = 0
+                self.logger.info("Radio-offline state cleared via web UI action")
+                return jsonify({'success': True, 'message': 'Radio-offline flag cleared; sends will resume'})
+            except Exception:
+                self.logger.exception("Error clearing radio-offline state")
                 return jsonify({'success': False, 'error': 'Internal error — see server logs'}), 500
 
         # ── Maintenance status ───────────────────────────────────────────────
@@ -7252,6 +7278,7 @@ class BotDataViewer:
     def run(self, host='127.0.0.1', port=8080, debug=False):
         """Run the modern web viewer"""
         self.logger.info(f"Starting modern web viewer on {host}:{port}")
+        self._suppress_werkzeug_headers_error()
         try:
             self.socketio.run(
                 self.app,
@@ -7263,6 +7290,26 @@ class BotDataViewer:
         except Exception as e:
             self.logger.error(f"Error running web viewer: {e}")
             raise
+
+    @staticmethod
+    def _suppress_werkzeug_headers_error() -> None:
+        """Install a log filter that silences the 'Headers already set' AssertionError.
+
+        Werkzeug's dev server catches this internally and continues serving, but it
+        logs a full traceback at ERROR level.  The underlying cause (concurrent
+        SocketIO polling requests racing through the WSGI layer) is reduced by the
+        single-socket-per-page fix, but may still occur occasionally.  The filter
+        downgrades these specific records to DEBUG so they don't alarm operators.
+        """
+        import logging
+
+        class _HeadersAlreadySetFilter(logging.Filter):
+            def filter(self, record: logging.LogRecord) -> bool:
+                msg = record.getMessage()
+                return "Headers already set" not in msg
+
+        for name in ("werkzeug", "werkzeug.serving"):
+            logging.getLogger(name).addFilter(_HeadersAlreadySetFilter())
 
 def main():
     """Entry point for the meshcore-viewer command"""

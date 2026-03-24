@@ -299,6 +299,75 @@ class MeshCoreBot:
         """
         return bool(getattr(self, '_radio_zombie_detected', False))
 
+    @property
+    def is_radio_offline(self) -> bool:
+        """True when repeated outbound send timeouts have been detected.
+
+        Distinct from zombie state — the radio may still be forwarding received
+        packets but is not completing outbound sends.  Cleared automatically
+        when a send succeeds, so no manual intervention is required.
+        """
+        return bool(getattr(self, '_radio_offline', False))
+
+    def _record_send_failure(self, scheduler: "Any | None" = None) -> None:
+        """Increment the consecutive-send-failure counter.
+
+        Called by the scheduler when an outbound send times out at the
+        ``future.result()`` level (i.e. the outer 60-second wall-clock
+        timeout fired).  After ``radio_offline_threshold`` consecutive
+        failures the bot transitions to radio-offline state, persists it
+        to the DB for the web viewer banner, and optionally sends an alert
+        email.
+        """
+        import datetime as _dt
+        import threading as _threading
+
+        self._send_consecutive_failures: int = (
+            getattr(self, '_send_consecutive_failures', 0) + 1
+        )
+        threshold = self.config.getint('Bot', 'radio_offline_threshold', fallback=3)
+        if self._send_consecutive_failures >= threshold and not self.is_radio_offline:
+            self._radio_offline = True
+            since = _dt.datetime.utcnow().isoformat()
+            self.logger.critical(
+                "RADIO OFFLINE: %d consecutive send timeouts (threshold %d). "
+                "Bot will suppress further outbound sends until one succeeds. "
+                "Check radio power and connection.",
+                self._send_consecutive_failures,
+                threshold,
+            )
+            try:
+                self.db_manager.set_metadata('bot.radio_offline', 'true')
+                self.db_manager.set_metadata('bot.radio_offline_since', since)
+            except Exception:
+                pass
+            if scheduler is not None:
+                _threading.Thread(
+                    target=scheduler.send_radio_offline_alert_email,
+                    args=(self._send_consecutive_failures, threshold),
+                    daemon=True,
+                ).start()
+
+    def _record_send_success(self) -> None:
+        """Clear the consecutive-send-failure counter after a successful send."""
+        failures = getattr(self, '_send_consecutive_failures', 0)
+        was_offline = self.is_radio_offline
+        if failures > 0 or was_offline:
+            self.logger.info(
+                "Outbound send succeeded — clearing radio-offline state "
+                "(was_offline=%s, failure_count=%d)",
+                was_offline,
+                failures,
+            )
+        self._send_consecutive_failures = 0
+        if was_offline:
+            self._radio_offline = False
+            try:
+                self.db_manager.set_metadata('bot.radio_offline', 'false')
+                self.db_manager.set_metadata('bot.radio_offline_since', '')
+            except Exception:
+                pass
+
     def load_config(self) -> None:
         """Load configuration from file.
 

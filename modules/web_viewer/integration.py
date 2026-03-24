@@ -750,6 +750,15 @@ class WebViewerIntegration:
             while self.running and self.viewer_process and self.viewer_process.poll() is None:
                 time.sleep(1)
 
+            # Process exited unexpectedly — try to restart if we haven't been stopped
+            if self.running and self.viewer_process and self.viewer_process.poll() is not None:
+                self.logger.warning(
+                    "Web viewer process exited unexpectedly (code %s) — attempting restart",
+                    self.viewer_process.returncode,
+                )
+                self.restart_viewer()
+                return
+
             # Process exited - read from log files for error reporting if needed
             if self.viewer_process and self.viewer_process.returncode != 0:
                 stdout_file.flush()
