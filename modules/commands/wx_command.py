@@ -1761,27 +1761,8 @@ class WxCommand(BaseCommand):
         return result
 
     def _count_display_width(self, text: str) -> int:
-        """Count display width of text, accounting for emojis which may take 2 display units"""
-        # Count regular characters
-        width = len(text)
-        # Emojis typically take 2 display units in terminals/clients
-        # Count emoji characters (basic emoji pattern)
-        emoji_pattern = re.compile(
-            "["
-            "\U0001F600-\U0001F64F"  # emoticons
-            "\U0001F300-\U0001F5FF"  # symbols & pictographs
-            "\U0001F680-\U0001F6FF"  # transport & map symbols
-            "\U0001F1E0-\U0001F1FF"  # flags
-            "\U00002702-\U000027B0"  # dingbats
-            "\U000024C2-\U0001F251"  # enclosed characters
-            "]+",
-            flags=re.UNICODE
-        )
-        emoji_matches = emoji_pattern.findall(text)
-        # Each emoji sequence adds 1 extra width unit (since len() already counts it as 1)
-        # So we add 1 for each emoji sequence to account for display width
-        width += len(emoji_matches)
-        return width
+        """Count UTF-8 byte length of text. Matches RF packet byte limit from get_max_message_length()."""
+        return len(text.encode('utf-8'))
 
     async def _send_multiday_forecast(self, message: MeshMessage, forecast_text: str):
         """Send multi-day forecast response, splitting into multiple messages if needed"""

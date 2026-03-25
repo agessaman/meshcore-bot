@@ -1629,12 +1629,10 @@ class PathCommand(BaseCommand):
                     # Geographic or graph-based selection
                     name = info.get('name', self.translate('commands.path.unknown_name'))
                     confidence = info.get('confidence', 0.0)
-                    info.get('graph_guess', False)
 
                     # Truncate name if too long
                     truncation = self.translate('commands.path.truncation')
-                    if len(name) > 20:
-                        name = name[:17] + truncation
+                    name = self._truncate_to_byte_length(name, 20, truncation)
 
                     # Add confidence indicator
                     if confidence >= 0.9:
@@ -1650,20 +1648,15 @@ class PathCommand(BaseCommand):
                     # Single repeater found
                     name = info.get('name', self.translate('commands.path.unknown_name'))
 
-                    # Truncate name if too long
                     truncation = self.translate('commands.path.truncation')
-                    if len(name) > 27:
-                        name = name[:24] + truncation
+                    name = self._truncate_to_byte_length(name, 27, truncation)
 
                     line = self.translate('commands.path.node_format', node_id=node_id, name=name)
             else:
                 # Unknown repeater
                 line = self.translate('commands.path.node_unknown', node_id=node_id)
 
-            # Ensure line fits within 130 character limit
-            if len(line) > 130:
-                truncation = self.translate('commands.path.truncation')
-                line = line[:127] + truncation
+            line = self._truncate_to_byte_length(line, 130)
 
             lines.append(line)
 
@@ -1680,7 +1673,7 @@ class PathCommand(BaseCommand):
         # Get dynamic max message length based on message type and bot username
         max_length = self.get_max_message_length(message)
 
-        if len(response) <= max_length:
+        if self._count_byte_length(response) <= max_length:
             # Single message is fine
             await self.send_response(message, response)
         else:
@@ -1691,8 +1684,8 @@ class PathCommand(BaseCommand):
             message_count = 0
 
             for i, line in enumerate(lines):
-                # Check if adding this line would exceed max_length characters
-                if len(current_message) + len(line) + 1 > max_length:  # +1 for newline
+                # Check if adding this line would exceed max_length display width
+                if self._count_byte_length(current_message) + self._count_byte_length(line) + 1 > max_length:  # +1 for newline
                     # Send current message and start new one
                     if current_message:
                         # Add ellipsis on new line to end of continued message (if not the last message)
@@ -1765,6 +1758,24 @@ class PathCommand(BaseCommand):
         except Exception as e:
             self.logger.error(f"Error extracting path from current message: {e}")
             return self.translate('commands.path.error_extracting', error=str(e))
+
+    def _count_byte_length(self, text: str) -> int:
+        """Count UTF-8 byte length of text. This matches the RF packet byte limit."""
+        return len(text.encode('utf-8'))
+
+    def _truncate_to_byte_length(self, text: str, max_bytes: int, ellipsis: str = "...") -> str:
+        """Truncate text to fit within max UTF-8 byte length, never splitting multi-byte chars."""
+        text_bytes: bytes = text.encode('utf-8')
+        if len(text_bytes) <= max_bytes:
+            return text
+
+        ellipsis_bytes: bytes = ellipsis.encode('utf-8')
+        available: int = max_bytes - len(ellipsis_bytes)
+        if available <= 0:
+            return ellipsis
+
+        truncated: str = text_bytes[:available].decode('utf-8', errors='ignore')
+        return truncated + ellipsis
 
     def get_help(self) -> str:
         """Get help text for the path command"""
