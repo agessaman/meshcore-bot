@@ -26,10 +26,6 @@ class RepeaterCommand(BaseCommand):
     category = "management"
     requires_internet = True  # Requires internet access for geocoding (Nominatim)
 
-    # LoRa message size limit (conservative to avoid overload)
-    # DM limit is 150 chars, public channel is 237 chars
-    MAX_LORA_MESSAGE_SIZE = 140  # characters, leaves buffer for protocol overhead
-
     def __init__(self, bot):
         super().__init__(bot)
         self.repeater_enabled = self.get_config_value('Repeater_Command', 'enabled', fallback=True, value_type='bool')
@@ -46,24 +42,6 @@ class RepeaterCommand(BaseCommand):
         if not self.repeater_enabled:
             return False
         return super().can_execute(message)
-
-    def _truncate_for_lora(self, message: str, max_size: int = None) -> str:
-        """Truncate message to fit within LoRa size limits.
-
-        Args:
-            message: The message to truncate
-            max_size: Maximum size (defaults to MAX_LORA_MESSAGE_SIZE)
-
-        Returns:
-            Truncated message with indicator if truncated
-        """
-        max_size = max_size or self.MAX_LORA_MESSAGE_SIZE
-        if len(message) <= max_size:
-            return message
-
-        truncate_suffix = "...(use web viewer)"
-        available_size = max_size - len(truncate_suffix)
-        return message[:available_size] + truncate_suffix
 
     def _get_deprecation_warning(self, web_viewer_url: str = None) -> str:
         """Get deprecation warning message for commands replaced by web viewer.
