@@ -1607,6 +1607,80 @@ class BotDataViewer:
                 self.logger.exception("Error clearing zombie state")
                 return jsonify({'success': False, 'error': 'Internal error — see server logs'}), 500
 
+        # ── Radio debug config ───────────────────────────────────────────────
+
+        @self.app.route('/api/config/radio-debug')
+        def api_config_radio_debug_get() -> "Response":
+            """Return current radio debug logging setting.
+
+            Response includes both ``bot_metadata`` value (set via web UI) and
+            ``config_ini`` value (read from config.ini) so the browser can show
+            which is the persistent baseline.
+            """
+            meta_val = self.db_manager.get_metadata('radio.debug')
+            meta_enabled = meta_val if isinstance(meta_val, str) else ''
+            ini_enabled = (
+                'true'
+                if self.config.getboolean('Connection', 'radio_debug', fallback=False)
+                else 'false'
+            )
+            return jsonify({'meta': {'enabled': meta_enabled}, 'config_ini': {'enabled': ini_enabled}})
+
+        @self.app.route('/api/config/radio-debug', methods=['POST'])
+        def api_config_radio_debug_post() -> "Response":
+            """Save radio debug logging setting.
+
+            Body fields:
+            - ``enabled``: ``'true'`` or ``'false'``
+            - ``write_to_config``: ``'true'`` to also write ``[Connection]
+              radio_debug`` to config.ini
+            - ``reconnect``: ``'true'`` to queue a radio reconnect so the
+              change takes effect immediately (the debug flag is only applied
+              at connection time)
+            """
+            try:
+                data = request.get_json(silent=True) or {}
+                enabled = str(data.get('enabled', 'false')).lower() == 'true'
+                write_to_config = str(data.get('write_to_config', 'false')).lower() == 'true'
+                do_reconnect = str(data.get('reconnect', 'false')).lower() == 'true'
+
+                self.db_manager.set_metadata('radio.debug', 'true' if enabled else 'false')
+                config_saved = False
+
+                if write_to_config:
+                    try:
+                        if not self.config.has_section('Connection'):
+                            self.config.add_section('Connection')
+                        self.config.set('Connection', 'radio_debug', 'true' if enabled else 'false')
+                        with open(self.config_path, 'w') as fh:
+                            self.config.write(fh)
+                        config_saved = True
+                        self.logger.info(
+                            "radio_debug=%s written to config.ini by web UI", 'true' if enabled else 'false'
+                        )
+                    except OSError as exc:
+                        self.logger.error("Failed to write radio_debug to config.ini: %s", exc)
+                        return jsonify({
+                            'success': False,
+                            'error': 'Could not write config.ini — check file permissions',
+                        }), 500
+
+                op_id = None
+                if do_reconnect:
+                    with self.db_manager.connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute(
+                            "INSERT INTO channel_operations (operation_type, status) VALUES ('radio_connect', 'pending')"
+                        )
+                        conn.commit()
+                        op_id = cursor.lastrowid
+                    self.logger.info("Radio reconnect queued (op_id=%s) to apply radio_debug=%s", op_id, enabled)
+
+                return jsonify({'success': True, 'config_saved': config_saved, 'op_id': op_id})
+            except Exception as exc:
+                self.logger.exception("Error saving radio debug config")
+                return jsonify({'success': False, 'error': str(exc)}), 500
+
         # ── Radio offline clear ──────────────────────────────────────────────
 
         @self.app.route('/api/admin/radio-offline-clear', methods=['POST'])
