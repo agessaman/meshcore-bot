@@ -1656,7 +1656,7 @@ class PathCommand(BaseCommand):
                 # Unknown repeater
                 line = self.translate('commands.path.node_unknown', node_id=node_id)
 
-            line = self._truncate_to_byte_length(line, 130)
+            line = self._truncate_to_byte_length(line, 150)
 
             lines.append(line)
 

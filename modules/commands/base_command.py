@@ -545,23 +545,21 @@ class BaseCommand(ABC):
             return False
 
     def get_max_message_length(self, message: MeshMessage) -> int:
-        """Calculate the maximum message length dynamically based on message type and bot username.
+        """Calculate the maximum payload size for the message body in UTF-8 bytes.
 
-        Channel messages are formatted as "<username>: <message>", so:
-        max_length = 150 - username_length - 2 (for ": ")
+        Channel messages are formatted as "<username>: <message>", so the body budget is:
+        160 - utf8_byte_len(username) - 2 (for ": "), matching firmware cipher block limits.
 
-        DM messages don't have a username prefix, so:
-        max_length = 150
+        DM (contact) messages have no username prefix; max safe payload is 158 bytes.
 
         Args:
             message: The MeshMessage to calculate max length for.
 
         Returns:
-            int: Maximum message length in characters.
+            int: Maximum message body length in UTF-8 bytes.
         """
-        # For DMs, no username prefix - full 150 characters available
         if message.is_dm:
-            return 150
+            return 158
 
         # For channel messages, calculate based on bot username length
         # Try to get device username from meshcore first (actual radio username)
@@ -584,13 +582,13 @@ class BaseCommand(ABC):
         if not username:
             username = self.bot.config.get('Bot', 'bot_name', fallback='Bot')
 
-        # 127 bytes are available for channel messages
-        # Calculate max length: 127 - username_length - 2 (for ": ")
-        max_length = 127 - len(str(username).encode('utf-8')) - 2
+        # 160 bytes are available for channel messages
+        # Calculate max length: 160 - username_length - 2 (for ": ")
+        max_length = 160 - len(str(username).encode('utf-8')) - 2
 
         # Ensure we don't return a negative or unreasonably small value
-        # Minimum of 110 bytes to ensure some functionality
-        return max(110, max_length)
+        # Minimum of 130 bytes to ensure some functionality
+        return max(130, max_length)
 
     def check_cooldown(self, user_id: Optional[str] = None) -> tuple[bool, float]:
         """Check if user is on cooldown.
