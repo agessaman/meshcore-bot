@@ -35,6 +35,12 @@ reconnect_delay_seconds = 5
 # Maximum delay in seconds between reconnect attempts (cap on exponential backoff)
 reconnect_max_delay_seconds = 60
 
+# Enable radio debug logging (default: false)
+# When true, the meshcore library logs raw protocol data at DEBUG level.
+# Useful for diagnosing connection issues, unexpected packet types, or
+# protocol-level problems. Generates very verbose output — disable in production.
+#radio_debug = false
+
 [Bot]
 # Bot name for identification and logging
 bot_name = MeshCoreBot
