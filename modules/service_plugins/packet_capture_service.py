@@ -318,10 +318,11 @@ class PacketCaptureService(BaseServicePlugin):
         return self.bot.meshcore if self.bot else None
 
     def is_healthy(self) -> bool:
-        return (
-            self._running
-            and bool(self.meshcore and self.meshcore.is_connected)
-        )
+        # Only check internal running state, not radio connection.
+        # Radio disconnects are transient — the service resumes naturally
+        # when the radio reconnects. Checking meshcore.is_connected here
+        # causes a restart storm during every radio reconnect cycle.
+        return self._running
 
     async def start(self) -> None:
         """Start the packet capture service.
