@@ -404,6 +404,7 @@ class MeshCoreBot:
             'hostname': self.config.get('Connection', 'hostname', fallback=''),
             'tcp_port': self.config.getint('Connection', 'tcp_port', fallback=5000),
             'timeout': self.config.getint('Connection', 'timeout', fallback=30),
+            # radio_debug intentionally excluded — only needs a reconnect, not a full restart
         }
 
     def _load_channel_rate_limiter(self) -> ChannelRateLimiter:
@@ -451,6 +452,7 @@ class MeshCoreBot:
                 'hostname': new_config.get('Connection', 'hostname', fallback=''),
                 'tcp_port': new_config.getint('Connection', 'tcp_port', fallback=5000),
                 'timeout': new_config.getint('Connection', 'timeout', fallback=30),
+                # radio_debug excluded — only needs a reconnect, not a full restart
             }
 
             # Check if radio settings changed
@@ -1024,6 +1026,9 @@ long_jokes = false
         # Prevent propagation to root logger to avoid duplicate output
         self.logger.propagate = False
 
+        # Save formatter for reuse (e.g. _configure_meshcore_debug_logging)
+        self._log_formatter = formatter
+
         # Configure meshcore library logging (separate from bot logging)
         # Configure all possible meshcore-related loggers
         meshcore_loggers = [
@@ -1081,6 +1086,44 @@ long_jokes = false
 
         # Setup signal handlers for graceful shutdown
         self._setup_signal_handlers()
+
+    def _configure_meshcore_debug_logging(self, enable: bool) -> None:
+        """Route meshcore library output through the bot's handlers.
+
+        When *enable* is True the meshcore loggers are set to DEBUG and share
+        all of the bot's handlers (console + rotating file), so raw-protocol
+        lines appear in the log file tagged as DEBUG.
+
+        When *enable* is False the loggers revert to the ``meshcore_log_level``
+        from config with a console-only StreamHandler (same as setup_logging).
+        """
+        meshcore_log_level = getattr(
+            logging,
+            self.config.get('Logging', 'meshcore_log_level', fallback='INFO')
+            if self.config.has_section('Logging') else 'INFO',
+        )
+        level = logging.DEBUG if enable else meshcore_log_level
+        loggers_to_configure = [
+            'meshcore', 'meshcore_cli', 'meshcore.meshcore',
+            'meshcore_cli.meshcore_cli', 'meshcore_cli.commands',
+            'meshcore_cli.connection',
+        ]
+        formatter = getattr(self, '_log_formatter', None)
+        for name in loggers_to_configure:
+            mc_logger = logging.getLogger(name)
+            mc_logger.setLevel(level)
+            mc_logger.handlers.clear()
+            mc_logger.propagate = False
+            if enable:
+                # Share the bot's handlers so debug output goes to the log file too
+                for h in self.logger.handlers:
+                    mc_logger.addHandler(h)
+            else:
+                # Revert to console-only StreamHandler (same as setup_logging baseline)
+                h = logging.StreamHandler()
+                if formatter:
+                    h.setFormatter(formatter)
+                mc_logger.addHandler(h)
 
     def _setup_routing_capture(self) -> None:
         """Setup routing information capture for web viewer.
@@ -1183,13 +1226,25 @@ long_jokes = false
 
             # Get connection type from config
             connection_type = self.config.get('Connection', 'connection_type', fallback='ble').lower()
+            # radio_debug: config.ini baseline, overridden by bot_metadata (set via web UI)
+            radio_debug = self.config.getboolean('Connection', 'radio_debug', fallback=False)
+            try:
+                meta_val = self.db_manager.get_metadata('radio.debug')
+                if meta_val == 'true':
+                    radio_debug = True
+                elif meta_val == 'false':
+                    radio_debug = False
+            except Exception:
+                pass
             self.logger.info(f"Using connection type: {connection_type}")
+            if radio_debug:
+                self.logger.info("Radio debug logging enabled — meshcore library output will be at DEBUG level")
 
             if connection_type == 'serial':
                 # Create serial connection
                 serial_port = self.config.get('Connection', 'serial_port', fallback='/dev/ttyUSB0')
                 self.logger.info(f"Connecting via serial port: {serial_port}")
-                self.meshcore = await meshcore.MeshCore.create_serial(serial_port, debug=False)
+                self.meshcore = await meshcore.MeshCore.create_serial(serial_port, debug=radio_debug)
             elif connection_type == 'tcp':
                 # Create TCP connection
                 hostname = self.config.get('Connection', 'hostname', fallback=None)
@@ -1198,12 +1253,15 @@ long_jokes = false
                     self.logger.error("TCP connection requires 'hostname' to be set in config")
                     return False
                 self.logger.info(f"Connecting via TCP: {hostname}:{tcp_port}")
-                self.meshcore = await meshcore.MeshCore.create_tcp(hostname, tcp_port, debug=False)
+                self.meshcore = await meshcore.MeshCore.create_tcp(hostname, tcp_port, debug=radio_debug)
             else:
                 # Create BLE connection (default)
                 ble_device_name = self.config.get('Connection', 'ble_device_name', fallback=None)
                 self.logger.info("Connecting via BLE" + (f" to device: {ble_device_name}" if ble_device_name else ""))
-                self.meshcore = await meshcore.MeshCore.create_ble(ble_device_name, debug=False)
+                self.meshcore = await meshcore.MeshCore.create_ble(ble_device_name, debug=radio_debug)
+
+            # Route meshcore library output through the bot's handlers (including log file)
+            self._configure_meshcore_debug_logging(radio_debug)
 
             if self.meshcore.is_connected:
                 self.connected = True
