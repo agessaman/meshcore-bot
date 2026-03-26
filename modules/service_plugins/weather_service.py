@@ -467,6 +467,11 @@ class WeatherService(BaseServicePlugin):
                 wind_dir_str = f"{wind_direction}" if wind_direction else ""
                 forecast_text += f" {wind_dir_str}{wind_speed}{self.wind_speed_unit}"
 
+            today_high = int(daily['temperature_2m_max'][0])
+            today_low = int(daily['temperature_2m_min'][0])
+            # Show high/low with labels to make it clear
+            forecast_text += f" | H:{today_high}{temp_symbol} L:{today_low}{temp_symbol}"
+
             # Add tomorrow's forecast
             daily_times = daily.get('time', [])
             daily_codes = daily.get('weather_code', [])
