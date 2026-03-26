@@ -501,7 +501,7 @@ class BaseCommand(ABC):
         """
         # For DMs, no username prefix - full 150 characters available
         if message.is_dm:
-            return 150
+            return 158
         
         # For channel messages, calculate based on bot username length
         # Try to get device username from meshcore first (actual radio username)
@@ -524,13 +524,13 @@ class BaseCommand(ABC):
         if not username:
             username = self.bot.config.get('Bot', 'bot_name', fallback='Bot')
         
-        # 127 bytes are available for channel messages 
-        # Calculate max length: 127 - username_length - 2 (for ": ")
-        max_length = 127 - len(str(username).encode('utf-8')) - 2
+        # 160 bytes are available for channel messages 
+        # Calculate max length: 160 - username_length - 2 (for ": ")
+        max_length = 160 - len(str(username).encode('utf-8')) - 2
         
         # Ensure we don't return a negative or unreasonably small value
-        # Minimum of 110 characters to ensure some functionality
-        return max(110, max_length)
+        # Minimum of 130 characters to ensure some functionality
+        return max(130, max_length)
     
     def check_cooldown(self, user_id: Optional[str] = None) -> Tuple[bool, float]:
         """Check if user is on cooldown.
