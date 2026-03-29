@@ -15,6 +15,7 @@ _LAST = "\u2514"
 _HORIZ = "\u2500"
 _CHILD_INTER = f"{_INTER}{_HORIZ} "
 _CHILD_LAST = f"{_LAST}{_HORIZ} "
+_CORNER = "\u2510"  # ┐ after common path
 
 
 def _make_bot():
@@ -162,7 +163,7 @@ class TestCondensePathLines:
         out = _condense_path_lines(paths)
         expected = "\n".join(
             [
-                "e6,0c,85,82,28,1a,cd,7e",
+                f"e6,0c,85,82,28,1a,cd,7e {_CORNER}",
                 f"{_INTER} 01",
                 f"{_INTER} 7a",
                 f"{_CHILD_INTER}09",
@@ -183,7 +184,7 @@ class TestCondensePathLines:
         # LCP shrinks so cc is not the whole “trunk” while dd/ee branch off
         expected = "\n".join(
             [
-                "aa,bb",
+                f"aa,bb {_CORNER}",
                 f"{_INTER} cc",
                 f"{_CHILD_INTER}dd",
                 f"{_CHILD_LAST}ee",
@@ -197,7 +198,7 @@ class TestCondensePathLines:
         out = _condense_path_lines(paths)
         expected = "\n".join(
             [
-                "cdf1,7e76",
+                f"cdf1,7e76 {_CORNER}",
                 f"{_INTER} 0101",
                 f"{_CHILD_LAST}0970",
             ]
@@ -215,7 +216,7 @@ class TestCondensePathLines:
         out = _condense_path_lines(paths)
         expected = "\n".join(
             [
-                "cdf119,860cca",
+                f"cdf119,860cca {_CORNER}",
                 f"{_INTER} 010101",
                 f"{_INTER} e0eed9",
                 f"{_CHILD_LAST}1ed612",
@@ -224,16 +225,39 @@ class TestCondensePathLines:
         assert out == expected
 
     def test_divergent_routes_with_shared_mid_prefix(self):
-        """TRM-style: group by first hop (13) so 01 vs 01,1e nest under ├─."""
+        """TRM-style: in-group LCP 13,01 so 1e nests; 83,09 stays its own branch."""
         paths = sorted(["41,96,13,01", "41,96,13,01,1e", "41,96,83,09"])
         out = _condense_path_lines(paths)
         expected = "\n".join(
             [
-                "41,96",
-                f"{_INTER} 13",
-                f"{_CHILD_INTER}01",
-                f"{_CHILD_INTER}01,1e",
+                f"41,96 {_CORNER}",
+                f"{_INTER} 13,01",
+                f"{_CHILD_INTER}1e",
                 f"{_LAST} 83,09",
+            ]
+        )
+        assert out == expected
+
+    def test_shared_second_hop_not_shown_as_endpoint(self):
+        """W7ZOO-style: 96,e0 shared by all variants; endpoints are 01,09,1e and fc,7a — not 96."""
+        paths = sorted(
+            [
+                "cc,fe,17,b3,7e,96,e0",
+                "cc,fe,17,b3,7e,96,e0,01",
+                "cc,fe,17,b3,7e,96,e0,09",
+                "cc,fe,17,b3,7e,96,e0,1e",
+                "cc,fe,17,b3,7e,fc,7a",
+            ]
+        )
+        out = _condense_path_lines(paths)
+        expected = "\n".join(
+            [
+                f"cc,fe,17,b3,7e {_CORNER}",
+                f"{_INTER} 96,e0",
+                f"{_CHILD_INTER}01",
+                f"{_CHILD_INTER}09",
+                f"{_CHILD_INTER}1e",
+                f"{_LAST} fc,7a",
             ]
         )
         assert out == expected
@@ -251,7 +275,7 @@ class TestCondensePathLines:
         out = _condense_path_lines(paths)
         expected = "\n".join(
             [
-                "e2,ab,1f,ef,55,21",
+                f"e2,ab,1f,ef,55,21 {_CORNER}",
                 f"{_INTER} 01",
                 f"{_CHILD_INTER}1e",
                 f"{_INTER} 09",
@@ -271,7 +295,7 @@ class TestCondensePathLines:
         out = _condense_path_lines(paths)
         expected = "\n".join(
             [
-                "d38a05,c4a86a,067b75,cafee0,1ffbd6,e8154b",
+                f"d38a05,c4a86a,067b75,cafee0,1ffbd6,e8154b {_CORNER}",
                 f"{_INTER} 860cca",
                 f"{_CHILD_LAST}010101",
             ]
@@ -292,7 +316,7 @@ class TestCondensePathLines:
         out = _condense_path_lines(paths)
         expected = "\n".join(
             [
-                "d38a05,479198,a837bc,7e7662",
+                f"d38a05,479198,a837bc,7e7662 {_CORNER}",
                 f"{_INTER} e0eed9",
                 f"{_CHILD_INTER}010101",
                 f"{_CHILD_INTER}0970d6",

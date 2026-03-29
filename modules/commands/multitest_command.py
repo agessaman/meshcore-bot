@@ -21,6 +21,7 @@ _HORIZ = "\u2500"  # ─ (BOX DRAWINGS LIGHT HORIZONTAL)
 # Second-level branches: ├─ / └─ (horizontal continues the tee)
 _BRANCH_CHILD_INTER = f"{_BRANCH_INTER}{_HORIZ} "
 _BRANCH_CHILD_LAST = f"{_BRANCH_LAST}{_HORIZ} "
+_BRANCH_CORNER = "\u2510"  # ┐ (marks end of common path before branches)
 
 
 def _tree_branch_lines_flat(suffixes: list[str]) -> list[str]:
@@ -36,7 +37,11 @@ def _tree_branch_lines_flat(suffixes: list[str]) -> list[str]:
 
 
 def _grouped_suffix_line_specs(non_empty: list[list[str]]) -> list[tuple[str, str]]:
-    """Build (line_kind, text) rows: 'head' uses ├/└ + space; 'nest' uses ├─/└─ + text."""
+    """Build (line_kind, text) rows: group by first hop, then longest in-group prefix on the head line.
+
+    So paths 96,e0 / 96,e0,01 / … share head '96,e0' and nest 01, … instead of head '96' with
+    misleading 'e0' as if it were the only endpoint under that branch.
+    """
     by_first: dict[str, list[list[str]]] = defaultdict(list)
     for suf in non_empty:
         by_first[suf[0]].append(suf[1:])
@@ -44,15 +49,19 @@ def _grouped_suffix_line_specs(non_empty: list[list[str]]) -> list[tuple[str, st
     specs: list[tuple[str, str]] = []
     for ft in sorted(by_first.keys()):
         rests = by_first[ft]
-        if len(rests) == 1:
-            r = rests[0]
-            if not r:
-                specs.append(("head", ft))
-            else:
-                specs.append(("head", ",".join([ft, *r])))
+        full_sufs = [[ft, *r] for r in rests]
+        if len(full_sufs) == 1:
+            specs.append(("head", ",".join(full_sufs[0])))
             continue
-        specs.append(("head", ft))
-        for rem in sorted((r for r in rests if r), key=lambda x: ",".join(x)):
+        inner_lcp = _longest_common_prefix(full_sufs)
+        head_text = ",".join(inner_lcp)
+        remainders = [s[len(inner_lcp) :] for s in full_sufs]
+        nested = sorted((r for r in remainders if r), key=lambda x: ",".join(x))
+        if not nested:
+            specs.append(("head", head_text))
+            continue
+        specs.append(("head", head_text))
+        for rem in nested:
             specs.append(("nest", ",".join(rem)))
     return specs
 
@@ -73,7 +82,7 @@ def _apply_tee_prefixes(specs: list[tuple[str, str]]) -> list[str]:
 
 
 def _format_suffix_branch_lines(suffix_tokens: list[list[str]], short_ellipsis: bool) -> list[str]:
-    """Format suffixes after display LCP: group by first hop, nest continuations with U+2500."""
+    """Format suffixes after display LCP: group by first hop, in-group LCP on head, nest tails with U+2500."""
     non_empty = [s for s in suffix_tokens if s]
     if not non_empty:
         return _tree_branch_lines_flat(["..."]) if short_ellipsis else []
@@ -140,10 +149,12 @@ def _shrink_display_lcp(maximal: list[list[str]], lcp: list[str]) -> list[str]:
 
 
 def _format_path_cluster(token_lists: list[list[str]], use_brackets: bool) -> list[str]:
-    """Format a cluster into condensed lines (common prefix + ├/└ and ├─/└─).
+    """Format a cluster into condensed lines (common prefix + ┐ + ├/└ and ├─/└─).
 
-    Suffixes are grouped by their first hop after the display LCP; multiple variants under the same
-    hop use one ├ line for that hop and ├─/└─ for continuations. The last line of the block uses └/└─.
+    The shared path line ends with ┐ (U+2510) when branch lines follow. Suffixes are grouped by
+    their first hop after the display LCP; within a group, the longest common prefix of all
+    suffixes in that group is one ├ line, then ├─/└─ for each distinct tail. The last line of the
+    block uses └/└─.
 
     If one path stops exactly where another continues, the displayed LCP is shortened so the shared
     segment is not mistaken for a single endpoint (e.g. only └ tail after a full shorter path).
@@ -166,10 +177,13 @@ def _format_path_cluster(token_lists: list[list[str]], use_brackets: bool) -> li
 
     if len(lcp) > 0:
         suffix_tokens = [t[len(lcp) :] for t in maximal]
-        lines = [",".join(lcp)]
+        common = ",".join(lcp)
         branch_lines = _format_suffix_branch_lines(suffix_tokens, short_ellipsis)
         if branch_lines:
+            lines = [f"{common} {_BRANCH_CORNER}"]
             lines.extend(branch_lines)
+        else:
+            lines = [common]
         return lines
 
     if len(maximal) == 1:
