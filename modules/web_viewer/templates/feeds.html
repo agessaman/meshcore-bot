@@ -742,7 +742,10 @@ class FeedManager {
             
             const response = await fetch(url, {
                 method: method,
-                headers: {'Content-Type': 'application/json'},
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
                 body: JSON.stringify(data)
             });
             
@@ -836,7 +839,10 @@ class FeedManager {
             
             const response = await fetch('/api/feeds/preview', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
                 body: JSON.stringify(data)
             });
             
@@ -927,7 +933,10 @@ class FeedManager {
         try {
             const response = await fetch(`/api/feeds/${feedId}`, {
                 method: 'PUT',
-                headers: {'Content-Type': 'application/json'},
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
                 body: JSON.stringify({enabled: enabled})
             });
             
@@ -950,7 +959,8 @@ class FeedManager {
         
         try {
             const response = await fetch(`/api/feeds/${feedId}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
             });
             
             if (response.ok) {

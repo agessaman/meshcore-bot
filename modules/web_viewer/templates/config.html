@@ -466,7 +466,10 @@ class ConfigManager {
         try {
             const resp = await fetch('/api/config/notifications', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
                 body: JSON.stringify(this.buildPayload()),
             });
             const data = await resp.json();
@@ -490,7 +493,10 @@ class ConfigManager {
         this.testBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Sending...';
         this.hideStatus();
         try {
-            const resp = await fetch('/api/config/notifications/test', { method: 'POST' });
+            const resp = await fetch('/api/config/notifications/test', {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            });
             const data = await resp.json();
             if (!resp.ok) throw new Error(data.error || 'Send failed');
             this.showStatus('Test email sent successfully.', 'success');
@@ -550,7 +556,10 @@ class LogRotationManager {
         try {
             const resp = await fetch('/api/config/logging', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
                 body: JSON.stringify({
                     log_max_bytes:    this.maxBytesEl.value,
                     log_backup_count: this.backupCountEl.value,
@@ -618,7 +627,10 @@ class DbBackupManager {
         }
         this.hide();
         try {
-            const resp = await fetch('/api/maintenance/backup_now', { method: 'POST' });
+            const resp = await fetch('/api/maintenance/backup_now', {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            });
             const data = await resp.json();
             if (!resp.ok || !data.success) throw new Error(data.error || 'Backup failed');
             const pathInfo = data.path ? ` → ${data.path}` : '';
@@ -642,7 +654,10 @@ class DbBackupManager {
         try {
             const resp = await fetch('/api/config/maintenance', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
                 body: JSON.stringify({
                     db_backup_enabled:         this.enabledToggle.checked ? 'true' : 'false',
                     db_backup_schedule:        this.scheduleEl.value,
@@ -787,7 +802,10 @@ class RestoreManager {
         try {
             const resp = await fetch('/api/maintenance/restore', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
                 body: JSON.stringify({ db_file: path }),
             });
             const data = await resp.json();
@@ -908,7 +926,10 @@ class PurgeManager {
             }
             const resp = await fetch('/api/maintenance/purge', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
                 body: JSON.stringify(body),
             });
             const data = await resp.json();
@@ -1060,7 +1081,10 @@ class DatabaseInfoManager {
             }
             const response = await fetch('/api/optimize-database', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
             });
             const result = await response.json();
             if (result.success) {

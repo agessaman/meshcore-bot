@@ -383,7 +383,10 @@ class RadioManager {
         try {
             const response = await fetch('/api/radio/connect', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
                 body: JSON.stringify({ action })
             });
             const data = await response.json();
@@ -648,7 +651,8 @@ class RadioManager {
             
             try {
                 const response = await fetch(`/api/channels/${channelIdx}`, {
-                    method: 'DELETE'
+                    method: 'DELETE',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
                 });
                 
                 const result = await response.json();
@@ -681,7 +685,8 @@ class RadioManager {
             // Fallback if button not found
             try {
                 const response = await fetch(`/api/channels/${channelIdx}`, {
-                    method: 'DELETE'
+                    method: 'DELETE',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
                 });
                 
                 const result = await response.json();

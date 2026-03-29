@@ -1147,7 +1147,8 @@ class ModernContactsManager {
                         const response = await fetch('/api/decode-path', {
                             method: 'POST',
                             headers: {
-                                'Content-Type': 'application/json'
+                                'Content-Type': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest'
                             },
                             body: JSON.stringify(body)
                         });
@@ -1421,7 +1422,8 @@ class ModernContactsManager {
             const response = await fetch('/api/decode-path', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
                 },
                 body: JSON.stringify(body)
             });
@@ -1576,7 +1578,8 @@ class ModernContactsManager {
             const response = await fetch('/api/geocode-contact', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
                 },
                 body: JSON.stringify({
                     public_key: userId
@@ -1653,7 +1656,8 @@ class ModernContactsManager {
             const response = await fetch('/api/toggle-star-contact', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
                 },
                 body: JSON.stringify({
                     public_key: userId
@@ -1788,7 +1792,8 @@ class ModernContactsManager {
             const response = await fetch('/api/delete-contact', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
                 },
                 body: JSON.stringify({
                     public_key: userId
@@ -1910,7 +1915,10 @@ class ModernContactsManager {
                 try {
                     const response = await fetch('/api/delete-contact', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
                         body: JSON.stringify({ public_key: userId })
                     });
                     const data = await response.json();
@@ -2032,7 +2040,10 @@ class ModernContactsManager {
         try {
             const resp = await fetch('/api/contacts/purge', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
                 body: JSON.stringify({ days })
             });
             const data = await resp.json();
