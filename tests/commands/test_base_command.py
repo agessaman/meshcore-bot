@@ -1,5 +1,6 @@
 """Tests for modules.commands.base_command."""
 
+from unittest.mock import Mock
 
 from modules.commands.alert_command import AlertCommand
 from modules.commands.base_command import BaseCommand
@@ -181,6 +182,48 @@ class TestGetConfigValue:
         command_mock_bot.config.set("Alert_Command", "alert_enabled", "false")
         cmd = AlertCommand(command_mock_bot)
         assert cmd.alert_enabled is False
+
+
+class TestGetMaxMessageLength:
+    """Tests for BaseCommand.get_max_message_length (UTF-8 OTA byte budgets, PR #128)."""
+
+    def test_dm_returns_158_bytes(self, command_mock_bot):
+        command_mock_bot.meshcore = None
+        cmd = _TestCommand(command_mock_bot)
+        msg = mock_message(content="x", channel="general", is_dm=True)
+        assert cmd.get_max_message_length(msg) == 158
+
+    def test_channel_uses_bot_name_utf8_bytes(self, command_mock_bot):
+        command_mock_bot.meshcore = None
+        command_mock_bot.config.set("Bot", "bot_name", "LongBotName")
+        cmd = _TestCommand(command_mock_bot)
+        msg = mock_message(content="x", channel="general", is_dm=False)
+        assert cmd.get_max_message_length(msg) == 147  # 160 - 11 - 2
+
+    def test_channel_prefers_meshcore_username_utf8_bytes(self, command_mock_bot):
+        meshcore = Mock()
+        meshcore.self_info = {"name": "Radio"}
+        command_mock_bot.meshcore = meshcore
+        command_mock_bot.config.set("Bot", "bot_name", "fallback")
+        cmd = _TestCommand(command_mock_bot)
+        msg = mock_message(content="x", channel="general", is_dm=False)
+        assert cmd.get_max_message_length(msg) == 153  # 160 - 5 - 2
+
+    def test_channel_unicode_username_uses_utf8_not_char_count(self, command_mock_bot):
+        """Emoji radio name: 4 chars, 16 UTF-8 bytes — budget must use byte length."""
+        meshcore = Mock()
+        meshcore.self_info = {"name": "😀😀😀😀"}
+        command_mock_bot.meshcore = meshcore
+        cmd = _TestCommand(command_mock_bot)
+        msg = mock_message(content="x", channel="general", is_dm=False)
+        assert cmd.get_max_message_length(msg) == 142  # 160 - 16 - 2
+
+    def test_channel_very_long_username_hits_130_byte_floor(self, command_mock_bot):
+        command_mock_bot.meshcore = None
+        command_mock_bot.config.set("Bot", "bot_name", "A" * 40)
+        cmd = _TestCommand(command_mock_bot)
+        msg = mock_message(content="x", channel="general", is_dm=False)
+        assert cmd.get_max_message_length(msg) == 130  # max(130, 160 - 40 - 2)
 
 
 class TestCanExecute:

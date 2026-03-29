@@ -745,3 +745,22 @@ class TestGetMaxMessageLength:
         msg.is_dm = False
         # 160 - utf8("Radio") - 2 = 160 - 5 - 2 = 153
         assert mgr.get_max_message_length(msg) == 153
+
+    def test_parity_with_base_command_get_max_message_length(self):
+        """CommandManager must mirror BaseCommand byte budgets (PR #128)."""
+        from tests.commands.test_base_command import _TestCommand
+
+        cases: list[tuple[str, str | None, bool]] = [
+            ("LongBotName", None, False),
+            ("Bot", None, True),
+            ("fallback", "Radio", False),
+            ("x", "😀😀", False),
+        ]
+        for bot_name, username, is_dm in cases:
+            mgr = self._make_manager(bot_name=bot_name, username=username)
+            cmd = _TestCommand(mgr.bot)
+            msg = Mock()
+            msg.is_dm = is_dm
+            m_len = mgr.get_max_message_length(msg)
+            b_len = cmd.get_max_message_length(msg)
+            assert m_len == b_len, (bot_name, username, is_dm, m_len, b_len)
