@@ -663,160 +663,144 @@ class TestTrackContactAdvertisement:
         """New contact (not in DB) is inserted and True is returned."""
         advert = self._make_advert()
 
-        # DB query for duplicate packet → nothing
-        # DB query for existing contact → nothing
-        # execute_update for INSERT, execute_update for is_currently_tracked
-        rm.db_manager.execute_query = Mock(return_value=[])
-        rm.db_manager.execute_update = Mock()
         rm.bot.meshcore = Mock()
         rm.bot.meshcore.contacts = {}
 
-        with patch.object(rm, "_track_daily_advertisement", new_callable=AsyncMock):
-            result = await rm.track_contact_advertisement(advert)
+        result = await rm.track_contact_advertisement(advert)
 
         assert result is True
-        # execute_update called at least once (INSERT)
-        rm.db_manager.execute_update.assert_called()
+        # Verify the contact was actually inserted into the DB
+        rows = rm.db_manager.execute_query(
+            'SELECT * FROM complete_contact_tracking WHERE public_key = ?',
+            ('aabb1122',)
+        )
+        assert len(rows) == 1
+        assert rows[0]['name'] == 'TestNode'
 
     async def test_existing_contact_updated_returns_true(self, rm):
         """Existing contact in DB is updated (advert_count incremented) → True."""
         advert = self._make_advert()
-        existing_row = {
-            "id": 1,
-            "advert_count": 5,
-            "last_heard": "2024-01-01 00:00:00",
-            "latitude": None,
-            "longitude": None,
-            "city": None,
-            "state": None,
-            "country": None,
-            "out_path": None,
-            "out_path_len": -1,
-            "out_bytes_per_hop": None,
-        }
-        rm.db_manager.execute_query = Mock(return_value=[existing_row])
-        rm.db_manager.execute_update = Mock()
         rm.bot.meshcore = Mock()
         rm.bot.meshcore.contacts = {}
 
-        with patch.object(rm, "_track_daily_advertisement", new_callable=AsyncMock):
-            result = await rm.track_contact_advertisement(advert)
+        # Insert the contact first so the UPDATE path fires
+        await rm.track_contact_advertisement(advert)
+
+        # Call again — should update existing entry, incrementing advert_count
+        result = await rm.track_contact_advertisement(advert)
 
         assert result is True
-        # The UPDATE path passes advert_count=6
-        update_call = rm.db_manager.execute_update.call_args_list[0]
-        assert "UPDATE" in update_call[0][0]
-        params = update_call[0][1]
-        # advert_count is third positional param in the UPDATE tuple
-        assert params[2] == 6
+        rows = rm.db_manager.execute_query(
+            'SELECT advert_count FROM complete_contact_tracking WHERE public_key = ?',
+            ('aabb1122',)
+        )
+        assert rows[0]['advert_count'] == 2
 
     async def test_duplicate_packet_hash_skips_and_returns_true(self, rm):
         """When packet_hash is already in unique_advert_packets, return True without re-inserting."""
         advert = self._make_advert()
         packet_hash = "deadbeef12345678"
+        rm.bot.meshcore = Mock()
+        rm.bot.meshcore.contacts = {}
 
-        def fake_query(query, params=None):
-            if "unique_advert_packets" in query and "public_key" in query and "packet_hash" in query:
-                return [{"id": 99}]  # Simulate duplicate found
-            return []
+        # First call inserts the contact and records the packet hash
+        await rm.track_contact_advertisement(advert, packet_hash=packet_hash)
+        rows_before = rm.db_manager.execute_query(
+            'SELECT advert_count FROM complete_contact_tracking WHERE public_key = ?',
+            ('aabb1122',)
+        )
 
-        rm.db_manager.execute_query = Mock(side_effect=fake_query)
-        rm.db_manager.execute_update = Mock()
-
+        # Second call with same packet_hash should skip the update
         result = await rm.track_contact_advertisement(advert, packet_hash=packet_hash)
 
         assert result is True
-        # execute_update should NOT have been called (no upsert)
-        rm.db_manager.execute_update.assert_not_called()
+        rows_after = rm.db_manager.execute_query(
+            'SELECT advert_count FROM complete_contact_tracking WHERE public_key = ?',
+            ('aabb1122',)
+        )
+        # advert_count should NOT have been incremented
+        assert rows_after[0]['advert_count'] == rows_before[0]['advert_count']
 
     async def test_signal_info_direct_hop_saves_rssi(self, rm):
         """Zero-hop signal_info should populate signal_strength and snr in the INSERT."""
-        advert = self._make_advert()
+        advert = self._make_advert(public_key="direct_hop_key")
         signal_info = {"hops": 0, "rssi": -85.0, "snr": 7.5}
 
-        rm.db_manager.execute_query = Mock(return_value=[])
-        rm.db_manager.execute_update = Mock()
         rm.bot.meshcore = Mock()
         rm.bot.meshcore.contacts = {}
 
-        with patch.object(rm, "_track_daily_advertisement", new_callable=AsyncMock):
-            result = await rm.track_contact_advertisement(advert, signal_info=signal_info)
+        result = await rm.track_contact_advertisement(advert, signal_info=signal_info)
 
         assert result is True
-        insert_call = rm.db_manager.execute_update.call_args_list[0]
-        params = insert_call[0][1]
-        # signal_strength and snr should be -85.0 and 7.5 in the INSERT params
-        assert -85.0 in params
-        assert 7.5 in params
+        rows = rm.db_manager.execute_query(
+            'SELECT signal_strength, snr FROM complete_contact_tracking WHERE public_key = ?',
+            ('direct_hop_key',)
+        )
+        assert rows[0]['signal_strength'] == -85.0
+        assert rows[0]['snr'] == 7.5
 
     async def test_multi_hop_signal_info_not_saved(self, rm):
         """Multi-hop (hops>0) signal_info should NOT persist RSSI/SNR."""
-        advert = self._make_advert()
+        advert = self._make_advert(public_key="multi_hop_key")
         signal_info = {"hops": 2, "rssi": -70.0, "snr": 9.0}
 
-        rm.db_manager.execute_query = Mock(return_value=[])
-        rm.db_manager.execute_update = Mock()
         rm.bot.meshcore = Mock()
         rm.bot.meshcore.contacts = {}
 
-        with patch.object(rm, "_track_daily_advertisement", new_callable=AsyncMock):
-            await rm.track_contact_advertisement(advert, signal_info=signal_info)
+        await rm.track_contact_advertisement(advert, signal_info=signal_info)
 
-        insert_call = rm.db_manager.execute_update.call_args_list[0]
-        params = insert_call[0][1]
-        # RSSI (-70.0) should NOT appear; signal_strength should be None
-        assert -70.0 not in params
+        rows = rm.db_manager.execute_query(
+            'SELECT signal_strength, snr FROM complete_contact_tracking WHERE public_key = ?',
+            ('multi_hop_key',)
+        )
+        assert rows[0]['signal_strength'] is None
+        assert rows[0]['snr'] is None
 
     async def test_db_exception_returns_false(self, rm):
         """An unexpected exception during DB operations should return False."""
         advert = self._make_advert()
-        rm.db_manager.execute_query = Mock(side_effect=Exception("db exploded"))
+        rm.db_manager.execute_query_on_connection = Mock(side_effect=Exception("db exploded"))
 
         result = await rm.track_contact_advertisement(advert)
 
         assert result is False
         rm.logger.error.assert_called()
 
-    async def test_track_daily_advertisement_called(self, rm):
-        """_track_daily_advertisement should be awaited once on success."""
-        advert = self._make_advert()
-        rm.db_manager.execute_query = Mock(return_value=[])
-        rm.db_manager.execute_update = Mock()
+    async def test_daily_stats_updated_on_insert(self, rm):
+        """Daily stats should be updated when a new contact is inserted."""
+        advert = self._make_advert(public_key="daily_stats_key")
         rm.bot.meshcore = Mock()
         rm.bot.meshcore.contacts = {}
 
-        with patch.object(rm, "_track_daily_advertisement", new_callable=AsyncMock) as mock_daily:
-            await rm.track_contact_advertisement(advert)
+        result = await rm.track_contact_advertisement(advert)
 
-        mock_daily.assert_awaited_once()
+        assert result is True
+        # Verify daily_stats was inserted
+        from datetime import date
+        rows = rm.db_manager.execute_query(
+            'SELECT * FROM daily_stats WHERE public_key = ? AND date = ?',
+            ('daily_stats_key', date.today())
+        )
+        assert len(rows) == 1
 
     async def test_path_fields_preserved_from_existing(self, rm):
         """When existing row already has out_path, the new advert should NOT overwrite it."""
-        advert = self._make_advert(out_path="new/path", out_path_len=2)
-        existing_row = {
-            "id": 1,
-            "advert_count": 3,
-            "last_heard": "2024-01-01 00:00:00",
-            "latitude": None,
-            "longitude": None,
-            "city": None,
-            "state": None,
-            "country": None,
-            "out_path": "original/path",
-            "out_path_len": 1,
-            "out_bytes_per_hop": None,
-        }
-        rm.db_manager.execute_query = Mock(return_value=[existing_row])
-        rm.db_manager.execute_update = Mock()
+        # First insert with original path
+        advert1 = self._make_advert(public_key="pathtest_key", out_path="original/path", out_path_len=1)
         rm.bot.meshcore = Mock()
         rm.bot.meshcore.contacts = {}
+        await rm.track_contact_advertisement(advert1)
 
-        with patch.object(rm, "_track_daily_advertisement", new_callable=AsyncMock):
-            await rm.track_contact_advertisement(advert)
+        # Second call with a different path — existing path should be preserved
+        advert2 = self._make_advert(public_key="pathtest_key", out_path="new/path", out_path_len=2)
+        await rm.track_contact_advertisement(advert2)
 
-        update_call = rm.db_manager.execute_update.call_args_list[0]
-        params = update_call[0][1]
-        assert "original/path" in params
+        rows = rm.db_manager.execute_query(
+            'SELECT out_path, out_path_len FROM complete_contact_tracking WHERE public_key = ?',
+            ('pathtest_key',)
+        )
+        assert rows[0]['out_path'] == "original/path"
+        assert rows[0]['out_path_len'] == 1
 
 
 # ---------------------------------------------------------------------------

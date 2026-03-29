@@ -8,11 +8,24 @@ import json
 import re
 import sqlite3
 from collections.abc import AsyncGenerator, Generator
+from datetime import date, datetime
 from contextlib import asynccontextmanager, contextmanager
 from typing import Any, Optional
 
 from .db_migrations import MigrationRunner
 from .security_utils import VALID_JOURNAL_MODES
+
+
+def _adapt_sqlite_date(val: date) -> str:
+    return val.isoformat()
+
+
+def _adapt_sqlite_datetime(val: datetime) -> str:
+    return val.isoformat(sep=" ", timespec="microseconds")
+
+
+sqlite3.register_adapter(date, _adapt_sqlite_date)
+sqlite3.register_adapter(datetime, _adapt_sqlite_datetime)
 
 
 class DBManager:

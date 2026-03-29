@@ -529,16 +529,15 @@ class WebViewerIntegration:
                 f"Port must be between 1024-65535 (non-privileged), got: {self.port}"
             )
 
-        # Security warning for network exposure
+        # Enforce authentication when binding to non-loopback interfaces
         if self.host == '0.0.0.0':
-            self.logger.warning(
-                "\n" + "="*70 + "\n"
-                "⚠️  SECURITY WARNING: Web viewer binding to all interfaces (0.0.0.0)\n"
-                "This exposes bot data (messages, contacts, routing) to your network\n"
-                "WITHOUT AUTHENTICATION. Ensure you have firewall protection!\n"
-                "For local-only access, use host=127.0.0.1 in config.\n"
-                + "="*70
-            )
+            password = self.bot.config.get('Web_Viewer', 'web_viewer_password', fallback='').strip()
+            if not password:
+                raise ValueError(
+                    "web_viewer_password must be set in [Web_Viewer] config when "
+                    "binding to all interfaces (host = 0.0.0.0). "
+                    "For unauthenticated local-only access, use host = 127.0.0.1."
+                )
 
     def start_viewer(self):
         """Start the web viewer in a separate thread"""

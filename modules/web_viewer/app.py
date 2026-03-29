@@ -21,6 +21,7 @@ from typing import Any, Optional, Union
 from flask import (
     Flask,
     Response,
+    current_app,
     jsonify,
     make_response,
     redirect,
@@ -1192,6 +1193,66 @@ class BotDataViewer:
                 return make_response(jsonify({'error': 'Authentication required'}), 401)
             next_url = request.path
             return redirect(url_for('login', next=next_url))
+
+        @self.app.before_request
+        def csrf_protection():
+            """Reject cross-origin state-changing requests.
+
+            For API endpoints (JSON), require the X-Requested-With header.
+            Browsers block cross-origin custom headers without a CORS preflight,
+            and our CORS policy restricts allowed origins — so the presence of
+            this header proves the request is same-origin or from an allowed origin.
+            Form-based POST to /login is exempt (uses session cookie + redirect).
+            """
+            if request.method not in ('POST', 'PUT', 'DELETE', 'PATCH'):
+                return
+            if current_app.config.get('TESTING'):
+                return  # Skip CSRF in test mode
+            if request.path == '/login':
+                return  # Login form uses traditional POST
+            if request.headers.get('X-Requested-With'):
+                return  # Custom header present — same-origin or CORS-approved
+            if request.path.startswith('/api/'):
+                return make_response(
+                    jsonify({'error': 'Missing X-Requested-With header'}), 403
+                )
+
+        @self.app.after_request
+        def set_security_headers(response):
+            # Security headers
+            response.headers['X-Content-Type-Options'] = 'nosniff'
+            response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+            response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+            # Allow CDNs used by templates (base.html, login.html, mesh.html).
+            # Without these hosts, browsers block external CSS/JS/fonts (not CSRF).
+            response.headers['Content-Security-Policy'] = (
+                "default-src 'self'; "
+                "script-src 'self' 'unsafe-inline' "
+                "https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; "
+                "style-src 'self' 'unsafe-inline' "
+                "https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; "
+                "img-src 'self' data: https://*.tile.openstreetmap.org "
+                "https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+                "connect-src 'self' ws: wss: "
+                "https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; "
+                "font-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com"
+            )
+
+            # Sanitize error details from 5xx JSON responses to prevent info disclosure.
+            # The full exception is already logged server-side; clients only need a
+            # generic message.  Preserve 'error' key presence so callers can detect
+            # failure, but strip internal details (file paths, DB errors, etc.).
+            if response.status_code >= 500 and response.content_type and 'json' in response.content_type:
+                try:
+                    data = response.get_json(silent=True)
+                    if data and isinstance(data, dict) and 'error' in data:
+                        data['error'] = 'An internal error occurred'
+                        data.pop('traceback', None)
+                        response.set_data(json.dumps(data))
+                except Exception:
+                    pass  # Don't break the response if sanitization fails
+
+            return response
 
         @self.app.route('/login', methods=['GET', 'POST'])
         def login():

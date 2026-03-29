@@ -1835,7 +1835,7 @@ class TestBackupNowRoute:
         assert resp.status_code == 503
         data = resp.get_json()
         assert data["success"] is False
-        assert "Scheduler not available" in data["error"]
+        assert "error" in data  # Error details sanitized in 5xx responses
 
     def test_returns_200_on_successful_backup(self, viewer, tmp_path):
         """Returns 200 with success=True and path when backup succeeds."""

@@ -3,7 +3,7 @@
 Task list for meshcore-bot development. Auto-updated sections are regenerated
 by running `python scripts/update_todos.py` (see [Auto-Update](#auto-update)).
 
-**Last updated:** 2026-03-17 — coverage at 36.86% (2,139 passed / 29 skipped); `fail_under=35`; target 40%; 25 PR branches pushed to KG7QIN fork (PRs #122–#124 open against agessaman:dev); CI matrix fixed (Python 3.9 removed, ruff/mypy/ShellCheck all green)
+**Last updated:** 2026-03-29 — coverage at 36.86% (2,139 passed / 29 skipped); `fail_under=35`; target 40%; 25 PR branches pushed to KG7QIN fork (PRs #122–#124 open against agessaman:dev); CI matrix fixed (Python 3.9 removed, ruff/mypy/ShellCheck all green)
 
 ---
 
@@ -262,6 +262,6 @@ Or run it as part of a pre-commit hook by adding to `.pre-commit-config.yaml`:
 
 ## Inline TODOs (auto-generated)
 
-> _Last scanned: 2026-03-15. No `# TODO`, `# FIXME`, or `# HACK` markers
+> _Last scanned: 2026-03-29. No `# TODO`, `# FIXME`, or `# HACK` markers
 > found in `modules/` or `tests/`. Run `python scripts/update_todos.py` to refresh._
 

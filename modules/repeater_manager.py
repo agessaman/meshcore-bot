@@ -120,104 +120,168 @@ class RepeaterManager:
             out_path_len = advert_data.get('out_path_len', -1)
             out_bytes_per_hop = advert_data.get('out_bytes_per_hop')
 
-            # Check if this packet_hash was already processed for this contact
-            # This prevents duplicate writes of the same advert packet
-            if packet_hash and packet_hash != "0000000000000000":
-                existing_packet = self.db_manager.execute_query(
-                    'SELECT id FROM unique_advert_packets WHERE public_key = ? AND packet_hash = ?',
-                    (public_key, packet_hash)
+            # Wrap all DB operations in a single transaction for atomicity
+            with self.db_manager.connection() as conn:
+                # Check if this packet_hash was already processed for this contact
+                # This prevents duplicate writes of the same advert packet
+                if packet_hash and packet_hash != "0000000000000000":
+                    existing_packet = self.db_manager.execute_query_on_connection(
+                        conn,
+                        'SELECT id FROM unique_advert_packets WHERE public_key = ? AND packet_hash = ?',
+                        (public_key, packet_hash)
+                    )
+                    if existing_packet:
+                        # This packet_hash was already processed - skip contact update
+                        self.logger.debug(f"Skipping duplicate advert packet for {name}: {packet_hash[:8]}... (already processed)")
+                        return True  # Return True since packet was already tracked (not an error)
+
+                # Check if this contact is already in our complete tracking
+                existing = self.db_manager.execute_query_on_connection(
+                    conn,
+                    'SELECT id, advert_count, last_heard, latitude, longitude, city, state, country, out_path, out_path_len, out_bytes_per_hop FROM complete_contact_tracking WHERE public_key = ?',
+                    (public_key,)
                 )
-                if existing_packet:
-                    # This packet_hash was already processed - skip contact update
-                    self.logger.debug(f"Skipping duplicate advert packet for {name}: {packet_hash[:8]}... (already processed)")
-                    return True  # Return True since packet was already tracked (not an error)
 
-            # Check if this contact is already in our complete tracking
-            existing = self.db_manager.execute_query(
-                'SELECT id, advert_count, last_heard, latitude, longitude, city, state, country, out_path, out_path_len, out_bytes_per_hop FROM complete_contact_tracking WHERE public_key = ?',
-                (public_key,)
-            )
+                current_time = datetime.now()
 
-            current_time = datetime.now()
+                # Extract location data first (without geocoding)
+                self.logger.debug(f"🔍 Extracting location data for {name}...")
+                location_info = self._extract_location_data(advert_data, should_geocode=False)
+                self.logger.debug(f"📍 Location data extracted: {location_info}")
 
-            # Extract location data first (without geocoding)
-            self.logger.debug(f"🔍 Extracting location data for {name}...")
-            location_info = self._extract_location_data(advert_data, should_geocode=False)
-            self.logger.debug(f"📍 Location data extracted: {location_info}")
+                # Check if we need to perform geocoding based on location changes
+                existing_data = existing[0] if existing else None
+                should_geocode, location_info = self._should_geocode_location(location_info, existing_data, name, packet_hash)
 
-            # Check if we need to perform geocoding based on location changes
-            existing_data = existing[0] if existing else None
-            should_geocode, location_info = self._should_geocode_location(location_info, existing_data, name, packet_hash)
+                # Re-extract location data with geocoding if needed
+                if should_geocode:
+                    self.logger.debug(f"📍 Re-extracting location data with geocoding for {name}")
+                    location_info = self._extract_location_data(advert_data, should_geocode=True, packet_hash=packet_hash)
+                    self.logger.debug(f"📍 Location data with geocoding: {location_info}")
 
-            # Re-extract location data with geocoding if needed
-            if should_geocode:
-                self.logger.debug(f"📍 Re-extracting location data with geocoding for {name}")
-                location_info = self._extract_location_data(advert_data, should_geocode=True, packet_hash=packet_hash)
-                self.logger.debug(f"📍 Location data with geocoding: {location_info}")
+                    # Update geocoding cache if we have a valid packet_hash (skip invalid/default hashes)
+                    if packet_hash and packet_hash != "0000000000000000" and location_info.get('latitude') and location_info.get('longitude'):
+                        self.geocoding_cache[packet_hash] = time.time()
+                        self.logger.debug(f"📍 Cached geocoding for packet_hash {packet_hash[:16]}...")
 
-                # Update geocoding cache if we have a valid packet_hash (skip invalid/default hashes)
-                if packet_hash and packet_hash != "0000000000000000" and location_info.get('latitude') and location_info.get('longitude'):
-                    self.geocoding_cache[packet_hash] = time.time()
-                    self.logger.debug(f"📍 Cached geocoding for packet_hash {packet_hash[:16]}...")
+                if existing:
+                    # Update existing entry
+                    advert_count = existing[0]['advert_count'] + 1
+                    existing_out_path = existing[0].get('out_path')
+                    existing_out_path_len = existing[0].get('out_path_len')
 
-            if existing:
-                # Update existing entry
-                advert_count = existing[0]['advert_count'] + 1
-                existing_out_path = existing[0].get('out_path')
-                existing_out_path_len = existing[0].get('out_path_len')
+                    # Only update out_path and out_path_len if they are NULL/empty (first-seen path)
+                    # This preserves the first (shortest) path and doesn't overwrite it
+                    final_out_path = out_path if (not existing_out_path or existing_out_path == '') else existing_out_path
+                    final_out_path_len = out_path_len if (existing_out_path_len is None or existing_out_path_len == -1) else existing_out_path_len
+                    final_out_bytes_per_hop = out_bytes_per_hop if (out_bytes_per_hop is not None) else existing[0].get('out_bytes_per_hop')
 
-                # Only update out_path and out_path_len if they are NULL/empty (first-seen path)
-                # This preserves the first (shortest) path and doesn't overwrite it
-                final_out_path = out_path if (not existing_out_path or existing_out_path == '') else existing_out_path
-                final_out_path_len = out_path_len if (existing_out_path_len is None or existing_out_path_len == -1) else existing_out_path_len
-                final_out_bytes_per_hop = out_bytes_per_hop if (out_bytes_per_hop is not None) else existing[0].get('out_bytes_per_hop')
+                    self.db_manager.execute_update_on_connection(conn, '''
+                        UPDATE complete_contact_tracking
+                        SET name = ?, last_heard = ?, advert_count = ?, role = ?, device_type = ?,
+                            latitude = ?, longitude = ?, city = ?, state = ?, country = ?,
+                            raw_advert_data = ?, signal_strength = ?, snr = ?, hop_count = ?,
+                            last_advert_timestamp = ?, out_path = ?, out_path_len = ?, out_bytes_per_hop = ?
+                        WHERE public_key = ?
+                    ''', (
+                        name, current_time, advert_count, role, device_type_str,
+                        location_info['latitude'], location_info['longitude'],
+                        location_info['city'], location_info['state'], location_info['country'],
+                        json.dumps(advert_data), signal_strength, snr, hop_count,
+                        current_time, final_out_path, final_out_path_len, final_out_bytes_per_hop, public_key
+                    ))
 
-                self.db_manager.execute_update('''
-                    UPDATE complete_contact_tracking
-                    SET name = ?, last_heard = ?, advert_count = ?, role = ?, device_type = ?,
-                        latitude = ?, longitude = ?, city = ?, state = ?, country = ?,
-                        raw_advert_data = ?, signal_strength = ?, snr = ?, hop_count = ?,
-                        last_advert_timestamp = ?, out_path = ?, out_path_len = ?, out_bytes_per_hop = ?
-                    WHERE public_key = ?
-                ''', (
-                    name, current_time, advert_count, role, device_type_str,
-                    location_info['latitude'], location_info['longitude'],
-                    location_info['city'], location_info['state'], location_info['country'],
-                    json.dumps(advert_data), signal_strength, snr, hop_count,
-                    current_time, final_out_path, final_out_path_len, final_out_bytes_per_hop, public_key
-                ))
+                    self.logger.debug(f"Updated contact tracking: {name} ({role}) - count: {advert_count}")
+                else:
+                    # Insert new entry
+                    self.db_manager.execute_update_on_connection(conn, '''
+                        INSERT INTO complete_contact_tracking
+                        (public_key, name, role, device_type, first_heard, last_heard, advert_count,
+                         latitude, longitude, city, state, country, raw_advert_data,
+                         signal_strength, snr, hop_count, last_advert_timestamp, out_path, out_path_len, out_bytes_per_hop)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        public_key, name, role, device_type_str, current_time, current_time, 1,
+                        location_info['latitude'], location_info['longitude'],
+                        location_info['city'], location_info['state'], location_info['country'],
+                        json.dumps(advert_data), signal_strength, snr, hop_count, current_time,
+                        out_path, out_path_len, out_bytes_per_hop
+                    ))
 
-                self.logger.debug(f"Updated contact tracking: {name} ({role}) - count: {advert_count}")
-            else:
-                # Insert new entry
-                self.db_manager.execute_update('''
-                    INSERT INTO complete_contact_tracking
-                    (public_key, name, role, device_type, first_heard, last_heard, advert_count,
-                     latitude, longitude, city, state, country, raw_advert_data,
-                     signal_strength, snr, hop_count, last_advert_timestamp, out_path, out_path_len, out_bytes_per_hop)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    public_key, name, role, device_type_str, current_time, current_time, 1,
-                    location_info['latitude'], location_info['longitude'],
-                    location_info['city'], location_info['state'], location_info['country'],
-                    json.dumps(advert_data), signal_strength, snr, hop_count, current_time,
-                    out_path, out_path_len, out_bytes_per_hop
-                ))
+                    self.logger.info(f"Added new contact to complete tracking: {name} ({role})")
 
-                self.logger.info(f"Added new contact to complete tracking: {name} ({role})")
+                # Update the currently_tracked flag based on device contact list
+                self._update_currently_tracked_status_on_conn(conn, public_key)
 
-            # Update the currently_tracked flag based on device contact list
-            await self._update_currently_tracked_status(public_key)
+                # Track daily advertisement statistics (with packet_hash for unique tracking)
+                self._track_daily_advertisement_on_conn(conn, public_key, name, role, device_type_str,
+                                                       location_info, signal_strength, snr, hop_count, current_time, packet_hash=packet_hash)
 
-            # Track daily advertisement statistics (with packet_hash for unique tracking)
-            await self._track_daily_advertisement(public_key, name, role, device_type_str,
-                                                location_info, signal_strength, snr, hop_count, current_time, packet_hash=packet_hash)
+                conn.commit()
 
             return True
 
         except Exception as e:
             self.logger.error(f"Error tracking contact advertisement: {e}")
             return False
+
+    def _track_daily_advertisement_on_conn(self, conn, public_key: str, name: str, role: str, device_type: str,
+                                            location_info: dict, signal_strength: Optional[float], snr: Optional[float],
+                                            hop_count: Optional[int], timestamp: datetime, packet_hash: Optional[str] = None):
+        """Track daily advertisement statistics on an existing connection (no commit).
+
+        Same logic as _track_daily_advertisement but uses caller's connection
+        for transactional grouping.
+        """
+        from datetime import date
+        today = date.today()
+
+        is_unique_packet = False
+        if packet_hash and packet_hash != "0000000000000000":
+            existing_packet = self.db_manager.execute_query_on_connection(
+                conn,
+                'SELECT id FROM unique_advert_packets WHERE date = ? AND public_key = ? AND packet_hash = ?',
+                (today, public_key, packet_hash)
+            )
+            if not existing_packet:
+                self.db_manager.execute_update_on_connection(conn, '''
+                    INSERT INTO unique_advert_packets
+                    (date, public_key, packet_hash, first_seen)
+                    VALUES (?, ?, ?, ?)
+                ''', (today, public_key, packet_hash, timestamp))
+                is_unique_packet = True
+                self.logger.debug(f"New unique advert packet for {name}: {packet_hash[:8]}...")
+            else:
+                self.logger.debug(f"Duplicate advert packet for {name}: {packet_hash[:8]}... (already counted)")
+        else:
+            is_unique_packet = True
+
+        if is_unique_packet:
+            existing_daily = self.db_manager.execute_query_on_connection(
+                conn,
+                'SELECT id, advert_count, first_advert_time FROM daily_stats WHERE date = ? AND public_key = ?',
+                (today, public_key)
+            )
+            if existing_daily:
+                unique_count = self.db_manager.execute_query_on_connection(
+                    conn,
+                    'SELECT COUNT(*) FROM unique_advert_packets WHERE date = ? AND public_key = ?',
+                    (today, public_key)
+                )
+                daily_advert_count = unique_count[0]['COUNT(*)'] if unique_count else existing_daily[0]['advert_count'] + 1
+                self.db_manager.execute_update_on_connection(conn, '''
+                    UPDATE daily_stats
+                    SET advert_count = ?, last_advert_time = ?
+                    WHERE date = ? AND public_key = ?
+                ''', (daily_advert_count, timestamp, today, public_key))
+                self.logger.debug(f"Updated daily stats for {name}: {daily_advert_count} unique adverts today")
+            else:
+                self.db_manager.execute_update_on_connection(conn, '''
+                    INSERT INTO daily_stats
+                    (date, public_key, advert_count, first_advert_time, last_advert_time)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (today, public_key, 1, timestamp, timestamp))
+                self.logger.debug(f"Added daily stats for {name}: first unique advert today")
 
     async def _track_daily_advertisement(self, public_key: str, name: str, role: str, device_type: str,
                                        location_info: dict, signal_strength: Optional[float], snr: Optional[float],
@@ -395,6 +459,20 @@ class RepeaterManager:
                 return 'Bot'
             else:
                 return 'Companion'  # Default to companion for human users
+
+    def _update_currently_tracked_status_on_conn(self, conn, public_key: str):
+        """Update the is_currently_tracked flag on an existing connection (no commit)."""
+        is_tracked = False
+        if hasattr(self.bot.meshcore, 'contacts'):
+            for contact_key, contact_data in self.bot.meshcore.contacts.items():
+                if contact_data.get('public_key', contact_key) == public_key:
+                    is_tracked = True
+                    break
+        self.db_manager.execute_update_on_connection(
+            conn,
+            'UPDATE complete_contact_tracking SET is_currently_tracked = ? WHERE public_key = ?',
+            (is_tracked, public_key)
+        )
 
     async def _update_currently_tracked_status(self, public_key: str):
         """Update the is_currently_tracked flag based on device contact list"""
