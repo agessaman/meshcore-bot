@@ -515,13 +515,13 @@ class CommandManager:
         )
 
     def get_max_message_length(self, message: MeshMessage) -> int:
-        """Return the effective max message length for *message* (DM=150, channel=150-prefix).
+        """Return max message body size in UTF-8 bytes (DM=158, channel per firmware budget).
 
         Mirrors ``BaseCommand.get_max_message_length`` but works on the manager level so it
         can be called outside of a specific command instance.
         """
         if message.is_dm:
-            return 150
+            return 158
         username: str | None = None
         try:
             if hasattr(self.bot, 'meshcore') and self.bot.meshcore:
@@ -535,7 +535,8 @@ class CommandManager:
             pass
         if not username:
             username = self.bot.config.get('Bot', 'bot_name', fallback='Bot')
-        return max(1, 150 - len(username) - 2)
+        max_length = 160 - len(str(username).encode('utf-8')) - 2
+        return max(130, max_length)
 
     def check_keywords(self, message: MeshMessage) -> list[tuple]:
         """Check message content for keywords and return matching responses.

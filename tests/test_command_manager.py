@@ -726,22 +726,22 @@ class TestGetMaxMessageLength:
         bot.translator.translate = Mock(return_value="")
         return make_manager(bot)
 
-    def test_dm_returns_150(self):
+    def test_dm_returns_158_bytes(self):
         mgr = self._make_manager()
         msg = Mock()
         msg.is_dm = True
-        assert mgr.get_max_message_length(msg) == 150
+        assert mgr.get_max_message_length(msg) == 158
 
-    def test_channel_uses_bot_name(self):
+    def test_channel_uses_bot_name_utf8_bytes(self):
         mgr = self._make_manager(bot_name="LongBotName")
         msg = Mock()
         msg.is_dm = False
-        # 150 - len("LongBotName") - 2 = 150 - 11 - 2 = 137
-        assert mgr.get_max_message_length(msg) == 137
+        # 160 - utf8("LongBotName") - 2 = 160 - 11 - 2 = 147
+        assert mgr.get_max_message_length(msg) == 147
 
-    def test_channel_uses_meshcore_username(self):
+    def test_channel_uses_meshcore_username_utf8_bytes(self):
         mgr = self._make_manager(bot_name="fallback", username="Radio")
         msg = Mock()
         msg.is_dm = False
-        # 150 - len("Radio") - 2 = 143
-        assert mgr.get_max_message_length(msg) == 143
+        # 160 - utf8("Radio") - 2 = 160 - 5 - 2 = 153
+        assert mgr.get_max_message_length(msg) == 153
