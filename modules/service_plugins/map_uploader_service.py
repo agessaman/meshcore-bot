@@ -579,11 +579,12 @@ class MapUploaderService(BaseServicePlugin):
                     self.logger.debug(f"Ignoring: advert missing or invalid coordinates (lat={lat}, lon={lon}) for {pub_key[:16]}...")
                 return
 
+            # Mark as seen BEFORE the async upload to prevent duplicate uploads
+            # when the same advert arrives multiple times via mesh flooding
+            self.seen_adverts[pub_key] = timestamp
+
             # Upload to map
             await self._upload_to_map(advert, raw_hex)
-
-            # Update seen adverts
-            self.seen_adverts[pub_key] = timestamp
 
             # Periodically clean up old entries to prevent unbounded memory growth
             await self._cleanup_old_seen_adverts(timestamp)

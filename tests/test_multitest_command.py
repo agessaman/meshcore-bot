@@ -3,8 +3,15 @@
 import configparser
 from unittest.mock import MagicMock, Mock
 
-from modules.commands.multitest_command import MultitestCommand
+from modules.commands.multitest_command import (
+    MultitestCommand,
+    _condense_path_lines,
+    _path_to_tokens,
+)
 from tests.conftest import mock_message
+
+_INTER = "\u251c"
+_LAST = "\u2514"
 
 
 def _make_bot():
@@ -137,6 +144,61 @@ class TestMatchesKeyword:
         assert self.cmd.matches_keyword(mock_message(content="ping")) is False
 
 
+class TestCondensePathLines:
+    """Tests for _condense_path_lines."""
+
+    def test_meshed_up_style_strict_prefix_and_branches(self):
+        paths = sorted(
+            [
+                "e6,0c,85,82,28,1a,cd,7e,01",
+                "e6,0c,85,82,28,1a,cd,7e,7a",
+                "e6,0c,85,82,28,1a,cd,7e,7a,09",
+                "e6,0c,85,82,28,1a,cd",
+            ]
+        )
+        out = _condense_path_lines(paths)
+        expected = "\n".join(
+            [
+                "e6,0c,85,82,28,1a,cd,7e",
+                f"{_INTER} 01",
+                f"{_INTER} 7a",
+                f"{_INTER} 7a,09",
+                f"{_LAST} ...",
+            ]
+        )
+        assert out == expected
+
+    def test_shared_prefix_no_strict_prefix_truncation(self):
+        paths = sorted(
+            [
+                "aa,bb,cc",
+                "aa,bb,cc,dd",
+                "aa,bb,cc,ee",
+            ]
+        )
+        out = _condense_path_lines(paths)
+        expected = "\n".join(
+            [
+                "aa,bb,cc",
+                f"{_INTER} dd",
+                f"{_LAST} ee",
+            ]
+        )
+        assert out == expected
+
+    def test_disjoint_first_hop_groups_with_brackets(self):
+        paths = sorted(["a,b", "c,d"])
+        out = _condense_path_lines(paths)
+        expected = "\n".join(["[a,b]", "[c,d]"])
+        assert out == expected
+
+    def test_single_path_unchanged(self):
+        assert _condense_path_lines(["a,b,c"]) == "a,b,c"
+
+    def test_path_to_tokens_strips_trailing_empty_segment(self):
+        assert _path_to_tokens("e6,0c,cd,") == ["e6", "0c", "cd"]
+
+
 class TestCanExecute:
     """Tests for can_execute."""
 
@@ -152,3 +214,13 @@ class TestCanExecute:
         cmd = MultitestCommand(bot)
         msg = mock_message(content="multitest", channel="general")
         assert cmd.can_execute(msg) is False
+
+    def test_condense_paths_default_false(self):
+        cmd = MultitestCommand(_make_bot())
+        assert cmd.condense_paths is False
+
+    def test_condense_paths_true_from_config(self):
+        bot = _make_bot()
+        bot.config.set("Multitest_Command", "condense_paths", "true")
+        cmd = MultitestCommand(bot)
+        assert cmd.condense_paths is True

@@ -14,6 +14,114 @@ from ..models import MeshMessage
 from ..utils import calculate_packet_hash, parse_path_string
 from .base_command import BaseCommand
 
+_BRANCH_INTER = "\u251c"  # ├ (intermediate branch)
+_BRANCH_LAST = "\u2514"  # └ (last branch)
+
+
+def _tree_branch_lines(suffixes: list[str]) -> list[str]:
+    """Format branch rows: ├ for all but the last, └ for the last; space after the tree char."""
+    if not suffixes:
+        return []
+    n = len(suffixes)
+    out: list[str] = []
+    for i, text in enumerate(suffixes):
+        prefix = _BRANCH_LAST if i == n - 1 else _BRANCH_INTER
+        out.append(f"{prefix} {text}")
+    return out
+
+
+def _path_to_tokens(path: str) -> list[str]:
+    """Split a comma-separated path into non-empty hex token strings."""
+    return [p.strip() for p in path.split(",") if p.strip()]
+
+
+def _is_strict_prefix(a: list[str], b: list[str]) -> bool:
+    return len(a) < len(b) and b[: len(a)] == a
+
+
+def _is_truncated_prefix_path(t: list[str], all_paths: list[list[str]]) -> bool:
+    """True if t is a strict prefix of some path with more than one extra hop (incomplete trace)."""
+    for u in all_paths:
+        if t == u:
+            continue
+        if _is_strict_prefix(t, u) and (len(u) - len(t)) > 1:
+            return True
+    return False
+
+
+def _longest_common_prefix(token_lists: list[list[str]]) -> list[str]:
+    if not token_lists:
+        return []
+    if len(token_lists) == 1:
+        return list(token_lists[0])
+    first = token_lists[0]
+    for i, tok in enumerate(first):
+        for tl in token_lists[1:]:
+            if i >= len(tl) or tl[i] != tok:
+                return first[:i]
+    return list(first[: min(len(tl) for tl in token_lists)])
+
+
+def _format_path_cluster(token_lists: list[list[str]], use_brackets: bool) -> list[str]:
+    """Format a cluster of token lists into condensed lines (common prefix + ├/└ branches)."""
+    token_lists = [t for t in token_lists if t]
+    if not token_lists:
+        return []
+    if len(token_lists) == 1:
+        s = ",".join(token_lists[0])
+        return [f"[{s}]"] if use_brackets else [s]
+
+    maximal = [t for t in token_lists if not _is_truncated_prefix_path(t, token_lists)]
+    short_ellipsis = len(maximal) < len(token_lists)
+
+    if not maximal:
+        return _tree_branch_lines(["..."]) if short_ellipsis else []
+
+    lcp = _longest_common_prefix(maximal)
+
+    if len(lcp) > 0:
+        lines = [",".join(lcp)]
+        branches: list[str] = []
+        for t in maximal:
+            suf = t[len(lcp) :]
+            if suf:
+                branches.append(",".join(suf))
+        suffix_parts = sorted(branches)
+        if short_ellipsis:
+            suffix_parts.append("...")
+        if suffix_parts:
+            lines.extend(_tree_branch_lines(suffix_parts))
+        return lines
+
+    if len(maximal) == 1:
+        s = ",".join(maximal[0])
+        lines = [f"[{s}]"] if use_brackets else [s]
+        if short_ellipsis:
+            lines.extend(_tree_branch_lines(["..."]))
+        return lines
+
+    groups: dict[str, list[list[str]]] = {}
+    for t in maximal:
+        groups.setdefault(t[0], []).append(t)
+
+    lines: list[str] = []
+    multi = len(groups) > 1
+    for ft in sorted(groups.keys()):
+        sub_lines = _format_path_cluster(groups[ft], use_brackets=multi)
+        lines.extend(sub_lines)
+    if short_ellipsis:
+        lines.extend(_tree_branch_lines(["..."]))
+    return lines
+
+
+def _condense_path_lines(paths: list[str]) -> str:
+    """Condense sorted unique path strings by shared prefix and branch suffixes."""
+    if len(paths) <= 1:
+        return "\n".join(paths)
+    token_lists = [_path_to_tokens(p) for p in paths]
+    lines = _format_path_cluster(token_lists, use_brackets=False)
+    return "\n".join(lines)
+
 
 @dataclass
 class MultitestSession:
@@ -85,6 +193,10 @@ class MultitestCommand(BaseCommand):
                 self.response_format = response_format
         else:
             self.response_format = None  # Use default format
+
+        self.condense_paths = self.get_config_value(
+            'Multitest_Command', 'condense_paths', fallback=False, value_type='bool'
+        )
 
     def get_help_text(self) -> str:
         return self.translate('commands.multitest.help', fallback="Listens for 6 seconds and collects all unique paths from incoming messages")
@@ -511,7 +623,10 @@ class MultitestCommand(BaseCommand):
         if session.collected_paths:
             # Sort paths for consistent output
             sorted_paths = sorted(session.collected_paths)
-            paths_text = "\n".join(sorted_paths)
+            if self.condense_paths and len(sorted_paths) > 1:
+                paths_text = _condense_path_lines(sorted_paths)
+            else:
+                paths_text = "\n".join(sorted_paths)
             path_count = len(sorted_paths)
 
             # Use configured format if available, otherwise use default
