@@ -12,6 +12,9 @@ from tests.conftest import mock_message
 
 _INTER = "\u251c"
 _LAST = "\u2514"
+_HORIZ = "\u2500"
+_CHILD_INTER = f"{_INTER}{_HORIZ} "
+_CHILD_LAST = f"{_LAST}{_HORIZ} "
 
 
 def _make_bot():
@@ -162,7 +165,7 @@ class TestCondensePathLines:
                 "e6,0c,85,82,28,1a,cd,7e",
                 f"{_INTER} 01",
                 f"{_INTER} 7a",
-                f"{_INTER} 7a,09",
+                f"{_CHILD_INTER}09",
                 f"{_LAST} ...",
             ]
         )
@@ -177,11 +180,124 @@ class TestCondensePathLines:
             ]
         )
         out = _condense_path_lines(paths)
+        # LCP shrinks so cc is not the whole “trunk” while dd/ee branch off
         expected = "\n".join(
             [
-                "aa,bb,cc",
-                f"{_INTER} dd",
-                f"{_LAST} ee",
+                "aa,bb",
+                f"{_INTER} cc",
+                f"{_CHILD_INTER}dd",
+                f"{_CHILD_LAST}ee",
+            ]
+        )
+        assert out == expected
+
+    def test_one_path_ends_at_lcp_other_extends(self):
+        """Shorter LCP so both 0101 and 0101,0970 appear as branches, not one hidden on the trunk."""
+        paths = sorted(["cdf1,7e76,0101", "cdf1,7e76,0101,0970"])
+        out = _condense_path_lines(paths)
+        expected = "\n".join(
+            [
+                "cdf1,7e76",
+                f"{_INTER} 0101",
+                f"{_CHILD_LAST}0970",
+            ]
+        )
+        assert out == expected
+
+    def test_overlapping_suffix_branches_under_common_prefix(self):
+        paths = sorted(
+            [
+                "cdf119,860cca,010101",
+                "cdf119,860cca,e0eed9",
+                "cdf119,860cca,e0eed9,1ed612",
+            ]
+        )
+        out = _condense_path_lines(paths)
+        expected = "\n".join(
+            [
+                "cdf119,860cca",
+                f"{_INTER} 010101",
+                f"{_INTER} e0eed9",
+                f"{_CHILD_LAST}1ed612",
+            ]
+        )
+        assert out == expected
+
+    def test_divergent_routes_with_shared_mid_prefix(self):
+        """TRM-style: group by first hop (13) so 01 vs 01,1e nest under ├─."""
+        paths = sorted(["41,96,13,01", "41,96,13,01,1e", "41,96,83,09"])
+        out = _condense_path_lines(paths)
+        expected = "\n".join(
+            [
+                "41,96",
+                f"{_INTER} 13",
+                f"{_CHILD_INTER}01",
+                f"{_CHILD_INTER}01,1e",
+                f"{_LAST} 83,09",
+            ]
+        )
+        assert out == expected
+
+    def test_mixed_first_hops_nest_per_group(self):
+        """Ill Eagle-style: 01 vs 01,1e share a group; 09 and e0 are separate top-level branches."""
+        paths = sorted(
+            [
+                "e2,ab,1f,ef,55,21,01",
+                "e2,ab,1f,ef,55,21,01,1e",
+                "e2,ab,1f,ef,55,21,09",
+                "e2,ab,1f,ef,55,21,e0",
+            ]
+        )
+        out = _condense_path_lines(paths)
+        expected = "\n".join(
+            [
+                "e2,ab,1f,ef,55,21",
+                f"{_INTER} 01",
+                f"{_CHILD_INTER}1e",
+                f"{_INTER} 09",
+                f"{_LAST} e0",
+            ]
+        )
+        assert out == expected
+
+    def test_shorter_path_one_extra_hop_still_trees(self):
+        """860cca vs 860cca,010101: shrink trunk so both show as branches."""
+        paths = sorted(
+            [
+                "d38a05,c4a86a,067b75,cafee0,1ffbd6,e8154b,860cca,010101",
+                "d38a05,c4a86a,067b75,cafee0,1ffbd6,e8154b,860cca",
+            ]
+        )
+        out = _condense_path_lines(paths)
+        expected = "\n".join(
+            [
+                "d38a05,c4a86a,067b75,cafee0,1ffbd6,e8154b",
+                f"{_INTER} 860cca",
+                f"{_CHILD_LAST}010101",
+            ]
+        )
+        assert out == expected
+
+    def test_shared_hop_then_horiz_continuations(self):
+        """All paths share first hop after LCP → one ├ hop line then ├─/└─ remainders (U+2500)."""
+        paths = sorted(
+            [
+                "d38a05,479198,a837bc,7e7662,e0eed9",
+                "d38a05,479198,a837bc,7e7662,e0eed9,010101",
+                "d38a05,479198,a837bc,7e7662,e0eed9,0970d6",
+                "d38a05,479198,a837bc,7e7662,e0eed9,1ed612",
+                "d38a05,479198,a837bc,7e7662,e0eed9,f",
+            ]
+        )
+        out = _condense_path_lines(paths)
+        expected = "\n".join(
+            [
+                "d38a05,479198,a837bc,7e7662",
+                f"{_INTER} e0eed9",
+                f"{_CHILD_INTER}010101",
+                f"{_CHILD_INTER}0970d6",
+                f"{_CHILD_INTER}1ed612",
+                f"{_CHILD_LAST}f",
             ]
         )
         assert out == expected

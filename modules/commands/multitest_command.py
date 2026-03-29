@@ -7,6 +7,7 @@ Listens for a period of time and collects all unique paths from incoming message
 import asyncio
 import re
 import time
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Optional
 
@@ -16,10 +17,14 @@ from .base_command import BaseCommand
 
 _BRANCH_INTER = "\u251c"  # ├ (intermediate branch)
 _BRANCH_LAST = "\u2514"  # └ (last branch)
+_HORIZ = "\u2500"  # ─ (BOX DRAWINGS LIGHT HORIZONTAL)
+# Second-level branches: ├─ / └─ (horizontal continues the tee)
+_BRANCH_CHILD_INTER = f"{_BRANCH_INTER}{_HORIZ} "
+_BRANCH_CHILD_LAST = f"{_BRANCH_LAST}{_HORIZ} "
 
 
-def _tree_branch_lines(suffixes: list[str]) -> list[str]:
-    """Format branch rows: ├ for all but the last, └ for the last; space after the tree char."""
+def _tree_branch_lines_flat(suffixes: list[str]) -> list[str]:
+    """Format branch rows: ├ for all but the last, └ for the last; space after the tee only."""
     if not suffixes:
         return []
     n = len(suffixes)
@@ -28,6 +33,61 @@ def _tree_branch_lines(suffixes: list[str]) -> list[str]:
         prefix = _BRANCH_LAST if i == n - 1 else _BRANCH_INTER
         out.append(f"{prefix} {text}")
     return out
+
+
+def _grouped_suffix_line_specs(non_empty: list[list[str]]) -> list[tuple[str, str]]:
+    """Build (line_kind, text) rows: 'head' uses ├/└ + space; 'nest' uses ├─/└─ + text."""
+    by_first: dict[str, list[list[str]]] = defaultdict(list)
+    for suf in non_empty:
+        by_first[suf[0]].append(suf[1:])
+
+    specs: list[tuple[str, str]] = []
+    for ft in sorted(by_first.keys()):
+        rests = by_first[ft]
+        if len(rests) == 1:
+            r = rests[0]
+            if not r:
+                specs.append(("head", ft))
+            else:
+                specs.append(("head", ",".join([ft, *r])))
+            continue
+        specs.append(("head", ft))
+        for rem in sorted((r for r in rests if r), key=lambda x: ",".join(x)):
+            specs.append(("nest", ",".join(rem)))
+    return specs
+
+
+def _apply_tee_prefixes(specs: list[tuple[str, str]]) -> list[str]:
+    """Assign ├/└ and ├─/└─ from flattened order; only the final row uses └/└─."""
+    n = len(specs)
+    out: list[str] = []
+    for i, (kind, text) in enumerate(specs):
+        last = i == n - 1
+        if kind == "head":
+            p = _BRANCH_LAST if last else _BRANCH_INTER
+            out.append(f"{p} {text}")
+        else:
+            p = _BRANCH_CHILD_LAST if last else _BRANCH_CHILD_INTER
+            out.append(f"{p}{text}")
+    return out
+
+
+def _format_suffix_branch_lines(suffix_tokens: list[list[str]], short_ellipsis: bool) -> list[str]:
+    """Format suffixes after display LCP: group by first hop, nest continuations with U+2500."""
+    non_empty = [s for s in suffix_tokens if s]
+    if not non_empty:
+        return _tree_branch_lines_flat(["..."]) if short_ellipsis else []
+
+    if len(non_empty) == 1:
+        parts = [",".join(non_empty[0])]
+        if short_ellipsis:
+            parts.append("...")
+        return _tree_branch_lines_flat(parts)
+
+    specs = _grouped_suffix_line_specs(non_empty)
+    if short_ellipsis:
+        specs.append(("head", "..."))
+    return _apply_tee_prefixes(specs)
 
 
 def _path_to_tokens(path: str) -> list[str]:
@@ -62,8 +122,32 @@ def _longest_common_prefix(token_lists: list[list[str]]) -> list[str]:
     return list(first[: min(len(tl) for tl in token_lists)])
 
 
+def _shrink_display_lcp(maximal: list[list[str]], lcp: list[str]) -> list[str]:
+    """Shorten displayed LCP when one path ends exactly at LCP and another continues past it.
+
+    Avoids showing the shorter path as the 'trunk' with only the tail as a branch (e.g. …0101
+    on the common line and └ 0970), which reads like a single endpoint plus an offshoot.
+    """
+    lcp = list(lcp)
+    while len(lcp) > 1:
+        has_exact = any(t == lcp for t in maximal)
+        has_extend = any(_is_strict_prefix(lcp, t) for t in maximal)
+        if has_exact and has_extend:
+            lcp.pop()
+        else:
+            break
+    return lcp
+
+
 def _format_path_cluster(token_lists: list[list[str]], use_brackets: bool) -> list[str]:
-    """Format a cluster of token lists into condensed lines (common prefix + ├/└ branches)."""
+    """Format a cluster into condensed lines (common prefix + ├/└ and ├─/└─).
+
+    Suffixes are grouped by their first hop after the display LCP; multiple variants under the same
+    hop use one ├ line for that hop and ├─/└─ for continuations. The last line of the block uses └/└─.
+
+    If one path stops exactly where another continues, the displayed LCP is shortened so the shared
+    segment is not mistaken for a single endpoint (e.g. only └ tail after a full shorter path).
+    """
     token_lists = [t for t in token_lists if t]
     if not token_lists:
         return []
@@ -75,29 +159,24 @@ def _format_path_cluster(token_lists: list[list[str]], use_brackets: bool) -> li
     short_ellipsis = len(maximal) < len(token_lists)
 
     if not maximal:
-        return _tree_branch_lines(["..."]) if short_ellipsis else []
+        return _tree_branch_lines_flat(["..."]) if short_ellipsis else []
 
-    lcp = _longest_common_prefix(maximal)
+    raw_lcp = _longest_common_prefix(maximal)
+    lcp = _shrink_display_lcp(maximal, raw_lcp)
 
     if len(lcp) > 0:
+        suffix_tokens = [t[len(lcp) :] for t in maximal]
         lines = [",".join(lcp)]
-        branches: list[str] = []
-        for t in maximal:
-            suf = t[len(lcp) :]
-            if suf:
-                branches.append(",".join(suf))
-        suffix_parts = sorted(branches)
-        if short_ellipsis:
-            suffix_parts.append("...")
-        if suffix_parts:
-            lines.extend(_tree_branch_lines(suffix_parts))
+        branch_lines = _format_suffix_branch_lines(suffix_tokens, short_ellipsis)
+        if branch_lines:
+            lines.extend(branch_lines)
         return lines
 
     if len(maximal) == 1:
         s = ",".join(maximal[0])
         lines = [f"[{s}]"] if use_brackets else [s]
         if short_ellipsis:
-            lines.extend(_tree_branch_lines(["..."]))
+            lines.extend(_tree_branch_lines_flat(["..."]))
         return lines
 
     groups: dict[str, list[list[str]]] = {}
@@ -110,7 +189,7 @@ def _format_path_cluster(token_lists: list[list[str]], use_brackets: bool) -> li
         sub_lines = _format_path_cluster(groups[ft], use_brackets=multi)
         lines.extend(sub_lines)
     if short_ellipsis:
-        lines.extend(_tree_branch_lines(["..."]))
+        lines.extend(_tree_branch_lines_flat(["..."]))
     return lines
 
 
