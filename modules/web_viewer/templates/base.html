@@ -310,6 +310,40 @@
             color: var(--text-color) !important;
         }
 
+        /* Dark mode dropdown menus */
+        [data-theme="dark"] .dropdown-menu {
+            background-color: var(--card-bg);
+            border-color: var(--border-color);
+            box-shadow: 0 0.5rem 1rem var(--shadow-color);
+        }
+
+        [data-theme="dark"] .dropdown-item {
+            color: var(--text-color);
+        }
+
+        [data-theme="dark"] .dropdown-item:hover,
+        [data-theme="dark"] .dropdown-item:focus {
+            background-color: var(--bg-tertiary);
+            color: var(--text-color);
+        }
+
+        [data-theme="dark"] .dropdown-item.text-danger {
+            color: #f5c2c7;
+        }
+
+        [data-theme="dark"] .dropdown-item.text-danger:hover,
+        [data-theme="dark"] .dropdown-item.text-danger:focus {
+            color: #f8d7da;
+        }
+
+        [data-theme="dark"] .dropdown-header {
+            color: var(--text-muted);
+        }
+
+        [data-theme="dark"] .dropdown-divider {
+            border-top-color: var(--border-color);
+        }
+
         /* Dark mode accordion styling */
         [data-theme="dark"] .accordion-item {
             background-color: var(--card-bg);

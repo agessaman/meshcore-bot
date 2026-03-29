@@ -2,6 +2,21 @@
 
 {% block title %}Contacts - MeshCore Bot Data Viewer{% endblock %}
 
+{% block extra_css %}
+<style>
+    /* Square hit target for the overflow (⋯) menu trigger */
+    .contacts-overflow-btn {
+        width: 2rem;
+        height: 2.375rem;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 0.25rem;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="row">
     <div class="col-12">
@@ -135,21 +150,26 @@
                         <button class="btn btn-sm btn-primary" id="refresh-contacts">
                             <i class="fas fa-sync"></i> Refresh
                         </button>
-                        <button class="btn btn-sm btn-outline-danger" id="purge-contacts-btn"
-                                data-bs-toggle="modal" data-bs-target="#purgeContactsModal"
-                                title="Delete contacts not heard recently">
-                            <i class="fas fa-broom"></i> Purge Inactive
-                        </button>
-                        <div class="btn-group">
-                            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" title="Export data">
-                                <i class="fas fa-download me-1"></i>Export
+                        <div class="dropdown">
+                            <button type="button" class="btn btn-sm btn-outline-secondary contacts-overflow-btn"
+                                    data-bs-toggle="dropdown" aria-expanded="false"
+                                    aria-label="More actions" title="More actions">
+                                <i class="fas fa-ellipsis-vertical" aria-hidden="true"></i>
                             </button>
                             <ul class="dropdown-menu dropdown-menu-end">
-                                <li><h6 class="dropdown-header">Contacts</h6></li>
+                                <li>
+                                    <button type="button" class="dropdown-item text-danger"
+                                            data-bs-toggle="modal" data-bs-target="#purgeContactsModal"
+                                            title="Delete contacts not heard recently">
+                                        <i class="fas fa-broom me-2"></i>Purge Inactive
+                                    </button>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><h6 class="dropdown-header">Export Contacts</h6></li>
                                 <li><a class="dropdown-item" href="#" onclick="exportData('contacts','csv');return false;"><i class="fas fa-file-csv me-2 text-success"></i>CSV</a></li>
                                 <li><a class="dropdown-item" href="#" onclick="exportData('contacts','json');return false;"><i class="fas fa-file-code me-2 text-warning"></i>JSON</a></li>
                                 <li><hr class="dropdown-divider"></li>
-                                <li><h6 class="dropdown-header">Paths</h6></li>
+                                <li><h6 class="dropdown-header">Export Paths</h6></li>
                                 <li><a class="dropdown-item" href="#" onclick="exportData('paths','csv');return false;"><i class="fas fa-file-csv me-2 text-success"></i>CSV</a></li>
                                 <li><a class="dropdown-item" href="#" onclick="exportData('paths','json');return false;"><i class="fas fa-file-code me-2 text-warning"></i>JSON</a></li>
                                 <li><hr class="dropdown-divider"></li>

@@ -4,28 +4,203 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login — MeshCore Bot Data Viewer</title>
+
+    <!-- Apply theme immediately to prevent flash (same key as main app: localStorage 'theme') -->
+    <script>
+        (function() {
+            const storedTheme = localStorage.getItem('theme');
+            const systemPreference = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+            const theme = storedTheme || systemPreference;
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background: #f8f9fa; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-        .login-card { width: 100%; max-width: 360px; }
+        :root {
+            --bg-color: #ffffff;
+            --bg-secondary: #f8f9fa;
+            --bg-tertiary: #e9ecef;
+            --text-color: #212529;
+            --text-muted: #6c757d;
+            --border-color: #dee2e6;
+            --card-bg: #ffffff;
+            --card-header-bg: #f8f9fa;
+            --shadow-color: rgba(0, 0, 0, 0.1);
+            --brand: #007bff;
+            --brand-soft: rgba(0, 123, 255, 0.14);
+        }
+
+        [data-theme="dark"] {
+            --bg-color: #141414;
+            --bg-secondary: #2d2d2d;
+            --bg-tertiary: #3d3d3d;
+            --text-color: #e9ecef;
+            --text-muted: #adb5bd;
+            --border-color: #495057;
+            --card-bg: #252525;
+            --card-header-bg: #3d3d3d;
+            --shadow-color: rgba(0, 0, 0, 0.45);
+            --brand-soft: rgba(0, 123, 255, 0.18);
+        }
+
+        html, body {
+            margin: 0;
+        }
+
+        body {
+            font-family: 'DM Sans', system-ui, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 1.25rem;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        /* Soft mesh-style atmosphere */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            z-index: -1;
+            background:
+                radial-gradient(ellipse 90% 55% at 50% -15%, var(--brand-soft), transparent 55%),
+                radial-gradient(ellipse 70% 45% at 100% 100%, rgba(0, 123, 255, 0.06), transparent 50%),
+                radial-gradient(ellipse 50% 35% at 0% 85%, rgba(0, 123, 255, 0.05), transparent 45%);
+            pointer-events: none;
+        }
+
+        .login-card {
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .login-card .card {
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            overflow: hidden;
+            background-color: var(--card-bg);
+            color: var(--text-color);
+            box-shadow:
+                0 1px 2px var(--shadow-color),
+                0 12px 40px -12px rgba(0, 0, 0, 0.2);
+        }
+
+        [data-theme="dark"] .login-card .card {
+            box-shadow:
+                0 1px 0 rgba(255, 255, 255, 0.04) inset,
+                0 16px 48px -16px rgba(0, 0, 0, 0.55);
+        }
+
+        .login-card .card-body {
+            padding: 2rem 1.75rem;
+        }
+
+        @media (min-width: 400px) {
+            .login-card .card-body {
+                padding: 2.25rem 2rem;
+            }
+        }
+
+        .login-brand-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 3rem;
+            height: 3rem;
+            border-radius: 12px;
+            background: linear-gradient(145deg, var(--brand-soft), transparent);
+            color: var(--brand);
+            font-size: 1.35rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .login-title {
+            font-family: 'Outfit', 'DM Sans', sans-serif;
+            font-size: clamp(1.65rem, 5vw, 2.05rem);
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            line-height: 1.15;
+            color: var(--brand);
+            margin: 0 0 0.35rem;
+            text-align: center;
+        }
+
+        .login-subtitle {
+            font-family: 'Outfit', 'DM Sans', sans-serif;
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-color);
+            text-align: center;
+            margin: 0 0 0.5rem;
+            opacity: 0.92;
+        }
+
+        .login-hint {
+            font-size: 0.875rem;
+            text-align: center;
+            margin-bottom: 1.35rem;
+            color: var(--text-muted);
+        }
+
+        [data-theme="dark"] .form-control {
+            background-color: var(--bg-tertiary);
+            border-color: var(--border-color);
+            color: var(--text-color);
+        }
+
+        [data-theme="dark"] .form-control:focus {
+            background-color: var(--bg-tertiary);
+            border-color: #007bff;
+            color: var(--text-color);
+        }
+
+        [data-theme="dark"] .form-label {
+            color: var(--text-color);
+        }
+
+        [data-theme="dark"] .alert-danger {
+            background-color: #842029;
+            border-color: #b02a37;
+            color: #f8d7da;
+        }
+
+        .login-submit {
+            font-weight: 600;
+            padding-top: 0.55rem;
+            padding-bottom: 0.55rem;
+        }
     </style>
 </head>
 <body>
     <div class="login-card">
-        <div class="card shadow-sm">
-            <div class="card-header text-center fw-bold">MeshCore Bot Data Viewer</div>
-            <div class="card-body p-4">
-                <h5 class="card-title text-center mb-3">Sign in</h5>
+        <div class="card">
+            <div class="card-body">
+                <div class="text-center">
+                    <div class="login-brand-icon" aria-hidden="true">
+                        <i class="fas fa-broadcast-tower"></i>
+                    </div>
+                    <h1 class="login-title">MeshCore Bot</h1>
+                    <p class="login-subtitle">Data Viewer</p>
+                    <p class="login-hint mb-0">Enter your password to continue.</p>
+                </div>
                 {% if error %}
-                <div class="alert alert-danger py-2">{{ error }}</div>
+                <div class="alert alert-danger py-2 mt-3 mb-3">{{ error }}</div>
                 {% endif %}
-                <form method="post">
+                <form method="post" class="{% if not error %}mt-3{% endif %}">
                     <div class="mb-3">
-                        <label for="password" class="form-label">Password</label>
+                        <label for="password" class="form-label fw-medium">Password</label>
                         <input type="password" class="form-control" id="password" name="password"
                                autofocus autocomplete="current-password" required>
                     </div>
-                    <button type="submit" class="btn btn-primary w-100">Sign in</button>
+                    <button type="submit" class="btn btn-primary w-100 login-submit">Sign in</button>
                 </form>
             </div>
         </div>

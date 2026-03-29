@@ -24,6 +24,49 @@
         border-radius: 0.375rem;
         padding: 0.5rem;
     }
+
+    /* Dark mode: scrollbars for Command / Channel Messages / Packet streams (Firefox + WebKit) */
+    [data-theme="dark"] .stream-container {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.28) var(--bg-tertiary);
+    }
+
+    [data-theme="dark"] .stream-container::-webkit-scrollbar {
+        width: 10px;
+    }
+
+    [data-theme="dark"] .stream-container::-webkit-scrollbar-track {
+        background: var(--bg-tertiary);
+        border-radius: 0.25rem;
+    }
+
+    [data-theme="dark"] .stream-container::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.22);
+        border-radius: 0.25rem;
+        border: 2px solid var(--bg-tertiary);
+    }
+
+    [data-theme="dark"] .stream-container::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.35);
+    }
+
+    /* Packet stream: no horizontal scroll; long paths wrap within the card */
+    #packet-stream {
+        overflow-x: hidden;
+    }
+
+    #packet-stream .stream-entry > .d-flex {
+        min-width: 0;
+    }
+
+    #packet-stream .stream-entry .flex-grow-1 {
+        min-width: 0;
+    }
+
+    #packet-stream .packet-stream-path {
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
     
     .stream-entry {
         background-color: var(--card-bg);
@@ -1535,7 +1578,7 @@
                         ${clickHint}
                     </div>
                     
-                    <div class="small text-muted mb-1">
+                    <div class="small text-muted mb-1 packet-stream-path">
                         <strong>Path:</strong> ${pathDisplay}
                         ${data.path_len > 0 ? ` (${data.path_len} bytes)` : ''}
                     </div>

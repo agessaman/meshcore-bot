@@ -37,13 +37,13 @@
     }
 
     /* Level-based coloring */
-    .log-line.level-debug   { color: #6e7681; }
+    .log-line.level-debug   { color: #2dd4bf; }
     .log-line.level-info    { color: #58a6ff; }
     .log-line.level-warning { color: #d29922; }
     .log-line.level-error   { color: #f85149; }
     .log-line.level-critical{ color: #ff79c6; font-weight: bold; }
 
-    [data-theme="light"] .log-line.level-debug   { color: #6c757d; }
+    [data-theme="light"] .log-line.level-debug   { color: #0d9488; }
     [data-theme="light"] .log-line.level-info    { color: #0d6efd; }
     [data-theme="light"] .log-line.level-warning { color: #fd7e14; }
     [data-theme="light"] .log-line.level-error   { color: #dc3545; }
@@ -61,9 +61,51 @@
         color: var(--text-muted);
     }
 
-    .filter-select {
-        max-width: 140px;
+    .log-level-toggles {
+        gap: 0.35rem;
     }
+
+    .log-level-toggle {
+        font-size: 0.7rem;
+        font-weight: 600;
+        padding: 0.2rem 0.5rem;
+        line-height: 1.2;
+        border-radius: 0.25rem;
+        border: 1px solid transparent;
+        cursor: pointer;
+        transition: opacity 0.15s ease, transform 0.1s ease;
+    }
+
+    .log-level-toggle:focus {
+        outline: 2px solid #58a6ff;
+        outline-offset: 2px;
+    }
+
+    [data-theme="light"] .log-level-toggle:focus {
+        outline-color: #0d6efd;
+    }
+
+    .log-level-toggle.is-off {
+        background: transparent !important;
+        color: var(--text-muted) !important;
+        border-color: var(--border-color) !important;
+        border-style: dashed;
+        opacity: 0.65;
+    }
+
+    /* Dark theme — on (matches log line colors) */
+    .log-level-toggle[data-level="DEBUG"].is-on    { background: #2dd4bf; color: #0d1117; border-color: #2dd4bf; }
+    .log-level-toggle[data-level="INFO"].is-on     { background: #58a6ff; color: #0d1117; border-color: #58a6ff; }
+    .log-level-toggle[data-level="WARNING"].is-on  { background: #d29922; color: #0d1117; border-color: #d29922; }
+    .log-level-toggle[data-level="ERROR"].is-on    { background: #f85149; color: #fff; border-color: #f85149; }
+    .log-level-toggle[data-level="CRITICAL"].is-on { background: #ff79c6; color: #0d1117; border-color: #ff79c6; }
+
+    /* Light theme — on */
+    [data-theme="light"] .log-level-toggle[data-level="DEBUG"].is-on    { background: #0d9488; color: #fff; border-color: #0d9488; }
+    [data-theme="light"] .log-level-toggle[data-level="INFO"].is-on     { background: #0d6efd; color: #fff; border-color: #0d6efd; }
+    [data-theme="light"] .log-level-toggle[data-level="WARNING"].is-on  { background: #fd7e14; color: #212529; border-color: #fd7e14; }
+    [data-theme="light"] .log-level-toggle[data-level="ERROR"].is-on    { background: #dc3545; color: #fff; border-color: #dc3545; }
+    [data-theme="light"] .log-level-toggle[data-level="CRITICAL"].is-on { background: #6610f2; color: #fff; border-color: #6610f2; }
 </style>
 {% endblock %}
 
@@ -87,14 +129,14 @@
         </div>
         <div class="log-controls">
             <span id="line-count">0 lines</span>
-            <select class="form-select form-select-sm filter-select" id="level-filter" onchange="applyFilter()">
-                <option value="">All levels</option>
-                <option value="DEBUG">DEBUG+</option>
-                <option value="INFO">INFO+</option>
-                <option value="WARNING">WARNING+</option>
-                <option value="ERROR">ERROR+</option>
-                <option value="CRITICAL">CRITICAL</option>
-            </select>
+            <div class="log-level-toggles d-flex flex-wrap align-items-center" id="log-level-toggles" role="group" aria-label="Log level filters">
+                <span class="text-muted small d-none d-md-inline me-1">Levels</span>
+                <button type="button" class="log-level-toggle is-on" data-level="DEBUG" aria-pressed="true" title="Toggle DEBUG lines">DEBUG</button>
+                <button type="button" class="log-level-toggle is-on" data-level="INFO" aria-pressed="true" title="Toggle INFO lines">INFO</button>
+                <button type="button" class="log-level-toggle is-on" data-level="WARNING" aria-pressed="true" title="Toggle WARNING lines">WARNING</button>
+                <button type="button" class="log-level-toggle is-on" data-level="ERROR" aria-pressed="true" title="Toggle ERROR lines">ERROR</button>
+                <button type="button" class="log-level-toggle is-on" data-level="CRITICAL" aria-pressed="true" title="Toggle CRITICAL lines">CRITICAL</button>
+            </div>
             <button class="btn btn-sm btn-outline-secondary" id="pause-btn" onclick="togglePause()">
                 <i class="fas fa-pause" id="pause-icon"></i> Pause
             </button>
@@ -120,14 +162,69 @@
 <script>
 (function () {
     const MAX_LINES = 2000;
-    const LEVEL_ORDER = { DEBUG: 0, INFO: 1, WARNING: 2, ERROR: 3, CRITICAL: 4 };
+    const LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'];
+    const STORAGE_KEY = 'meshcore_logs_level_toggles';
 
     let paused = false;
     let autoScroll = true;
     let lineCount = 0;
-    let filterLevel = '';
     const container = document.getElementById('log-container');
     const placeholder = document.getElementById('log-placeholder');
+    const levelToggleGroup = document.getElementById('log-level-toggles');
+
+    function defaultEnabledLevels() {
+        return { DEBUG: true, INFO: true, WARNING: true, ERROR: true, CRITICAL: true };
+    }
+
+    function loadLevelToggles() {
+        const d = defaultEnabledLevels();
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (!raw) return d;
+            const parsed = JSON.parse(raw);
+            if (typeof parsed !== 'object' || parsed === null) return d;
+            for (const k of LEVELS) {
+                if (typeof parsed[k] === 'boolean') d[k] = parsed[k];
+            }
+            return d;
+        } catch (e) {
+            return d;
+        }
+    }
+
+    let enabledLevels = loadLevelToggles();
+
+    function saveLevelToggles() {
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(enabledLevels));
+        } catch (e) {
+            /* ignore quota / private mode */
+        }
+    }
+
+    function syncToggleButtons() {
+        document.querySelectorAll('.log-level-toggle').forEach(function (btn) {
+            const lvl = btn.getAttribute('data-level');
+            const on = enabledLevels[lvl];
+            btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+            btn.classList.toggle('is-on', on);
+            btn.classList.toggle('is-off', !on);
+        });
+    }
+
+    syncToggleButtons();
+
+    if (levelToggleGroup) {
+        levelToggleGroup.addEventListener('click', function (e) {
+            const btn = e.target.closest('.log-level-toggle');
+            if (!btn) return;
+            const lvl = btn.getAttribute('data-level');
+            if (!lvl || !Object.prototype.hasOwnProperty.call(enabledLevels, lvl)) return;
+            enabledLevels[lvl] = !enabledLevels[lvl];
+            syncToggleButtons();
+            saveLevelToggles();
+        });
+    }
 
     const socket = io({ transports: ['websocket', 'polling'] });
 
@@ -146,18 +243,15 @@
     });
 
     function detectLevel(line) {
-        const upper = line.toUpperCase();
-        for (const lvl of ['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG']) {
-            if (upper.includes(lvl)) return lvl;
-        }
-        return '';
+        /* Word boundaries: avoid false INFO from keys like routing_info (substring INFO). */
+        const m = line.match(/\b(CRITICAL|ERROR|WARNING|INFO|DEBUG)\b/i);
+        return m ? m[1].toUpperCase() : '';
     }
 
     function levelPasses(line) {
-        if (!filterLevel) return true;
         const lineLevel = detectLevel(line);
         if (!lineLevel) return true;
-        return (LEVEL_ORDER[lineLevel] ?? 0) >= (LEVEL_ORDER[filterLevel] ?? 0);
+        return enabledLevels[lineLevel] === true;
     }
 
     function addLogLine(text) {
@@ -211,10 +305,6 @@
         autoScroll = true;
     }
 
-    function applyFilter() {
-        filterLevel = document.getElementById('level-filter').value;
-    }
-
     function updateStatus(id, text, cls) {
         const el = document.getElementById(id);
         if (!el) return;
@@ -232,7 +322,6 @@
     window.togglePause = togglePause;
     window.clearLog = clearLog;
     window.scrollToBottom = scrollToBottom;
-    window.applyFilter = applyFilter;
 })();
 </script>
 {% endblock %}

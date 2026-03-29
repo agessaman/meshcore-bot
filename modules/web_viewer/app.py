@@ -8,6 +8,7 @@ import configparser
 import json
 import logging
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -67,6 +68,15 @@ def _apply_werkzeug_websocket_fix() -> None:
 
 
 _apply_werkzeug_websocket_fix()
+
+# colorlog and other handlers write ANSI SGR sequences; strip for web /logs display
+_ANSI_ESCAPE_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+
+
+def _strip_ansi_codes(text: str) -> str:
+    """Remove ANSI color and reset codes from log lines for SocketIO web clients."""
+    return _ANSI_ESCAPE_RE.sub("", text)
+
 
 # Add the project root to the path so we can import bot components
 project_root = os.path.join(os.path.dirname(__file__), '..', '..')
@@ -3638,7 +3648,7 @@ class BotDataViewer:
                         with open(log_file, encoding='utf-8', errors='replace') as _fh:
                             recent_lines = _fh.readlines()[-200:]
                         for line in recent_lines:
-                            emit('log_line', {'line': line.rstrip()})
+                            emit('log_line', {'line': _strip_ansi_codes(line.rstrip())})
                     except Exception as e:
                         self.logger.debug(f"Error reading log history: {e}")
             except Exception as e:
@@ -3753,7 +3763,9 @@ class BotDataViewer:
                     if info.get('subscribed_logs', False)
                 ]
             if subscribed:
-                self.socketio.emit('log_line', {'line': line.rstrip()}, room=None)
+                self.socketio.emit(
+                    'log_line', {'line': _strip_ansi_codes(line.rstrip())}, room=None
+                )
         except Exception as e:
             self.logger.error(f"Error broadcasting log line: {e}")
 
