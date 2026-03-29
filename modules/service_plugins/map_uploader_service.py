@@ -136,6 +136,9 @@ class MapUploaderService(BaseServicePlugin):
         # We'll periodically clean old entries to prevent unbounded growth
         self.seen_adverts: dict[str, int] = {}
 
+        # Serializes dedupe checks + seen_adverts updates so concurrent RX cannot both pass before either marks seen
+        self._advert_dedupe_lock = asyncio.Lock()
+
         # Device keys and info
         self.private_key_hex: Optional[str] = None
         self.public_key_hex: Optional[str] = None
@@ -552,38 +555,45 @@ class MapUploaderService(BaseServicePlugin):
                 self.logger.warning(f"Ignoring: signature verification failed for {advert.get('public_key', 'unknown')[:16]}...")
                 return
 
-            # Check for replay attacks
             pub_key = advert.get('public_key', '')
             timestamp = advert.get('advert_time', 0)
 
-            if pub_key in self.seen_adverts:
-                last_timestamp = self.seen_adverts[pub_key]
+            # Hold dedupe state consistently across await boundaries: another RX of the same
+            # advert may run while _upload_to_map is in flight; replay logs can appear before
+            # the HTTP response for the first copy (benign ordering, not a second submit).
+            async with self._advert_dedupe_lock:
+                if pub_key in self.seen_adverts:
+                    last_timestamp = self.seen_adverts[pub_key]
 
-                # Check for replay (timestamp <= last seen)
-                if timestamp <= last_timestamp:
+                    # Check for replay (timestamp <= last seen)
+                    if timestamp <= last_timestamp:
+                        if self.verbose:
+                            self.logger.debug(
+                                f"Ignoring: possible replay attack for {pub_key[:16]}..."
+                            )
+                        return
+
+                    # Check if too soon to reupload
+                    if timestamp < last_timestamp + self.min_reupload_interval:
+                        if self.verbose:
+                            self.logger.debug(
+                                f"Ignoring: timestamp too new to reupload for {pub_key[:16]}..."
+                            )
+                        return
+
+                # Skip adverts without coordinates or with any coordinate exactly 0.0 (invalid)
+                lat = advert.get('lat')
+                lon = advert.get('lon')
+                if lat is None or lon is None or lat == 0.0 or lon == 0.0:
                     if self.verbose:
-                        self.logger.debug(f"Ignoring: possible replay attack for {pub_key[:16]}...")
+                        self.logger.debug(
+                            f"Ignoring: advert missing or invalid coordinates (lat={lat}, lon={lon}) for {pub_key[:16]}..."
+                        )
                     return
 
-                # Check if too soon to reupload
-                if timestamp < last_timestamp + self.min_reupload_interval:
-                    if self.verbose:
-                        self.logger.debug(f"Ignoring: timestamp too new to reupload for {pub_key[:16]}...")
-                    return
+                # Mark as seen before upload so flood duplicates hit replay while POST is pending
+                self.seen_adverts[pub_key] = timestamp
 
-            # Skip adverts without coordinates or with any coordinate exactly 0.0 (invalid)
-            lat = advert.get('lat')
-            lon = advert.get('lon')
-            if lat is None or lon is None or lat == 0.0 or lon == 0.0:
-                if self.verbose:
-                    self.logger.debug(f"Ignoring: advert missing or invalid coordinates (lat={lat}, lon={lon}) for {pub_key[:16]}...")
-                return
-
-            # Mark as seen BEFORE the async upload to prevent duplicate uploads
-            # when the same advert arrives multiple times via mesh flooding
-            self.seen_adverts[pub_key] = timestamp
-
-            # Upload to map
             await self._upload_to_map(advert, raw_hex)
 
             # Periodically clean up old entries to prevent unbounded memory growth
@@ -787,7 +797,18 @@ class MapUploaderService(BaseServicePlugin):
                 # Check for errors in response (API may return 200 with error in JSON)
                 if response.status == 200:
                     if 'error' in result:
-                        self.logger.warning(f"Upload failed: {result.get('error', 'Unknown error')} (code: {result.get('code', 'unknown')})")
+                        code = result.get('code', 'unknown')
+                        node = advert.get('public_key', '')[:16]
+                        err = result.get('error', 'Unknown error')
+                        if code == 'ERR_ADVERT_DUPLICATE':
+                            # Server already had this link; benign vs concurrent duplicate RX / other uploaders
+                            self.logger.debug(
+                                f"Map API already had this advert (node {node}...); {err} ({code})"
+                            )
+                        else:
+                            self.logger.warning(
+                                f"Upload failed for node {node}...: {err} (code: {code})"
+                            )
                     else:
                         self.logger.info(f"Upload successful: {result}")
                 else:
