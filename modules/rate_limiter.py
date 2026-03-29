@@ -5,6 +5,7 @@ Controls how often messages can be sent to prevent spam
 """
 
 import asyncio
+import threading
 import time
 from collections import OrderedDict
 from typing import Optional
@@ -25,6 +26,7 @@ class PerUserRateLimiter:
         self._last_send: OrderedDict[str, float] = OrderedDict()
         # Back-compat for existing tests/introspection: keep insertion/LRU order.
         self._order: list[str] = []
+        self._lock = threading.Lock()
 
     def _normalize_key(self, key: str) -> str:
         return key.strip()
@@ -34,30 +36,33 @@ class PerUserRateLimiter:
         key = self._normalize_key(key)
         if not key:
             return True
-        last = self._last_send.get(key, 0)
-        return time.time() - last >= self.seconds
+        with self._lock:
+            last = self._last_send.get(key, 0)
+            return time.monotonic() - last >= self.seconds
 
     def time_until_next(self, key: str) -> float:
         """Get time until next allowed send for this user."""
         key = self._normalize_key(key)
         if not key:
             return 0.0
-        last = self._last_send.get(key, 0)
-        elapsed = time.time() - last
-        return max(0.0, self.seconds - elapsed)
+        with self._lock:
+            last = self._last_send.get(key, 0)
+            elapsed = time.monotonic() - last
+            return max(0.0, self.seconds - elapsed)
 
     def record_send(self, key: str) -> None:
         """Record that we sent a message to this user."""
         key = self._normalize_key(key)
         if not key:
             return
-        if key in self._last_send:
-            self._last_send.move_to_end(key)
-        elif len(self._last_send) >= self.max_entries:
-            self._last_send.popitem(last=False)
-        self._last_send[key] = time.time()
-        # Keep `_order` consistent for callers/tests.
-        self._order = list(self._last_send.keys())
+        with self._lock:
+            if key in self._last_send:
+                self._last_send.move_to_end(key)
+            elif len(self._last_send) >= self.max_entries:
+                self._last_send.popitem(last=False)
+            self._last_send[key] = time.monotonic()
+            # Keep `_order` consistent for callers/tests.
+            self._order = list(self._last_send.keys())
 
 
 class RateLimiter:
@@ -65,36 +70,41 @@ class RateLimiter:
 
     def __init__(self, seconds: float):
         self.seconds = float(seconds)
-        self.last_send = 0
+        self.last_send = 0.0
         self._total_sends = 0
         self._total_throttled = 0
+        self._lock = threading.Lock()
 
     def can_send(self) -> bool:
         """Check if we can send a message"""
-        can = time.time() - self.last_send >= self.seconds
-        if not can:
-            self._total_throttled += 1
-        return can
+        with self._lock:
+            can = time.monotonic() - self.last_send >= self.seconds
+            if not can:
+                self._total_throttled += 1
+            return can
 
     def time_until_next(self) -> float:
         """Get time until next allowed send"""
-        elapsed = time.time() - self.last_send
-        return max(0, self.seconds - elapsed)
+        with self._lock:
+            elapsed = time.monotonic() - self.last_send
+            return max(0, self.seconds - elapsed)
 
     def record_send(self):
         """Record that we sent a message"""
-        self.last_send = time.time()
-        self._total_sends += 1
+        with self._lock:
+            self.last_send = time.monotonic()
+            self._total_sends += 1
 
     def get_stats(self) -> dict:
         """Get rate limiter statistics"""
-        total_attempts = self._total_sends + self._total_throttled
-        throttle_rate = self._total_throttled / max(1, total_attempts)
-        return {
-            'total_sends': self._total_sends,
-            'total_throttled': self._total_throttled,
-            'throttle_rate': throttle_rate
-        }
+        with self._lock:
+            total_attempts = self._total_sends + self._total_throttled
+            throttle_rate = self._total_throttled / max(1, total_attempts)
+            return {
+                'total_sends': self._total_sends,
+                'total_throttled': self._total_throttled,
+                'throttle_rate': throttle_rate
+            }
 
 
 class BotTxRateLimiter:
@@ -102,26 +112,30 @@ class BotTxRateLimiter:
 
     def __init__(self, seconds: float = 1.0):
         self.seconds = seconds
-        self.last_tx = 0
+        self.last_tx = 0.0
         self._total_tx = 0
         self._total_throttled = 0
+        self._lock = threading.Lock()
 
     def can_tx(self) -> bool:
         """Check if bot can transmit a message"""
-        can = time.time() - self.last_tx >= self.seconds
-        if not can:
-            self._total_throttled += 1
-        return can
+        with self._lock:
+            can = time.monotonic() - self.last_tx >= self.seconds
+            if not can:
+                self._total_throttled += 1
+            return can
 
     def time_until_next_tx(self) -> float:
         """Get time until next allowed transmission"""
-        elapsed = time.time() - self.last_tx
-        return max(0, self.seconds - elapsed)
+        with self._lock:
+            elapsed = time.monotonic() - self.last_tx
+            return max(0, self.seconds - elapsed)
 
     def record_tx(self):
         """Record that bot transmitted a message"""
-        self.last_tx = time.time()
-        self._total_tx += 1
+        with self._lock:
+            self.last_tx = time.monotonic()
+            self._total_tx += 1
 
     async def wait_for_tx(self):
         """Wait until bot can transmit (async)"""
@@ -132,13 +146,14 @@ class BotTxRateLimiter:
 
     def get_stats(self) -> dict:
         """Get rate limiter statistics"""
-        total_attempts = self._total_tx + self._total_throttled
-        throttle_rate = self._total_throttled / max(1, total_attempts)
-        return {
-            'total_tx': self._total_tx,
-            'total_throttled': self._total_throttled,
-            'throttle_rate': throttle_rate
-        }
+        with self._lock:
+            total_attempts = self._total_tx + self._total_throttled
+            throttle_rate = self._total_throttled / max(1, total_attempts)
+            return {
+                'total_tx': self._total_tx,
+                'total_throttled': self._total_throttled,
+                'throttle_rate': throttle_rate
+            }
 
 
 class ChannelRateLimiter:
@@ -198,30 +213,33 @@ class NominatimRateLimiter:
         self.seconds = seconds
         self.last_request: float = 0.0
         self._lock: Optional[asyncio.Lock] = None
+        self._lock_init = threading.Lock()  # Guards lazy creation of asyncio.Lock
         self._total_requests = 0
         self._total_throttled = 0
 
     def _get_lock(self) -> asyncio.Lock:
-        """Lazily initialize the async lock"""
+        """Lazily initialize the async lock (thread-safe)."""
         if self._lock is None:
-            self._lock = asyncio.Lock()
+            with self._lock_init:
+                if self._lock is None:
+                    self._lock = asyncio.Lock()
         return self._lock
 
     def can_request(self) -> bool:
         """Check if we can make a Nominatim request"""
-        can = time.time() - self.last_request >= self.seconds
+        can = time.monotonic() - self.last_request >= self.seconds
         if not can:
             self._total_throttled += 1
         return can
 
     def time_until_next(self) -> float:
         """Get time until next allowed request"""
-        elapsed = time.time() - self.last_request
+        elapsed = time.monotonic() - self.last_request
         return max(0, self.seconds - elapsed)
 
     def record_request(self):
         """Record that we made a Nominatim request"""
-        self.last_request = time.time()
+        self.last_request = time.monotonic()
         self._total_requests += 1
 
     async def wait_for_request(self):
@@ -234,11 +252,11 @@ class NominatimRateLimiter:
     async def wait_and_request(self) -> None:
         """Wait until a request can be made, then mark request time (thread-safe)"""
         async with self._get_lock():
-            current_time = time.time()
+            current_time = time.monotonic()
             time_since_last = current_time - self.last_request
             if time_since_last < self.seconds:
                 await asyncio.sleep(self.seconds - time_since_last)
-            self.last_request = time.time()
+            self.last_request = time.monotonic()
             self._total_requests += 1
 
     def wait_for_request_sync(self):

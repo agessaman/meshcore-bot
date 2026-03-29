@@ -46,6 +46,8 @@ class TransmissionTracker:
 
         # Cleanup old records after this time (seconds)
         self.cleanup_after = 300  # 5 minutes
+        self._cleanup_interval = 60  # Run cleanup check every 60 seconds
+        self._last_cleanup_time = 0.0
 
         # Track our bot's public key prefix (first 2 hex chars) for filtering
         self.bot_prefix: Optional[str] = None
@@ -94,6 +96,9 @@ class TransmissionTracker:
         self.pending_transmissions[timestamp_key].append(record)
 
         self.logger.debug(f"Recorded transmission: {message_type} to {target} at {record.timestamp}")
+
+        # Periodically clean up old records to prevent unbounded memory growth
+        self._maybe_cleanup()
 
         return record
 
@@ -324,6 +329,13 @@ class TransmissionTracker:
                         return [prefix]
 
         return []  # No valid prefix found
+
+    def _maybe_cleanup(self) -> None:
+        """Run cleanup if enough time has passed since the last run."""
+        now = time.time()
+        if now - self._last_cleanup_time >= self._cleanup_interval:
+            self._last_cleanup_time = now
+            self.cleanup_old_records()
 
     def cleanup_old_records(self):
         """Remove old transmission records that are beyond the cleanup window"""

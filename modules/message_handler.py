@@ -7,6 +7,7 @@ Processes incoming messages and routes them to appropriate command handlers
 import asyncio
 import copy
 import time
+from collections import OrderedDict
 from typing import Any, Optional
 
 from .enums import AdvertFlags, DeviceRole, PayloadType, PayloadVersion, RouteType
@@ -33,9 +34,9 @@ class MessageHandler:
     def __init__(self, bot):
         self.bot = bot
         self.logger = bot.logger
-        # Cache for storing SNR and RSSI data from RF log events
-        self.snr_cache = {}
-        self.rssi_cache = {}
+        # Cache for storing SNR and RSSI data from RF log events (bounded LRU)
+        self.snr_cache: OrderedDict[str, float] = OrderedDict()
+        self.rssi_cache: OrderedDict[str, float] = OrderedDict()
 
         # Load configuration for RF data correlation
         self.rf_data_timeout = float(bot.config.get('Bot', 'rf_data_timeout', fallback='15.0'))
@@ -56,6 +57,9 @@ class MessageHandler:
         self._max_rf_cache_size = 1000  # Maximum entries per cache
         self._cache_cleanup_interval = 60  # Cleanup every 60 seconds
         self._last_cache_cleanup = time.time()
+
+        # Maximum entries for SNR/RSSI LRU caches
+        self._max_signal_cache_size = 1000
 
         # Multitest command listener (for collecting paths during listening window)
         self.multitest_listener = None
@@ -655,16 +659,22 @@ class MessageHandler:
                     self.logger.debug(f"Got pubkey_prefix from metadata: {pubkey_prefix[:16]}...")
 
                 if packet_prefix and snr_value is not None:
-                    # Cache the SNR value for this packet prefix
+                    # Cache the SNR value for this packet prefix (LRU-bounded)
                     self.snr_cache[packet_prefix] = snr_value
+                    self.snr_cache.move_to_end(packet_prefix)
+                    while len(self.snr_cache) > self._max_signal_cache_size:
+                        self.snr_cache.popitem(last=False)
                     self.logger.debug(f"Cached SNR {snr_value} for packet prefix {packet_prefix}")
 
                 # Extract and cache RSSI if available
                 if 'rssi' in payload:
                     rssi_value = payload.get('rssi')
                     if packet_prefix and rssi_value is not None:
-                        # Cache the RSSI value for this packet prefix
+                        # Cache the RSSI value for this packet prefix (LRU-bounded)
                         self.rssi_cache[packet_prefix] = rssi_value
+                        self.rssi_cache.move_to_end(packet_prefix)
+                        while len(self.rssi_cache) > self._max_signal_cache_size:
+                            self.rssi_cache.popitem(last=False)
                         self.logger.debug(f"Cached RSSI {rssi_value} for packet prefix {packet_prefix}")
 
                 # Store recent RF data with timestamp for SNR/RSSI matching only

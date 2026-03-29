@@ -523,3 +523,51 @@ class TestExtractRepeaterPrefixesParenPath:
 
         result = tracker.extract_repeater_prefixes_from_path("01,7e,ab(2) via ROUTE_TYPE_FLOOD")
         assert result == ["ab"]
+
+
+# ---------------------------------------------------------------------------
+# Automatic cleanup via _maybe_cleanup
+# ---------------------------------------------------------------------------
+
+class TestMaybeCleanup:
+    """Tests for automatic periodic cleanup in TransmissionTracker."""
+
+    def test_maybe_cleanup_runs_after_interval(self, tracker):
+        """_maybe_cleanup runs cleanup_old_records when interval has elapsed."""
+        # Record an old transmission manually
+        old_record = TransmissionRecord(
+            timestamp=time.time() - 600,  # 10 minutes ago (past cleanup_after=300s)
+            content="old", target="chan", message_type="channel",
+        )
+        tracker.pending_transmissions[int(old_record.timestamp)] = [old_record]
+        # Force the interval to have elapsed
+        tracker._last_cleanup_time = 0.0
+        tracker._maybe_cleanup()
+        # Old record should be cleaned up
+        assert int(old_record.timestamp) not in tracker.pending_transmissions
+
+    def test_maybe_cleanup_skips_within_interval(self, tracker):
+        """_maybe_cleanup does NOT run cleanup if interval hasn't elapsed."""
+        old_record = TransmissionRecord(
+            timestamp=time.time() - 600,
+            content="old", target="chan", message_type="channel",
+        )
+        tracker.pending_transmissions[int(old_record.timestamp)] = [old_record]
+        # Set last cleanup to now — interval hasn't elapsed
+        tracker._last_cleanup_time = time.time()
+        tracker._maybe_cleanup()
+        # Old record should still be present (cleanup didn't run)
+        assert int(old_record.timestamp) in tracker.pending_transmissions
+
+    def test_record_transmission_triggers_cleanup(self, tracker):
+        """record_transmission calls _maybe_cleanup, cleaning stale records."""
+        old_record = TransmissionRecord(
+            timestamp=time.time() - 600,
+            content="old", target="chan", message_type="channel",
+        )
+        old_key = int(old_record.timestamp)
+        tracker.pending_transmissions[old_key] = [old_record]
+        tracker._last_cleanup_time = 0.0  # Force cleanup to run
+        # Recording a new transmission should trigger cleanup
+        tracker.record_transmission("new msg", "general", "channel")
+        assert old_key not in tracker.pending_transmissions

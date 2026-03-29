@@ -38,9 +38,9 @@ class TestRateLimiter:
 
     def test_record_send_updates_last_send(self):
         limiter = RateLimiter(seconds=10)
-        before = time.time()
+        before = time.monotonic()
         limiter.record_send()
-        after = time.time()
+        after = time.monotonic()
         assert before <= limiter.last_send <= after
 
 
@@ -251,7 +251,7 @@ class TestBotTxRateLimiterWaitForTx:
         # the first evaluation, so the while body (lines 126-128) is entered
         # at least once by making the initial state throttled and then
         # immediately resolvable.
-        limiter.last_tx = time.time() - 10  # well past the 5-second window
+        limiter.last_tx = time.monotonic() - 10  # well past the 5-second window
         # Now can_tx() is True so wait_for_tx returns immediately.
         asyncio.run(limiter.wait_for_tx())
 
@@ -270,7 +270,7 @@ class TestBotTxRateLimiterWaitForTx:
                 # First call: report not ready (exercises loop body).
                 # We also set last_tx far in the past so time_until_next_tx() == 0
                 # to avoid any real asyncio.sleep.
-                limiter.last_tx = time.time() - 200
+                limiter.last_tx = time.monotonic() - 200
                 return False
             return original_can_tx()
 
@@ -326,7 +326,7 @@ class TestNominatimRateLimiterWaitForRequest:
             call_count[0] += 1
             if call_count[0] == 1:
                 # Backdate so time_until_next() returns 0, avoiding a real sleep.
-                limiter.last_request = time.time() - 200
+                limiter.last_request = time.monotonic() - 200
                 return False
             return original()
 
@@ -342,7 +342,7 @@ class TestNominatimRateLimiterWaitAndRequest:
         """No sleep needed; last_request starts at 0."""
         async def _inner():
             limiter = NominatimRateLimiter(seconds=1.1)
-            before = time.time()
+            before = time.monotonic()
             await limiter.wait_and_request()
             assert limiter.last_request >= before
             assert limiter._total_requests == 1
@@ -365,12 +365,12 @@ class TestNominatimRateLimiterWaitAndRequest:
             limiter = NominatimRateLimiter(seconds=0.05)
             # Record a request right now so time_since_last < seconds.
             limiter.record_request()
-            before = time.time()
+            before = time.monotonic()
             await limiter.wait_and_request()
             # Two requests recorded total (one manual, one via wait_and_request).
             assert limiter._total_requests == 2
             # At least some time passed (the sleep).
-            assert time.time() - before >= 0.0  # non-negative; sleep was brief
+            assert time.monotonic() - before >= 0.0  # non-negative; sleep was brief
 
         asyncio.run(_inner())
 
@@ -394,7 +394,7 @@ class TestNominatimRateLimiterWaitForRequestSync:
             call_count[0] += 1
             if call_count[0] == 1:
                 # Backdate so time_until_next() returns 0, avoiding an actual sleep.
-                limiter.last_request = time.time() - 200
+                limiter.last_request = time.monotonic() - 200
                 return False
             return original()
 

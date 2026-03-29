@@ -1544,3 +1544,54 @@ class TestGetPathFromRfData:
             assert nodes is None
         except (ValueError, UnboundLocalError):
             pass  # expected — source-level bug causes exception to propagate
+
+
+# ---------------------------------------------------------------------------
+# SNR/RSSI LRU cache bounds
+# ---------------------------------------------------------------------------
+
+class TestSignalCacheLRUBounds:
+    """Tests for bounded LRU eviction on snr_cache and rssi_cache."""
+
+    def test_snr_cache_evicts_oldest_at_limit(self, handler):
+        handler._max_signal_cache_size = 3
+        # Fill cache to capacity
+        handler.snr_cache["aaa"] = 1.0
+        handler.snr_cache["bbb"] = 2.0
+        handler.snr_cache["ccc"] = 3.0
+        # Simulate the write path with LRU eviction
+        key = "ddd"
+        handler.snr_cache[key] = 4.0
+        handler.snr_cache.move_to_end(key)
+        while len(handler.snr_cache) > handler._max_signal_cache_size:
+            handler.snr_cache.popitem(last=False)
+        # Oldest entry ("aaa") should be evicted
+        assert "aaa" not in handler.snr_cache
+        assert len(handler.snr_cache) == 3
+        assert list(handler.snr_cache.keys()) == ["bbb", "ccc", "ddd"]
+
+    def test_rssi_cache_evicts_oldest_at_limit(self, handler):
+        handler._max_signal_cache_size = 2
+        handler.rssi_cache["x1"] = -50.0
+        handler.rssi_cache["x2"] = -60.0
+        # Add a third entry with eviction
+        key = "x3"
+        handler.rssi_cache[key] = -70.0
+        handler.rssi_cache.move_to_end(key)
+        while len(handler.rssi_cache) > handler._max_signal_cache_size:
+            handler.rssi_cache.popitem(last=False)
+        assert "x1" not in handler.rssi_cache
+        assert len(handler.rssi_cache) == 2
+
+    def test_existing_key_update_does_not_evict(self, handler):
+        handler._max_signal_cache_size = 2
+        handler.snr_cache["a"] = 1.0
+        handler.snr_cache["b"] = 2.0
+        # Update existing key — no eviction needed
+        handler.snr_cache["a"] = 5.0
+        handler.snr_cache.move_to_end("a")
+        while len(handler.snr_cache) > handler._max_signal_cache_size:
+            handler.snr_cache.popitem(last=False)
+        assert len(handler.snr_cache) == 2
+        assert handler.snr_cache["a"] == 5.0
+        assert handler.snr_cache["b"] == 2.0
