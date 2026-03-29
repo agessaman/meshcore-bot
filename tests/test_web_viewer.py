@@ -1911,18 +1911,47 @@ class TestRestoreRoute:
         assert resp.status_code == 400
         assert "db_file" in resp.get_json()["error"]
 
-    def test_nonexistent_file_returns_400(self, viewer):
+    def test_nonexistent_file_returns_400(self, viewer, tmp_path):
         """Returns 400 when db_file path does not exist."""
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+        viewer.db_manager.set_metadata('maint.db_backup_dir', str(backup_dir))
         with viewer.app.test_client() as c:
             resp = c.post("/api/maintenance/restore",
-                          json={"db_file": "/no/such/file.db"},
+                          json={"db_file": str(backup_dir / "missing.db")},
                           content_type="application/json")
         assert resp.status_code == 400
         assert "not found" in resp.get_json()["error"].lower()
 
+    def test_path_traversal_returns_403(self, viewer, tmp_path):
+        """Returns 403 when db_file is outside the backup directory."""
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+        viewer.db_manager.set_metadata('maint.db_backup_dir', str(backup_dir))
+        outside = tmp_path / "outside.db"
+        outside.write_bytes(b"SQLite format 3\x00")
+        with viewer.app.test_client() as c:
+            resp = c.post("/api/maintenance/restore",
+                          json={"db_file": str(outside)},
+                          content_type="application/json")
+        assert resp.status_code == 403
+
+    def test_no_backup_dir_returns_400(self, viewer):
+        """Returns 400 when no backup directory is configured."""
+        viewer.db_manager.set_metadata('maint.db_backup_dir', '')
+        with viewer.app.test_client() as c:
+            resp = c.post("/api/maintenance/restore",
+                          json={"db_file": "/some/file.db"},
+                          content_type="application/json")
+        assert resp.status_code == 400
+        assert "backup directory" in resp.get_json()["error"].lower()
+
     def test_non_sqlite_file_returns_400(self, viewer, tmp_path):
         """Returns 400 when the file is not a valid SQLite database."""
-        bad = tmp_path / "bad.db"
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+        viewer.db_manager.set_metadata('maint.db_backup_dir', str(backup_dir))
+        bad = backup_dir / "bad.db"
         bad.write_bytes(b"not a sqlite file!!")
         with viewer.app.test_client() as c:
             resp = c.post("/api/maintenance/restore",
@@ -1934,7 +1963,10 @@ class TestRestoreRoute:
     def test_valid_sqlite_restore_returns_200(self, viewer, tmp_path):
         """Returns 200 with warning when a valid SQLite backup is restored."""
         import sqlite3 as _sql
-        backup = tmp_path / "backup.db"
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+        viewer.db_manager.set_metadata('maint.db_backup_dir', str(backup_dir))
+        backup = backup_dir / "backup.db"
         conn = _sql.connect(str(backup))
         conn.execute("CREATE TABLE t (id INTEGER)")
         conn.commit()

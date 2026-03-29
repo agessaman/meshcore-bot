@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager, contextmanager
 from typing import Any, Optional
 
 from .db_migrations import MigrationRunner
+from .security_utils import VALID_JOURNAL_MODES
 
 
 class DBManager:
@@ -478,6 +479,9 @@ class DBManager:
             busy_timeout_ms = default_busy_timeout_ms
         foreign_keys = bool(foreign_keys)
         journal_mode = str(journal_mode).strip() or "WAL"
+        if journal_mode.upper() not in VALID_JOURNAL_MODES:
+            self.logger.warning(f"Invalid journal_mode {journal_mode!r}, falling back to WAL")
+            journal_mode = "WAL"
 
         try:
             conn.execute(f"PRAGMA foreign_keys={'ON' if foreign_keys else 'OFF'}")

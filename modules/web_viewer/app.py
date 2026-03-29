@@ -32,6 +32,8 @@ from flask import (
 )
 from flask_socketio import SocketIO, disconnect, emit
 
+from modules.security_utils import VALID_JOURNAL_MODES, validate_sql_identifier
+
 
 def _apply_werkzeug_websocket_fix() -> None:
     """Patch SimpleWebSocketWSGI to call start_response after WebSocket teardown.
@@ -99,16 +101,16 @@ class BotDataViewer:
         self.app.config['SECRET_KEY'] = _secrets.token_hex(32)
 
         # Flask-SocketIO configuration following 5.x best practices
-        self.socketio = SocketIO(
-            self.app,
-            cors_allowed_origins="*",
+        # CORS origins are configured after config is loaded; create without app for now
+        self._socketio_kwargs = dict(
             max_http_buffer_size=1000000,  # 1MB buffer limit
             ping_timeout=20,               # 20 second ping timeout — 5s was too short when subscribe handlers replay DB history
             ping_interval=25,             # 25 second ping interval (Flask-SocketIO 5.x default)
             logger=False,                  # Disable verbose logging
             engineio_logger=False,        # Disable EngineIO logging
-            async_mode='threading'        # Use threading for better stability
+            async_mode='threading',       # Use threading for better stability
         )
+        self.socketio = SocketIO()
 
         self.repeater_db_path = repeater_db_path
 
@@ -152,6 +154,14 @@ class BotDataViewer:
                 "Web viewer has NO authentication. Set web_viewer_password in [Web_Viewer] config "
                 "or restrict access with host = 127.0.0.1 and firewall rules."
             )
+
+        # Configure CORS for SocketIO — default to same-origin (no cross-origin)
+        cors_raw = self.config.get('Web_Viewer', 'cors_allowed_origins', fallback='').strip()
+        if cors_raw:
+            cors_origins = cors_raw if cors_raw == '*' else [o.strip() for o in cors_raw.split(',') if o.strip()]
+            self._socketio_kwargs['cors_allowed_origins'] = cors_origins
+        # Initialize SocketIO with Flask app now that config is loaded
+        self.socketio.init_app(self.app, **self._socketio_kwargs)
 
         # Version info for footer (tag or branch/commit/date); computed once at startup
         self._version_info = self._get_version_info()
@@ -347,6 +357,9 @@ class BotDataViewer:
                 foreign_keys = self.config.getboolean("Web_Viewer", "sqlite_foreign_keys", fallback=True)
                 busy_timeout_ms = self.config.getint("Web_Viewer", "sqlite_busy_timeout_ms", fallback=60000)
                 journal_mode = self.config.get("Web_Viewer", "sqlite_journal_mode", fallback="WAL").strip() or "WAL"
+                if journal_mode.upper() not in VALID_JOURNAL_MODES:
+                    self.logger.warning(f"Invalid journal_mode {journal_mode!r}, falling back to WAL")
+                    journal_mode = "WAL"
                 conn.execute(f"PRAGMA foreign_keys={'ON' if foreign_keys else 'OFF'}")
                 conn.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)}")
                 conn.execute(f"PRAGMA journal_mode={journal_mode}")
@@ -368,6 +381,9 @@ class BotDataViewer:
             foreign_keys = self.config.getboolean("Web_Viewer", "sqlite_foreign_keys", fallback=True)
             busy_timeout_ms = self.config.getint("Web_Viewer", "sqlite_busy_timeout_ms", fallback=60000)
             journal_mode = self.config.get("Web_Viewer", "sqlite_journal_mode", fallback="WAL").strip() or "WAL"
+            if journal_mode.upper() not in VALID_JOURNAL_MODES:
+                self.logger.warning(f"Invalid journal_mode {journal_mode!r}, falling back to WAL")
+                journal_mode = "WAL"
             conn.execute(f"PRAGMA foreign_keys={'ON' if foreign_keys else 'OFF'}")
             conn.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)}")
             conn.execute(f"PRAGMA journal_mode={journal_mode}")
@@ -1471,7 +1487,19 @@ class BotDataViewer:
                 db_file = str(data.get('db_file', '')).strip()
                 if not db_file:
                     return jsonify({'error': 'db_file is required'}), 400
-                src = Path(db_file)
+
+                # Validate path is within the configured backup directory
+                backup_dir_str = self.db_manager.get_metadata('maint.db_backup_dir') or ''
+                if not backup_dir_str or not os.path.isdir(backup_dir_str):
+                    return jsonify({'error': 'No valid backup directory configured'}), 400
+                # Ensure the resolved path is within the backup directory (prevents traversal)
+                backup_dir = Path(backup_dir_str).resolve()
+                src = Path(db_file).resolve()
+                try:
+                    src.relative_to(backup_dir)
+                except ValueError:
+                    return jsonify({'error': 'Restore path must be within the configured backup directory'}), 403
+
                 if not src.exists():
                     return jsonify({'error': f'File not found: {db_file}'}), 400
                 # Validate it is a real SQLite file by checking the magic header
@@ -4094,6 +4122,11 @@ class BotDataViewer:
             stats['active_cache_entries'] = 0
 
             for table in cache_tables:
+                try:
+                    validate_sql_identifier(table)
+                except ValueError:
+                    self.logger.warning(f"Skipping invalid table name: {table!r}")
+                    continue
                 cursor.execute(f"SELECT COUNT(*) FROM {table}")
                 count = cursor.fetchone()[0]
                 stats['total_cache_entries'] += count
@@ -4374,6 +4407,11 @@ class BotDataViewer:
 
             for table_name in table_names:
                 try:
+                    validate_sql_identifier(table_name)
+                except ValueError:
+                    self.logger.warning(f"Skipping invalid table name: {table_name!r}")
+                    continue
+                try:
                     # Get record count
                     cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
                     record_count = cursor.fetchone()[0]
@@ -4483,12 +4521,18 @@ class BotDataViewer:
             self.logger.info("Starting database REINDEX...")
             reindexed_tables = []
             for table in tables:
-                if table != 'sqlite_sequence':  # Skip system tables
-                    try:
-                        cursor.execute(f"REINDEX {table}")
-                        reindexed_tables.append(table)
-                    except Exception as e:
-                        self.logger.debug(f"Could not reindex table {table}: {e}")
+                if table == 'sqlite_sequence':  # Skip system tables
+                    continue
+                try:
+                    validate_sql_identifier(table)
+                except ValueError:
+                    self.logger.warning(f"Skipping invalid table name for REINDEX: {table!r}")
+                    continue
+                try:
+                    cursor.execute(f"REINDEX {table}")
+                    reindexed_tables.append(table)
+                except Exception as e:
+                    self.logger.debug(f"Could not reindex table {table}: {e}")
 
             # Get final database size
             final_size = os.path.getsize(self.db_path)

@@ -243,6 +243,32 @@ def sanitize_input(content: str, max_length: Optional[int] = 500, strip_controls
     return content.strip()
 
 
+# Valid SQLite journal modes for PRAGMA journal_mode validation
+VALID_JOURNAL_MODES = {"DELETE", "TRUNCATE", "PERSIST", "MEMORY", "WAL", "OFF"}
+
+
+def validate_sql_identifier(identifier: str) -> str:
+    """
+    Validate a SQL identifier (table or column name) for safe interpolation.
+
+    Only allows alphanumeric characters and underscores, must start with
+    a letter or underscore. This is intentionally strict to prevent SQL injection
+    when parameterized queries cannot be used (e.g., PRAGMA, REINDEX).
+
+    Args:
+        identifier: The SQL identifier to validate
+
+    Returns:
+        The validated identifier string
+
+    Raises:
+        ValueError: If the identifier contains unsafe characters
+    """
+    if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', identifier):
+        raise ValueError(f"Invalid SQL identifier: {identifier!r}")
+    return identifier
+
+
 def validate_api_key_format(api_key: str, min_length: int = 16) -> bool:
     """
     Validate API key format
