@@ -156,7 +156,12 @@ class DiscordBridgeService(BaseServicePlugin):
         for key, value in self.bot.config.items('DiscordBridge'):
             # Look for bridge.* pattern
             if key.startswith('bridge.'):
-                channel_name = key[7:]  # Remove 'bridge.' prefix
+                channel_name = key[7:]  # Remove 'bridge.' prefix (ConfigParser lowercases option keys by default)
+                # Normalize to a friendlier/canonical display form:
+                # - If it's a plain name like "public", store as "Public" (matches channel display names).
+                # - If it starts with a non-letter (e.g. "#general"), leave it as-is.
+                if channel_name and channel_name[0].isalpha():
+                    channel_name = channel_name[0].upper() + channel_name[1:]
                 raw_value = value.strip()
 
                 if not raw_value:

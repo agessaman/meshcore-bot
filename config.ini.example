@@ -1318,10 +1318,6 @@ auth_token_method = device
 # Default: XYZ (invalid if not set)
 iata = XYZ
 
-# MQTT configuration
-# Enable MQTT publishing
-mqtt_enabled = true
-
 # MQTT Broker Configuration
 # You can configure multiple MQTT brokers by using mqtt1_*, mqtt2_*, mqtt3_*, etc.
 # Each broker can have independent settings for transport, TLS, authentication, and topics.
@@ -1502,6 +1498,46 @@ maxlongitude = -114.0
 # When true: notification message then link-only message. When false: no link sent.
 # Default: true
 send_link = true
+
+[RepeaterPrefixCollision_Service]
+# Enable repeater prefix collision notifications (true/false)
+# Watches NEW_CONTACT events; after the repeater is stored + geolocated in the database,
+# posts a message when a newly heard repeater shares a prefix with an existing repeater.
+enabled = false
+
+# Channels to post alerts to (comma-separated).
+# Prefer this option if you want multiple channels.
+channels = #general
+
+# Fallback single channel option (used only when channels= is not set).
+# channel = #general
+
+# Notify on duplicate prefix matches for 1, 2, or 3 bytes.
+# 1 byte = 2 hex chars (01), 2 bytes = 4 hex chars (0101), 3 bytes = 6 hex chars (010101)
+notify_on_prefix_bytes = 1
+
+# Only treat an existing prefix as "in use" if the repeater was heard within this window (days).
+heard_window_days = 30
+
+# Used for the "{prefixes_free} free prefixes remain" count (days).
+# Set to 0 to count all historical prefixes.
+prefix_free_days = 30
+
+# Delay/poll timing to allow contact storage + reverse geocoding to complete.
+post_process_delay_seconds = 0.5
+post_process_timeout_seconds = 15.0
+# Seconds between DB polls while waiting for the row (default 0.2).
+# post_process_poll_interval_seconds = 0.2
+
+# Include: "Type 'prefix free' to find one." (only applies to 1-byte notifications).
+include_prefix_free_hint = true
+
+# Cooldown (minutes) to reduce alert spam for the same prefix (and repeated NEW_CONTACT events).
+cooldown_minutes_per_prefix = 60
+
+# Eligibility (strict, not configurable): alerts only when first_heard is today (local) and
+# unique_advert_packets has exactly one distinct packet_hash for this public_key today—so same-day
+# re-adverts or double-ingest skip rather than spam. See docs/repeater-prefix-collision-service.md.
 
 [DiscordBridge]
 # Enable Discord bridge service
