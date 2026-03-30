@@ -12,6 +12,7 @@ import requests
 
 from ...models import MeshMessage
 from ...utils import (
+    format_temperature_high_low,
     geocode_city_sync,
     geocode_zipcode_sync,
     get_nominatim_geocoder,
@@ -97,6 +98,10 @@ class GlobalWxCommand(BaseCommand):
 
         # Get database manager for geocoding cache
         self.db_manager = bot.db_manager
+
+    def _format_high_low(self, high: Optional[Union[int, float]], low: Optional[Union[int, float]], temp_symbol: str) -> str:
+        """Format high/low using [Weather] temperature_*_format templates."""
+        return format_temperature_high_low(self.bot.config, high, low, temp_symbol, self.logger)
 
     def _load_weather_model(self) -> Optional[str]:
         """Load and normalize Open-Meteo model selection from config.
@@ -281,12 +286,9 @@ class GlobalWxCommand(BaseCommand):
                 temp_symbol = "°F" if temp_unit == 'fahrenheit' else "°C"
 
                 result = f"Tomorrow: {tomorrow.conditions}"
-                if high is not None and low is not None:
-                    result += f" {high}{temp_symbol}/{low}{temp_symbol}"
-                elif high is not None:
-                    result += f" {high}{temp_symbol}"
-                elif low is not None:
-                    result += f" {low}{temp_symbol}"
+                hl = self._format_high_low(high, low, temp_symbol)
+                if hl:
+                    result += f" {hl}"
 
                 if tomorrow.precip_chance and tomorrow.precip_chance > 30:
                     result += f" {tomorrow.precip_chance}% PoP"
@@ -315,12 +317,9 @@ class GlobalWxCommand(BaseCommand):
                 low = self.wxsim_parser._convert_temp(today.low_temp, temp_unit) if today.low_temp else None
                 temp_symbol = "°F" if temp_unit == 'fahrenheit' else "°C"
 
-                if high is not None and low is not None:
-                    current += f" | H:{high}{temp_symbol} L:{low}{temp_symbol}"
-                elif high is not None:
-                    current += f" | H:{high}{temp_symbol}"
-                elif low is not None:
-                    current += f" | L:{low}{temp_symbol}"
+                hl_today = self._format_high_low(high, low, temp_symbol)
+                if hl_today:
+                    current += f" | {hl_today}"
 
                 # Add tomorrow if available
                 if len(forecast.periods) > 1:
@@ -328,8 +327,9 @@ class GlobalWxCommand(BaseCommand):
                     tomorrow_high = self.wxsim_parser._convert_temp(tomorrow.high_temp, temp_unit) if tomorrow.high_temp else None
                     tomorrow_low = self.wxsim_parser._convert_temp(tomorrow.low_temp, temp_unit) if tomorrow.low_temp else None
 
-                    if tomorrow_high is not None and tomorrow_low is not None:
-                        current += f" | Tomorrow: {tomorrow_high}{temp_symbol}/{tomorrow_low}{temp_symbol}"
+                    hl_tom = self._format_high_low(tomorrow_high, tomorrow_low, temp_symbol)
+                    if hl_tom:
+                        current += f" | Tomorrow: {hl_tom}"
 
             if location_name:
                 return f"{location_name}: {current}"
@@ -995,8 +995,7 @@ class GlobalWxCommand(BaseCommand):
                 today_high = int(daily['temperature_2m_max'][0])
                 today_low = int(daily['temperature_2m_min'][0])
 
-                # Show high/low with labels to make it clear
-                weather += f" | H:{today_high}{temp_symbol} L:{today_low}{temp_symbol}"
+                weather += f" | {self._format_high_low(today_high, today_low, temp_symbol)}"
 
                 # Add tomorrow if space allows (check length more carefully)
                 if len(daily['temperature_2m_max']) > 1:
@@ -1008,7 +1007,7 @@ class GlobalWxCommand(BaseCommand):
 
                     # Get tomorrow's period name
                     tomorrow_period = self.translate('commands.gwx.periods.tomorrow')
-                    tomorrow_str = f" | {tomorrow_period}: {tomorrow_emoji}{tomorrow_high}{temp_symbol}/{tomorrow_low}{temp_symbol}"
+                    tomorrow_str = f" | {tomorrow_period}: {tomorrow_emoji} {self._format_high_low(tomorrow_high, tomorrow_low, temp_symbol)}"
 
                     # Only add if we have space (leave room for potential precipitation)
                     # Use display width to account for emojis
@@ -1096,7 +1095,8 @@ class GlobalWxCommand(BaseCommand):
                         precip_info = f" 🌦️{precip_prob}%"
 
             tomorrow_period = self.translate('commands.gwx.periods.tomorrow')
-            return f"{tomorrow_period}: {tomorrow_emoji}{tomorrow_desc} {tomorrow_high}{temp_symbol}/{tomorrow_low}{temp_symbol}{wind_info}{precip_info}"
+            hl = self._format_high_low(tomorrow_high, tomorrow_low, temp_symbol)
+            return f"{tomorrow_period}: {tomorrow_emoji}{tomorrow_desc} {hl}{wind_info}{precip_info}"
 
         except Exception as e:
             self.logger.error(f"Error formatting tomorrow forecast: {e}")
@@ -1156,7 +1156,7 @@ class GlobalWxCommand(BaseCommand):
                 if len(desc) > 20:
                     desc_short = desc[:17] + "..."
 
-                parts.append(f"{day_abbrev}: {emoji}{desc_short} {high}{temp_symbol}/{low}{temp_symbol}")
+                parts.append(f"{day_abbrev}: {emoji}{desc_short} {self._format_high_low(high, low, temp_symbol)}")
 
             if not parts:
                 return self.translate('commands.gwx.multiday_not_available', num_days=num_days)

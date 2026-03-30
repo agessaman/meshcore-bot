@@ -591,6 +591,16 @@ wind_speed_unit = mph
 # Default: inch
 precipitation_unit = inch
 
+# How to show daily high/low temperatures (wx, gwx, Weather_Service).
+# Placeholders: {high} {low} {units}  ({units} is °F or °C)
+temperature_high_low_format = H:{high}{units} L:{low}{units}
+temperature_high_only_format = H:{high}{units}
+temperature_low_only_format = L:{low}{units}
+# Examples:
+# temperature_high_low_format = ↓{low}°↑{high}{units}
+# temperature_high_low_format = H:{high}{units} L:{low}{units}
+# temperature_high_low_format = {high}{units}/{low}{units}
+
 # Custom weather sources (extensible pattern, similar to Channels_List)
 # Format: custom.<provider>.<name> = <source_url>
 #   custom.wxsim.default = <url>  - Default source used when 'wx' is called without a location

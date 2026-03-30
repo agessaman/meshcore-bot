@@ -31,6 +31,7 @@ import contextlib
 
 from .base_service import BaseServicePlugin
 from ..url_shortener import shorten_url
+from ..utils import format_temperature_high_low
 
 
 class WeatherService(BaseServicePlugin):
@@ -493,8 +494,12 @@ class WeatherService(BaseServicePlugin):
 
             today_high = int(daily['temperature_2m_max'][0])
             today_low = int(daily['temperature_2m_min'][0])
-            # Show high/low with labels to make it clear
-            forecast_text += f" | H:{today_high}{temp_symbol} L:{today_low}{temp_symbol}"
+            forecast_text += (
+                " | "
+                + format_temperature_high_low(
+                    self.bot.config, today_high, today_low, temp_symbol, self.logger
+                )
+            )
 
             # Add tomorrow's forecast
             daily_times = daily.get('time', [])
@@ -511,9 +516,23 @@ class WeatherService(BaseServicePlugin):
 
                 if tomorrow_max is not None:
                     if tomorrow_min is not None and tomorrow_min != tomorrow_max:
-                        forecast_text += f" | Tomorrow: {tomorrow_emoji}{tomorrow_desc} {tomorrow_min}-{tomorrow_max}{temp_symbol}"
+                        hl = format_temperature_high_low(
+                            self.bot.config,
+                            tomorrow_max,
+                            tomorrow_min,
+                            temp_symbol,
+                            self.logger,
+                        )
+                        forecast_text += f" | Tomorrow: {tomorrow_emoji}{tomorrow_desc} {hl}"
                     else:
-                        forecast_text += f" | Tomorrow: {tomorrow_emoji}{tomorrow_desc} {tomorrow_max}{temp_symbol}"
+                        hl = format_temperature_high_low(
+                            self.bot.config,
+                            tomorrow_max,
+                            None,
+                            temp_symbol,
+                            self.logger,
+                        )
+                        forecast_text += f" | Tomorrow: {tomorrow_emoji}{tomorrow_desc} {hl}"
 
             return forecast_text
 

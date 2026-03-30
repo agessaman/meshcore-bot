@@ -57,6 +57,73 @@ def get_config_timezone(config: Any, logger: Optional[Any] = None) -> tuple[Any,
     return (tz, "UTC")
 
 
+def format_temperature_high_low(
+    config: Any,
+    high: Optional[Union[int, float]],
+    low: Optional[Union[int, float]],
+    units_str: str,
+    logger: Optional[Any] = None,
+) -> str:
+    """Format a daily high/low pair (or single value) using [Weather] templates.
+
+    Config keys (optional; defaults match prior bot behavior):
+      temperature_high_low_format — both values: {high}, {low}, {units}
+      temperature_high_only_format — {high}, {units}
+      temperature_low_only_format — {low}, {units}
+    """
+    section = "Weather"
+    default_pair = "H:{high}{units} L:{low}{units}"
+    default_high_only = "H:{high}{units}"
+    default_low_only = "L:{low}{units}"
+
+    def _norm(v: Optional[Union[int, float]]) -> Optional[int]:
+        if v is None:
+            return None
+        try:
+            if isinstance(v, float):
+                return int(round(v))
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+
+    hi = _norm(high)
+    lo = _norm(low)
+    if hi is None and lo is None:
+        return ""
+
+    if config.has_section(section):
+        pair_fmt = config.get(section, "temperature_high_low_format", fallback=default_pair)
+        high_only_fmt = config.get(section, "temperature_high_only_format", fallback=default_high_only)
+        low_only_fmt = config.get(section, "temperature_low_only_format", fallback=default_low_only)
+    else:
+        pair_fmt, high_only_fmt, low_only_fmt = default_pair, default_high_only, default_low_only
+
+    def _try_format(fmt: str, **kwargs: Any) -> Optional[str]:
+        try:
+            return fmt.format(**kwargs)
+        except (KeyError, ValueError, IndexError) as e:
+            if logger is not None and hasattr(logger, "warning"):
+                logger.warning("Invalid temperature format template %r: %s", fmt, e)
+            return None
+
+    if hi is not None and lo is not None:
+        out = _try_format(pair_fmt, high=hi, low=lo, units=units_str)
+        if out is not None:
+            return out
+        return _try_format(default_pair, high=hi, low=lo, units=units_str) or f"H:{hi}{units_str} L:{lo}{units_str}"
+
+    if hi is not None:
+        out = _try_format(high_only_fmt, high=hi, low=lo, units=units_str)
+        if out is not None:
+            return out
+        return _try_format(default_high_only, high=hi, low=lo, units=units_str) or f"H:{hi}{units_str}"
+
+    out = _try_format(low_only_fmt, high=hi, low=lo, units=units_str)
+    if out is not None:
+        return out
+    return _try_format(default_low_only, high=hi, low=lo, units=units_str) or f"L:{lo}{units_str}"
+
+
 def abbreviate_location(location: str, max_length: int = 20) -> str:
     """Abbreviate a location string to fit within character limits.
 

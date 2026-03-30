@@ -15,6 +15,7 @@ from urllib3.util.retry import Retry
 
 from ..models import MeshMessage
 from ..utils import (
+    format_temperature_high_low,
     geocode_city_sync,
     geocode_zipcode_sync,
     get_nominatim_geocoder,
@@ -111,6 +112,15 @@ class WxCommand(BaseCommand):
             # Create a retry-enabled session for NOAA API calls
             # This makes the API more resilient to timeouts and transient errors
             self.noaa_session = self._create_retry_session()
+
+    def _format_high_low(self, high: Optional[float], low: Optional[float], temp_symbol: str) -> str:
+        """Format high/low using [Weather] temperature_*_format templates."""
+        return format_temperature_high_low(self.bot.config, high, low, temp_symbol, self.logger)
+
+    @staticmethod
+    def _noaa_period_temp_symbol(period: dict) -> str:
+        u = (period.get("temperatureUnit") or "F").upper()
+        return "°F" if u == "F" else "°C"
 
     def _create_retry_session(self) -> requests.Session:
         """Create a requests session with retry logic for NOAA API calls"""
@@ -336,12 +346,9 @@ class WxCommand(BaseCommand):
                 temp_symbol = "°F" if temp_unit == 'fahrenheit' else "°C"
 
                 result = f"Tomorrow: {tomorrow.conditions}"
-                if high is not None and low is not None:
-                    result += f" {high}{temp_symbol}/{low}{temp_symbol}"
-                elif high is not None:
-                    result += f" {high}{temp_symbol}"
-                elif low is not None:
-                    result += f" {low}{temp_symbol}"
+                hl = self._format_high_low(high, low, temp_symbol)
+                if hl:
+                    result += f" {hl}"
 
                 if tomorrow.precip_chance and tomorrow.precip_chance > 30:
                     result += f" {tomorrow.precip_chance}% PoP"
@@ -370,12 +377,9 @@ class WxCommand(BaseCommand):
                 low = self.wxsim_parser._convert_temp(today.low_temp, temp_unit) if today.low_temp else None
                 temp_symbol = "°F" if temp_unit == 'fahrenheit' else "°C"
 
-                if high is not None and low is not None:
-                    current += f" | H:{high}{temp_symbol} L:{low}{temp_symbol}"
-                elif high is not None:
-                    current += f" | H:{high}{temp_symbol}"
-                elif low is not None:
-                    current += f" | L:{low}{temp_symbol}"
+                hl_today = self._format_high_low(high, low, temp_symbol)
+                if hl_today:
+                    current += f" | {hl_today}"
 
                 # Add tomorrow if available (second period)
                 if len(forecast.periods) > 1:
@@ -383,8 +387,9 @@ class WxCommand(BaseCommand):
                     tomorrow_high = self.wxsim_parser._convert_temp(tomorrow.high_temp, temp_unit) if tomorrow.high_temp else None
                     tomorrow_low = self.wxsim_parser._convert_temp(tomorrow.low_temp, temp_unit) if tomorrow.low_temp else None
 
-                    if tomorrow_high is not None and tomorrow_low is not None:
-                        current += f" | Tomorrow: {tomorrow_high}{temp_symbol}/{tomorrow_low}{temp_symbol}"
+                    hl_tom = self._format_high_low(tomorrow_high, tomorrow_low, temp_symbol)
+                    if hl_tom:
+                        current += f" | Tomorrow: {hl_tom}"
 
             if location_name:
                 return f"{location_name}: {current}"
@@ -1046,7 +1051,9 @@ class WxCommand(BaseCommand):
 
                 if period_temp and period_short:
                     # Try to get high/low
-                    period_high_low = self.extract_high_low(period_detailed)
+                    period_high_low = self.extract_high_low(
+                        period_detailed, self._noaa_period_temp_symbol(period)
+                    )
 
                     period_emoji = self.get_weather_emoji(period_short)
                     if period_high_low:
@@ -1104,7 +1111,9 @@ class WxCommand(BaseCommand):
 
                     if period_temp and period_short:
                         # Try to get high/low
-                        period_high_low = self.extract_high_low(period_detailed)
+                        period_high_low = self.extract_high_low(
+                            period_detailed, self._noaa_period_temp_symbol(period)
+                        )
 
                         period_emoji = self.get_weather_emoji(period_short)
                         if period_high_low:
@@ -1151,7 +1160,9 @@ class WxCommand(BaseCommand):
 
                 if period_temp and period_short:
                     # Try to get high/low for tomorrow
-                    period_high_low = self.extract_high_low(period_detailed)
+                    period_high_low = self.extract_high_low(
+                        period_detailed, self._noaa_period_temp_symbol(period)
+                    )
 
                     # Abbreviate forecast text if it's too long (especially when current is a night period)
                     abbreviated_forecast = period_short
@@ -1520,7 +1531,9 @@ class WxCommand(BaseCommand):
                             period_str += f" {wind_dir}{wind_num}"
 
                 # Try to extract high/low
-                high_low = self.extract_high_low(detailed_forecast)
+                high_low = self.extract_high_low(
+                    detailed_forecast, self._noaa_period_temp_symbol(period)
+                )
                 if high_low and '°' not in period_str.split()[-1]:  # Avoid duplicate temp
                     period_str = period_str.replace(f" {temp}°{temp_unit}", f" {high_low}")
 
@@ -1576,9 +1589,10 @@ class WxCommand(BaseCommand):
 
                 # Get temperature (prefer high/low if available)
                 temp = period.get('temperature', '')
-                period.get('temperatureUnit', 'F')
                 detailed_forecast = period.get('detailedForecast', '')
-                high_low = self.extract_high_low(detailed_forecast)
+                high_low = self.extract_high_low(
+                    detailed_forecast, self._noaa_period_temp_symbol(period)
+                )
 
                 if high_low:
                     temp_str = high_low
@@ -3064,44 +3078,63 @@ class WxCommand(BaseCommand):
 
         return ""
 
-    def extract_high_low(self, text: str) -> str:
-        """Extract high/low temperatures from forecast text"""
+    def extract_high_low(self, text: str, units_str: str = "°F") -> str:
+        """Extract high/low temperatures from forecast text; format via [Weather] templates."""
         if not text:
             return ""
 
-        # Look for more specific patterns to avoid false matches
-        high_low_patterns = [
+        def _pair_ok(hi: int, lo: int) -> bool:
+            if units_str == "°C":
+                return -35 <= hi <= 55 and -35 <= lo <= 55 and hi > lo
+            return 20 <= hi <= 120 and 20 <= lo <= 120 and hi > lo
+
+        def _single_ok(val: int) -> bool:
+            if units_str == "°C":
+                return -35 <= val <= 55
+            return 20 <= val <= 120
+
+        pair_patterns = [
             r'high\s+near\s+(\d+).*?low\s+around\s+(\d+)',
             r'high\s+(\d+).*?low\s+(\d+)',
-            r'(\d+)\s+to\s+(\d+)\s+degrees',  # More specific
+            r'(\d+)\s+to\s+(\d+)\s+degrees',
             r'temperature\s+(\d+)\s+to\s+(\d+)',
-            r'high\s+near\s+(\d+).*?temperatures\s+falling\s+to\s+around\s+(\d+)',  # "High near 82, with temperatures falling to around 80"
-            r'low\s+around\s+(\d+)',  # Just low temp
-            r'high\s+near\s+(\d+)'   # Just high temp
+            r'high\s+near\s+(\d+).*?temperatures\s+falling\s+to\s+around\s+(\d+)',
         ]
-
-        for pattern in high_low_patterns:
+        for pattern in pair_patterns:
             match = re.search(pattern, text.lower())
-            if match:
-                if len(match.groups()) == 2:
-                    high, low = match.groups()
-                    # Validate that these are reasonable temperatures (20-120°F)
-                    try:
-                        high_val = int(high)
-                        low_val = int(low)
-                        if 20 <= high_val <= 120 and 20 <= low_val <= 120 and high_val > low_val:
-                            return f"{high}°/{low}°"
-                    except ValueError:
-                        continue
-                elif len(match.groups()) == 1:
-                    # Single temperature - could be high or low
-                    temp = match.group(1)
-                    try:
-                        temp_val = int(temp)
-                        if 20 <= temp_val <= 120:
-                            return f"{temp}°"
-                    except ValueError:
-                        continue
+            if match and len(match.groups()) == 2:
+                high, low = match.groups()
+                try:
+                    high_val = int(high)
+                    low_val = int(low)
+                    if _pair_ok(high_val, low_val):
+                        return format_temperature_high_low(
+                            self.bot.config, high_val, low_val, units_str, self.logger
+                        )
+                except ValueError:
+                    continue
+
+        low_match = re.search(r'low\s+around\s+(\d+)', text.lower())
+        if low_match:
+            try:
+                low_val = int(low_match.group(1))
+                if _single_ok(low_val):
+                    return format_temperature_high_low(
+                        self.bot.config, None, low_val, units_str, self.logger
+                    )
+            except ValueError:
+                pass
+
+        high_match = re.search(r'high\s+near\s+(\d+)', text.lower())
+        if high_match:
+            try:
+                high_val = int(high_match.group(1))
+                if _single_ok(high_val):
+                    return format_temperature_high_low(
+                        self.bot.config, high_val, None, units_str, self.logger
+                    )
+            except ValueError:
+                pass
 
         return ""
 
