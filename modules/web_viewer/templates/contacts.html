@@ -14,6 +14,43 @@
         justify-content: center;
         border-radius: 0.25rem;
     }
+
+    #contacts-mobile-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        overflow-x: hidden;
+    }
+
+    .contact-mobile-card {
+        background-color: var(--card-bg);
+        color: var(--text-color);
+        border: 1px solid var(--border-color);
+        border-radius: 0.375rem;
+        padding: 0.75rem 0.85rem;
+        min-width: 0;
+    }
+
+    .contact-mobile-card .contact-mobile-device {
+        max-width: 65%;
+    }
+
+    .contact-mobile-card .contact-mobile-device .badge {
+        font-size: 0.75rem;
+        white-space: normal;
+        text-align: right;
+        line-height: 1.2;
+    }
+
+    .contact-mobile-card .contact-mobile-hops-adverts {
+        min-width: 0;
+    }
+
+    .contact-mobile-card .contact-mobile-hops-adverts .badge {
+        font-size: 0.75rem;
+        line-height: 1.25;
+        padding: 0.35em 0.55em;
+    }
 </style>
 {% endblock %}
 
@@ -122,7 +159,7 @@
 <!-- Tracking Table -->
 <div class="row">
     <div class="col-12">
-        <div class="card">
+        <div class="card" id="contacts-list-panel">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center flex-wrap mb-3 gap-2">
                     <div>
@@ -189,7 +226,36 @@
                         </div>
                     </div>
                 </div>
-            <div class="table-responsive">
+                <div class="d-md-none w-100 d-flex flex-wrap align-items-center gap-2 mb-3">
+                    <div class="form-check mb-0">
+                        <input type="checkbox" class="form-check-input" id="contacts-select-all-mobile" title="Select all on page">
+                        <label class="form-check-label small" for="contacts-select-all-mobile">Select all on page</label>
+                    </div>
+                    <div class="flex-grow-1" style="min-width: 12rem;">
+                        <label class="visually-hidden" for="contacts-mobile-sort">Sort by</label>
+                        <select class="form-select form-select-sm" id="contacts-mobile-sort" title="Sort contacts">
+                            <option value="username|asc">Name (A–Z)</option>
+                            <option value="username|desc">Name (Z–A)</option>
+                            <option value="device_type|asc">Device type (A–Z)</option>
+                            <option value="device_type|desc">Device type (Z–A)</option>
+                            <option value="location|asc">Location (A–Z)</option>
+                            <option value="location|desc">Location (Z–A)</option>
+                            <option value="distance|asc">Distance (low first)</option>
+                            <option value="distance|desc">Distance (high first)</option>
+                            <option value="snr|asc">SNR (low first)</option>
+                            <option value="snr|desc">SNR (high first)</option>
+                            <option value="hop_count|asc">Hops (low first)</option>
+                            <option value="hop_count|desc">Hops (high first)</option>
+                            <option value="first_heard|asc">First heard (oldest first)</option>
+                            <option value="first_heard|desc">First heard (newest first)</option>
+                            <option value="last_seen|asc">Last heard (oldest first)</option>
+                            <option value="last_seen|desc" selected>Last heard (newest first)</option>
+                            <option value="advert_count|asc">Adverts (low first)</option>
+                            <option value="advert_count|desc">Adverts (high first)</option>
+                        </select>
+                    </div>
+                </div>
+            <div class="d-none d-md-block table-responsive">
                 <table class="table table-striped table-hover">
                         <thead class="table-dark">
                         <tr>
@@ -234,6 +300,9 @@
                             </tr>
                     </tbody>
                 </table>
+            </div>
+            <div class="d-md-none" id="contacts-mobile-stack" aria-live="polite">
+                <div class="loading text-center py-3">Loading contacts data...</div>
             </div>
         </div>
         </div>
@@ -361,24 +430,39 @@ class ModernContactsManager {
             this.showBulkDeleteConfirmation();
         });
         
-        const contactsTable = document.querySelector('.table-responsive table');
-        if (contactsTable) {
-            contactsTable.addEventListener('change', (e) => {
-                if (e.target.id === 'contacts-select-all') {
-                    const checked = e.target.checked;
+        const listPanel = document.getElementById('contacts-list-panel');
+        if (listPanel) {
+            listPanel.addEventListener('change', (e) => {
+                const t = e.target;
+                if (t.id === 'contacts-select-all' || t.id === 'contacts-select-all-mobile') {
+                    const checked = t.checked;
                     this.filteredData.forEach(c => {
                         if (checked) this.selectedContactIds.add(c.user_id);
                         else this.selectedContactIds.delete(c.user_id);
                     });
-                    contactsTable.querySelectorAll('.contact-row-checkbox').forEach(cb => cb.checked = checked);
+                    listPanel.querySelectorAll('.contact-row-checkbox').forEach(cb => { cb.checked = checked; });
                     this.updateBulkDeleteButton();
                     this.updateSelectAllCheckbox();
-                } else if (e.target.classList.contains('contact-row-checkbox')) {
-                    const userId = e.target.dataset.userId;
-                    if (e.target.checked) this.selectedContactIds.add(userId);
+                } else if (t.classList.contains('contact-row-checkbox')) {
+                    const userId = t.dataset.userId;
+                    if (t.checked) this.selectedContactIds.add(userId);
                     else this.selectedContactIds.delete(userId);
                     this.updateBulkDeleteButton();
                     this.updateSelectAllCheckbox();
+                }
+            });
+        }
+
+        const mobileSort = document.getElementById('contacts-mobile-sort');
+        if (mobileSort) {
+            mobileSort.addEventListener('change', () => {
+                const v = mobileSort.value.split('|');
+                if (v.length === 2) {
+                    this.sortColumn = v[0];
+                    this.sortDirection = v[1];
+                    this.applySort();
+                    this.renderContactsData();
+                    this.updateSortIcons();
                 }
             });
         }
@@ -495,6 +579,16 @@ class ModernContactsManager {
                 icon.className = this.sortDirection === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down';
             }
         }
+        this.syncMobileSortSelect();
+    }
+
+    syncMobileSortSelect() {
+        const sel = document.getElementById('contacts-mobile-sort');
+        if (!sel) return;
+        const val = `${this.sortColumn}|${this.sortDirection}`;
+        if ([...sel.options].some(o => o.value === val)) {
+            sel.value = val;
+        }
     }
     
     applySearch() {
@@ -527,12 +621,67 @@ class ModernContactsManager {
         });
     }
     
+    renderContactCardHtml(contact) {
+        const uidEsc = this.escapeHtml(contact.user_id);
+        const uidJs = contact.user_id.replace(/'/g, "\\'");
+        const nameJs = (contact.username || 'Unknown').replace(/'/g, "\\'");
+        const checked = this.selectedContactIds.has(contact.user_id) ? 'checked' : '';
+        const hasGeo = !!(contact.latitude && contact.longitude && contact.latitude !== 0 && contact.longitude !== 0);
+        const starLabel = contact.is_starred ? 'Unstar contact' : 'Star contact';
+        const geoMenuItem = hasGeo
+            ? `<li><button type="button" class="dropdown-item" onclick="contactsManager.geocodeContact('${uidJs}', this)"><i class="fas fa-map-marker-alt me-2 text-primary"></i>Geocode location</button></li>`
+            : '';
+        return `
+            <div class="contact-mobile-card">
+                <div class="d-flex align-items-start gap-2">
+                    <input type="checkbox" class="form-check-input contact-row-checkbox mt-1 flex-shrink-0" data-user-id="${uidEsc}" ${checked}>
+                    <div class="flex-grow-1 min-w-0">
+                        <div class="d-flex justify-content-between align-items-start gap-2">
+                            <div class="min-w-0">
+                                <div class="fw-bold">${contact.username || 'Unknown'}</div>
+                                <small class="text-muted text-break d-block">${contact.user_id ? contact.user_id.substring(0, 16) + '...' : 'Unknown'}</small>
+                            </div>
+                            <div class="contact-mobile-device text-end flex-shrink-0">${this.formatDeviceType(contact)}</div>
+                        </div>
+                        <div class="small text-muted mt-1">${this.formatLocation(contact)}</div>
+                        <div class="small">${this.formatDistance(contact)} · ${this.formatSignal(contact)}</div>
+                        <div class="small text-muted">${this.formatTimestamp(contact.first_heard)} · ${this.formatTimeAgo(contact.last_seen)}</div>
+                        <div class="contact-mobile-hops-adverts d-flex align-items-center justify-content-between flex-wrap gap-2 mt-2">
+                            <div class="d-flex align-items-center flex-wrap gap-2 min-w-0">
+                                <div class="d-flex align-items-center min-w-0">${this.formatHops(contact)}</div>
+                                <div class="d-flex align-items-center gap-1">
+                                    <span class="badge bg-success">${contact.advert_count || 0}</span>
+                                    <span class="text-muted small">adverts</span>
+                                </div>
+                            </div>
+                            <div class="dropdown flex-shrink-0">
+                                <button type="button" class="btn btn-sm btn-outline-secondary contacts-overflow-btn"
+                                        data-bs-toggle="dropdown" aria-expanded="false"
+                                        aria-label="Contact actions" title="Contact actions">
+                                    <i class="fas fa-ellipsis-vertical" aria-hidden="true"></i>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><button type="button" class="dropdown-item" onclick="contactsManager.toggleStar('${uidJs}', this)"><i class="fas fa-star me-2 text-warning"></i>${starLabel}</button></li>
+                                    <li><button type="button" class="dropdown-item" onclick="contactsManager.viewAdvertData('${contact.user_id}')"><i class="fas fa-info-circle me-2 text-info"></i>View advertisement data</button></li>
+                                    ${geoMenuItem}
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><button type="button" class="dropdown-item text-danger" onclick="contactsManager.showDeleteConfirmation('${uidJs}', '${nameJs}')"><i class="fas fa-trash me-2"></i>Delete contact</button></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
     renderContactsData() {
         const tbody = document.getElementById('contacts-table-body');
-        
+        const mobileStack = document.getElementById('contacts-mobile-stack');
+
         if (this.filteredData.length === 0) {
-            const message = this.searchTerm ? 
-                `No contacts match "${this.searchTerm}"` : 
+            const message = this.searchTerm ?
+                `No contacts match "${this.searchTerm}"` :
                 'No contacts data available';
             tbody.innerHTML = `
                 <tr>
@@ -541,11 +690,14 @@ class ModernContactsManager {
                     </td>
                 </tr>
             `;
+            if (mobileStack) {
+                mobileStack.innerHTML = `<div class="text-center text-muted py-4">${message}</div>`;
+            }
             this.updateBulkDeleteButton();
             this.updateSelectAllCheckbox();
             return;
         }
-        
+
         tbody.innerHTML = this.filteredData.map(contact => `
             <tr>
                 <td class="text-center align-middle">
@@ -585,7 +737,11 @@ class ModernContactsManager {
                 </td>
             </tr>
         `).join('');
-        
+
+        if (mobileStack) {
+            mobileStack.innerHTML = this.filteredData.map(contact => this.renderContactCardHtml(contact)).join('');
+        }
+
         // Setup path tooltips after rendering
         this.setupPathTooltips();
         this.updateBulkDeleteButton();
@@ -609,12 +765,17 @@ class ModernContactsManager {
     
     updateSelectAllCheckbox() {
         const selectAll = document.getElementById('contacts-select-all');
-        if (!selectAll) return;
+        const selectAllMobile = document.getElementById('contacts-select-all-mobile');
         const visibleIds = new Set(this.filteredData.map(c => c.user_id));
         const allSelected = visibleIds.size > 0 && [...visibleIds].every(id => this.selectedContactIds.has(id));
         const someSelected = [...visibleIds].some(id => this.selectedContactIds.has(id));
-        selectAll.checked = allSelected;
-        selectAll.indeterminate = someSelected && !allSelected;
+        const sync = (el) => {
+            if (!el) return;
+            el.checked = allSelected;
+            el.indeterminate = someSelected && !allSelected;
+        };
+        sync(selectAll);
+        sync(selectAllMobile);
     }
     
     updateStatistics() {
