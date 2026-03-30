@@ -93,7 +93,9 @@ class ScheduleCommand(BaseCommand):
         for time_str, payload in sorted(scheduled.items()):
             channel, message = payload
             # Truncate long messages so response stays compact
-            preview = message if len(message) <= 40 else message[:37] + "..."
+            # Strip control characters that could corrupt the response
+            safe_message = ''.join(c if c.isprintable() or c == ' ' else '?' for c in message)
+            preview = safe_message if len(safe_message) <= 40 else safe_message[:37] + "..."
             results.append((time_str, channel, preview))
         return results
 

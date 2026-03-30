@@ -12,9 +12,9 @@ from tests.conftest import mock_message
 
 _INTER = "\u251c"
 _LAST = "\u2514"
-_HORIZ = "\u2500"
-_CHILD_INTER = f"{_INTER}{_HORIZ} "
-_CHILD_LAST = f"{_LAST}{_HORIZ} "
+_INDENT = "\u3000"  # 　 before nested ├/└
+_CHILD_INTER = f"{_INDENT}{_INTER} "
+_CHILD_LAST = f"{_INDENT}{_LAST} "
 _CORNER = "\u2510"  # ┐ after common path
 
 
@@ -303,7 +303,7 @@ class TestCondensePathLines:
         assert out == expected
 
     def test_shared_hop_then_horiz_continuations(self):
-        """All paths share first hop after LCP → one ├ hop line then ├─/└─ remainders (U+2500)."""
+        """All paths share first hop after LCP → one ├ hop line then 　├/　└ remainders (U+3000)."""
         paths = sorted(
             [
                 "d38a05,479198,a837bc,7e7662,e0eed9",

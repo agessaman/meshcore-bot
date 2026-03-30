@@ -17,10 +17,7 @@ from .base_command import BaseCommand
 
 _BRANCH_INTER = "\u251c"  # ├ (intermediate branch)
 _BRANCH_LAST = "\u2514"  # └ (last branch)
-_HORIZ = "\u2500"  # ─ (BOX DRAWINGS LIGHT HORIZONTAL)
-# Second-level branches: ├─ / └─ (horizontal continues the tee)
-_BRANCH_CHILD_INTER = f"{_BRANCH_INTER}{_HORIZ} "
-_BRANCH_CHILD_LAST = f"{_BRANCH_LAST}{_HORIZ} "
+_INDENT_NEST = "\u3000"  # 　 ideographic space before nested ├/└
 _BRANCH_CORNER = "\u2510"  # ┐ (marks end of common path before branches)
 
 
@@ -67,7 +64,7 @@ def _grouped_suffix_line_specs(non_empty: list[list[str]]) -> list[tuple[str, st
 
 
 def _apply_tee_prefixes(specs: list[tuple[str, str]]) -> list[str]:
-    """Assign ├/└ and ├─/└─ from flattened order; only the final row uses └/└─."""
+    """Assign ├/└ from flattened order; nested rows use 　 before ├/└. Only the final row uses └."""
     n = len(specs)
     out: list[str] = []
     for i, (kind, text) in enumerate(specs):
@@ -76,13 +73,13 @@ def _apply_tee_prefixes(specs: list[tuple[str, str]]) -> list[str]:
             p = _BRANCH_LAST if last else _BRANCH_INTER
             out.append(f"{p} {text}")
         else:
-            p = _BRANCH_CHILD_LAST if last else _BRANCH_CHILD_INTER
-            out.append(f"{p}{text}")
+            p = _BRANCH_LAST if last else _BRANCH_INTER
+            out.append(f"{_INDENT_NEST}{p} {text}")
     return out
 
 
 def _format_suffix_branch_lines(suffix_tokens: list[list[str]], short_ellipsis: bool) -> list[str]:
-    """Format suffixes after display LCP: group by first hop, in-group LCP on head, nest tails with U+2500."""
+    """Format suffixes after display LCP: group by first hop, in-group LCP on head, nest tails indented with U+3000."""
     non_empty = [s for s in suffix_tokens if s]
     if not non_empty:
         return _tree_branch_lines_flat(["..."]) if short_ellipsis else []
@@ -149,12 +146,12 @@ def _shrink_display_lcp(maximal: list[list[str]], lcp: list[str]) -> list[str]:
 
 
 def _format_path_cluster(token_lists: list[list[str]], use_brackets: bool) -> list[str]:
-    """Format a cluster into condensed lines (common prefix + ┐ + ├/└ and ├─/└─).
+    """Format a cluster into condensed lines (common prefix + ┐ + ├/└, nested tails indented with 　).
 
     The shared path line ends with ┐ (U+2510) when branch lines follow. Suffixes are grouped by
     their first hop after the display LCP; within a group, the longest common prefix of all
-    suffixes in that group is one ├ line, then ├─/└─ for each distinct tail. The last line of the
-    block uses └/└─.
+    suffixes in that group is one ├ line, then 　├/　└ for each distinct tail. The last line of the
+    block uses └ at top level or 　└ when nested.
 
     If one path stops exactly where another continues, the displayed LCP is shortened so the shared
     segment is not mistaken for a single endpoint (e.g. only └ tail after a full shorter path).
