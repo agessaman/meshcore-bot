@@ -556,6 +556,12 @@ prefix_best_do_not_suggest =
 # Default: noaa
 weather_provider = noaa
 
+# Open-Meteo model selection (used by gwx and Weather_Service when provider is openmeteo)
+# Leave unset to default to "best_match"
+# Supported model names: https://open-meteo.com/en/docs
+# Set to an empty value (weather_model =) to omit model selection and let Open-Meteo auto-select
+#weather_model =
+
 # Default state for city name disambiguation
 # When users type "wx seattle", it will search for "seattle, WA, USA"
 # Use 2-letter state abbreviation (e.g., WA, CA, NY, TX)

@@ -70,6 +70,8 @@ class GlobalWxCommand(BaseCommand):
         else:
             self.wxsim_parser = None
 
+        self.weather_model = self._load_weather_model()
+
         # Get default state and country from config for city disambiguation
         self.default_state = self.bot.config.get('Weather', 'default_state', fallback='')
         self.default_country = self.bot.config.get('Weather', 'default_country', fallback='US')
@@ -95,6 +97,27 @@ class GlobalWxCommand(BaseCommand):
 
         # Get database manager for geocoding cache
         self.db_manager = bot.db_manager
+
+    def _load_weather_model(self) -> Optional[str]:
+        """Load and normalize Open-Meteo model selection from config.
+
+        Returns:
+            Optional[str]: Model string, or None to omit the models parameter.
+        """
+        if self.bot.config.has_option('Weather', 'weather_model'):
+            model = self.bot.config.get('Weather', 'weather_model', fallback='').strip().lower()
+            if not model:
+                # Explicitly blank means "let Open-Meteo auto-select".
+                return None
+        else:
+            # Unset falls back to Open-Meteo's best_match model.
+            model = 'best_match'
+
+        if not re.fullmatch(r'[a-z0-9_,.-]+', model):
+            self.logger.warning(f"Invalid weather_model '{model}', using 'best_match'")
+            return 'best_match'
+
+        return model
 
     def get_help_text(self) -> str:
         """Get help text for the command.
@@ -840,6 +863,8 @@ class GlobalWxCommand(BaseCommand):
                 'timezone': 'auto',
                 'forecast_days': forecast_days
             }
+            if self.weather_model:
+                params['models'] = self.weather_model
 
             # For tomorrow or multiday, return raw data for formatting
             if forecast_type in ["tomorrow", "multiday"]:

@@ -57,6 +57,7 @@ class WeatherService(BaseServicePlugin):
         self.my_position_lon = self.bot.config.getfloat('Weather_Service', 'my_position_lon', fallback=None)
         self.weather_channel = self.bot.config.get('Weather_Service', 'weather_channel', fallback='general')
         self.alerts_channel = self.bot.config.get('Weather_Service', 'alerts_channel', fallback='general')
+        self.weather_model = self._load_weather_model()
 
         # Polling intervals (in milliseconds, converted to seconds)
         self.blitz_collection_interval = self.bot.config.getint('Weather_Service', 'blitz_collection_interval', fallback=600000) / 1000.0
@@ -115,6 +116,27 @@ class WeatherService(BaseServicePlugin):
         self._cached_location_name: Optional[str] = None
 
         self.logger.info(f"Weather service initialized: position=({self.my_position_lat}, {self.my_position_lon}), alarm={self.weather_alarm_time}")
+
+    def _load_weather_model(self) -> Optional[str]:
+        """Load and normalize Open-Meteo model selection from config.
+
+        Returns:
+            Optional[str]: Model string, or None to omit the models parameter.
+        """
+        if self.bot.config.has_option('Weather', 'weather_model'):
+            model = self.bot.config.get('Weather', 'weather_model', fallback='').strip().lower()
+            if not model:
+                # Explicitly blank means "let Open-Meteo auto-select".
+                return None
+        else:
+            # Unset falls back to Open-Meteo's best_match model.
+            model = 'best_match'
+
+        if not re.fullmatch(r'[a-z0-9_,.-]+', model):
+            self.logger.warning(f"Invalid weather_model '{model}', using 'best_match'")
+            return 'best_match'
+
+        return model
 
     def _create_retry_session(self) -> requests.Session:
         """Create a requests session with retry logic for API calls.
@@ -396,6 +418,8 @@ class WeatherService(BaseServicePlugin):
                 'timezone': 'auto',
                 'forecast_days': 2  # Today and tomorrow
             }
+            if self.weather_model:
+                params['models'] = self.weather_model
 
             try:
                 response = self.api_session.get(api_url, params=params, timeout=10)
