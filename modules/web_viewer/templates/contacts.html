@@ -51,6 +51,132 @@
         line-height: 1.25;
         padding: 0.35em 0.55em;
     }
+
+    /* Contacts table toolbar: one row on mobile, matching control heights */
+    .contacts-toolbar-filters-wrap {
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .contacts-toolbar-filters {
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 0.35rem;
+        width: 100%;
+        min-height: 2.375rem;
+    }
+
+    @media (min-width: 768px) {
+        .contacts-toolbar-filters {
+            justify-content: flex-end;
+            gap: 0.5rem;
+        }
+    }
+
+    @media (min-width: 576px) and (max-width: 767.98px) {
+        .contacts-toolbar-filters {
+            gap: 0.5rem;
+        }
+    }
+
+    .contacts-toolbar-filters .form-select-sm,
+    .contacts-toolbar-filters .input-group-sm,
+    .contacts-toolbar-filters #contacts-timespan {
+        flex-shrink: 0;
+    }
+
+    .contacts-toolbar-filters #contacts-timespan {
+        min-height: 2.375rem;
+        padding-top: 0.375rem;
+        padding-bottom: 0.375rem;
+        font-size: 0.875rem;
+        box-sizing: border-box;
+    }
+
+    .contacts-toolbar-search {
+        flex: 1 1 7.5rem;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    @media (min-width: 768px) {
+        .contacts-toolbar-search {
+            flex: 0 1 300px;
+            max-width: 300px;
+        }
+    }
+
+    .contacts-toolbar-filters .contacts-overflow-btn {
+        flex-shrink: 0;
+        width: 2.375rem;
+        height: 2.375rem;
+        box-sizing: border-box;
+    }
+
+    /* Match search + refresh to the same row height as overflow icon buttons (2.375rem) */
+    .contacts-toolbar-filters .contacts-toolbar-search.input-group {
+        min-height: 2.375rem;
+        align-items: stretch;
+    }
+
+    .contacts-toolbar-filters .contacts-toolbar-search > .input-group-text,
+    .contacts-toolbar-filters .contacts-toolbar-search > .form-control {
+        min-height: 2.375rem;
+        padding-top: 0.375rem;
+        padding-bottom: 0.375rem;
+        font-size: 0.875rem;
+        box-sizing: border-box;
+    }
+
+    .contacts-toolbar-filters .contacts-toolbar-search > .input-group-text {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding-left: 0.65rem;
+        padding-right: 0.65rem;
+    }
+
+    .contacts-toolbar-filters .contacts-toolbar-search .input-group-text i {
+        font-size: 1rem;
+    }
+
+    .contacts-toolbar-filters #refresh-contacts {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 2.375rem;
+        padding-top: 0.375rem;
+        padding-bottom: 0.375rem;
+        font-size: 0.875rem;
+        box-sizing: border-box;
+    }
+
+    .contacts-toolbar-filters #refresh-contacts i {
+        font-size: 1rem;
+    }
+
+    @media (max-width: 575.98px) {
+        .contacts-toolbar-filters #refresh-contacts {
+            min-width: 2.375rem;
+            padding-left: 0.5rem;
+            padding-right: 0.5rem;
+        }
+    }
+
+    .contacts-mobile-sort-row {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        min-width: 0;
+    }
+
+    .contacts-mobile-sort-row .flex-grow-1 {
+        min-width: 0;
+    }
 </style>
 {% endblock %}
 
@@ -162,32 +288,48 @@
         <div class="card" id="contacts-list-panel">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center flex-wrap mb-3 gap-2">
-                    <div>
+                    <div class="flex-shrink-0">
                         <button class="btn btn-sm btn-danger" id="bulk-delete-contacts" style="display: none;" title="Delete selected contacts">
                             <i class="fas fa-trash"></i> Delete selected (<span id="bulk-delete-count">0</span>)
                         </button>
                     </div>
-                    <div class="d-flex gap-2 align-items-center flex-wrap justify-content-end">
-                        <label class="mb-0 text-nowrap" for="contacts-timespan">
+                    <div class="contacts-toolbar-filters-wrap flex-grow-1 min-w-0 w-100">
+                        <div class="contacts-toolbar-filters">
+                        <label class="mb-0 text-nowrap small align-self-center d-none d-md-flex align-items-center gap-1 flex-shrink-0" for="contacts-timespan">
                             <i class="fas fa-clock"></i> Heard in:
                         </label>
-                        <select class="form-select form-select-sm" id="contacts-timespan" style="width: auto;">
+                        <select class="form-select flex-shrink-0 d-none d-md-block" id="contacts-timespan" style="width: auto; min-width: 7rem;">
                             <option value="24h">Last 24 hours</option>
                             <option value="7d">Last 7 days</option>
                             <option value="30d" selected>Last 30 days</option>
                             <option value="90d">Last 90 days</option>
                             <option value="all">All time</option>
                         </select>
-                        <div class="input-group" style="width: 300px;">
+                        <div class="dropdown d-md-none flex-shrink-0">
+                            <button type="button" class="btn btn-sm btn-outline-secondary contacts-overflow-btn" id="contacts-timespan-mobile-trigger"
+                                    data-bs-toggle="dropdown" aria-expanded="false"
+                                    aria-haspopup="true" title="Heard in: Last 30 days" aria-label="Heard in: Last 30 days">
+                                <i class="fas fa-clock" aria-hidden="true"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-start" id="contacts-timespan-mobile-menu">
+                                <li><h6 class="dropdown-header mb-0">Heard in</h6></li>
+                                <li><button type="button" class="dropdown-item" data-timespan="24h">Last 24 hours</button></li>
+                                <li><button type="button" class="dropdown-item" data-timespan="7d">Last 7 days</button></li>
+                                <li><button type="button" class="dropdown-item" data-timespan="30d">Last 30 days</button></li>
+                                <li><button type="button" class="dropdown-item" data-timespan="90d">Last 90 days</button></li>
+                                <li><button type="button" class="dropdown-item" data-timespan="all">All time</button></li>
+                            </ul>
+                        </div>
+                        <div class="input-group contacts-toolbar-search">
                             <span class="input-group-text">
                                 <i class="fas fa-search"></i>
                             </span>
                             <input type="text" class="form-control" id="search-contacts" placeholder="Search contacts..." autocomplete="off">
                         </div>
-                        <button class="btn btn-sm btn-primary" id="refresh-contacts">
-                            <i class="fas fa-sync"></i> Refresh
+                        <button type="button" class="btn btn-primary flex-shrink-0" id="refresh-contacts">
+                            <i class="fas fa-sync"></i><span class="d-none d-sm-inline"> Refresh</span>
                         </button>
-                        <div class="dropdown">
+                        <div class="dropdown flex-shrink-0">
                             <button type="button" class="btn btn-sm btn-outline-secondary contacts-overflow-btn"
                                     data-bs-toggle="dropdown" aria-expanded="false"
                                     aria-label="More actions" title="More actions">
@@ -224,14 +366,15 @@
                                 </li>
                             </ul>
                         </div>
+                        </div>
                     </div>
                 </div>
-                <div class="d-md-none w-100 d-flex flex-wrap align-items-center gap-2 mb-3">
+                <div class="d-md-none w-100 d-flex flex-nowrap align-items-center gap-2 mb-3 contacts-mobile-sort-row">
                     <div class="form-check mb-0">
                         <input type="checkbox" class="form-check-input" id="contacts-select-all-mobile" title="Select all on page">
                         <label class="form-check-label small" for="contacts-select-all-mobile">Select all on page</label>
                     </div>
-                    <div class="flex-grow-1" style="min-width: 12rem;">
+                    <div class="flex-grow-1 min-w-0" style="min-width: 10rem;">
                         <label class="visually-hidden" for="contacts-mobile-sort">Sort by</label>
                         <select class="form-select form-select-sm" id="contacts-mobile-sort" title="Sort contacts">
                             <option value="username|asc">Name (A–Z)</option>
@@ -365,11 +508,14 @@ class ModernContactsManager {
         if (el) {
             el.value = (savedTimespan && valid.includes(savedTimespan)) ? savedTimespan : '30d';
         }
+        this.syncContactsTimespanMobileUI();
         await this.loadContactsData();
         this.setupEventHandlers();
         this.applySort();
         this.updateSortIcons();
         this.renderContactsData();
+        const toolbarWrap = document.querySelector('.contacts-toolbar-filters-wrap');
+        if (toolbarWrap) this.initContactsDropdowns(toolbarWrap);
         this.updateStatistics();
     }
     
@@ -418,6 +564,7 @@ class ModernContactsManager {
         document.getElementById('contacts-timespan').addEventListener('change', () => {
             const since = document.getElementById('contacts-timespan').value;
             localStorage.setItem('contactsTimespan', since);
+            this.syncContactsTimespanMobileUI();
             this.loadContactsData().then(() => {
                 this.applySearch();
                 this.applySort();
@@ -425,6 +572,20 @@ class ModernContactsManager {
                 this.updateStatistics();
             });
         });
+
+        const mobileTimespanMenu = document.getElementById('contacts-timespan-mobile-menu');
+        if (mobileTimespanMenu) {
+            mobileTimespanMenu.addEventListener('click', (e) => {
+                const item = e.target.closest('[data-timespan]');
+                if (!item) return;
+                const sel = document.getElementById('contacts-timespan');
+                if (!sel) return;
+                const val = item.getAttribute('data-timespan');
+                if (sel.value === val) return;
+                sel.value = val;
+                sel.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+        }
         
         document.getElementById('bulk-delete-contacts').addEventListener('click', () => {
             this.showBulkDeleteConfirmation();
@@ -590,6 +751,37 @@ class ModernContactsManager {
             sel.value = val;
         }
     }
+
+    syncContactsTimespanMobileUI() {
+        const sel = document.getElementById('contacts-timespan');
+        const trigger = document.getElementById('contacts-timespan-mobile-trigger');
+        if (!sel || !trigger) return;
+        const opt = sel.options[sel.selectedIndex];
+        const label = opt ? opt.text : 'Time period';
+        const tip = `Heard in: ${label}`;
+        trigger.setAttribute('title', tip);
+        trigger.setAttribute('aria-label', tip);
+        document.querySelectorAll('#contacts-timespan-mobile-menu [data-timespan]').forEach((btn) => {
+            btn.classList.toggle('active', btn.getAttribute('data-timespan') === sel.value);
+        });
+    }
+
+    /**
+     * Toolbar and mobile cards sit inside overflow-x scroll/clipping regions; default
+     * Popper (absolute) menus are clipped. Fixed strategy keeps menus visible.
+     */
+    initContactsDropdowns(root) {
+        if (typeof bootstrap === 'undefined' || !bootstrap.Dropdown || !root) return;
+        root.querySelectorAll('[data-bs-toggle="dropdown"]').forEach((toggle) => {
+            const existing = bootstrap.Dropdown.getInstance(toggle);
+            if (existing) existing.dispose();
+            new bootstrap.Dropdown(toggle, {
+                popperConfig: {
+                    strategy: 'fixed',
+                },
+            });
+        });
+    }
     
     applySearch() {
         if (!this.searchTerm) {
@@ -746,6 +938,9 @@ class ModernContactsManager {
         this.setupPathTooltips();
         this.updateBulkDeleteButton();
         this.updateSelectAllCheckbox();
+        if (mobileStack) {
+            this.initContactsDropdowns(mobileStack);
+        }
     }
     
     updateBulkDeleteButton() {
