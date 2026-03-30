@@ -1730,32 +1730,106 @@ def parse_path_string(path_str: str, prefix_hex_chars: int = 2) -> list[str]:
     return [match.upper() for match in hex_matches]
 
 
-def calculate_path_distances(bot: Any, path_str: str) -> tuple[str, str]:
-    """Calculate path distance metrics from a path string.
+_HEX_BYTE_TOKEN = frozenset('0123456789aAbBcCdDeEfF')
+
+
+def extract_path_node_ids_from_message(message: Any) -> list[str]:
+    """Extract path node IDs from a mesh message (MeshCore multi-byte paths).
+
+    Prefers ``routing_info.path_nodes``; else parses comma-separated hop tokens
+    (2, 4, or 6 hex chars each) from ``message.path``. Matches TestCommand logic.
+
+    Returns:
+        List of node IDs (uppercase hex). Empty when direct / unparseable.
+    """
+    routing_info = getattr(message, 'routing_info', None)
+    if routing_info is not None and routing_info.get('path_length', 0) == 0:
+        return []
+    if routing_info and routing_info.get('path_nodes'):
+        return [str(n).upper().strip() for n in routing_info['path_nodes']]
+    path_string = getattr(message, 'path', None) or ''
+    if not path_string or "Direct" in path_string or "0 hops" in path_string:
+        return []
+    if " via ROUTE_TYPE_" in path_string:
+        path_string = path_string.split(" via ROUTE_TYPE_")[0]
+    if '(' in path_string:
+        path_string = path_string.split('(')[0].strip()
+    if ',' in path_string:
+        parts = [p.strip() for p in path_string.split(',') if p.strip()]
+        if parts and all(
+            len(p) in (2, 4, 6) and all(c in _HEX_BYTE_TOKEN for c in p)
+            for p in parts
+        ):
+            return [p.upper() for p in parts]
+    return []
+
+
+def node_ids_from_path_string(path_str: str, prefix_hex_chars: int = 2) -> list[str]:
+    """Parse path display string into node IDs: multi-byte comma tokens, else fixed-width scan.
+
+    Comma-separated tokens must each be 2, 4, or 6 hex digits (one hop per token).
+    Otherwise falls back to :func:`parse_path_string` (legacy continuous / 1-byte paths).
+    """
+    if not path_str or not path_str.strip():
+        return []
+    path_lower = path_str.lower()
+    if "direct" in path_lower or "0 hops" in path_lower:
+        return []
+    s = path_str.strip()
+    if " via ROUTE_TYPE_" in s:
+        s = s.split(" via ROUTE_TYPE_")[0].strip()
+    s = re.sub(r'\s*\([^)]*hops?[^)]*\)', '', s, flags=re.IGNORECASE).strip()
+    if not s:
+        return []
+    if ',' in s:
+        parts = [p.strip() for p in s.split(',') if p.strip()]
+        if parts and all(
+            len(p) in (2, 4, 6) and all(c in _HEX_BYTE_TOKEN for c in p)
+            for p in parts
+        ):
+            return [p.upper() for p in parts]
+    return parse_path_string(s, prefix_hex_chars)
+
+
+def calculate_path_distances(
+    bot: Any, path_str: str, message: Optional[Any] = None
+) -> tuple[str, str]:
+    """Calculate path distance metrics from a path string and optional message.
+
+    When ``message`` is provided, node IDs are taken from ``routing_info.path_nodes``
+    or multi-byte comma parsing of ``message.path`` (same as the test command),
+    with a fallback to :func:`parse_path_string` for continuous hex without commas.
 
     Args:
         bot: Bot instance (must have db_manager).
-        path_str: Path string (e.g., "11,98,a4,49,cd,5f,01" or "01,5f (2 hops)" or "Direct").
+        path_str: Path string when no message or for legacy callers.
+        message: Optional mesh message for routing_info / path fields.
 
     Returns:
         Tuple[str, str]: A tuple containing:
             - path_distance_str: Total distance with segment info (e.g., "123.4km (3 segs, 1 no-loc)").
             - firstlast_distance_str: Distance between first and last repeater (e.g., "45.6km").
     """
-    if not path_str:
-        return "directly (0 hops)", "N/A (direct)"
+    prefix_hex = getattr(bot, 'prefix_hex_chars', 2)
 
-    # Check if it's a direct connection
-    path_lower = path_str.lower()
-    if "direct" in path_lower or "0 hops" in path_lower or path_str.strip() == "":
-        return "directly (0 hops)", "N/A (direct)"
+    if message is None:
+        if not path_str or not str(path_str).strip():
+            return "directly (0 hops)", "N/A (direct)"
+        path_lower = path_str.lower()
+        if "direct" in path_lower or "0 hops" in path_lower:
+            return "directly (0 hops)", "N/A (direct)"
 
     if not hasattr(bot, 'db_manager'):
         return "unknown distance", "unknown"
 
     try:
-        # Parse node IDs from path string
-        node_ids = parse_path_string(path_str, getattr(bot, 'prefix_hex_chars', 2))
+        node_ids: list[str]
+        if message is not None:
+            node_ids = extract_path_node_ids_from_message(message)
+            if not node_ids and (getattr(message, 'path', None) or ''):
+                node_ids = node_ids_from_path_string(message.path, prefix_hex)
+        else:
+            node_ids = node_ids_from_path_string(path_str, prefix_hex)
 
         if len(node_ids) == 0:
             # No nodes parsed - likely direct connection
@@ -2165,7 +2239,9 @@ def format_keyword_response_with_placeholders(
             replacements['connection_info'] = connection_info
 
             # Calculate path distances
-            path_distance, firstlast_distance = calculate_path_distances(bot, message.path or "")
+            path_distance, firstlast_distance = calculate_path_distances(
+                bot, message.path or "", message=message
+            )
             replacements['path_distance'] = path_distance
             replacements['firstlast_distance'] = firstlast_distance
 

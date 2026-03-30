@@ -15,12 +15,14 @@ from modules.utils import (
     decode_escape_sequences,
     decode_path_len_byte,
     encode_path_len_byte,
+    extract_path_node_ids_from_message,
     format_elapsed_display,
     format_keyword_response_with_placeholders,
     format_location_for_display,
     get_config_timezone,
     get_major_city_queries,
     is_valid_timezone,
+    node_ids_from_path_string,
     parse_location_string,
     parse_path_string,
     resolve_path,
@@ -301,6 +303,47 @@ class TestParsePathString:
         assert parse_path_string("015fab", prefix_hex_chars=2) == ["01", "5F", "AB"]
 
 
+class TestNodeIdsFromPathString:
+    """Tests for node_ids_from_path_string() — multi-byte comma tokens vs legacy parse."""
+
+    def test_six_char_comma_tokens_not_split_into_one_byte_ids(self):
+        assert node_ids_from_path_string("28667c,e0eed9", 2) == ["28667C", "E0EED9"]
+
+    def test_strips_hop_suffix_before_comma_parse(self):
+        assert node_ids_from_path_string("28667c,e0eed9 (3 hops)", 2) == ["28667C", "E0EED9"]
+
+    def test_legacy_one_byte_comma_path(self):
+        assert node_ids_from_path_string("01,5f (2 hops)", 2) == ["01", "5F"]
+
+    def test_continuous_hex_uses_prefix_width(self):
+        assert node_ids_from_path_string("01025f7e", 2) == ["01", "02", "5F", "7E"]
+
+    def test_direct_returns_empty(self):
+        assert node_ids_from_path_string("Direct", 2) == []
+
+
+class TestExtractPathNodeIdsFromMessage:
+    """Tests for extract_path_node_ids_from_message()."""
+
+    def test_prefers_routing_info_path_nodes(self):
+        m = Mock()
+        m.path = "01,5f"
+        m.routing_info = {"path_length": 2, "path_nodes": ["28667C", "E0EED9"]}
+        assert extract_path_node_ids_from_message(m) == ["28667C", "E0EED9"]
+
+    def test_path_length_zero_returns_empty(self):
+        m = Mock()
+        m.path = "anything"
+        m.routing_info = {"path_length": 0}
+        assert extract_path_node_ids_from_message(m) == []
+
+    def test_comma_multibyte_from_path_string(self):
+        m = Mock()
+        m.path = "28667c,e0eed9 (3 hops)"
+        m.routing_info = None
+        assert extract_path_node_ids_from_message(m) == ["28667C", "E0EED9"]
+
+
 # ---------------------------------------------------------------------------
 # is_valid_timezone
 # ---------------------------------------------------------------------------
@@ -544,6 +587,30 @@ class TestCalculatePathDistances:
         with patch("modules.utils._get_node_location_from_db", return_value=None):
             path_dist, fl_dist = calculate_path_distances(bot, "01,5f")
         assert "unknown" in path_dist.lower()
+
+    def test_multibyte_comma_path_one_segment_not_five(self):
+        """6-char hop IDs must not be split into 2-char tokens (would inflate segment count)."""
+        bot = self._bot()
+        bot.prefix_hex_chars = 2
+        locations = [((47.6062, -122.3321), None), ((45.5152, -122.6784), None)]
+        with patch("modules.utils._get_node_location_from_db", side_effect=locations):
+            path_dist, fl_dist = calculate_path_distances(bot, "28667c,e0eed9")
+        assert "(1 segs)" in path_dist
+        assert "km" in fl_dist
+
+    def test_message_routing_info_path_nodes_overrides_display_path(self):
+        bot = self._bot()
+        bot.prefix_hex_chars = 2
+        msg = Mock()
+        msg.path = "01,5f"
+        msg.routing_info = {
+            "path_length": 2,
+            "path_nodes": ["28667c", "e0eed9"],
+        }
+        locations = [((47.6062, -122.3321), None), ((45.5152, -122.6784), None)]
+        with patch("modules.utils._get_node_location_from_db", side_effect=locations):
+            path_dist, fl_dist = calculate_path_distances(bot, "", message=msg)
+        assert "(1 segs)" in path_dist
 
 
 # ---------------------------------------------------------------------------

@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 from ..models import MeshMessage
-from ..utils import calculate_distance
+from ..utils import calculate_distance, extract_path_node_ids_from_message
 from .base_command import BaseCommand
 
 
@@ -150,26 +150,7 @@ class TestCommand(BaseCommand):
         Returns:
             List[str]: List of node IDs (2, 4, or 6 hex chars per node, uppercase).
         """
-        routing_info = getattr(message, 'routing_info', None)
-        if routing_info is not None and routing_info.get('path_length', 0) == 0:
-            return []
-        if routing_info and routing_info.get('path_nodes'):
-            return [str(n).upper().strip() for n in routing_info['path_nodes']]
-        if not message.path or "Direct" in message.path or "0 hops" in message.path:
-            return []
-        path_string = message.path
-        if " via ROUTE_TYPE_" in path_string:
-            path_string = path_string.split(" via ROUTE_TYPE_")[0]
-        if '(' in path_string:
-            path_string = path_string.split('(')[0].strip()
-        if ',' in path_string:
-            parts = [p.strip() for p in path_string.split(',') if p.strip()]
-            if parts and all(
-                len(p) in (2, 4, 6) and all(c in '0123456789aAbBcCdDeEfF' for c in p)
-                for p in parts
-            ):
-                return [p.upper() for p in parts]
-        return []
+        return extract_path_node_ids_from_message(message)
 
 
     def _lookup_repeater_location(self, node_id: str, path_context: Optional[list[str]] = None) -> Optional[tuple[float, float]]:
