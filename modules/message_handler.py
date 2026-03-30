@@ -2790,7 +2790,21 @@ class MessageHandler:
         if not message.is_dm and not getattr(self.bot, "channel_responses_enabled", True):
             self.logger.debug("Ignoring non-DM message: channel responses paused")
             return False
-        
+
+        # Don't reply to messages from so far away the sender wont see response
+        max_response_hops = max(1, self.bot.config.getint('Channels', 'max_response_hops', fallback=64))
+        if message.hops is not None:
+            try:
+                if int(message.hops) > max_response_hops:
+                    self.logger.debug(
+                        f"Ignoring message from {message.sender_id}: "
+                        f"{message.hops} hops > max_response_hops ({max_response_hops})"
+                    )
+                    return False
+            except (TypeError, ValueError):
+                pass
+
+
         # Check if channel is monitored (with command override support)
         if not message.is_dm and message.channel:
             # Check if channel is in global monitor_channels
