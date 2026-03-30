@@ -4,6 +4,7 @@ Transmission tracker for monitoring message transmission success
 Tracks transmitted message hashes and detects repeats from neighboring repeaters
 """
 
+import threading
 import time
 from contextlib import closing
 from dataclasses import dataclass, field
@@ -48,6 +49,9 @@ class TransmissionTracker:
         self.cleanup_after = 300  # 5 minutes
         self._cleanup_interval = 60  # Run cleanup check every 60 seconds
         self._last_cleanup_time = 0.0
+
+        # Lock protects record mutations (repeat_count, repeater_prefixes, etc.)
+        self._lock = threading.Lock()
 
         # Track our bot's public key prefix (first 2 hex chars) for filtering
         self.bot_prefix: Optional[str] = None
@@ -161,16 +165,21 @@ class TransmissionTracker:
             record = self.match_packet_hash(packet_hash, time.time())
 
         if record:
-            record.repeat_count += 1
-            if repeater_prefix:
-                record.repeater_prefixes.add(repeater_prefix)
-                # Track count per repeater
-                record.repeater_counts[repeater_prefix] = record.repeater_counts.get(repeater_prefix, 0) + 1
-            else:
-                # No prefix but still a repeat (heard by radio)
-                record.repeater_counts['_unknown'] = record.repeater_counts.get('_unknown', 0) + 1
+            with self._lock:
+                record.repeat_count += 1
+                if repeater_prefix:
+                    record.repeater_prefixes.add(repeater_prefix)
+                    # Track count per repeater
+                    record.repeater_counts[repeater_prefix] = record.repeater_counts.get(repeater_prefix, 0) + 1
+                else:
+                    # No prefix but still a repeat (heard by radio)
+                    record.repeater_counts['_unknown'] = record.repeater_counts.get('_unknown', 0) + 1
 
-            self.logger.info(f"📡 Recorded repeat for hash {packet_hash}: {record.repeat_count} repeats, {len(record.repeater_prefixes)} unique repeaters, prefixes: {sorted(record.repeater_prefixes)}")
+                repeat_count = record.repeat_count
+                unique_repeaters = len(record.repeater_prefixes)
+                prefixes = sorted(record.repeater_prefixes)
+
+            self.logger.info(f"📡 Recorded repeat for hash {packet_hash}: {repeat_count} repeats, {unique_repeaters} unique repeaters, prefixes: {prefixes}")
 
             # Update the database entry if we have a command_id
             if record.command_id and hasattr(self.bot, 'web_viewer_integration'):

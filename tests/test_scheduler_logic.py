@@ -1020,12 +1020,14 @@ class TestSendScheduledMessageWrapper:
                 asyncio.run(coro)
 
         mock_loop.run_until_complete = Mock(side_effect=_run_until_complete)
+        mock_loop.close = Mock()
 
-        with patch("asyncio.get_event_loop", return_value=mock_loop):
+        with patch("asyncio.new_event_loop", return_value=mock_loop):
             with patch.object(scheduler, "_send_scheduled_message_async", side_effect=_fake_send) as mock_send:
                 scheduler.send_scheduled_message("general", "test message")
 
         mock_loop.run_until_complete.assert_called_once()
+        mock_loop.close.assert_called_once()
         mock_send.assert_called_once_with("general", "test message")
 
 

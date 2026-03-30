@@ -54,8 +54,8 @@ class MessageScheduler:
         if self._apscheduler is not None:
             try:
                 self._apscheduler.shutdown(wait=False)
-            except Exception:
-                pass
+            except Exception as e:
+                self.logger.debug("Error shutting down scheduler: %s", e)
         tz, _ = get_config_timezone(self.bot.config, self.logger)
         self._apscheduler = BackgroundScheduler(timezone=tz)
         self.scheduled_messages.clear()
@@ -142,15 +142,12 @@ class MessageScheduler:
             except Exception as e:
                 self.logger.error(f"Error sending scheduled message: {e}")
         else:
-            # Fallback: create new event loop if main loop not available
+            # Fallback: create a temporary event loop and close it when done
+            loop = asyncio.new_event_loop()
             try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
-            # Run the async function in the event loop
-            loop.run_until_complete(self._send_scheduled_message_async(channel, message))
+                loop.run_until_complete(self._send_scheduled_message_async(channel, message))
+            finally:
+                loop.close()
 
     async def _get_mesh_info(self) -> dict[str, Any]:
         """Get mesh network information for scheduled messages"""
@@ -220,8 +217,8 @@ class MessageScheduler:
                             result = cursor.fetchone()
                             if result:
                                 info['recent_activity_24h'] = result[0]
-                except Exception:
-                    pass
+                except Exception as e:
+                    self.logger.debug("Error querying message_stats: %s", e)
 
             # Calculate new devices in last 7 days (matching web viewer logic)
             # Query devices first heard in the last 7 days, grouped by role
@@ -340,8 +337,8 @@ class MessageScheduler:
         if self._apscheduler is not None:
             try:
                 self._apscheduler.shutdown(wait=False)
-            except Exception:
-                pass
+            except Exception as e:
+                self.logger.debug("Error shutting down scheduler: %s", e)
         if self.scheduler_thread and self.scheduler_thread.is_alive():
             self.scheduler_thread.join(timeout=timeout)
             if self.scheduler_thread.is_alive():
@@ -394,18 +391,15 @@ class MessageScheduler:
                             if not f.cancelled() and f.exception() else None
                         )
                     else:
-                        # Fallback: create new event loop if main loop not available
-                        try:
-                            loop = asyncio.get_event_loop()
-                        except RuntimeError:
-                            loop = asyncio.new_event_loop()
-                            asyncio.set_event_loop(loop)
-
+                        # Fallback: create a temporary event loop and close it when done
+                        loop = asyncio.new_event_loop()
                         try:
                             loop.run_until_complete(self.bot.feed_manager.poll_all_feeds())
                             self.logger.debug("Feed polling cycle completed")
                         except Exception as e:
                             self.logger.error(f"Error in feed polling cycle: {e}")
+                        finally:
+                            loop.close()
                     last_feed_poll_time = time.time()
 
             # Channels are fetched once on launch only - no periodic refresh

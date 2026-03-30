@@ -7,6 +7,7 @@ Provides integration between the main bot and the web viewer
 import os
 import queue
 import re
+import secrets
 import subprocess
 import sys
 import threading
@@ -40,6 +41,15 @@ class BotIntegration:
         self._drain_thread: Optional[threading.Thread] = None
         # Initialize HTTP session with connection pooling for efficient reuse
         self._init_http_session()
+        # Generate a shared secret for authenticating internal /api/stream_data calls.
+        # Stored in DB metadata so the web viewer can validate it.
+        self._stream_token = secrets.token_hex(32)
+        try:
+            self.bot.db_manager.set_metadata('internal.stream_token', self._stream_token)
+        except Exception as e:
+            self.bot.logger.debug(f"Could not persist stream token: {e}")
+        if getattr(self, 'http_session', None):
+            self.http_session.headers['X-Stream-Token'] = self._stream_token
         # Start background drain thread after table is confirmed to exist
         self._start_drain_thread()
 
@@ -81,9 +91,10 @@ class BotIntegration:
             self.http_session.mount("http://", adapter)
             self.http_session.mount("https://", adapter)
 
-            # Set default headers for keep-alive (though urllib3 handles this automatically)
+            # Set default headers for keep-alive and internal auth
             self.http_session.headers.update({
                 'Connection': 'keep-alive',
+                'X-Requested-With': 'BotIntegration',  # CSRF bypass for internal calls
             })
         except ImportError:
             # Fallback if requests is not available
@@ -423,6 +434,10 @@ class BotIntegration:
             }
 
             # Use session with connection pooling if available, otherwise fallback to requests.post
+            headers = {
+                'X-Stream-Token': self._stream_token,
+                'X-Requested-With': 'BotIntegration',
+            }
             if self.http_session:
                 try:
                     self.http_session.post(url, json=payload, timeout=1.0)
@@ -432,7 +447,7 @@ class BotIntegration:
             else:
                 import requests
                 try:
-                    requests.post(url, json=payload, timeout=1.0)
+                    requests.post(url, json=payload, timeout=1.0, headers=headers)
                     self._record_web_viewer_result(True)
                 except Exception:
                     self._record_web_viewer_result(False)
@@ -455,8 +470,12 @@ class BotIntegration:
                 'data': node_data
             }
 
+            headers = {
+                'X-Stream-Token': self._stream_token,
+                'X-Requested-With': 'BotIntegration',
+            }
             try:
-                requests.post(url, json=payload, timeout=0.5)
+                requests.post(url, json=payload, timeout=0.5, headers=headers)
                 self._record_web_viewer_result(True)
             except Exception:
                 self._record_web_viewer_result(False)

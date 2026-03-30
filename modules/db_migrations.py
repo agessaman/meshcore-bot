@@ -25,6 +25,16 @@ from typing import Callable
 
 VALID_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
+# Allowed column definition pattern: type keyword(s) optionally followed by
+# DEFAULT and a literal value.  This prevents SQL injection through the
+# definition parameter of _add_column().
+_VALID_COL_DEF = re.compile(
+    r"^[A-Z]+(?:\s+[A-Z]+)*"                      # type name, e.g. "TEXT", "INTEGER", "BOOLEAN"
+    r"(?:\s+DEFAULT\s+(?:'[^']*'|[0-9.]+|NULL|CURRENT_TIMESTAMP))?"  # optional DEFAULT clause
+    r"$",
+    re.IGNORECASE,
+)
+
 
 def _validate_ident(name: str, kind: str) -> None:
     if not VALID_IDENT.match(name):
@@ -48,12 +58,19 @@ def _column_exists(cursor: sqlite3.Cursor, table: str, column: str) -> bool:
     return any(row[1] == column for row in cursor.fetchall())
 
 
+def _validate_col_definition(definition: str) -> None:
+    """Ensure *definition* matches a safe SQLite column definition pattern."""
+    if not _VALID_COL_DEF.match(definition.strip()):
+        raise ValueError(f"Invalid column definition: {definition!r}")
+
+
 def _add_column(
     cursor: sqlite3.Cursor, table: str, column: str, definition: str
 ) -> None:
     """Add *column* to *table* if it does not already exist."""
     _validate_ident(table, "table")
     _validate_ident(column, "column")
+    _validate_col_definition(definition)
     if not _column_exists(cursor, table, column):
         cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 

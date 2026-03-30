@@ -110,6 +110,9 @@ class BotDataViewer:
         )
         import secrets as _secrets
         self.app.config['SECRET_KEY'] = _secrets.token_hex(32)
+        self.app.config['SESSION_COOKIE_HTTPONLY'] = True
+        self.app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+        self.app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
 
         # Flask-SocketIO configuration following 5.x best practices
         # CORS origins are configured after config is loaded; create without app for now
@@ -2234,8 +2237,20 @@ class BotDataViewer:
 
         @self.app.route('/api/stream_data', methods=['POST'])
         def api_stream_data():
-            """API endpoint for receiving real-time data from bot"""
+            """API endpoint for receiving real-time data from bot.
+
+            Requires a valid X-Stream-Token header matching the token stored
+            in DB metadata by BotIntegration.  This prevents unauthenticated
+            callers from injecting fake stream data when the web viewer is
+            network-accessible.
+            """
             try:
+                if not current_app.config.get('TESTING'):
+                    token = request.headers.get('X-Stream-Token', '')
+                    expected = self.db_manager.get_metadata('internal.stream_token') if self.db_manager else None
+                    if not expected or not token or token != expected:
+                        return jsonify({'error': 'Unauthorized'}), 401
+
                 data = request.get_json()
                 if not data:
                     return jsonify({'error': 'No data provided'}), 400
@@ -2802,14 +2817,16 @@ class BotDataViewer:
                                                                    fallback=False)
                 }
 
-                # Generate sample greeting
-                sample_greeting = settings['greeting_message'].format(sender='SampleUser')
+                # Generate sample greeting — use str.replace() instead of .format()
+                # to avoid KeyError / info leaks from user-controlled templates
+                sample_greeting = settings['greeting_message'].replace('{sender}', 'SampleUser')
                 if settings['include_mesh_info']:
-                    sample_mesh_info = settings['mesh_info_format'].format(
-                        total_contacts=100,
-                        repeaters=5,
-                        companions=95,
-                        recent_activity_24h=10
+                    sample_mesh_info = (
+                        settings['mesh_info_format']
+                        .replace('{total_contacts}', '100')
+                        .replace('{repeaters}', '5')
+                        .replace('{companions}', '95')
+                        .replace('{recent_activity_24h}', '10')
                     )
                     sample_greeting += sample_mesh_info
 

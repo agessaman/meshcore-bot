@@ -36,6 +36,8 @@ Response codes:
 """
 
 import secrets
+import time
+from collections import OrderedDict
 from typing import Any, Optional
 
 from .base_service import BaseServicePlugin
@@ -83,13 +85,21 @@ class WebhookService(BaseServicePlugin):
 
         raw_channels = cfg.get("Webhook", "allowed_channels", fallback="").strip()
         self.allowed_channels = (
-            {c.strip().lstrip("#").lower() for c in raw_channels.split(",") if c.strip()}
+            {c.strip().removeprefix("#").lower() for c in raw_channels.split(",") if c.strip()}
             if raw_channels
             else set()
         )
 
         self._runner: Optional[Any] = None  # aio_web.AppRunner
         self._site: Optional[Any] = None    # aio_web.TCPSite
+
+        # Per-IP rate limiting
+        self._rate_limit_per_minute: int = cfg.getint(
+            "Webhook", "rate_limit_per_minute", fallback=30
+        )
+        self._rate_window: float = 60.0  # seconds
+        self._request_log: OrderedDict[str, list[float]] = OrderedDict()  # ip -> [timestamps]
+        self._max_tracked_ips: int = 1000
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -126,8 +136,43 @@ class WebhookService(BaseServicePlugin):
     # Request handler
     # ------------------------------------------------------------------
 
+    def _is_rate_limited(self, remote_ip: str) -> bool:
+        """Return True if *remote_ip* has exceeded the per-minute request limit."""
+        if self._rate_limit_per_minute <= 0:
+            return False  # Rate limiting disabled
+
+        now = time.monotonic()
+        cutoff = now - self._rate_window
+
+        timestamps = self._request_log.get(remote_ip)
+        if timestamps is not None:
+            # Prune expired entries
+            timestamps[:] = [t for t in timestamps if t > cutoff]
+            if len(timestamps) >= self._rate_limit_per_minute:
+                return True
+            timestamps.append(now)
+            self._request_log.move_to_end(remote_ip)
+        else:
+            self._request_log[remote_ip] = [now]
+
+        # Evict oldest IPs to bound memory
+        while len(self._request_log) > self._max_tracked_ips:
+            self._request_log.popitem(last=False)
+
+        return False
+
     async def _handle_webhook(self, request: Any) -> Any:
         """Handle a POST /webhook request."""
+        # --- Rate limiting ---
+        remote_ip = request.remote or "unknown"
+        if self._is_rate_limited(remote_ip):
+            self.logger.warning(f"Webhook: rate limited request from {remote_ip}")
+            return aio_web.Response(
+                status=429,
+                content_type="application/json",
+                text='{"error": "Rate limit exceeded"}',
+            )
+
         # --- Auth ---
         if self.secret_token and not self._verify_token(request):
             self.logger.warning(
@@ -161,7 +206,7 @@ class WebhookService(BaseServicePlugin):
         if len(message_text) > self.max_message_length:
             message_text = message_text[: self.max_message_length]
 
-        channel: str = str(body.get("channel", "")).strip().lstrip("#")
+        channel: str = str(body.get("channel", "")).strip().removeprefix("#")
         dm_to: str = str(body.get("dm_to", "")).strip()
 
         if not channel and not dm_to:

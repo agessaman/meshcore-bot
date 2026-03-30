@@ -38,9 +38,9 @@ class RepeaterManager:
 
         # Initialize companion purge settings
         self.companion_purge_enabled = bot.config.getboolean('Companion_Purge', 'companion_purge_enabled', fallback=False)
-        self.companion_dm_threshold_days = bot.config.getint('Companion_Purge', 'companion_dm_threshold_days', fallback=30)
-        self.companion_advert_threshold_days = bot.config.getint('Companion_Purge', 'companion_advert_threshold_days', fallback=30)
-        self.companion_min_inactive_days = bot.config.getint('Companion_Purge', 'companion_min_inactive_days', fallback=30)
+        self.companion_dm_threshold_days = max(0, bot.config.getint('Companion_Purge', 'companion_dm_threshold_days', fallback=30))
+        self.companion_advert_threshold_days = max(0, bot.config.getint('Companion_Purge', 'companion_advert_threshold_days', fallback=30))
+        self.companion_min_inactive_days = max(0, bot.config.getint('Companion_Purge', 'companion_min_inactive_days', fallback=30))
 
         # Geocoding cache: packet_hash -> timestamp (to prevent duplicate geocoding within 1 minute)
         self.geocoding_cache = {}
@@ -464,7 +464,7 @@ class RepeaterManager:
         """Update the is_currently_tracked flag on an existing connection (no commit)."""
         is_tracked = False
         if hasattr(self.bot.meshcore, 'contacts'):
-            for contact_key, contact_data in self.bot.meshcore.contacts.items():
+            for contact_key, contact_data in list(self.bot.meshcore.contacts.items()):
                 if contact_data.get('public_key', contact_key) == public_key:
                     is_tracked = True
                     break
@@ -480,7 +480,7 @@ class RepeaterManager:
             # Check if this repeater is currently in the device's contact list
             is_tracked = False
             if hasattr(self.bot.meshcore, 'contacts'):
-                for contact_key, contact_data in self.bot.meshcore.contacts.items():
+                for contact_key, contact_data in list(self.bot.meshcore.contacts.items()):
                     if contact_data.get('public_key', contact_key) == public_key:
                         is_tracked = True
                         break
@@ -670,7 +670,7 @@ class RepeaterManager:
                 self.logger.warning("No repeaters available for auto-purge")
                 # Log some debugging info
                 total_contacts = len(self.bot.meshcore.contacts)
-                repeater_count = sum(1 for contact_data in self.bot.meshcore.contacts.values() if self._is_repeater_device(contact_data))
+                repeater_count = sum(1 for contact_data in list(self.bot.meshcore.contacts.values()) if self._is_repeater_device(contact_data))
                 self.logger.debug(f"Debug: {total_contacts} total contacts, {repeater_count} repeaters found")
                 return False
 
@@ -712,7 +712,7 @@ class RepeaterManager:
                 self.logger.warning("No companions available for auto-purge")
                 # Log some debugging info
                 total_contacts = len(self.bot.meshcore.contacts)
-                companion_count = sum(1 for contact_data in self.bot.meshcore.contacts.values() if self._is_companion_device(contact_data))
+                companion_count = sum(1 for contact_data in list(self.bot.meshcore.contacts.values()) if self._is_companion_device(contact_data))
                 self.logger.debug(f"Debug: {total_contacts} total contacts, {companion_count} companions found")
                 return False
 
@@ -758,7 +758,7 @@ class RepeaterManager:
             # Get repeaters directly from device contacts, not database
             device_repeaters = []
 
-            for contact_key, contact_data in self.bot.meshcore.contacts.items():
+            for contact_key, contact_data in list(self.bot.meshcore.contacts.items()):
                 # Check if this is a repeater device
                 if self._is_repeater_device(contact_data):
                     public_key = contact_data.get('public_key', contact_key)
@@ -854,7 +854,7 @@ class RepeaterManager:
             scored_companions = []
 
             # Get activity data from database for all companions
-            for contact_key, contact_data in self.bot.meshcore.contacts.items():
+            for contact_key, contact_data in list(self.bot.meshcore.contacts.items()):
                 # Check if this is a companion device
                 if not self._is_companion_device(contact_data):
                     continue
@@ -990,9 +990,10 @@ class RepeaterManager:
             ))
 
             # Enhanced debugging
-            total_companions_checked = sum(1 for contact_data in self.bot.meshcore.contacts.values()
+            contacts_snapshot = list(self.bot.meshcore.contacts.items())
+            total_companions_checked = sum(1 for _, contact_data in contacts_snapshot
                                           if self._is_companion_device(contact_data))
-            acl_skipped = sum(1 for contact_key, contact_data in self.bot.meshcore.contacts.items()
+            acl_skipped = sum(1 for contact_key, contact_data in contacts_snapshot
                             if self._is_companion_device(contact_data) and
                             self._is_in_acl(contact_data.get('public_key', contact_key)))
             recent_skipped = total_companions_checked - acl_skipped - len(scored_companions)
@@ -1676,7 +1677,7 @@ class RepeaterManager:
             if not sender_id:
                 # Try to get sender_id from device contacts
                 if hasattr(self.bot.meshcore, 'contacts'):
-                    for contact_key, contact_data in self.bot.meshcore.contacts.items():
+                    for contact_key, contact_data in list(self.bot.meshcore.contacts.items()):
                         if contact_data.get('public_key', contact_key) == public_key:
                             sender_id = contact_data.get('name', contact_data.get('adv_name', ''))
                             break
@@ -1778,7 +1779,7 @@ class RepeaterManager:
         processed_count = 0
 
         try:
-            for contact_key, contact_data in self.bot.meshcore.contacts.items():
+            for contact_key, contact_data in list(self.bot.meshcore.contacts.items()):
                 processed_count += 1
 
                 # Log progress every 20 contacts
@@ -2274,7 +2275,7 @@ class RepeaterManager:
                 name = repeater['name']
 
                 # Find the contact in meshcore.contacts
-                for contact_key, contact_data in self.bot.meshcore.contacts.items():
+                for contact_key, contact_data in list(self.bot.meshcore.contacts.items()):
                     if contact_data.get('public_key', contact_key) == public_key:
                         # Check the actual last_advert time
                         last_advert = contact_data.get('last_advert')
@@ -2316,7 +2317,7 @@ class RepeaterManager:
                 # Show some recent repeaters to understand the timestamp format
                 self.logger.info("No old repeaters found. Showing recent repeater activity:")
                 recent_count = 0
-                for contact_key, contact_data in self.bot.meshcore.contacts.items():
+                for contact_key, contact_data in list(self.bot.meshcore.contacts.items()):
                     if self._is_repeater_device(contact_data):
                         last_advert = contact_data.get('last_advert', 'No last_advert')
                         name = contact_data.get('adv_name', contact_data.get('name', 'Unknown'))
@@ -2441,7 +2442,7 @@ class RepeaterManager:
             # Count repeaters from actual device contacts (more accurate than database)
             device_repeater_count = 0
             if hasattr(self.bot.meshcore, 'contacts'):
-                for _contact_key, contact_data in self.bot.meshcore.contacts.items():
+                for _contact_key, contact_data in list(self.bot.meshcore.contacts.items()):
                     if self._is_repeater_device(contact_data):
                         device_repeater_count += 1
 
@@ -2484,7 +2485,7 @@ class RepeaterManager:
                 return []
 
             stale_contacts = []
-            for _contact_key, contact_data in self.bot.meshcore.contacts.items():
+            for _contact_key, contact_data in list(self.bot.meshcore.contacts.items()):
                 # Skip repeaters (they're managed separately)
                 if self._is_repeater_device(contact_data):
                     continue
@@ -3276,7 +3277,7 @@ class RepeaterManager:
             test_public_key = None
 
             # Look for a repeater contact to test with
-            for key, contact_data in self.bot.meshcore.contacts.items():
+            for key, contact_data in list(self.bot.meshcore.contacts.items()):
                 if self._is_repeater_device(contact_data):
                     test_contact = contact_data
                     test_public_key = str(contact_data.get('public_key', key))

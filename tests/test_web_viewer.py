@@ -779,6 +779,22 @@ class TestStreamRoutes:
         )
         assert resp.status_code == 200
 
+    def test_api_stream_data_rejects_without_token_in_production(self, viewer):
+        """When TESTING is False, requests without a valid stream token are rejected."""
+        viewer.db_manager.set_metadata('internal.stream_token', 'secret-token')
+        viewer.app.config['TESTING'] = False
+        try:
+            with viewer.app.test_client() as c:
+                resp = c.post(
+                    "/api/stream_data",
+                    json={"type": "command", "data": {"cmd": "ping"}},
+                    content_type="application/json",
+                    headers={"X-Requested-With": "XMLHttpRequest"},
+                )
+            assert resp.status_code == 401
+        finally:
+            viewer.app.config['TESTING'] = True
+
 
 # ===========================================================================
 # Greeter routes
