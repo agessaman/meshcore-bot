@@ -1009,9 +1009,11 @@ long_jokes = false
 
         Registers handlers for SIGTERM and SIGINT to ensure the bot can
         clean up resources and disconnect properly when stopped.
+        SIGHUP is intentionally handled by the process entrypoint so it can
+        perform in-process config reload without triggering shutdown.
         """
         def signal_handler(signum, frame):
-            self.logger.info(f"Received signal {signum}, initiating graceful shutdown...")
+            self.logger.info(f"Received shutdown signal {signum}, initiating graceful shutdown...")
             # Set shutdown event to break main loop
             self._shutdown_event.set()
             # Set connected to False to break the while loop in start()
