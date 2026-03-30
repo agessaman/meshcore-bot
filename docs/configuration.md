@@ -27,6 +27,7 @@ The main sections include:
 - **`monitor_channels`** – Comma-separated channel names. The bot only responds to messages on these channels (and in DMs if enabled).
 - **`respond_to_dms`** – If `true`, the bot responds to direct messages; if `false`, it ignores DMs.
 - **`channel_keywords`** – Optional. When set (comma-separated command/keyword names), only those triggers are answered **in channels**; DMs always get all triggers. Use this to reduce channel traffic by making heavy triggers (e.g. `wx`, `satpass`, `joke`) DM-only. Leave empty or omit to allow all triggers in monitored channels. Per-command **`channels = `** (empty) in a command’s section also forces that command to be DM-only; see `config.ini.example` for examples (e.g. `[Joke_Command]`).
+- **`max_response_hops`** - Default: 64. The bot will ignore messages that have traveled more than this number of hops. Suggested to set at 10 or below, since in most meshes that is not an intentional message meant to trigger this particular bot.
 
 ## Command and feature sections
 
