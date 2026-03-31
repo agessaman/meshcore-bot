@@ -938,14 +938,10 @@ class TestDecodeMeshcorePacket:
     def test_invalid_hex_string_raises_or_returns_none(self, handler):
         # "ZZZZZZ" is not valid hex.  bytes.fromhex() raises ValueError inside the try-block;
         # the except handler then tries to reference the unbound local `byte_data` in its log
-        # message, which produces an UnboundLocalError that propagates out.
-        # Either behaviour (None return or propagated exception) is acceptable here; the
-        # important thing is that the method does NOT silently succeed.
-        try:
-            result = handler.decode_meshcore_packet("ZZZZZZ")
-            assert result is None
-        except (ValueError, UnboundLocalError):
-            pass  # expected — source-level bug causes exception to propagate
+        # message, which previously produced an UnboundLocalError that propagates out (BUG-028).
+        # Expected behavior: returns None and does not raise.
+        result = handler.decode_meshcore_packet("ZZZZZZ")
+        assert result is None
 
     def test_0x_prefix_stripped(self, handler):
         # Prepend '0x' — should be stripped transparently

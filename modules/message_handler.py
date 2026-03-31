@@ -1223,6 +1223,9 @@ class MessageHandler:
         Returns:
             Decoded packet information or None if parsing fails
         """
+        # Ensure these are always defined for error logging (BUG-028)
+        byte_data: bytes = b""
+        hex_data: str = ""
         try:
             # Use payload_hex if provided (this is the actual MeshCore packet)
             if payload_hex:
