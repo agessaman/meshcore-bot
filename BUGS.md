@@ -47,6 +47,7 @@ Tracking of known bugs, fixed issues, and outstanding defects in meshcore-bot.
 | `36a8a67` | Fixed prefix handling incompatibility when transitioning from 1-byte to 2-byte prefixes |
 | `0c060a5` | Fixed chunked message sending race with rate limiter — second chunk could be blocked |
 | `58deb12` | Fixed `RepeaterManager` ignoring `auto_manage_contacts = false` |
+| `unreleased` | Fixed BUG-028: `decode_meshcore_packet()` no longer throws `UnboundLocalError` when `bytes.fromhex()` fails (invalid hex input now cleanly returns `None`) |
 
 ---
 
@@ -65,7 +66,7 @@ Tracking of known bugs, fixed issues, and outstanding defects in meshcore-bot.
 | BUG-004 | `message_handler` | RF data correlation (SNR/RSSI) can miss messages if the RF log event arrives more than `rf_data_timeout` (default 15s) after the message | Increase `rf_data_timeout` in `[Bot]` config |
 | BUG-005 | `scheduler` | On Raspberry Pi Zero 2 W, bot + web viewer together use ~300 MB RAM, leaving little headroom under load | Disable web viewer (`[Web_Viewer] enabled = false`) or tune mesh graph settings (`graph_startup_load_days = 7`) |
 | BUG-006 | `feed_manager` | Stale rows in `feed_message_queue` from an old install can cause repeated queue-processing errors after a database migration (note: scheduler `TimeoutError` spam from the same area is fixed — see BUG-015) | Clear pending queue: `DELETE FROM feed_message_queue WHERE sent_at IS NULL` |
-| BUG-007 | `discord_bridge_service` | Discord webhook rate limit is 30 requests/minute; bot warns at 20% exhaustion but does not queue excess messages — they are dropped | Keep bridged channels low-traffic; consider rate-limiting at mesh level |
+| ~~BUG-007~~ | `discord_bridge_service` | Closed / won’t fix — no changes planned | Non-issue; Discord webhook rate limit is expected behavior—keep bridged channels low-traffic or rate-limit upstream |
 | BUG-008 | `telegram_bridge_service` | Telegram `message_thread_id` (forum/topic support) is not implemented — messages go to the main group channel only | Manual: add thread ID mapping in a future plugin iteration |
 
 ### Low Priority / By Design
@@ -73,13 +74,13 @@ Tracking of known bugs, fixed issues, and outstanding defects in meshcore-bot.
 | ID | Module | Description | Notes |
 |----|--------|-------------|-------|
 | ~~BUG-029~~ | TASK-16/T1-A ✅ | Fixed (third pass) — see Fixed section above | |
-| BUG-028 | `message_handler` | `decode_meshcore_packet()` except-handler references `byte_data` before assignment — when `bytes.fromhex()` itself raises, the handler throws `UnboundLocalError` instead of returning `None`. Discovered 2026-03-16 via test coverage analysis. | Affects any caller passing invalid hex (e.g. non-hex characters). Fix: initialise `byte_data = b""` before the `try` block in `message_handler.py`. |
+| ~~BUG-028~~ | `message_handler` | Fixed — see Fixed section above | |
 | BUG-026 | `message_handler` | Keyword-dispatched help/command responses are sent as a single message (no auto-chunking). Long responses may be truncated by transport limits to avoid sending extra multipart messages. | Design choice. Commands can explicitly use `send_response_chunked()` if they want multi-part replies. |
-| BUG-009 | `discord_bridge_service` | DMs are never bridged to Discord or Telegram — hardcoded exclusion | By design; DMs contain private communications |
-| BUG-010 | `wx_command` | Weather alerts and NOAA data are US-only | Use `wx_international.py` alternative in `modules/commands/alternatives/` for non-US deployments |
+| ~~BUG-009~~ | `discord_bridge_service` | Closed / won’t fix — no changes planned | Non-issue (intentionally excluded); DMs contain private communications |
+| ~~BUG-010~~ | `wx_command` | Closed / won’t fix — no changes planned | Non-issue; use `wx_international.py` alternative in `modules/commands/alternatives/` for non-US deployments |
 | BUG-011 | `repeater_manager` | MeshCore device hard-limits contacts to 300; auto-purge threshold is 280 — purging 20 contacts at a time may not be enough on very busy meshes | Tune `auto_purge_threshold` and ensure `auto_manage_contacts` is enabled |
-| BUG-012 | `plugin_loader` | Local plugins with the same name as a built-in plugin are skipped — no override-by-name is possible | Rename your local plugin to a unique name |
-| BUG-013 | `core.py` | Some older MeshCore firmware versions do not support `get_time` or `set_name` commands — bot logs a warning and continues without those features | Upgrade firmware; no functional impact on message processing |
+| ~~BUG-012~~ | `plugin_loader` | Closed / won’t fix — no changes planned | Non-issue; rename local plugin to a unique name |
+| ~~BUG-013~~ | `core.py` | Closed / won’t fix — no changes planned | Non-issue; upgrade firmware if you need those features |
 | BUG-014 | `packet_capture_service` | Packet hash calculation silently uses a default hash value on failure (`pass  # Use default hash if calculation fails`) | Low impact; affects deduplication accuracy only |
 
 ---
