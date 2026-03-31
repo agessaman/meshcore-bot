@@ -709,96 +709,158 @@ class MessageHandler:
                                 payload_type_value = int(payload_type_value)
                             packet_hash = calculate_packet_hash(packet_hex_for_hash, payload_type_value)
 
+                            is_trace = decoded_packet.get('payload_type') == PayloadType.TRACE.value
+
                             # Check if this is a repeat of one of our transmissions
                             if (hasattr(self.bot, 'transmission_tracker') and
                                 self.bot.transmission_tracker and
                                 packet_hash and packet_hash != "0000000000000000"):
 
-                                # Extract repeater prefixes from path - try multiple field names
-                                # decode_meshcore_packet returns 'path' not 'path_nodes'
-                                path_nodes = decoded_packet.get('path', [])
-                                # Also try 'path_nodes' field (from routing_info)
-                                if not path_nodes:
-                                    path_nodes = decoded_packet.get('path_nodes', [])
+                                # TRACE: RF path bytes are per-hop SNR×4, not repeater hashes — do not
+                                # extract prefixes or record repeats from them.
+                                if not is_trace:
+                                    # Extract repeater prefixes from path - try multiple field names
+                                    # decode_meshcore_packet returns 'path' not 'path_nodes'
+                                    path_nodes = decoded_packet.get('path', [])
+                                    # Also try 'path_nodes' field (from routing_info)
+                                    if not path_nodes:
+                                        path_nodes = decoded_packet.get('path_nodes', [])
 
-                                path_hex = decoded_packet.get('path_hex', '')
+                                    path_hex = decoded_packet.get('path_hex', '')
 
-                                # If we don't have path_nodes but have path_hex, convert it
-                                if not path_nodes and path_hex and len(path_hex) >= 2:
-                                    path_nodes = self._path_hex_to_nodes(path_hex)
+                                    # If we don't have path_nodes but have path_hex, convert it
+                                    if not path_nodes and path_hex and len(path_hex) >= 2:
+                                        path_nodes = self._path_hex_to_nodes(path_hex)
 
-                                path_string = ','.join(path_nodes) if path_nodes else None
+                                    path_string = ','.join(path_nodes) if path_nodes else None
 
-                                # Debug logging
-                                if path_nodes:
-                                    self.logger.debug(f"📡 Extracting prefixes from path_nodes: {path_nodes}, path_hex: {path_hex}, bot_prefix: {self.bot.transmission_tracker.bot_prefix}")
+                                    # Debug logging
+                                    if path_nodes:
+                                        self.logger.debug(f"📡 Extracting prefixes from path_nodes: {path_nodes}, path_hex: {path_hex}, bot_prefix: {self.bot.transmission_tracker.bot_prefix}")
 
-                                # Try to match this packet hash to a transmission
-                                record = self.bot.transmission_tracker.match_packet_hash(
-                                    packet_hash, current_time
-                                )
-
-                                if record:
-                                    # This is one of our transmissions - check for repeats
-                                    # Extract repeater prefix from the last hop in the path
-                                    # (the repeater that sent this packet to us)
-                                    prefixes = self.bot.transmission_tracker.extract_repeater_prefixes_from_path(
-                                        path_string, path_nodes
+                                    # Try to match this packet hash to a transmission
+                                    record = self.bot.transmission_tracker.match_packet_hash(
+                                        packet_hash, current_time
                                     )
 
-                                    # Log for debugging
-                                    if prefixes:
-                                        self.logger.info(f"📡 Found {len(prefixes)} repeater prefix(es) in repeat: {', '.join(prefixes)}")
-                                    elif path_nodes or path_hex:
-                                        self.logger.debug(f"📡 Repeat detected but no repeater prefixes extracted (path_nodes: {path_nodes}, path_hex: {path_hex}, bot_prefix: {self.bot.transmission_tracker.bot_prefix})")
+                                    if record:
+                                        # This is one of our transmissions - check for repeats
+                                        # Extract repeater prefix from the last hop in the path
+                                        # (the repeater that sent this packet to us)
+                                        prefixes = self.bot.transmission_tracker.extract_repeater_prefixes_from_path(
+                                            path_string, path_nodes
+                                        )
 
-                                    # Record the repeat
-                                    for prefix in prefixes:
-                                        self.bot.transmission_tracker.record_repeat(packet_hash, prefix)
+                                        # Log for debugging
+                                        if prefixes:
+                                            self.logger.info(f"📡 Found {len(prefixes)} repeater prefix(es) in repeat: {', '.join(prefixes)}")
+                                        elif path_nodes or path_hex:
+                                            self.logger.debug(f"📡 Repeat detected but no repeater prefixes extracted (path_nodes: {path_nodes}, path_hex: {path_hex}, bot_prefix: {self.bot.transmission_tracker.bot_prefix})")
 
-                                    # If no prefixes but we have a path, it might be a direct repeat
-                                    # (path contains our own node, so we filter it out)
-                                    if not prefixes and (path_nodes or path_hex):
-                                        # Still count as a repeat (heard by our radio)
-                                        self.bot.transmission_tracker.record_repeat(packet_hash, None)
+                                        # Record the repeat
+                                        for prefix in prefixes:
+                                            self.bot.transmission_tracker.record_repeat(packet_hash, prefix)
 
-                            routing_info = {
-                                'path_length': decoded_packet.get('path_len', 0),
-                                'path_len_byte': decoded_packet.get('path_len_byte'),
-                                'path_byte_length': decoded_packet.get('path_byte_length'),
-                                'bytes_per_hop': decoded_packet.get('bytes_per_hop', 1),
-                                'path_hex': decoded_packet.get('path_hex', ''),
-                                'path_nodes': decoded_packet.get('path', []),
-                                'route_type': decoded_packet.get('route_type_name', 'Unknown'),
-                                'payload_length': payload_length,  # Use the actual payload length
-                                'payload_type': decoded_packet.get('payload_type_name', 'Unknown'),
-                                'packet_hash': packet_hash  # Store hash for packet tracking
-                            }
+                                        # If no prefixes but we have a path, it might be a direct repeat
+                                        # (path contains our own node, so we filter it out)
+                                        if not prefixes and (path_nodes or path_hex):
+                                            # Still count as a repeat (heard by our radio)
+                                            self.bot.transmission_tracker.record_repeat(packet_hash, None)
+                                else:
+                                    record = self.bot.transmission_tracker.match_packet_hash(
+                                        packet_hash, current_time
+                                    )
+                                    if record:
+                                        self.logger.debug(
+                                            "📡 TRACE packet matched our transmission; skipping repeater prefix "
+                                            "extraction (RF path holds SNR bytes, not node hashes)"
+                                        )
+
+                            pi = decoded_packet.get('path_info') or {}
+                            trace_route_hashes = list(pi.get('path_hashes') or pi.get('path') or [])
+                            trace_snr_db = list(pi.get('snr_data') or [])
+
+                            if is_trace:
+                                routing_info = {
+                                    'path_length': len(trace_route_hashes) if trace_route_hashes else decoded_packet.get('path_len', 0),
+                                    'path_len_byte': decoded_packet.get('path_len_byte'),
+                                    'path_byte_length': decoded_packet.get('path_byte_length'),
+                                    'bytes_per_hop': decoded_packet.get('bytes_per_hop', 1),
+                                    'path_hex': decoded_packet.get('path_hex', ''),
+                                    'path_nodes': trace_route_hashes,
+                                    'trace_route_hashes': trace_route_hashes,
+                                    'trace_snr_db': trace_snr_db,
+                                    'trace_snr_path_hex': decoded_packet.get('path_hex', ''),
+                                    'route_type': decoded_packet.get('route_type_name', 'Unknown'),
+                                    'payload_length': payload_length,
+                                    'payload_type': decoded_packet.get('payload_type_name', 'Unknown'),
+                                    'packet_hash': packet_hash,
+                                }
+                            else:
+                                routing_info = {
+                                    'path_length': decoded_packet.get('path_len', 0),
+                                    'path_len_byte': decoded_packet.get('path_len_byte'),
+                                    'path_byte_length': decoded_packet.get('path_byte_length'),
+                                    'bytes_per_hop': decoded_packet.get('bytes_per_hop', 1),
+                                    'path_hex': decoded_packet.get('path_hex', ''),
+                                    'path_nodes': decoded_packet.get('path', []),
+                                    'route_type': decoded_packet.get('route_type_name', 'Unknown'),
+                                    'payload_length': payload_length,
+                                    'payload_type': decoded_packet.get('payload_type_name', 'Unknown'),
+                                    'packet_hash': packet_hash,
+                                }
                             # Validate path consistency (path_byte_length, path_hex, path_nodes, bytes_per_hop)
-                            path_len = routing_info['path_length']
-                            path_byte_len = routing_info.get('path_byte_length')
-                            path_hex_str = routing_info.get('path_hex', '')
-                            path_nodes_list = routing_info.get('path_nodes') or []
-                            bph = routing_info.get('bytes_per_hop', 1) or 1
-                            expected_hex_len = (path_byte_len * 2) if path_byte_len is not None else (path_len * bph * 2)
-                            if path_len > 0 and path_hex_str:
-                                if len(path_hex_str) != expected_hex_len:
-                                    self.logger.warning(
-                                        "Path length mismatch: path_hex has %d hex chars, expected %d (path_byte_length=%s, path_length=%s, bytes_per_hop=%s)",
-                                        len(path_hex_str), expected_hex_len, path_byte_len, path_len, bph
-                                    )
-                                if path_nodes_list and len(path_nodes_list) != path_len:
-                                    self.logger.warning(
-                                        "Path nodes count mismatch: %d nodes, path_length=%d",
-                                        len(path_nodes_list), path_len
-                                    )
-                                if path_nodes_list and bph >= 1 and any(len(str(n)) != bph * 2 for n in path_nodes_list):
-                                    self.logger.warning(
-                                        "Path node width mismatch: bytes_per_hop=%d expects %d hex chars per node, nodes=%s",
-                                        bph, bph * 2, path_nodes_list[:5]
-                                    )
+                            if not is_trace:
+                                path_len = routing_info['path_length']
+                                path_byte_len = routing_info.get('path_byte_length')
+                                path_hex_str = routing_info.get('path_hex', '')
+                                path_nodes_list = routing_info.get('path_nodes') or []
+                                bph = routing_info.get('bytes_per_hop', 1) or 1
+                                expected_hex_len = (path_byte_len * 2) if path_byte_len is not None else (path_len * bph * 2)
+                                if path_len > 0 and path_hex_str:
+                                    if len(path_hex_str) != expected_hex_len:
+                                        self.logger.warning(
+                                            "Path length mismatch: path_hex has %d hex chars, expected %d (path_byte_length=%s, path_length=%s, bytes_per_hop=%s)",
+                                            len(path_hex_str), expected_hex_len, path_byte_len, path_len, bph
+                                        )
+                                    if path_nodes_list and len(path_nodes_list) != path_len:
+                                        self.logger.warning(
+                                            "Path nodes count mismatch: %d nodes, path_length=%d",
+                                            len(path_nodes_list), path_len
+                                        )
+                                    if path_nodes_list and bph >= 1 and any(len(str(n)) != bph * 2 for n in path_nodes_list):
+                                        self.logger.warning(
+                                            "Path node width mismatch: bytes_per_hop=%d expects %d hex chars per node, nodes=%s",
+                                            bph, bph * 2, path_nodes_list[:5]
+                                        )
                             # Log the routing information for analysis
-                            if routing_info['path_length'] > 0:
+                            rf_path_bytes = decoded_packet.get('path_byte_length') or 0
+                            trace_has_route = bool(trace_route_hashes)
+                            trace_has_snr_path = rf_path_bytes > 0
+
+                            if is_trace and (trace_has_route or trace_has_snr_path):
+                                route_part = (
+                                    f"Trace route: {','.join(h.lower() for h in trace_route_hashes)}"
+                                    if trace_route_hashes
+                                    else "Trace route: (none decoded yet)"
+                                )
+                                snr_part = ""
+                                if trace_snr_db:
+                                    snr_fmt = ",".join(f"{v:.2f}" for v in trace_snr_db)
+                                    snr_part = f" | Trace SNR (dB): {snr_fmt}"
+                                elif routing_info.get('trace_snr_path_hex'):
+                                    snr_part = (
+                                        f" | Trace SNR path (raw hex, int8×4 per hop): "
+                                        f"{routing_info['trace_snr_path_hex']}"
+                                    )
+                                hops_display = len(trace_route_hashes) if trace_route_hashes else decoded_packet.get('path_len', 0)
+                                log_message = (
+                                    f"🛣️  ROUTING INFO: {routing_info['route_type']} | {route_part}{snr_part} "
+                                    f"({hops_display} route hops, {rf_path_bytes} RF path bytes) | "
+                                    f"Payload: {routing_info['payload_length']} bytes | Type: {routing_info['payload_type']}"
+                                )
+                                self.logger.info(log_message)
+                            elif routing_info['path_length'] > 0:
                                 # Use path_nodes when present (multi-byte); else chunk path_hex
                                 path_nodes_list = routing_info.get('path_nodes') or []
                                 if path_nodes_list:
@@ -818,6 +880,10 @@ class MessageHandler:
                             if (hasattr(self.bot, 'web_viewer_integration') and
                                 self.bot.web_viewer_integration and
                                 self.bot.web_viewer_integration.bot_integration):
+                                decoded_packet['routing_info'] = routing_info
+                                if is_trace and trace_route_hashes:
+                                    decoded_packet['path'] = list(trace_route_hashes)
+                                    decoded_packet['path_len'] = len(trace_route_hashes)
                                 # Use extracted_payload which is the full MeshCore packet
                                 # (header + path_len + path + payload, without RF wrapper)
                                 decoded_packet['raw_packet_hex'] = extracted_payload if extracted_payload else raw_hex
@@ -1481,6 +1547,8 @@ class MessageHandler:
 
             # Special handling for TRACE packets
             if payload_type == PayloadType.TRACE:
+                # RF path bytes are per-hop SNR×4 (int8), not node hashes. The commanded route is
+                # in the payload after tag(4)+auth(4)+flags(1); use path_info / parse_trace_payload_route_hashes for display.
                 # In TRACE packets, path field contains SNR data
                 # Real routing path is in the payload as pathHashes (after tag(4) + auth(4) + flags(1))
                 snr_values = []

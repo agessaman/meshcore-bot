@@ -21,7 +21,7 @@ from meshcore import EventType
 from ..enums import PayloadType, PayloadVersion, RouteType
 
 # Import bot's utilities for packet hash
-from ..utils import calculate_packet_hash, decode_path_len_byte
+from ..utils import calculate_packet_hash, decode_path_len_byte, parse_trace_payload_route_hashes
 
 # Import MQTT client
 try:
@@ -907,7 +907,7 @@ class PacketCaptureService(BaseServicePlugin):
                 'path_byte_length': path_byte_length,
                 'bytes_per_hop': bytes_per_hop,
                 'path_hex': path_hex,
-                'path': path_nodes,  # List of hex node IDs
+                'path': path_nodes,  # For TRACE, RF path is SNR×4 per hop — replaced below
                 'payload_hex': packet_payload.hex(),
                 'payload_bytes': len(packet_payload),
                 'raw_hex': raw_hex,
@@ -915,6 +915,14 @@ class PacketCaptureService(BaseServicePlugin):
                 'has_transport_codes': has_transport,
                 'transport_codes': transport_codes
             }
+
+            # TRACE: RF path bytes are SNR samples; commanded route is in payload[9:]
+            if payload_type == PayloadType.TRACE:
+                packet_info['trace_snr_path_hex'] = path_hex.upper()
+                trace_route = parse_trace_payload_route_hashes(packet_payload)
+                if trace_route:
+                    packet_info['path'] = trace_route
+                    packet_info['path_len'] = len(trace_route)
 
             return packet_info
 

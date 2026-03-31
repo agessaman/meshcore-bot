@@ -1136,6 +1136,32 @@ class TestDecodeMeshcorePacket:
         assert result is not None
         assert result["path_info"]["type"] == "trace"
 
+    def test_trace_decode_skye_sample_payload_hashes_not_snr_path(self, handler):
+        # Field report: RF path 31,28,23 was misread as node IDs; payload holds 37,d6,37.
+        raw = "26033128235F0AED1A000000000037D637"
+        result = handler.decode_meshcore_packet(raw)
+        assert result is not None
+        assert result["payload_type_name"] == "TRACE"
+        ph = result["path_info"].get("path_hashes") or result["path_info"].get("path")
+        assert ph == ["37", "D6", "37"]
+        assert len(result["path_info"]["snr_data"]) == 3
+        # Top-level path is still SNR chunks (legacy shape); real route is path_info
+        assert result["path"]  # non-empty SNR-as-hex nodes
+
+    def test_trace_decode_flags_two_byte_path_hashes(self, handler):
+        # flags=1 → 2 bytes per hash; tail 4 bytes → AABB, CCDD
+        trace_payload = (
+            b"\x01\x00\x00\x00"  # tag
+            + b"\x00\x00\x00\x00"  # auth
+            + b"\x01"  # flags: path_sz=1 → 2 bytes per hop
+            + b"\xaa\xbb\xcc\xdd"
+        )
+        hex_str = _make_packet_hex(9, 2, path_bytes=b"", hop_count=0, payload_bytes=trace_payload)
+        result = handler.decode_meshcore_packet(hex_str)
+        assert result is not None
+        ph = result["path_info"].get("path_hashes") or result["path_info"].get("path")
+        assert ph == ["AABB", "CCDD"]
+
 
 # ---------------------------------------------------------------------------
 # parse_advert

@@ -416,6 +416,39 @@ def decode_path_len_byte(path_len_byte: int, max_path_size: int = 64) -> tuple:
     return (path_byte_length, bytes_per_hop)
 
 
+def parse_trace_payload_route_hashes(payload: bytes) -> list[str]:
+    """Extract TRACE route hash segments from mesh payload (after tag, auth, flags).
+
+    Matches MeshCore: ``bytes_per_hash = 1 << (flags & 3)`` for bytes at ``payload[9:]``.
+    If the tail length is not a multiple of ``bytes_per_hash``, falls back to 1-byte
+    segments (same as MessageHandler._process_packet_path).
+
+    Args:
+        payload: Full mesh payload bytes (not including header/path).
+
+    Returns:
+        List of uppercase hex strings, one per hop hash.
+    """
+    if len(payload) < 9:
+        return []
+    flags = payload[8]
+    path_hash_len = 1 << (flags & 3)
+    if path_hash_len <= 0:
+        path_hash_len = 1
+    path_hashes_bytes = payload[9:]
+    if not path_hashes_bytes:
+        return []
+    try:
+        if len(path_hashes_bytes) % path_hash_len == 0:
+            return [
+                path_hashes_bytes[i : i + path_hash_len].hex().upper()
+                for i in range(0, len(path_hashes_bytes), path_hash_len)
+            ]
+    except Exception:
+        pass
+    return [f"{b:02X}" for b in path_hashes_bytes]
+
+
 def encode_path_len_byte(hop_count: int, bytes_per_hop: int) -> int:
     """Pack hop count and hash size into the single path_len wire byte (inverse of decode_path_len_byte).
 

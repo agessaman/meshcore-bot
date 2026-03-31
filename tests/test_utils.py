@@ -16,6 +16,7 @@ from modules.utils import (
     decode_path_len_byte,
     encode_path_len_byte,
     extract_path_node_ids_from_message,
+    parse_trace_payload_route_hashes,
     format_elapsed_display,
     format_keyword_response_with_placeholders,
     format_location_for_display,
@@ -230,6 +231,21 @@ class TestDecodePathLenByte:
         path_byte_length, bytes_per_hop = decode_path_len_byte(0x00)
         assert path_byte_length == 0
         assert bytes_per_hop == 1
+
+
+class TestParseTracePayloadRouteHashes:
+    """Tests for parse_trace_payload_route_hashes() (TRACE payload tail, MeshCore firmware)."""
+
+    def test_skye_sample_tail(self):
+        payload = bytes.fromhex("5F0AED1A000000000037D637")
+        assert parse_trace_payload_route_hashes(payload) == ["37", "D6", "37"]
+
+    def test_two_byte_hashes_flags_1(self):
+        pl = b"\x00" * 8 + b"\x01" + b"\xaa\xbb\xcc\xdd"
+        assert parse_trace_payload_route_hashes(pl) == ["AABB", "CCDD"]
+
+    def test_short_payload_returns_empty(self):
+        assert parse_trace_payload_route_hashes(b"\x00" * 8) == []
 
 
 class TestEncodePathLenByte:
