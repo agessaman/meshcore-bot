@@ -39,6 +39,12 @@ except ImportError:
     WXSIM_PARSER_AVAILABLE = False
     WXSIMParser = None
 
+from ..clients.mqtt_weather import (
+    get_mqtt_weather_topic,
+    load_mqtt_weather_format_config,
+    mqtt_weather_display_for_topic,
+)
+
 # Multiday: plain digits (e.g. 7), 7day/7-day, or suffix form 7d/10d (min 2, max below).
 WX_MULTIDAY_MAX_DAYS = 16
 
@@ -52,7 +58,8 @@ class WxCommand(BaseCommand):
     description = "Get weather information for a zip code (usage: wx 12345)"
     category = "weather"
     cooldown_seconds = 5  # 5 second cooldown per user to prevent API abuse
-    requires_internet = True  # Requires internet access for NOAA API and geocoding
+    # NOAA/geocoding need the network, but custom WXSIM/MQTT sources may be LAN-only; check connectivity inside execute paths.
+    requires_internet = False
 
     # Documentation
     short_description = "Get weather for a US location using NOAA weather data"
@@ -299,6 +306,39 @@ class WxCommand(BaseCommand):
 
         return None
 
+    def _get_custom_mqtt_weather_topic(self, location: Optional[str] = None) -> Optional[str]:
+        """MQTT topic for custom.mqtt_weather.<name> (see get_mqtt_weather_topic)."""
+        return get_mqtt_weather_topic(self.bot.config, location)
+
+    def _mqtt_weather_line(
+        self,
+        topic: str,
+        forecast_type: str,
+        location_name: Optional[str],
+    ) -> str:
+        """Format cached MQTT payload for wx output."""
+        if forecast_type != "default":
+            return self.translate("commands.wx.mqtt_forecast_not_supported")
+
+        fmt = load_mqtt_weather_format_config(self.bot.config)
+        cache = getattr(self.bot, "mqtt_weather_cache", None)
+        text, err = mqtt_weather_display_for_topic(topic, cache, fmt)
+        if text is not None:
+            if location_name:
+                return f"{location_name}: {text}"
+            return text
+        return self._mqtt_weather_error_key(err)
+
+    def _mqtt_weather_error_key(self, err: Optional[str]) -> str:
+        if err == "no_cache":
+            return self.translate("commands.wx.mqtt_weather_no_subscriber")
+        if err in ("no_data", "empty_payload", "empty_after_sanitize"):
+            return self.translate("commands.wx.mqtt_weather_no_data")
+        if err == "stale":
+            return self.translate("commands.wx.mqtt_weather_stale")
+        detail = (err or "unknown").replace("_", " ")
+        return self.translate("commands.wx.mqtt_weather_payload_error", detail=detail)
+
     def _get_wxsim_weather(self, source_url: str, forecast_type: str = "default",
                                 num_days: int = 7, message: MeshMessage = None,
                                 location_name: Optional[str] = None) -> str:
@@ -449,8 +489,20 @@ class WxCommand(BaseCommand):
         # Track if we're using companion location (so we always show location in response)
         using_companion_location = False
 
-        # If no location specified, check for custom WXSIM default source first
+        # If no location specified, check custom MQTT then WXSIM default sources
         if len(parts) < 2:
+            mqtt_topic = self._get_custom_mqtt_weather_topic(None)
+            if mqtt_topic:
+                try:
+                    self.record_execution(message.sender_id)
+                    weather_data = self._mqtt_weather_line(mqtt_topic, "default", None)
+                    await self.send_response(message, weather_data)
+                    return True
+                except Exception as e:
+                    self.logger.error(f"Error reading MQTT weather: {e}")
+                    await self.send_response(message, self.translate("commands.wx.error", error=str(e)))
+                    return True
+
             wxsim_source = self._get_custom_wxsim_source(None)  # Check for default
             if wxsim_source:
                 # Use custom WXSIM default source
@@ -553,6 +605,26 @@ class WxCommand(BaseCommand):
         if not location:
             await self.send_response(message, self.translate('commands.wx.usage'))
             return True
+
+        # Custom MQTT before WXSIM; skip snapshot sources when user asked for NOAA alerts
+        if not show_full_alerts:
+            mqtt_topic = self._get_custom_mqtt_weather_topic(location)
+            if mqtt_topic:
+                self.logger.info(f"Using custom MQTT weather topic for location '{location}': {mqtt_topic}")
+                try:
+                    self.record_execution(message.sender_id)
+                    weather_data = self._mqtt_weather_line(
+                        mqtt_topic, forecast_type, location
+                    )
+                    if forecast_type == "multiday":
+                        await self._send_multiday_forecast(message, weather_data)
+                    else:
+                        await self.send_response(message, weather_data)
+                    return True
+                except Exception as e:
+                    self.logger.error(f"Error reading MQTT weather: {e}")
+                    await self.send_response(message, self.translate("commands.wx.error", error=str(e)))
+                    return True
 
         # Check for custom WXSIM source first (before checking location type)
         wxsim_source = self._get_custom_wxsim_source(location)

@@ -613,6 +613,15 @@ temperature_low_only_format = L:{low}{units}
 #
 # Note: Only one 'default' source can be set per provider type.
 # Future providers (e.g., custom.pwaweather.location) will follow the same pattern.
+#
+# MQTT snapshot weather (optional; requires [MqttWeather] enabled = true)
+#   custom.mqtt_weather.default = <topic>   - used for bare wx / gwx (no location)
+#   custom.mqtt_weather.<name> = <topic>    - wx <name> / gwx <name>
+# Topics must not contain + or #. If both MQTT and WXSIM define the same alias, MQTT is tried first.
+# Example:
+# custom.mqtt_weather.default = sensors/home/weather
+# custom.mqtt_weather.patio = sensors/patio/weather
+# Broker and format options for MQTT wx/gwx: see [MqttWeather] in the service plugin block at the end of this file.
 
 [Solar_Config]
 # URL timeout for external API calls (seconds)
@@ -1463,6 +1472,43 @@ min_reupload_interval = 3600
 # true: Show detailed debug information (useful for troubleshooting)
 # false: Standard logging (default)
 verbose = false
+
+[MqttWeather]
+# MQTT subscriber for custom.mqtt_weather.* topics (requires paho-mqtt). Service plugin: mqtt_weather_service.
+# Topic strings belong under [Weather]: custom.mqtt_weather.default and custom.mqtt_weather.<name> (see that section).
+enabled = false
+
+# Broker connection (required when enabled and at least one custom.mqtt_weather.* topic is set)
+# broker = mqtt.example.com
+# port = 1883
+# transport = tcp
+# For WebSockets: transport = websockets, set port (e.g. 443), websocket_path, often use_tls = true
+# websocket_path = /mqtt
+# use_tls = false
+# username =
+# password =
+# client_id =
+# qos = 0
+
+# Drop incoming MQTT payloads larger than this (bytes)
+# max_payload_bytes = 65536
+
+# Cached reading is stale after this many seconds (no fresh message on topic)
+# stale_after_seconds = 3600
+
+# passthrough: UTF-8 payload sanitized and truncated for mesh (JSON or plain text)
+# json_template: JSON object only; format with fixed placeholders (no arbitrary key paths)
+# output_mode = passthrough
+# output_mode = json_template
+# Allowed placeholders in json_template: {time} {temperature_f} {temperature_c} {humidity} {device}
+# json_template = {time} | {temperature_f} F / {temperature_c} C | RH {humidity}%
+
+# Optional filter: only accept JSON objects where the given key's string value matches
+# json_device_key = device
+# json_device_value = 231
+
+# Max output length after sanitize (characters)
+# passthrough_max_length = 500
 
 [Weather_Service]
 # Enable weather service for scheduled forecasts and alert monitoring (true/false)

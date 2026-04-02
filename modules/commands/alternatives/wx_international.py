@@ -28,6 +28,12 @@ except ImportError:
     WXSIM_PARSER_AVAILABLE = False
     WXSIMParser = None
 
+from ...clients.mqtt_weather import (
+    get_mqtt_weather_topic,
+    load_mqtt_weather_format_config,
+    mqtt_weather_display_for_topic,
+)
+
 # Multiday: plain digits, 7day/7-day, or suffix form 7d/10d (min 2, max below). Open-Meteo allows up to 16 forecast days.
 GWX_MULTIDAY_MAX_DAYS = 16
 
@@ -41,7 +47,8 @@ class GlobalWxCommand(BaseCommand):
     description = "Get weather information for any global location (usage: gwx Tokyo)"
     category = "weather"
     cooldown_seconds = 5  # 5 second cooldown per user to prevent API abuse
-    requires_internet = True  # Requires internet access for Open-Meteo API and geocoding
+    # Open-Meteo/geocoding need the network; custom MQTT/WXSIM may be LAN-only.
+    requires_internet = False
 
     # Documentation
     short_description = "Get weather for any global location using Open-Meteo API"
@@ -205,6 +212,34 @@ class GlobalWxCommand(BaseCommand):
         except Exception as e:
             self.logger.debug(f"Error getting bot location: {e}")
             return None
+
+    def _get_custom_mqtt_weather_topic(self, location: Optional[str] = None) -> Optional[str]:
+        return get_mqtt_weather_topic(self.bot.config, location)
+
+    def _mqtt_weather_line(
+        self,
+        topic: str,
+        forecast_type: str,
+        location_name: Optional[str],
+    ) -> str:
+        if forecast_type != "default":
+            return self.translate("commands.gwx.mqtt_forecast_not_supported")
+
+        fmt = load_mqtt_weather_format_config(self.bot.config)
+        cache = getattr(self.bot, "mqtt_weather_cache", None)
+        text, err = mqtt_weather_display_for_topic(topic, cache, fmt)
+        if text is not None:
+            if location_name:
+                return f"{location_name}: {text}"
+            return text
+        if err == "no_cache":
+            return self.translate("commands.gwx.mqtt_weather_no_subscriber")
+        if err in ("no_data", "empty_payload", "empty_after_sanitize"):
+            return self.translate("commands.gwx.mqtt_weather_no_data")
+        if err == "stale":
+            return self.translate("commands.gwx.mqtt_weather_stale")
+        detail = (err or "unknown").replace("_", " ")
+        return self.translate("commands.gwx.mqtt_weather_payload_error", detail=detail)
 
     def _get_custom_wxsim_source(self, location: Optional[str] = None) -> Optional[str]:
         """Get custom WXSIM source URL from config.
@@ -386,8 +421,20 @@ class GlobalWxCommand(BaseCommand):
         # Parse the command to extract location and forecast type
         parts = content.split()
 
-        # If no location specified, check for custom WXSIM default source first
+        # If no location specified, check custom MQTT then WXSIM default sources
         if len(parts) < 2:
+            mqtt_topic = self._get_custom_mqtt_weather_topic(None)
+            if mqtt_topic:
+                try:
+                    self.record_execution(message.sender_id)
+                    weather_data = self._mqtt_weather_line(mqtt_topic, "default", None)
+                    await self.send_response(message, weather_data)
+                    return True
+                except Exception as e:
+                    self.logger.error(f"Error reading MQTT weather: {e}")
+                    await self.send_response(message, self.translate("commands.gwx.error", error=str(e)))
+                    return True
+
             wxsim_source = self._get_custom_wxsim_source(None)  # Check for default
             if wxsim_source:
                 # Use custom WXSIM default source
@@ -483,6 +530,23 @@ class GlobalWxCommand(BaseCommand):
         if not location:
             await self.send_response(message, self.translate('commands.gwx.usage'))
             return True
+
+        # Custom MQTT before WXSIM
+        mqtt_topic = self._get_custom_mqtt_weather_topic(location)
+        if mqtt_topic:
+            self.logger.info(f"Using custom MQTT weather topic for location '{location}': {mqtt_topic}")
+            try:
+                self.record_execution(message.sender_id)
+                weather_data = self._mqtt_weather_line(mqtt_topic, forecast_type, location)
+                if forecast_type == "multiday":
+                    await self._send_multiday_forecast(message, weather_data)
+                else:
+                    await self.send_response(message, weather_data)
+                return True
+            except Exception as e:
+                self.logger.error(f"Error reading MQTT weather: {e}")
+                await self.send_response(message, self.translate("commands.gwx.error", error=str(e)))
+                return True
 
         # Check for custom WXSIM source first (before normal geocoding)
         wxsim_source = self._get_custom_wxsim_source(location)
