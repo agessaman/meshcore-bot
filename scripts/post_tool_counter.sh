@@ -5,10 +5,17 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COUNTER_FILE="/tmp/mc_tool_count"
 
-# Increment counter
-COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo "0")
-COUNT=$((COUNT + 1))
-echo "$COUNT" > "$COUNTER_FILE"
+# Increment counter (flock makes read-modify-write atomic)
+LOCK_FILE="${COUNTER_FILE}.lock"
+COUNT=$(
+    (
+        flock -x 9
+        C=$(cat "$COUNTER_FILE" 2>/dev/null || echo "0")
+        C=$((C + 1))
+        echo "$C" > "$COUNTER_FILE"
+        echo "$C"
+    ) 9>"$LOCK_FILE"
+)
 
 # Every 100 tool calls, run checkpoint
 if [ $((COUNT % 100)) -eq 0 ]; then

@@ -72,10 +72,12 @@ fi
 # 3. Flush pending bugs from .claude/pending_bugs.txt into BUGS.md
 PENDING=".claude/pending_bugs.txt"
 if [ -s "$PENDING" ]; then
-    printf '\n' >> BUGS.md
-    cat "$PENDING" >> BUGS.md
-    : > "$PENDING"
-    echo "BUGS.md: flushed pending bugs"
+    if printf '\n' >> BUGS.md 2>/dev/null && cat "$PENDING" >> BUGS.md 2>/dev/null; then
+        : > "$PENDING"
+        echo "BUGS.md: flushed pending bugs"
+    else
+        echo "BUGS.md: warning — could not write, pending bugs retained in ${PENDING}" >&2
+    fi
 fi
 
 # 4. Append checkpoint log entry

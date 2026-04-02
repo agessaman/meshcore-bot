@@ -14,6 +14,7 @@ python3 -m pip install --disable-pip-version-check --no-input --quiet build
 
 rm -rf "${DIST_DIR}/_pkgcheck"
 mkdir -p "${DIST_DIR}/_pkgcheck"
+trap 'rm -rf "${DIST_DIR}/_pkgcheck"' EXIT
 
 python3 -m build --sdist --wheel --outdir "${DIST_DIR}/_pkgcheck" "${PROJECT_ROOT}"
 
@@ -35,7 +36,6 @@ with zipfile.ZipFile(wheel_path, "r") as zf:
         raise SystemExit(1)
 print("OK: wheel contains target asset")
 PY
-  exit 1
 fi
 
 echo "==> Inspecting sdist: $(basename "${SDIST_FILE}")"
@@ -53,7 +53,6 @@ with tarfile.open(sdist_path, "r:gz") as tf:
         raise SystemExit(1)
 print("OK: sdist contains target asset")
 PY
-  exit 1
 fi
 
 echo "==> Package-data check passed"
