@@ -45,6 +45,24 @@ class RepeaterManager:
         # Geocoding cache: packet_hash -> timestamp (to prevent duplicate geocoding within 1 minute)
         self.geocoding_cache = {}
         self.geocoding_cache_window = 60  # 1 minute window
+        # Prevent overlapping auto-purge runs and duplicate per-key purge attempts.
+        self._auto_purge_lock = asyncio.Lock()
+        self._auto_purge_in_progress = False
+        self._purge_inflight_keys = set()
+
+    def _start_purge_attempt(self, public_key: str, contact_type: str) -> bool:
+        """Mark a purge as in-flight; return False when another attempt is already active."""
+        if public_key in self._purge_inflight_keys:
+            self.logger.info(
+                f"Skipping duplicate {contact_type} purge for {public_key[:16]}... (already in progress)"
+            )
+            return False
+        self._purge_inflight_keys.add(public_key)
+        return True
+
+    def _finish_purge_attempt(self, public_key: str):
+        """Clear in-flight marker for a purge attempt."""
+        self._purge_inflight_keys.discard(public_key)
 
     def _init_repeater_tables(self):
         """Ensure repeater-specific tables exist (created by migrations)."""
@@ -618,47 +636,56 @@ class RepeaterManager:
 
     async def check_and_auto_purge(self) -> bool:
         """Check contact limit and auto-purge repeaters and companions if needed"""
+        # Avoid overlapping auto-purge runs from concurrent callers.
+        if self._auto_purge_in_progress:
+            self.logger.debug("Auto-purge already running, skipping overlapping check")
+            return False
+
+        self._auto_purge_in_progress = True
         try:
-            if not self.auto_purge_enabled:
-                return False
+            async with self._auto_purge_lock:
+                if not self.auto_purge_enabled:
+                    return False
 
-            # Get current contact count
-            current_count = len(self.bot.meshcore.contacts)
+                # Get current contact count
+                current_count = len(self.bot.meshcore.contacts)
 
-            if current_count >= self.auto_purge_threshold:
-                self.logger.info(f"🔄 Auto-purge triggered: {current_count}/{self.contact_limit} contacts (threshold: {self.auto_purge_threshold})")
+                if current_count >= self.auto_purge_threshold:
+                    self.logger.info(f"🔄 Auto-purge triggered: {current_count}/{self.contact_limit} contacts (threshold: {self.auto_purge_threshold})")
 
-                # Calculate how many to purge
-                target_count = self.auto_purge_threshold - 20  # Leave some buffer
-                purge_count = current_count - target_count
+                    # Calculate how many to purge
+                    target_count = self.auto_purge_threshold - 20  # Leave some buffer
+                    purge_count = current_count - target_count
 
-                if purge_count > 0:
-                    # First try to purge repeaters
-                    repeater_success = await self._auto_purge_repeaters(purge_count)
-                    remaining_count = len(self.bot.meshcore.contacts)
+                    if purge_count > 0:
+                        # First try to purge repeaters
+                        repeater_success = await self._auto_purge_repeaters(purge_count)
+                        remaining_count = len(self.bot.meshcore.contacts)
 
-                    # If still above threshold and companion purging is enabled, purge companions
-                    if remaining_count >= self.auto_purge_threshold and self.companion_purge_enabled:
-                        remaining_purge_count = remaining_count - target_count
-                        self.logger.info(f"Still above threshold after repeater purge, purging {remaining_purge_count} companions...")
-                        companion_success = await self._auto_purge_companions(remaining_purge_count)
+                        # If still above threshold and companion purging is enabled, purge companions
+                        if remaining_count >= self.auto_purge_threshold and self.companion_purge_enabled:
+                            remaining_purge_count = remaining_count - target_count
+                            self.logger.info(f"Still above threshold after repeater purge, purging {remaining_purge_count} companions...")
+                            companion_success = await self._auto_purge_companions(remaining_purge_count)
 
-                        if repeater_success or companion_success:
-                            final_count = len(self.bot.meshcore.contacts)
-                            self.logger.info(f"✅ Auto-purge completed, now at {final_count}/{self.contact_limit} contacts")
+                            if repeater_success or companion_success:
+                                final_count = len(self.bot.meshcore.contacts)
+                                self.logger.info(f"✅ Auto-purge completed, now at {final_count}/{self.contact_limit} contacts")
+                                return True
+                        elif repeater_success:
+                            self.logger.info(f"✅ Auto-purged {purge_count} repeaters, now at {remaining_count}/{self.contact_limit} contacts")
                             return True
-                    elif repeater_success:
-                        self.logger.info(f"✅ Auto-purged {purge_count} repeaters, now at {remaining_count}/{self.contact_limit} contacts")
-                        return True
-                    else:
-                        self.logger.warning(f"❌ Auto-purge failed to remove {purge_count} contacts")
-                        return False
+                        else:
+                            self.logger.warning(f"❌ Auto-purge failed to remove {purge_count} contacts")
+                            return False
 
             return False
 
         except Exception as e:
             self.logger.error(f"Error in auto-purge check: {e}")
             return False
+        finally:
+            self._auto_purge_in_progress = False
 
     async def _auto_purge_repeaters(self, count: int) -> bool:
         """Automatically purge repeaters using intelligent selection"""
@@ -1969,6 +1996,9 @@ class RepeaterManager:
 
     async def purge_repeater_from_contacts(self, public_key: str, reason: str = "Manual purge") -> bool:
         """Remove a specific repeater from the device's contact list using proper MeshCore API"""
+        if not self._start_purge_attempt(public_key, "repeater"):
+            return True
+
         self.logger.info(f"Starting purge process for public_key: {public_key}")
         self.logger.debug(f"Purge reason: {reason}")
 
@@ -2062,9 +2092,14 @@ class RepeaterManager:
             self.logger.error(f"Error purging repeater {public_key}: {e}")
             self.logger.debug(f"Error type: {type(e).__name__}")
             return False
+        finally:
+            self._finish_purge_attempt(public_key)
 
     async def purge_companion_from_contacts(self, public_key: str, reason: str = "Manual purge") -> bool:
         """Remove a companion contact from the device's contact list"""
+        if not self._start_purge_attempt(public_key, "companion"):
+            return True
+
         self.logger.info(f"Starting companion purge process for public_key: {public_key}")
         self.logger.debug(f"Purge reason: {reason}")
 
@@ -2153,6 +2188,8 @@ class RepeaterManager:
             self.logger.error(f"Error purging companion {public_key}: {e}")
             self.logger.debug(f"Error type: {type(e).__name__}")
             return False
+        finally:
+            self._finish_purge_attempt(public_key)
 
     async def purge_repeater_by_contact_key(self, contact_key: str, reason: str = "Manual purge") -> bool:
         """Remove a repeater using the contact key (public_key hex) from the device's contact list"""

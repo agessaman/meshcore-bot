@@ -1,10 +1,13 @@
 """Tests for RepeaterManager pure logic (no network, no geocoding)."""
 
+import asyncio
 import configparser
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from meshcore import EventType
 
 from modules.repeater_manager import RepeaterManager
 
@@ -1214,3 +1217,88 @@ class TestGetCompanionsForPurging:
         for field in ("public_key", "name", "purge_score", "days_inactive",
                       "last_dm", "last_advert"):
             assert field in companion, f"Missing field: {field}"
+
+
+class TestPurgeDedupConcurrency:
+    """Concurrency guards for overlapping auto-purge and per-key removal attempts."""
+
+    async def test_overlapping_check_and_auto_purge_runs_once(self, rm):
+        rm.auto_purge_enabled = True
+        rm.auto_purge_threshold = 10
+        rm.companion_purge_enabled = False
+        rm.bot.meshcore = Mock()
+        rm.bot.meshcore.contacts = {str(i): {} for i in range(15)}
+
+        first_call_started = asyncio.Event()
+        release_first_call = asyncio.Event()
+
+        async def slow_repeater_purge(_count):
+            first_call_started.set()
+            await release_first_call.wait()
+            return True
+
+        with patch.object(rm, "_auto_purge_repeaters", side_effect=slow_repeater_purge) as mock_repeater:
+            task_one = asyncio.create_task(rm.check_and_auto_purge())
+            await first_call_started.wait()
+            task_two = asyncio.create_task(rm.check_and_auto_purge())
+            release_first_call.set()
+
+            results = await asyncio.gather(task_one, task_two)
+
+        assert mock_repeater.call_count == 1
+        assert results.count(True) == 1
+        assert results.count(False) == 1
+
+    async def test_concurrent_companion_purge_attempts_call_remove_once(self, rm):
+        public_key = "f81564752766237daa2964c9006d3914402764b9b1338225d97fb5b14b6bc9f0"
+        rm.bot.meshcore = Mock()
+        rm.bot.meshcore.contacts = {
+            public_key: {"public_key": public_key, "adv_name": "Shay", "type": 1}
+        }
+        rm.bot.meshcore.get_contact_by_key_prefix = Mock(return_value=None)
+        rm.bot.meshcore.commands = Mock()
+        rm.bot.meshcore.commands.get_contacts = AsyncMock(return_value=None)
+
+        remove_started = asyncio.Event()
+        release_remove = asyncio.Event()
+        ok_result = SimpleNamespace(type=EventType.OK, payload={})
+
+        async def blocking_remove(_public_key):
+            remove_started.set()
+            await release_remove.wait()
+            return ok_result
+
+        rm.bot.meshcore.commands.remove_contact = AsyncMock(side_effect=blocking_remove)
+
+        with patch("modules.repeater_manager.asyncio.sleep", new_callable=AsyncMock, return_value=None):
+            task_one = asyncio.create_task(rm.purge_companion_from_contacts(public_key, "test"))
+            await remove_started.wait()
+            task_two = asyncio.create_task(rm.purge_companion_from_contacts(public_key, "test"))
+            release_remove.set()
+
+            results = await asyncio.gather(task_one, task_two)
+
+        assert all(results)
+        rm.bot.meshcore.commands.remove_contact.assert_awaited_once_with(public_key)
+
+    async def test_inflight_key_cleared_after_exception(self, rm):
+        public_key = "abcde12345f81564752766237daa2964c9006d3914402764b9b1338225d97fb5b1"
+        rm.bot.meshcore = Mock()
+        rm.bot.meshcore.contacts = {
+            public_key: {"public_key": public_key, "adv_name": "RetryUser", "type": 1}
+        }
+        rm.bot.meshcore.get_contact_by_key_prefix = Mock(return_value=None)
+        rm.bot.meshcore.commands = Mock()
+        rm.bot.meshcore.commands.get_contacts = AsyncMock(return_value=None)
+        ok_result = SimpleNamespace(type=EventType.OK, payload={})
+        rm.bot.meshcore.commands.remove_contact = AsyncMock(
+            side_effect=[Exception("radio busy"), ok_result]
+        )
+
+        with patch("modules.repeater_manager.asyncio.sleep", new_callable=AsyncMock, return_value=None):
+            first_result = await rm.purge_companion_from_contacts(public_key, "test")
+            second_result = await rm.purge_companion_from_contacts(public_key, "test")
+
+        assert first_result is False
+        assert second_result is True
+        assert rm.bot.meshcore.commands.remove_contact.await_count == 2
