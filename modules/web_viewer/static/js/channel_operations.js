@@ -21,7 +21,10 @@
     function postChannel(payload) {
         return fetch('/api/channels', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
             body: JSON.stringify(payload)
         }).then(function (response) {
             return response.json().then(function (result) {

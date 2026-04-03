@@ -1,11 +1,11 @@
 """Tests for FeedManager pure formatting and filtering logic."""
 
 import json
-from datetime import datetime, timezone, timedelta
+from configparser import ConfigParser
+from datetime import datetime, timedelta, timezone
+from unittest.mock import Mock
 
 import pytest
-from configparser import ConfigParser
-from unittest.mock import Mock
 
 from modules.feed_manager import FeedManager
 

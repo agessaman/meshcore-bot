@@ -20,19 +20,19 @@ Multi-resolution storage and node identity:
 
 import sqlite3
 import sys
-import time
 import threading
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple, Set
+import time
 from collections import defaultdict
+from datetime import datetime, timedelta
+from typing import Any, Optional
 
 
 class MeshGraph:
     """Graph structure tracking observed connections between mesh nodes."""
-    
+
     def __init__(self, bot):
         """Initialize the mesh graph.
-        
+
         Args:
             bot: Bot instance with db_manager and config access.
         """
@@ -46,17 +46,17 @@ class MeshGraph:
         self.capture_enabled = bot.config.getboolean('Path_Command', 'graph_capture_enabled', fallback=True)
 
         # In-memory graph storage: {(from_prefix, to_prefix): edge_data}
-        self.edges: Dict[Tuple[str, str], Dict] = {}
+        self.edges: dict[tuple[str, str], dict] = {}
 
         # Adjacency indexes for O(1) neighbour lookups (derived from self.edges)
-        self._outgoing_index: Dict[str, Set[str]] = defaultdict(set)  # from_prefix -> set of to_prefixes
-        self._incoming_index: Dict[str, Set[str]] = defaultdict(set)  # to_prefix -> set of from_prefixes
+        self._outgoing_index: dict[str, set[str]] = defaultdict(set)  # from_prefix -> set of to_prefixes
+        self._incoming_index: dict[str, set[str]] = defaultdict(set)  # to_prefix -> set of from_prefixes
 
         # Per-edge last-notification timestamps for web viewer throttling (unix float)
-        self._notification_timestamps: Dict[Tuple[str, str], float] = {}
+        self._notification_timestamps: dict[tuple[str, str], float] = {}
 
         # Track pending updates for batched writes
-        self.pending_updates: Set[Tuple[str, str]] = set()
+        self.pending_updates: set[tuple[str, str]] = set()
         self.pending_lock = threading.Lock()
 
         # Write strategy configuration
@@ -78,7 +78,7 @@ class MeshGraph:
         # Start background batch writer only when capture is active
         if self.capture_enabled and self.write_strategy in ('batched', 'hybrid'):
             self._start_batch_writer()
-    
+
     def _prefix_len(self) -> int:
         """Return configured prefix length in hex chars (always an int for slicing)."""
         n = getattr(self.bot, 'prefix_hex_chars', 2)
@@ -103,7 +103,7 @@ class MeshGraph:
         a, b = a.lower().strip(), b.lower().strip()
         return a == b or a.startswith(b) or b.startswith(a)
 
-    def _get_edge_by_prefix_match(self, from_q: str, to_q: str) -> Optional[Dict]:
+    def _get_edge_by_prefix_match(self, from_q: str, to_q: str) -> Optional[dict]:
         """Return the best matching edge for a prefix query. Single edge only; never merge counts.
         Tie-break: exact key if present, else longest combined prefix length, then max
         observation_count, then most recent last_seen.
@@ -116,7 +116,7 @@ class MeshGraph:
 
     def _find_all_matching_edges(
         self, from_prefix: str, to_prefix: str
-    ) -> List[Tuple[Tuple[str, str], Dict]]:
+    ) -> list[tuple[tuple[str, str], dict]]:
         """Return all edges that prefix-match (from_prefix, to_prefix), ordered by best match first.
 
         Best = longest combined prefix length, then observation_count desc, then last_seen desc.
@@ -127,7 +127,7 @@ class MeshGraph:
         if not from_q or not to_q:
             return []
 
-        candidates: List[Tuple[Tuple[str, str], Dict]] = []
+        candidates: list[tuple[tuple[str, str], dict]] = []
         for edge_key, edge in self.edges.items():
             from_p, to_p = edge_key
             if self._prefix_match(from_p, from_q) and self._prefix_match(to_p, to_q):
@@ -153,7 +153,7 @@ class MeshGraph:
         candidates.sort(key=sort_key)
         return candidates
 
-    def _remove_edge_from_memory(self, edge_key: Tuple[str, str]) -> None:
+    def _remove_edge_from_memory(self, edge_key: tuple[str, str]) -> None:
         """Remove an edge from in-memory graph and adjacency indexes.
         Does not touch the database. Used when promoting to a higher-resolution key.
         """
@@ -172,7 +172,7 @@ class MeshGraph:
         self._notification_timestamps.pop(edge_key, None)
 
     def _delete_edge_from_db(
-        self, edge_key: Tuple[str, str], conn: Optional[sqlite3.Connection] = None
+        self, edge_key: tuple[str, str], conn: Optional[sqlite3.Connection] = None
     ) -> int:
         """Delete a single edge row from mesh_connections. Returns rows affected."""
         from_p, to_p = edge_key
@@ -184,7 +184,7 @@ class MeshGraph:
 
     def _update_edge_data(
         self,
-        edge: Dict,
+        edge: dict,
         now: datetime,
         hop_position: Optional[int] = None,
         from_public_key: Optional[str] = None,
@@ -287,7 +287,7 @@ class MeshGraph:
         except Exception as e:
             self.logger.warning(f"Error loading graph from database: {e}")
             # Continue with empty graph
-    
+
     def add_edge(self, from_prefix: str, to_prefix: str,
                  from_public_key: Optional[str] = None,
                  to_public_key: Optional[str] = None,
@@ -452,7 +452,7 @@ class MeshGraph:
                 'last_seen': now,
                 'avg_hop_position': hop_position if hop_position is not None else None,
                 'geographic_distance': geographic_distance,
-                'confirmed_2byte': True if prefix_bytes == 2 else False,
+                'confirmed_2byte': prefix_bytes == 2,
             }
             self._outgoing_index[from_prefix].add(to_prefix)
             self._incoming_index[to_prefix].add(from_prefix)
@@ -460,7 +460,7 @@ class MeshGraph:
 
         self._persist_and_notify_edge(edge_key, is_new_edge)
 
-    def _persist_and_notify_edge(self, edge_key: Tuple[str, str], is_new_edge: bool) -> None:
+    def _persist_and_notify_edge(self, edge_key: tuple[str, str], is_new_edge: bool) -> None:
         """Persist edge to DB (according to write strategy) and notify web viewer."""
         self.logger.debug(f"Mesh graph: Edge {edge_key} - new={is_new_edge}, strategy={self.write_strategy}")
         if self.write_strategy == 'immediate':
@@ -479,8 +479,8 @@ class MeshGraph:
                     if len(self.pending_updates) >= self.batch_max_pending:
                         self._flush_pending_updates_sync()
         self._notify_web_viewer_edge(edge_key, is_new_edge)
-    
-    def _notify_web_viewer_edge(self, edge_key: Tuple[str, str], is_new: bool):
+
+    def _notify_web_viewer_edge(self, edge_key: tuple[str, str], is_new: bool):
         """Notify web viewer of edge update via bot integration.
 
         New edges always trigger an immediate notification.  Updates to existing
@@ -524,27 +524,27 @@ class MeshGraph:
             self.bot.web_viewer_integration.bot_integration.send_mesh_edge_update(edge_data)
         except Exception as e:
             self.logger.debug(f"Error notifying web viewer of edge update: {e}")
-    
+
     def _recalculate_distance_if_needed(
         self,
-        edge: Dict,
+        edge: dict,
         conn: Optional[sqlite3.Connection] = None,
-        location_cache: Optional[Dict[str, Tuple[float, float]]] = None,
+        location_cache: Optional[dict[str, tuple[float, float]]] = None,
     ) -> Optional[float]:
         """Recalculate geographic distance using full public keys if available.
-        
+
         This ensures we get the correct location when there are prefix collisions.
-        
+
         Args:
             edge: Edge dictionary with prefix and optional public keys.
             conn: Optional existing DB connection for batch operations.
             location_cache: Optional cache for location lookups within a flush (keyed by pk: or prefix:).
-            
+
         Returns:
             Optional[float]: Recalculated distance in km, or None if can't calculate.
         """
         from .utils import calculate_distance
-        
+
         # Get location for 'from' node (conn optional for single-connection batch flush)
         if edge.get('from_public_key'):
             from_location = self._get_location_by_public_key(
@@ -565,7 +565,7 @@ class MeshGraph:
             from_location = self._get_location_by_prefix(
                 edge['from_prefix'], to_location_temp, conn=conn, location_cache=location_cache
             )
-        
+
         # Get location for 'to' node
         if edge.get('to_public_key'):
             to_location = self._get_location_by_public_key(
@@ -577,33 +577,33 @@ class MeshGraph:
             to_location = self._get_location_by_prefix(
                 edge['to_prefix'], from_location, conn=conn, location_cache=location_cache
             )
-        
+
         # Calculate distance if we have both locations
         if from_location and to_location:
             return calculate_distance(
                 from_location[0], from_location[1],
                 to_location[0], to_location[1]
             )
-        
+
         return None
-    
+
     def _get_location_by_public_key(
         self,
         public_key: str,
         conn: Optional[sqlite3.Connection] = None,
-        location_cache: Optional[Dict[str, Tuple[float, float]]] = None,
-    ) -> Optional[Tuple[float, float]]:
+        location_cache: Optional[dict[str, tuple[float, float]]] = None,
+    ) -> Optional[tuple[float, float]]:
         """Get location for a full public key (more accurate than prefix lookup).
-        
+
         Prefers starred repeaters if there are somehow multiple entries (shouldn't happen with full key).
         """
         cache_key = f"pk:{public_key}" if location_cache is not None else None
-        if cache_key is not None and cache_key in location_cache:
+        if cache_key is not None and location_cache is not None and cache_key in location_cache:
             return location_cache[cache_key]
         try:
             query = '''
-                SELECT latitude, longitude 
-                FROM complete_contact_tracking 
+                SELECT latitude, longitude
+                FROM complete_contact_tracking
                 WHERE public_key = ?
                 AND latitude IS NOT NULL AND longitude IS NOT NULL
                 AND latitude != 0 AND longitude != 0
@@ -621,25 +621,25 @@ class MeshGraph:
                 lon = row.get('longitude')
                 if lat is not None and lon is not None:
                     result = (float(lat), float(lon))
-                    if cache_key is not None:
+                    if cache_key is not None and location_cache is not None:
                         location_cache[cache_key] = result
                     return result
         except Exception as e:
             self.logger.debug(f"Error getting location by public key {public_key[:16]}...: {e}")
         return None
-    
+
     def _get_location_by_prefix(
         self,
         prefix: str,
-        reference_location: Optional[Tuple[float, float]] = None,
+        reference_location: Optional[tuple[float, float]] = None,
         conn: Optional[sqlite3.Connection] = None,
-        location_cache: Optional[Dict[str, Tuple[float, float]]] = None,
-    ) -> Optional[Tuple[float, float]]:
+        location_cache: Optional[dict[str, tuple[float, float]]] = None,
+    ) -> Optional[tuple[float, float]]:
         """Get location for a prefix (fallback when full public key not available).
-        
+
         For LoRa networks, prefers shorter distances when there are prefix collisions,
         as LoRa range is limited by the curve of the earth.
-        
+
         Args:
             prefix: 2-character hex prefix.
             reference_location: Optional (lat, lon) to calculate distance from for LoRa preference.
@@ -655,12 +655,12 @@ class MeshGraph:
                 return location_cache[cache_key]
         try:
             prefix_pattern = f"{prefix}%"
-            
+
             # Get all candidates with locations
             query = '''
                 SELECT latitude, longitude, is_starred,
                        COALESCE(last_advert_timestamp, last_heard) as last_seen
-                FROM complete_contact_tracking 
+                FROM complete_contact_tracking
                 WHERE public_key LIKE ?
                 AND latitude IS NOT NULL AND longitude IS NOT NULL
                 AND latitude != 0 AND longitude != 0
@@ -670,15 +670,15 @@ class MeshGraph:
                 results = self.db_manager.execute_query_on_connection(conn, query, (prefix_pattern,))
             else:
                 results = self.db_manager.execute_query(query, (prefix_pattern,))
-            
+
             if not results:
                 return None
-            
+
             # If we have a reference location, prefer shorter distances (LoRa range limitation)
             if reference_location and len(results) > 1:
                 from .utils import calculate_distance
                 ref_lat, ref_lon = reference_location
-                
+
                 # Calculate distances and sort by distance (shorter first)
                 candidates_with_distance = []
                 for row in results:
@@ -689,7 +689,7 @@ class MeshGraph:
                         is_starred = row.get('is_starred', False)
                         last_seen = row.get('last_seen', '')
                         candidates_with_distance.append((distance, is_starred, last_seen, row))
-                
+
                 if candidates_with_distance:
                     # Sort by: starred first (False < True), then distance (shorter = better for LoRa), then recency
                     candidates_with_distance.sort(key=lambda x: (
@@ -697,7 +697,7 @@ class MeshGraph:
                         x[0],  # Distance (shorter first)
                         x[2] if x[2] else ''  # More recent first (newer timestamps sort later in string comparison)
                     ))
-                    
+
                     # Get the best candidate
                     best_row = candidates_with_distance[0][3]
                     lat = best_row.get('latitude')
@@ -708,14 +708,14 @@ class MeshGraph:
                             cache_key = f"prefix:{prefix}:{reference_location[0]}:{reference_location[1]}"
                             location_cache[cache_key] = result
                         return result
-            
+
             # No reference location or single result - use standard ordering
             # Prefer starred, then most recent
             results.sort(key=lambda x: (
                 not x.get('is_starred', False),  # Starred first (False < True)
                 x.get('last_seen', '') if x.get('last_seen') else ''  # More recent first
             ))
-            
+
             row = results[0]
             lat = row.get('latitude')
             lon = row.get('longitude')
@@ -728,13 +728,13 @@ class MeshGraph:
         except Exception as e:
             self.logger.debug(f"Error getting location by prefix {prefix}: {e}")
         return None
-    
+
     def _write_edge_to_db(
         self,
-        edge_key: Tuple[str, str],
+        edge_key: tuple[str, str],
         is_new: bool,
         conn: Optional[sqlite3.Connection] = None,
-        location_cache: Optional[Dict[str, Tuple[float, float]]] = None,
+        location_cache: Optional[dict[str, tuple[float, float]]] = None,
         skip_distance_recalc: bool = False,
     ):
         """Write a single edge to the database.
@@ -763,6 +763,8 @@ class MeshGraph:
                 self.logger.debug(f"Mesh graph: Recalculated distance for {edge_key} using public keys: {recalculated_distance:.1f} km")
 
         try:
+            query: str
+            params: tuple[Any, ...]
             if is_new:
                 # Upsert new edge.
                 # Use INSERT ... ON CONFLICT DO UPDATE so that if the row already exists
@@ -807,7 +809,7 @@ class MeshGraph:
                         if abs(recalculated - current_distance) / max(current_distance, 1.0) > 0.2:
                             edge['geographic_distance'] = recalculated
                             self.logger.info(f"Mesh graph: Corrected distance for {edge_key}: {current_distance:.1f} -> {recalculated:.1f} km")
-                
+
                 # Update existing edge
                 # Always update public keys if provided (allows filling in missing keys on existing edges)
                 from_key = edge.get('from_public_key')
@@ -825,7 +827,7 @@ class MeshGraph:
                     edge['from_prefix'],
                     edge['to_prefix']
                 )
-            
+
             if conn is not None:
                 rows_affected = self.db_manager.execute_update_on_connection(conn, query, params)
             else:
@@ -834,12 +836,12 @@ class MeshGraph:
                 self.logger.debug(f"Mesh graph: Successfully wrote edge {edge_key} to database ({'INSERT' if is_new else 'UPDATE'}, {rows_affected} rows)")
             else:
                 self.logger.warning(f"Mesh graph: Edge write returned 0 rows affected for {edge_key}")
-        
+
         except Exception as e:
             self.logger.warning(f"Error writing edge to database: {e}")
             import traceback
             self.logger.debug(traceback.format_exc())
-    
+
     # UPDATE statement used for both single-edge writes and batch executemany
     _MESH_EDGE_UPDATE_QUERY = '''
         UPDATE mesh_connections
@@ -849,13 +851,13 @@ class MeshGraph:
             to_public_key = CASE WHEN ? IS NOT NULL THEN ? ELSE to_public_key END
         WHERE from_prefix = ? AND to_prefix = ?
     '''
-    
+
     def _build_update_params_for_edge(
         self,
-        edge_key: Tuple[str, str],
+        edge_key: tuple[str, str],
         conn: Optional[sqlite3.Connection],
-        location_cache: Optional[Dict[str, Tuple[float, float]]],
-    ) -> Optional[Tuple]:
+        location_cache: Optional[dict[str, tuple[float, float]]],
+    ) -> Optional[tuple]:
         """Build UPDATE params for an edge (for batch executemany). Returns None to skip."""
         if edge_key not in self.edges:
             return None
@@ -895,7 +897,7 @@ class MeshGraph:
         except Exception as e:
             self.logger.debug(f"Error building update params for {edge_key}: {e}")
             return None
-    
+
     def prune_expired_edges(self) -> int:
         """Remove edges from the in-memory graph that have exceeded graph_edge_expiration_days.
 
@@ -978,7 +980,7 @@ class MeshGraph:
         batch_thread = threading.Thread(target=batch_writer_loop, daemon=True)
         batch_thread.start()
         self._batch_thread = batch_thread
-    
+
     def _flush_pending_updates_sync(self):
         """Flush all pending edge updates to database (synchronous version).
         Uses a single connection for the entire batch to avoid 'unable to open database file'
@@ -992,7 +994,7 @@ class MeshGraph:
             updates = list(self.pending_updates)
             self.pending_updates.clear()
 
-        location_cache: Dict[str, Tuple[float, float]] = {}
+        location_cache: dict[str, tuple[float, float]] = {}
         try:
             with self.db_manager.connection() as conn:
                 cursor = conn.cursor()
@@ -1020,14 +1022,14 @@ class MeshGraph:
         except Exception as e:
             self.logger.warning(f"Error flushing graph updates: {e}")
             # Connection already closed by context manager; rollback happened on exit if needed
-        
+
         if updates:
             self.logger.debug(f"Flushed {len(updates)} pending graph edge updates")
-    
+
     async def _flush_pending_updates(self):
         """Flush all pending edge updates to database (async wrapper)."""
         self._flush_pending_updates_sync()
-    
+
     def has_edge(self, from_prefix: str, to_prefix: str) -> bool:
         """Check if an edge exists in the graph (exact or prefix match).
 
@@ -1040,7 +1042,7 @@ class MeshGraph:
         """
         return self.get_edge(from_prefix, to_prefix) is not None
 
-    def get_edge(self, from_prefix: str, to_prefix: str) -> Optional[Dict]:
+    def get_edge(self, from_prefix: str, to_prefix: str) -> Optional[dict]:
         """Get edge data if it exists (exact key first, then prefix match).
 
         Args:
@@ -1059,8 +1061,8 @@ class MeshGraph:
         if exact is not None:
             return exact
         return self._get_edge_by_prefix_match(from_norm, to_norm)
-    
-    def get_outgoing_edges(self, prefix: str) -> List[Dict]:
+
+    def get_outgoing_edges(self, prefix: str) -> list[dict]:
         """Get all edges originating from a node (prefix match: returns edges where from_prefix matches prefix).
 
         Args:
@@ -1078,7 +1080,7 @@ class MeshGraph:
                 result.append(edge)
         return result
 
-    def get_incoming_edges(self, prefix: str) -> List[Dict]:
+    def get_incoming_edges(self, prefix: str) -> list[dict]:
         """Get all edges ending at a node (prefix match: returns edges where to_prefix matches prefix).
 
         Args:
@@ -1095,91 +1097,91 @@ class MeshGraph:
             if self._prefix_match(edge['to_prefix'], prefix):
                 result.append(edge)
         return result
-    
-    def validate_path_segment(self, from_prefix: str, to_prefix: str, 
+
+    def validate_path_segment(self, from_prefix: str, to_prefix: str,
                              min_observations: int = 1,
-                             check_bidirectional: bool = False) -> Tuple[bool, float]:
+                             check_bidirectional: bool = False) -> tuple[bool, float]:
         """Validate a path segment using graph data.
-        
+
         Args:
             from_prefix: Source node prefix.
             to_prefix: Destination node prefix.
             min_observations: Minimum observations required for confidence.
             check_bidirectional: If True, check if reverse edge exists and boost confidence.
-            
+
         Returns:
             Tuple of (is_valid, confidence_score) where confidence is 0.0-1.0.
         """
         edge = self.get_edge(from_prefix, to_prefix)
-        
+
         if not edge:
             return (False, 0.0)
-        
+
         if edge['observation_count'] < min_observations:
             return (False, 0.0)
-        
+
         # Confidence based on observation count and recency
         obs_count = edge['observation_count']
         last_seen = edge['last_seen']
-        
+
         if isinstance(last_seen, str):
             last_seen = datetime.fromisoformat(last_seen.replace('Z', '+00:00'))
-        
+
         hours_ago = (datetime.now() - last_seen).total_seconds() / 3600.0
-        
+
         # Observation count confidence (logarithmic scale)
         obs_confidence = min(1.0, 0.3 + (0.7 * (1.0 - 1.0 / (1.0 + obs_count / 10.0))))
-        
+
         # Recency confidence (exponential decay, 48 hour half-life for longer advert intervals)
         recency_confidence = 1.0 if hours_ago < 1 else max(0.0, 2.0 ** (-hours_ago / 48.0))
-        
+
         # Combined confidence
         confidence = (obs_confidence * 0.6) + (recency_confidence * 0.4)
-        
+
         # Bidirectional edge bonus
         if check_bidirectional:
             reverse_edge = self.get_edge(to_prefix, from_prefix)
             if reverse_edge and reverse_edge['observation_count'] >= min_observations:
                 # Bidirectional connection is more reliable
                 confidence = min(1.0, confidence + 0.15)
-        
+
         return (True, confidence)
-    
-    def validate_path(self, path_nodes: List[str], min_observations: int = 1) -> Tuple[bool, float]:
+
+    def validate_path(self, path_nodes: list[str], min_observations: int = 1) -> tuple[bool, float]:
         """Validate an entire path using graph data.
-        
+
         Args:
             path_nodes: List of node prefixes in path order.
             min_observations: Minimum observations required per edge.
-            
+
         Returns:
             Tuple of (is_valid, average_confidence).
         """
         if len(path_nodes) < 2:
             return (True, 1.0)  # Single node or empty path is always valid
-        
+
         validations = []
         for i in range(len(path_nodes) - 1):
             from_node = path_nodes[i]
             to_node = path_nodes[i + 1]
             is_valid, confidence = self.validate_path_segment(from_node, to_node, min_observations)
-            
+
             if not is_valid:
                 return (False, 0.0)
-            
+
             validations.append(confidence)
-        
+
         # Return average confidence
         avg_confidence = sum(validations) / len(validations) if validations else 0.0
         return (True, avg_confidence)
-    
+
     def get_candidate_score(self, candidate_prefix: str, prev_prefix: Optional[str],
                            next_prefix: Optional[str], min_observations: int = 1,
                            hop_position: Optional[int] = None,
                            use_bidirectional: bool = True,
                            use_hop_position: bool = True) -> float:
         """Get graph-based score for a candidate node in a path.
-        
+
         Args:
             candidate_prefix: The candidate node prefix.
             prev_prefix: Previous node in path (if available).
@@ -1188,14 +1190,14 @@ class MeshGraph:
             hop_position: Current position in path (0-based index) for hop position validation.
             use_bidirectional: If True, check bidirectional edges for higher confidence.
             use_hop_position: If True, validate against avg_hop_position if available.
-            
+
         Returns:
             Score from 0.0 to 1.0 based on graph evidence.
         """
         score = 0.0
         evidence_count = 0
         scores = []
-        
+
         # Check edge from previous node
         if prev_prefix:
             is_valid, confidence = self.validate_path_segment(
@@ -1206,7 +1208,7 @@ class MeshGraph:
                 scores.append(confidence)
                 score += confidence
                 evidence_count += 1
-        
+
         # Check edge to next node
         if next_prefix:
             is_valid, confidence = self.validate_path_segment(
@@ -1217,19 +1219,19 @@ class MeshGraph:
                 scores.append(confidence)
                 score += confidence
                 evidence_count += 1
-        
+
         if evidence_count == 0:
             return 0.0
-        
+
         # Calculate base score as average
         base_score = score / evidence_count
-        
+
         # Hop position validation bonus
         if use_hop_position and hop_position is not None:
             # Check if candidate appears in expected position based on avg_hop_position
             # Check both incoming and outgoing edges for hop position data
             hop_position_match = False
-            
+
             if prev_prefix:
                 edge = self.get_edge(prev_prefix, candidate_prefix)
                 if edge and edge.get('avg_hop_position') is not None:
@@ -1237,7 +1239,7 @@ class MeshGraph:
                     expected_pos = edge['avg_hop_position']
                     if abs(hop_position - expected_pos) <= 0.5:
                         hop_position_match = True
-            
+
             if not hop_position_match and next_prefix:
                 edge = self.get_edge(candidate_prefix, next_prefix)
                 if edge and edge.get('avg_hop_position') is not None:
@@ -1245,10 +1247,10 @@ class MeshGraph:
                     expected_pos = edge['avg_hop_position'] - 1
                     if abs(hop_position - expected_pos) <= 0.5:
                         hop_position_match = True
-            
+
             if hop_position_match:
                 base_score = min(1.0, base_score + 0.1)
-        
+
         # Geographic distance validation (if available)
         # Use stored geographic_distance from edges when available (more accurate)
         if prev_prefix or next_prefix:
@@ -1264,27 +1266,27 @@ class MeshGraph:
                 edge = self.get_edge(candidate_prefix, next_prefix)
                 if edge and edge.get('geographic_distance') is not None:
                     geographic_available = True
-            
+
             # Having geographic data increases confidence slightly (indicates well-tracked edge)
             if geographic_available:
                 base_score = min(1.0, base_score + 0.05)
-        
+
         return base_score
-    
+
     def find_intermediate_nodes(self, from_prefix: str, to_prefix: str,
                               min_observations: int = 1,
-                              max_hops: int = 2) -> List[Tuple[str, float]]:
+                              max_hops: int = 2) -> list[tuple[str, float]]:
         """Find intermediate nodes that connect from_prefix to to_prefix.
-        
+
         Uses multi-hop path inference to find nodes that connect two prefixes
         when a direct edge may not exist or have low confidence.
-        
+
         Args:
             from_prefix: Source node prefix.
             to_prefix: Destination node prefix.
             min_observations: Minimum observations required per edge.
             max_hops: Maximum number of hops to search (default: 2, fallback to 3).
-            
+
         Returns:
             List of (candidate_prefix, score) tuples sorted by score (highest first).
             Score is 0.0-1.0 based on path strength.
@@ -1294,23 +1296,23 @@ class MeshGraph:
         if not from_prefix or not to_prefix:
             return []
 
-        candidates: Dict[str, float] = {}
-        
+        candidates: dict[str, float] = {}
+
         # Try 2-hop paths first: from_prefix -> intermediate -> to_prefix
         outgoing_edges = self.get_outgoing_edges(from_prefix)
-        
+
         for edge in outgoing_edges:
             intermediate_prefix = edge['to_prefix']
-            
+
             # Skip if this is the destination (direct edge case)
             if intermediate_prefix == to_prefix:
                 continue
-            
+
             # Check if intermediate connects to destination
             to_edge = self.get_edge(intermediate_prefix, to_prefix)
             if not to_edge or to_edge['observation_count'] < min_observations:
                 continue
-            
+
             # Validate both edges
             from_valid, from_confidence = self.validate_path_segment(
                 from_prefix, intermediate_prefix, min_observations,
@@ -1320,11 +1322,11 @@ class MeshGraph:
                 intermediate_prefix, to_prefix, min_observations,
                 check_bidirectional=True
             )
-            
+
             if from_valid and to_valid:
                 # Score is minimum of both edges (weakest link)
                 path_score = min(from_confidence, to_confidence)
-                
+
                 # Bidirectional path bonus
                 reverse_from = self.get_edge(intermediate_prefix, from_prefix)
                 reverse_to = self.get_edge(to_prefix, intermediate_prefix)
@@ -1337,13 +1339,13 @@ class MeshGraph:
                         bidirectional_bonus = 1.1
                 elif reverse_to and reverse_to['observation_count'] >= min_observations:
                     bidirectional_bonus = 1.1
-                
+
                 path_score = min(1.0, path_score * bidirectional_bonus)
-                
+
                 # Use best score if we've seen this candidate before
                 if intermediate_prefix not in candidates or path_score > candidates[intermediate_prefix]:
                     candidates[intermediate_prefix] = path_score
-        
+
         # If no 2-hop paths found and max_hops >= 3, try 3-hop paths
         if not candidates and max_hops >= 3:
             # Find 3-hop paths: from_prefix -> intermediate1 -> intermediate2 -> to_prefix
@@ -1351,20 +1353,20 @@ class MeshGraph:
                 intermediate1 = edge1['to_prefix']
                 if intermediate1 == to_prefix:
                     continue
-                
+
                 # Get edges from intermediate1
                 intermediate1_edges = self.get_outgoing_edges(intermediate1)
-                
+
                 for edge2 in intermediate1_edges:
                     intermediate2 = edge2['to_prefix']
-                    if intermediate2 == from_prefix or intermediate2 == intermediate1:
+                    if intermediate2 in (from_prefix, intermediate1):
                         continue
-                    
+
                     # Check if intermediate2 connects to destination
                     to_edge = self.get_edge(intermediate2, to_prefix)
                     if not to_edge or to_edge['observation_count'] < min_observations:
                         continue
-                    
+
                     # Validate all three edges
                     valid1, conf1 = self.validate_path_segment(
                         from_prefix, intermediate1, min_observations
@@ -1375,22 +1377,22 @@ class MeshGraph:
                     valid3, conf3 = self.validate_path_segment(
                         intermediate2, to_prefix, min_observations
                     )
-                    
+
                     if valid1 and valid2 and valid3:
                         # Score is minimum of all three edges
                         path_score = min(conf1, conf2, conf3)
-                        
+
                         # 3-hop paths are less reliable, so reduce score
                         path_score *= 0.8
-                        
+
                         # Use intermediate2 as candidate (the one before destination)
                         if intermediate2 not in candidates or path_score > candidates[intermediate2]:
                             candidates[intermediate2] = path_score
-        
+
         # Sort by score (highest first) and return
         sorted_candidates = sorted(candidates.items(), key=lambda x: x[1], reverse=True)
         return sorted_candidates
-    
+
     def shutdown(self):
         """Shutdown graph, flushing all pending writes."""
         # Do not log here: atexit may run after the logger's stream is closed.

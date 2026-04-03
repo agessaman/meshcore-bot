@@ -22,7 +22,8 @@ fi
 mkdir -p logs
 
 # Set environment variables for better performance
-export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+PYTHONPATH="${PYTHONPATH}:$(pwd)"
+export PYTHONPATH
 export FLASK_ENV=production
 
 # Kill any existing web viewer processes on port 8080

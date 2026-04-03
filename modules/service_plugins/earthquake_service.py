@@ -5,8 +5,9 @@ Polls USGS Earthquake API and notifies a channel when earthquakes occur in a con
 """
 
 import asyncio
-from datetime import datetime, timezone, timedelta
-from typing import Any, Optional, Set
+import contextlib
+from datetime import datetime, timedelta, timezone
+from typing import Any, Optional
 
 import requests
 
@@ -59,7 +60,7 @@ class EarthquakeService(BaseServicePlugin):
 
         self._running = False
         self._poll_task: Optional[asyncio.Task] = None
-        self.seen_event_ids: Set[str] = set()
+        self.seen_event_ids: set[str] = set()
         self._last_posted_time_ms: int = self._load_last_posted_time_ms()
         self._session = requests.Session()
 
@@ -87,10 +88,8 @@ class EarthquakeService(BaseServicePlugin):
         self.logger.info("Stopping earthquake service")
         if self._poll_task:
             self._poll_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._poll_task
-            except asyncio.CancelledError:
-                pass
             self._poll_task = None
         self._session.close()
         self.logger.info("Earthquake service stopped")
@@ -216,13 +215,13 @@ class EarthquakeService(BaseServicePlugin):
 
         parts = ["Earthquake M%.1f" % (mag if mag is not None else 0)]
         if mag_type:
-            parts[0] += " %s" % mag_type
+            parts[0] += f" {mag_type}"
         parts.append(place)
         parts.append(time_str)
         if depth is not None:
             parts.append("depth %s km" % (int(depth) if isinstance(depth, (int, float)) else depth))
         if lat is not None and lon is not None:
-            parts.append("%.2fN %.2fW" % (lat, abs(lon)))
+            parts.append(f"{lat:.2f}N {abs(lon):.2f}W")
 
         # When send_link is true the link is sent in a separate follow-up message
         return " | ".join(str(p) for p in parts)

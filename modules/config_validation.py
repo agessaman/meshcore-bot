@@ -10,7 +10,7 @@ standalone via validate_config.py or at bot startup with --validate-config.
 import configparser
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Optional
 
 # Severity levels for validation results
 SEVERITY_ERROR = "error"
@@ -80,13 +80,13 @@ SECTION_TYPO_MAP = {
 }
 
 
-def _get_command_prefix_to_section() -> Dict[str, str]:
+def _get_command_prefix_to_section() -> dict[str, str]:
     """Build map from command prefix (lowercase) to canonical section for similarity suggestions.
 
     Discovers command sections from config.ini.example in the project. Returns a dict
     mapping prefix.lower() -> "Prefix_Command" (e.g. "stats" -> "Stats_Command").
     """
-    result: Dict[str, str] = {}
+    result: dict[str, str] = {}
     base = Path(__file__).resolve().parent.parent  # project root
     example_paths = [base / "config.ini.example", base / "config.ini.minimal-example"]
     for path in example_paths:
@@ -104,7 +104,7 @@ def _get_command_prefix_to_section() -> Dict[str, str]:
     return result
 
 
-def _suggest_similar_command(section: str, prefix_to_section: Dict[str, str]) -> Optional[str]:
+def _suggest_similar_command(section: str, prefix_to_section: dict[str, str]) -> Optional[str]:
     """If section looks like a command name (e.g. Stats, Hacker), suggest the canonical section."""
     return prefix_to_section.get(section.strip().lower())
 
@@ -142,7 +142,7 @@ def _check_path_writable(
     return None
 
 
-def validate_config(config_path: str) -> List[Tuple[str, str]]:
+def validate_config(config_path: str) -> list[tuple[str, str]]:
     """
     Validate config file section names. Returns a list of (severity, message).
 
@@ -162,7 +162,7 @@ def validate_config(config_path: str) -> List[Tuple[str, str]]:
     except configparser.Error as e:
         return [(SEVERITY_ERROR, f"Failed to parse config: {e}")]
 
-    results: List[Tuple[str, str]] = []
+    results: list[tuple[str, str]] = []
 
     # Check required sections (bot fails to start without these)
     sections_present = frozenset(s.strip() for s in config.sections() if s.strip())
@@ -231,7 +231,7 @@ def validate_config(config_path: str) -> List[Tuple[str, str]]:
             if msg:
                 results.append((SEVERITY_WARNING, msg))
 
-    prefix_to_section: Optional[Dict[str, str]] = None
+    prefix_to_section: Optional[dict[str, str]] = None
 
     for section in config.sections():
         section_stripped = section.strip()

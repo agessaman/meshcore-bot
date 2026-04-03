@@ -1,0 +1,1132 @@
+{% extends "base.html" %}
+
+{% block title %}Configuration - MeshCore Bot{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Layout */
+    .config-layout {
+        display: grid;
+        grid-template-columns: 260px minmax(0, 1fr);
+        gap: 1rem;
+    }
+    .config-nav.card {
+        border: 1px solid var(--border-color);
+        background-color: var(--card-bg);
+    }
+    .config-nav {
+        position: sticky;
+        top: 1rem;
+        align-self: start;
+        max-height: calc(100vh - 2rem);
+        overflow-y: auto;
+    }
+    .config-nav .nav-link {
+        color: var(--text-color);
+        border-radius: 0.375rem;
+    }
+    .config-nav .nav-link:hover,
+    .config-nav .nav-link:focus {
+        background-color: var(--bg-secondary);
+    }
+    .config-nav .nav-link.active {
+        background-color: var(--bg-tertiary);
+        font-weight: 600;
+    }
+    .config-panel-card {
+        scroll-margin-top: 1rem;
+        border: 1px solid var(--border-color);
+        background-color: var(--card-bg);
+    }
+    .config-panel-card .card-header {
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    /* Stat tiles (database overview) */
+    .config-stat-tile {
+        background-color: var(--bg-secondary);
+        border-color: var(--border-color) !important;
+    }
+
+    /* Database table rows (JS-rendered) */
+    .config-db-table-row {
+        border-color: var(--border-color) !important;
+        background-color: var(--bg-secondary);
+    }
+    .config-table-name-icon {
+        color: var(--text-color);
+        opacity: 0.85;
+    }
+    .config-table-metric {
+        color: var(--text-color);
+    }
+    .config-tables-list .loading {
+        color: var(--text-muted);
+    }
+
+    /* Maintenance + generic config tables */
+    .config-table-thead th {
+        background-color: var(--card-header-bg);
+        color: var(--text-color);
+        border-bottom: 1px solid var(--border-color);
+        font-weight: 600;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        padding-top: 0.75rem;
+        padding-bottom: 0.75rem;
+    }
+
+    /* Maintenance Status panel */
+    .config-maintenance-panel-body {
+        padding: 1rem 1.25rem 1.25rem;
+    }
+    .config-maintenance-table {
+        --maint-row-border: color-mix(in srgb, var(--border-color) 55%, transparent);
+    }
+    .config-maintenance-table tbody td {
+        padding-top: 0.65rem;
+        padding-bottom: 0.65rem;
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+        border-color: var(--maint-row-border);
+        vertical-align: middle;
+    }
+    .config-maintenance-table thead th {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+    .config-maint-col-job {
+        min-width: 11rem;
+    }
+    .config-maint-col-ran {
+        font-variant-numeric: tabular-nums;
+    }
+    .config-maint-time {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 0.9em;
+    }
+    .config-outcome-cell {
+        white-space: nowrap;
+    }
+    .config-outcome-dash {
+        opacity: 0.55;
+    }
+
+    [data-theme="dark"] .config-maintenance-table.table {
+        color: var(--text-color);
+    }
+    [data-theme="dark"] .config-maintenance-table td,
+    [data-theme="dark"] .config-maintenance-table th {
+        border-color: var(--border-color);
+    }
+
+    /* btn-info / btn-warning: improve contrast on dark card backgrounds */
+    [data-theme="dark"] .config-btn-info.btn-info {
+        background-color: #0dcaf0;
+        border-color: #0dcaf0;
+        color: #052c33;
+    }
+    [data-theme="dark"] .config-btn-info.btn-info:hover {
+        background-color: #31d2f2;
+        border-color: #25cff2;
+        color: #052c33;
+    }
+    [data-theme="dark"] .config-btn-warning.btn-warning {
+        background-color: #ffc107;
+        border-color: #ffc107;
+        color: #332701;
+    }
+    [data-theme="dark"] .config-btn-warning.btn-warning:hover {
+        background-color: #ffca2c;
+        border-color: #ffc720;
+        color: #332701;
+    }
+
+    @media (max-width: 992px) {
+        .config-layout {
+            grid-template-columns: 1fr;
+        }
+        .config-nav {
+            position: static;
+            max-height: none;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mb-4">
+        <i class="fas fa-cog"></i> Configuration
+    </h1>
+    <div class="config-layout">
+        <aside class="config-nav card">
+            <div class="card-body p-3">
+                {% for category_key, category_label in panel_categories %}
+                {% set category_panels = config_panels | selectattr('category', 'equalto', category_key) | list %}
+                {% if category_panels %}
+                <div class="mb-3">
+                    <h6 class="text-uppercase text-muted fw-semibold mb-2" style="font-size:.75rem;letter-spacing:.05em;">
+                        {{ category_label }}
+                    </h6>
+                    <nav class="nav flex-column">
+                        {% for panel in category_panels %}
+                        <a class="nav-link px-2 py-1" href="#{{ panel.id }}" data-config-target="{{ panel.id }}">
+                            <i class="{{ panel.icon }} me-2"></i>{{ panel.title }}
+                        </a>
+                        {% endfor %}
+                    </nav>
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </aside>
+        <main>
+            {% for panel in config_panels %}
+            {% include panel.template %}
+            {% endfor %}
+        </main>
+    </div>
+</div>
+
+<!-- Purge Records (database operations) -->
+<div class="modal fade" id="purgeRecordsModal" tabindex="-1" aria-labelledby="purgeRecordsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="purgeRecordsModalLabel">
+                    <i class="fas fa-trash-alt me-2"></i>Purge Records
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">
+                    Permanently delete <strong>old</strong> records from the SQLite tables you select below.
+                    This cannot be undone — back up first if needed.
+                </p>
+                <fieldset class="mb-3">
+                    <legend class="form-label fw-semibold mb-2">Tables to purge</legend>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="purge-all-tables" checked>
+                        <label class="form-check-label" for="purge-all-tables">All listed tables</label>
+                    </div>
+                    <div id="purge-tables-list" class="border rounded p-3 config-purge-tables-list" style="background-color: var(--bg-secondary); border-color: var(--border-color) !important;">
+                        <div class="row row-cols-1 row-cols-md-2 g-2 small">
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input purge-table-cb" type="checkbox" value="packet_stream" id="purge-t-packet_stream" checked disabled>
+                                    <label class="form-check-label" for="purge-t-packet_stream"><code>packet_stream</code> — raw packet history</label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input purge-table-cb" type="checkbox" value="message_stats" id="purge-t-message_stats" checked disabled>
+                                    <label class="form-check-label" for="purge-t-message_stats"><code>message_stats</code> — message statistics</label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input purge-table-cb" type="checkbox" value="complete_contact_tracking" id="purge-t-complete_contact_tracking" checked disabled>
+                                    <label class="form-check-label" for="purge-t-complete_contact_tracking"><code>complete_contact_tracking</code> — contact rows</label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input purge-table-cb" type="checkbox" value="purging_log" id="purge-t-purging_log" checked disabled>
+                                    <label class="form-check-label" for="purge-t-purging_log"><code>purging_log</code> — purge audit log</label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input purge-table-cb" type="checkbox" value="mesh_connections" id="purge-t-mesh_connections" checked disabled>
+                                    <label class="form-check-label" for="purge-t-mesh_connections"><code>mesh_connections</code> — mesh graph edges</label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input purge-table-cb" type="checkbox" value="daily_stats" id="purge-t-daily_stats" checked disabled>
+                                    <label class="form-check-label" for="purge-t-daily_stats"><code>daily_stats</code> — daily aggregates</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </fieldset>
+                <div class="row g-3 align-items-end flex-wrap">
+                    <div class="col-auto">
+                        <label class="form-label" for="purge-keep-days">Keep data for</label>
+                        <select class="form-select" id="purge-keep-days" style="width:auto;min-width:10rem">
+                            <option value="1">1 day</option>
+                            <option value="7">7 days</option>
+                            <option value="14">14 days</option>
+                            <option value="30" selected>30 days</option>
+                            <option value="60">60 days</option>
+                            <option value="90">90 days</option>
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <button type="button" class="btn btn-danger" id="purge-open-confirm-btn">
+                            <i class="fas fa-trash-alt me-1"></i>Purge Now
+                        </button>
+                    </div>
+                    <div class="col-auto">
+                        <span id="purge-status" class="small" style="display:none"></span>
+                    </div>
+                </div>
+                <div id="purge-results" class="mt-3" style="display:none">
+                    <h6 class="text-muted">Rows deleted</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered mb-0" style="max-width:100%">
+                            <thead><tr><th>Table</th><th>Deleted</th></tr></thead>
+                            <tbody id="purge-results-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Purge Confirmation Modal -->
+<div class="modal fade" id="purgeModal" tabindex="-1" aria-labelledby="purgeModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="purgeModalLabel">
+                    <i class="fas fa-exclamation-triangle me-2"></i>Confirm Purge
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>You are about to permanently delete records older than
+                   <strong id="purge-confirm-days"></strong>
+                   <span id="purge-confirm-tables-desc">from all listed time-series tables.</span></p>
+                <p class="text-danger"><strong>This cannot be undone.</strong>
+                   Make sure you have a backup if needed.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="purge-confirm-btn">
+                    <i class="fas fa-trash-alt me-1"></i>Delete Records
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Restore Modal -->
+<div class="modal fade" id="restoreModal" tabindex="-1" aria-labelledby="restoreModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="restoreModalLabel">
+                    <i class="fas fa-undo me-2"></i>Restore Database
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Warning:</strong> Restoring will overwrite the active database.
+                    The bot must be restarted after restore for changes to take effect.
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="restore-db-path">Backup file path</label>
+                    <input type="text" class="form-control" id="restore-db-path"
+                           placeholder="/path/to/backup.db">
+                </div>
+                <div id="restore-backup-list-section">
+                    <p class="text-muted small mb-1">Available backups from configured backup directory:</p>
+                    <div id="restore-backup-loading" class="text-center py-2" style="display:none">
+                        <span class="spinner-border spinner-border-sm"></span>
+                    </div>
+                    <div id="restore-backup-empty" class="text-muted small" style="display:none">
+                        No backups found in backup directory.
+                    </div>
+                    <table class="table table-sm table-hover mb-0" id="restore-backup-table" style="display:none">
+                        <thead><tr><th>File</th><th>Size</th><th>Date</th><th></th></tr></thead>
+                        <tbody id="restore-backup-tbody"></tbody>
+                    </table>
+                </div>
+                <div id="restore-status" class="mt-3 small" style="display:none"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-warning" id="restore-confirm-btn">
+                    <i class="fas fa-undo me-1"></i>Restore
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+class ConfigManager {
+    constructor() {
+        this.fields = {
+            smtp_host:      document.getElementById('smtp-host'),
+            smtp_port:      document.getElementById('smtp-port'),
+            smtp_security:  document.getElementById('smtp-security'),
+            smtp_user:      document.getElementById('smtp-user'),
+            smtp_password:  document.getElementById('smtp-password'),
+            from_name:      document.getElementById('from-name'),
+            from_email:     document.getElementById('from-email'),
+            recipients:     document.getElementById('recipients'),
+        };
+        this.nightlyToggle   = document.getElementById('nightly-enabled-toggle');
+        this.saveBtn         = document.getElementById('save-notifications-btn');
+        this.testBtn         = document.getElementById('test-email-btn');
+        this.saveStatus      = document.getElementById('save-status');
+        this.togglePwdBtn    = document.getElementById('toggle-password');
+        this.togglePwdIcon   = document.getElementById('toggle-password-icon');
+
+        this.initialize();
+    }
+
+    async initialize() {
+        await this.loadSettings();
+        this.setupEventHandlers();
+    }
+
+    async loadSettings() {
+        try {
+            const resp = await fetch('/api/config/notifications');
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+
+            if (data.smtp_host)     this.fields.smtp_host.value     = data.smtp_host;
+            if (data.smtp_port)     this.fields.smtp_port.value     = data.smtp_port;
+            if (data.smtp_security) this.fields.smtp_security.value = data.smtp_security;
+            if (data.smtp_user)     this.fields.smtp_user.value     = data.smtp_user;
+            // Never pre-fill password from server; server returns it but we show placeholder
+            if (data.smtp_password && data.smtp_password !== '') {
+                this.fields.smtp_password.placeholder = '(saved — enter new value to change)';
+            }
+            if (data.from_name)     this.fields.from_name.value     = data.from_name;
+            if (data.from_email)    this.fields.from_email.value    = data.from_email;
+            if (data.recipients)    this.fields.recipients.value    = data.recipients;
+
+            this.nightlyToggle.checked = data.nightly_enabled === 'true';
+        } catch (err) {
+            this.showStatus('Failed to load settings: ' + err.message, 'danger');
+        }
+    }
+
+    setupEventHandlers() {
+        this.saveBtn.addEventListener('click', () => this.saveSettings());
+
+        this.testBtn.addEventListener('click', () => this.sendTestEmail());
+
+        // Security preset — update port suggestion when security changes
+        this.fields.smtp_security.addEventListener('change', () => {
+            const portField = this.fields.smtp_port;
+            const sec = this.fields.smtp_security.value;
+            if (!portField.value || ['25','465','587'].includes(portField.value)) {
+                if (sec === 'ssl')      portField.value = '465';
+                else if (sec === 'none') portField.value = '25';
+                else                    portField.value = '587';
+            }
+        });
+
+        // Password reveal toggle
+        this.togglePwdBtn.addEventListener('click', () => {
+            const pwdField = this.fields.smtp_password;
+            if (pwdField.type === 'password') {
+                pwdField.type = 'text';
+                this.togglePwdIcon.classList.replace('fa-eye', 'fa-eye-slash');
+            } else {
+                pwdField.type = 'password';
+                this.togglePwdIcon.classList.replace('fa-eye-slash', 'fa-eye');
+            }
+        });
+    }
+
+    buildPayload() {
+        const payload = {
+            nightly_enabled: this.nightlyToggle.checked ? 'true' : 'false',
+        };
+        for (const [key, el] of Object.entries(this.fields)) {
+            // Only send password if the user actually typed something
+            if (key === 'smtp_password' && !el.value) continue;
+            payload[key] = el.value.trim();
+        }
+        return payload;
+    }
+
+    async saveSettings() {
+        this.saveBtn.disabled = true;
+        this.saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Saving...';
+        this.hideStatus();
+        try {
+            const resp = await fetch('/api/config/notifications', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify(this.buildPayload()),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Save failed');
+            this.showStatus('Settings saved.', 'success');
+            // Clear password field after save so it shows placeholder again
+            if (this.fields.smtp_password.value) {
+                this.fields.smtp_password.value = '';
+                this.fields.smtp_password.placeholder = '(saved — enter new value to change)';
+            }
+        } catch (err) {
+            this.showStatus('Save failed: ' + err.message, 'danger');
+        } finally {
+            this.saveBtn.disabled = false;
+            this.saveBtn.innerHTML = '<i class="fas fa-save me-1"></i>Save settings';
+        }
+    }
+
+    async sendTestEmail() {
+        this.testBtn.disabled = true;
+        this.testBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Sending...';
+        this.hideStatus();
+        try {
+            const resp = await fetch('/api/config/notifications/test', {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Send failed');
+            this.showStatus('Test email sent successfully.', 'success');
+        } catch (err) {
+            this.showStatus('Test failed: ' + err.message, 'danger');
+        } finally {
+            this.testBtn.disabled = false;
+            this.testBtn.innerHTML = '<i class="fas fa-paper-plane me-1"></i>Send test email';
+        }
+    }
+
+    showStatus(msg, type) {
+        this.saveStatus.textContent = msg;
+        this.saveStatus.className = `ms-2 small text-${type}`;
+        this.saveStatus.style.display = 'inline';
+        if (type === 'success') {
+            setTimeout(() => this.hideStatus(), 4000);
+        }
+    }
+
+    hideStatus() {
+        this.saveStatus.style.display = 'none';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    new ConfigManager();
+});
+
+// ── Log Rotation ─────────────────────────────────────────────────────────────
+class LogRotationManager {
+    constructor() {
+        this.maxBytesEl    = document.getElementById('log-max-bytes');
+        this.backupCountEl = document.getElementById('log-backup-count');
+        this.saveBtn       = document.getElementById('save-log-rotation-btn');
+        this.statusEl      = document.getElementById('log-rotation-status');
+        this.initialize();
+    }
+
+    async initialize() {
+        try {
+            const resp = await fetch('/api/config/logging');
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            if (data.log_max_bytes)    this.maxBytesEl.value    = data.log_max_bytes;
+            if (data.log_backup_count) this.backupCountEl.value = data.log_backup_count;
+        } catch (err) {
+            this.show('Failed to load: ' + err.message, 'danger');
+        }
+        this.saveBtn.addEventListener('click', () => this.save());
+    }
+
+    async save() {
+        this.saveBtn.disabled = true;
+        this.saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Saving…';
+        this.hide();
+        try {
+            const resp = await fetch('/api/config/logging', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({
+                    log_max_bytes:    this.maxBytesEl.value,
+                    log_backup_count: this.backupCountEl.value,
+                }),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Save failed');
+            this.show('Saved. Changes apply within 60 seconds.', 'success');
+        } catch (err) {
+            this.show('Save failed: ' + err.message, 'danger');
+        } finally {
+            this.saveBtn.disabled = false;
+            this.saveBtn.innerHTML = '<i class="fas fa-save me-1"></i>Save';
+        }
+    }
+
+    show(msg, type) {
+        this.statusEl.textContent = msg;
+        this.statusEl.className = `ms-2 small text-${type}`;
+        this.statusEl.style.display = 'inline';
+        if (type === 'success') setTimeout(() => this.hide(), 4000);
+    }
+    hide() { this.statusEl.style.display = 'none'; }
+}
+
+// ── DB Backup ─────────────────────────────────────────────────────────────────
+class DbBackupManager {
+    constructor() {
+        this.enabledToggle   = document.getElementById('db-backup-enabled-toggle');
+        this.scheduleEl      = document.getElementById('db-backup-schedule');
+        this.timeEl          = document.getElementById('db-backup-time');
+        this.retentionEl     = document.getElementById('db-backup-retention-count');
+        this.dirEl           = document.getElementById('db-backup-dir');
+        this.dirErrorEl      = document.getElementById('db-backup-dir-error');
+        this.attachLogEl     = document.getElementById('email-attach-log');
+        this.saveBtn         = document.getElementById('save-db-backup-btn');
+        this.statusEl        = document.getElementById('db-backup-status');
+        this.initialize();
+    }
+
+    async initialize() {
+        try {
+            const resp = await fetch('/api/config/maintenance');
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            this.enabledToggle.checked       = data.db_backup_enabled === 'true';
+            if (data.db_backup_schedule)     this.scheduleEl.value  = data.db_backup_schedule;
+            if (data.db_backup_time)         this.timeEl.value      = data.db_backup_time;
+            if (data.db_backup_retention_count) this.retentionEl.value = data.db_backup_retention_count;
+            if (data.db_backup_dir)          this.dirEl.value       = data.db_backup_dir;
+            this.attachLogEl.checked         = data.email_attach_log === 'true';
+        } catch (err) {
+            this.show('Failed to load: ' + err.message, 'danger');
+        }
+        this.saveBtn.addEventListener('click', () => this.save());
+        const backupNowBtn = document.getElementById('backup-now-btn');
+        if (backupNowBtn) backupNowBtn.addEventListener('click', () => this.backupNow());
+    }
+
+    async backupNow() {
+        const btn = document.getElementById('backup-now-btn');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Running…';
+        }
+        this.hide();
+        try {
+            const resp = await fetch('/api/maintenance/backup_now', {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.success) throw new Error(data.error || 'Backup failed');
+            const pathInfo = data.path ? ` → ${data.path}` : '';
+            this.show(`Backup complete${pathInfo}`, 'success');
+        } catch (err) {
+            this.show('Backup failed: ' + err.message, 'danger');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-database me-1"></i>Backup Now';
+            }
+        }
+    }
+
+    async save() {
+        this.saveBtn.disabled = true;
+        this.saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Saving…';
+        this.hide();
+        if (this.dirErrorEl) this.dirErrorEl.style.display = 'none';
+        if (this.dirEl) this.dirEl.classList.remove('is-invalid');
+        try {
+            const resp = await fetch('/api/config/maintenance', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({
+                    db_backup_enabled:         this.enabledToggle.checked ? 'true' : 'false',
+                    db_backup_schedule:        this.scheduleEl.value,
+                    db_backup_time:            this.timeEl.value,
+                    db_backup_retention_count: this.retentionEl.value,
+                    db_backup_dir:             this.dirEl.value.trim(),
+                    email_attach_log:          this.attachLogEl.checked ? 'true' : 'false',
+                }),
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                if (data.error && data.error.includes('Backup directory')) {
+                    if (this.dirEl) this.dirEl.classList.add('is-invalid');
+                    if (this.dirErrorEl) {
+                        this.dirErrorEl.textContent = data.error;
+                        this.dirErrorEl.style.display = '';
+                    }
+                }
+                throw new Error(data.error || 'Save failed');
+            }
+            this.show('Settings saved.', 'success');
+        } catch (err) {
+            this.show('Save failed: ' + err.message, 'danger');
+        } finally {
+            this.saveBtn.disabled = false;
+            this.saveBtn.innerHTML = '<i class="fas fa-save me-1"></i>Save';
+        }
+    }
+
+    show(msg, type) {
+        this.statusEl.textContent = msg;
+        this.statusEl.className = `ms-2 small text-${type}`;
+        this.statusEl.style.display = 'inline';
+        if (type === 'success') setTimeout(() => this.hide(), 4000);
+    }
+    hide() { this.statusEl.style.display = 'none'; }
+}
+
+// ── Maintenance Status ────────────────────────────────────────────────────────
+class MaintenanceStatusManager {
+    constructor() {
+        this.tbody      = document.getElementById('maintenance-status-body');
+        this.refreshBtn = document.getElementById('refresh-status-btn');
+        this.refreshBtn.addEventListener('click', () => this.load());
+        this.load();
+    }
+
+    async load() {
+        this.refreshBtn.disabled = true;
+        try {
+            const resp = await fetch('/api/maintenance/status');
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const d = await resp.json();
+
+            const jobs = [
+                { label: 'Data retention',        ran: d.data_retention_ran_at,  outcome: d.data_retention_outcome },
+                { label: 'Nightly email',          ran: d.nightly_email_ran_at,   outcome: d.nightly_email_outcome },
+                { label: 'Database backup',        ran: d.db_backup_ran_at,       outcome: d.db_backup_outcome },
+                { label: 'Log rotation (applied)', ran: d.log_rotation_applied_at, outcome: '' },
+            ];
+
+            this.tbody.innerHTML = jobs.map(j => {
+                const ranDisplay = !j.ran
+                    ? '<span class="text-muted">never</span>'
+                    : `<span class="text-muted config-maint-time">${j.ran.replace('T', ' ').split('.')[0]}</span>`;
+                let outHtml;
+                if (j.outcome === 'ok') {
+                    outHtml = '<span class="badge bg-success">ok</span>';
+                } else if (j.outcome) {
+                    const esc = String(j.outcome).replace(/"/g, '&quot;');
+                    outHtml = `<span class="badge bg-danger" title="${esc}">error</span>`;
+                } else {
+                    outHtml = '<span class="text-muted config-outcome-dash" aria-hidden="true">—</span>';
+                }
+                return `<tr>
+                    <td class="fw-medium">${j.label}</td>
+                    <td class="text-center config-maint-col-ran">${ranDisplay}</td>
+                    <td class="text-end config-outcome-cell">${outHtml}</td>
+                </tr>`;
+            }).join('');
+        } catch (err) {
+            this.tbody.innerHTML = `<tr><td colspan="3" class="text-danger text-center">Failed to load: ${err.message}</td></tr>`;
+        } finally {
+            this.refreshBtn.disabled = false;
+        }
+    }
+}
+
+class RestoreManager {
+    constructor() {
+        this.pathEl     = document.getElementById('restore-db-path');
+        this.confirmBtn = document.getElementById('restore-confirm-btn');
+        this.statusEl   = document.getElementById('restore-status');
+        if (this.confirmBtn) this.confirmBtn.addEventListener('click', () => this.restore());
+        window.restoreManager = this;
+    }
+
+    async load() {
+        const loading = document.getElementById('restore-backup-loading');
+        const empty   = document.getElementById('restore-backup-empty');
+        const table   = document.getElementById('restore-backup-table');
+        const tbody   = document.getElementById('restore-backup-tbody');
+        if (!tbody) return;
+        loading.style.display = '';
+        empty.style.display   = 'none';
+        table.style.display   = 'none';
+        tbody.innerHTML       = '';
+        try {
+            const resp = await fetch('/api/maintenance/list_backups');
+            const data = await resp.json();
+            loading.style.display = 'none';
+            if (!data.backups || data.backups.length === 0) {
+                empty.style.display = '';
+                return;
+            }
+            table.style.display = '';
+            for (const b of data.backups) {
+                const dt = new Date(b.mtime * 1000).toLocaleString();
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><small>${b.name}</small></td>
+                    <td><small>${b.size_mb} MB</small></td>
+                    <td><small>${dt}</small></td>
+                    <td><button class="btn btn-xs btn-outline-secondary btn-sm py-0"
+                        onclick="document.getElementById('restore-db-path').value='${b.path}'">
+                        Use</button></td>`;
+                tbody.appendChild(tr);
+            }
+        } catch (e) {
+            loading.style.display = 'none';
+            empty.style.display   = '';
+            empty.textContent     = 'Failed to load backup list.';
+        }
+    }
+
+    async restore() {
+        const path = this.pathEl ? this.pathEl.value.trim() : '';
+        if (!path) { this.showStatus('Please enter a backup file path.', 'danger'); return; }
+        if (!confirm(`Restore database from:\n${path}\n\nThis will overwrite the active database. Continue?`)) return;
+        this.confirmBtn.disabled = true;
+        this.confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Restoring…';
+        try {
+            const resp = await fetch('/api/maintenance/restore', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({ db_file: path }),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Restore failed');
+            this.showStatus(`Restored successfully. ${data.warning || ''}`, 'success');
+        } catch (err) {
+            this.showStatus('Restore failed: ' + err.message, 'danger');
+        } finally {
+            this.confirmBtn.disabled = false;
+            this.confirmBtn.innerHTML = '<i class="fas fa-undo me-1"></i>Restore';
+        }
+    }
+
+    showStatus(msg, type) {
+        if (!this.statusEl) return;
+        this.statusEl.textContent = msg;
+        this.statusEl.className = `mt-3 small text-${type}`;
+        this.statusEl.style.display = '';
+    }
+}
+
+class PurgeManager {
+    constructor() {
+        this.keepDaysEl   = document.getElementById('purge-keep-days');
+        this.confirmDaysEl= document.getElementById('purge-confirm-days');
+        this.confirmTablesEl = document.getElementById('purge-confirm-tables-desc');
+        this.confirmBtn   = document.getElementById('purge-confirm-btn');
+        this.openConfirmBtn = document.getElementById('purge-open-confirm-btn');
+        this.allTablesEl  = document.getElementById('purge-all-tables');
+        this.statusEl     = document.getElementById('purge-status');
+        this.resultsEl    = document.getElementById('purge-results');
+        this.resultsBody  = document.getElementById('purge-results-body');
+        if (this.confirmBtn) {
+            this.confirmBtn.addEventListener('click', () => this.purge());
+        }
+        if (this.openConfirmBtn) {
+            this.openConfirmBtn.addEventListener('click', () => this.openConfirmModal());
+        }
+        if (this.allTablesEl) {
+            this.allTablesEl.addEventListener('change', () => this.syncAllTablesCheckbox());
+        }
+        document.querySelectorAll('.purge-table-cb').forEach(cb => {
+            cb.addEventListener('change', () => this.onIndividualTableChange());
+        });
+        window.purgeManager = this;
+    }
+
+    syncAllTablesCheckbox() {
+        const all = this.allTablesEl && this.allTablesEl.checked;
+        document.querySelectorAll('.purge-table-cb').forEach(cb => {
+            cb.disabled = !!all;
+            if (all) cb.checked = true;
+        });
+    }
+
+    onIndividualTableChange() {
+        if (!this.allTablesEl) return;
+        const boxes = Array.from(document.querySelectorAll('.purge-table-cb'));
+        if (!boxes.every(b => b.checked)) {
+            this.allTablesEl.checked = false;
+        }
+    }
+
+    /** Returns undefined when all tables (omit `tables` in API); else list of names. */
+    getTablesPayload() {
+        if (this.allTablesEl && this.allTablesEl.checked) {
+            return undefined;
+        }
+        const sel = Array.from(document.querySelectorAll('.purge-table-cb:checked')).map(cb => cb.value);
+        return sel;
+    }
+
+    openConfirmModal() {
+        const tables = this.getTablesPayload();
+        if (Array.isArray(tables) && tables.length === 0) {
+            alert('Select at least one table, or choose "All listed tables".');
+            return;
+        }
+        this.prepareConfirm();
+        const el = document.getElementById('purgeModal');
+        if (el) bootstrap.Modal.getOrCreateInstance(el).show();
+    }
+
+    prepareConfirm() {
+        const days = this.keepDaysEl ? this.keepDaysEl.value : '30';
+        if (this.confirmDaysEl) {
+            this.confirmDaysEl.textContent = `${days} day${days === '1' ? '' : 's'}`;
+        }
+        if (this.confirmTablesEl) {
+            const payload = this.getTablesPayload();
+            if (payload === undefined) {
+                this.confirmTablesEl.textContent = 'from all listed time-series tables.';
+            } else {
+                this.confirmTablesEl.textContent = `from these tables: ${payload.map(t => t).join(', ')}.`;
+            }
+        }
+    }
+
+    showStatus(msg, type) {
+        if (!this.statusEl) return;
+        this.statusEl.textContent = msg;
+        this.statusEl.className = `small text-${type}`;
+        this.statusEl.style.display = 'inline';
+    }
+
+    async purge() {
+        if (this.confirmBtn) this.confirmBtn.disabled = true;
+        const days = this.keepDaysEl ? parseInt(this.keepDaysEl.value, 10) : 30;
+        const modal = bootstrap.Modal.getInstance(document.getElementById('purgeModal'));
+        if (modal) modal.hide();
+        this.showStatus('Purging…', 'secondary');
+        if (this.resultsEl) this.resultsEl.style.display = 'none';
+        try {
+            const tablesPayload = this.getTablesPayload();
+            const body = { keep_days: days };
+            if (tablesPayload !== undefined) {
+                body.tables = tablesPayload;
+            }
+            const resp = await fetch('/api/maintenance/purge', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify(body),
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                this.showStatus(`Error: ${data.error || resp.statusText}`, 'danger');
+                return;
+            }
+            const deleted = data.deleted || {};
+            const total = Object.values(deleted).reduce((s, v) => s + v, 0);
+            this.showStatus(`Done — ${total} row${total === 1 ? '' : 's'} deleted`, 'success');
+            if (this.resultsBody && Object.keys(deleted).length > 0) {
+                this.resultsBody.innerHTML = Object.entries(deleted)
+                    .map(([t, c]) => `<tr><td><code>${t}</code></td><td>${c}</td></tr>`)
+                    .join('');
+                if (this.resultsEl) this.resultsEl.style.display = 'block';
+            }
+        } catch (e) {
+            this.showStatus(`Error: ${e.message}`, 'danger');
+        } finally {
+            if (this.confirmBtn) this.confirmBtn.disabled = false;
+        }
+    }
+}
+
+class DatabaseInfoManager {
+    constructor() {
+        this.dbData = {};
+        this.initializeDatabase();
+    }
+
+    async initializeDatabase() {
+        await this.loadDatabaseData();
+        this.setupEventHandlers();
+        this.updateStatistics();
+        this.renderTablesInfo();
+    }
+
+    async loadDatabaseData() {
+        try {
+            const response = await fetch('/api/database');
+            const data = await response.json();
+            if (data.error) {
+                this.showError('Failed to load database data: ' + data.error);
+                return;
+            }
+            this.dbData = data;
+        } catch (error) {
+            this.showError('Failed to load database data: ' + error.message);
+        }
+    }
+
+    setupEventHandlers() {
+        const refreshBtn = document.getElementById('refresh-db');
+        const exportBtn = document.getElementById('export-db');
+        const optimizeBtn = document.getElementById('optimize-db');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => {
+                this.loadDatabaseData().then(() => {
+                    this.updateStatistics();
+                    this.renderTablesInfo();
+                });
+            });
+        }
+        if (exportBtn) exportBtn.addEventListener('click', () => this.exportDatabase());
+        if (optimizeBtn) optimizeBtn.addEventListener('click', () => this.optimizeDatabase());
+    }
+
+    updateStatistics() {
+        const setText = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        };
+        setText('total-tables', this.dbData.total_tables || 0);
+        setText('total-records', this.dbData.total_records || 0);
+        setText('last-updated', this.dbData.last_updated || '-');
+        setText('db-size', this.dbData.db_size || '-');
+    }
+
+    renderTablesInfo() {
+        const infoElement = document.getElementById('tables-info');
+        if (!infoElement) return;
+        if (!this.dbData.tables || this.dbData.tables.length === 0) {
+            infoElement.innerHTML = '<div class="text-muted">No tables found</div>';
+            return;
+        }
+        infoElement.innerHTML = this.dbData.tables.map(table => `
+            <div class="row mb-3 p-3 border rounded config-db-table-row g-2 align-items-center">
+                <div class="col-md-4">
+                    <h6 class="mb-1"><i class="fas fa-table config-table-name-icon me-1"></i>${table.name}</h6>
+                    <small class="text-muted">${table.description || 'Database table'}</small>
+                </div>
+                <div class="col-md-2 text-center">
+                    <div class="h5 mb-0 config-table-metric">${table.record_count || 0}</div>
+                    <small class="text-muted">Records</small>
+                </div>
+                <div class="col-md-3 text-center">
+                    <div class="h6 mb-0">${table.size || 'Unknown'}</div>
+                    <small class="text-muted">Size</small>
+                </div>
+                <div class="col-md-3 text-center">
+                    <span class="badge bg-${this.getTableStatusClass(table)}">${this.getTableStatus(table)}</span>
+                    <br><small class="text-muted">Status</small>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    getTableStatus(table) {
+        const count = table.record_count || 0;
+        if (count === 0) return 'Empty';
+        if (count < 100) return 'Small';
+        if (count < 1000) return 'Medium';
+        if (count < 10000) return 'Large';
+        return 'Very Large';
+    }
+
+    getTableStatusClass(table) {
+        const count = table.record_count || 0;
+        if (count === 0) return 'secondary';
+        if (count < 100) return 'success';
+        if (count < 1000) return 'info';
+        if (count < 10000) return 'warning';
+        return 'danger';
+    }
+
+    exportDatabase() {
+        const headers = ['Table Name', 'Record Count', 'Size', 'Status', 'Timestamp'];
+        const rows = (this.dbData.tables || []).map(table => [
+            table.name, table.record_count || 0, table.size || 'Unknown', this.getTableStatus(table), new Date().toISOString(),
+        ]);
+        const csv = [headers, ...rows].map(row => row.map(field => `"${field}"`).join(',')).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `database_export_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+    }
+
+    async optimizeDatabase() {
+        if (!confirm('Are you sure you want to optimize the database? This may take a few moments.')) return;
+        const optimizeBtn = document.getElementById('optimize-db');
+        const originalText = optimizeBtn ? optimizeBtn.innerHTML : '';
+        try {
+            if (optimizeBtn) {
+                optimizeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Optimizing...';
+                optimizeBtn.disabled = true;
+            }
+            const response = await fetch('/api/optimize-database', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+            const result = await response.json();
+            if (result.success) {
+                alert(`Database optimization completed successfully!\n\nResults:\n- ${result.vacuum_result}\n- ${result.analyze_result}\n- ${result.reindex_result}`);
+                await this.loadDatabaseData();
+                this.updateStatistics();
+                this.renderTablesInfo();
+            } else {
+                alert('Database optimization failed: ' + (result.error || 'Unknown error'));
+            }
+        } catch (error) {
+            alert('Database optimization failed: ' + error.message);
+        } finally {
+            if (optimizeBtn) {
+                optimizeBtn.innerHTML = originalText || '<i class="fas fa-tools"></i> Optimize';
+                optimizeBtn.disabled = false;
+            }
+        }
+    }
+
+    showError(message) {
+        const tablesInfo = document.getElementById('tables-info');
+        if (tablesInfo) tablesInfo.innerHTML = `<div class="alert alert-danger">${message}</div>`;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const navLinks = Array.from(document.querySelectorAll('[data-config-target]'));
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (!entry.isIntersecting) return;
+            navLinks.forEach(link => link.classList.toggle('active', link.dataset.configTarget === entry.target.id));
+        });
+    }, { rootMargin: '-25% 0px -65% 0px', threshold: [0.1, 0.5] });
+    document.querySelectorAll('.config-panel-card[id]').forEach(section => observer.observe(section));
+
+    new LogRotationManager();
+    new DbBackupManager();
+    new MaintenanceStatusManager();
+    new RestoreManager();
+    new PurgeManager();
+    window.databaseManager = new DatabaseInfoManager();
+});
+</script>
+{% endblock %}

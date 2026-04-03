@@ -23,24 +23,21 @@ _warned_unavailable = False
 _unidecode_available = False
 
 try:
-    from better_profanity import profanity  # type: ignore
+    from better_profanity import profanity
     _profanity_available = True
 except ImportError:
-    profanity = None  # type: ignore
+    profanity = None
 
 try:
-    from unidecode import unidecode  # type: ignore
+    from unidecode import unidecode
     _unidecode_available = True
 except ImportError:
-    unidecode = None  # type: ignore
+    unidecode = None
 
 
 def _has_hate_symbols(text: str) -> bool:
     """Return True if text contains any blocked hate-symbol code point."""
-    for cp in _HATE_SYMBOL_CODEPOINTS:
-        if chr(cp) in text:
-            return True
-    return False
+    return any(chr(cp) in text for cp in _HATE_SYMBOL_CODEPOINTS)
 
 
 def _replace_hate_symbols(text: str, replacement: str = "***") -> str:

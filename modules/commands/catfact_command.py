@@ -5,34 +5,34 @@ Provides random cat facts as a hidden easter egg command
 """
 
 import random
-from typing import List
-from .base_command import BaseCommand
+
 from ..models import MeshMessage
+from .base_command import BaseCommand
 
 
 class CatfactCommand(BaseCommand):
     """Handles cat fact commands - hidden easter egg.
-    
+
     Responds to various cat-related keywords with random facts about cats.
     This is designed as a hidden feature and does not appear in standard help listings.
     """
-    
+
     # Plugin metadata
     name = "catfact"
     keywords = ['catfact', 'cat', 'meow', 'purr', 'kitten']
     description = "Get a random cat fact (hidden command)"
     category = "hidden"  # Hidden category so it won't appear in help
     cooldown_seconds = 3  # 3 second cooldown per user
-    
+
     def __init__(self, bot):
         """Initialize the catfact command.
-        
+
         Args:
             bot: The bot instance.
         """
         super().__init__(bot)
         self.catfact_enabled = self.get_config_value('Catfact_Command', 'enabled', fallback=True, value_type='bool')
-        
+
         # Collection of cat facts - fallback if translations not available
         self.cat_facts_fallback = [
             "Cats have a third eyelid called a nictitating membrane that protects and moistens their eyes. 🐱",
@@ -104,10 +104,10 @@ class CatfactCommand(BaseCommand):
             "Cats spend about 30-50% of their day grooming themselves and other cats. 🛁",
             "A cat's average body temperature is 101.5°F (38.6°C) - higher than humans. 🌡️"
         ]
-    
-    def get_cat_facts(self) -> List[str]:
+
+    def get_cat_facts(self) -> list[str]:
         """Get cat facts from translations or fallback to hardcoded list.
-        
+
         Returns:
             List[str]: A list of cat fact strings.
         """
@@ -115,54 +115,54 @@ class CatfactCommand(BaseCommand):
         if facts and isinstance(facts, list) and len(facts) > 0:
             return facts
         return self.cat_facts_fallback
-    
+
     def get_help_text(self) -> str:
         """Get help text for the catfact command.
-        
+
         Returns:
             str: Empty string (to keep the command hidden).
         """
         # Return empty string so it doesn't appear in help
         return ""
-    
-    def can_execute(self, message: MeshMessage) -> bool:
+
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Check if this command can be executed with the given message.
-        
+
         Args:
             message: The message triggering the command.
-            
+
         Returns:
             bool: True if command is enabled and checks pass, False otherwise.
         """
         if not self.catfact_enabled:
             return False
         return super().can_execute(message)
-    
+
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the cat fact command.
-        
+
         Selects a random cat fact and sends it to the user.
-        
+
         Args:
             message: The message triggering the command.
-            
+
         Returns:
             bool: True if executed successfully, False otherwise.
         """
         try:
             # Record execution for this user
             self.record_execution(message.sender_id)
-            
+
             # Get cat facts from translations or fallback
             cat_facts = self.get_cat_facts()
-            
+
             # Get a random cat fact
             cat_fact = random.choice(cat_facts)
-            
+
             # Send the cat fact
             await self.send_response(message, cat_fact)
             return True
-            
+
         except Exception as e:
             self.logger.error(f"Error in cat fact command: {e}")
             await self.send_response(message, self.translate('commands.catfact.error'))

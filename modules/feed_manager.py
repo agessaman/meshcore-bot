@@ -5,19 +5,21 @@ Handles polling feeds and sending updates to channels
 """
 
 import asyncio
-import aiohttp
-import json
-import time
+import contextlib
 import hashlib
 import html
-import re
+import json
 import os
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any, Tuple
-from pathlib import Path
+import re
 import sqlite3
-import feedparser
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Optional
 from urllib.parse import urlparse
+
+import aiohttp
+import feedparser
 
 from modules.feed_filter_eval import item_passes_filter_config
 from modules.url_shortener import _coerce_url_string, shorten_url_sync
@@ -25,12 +27,12 @@ from modules.url_shortener import _coerce_url_string, shorten_url_sync
 
 class FeedManager:
     """Manages RSS and API feed subscriptions"""
-    
+
     def __init__(self, bot):
         self.bot = bot
         self.logger = bot.logger
         self.db_path = bot.db_manager.db_path
-        
+
         # Configuration (guard against missing [Feed_Manager] section for upgrade compatibility)
         if not bot.config.has_section('Feed_Manager'):
             self.enabled = False
@@ -56,55 +58,55 @@ class FeedManager:
             self.shorten_feed_urls = bot.config.getboolean(
                 'Feed_Manager', 'shorten_urls', fallback=False
             )
-        
+
         # Rate limiting per domain
-        self._domain_last_request: Dict[str, float] = {}
-        
+        self._domain_last_request: dict[str, float] = {}
+
         # HTTP session
         self.session: Optional[aiohttp.ClientSession] = None
-        
+
         # Semaphore to limit concurrent requests
         self._request_semaphore = asyncio.Semaphore(5)
-        
+
         # Serialize process_message_queue (scheduler may schedule another run if result() times out)
         self._process_queue_lock: Optional[asyncio.Lock] = None
-        
+
         self.logger.info("FeedManager initialized")
-    
+
     async def initialize(self):
         """Initialize the feed manager (create HTTP session)"""
         if not self.enabled:
             self.logger.info("FeedManager is disabled in config")
             return
-        
+
         # Don't create session here - create it lazily when needed
         # This avoids issues with using sessions across different event loops
         # The session will be created in the same event loop where it's used
         self.logger.info("FeedManager initialized (session will be created on first use)")
-    
+
     async def stop(self):
         """Stop the feed manager (close HTTP session)"""
         if self.session and not self.session.closed:
             await self.session.close()
             self.session = None
         self.logger.info("FeedManager stopped")
-    
+
     async def poll_all_feeds(self):
         """Poll all enabled feeds that are due for checking"""
         if not self.enabled:
             return
-        
+
         try:
             # Get all enabled feeds
             feeds = self._get_enabled_feeds()
-            
+
             if not feeds:
                 return
-            
+
             # Filter feeds that are due for checking
             current_time = time.time()
             feeds_to_check = []
-            
+
             for feed in feeds:
                 last_check = feed.get('last_check_time')
                 if last_check:
@@ -128,7 +130,7 @@ class FeedManager:
                                         raise ValueError(f"Unknown timestamp format: {last_check}")
                         else:
                             last_check_dt = datetime.fromtimestamp(last_check, tz=timezone.utc)
-                        
+
                         # Convert to timestamp
                         if last_check_dt.tzinfo:
                             last_check_ts = last_check_dt.timestamp()
@@ -140,25 +142,25 @@ class FeedManager:
                         last_check_ts = 0
                 else:
                     last_check_ts = 0
-                
+
                 interval = feed.get('check_interval_seconds', self.default_check_interval)
-                
+
                 if current_time - last_check_ts >= interval:
                     feeds_to_check.append(feed)
-            
+
             if not feeds_to_check:
                 self.logger.debug("No feeds due for checking at this time")
                 return
-            
+
             self.logger.info(f"Polling {len(feeds_to_check)} feed(s) that are due for checking")
-            
+
             # Poll feeds in parallel (with semaphore limit)
             tasks = [self.poll_feed(feed) for feed in feeds_to_check]
             await asyncio.gather(*tasks, return_exceptions=True)
-            
+
         except Exception as e:
             self.logger.error(f"Error in poll_all_feeds: {e}")
-    
+
     async def _ensure_session(self):
         """Ensure HTTP session exists in the current event loop"""
         if self.session is None or self.session.closed:
@@ -167,24 +169,24 @@ class FeedManager:
                 headers={'User-Agent': self.user_agent}
             )
             self.logger.debug("Created FeedManager HTTP session in current event loop")
-    
-    async def poll_feed(self, feed: Dict[str, Any]):
+
+    async def poll_feed(self, feed: dict[str, Any]):
         """Poll a single feed and process new items"""
         # Ensure session exists in current event loop
         await self._ensure_session()
-        
+
         feed_id = feed['id']
         feed_type = feed['feed_type']
         feed_url = feed['feed_url']
-        channel_name = feed['channel_name']
-        
+        feed['channel_name']
+
         try:
             self.logger.debug(f"Polling {feed_type} feed {feed_id}: {feed_url}")
-            
+
             # Rate limit per domain
             domain = urlparse(feed_url).netloc
             await self._wait_for_rate_limit(domain)
-            
+
             # Fetch feed data
             if feed_type == 'rss':
                 new_items = await self.process_rss_feed(feed)
@@ -193,7 +195,7 @@ class FeedManager:
             else:
                 self.logger.warning(f"Unknown feed type: {feed_type}")
                 return
-            
+
             # Process new items
             if new_items:
                 self.logger.info(f"Found {len(new_items)} new items for feed {feed_id}")
@@ -205,29 +207,29 @@ class FeedManager:
                     else:
                         filtered_count += 1
                         self.logger.debug(f"Filtered out item: {item.get('title', 'Untitled')[:50]}")
-                
+
                 if filtered_count > 0:
                     self.logger.debug(f"Filtered out {filtered_count} items for feed {feed_id}")
             else:
                 self.logger.debug(f"No new items found for feed {feed_id}")
-            
+
             # Always update last check time, even if no new items
             self._update_feed_last_check(feed_id)
-            
+
         except Exception as e:
             self.logger.error(f"Error polling feed {feed_id}: {e}")
             self._record_feed_error(feed_id, 'network', str(e))
-    
-    async def process_rss_feed(self, feed: Dict[str, Any]) -> List[Dict[str, Any]]:
+
+    async def process_rss_feed(self, feed: dict[str, Any]) -> list[dict[str, Any]]:
         """Process an RSS feed and return new items"""
         feed_url = feed['feed_url']
         last_item_id = feed.get('last_item_id')
-        
+
         try:
             # Fetch RSS feed - use aiohttp's timeout directly
             # Create timeout object in the current async context
             timeout = aiohttp.ClientTimeout(total=self.request_timeout)
-            
+
             async with self._request_semaphore:
                 try:
                     async with self.session.get(feed_url, timeout=timeout) as response:
@@ -236,13 +238,13 @@ class FeedManager:
                         content = await response.text()
                 except (asyncio.TimeoutError, aiohttp.ServerTimeoutError):
                     raise Exception(f"Request timeout after {self.request_timeout} seconds")
-            
+
             # Parse RSS feed
             parsed = feedparser.parse(content)
-            
+
             if parsed.bozo:
                 self.logger.warning(f"RSS feed parsing warning: {parsed.bozo_exception}")
-            
+
             # Extract items - collect ALL items first (don't break early if sorting is configured)
             all_items = []
             for entry in parsed.entries:
@@ -253,15 +255,13 @@ class FeedManager:
                     item_id = hashlib.md5(
                         f"{entry.get('title', '')}{entry.get('link', '')}".encode()
                     ).hexdigest()
-                
+
                 # Parse published date
                 published = None
                 if hasattr(entry, 'published_parsed') and entry.published_parsed:
-                    try:
+                    with contextlib.suppress(Exception):
                         published = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
-                    except Exception:
-                        pass
-                
+
                 all_items.append({
                     'id': item_id,
                     'title': entry.get('title', 'Untitled'),
@@ -269,7 +269,7 @@ class FeedManager:
                     'description': entry.get('description', ''),
                     'published': published
                 })
-            
+
             # Apply sorting if configured (before filtering, so we can properly track the last item)
             sort_config_str = feed.get('sort_config')
             if sort_config_str:
@@ -278,20 +278,20 @@ class FeedManager:
                     all_items = self._sort_items(all_items, sort_config)
                 except (json.JSONDecodeError, TypeError, Exception) as e:
                     self.logger.warning(f"Error applying sort config for feed {feed['id']}: {e}")
-            
+
             # Reverse to get oldest first (if no sort config)
             if not sort_config_str:
                 all_items.reverse()
-            
+
             # Now filter out items that have already been processed
             # Check against both last_item_id and the feed_activity table for robust deduplication
             items = []
             processed_item_ids = set()
-            
+
             # Get all previously processed item IDs from feed_activity table
             if last_item_id:
                 processed_item_ids.add(last_item_id)
-            
+
             # Query database for all processed item IDs for this feed
             try:
                 with self.bot.db_manager.connection() as conn:
@@ -304,46 +304,46 @@ class FeedManager:
                         processed_item_ids.add(row[0])
             except Exception as e:
                 self.logger.debug(f"Error querying processed items for feed {feed['id']}: {e}")
-            
+
             # Filter out already processed items
             for item in all_items:
                 if item['id'] not in processed_item_ids:
                     items.append(item)
                 else:
                     self.logger.debug(f"Skipping already processed item {item['id']} for feed {feed['id']}")
-            
+
             # Update last_item_id if we have new items (use the last item from the sorted list)
             if items:
                 # Use the last item from the original sorted list (all_items), not the filtered list
                 # This ensures we track the most recent item even if it was already processed
                 self._update_feed_last_item_id(feed['id'], all_items[-1]['id'])
-            
+
             return items
-            
+
         except Exception as e:
             self.logger.error(f"Error processing RSS feed: {e}")
             raise
-    
-    async def process_api_feed(self, feed: Dict[str, Any]) -> List[Dict[str, Any]]:
+
+    async def process_api_feed(self, feed: dict[str, Any]) -> list[dict[str, Any]]:
         """Process an API feed and return new items"""
         feed_url = feed['feed_url']
         api_config_str = feed.get('api_config', '{}')
         last_item_id = feed.get('last_item_id')
-        
+
         try:
             # Parse API config
             api_config = json.loads(api_config_str) if api_config_str else {}
-            
+
             method = api_config.get('method', 'GET').upper()
             headers = api_config.get('headers', {})
             params = api_config.get('params', {})
             body = api_config.get('body')
             parser_config = api_config.get('response_parser', {})
-            
+
             # Make HTTP request - use aiohttp's timeout directly
             # Create timeout object in the current async context
             timeout = aiohttp.ClientTimeout(total=self.request_timeout)
-            
+
             async with self._request_semaphore:
                 try:
                     if method == 'POST':
@@ -358,7 +358,7 @@ class FeedManager:
                             data = await response.json()
                 except (asyncio.TimeoutError, aiohttp.ServerTimeoutError):
                     raise Exception(f"Request timeout after {self.request_timeout} seconds")
-            
+
             # Extract items using parser config
             items_path = parser_config.get('items_path', '')
             if items_path:
@@ -370,20 +370,20 @@ class FeedManager:
             else:
                 # Assume data is a list
                 items_data = data if isinstance(data, list) else [data]
-            
+
             # Extract items
             id_field = parser_config.get('id_field', 'id')
             title_field = parser_config.get('title_field', 'title')
             description_field = parser_config.get('description_field', 'description')  # New: allow custom description field
             timestamp_field = parser_config.get('timestamp_field', 'created_at')
-            
+
             # Collect ALL items first (don't break early, as sorting may reorder them)
             all_items = []
             for item_data in items_data:
                 item_id = str(self._get_nested_value(item_data, id_field, ''))
                 if not item_id:
                     continue
-                
+
                 # Parse timestamp if available - support nested paths
                 published = None
                 if timestamp_field:
@@ -412,14 +412,14 @@ class FeedManager:
                                                 continue
                         except Exception:
                             pass
-                
+
                 # Get description - support nested paths
                 description = ''
                 if description_field:
                     desc_value = self._get_nested_value(item_data, description_field)
                     if desc_value:
                         description = str(desc_value)
-                
+
                 all_items.append({
                     'id': item_id,
                     'title': self._get_nested_value(item_data, title_field, 'Untitled'),
@@ -428,7 +428,7 @@ class FeedManager:
                     'published': published,
                     'raw': item_data  # Store full raw response for field access
                 })
-            
+
             # Apply sorting if configured (before filtering, so we can properly track the last item)
             sort_config_str = feed.get('sort_config')
             if sort_config_str:
@@ -437,20 +437,20 @@ class FeedManager:
                     all_items = self._sort_items(all_items, sort_config)
                 except (json.JSONDecodeError, TypeError, Exception) as e:
                     self.logger.warning(f"Error applying sort config for feed {feed['id']}: {e}")
-            
+
             # Reverse to get oldest first (if no sort config)
             if not sort_config_str:
                 all_items.reverse()
-            
+
             # Now filter out items that have already been processed
             # Check against both last_item_id and the feed_activity table for robust deduplication
             items = []
             processed_item_ids = set()
-            
+
             # Get all previously processed item IDs from feed_activity table
             if last_item_id:
                 processed_item_ids.add(last_item_id)
-            
+
             # Query database for all processed item IDs for this feed
             try:
                 with self.bot.db_manager.connection() as conn:
@@ -463,40 +463,37 @@ class FeedManager:
                         processed_item_ids.add(row[0])
             except Exception as e:
                 self.logger.debug(f"Error querying processed items for feed {feed['id']}: {e}")
-            
+
             # Filter out already processed items
             for item in all_items:
                 if item['id'] not in processed_item_ids:
                     items.append(item)
                 else:
                     self.logger.debug(f"Skipping already processed item {item['id']} for feed {feed['id']}")
-            
+
             # Update last_item_id if we have new items (use the last item from the sorted list)
             if items:
                 # Use the last item from the original sorted list (all_items), not the filtered list
                 # This ensures we track the most recent item even if it was already processed
                 self._update_feed_last_item_id(feed['id'], all_items[-1]['id'])
-            
+
             return items
-            
+
         except Exception as e:
             self.logger.error(f"Error processing API feed: {e}")
             raise
-    
+
     def _format_timestamp(self, published: Optional[datetime]) -> str:
         """Format a timestamp as a relative time string"""
         if not published:
             return ""
-        
+
         try:
-            if published.tzinfo:
-                now = datetime.now(timezone.utc)
-            else:
-                now = datetime.now()
-            
+            now = datetime.now(timezone.utc) if published.tzinfo else datetime.now()
+
             diff = now - published
             minutes = int(diff.total_seconds() / 60)
-            
+
             if minutes < 1:
                 return "now"
             elif minutes < 60:
@@ -512,9 +509,9 @@ class FeedManager:
             return ""
 
     @staticmethod
-    def _feed_format_auto_slots(format_str: str) -> List[Tuple[int, int, str]]:
+    def _feed_format_auto_slots(format_str: str) -> list[tuple[int, int, str]]:
         """Return (start, end, field_name) for each {field|auto} placeholder (left-to-right)."""
-        slots: List[Tuple[int, int, str]] = []
+        slots: list[tuple[int, int, str]] = []
         for m in re.finditer(r"\{([^}]+)\}", format_str):
             content = m.group(1)
             if "|" not in content:
@@ -541,7 +538,7 @@ class FeedManager:
         self,
         field_name: str,
         raw_data: Any,
-        replacements: Dict[str, str],
+        replacements: dict[str, str],
         link_original: str,
     ) -> str:
         """Full string for one field before |auto (long link, no shorten)."""
@@ -558,10 +555,10 @@ class FeedManager:
         if field_name == "link":
             return link_original or ""
         return str(replacements.get(field_name, "") or "")
-    
+
     def _apply_shortening(self, text: str, function: str) -> str:
         """Apply a shortening, parsing, or conditional function to text
-        
+
         Supported functions:
         - shorten - URL-shorten via [External_Data] short_url_website (v.gd / is.gd API)
         - shorten|truncate:N (etc.) - shorten first, then apply the rest (e.g. shorten|truncate:40)
@@ -596,7 +593,7 @@ class FeedManager:
 
         if not text:
             return ""
-        
+
         if function.startswith('truncate:'):
             try:
                 max_len = int(function.split(':', 1)[1])
@@ -605,7 +602,7 @@ class FeedManager:
                 return text[:max_len] + "..."
             except (ValueError, IndexError):
                 return text
-        
+
         elif function.startswith('word_wrap:'):
             try:
                 max_len = int(function.split(':', 1)[1])
@@ -619,7 +616,7 @@ class FeedManager:
                 return truncated + "..."
             except (ValueError, IndexError):
                 return text
-        
+
         elif function.startswith('first_words:'):
             try:
                 num_words = int(function.split(':', 1)[1])
@@ -629,30 +626,30 @@ class FeedManager:
                 return ' '.join(words[:num_words]) + "..."
             except (ValueError, IndexError):
                 return text
-        
+
         elif function.startswith('regex:'):
             try:
                 # Parse regex pattern and optional group number
                 # Format: regex:pattern:group or regex:pattern
                 # Need to handle patterns that contain colons, so split from the right
                 remaining = function[6:]  # Skip 'regex:' prefix
-                
+
                 # Try to find the last colon that's followed by a number (the group number)
                 # Look for pattern like :N at the end
                 last_colon_idx = remaining.rfind(':')
                 pattern = remaining
                 group_num = None
-                
+
                 if last_colon_idx > 0:
                     # Check if what's after the last colon is a number
                     potential_group = remaining[last_colon_idx + 1:]
                     if potential_group.isdigit():
                         pattern = remaining[:last_colon_idx]
                         group_num = int(potential_group)
-                
+
                 if not pattern:
                     return text
-                
+
                 # Apply regex
                 match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
                 if match:
@@ -670,7 +667,7 @@ class FeedManager:
             except (ValueError, IndexError, re.error) as e:
                 self.logger.debug(f"Error applying regex function: {e}")
                 return text
-        
+
         elif function.startswith('if_regex:'):
             try:
                 # Parse: if_regex:pattern:then:else
@@ -679,14 +676,14 @@ class FeedManager:
                 parts = function[9:].split(':', 2)  # Skip 'if_regex:' prefix, split into [pattern, then, else]
                 if len(parts) < 3:
                     return text
-                
+
                 pattern = parts[0]
                 then_value = parts[1]
                 else_value = parts[2]
-                
+
                 if not pattern:
                     return text
-                
+
                 # Check if pattern matches
                 match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
                 if match:
@@ -696,7 +693,7 @@ class FeedManager:
             except (ValueError, IndexError, re.error) as e:
                 self.logger.debug(f"Error applying if_regex function: {e}")
                 return text
-        
+
         elif function.startswith('switch:'):
             try:
                 # Parse: switch:value1:result1:value2:result2:...:default
@@ -705,7 +702,7 @@ class FeedManager:
                 parts = function[7:].split(':')  # Skip 'switch:' prefix
                 if len(parts) < 2:
                     return text
-                
+
                 # Pairs of value:result, last one is default
                 text_lower = text.lower().strip()
                 for i in range(0, len(parts) - 1, 2):
@@ -714,13 +711,13 @@ class FeedManager:
                         result = parts[i + 1]
                         if text_lower == value:
                             return result
-                
+
                 # Return last part as default if no match
                 return parts[-1] if parts else text
             except (ValueError, IndexError) as e:
                 self.logger.debug(f"Error applying switch function: {e}")
                 return text
-        
+
         elif function.startswith('regex_cond:'):
             try:
                 # Parse: regex_cond:extract_pattern:check_pattern:then:group
@@ -732,15 +729,15 @@ class FeedManager:
                 parts = function[11:].split(':', 3)  # Skip 'regex_cond:' prefix
                 if len(parts) < 4:
                     return text
-                
+
                 extract_pattern = parts[0]
                 check_pattern = parts[1]
                 then_value = parts[2]
                 else_group = int(parts[3]) if parts[3].isdigit() else 1
-                
+
                 if not extract_pattern:
                     return text
-                
+
                 # Extract using extract_pattern
                 match = re.search(extract_pattern, text, re.IGNORECASE | re.DOTALL)
                 if match:
@@ -751,29 +748,29 @@ class FeedManager:
                         extracted = extracted.strip()
                     else:
                         extracted = match.group(0).strip()
-                    
+
                     # Check if extracted text matches check_pattern (exact match or contains)
                     if check_pattern:
                         # Try exact match first, then substring match
                         if extracted.lower() == check_pattern.lower() or re.search(check_pattern, extracted, re.IGNORECASE):
                             return then_value
-                    
+
                     return extracted
                 return ""  # No match found
             except (ValueError, IndexError, re.error) as e:
                 self.logger.debug(f"Error applying regex_cond function: {e}")
                 return text
-        
+
         return text
-    
+
     def _get_nested_value(self, data: Any, path: str, default: Any = '') -> Any:
         """Get a nested value from a dict/list using dot notation (e.g., 'raw.Priority' or 'raw.StartRoadwayLocation.RoadName')"""
         if not path or not data:
             return default
-        
+
         parts = path.split('.')
         value = data
-        
+
         for part in parts:
             if isinstance(value, dict):
                 value = value.get(part)
@@ -788,26 +785,26 @@ class FeedManager:
                     return default
             else:
                 return default
-            
+
             if value is None:
                 return default
-        
+
         return value if value is not None else default
-    
+
     def _parse_microsoft_date(self, date_str: str) -> Optional[datetime]:
         """Parse Microsoft JSON date format: /Date(timestamp-offset)/"""
         if not date_str or not isinstance(date_str, str):
             return None
-        
+
         # Match /Date(timestamp-offset)/ format
         match = re.match(r'/Date\((\d+)([+-]\d+)?\)/', date_str)
         if match:
             timestamp_ms = int(match.group(1))
             offset_str = match.group(2) if match.group(2) else '+0000'
-            
+
             # Convert milliseconds to seconds
             timestamp = timestamp_ms / 1000.0
-            
+
             # Parse offset (format: +0800 or -0800)
             try:
                 offset_hours = int(offset_str[:3])
@@ -815,23 +812,23 @@ class FeedManager:
                 offset_seconds = (offset_hours * 3600) + (offset_mins * 60)
                 if offset_str[0] == '-':
                     offset_seconds = -offset_seconds
-                
+
                 # Create timezone-aware datetime
                 tz = timezone.utc
                 if offset_seconds != 0:
                     from datetime import timedelta
                     tz = timezone(timedelta(seconds=offset_seconds))
-                
+
                 return datetime.fromtimestamp(timestamp, tz=tz)
             except (ValueError, IndexError):
                 # Fallback to UTC if offset parsing fails
                 return datetime.fromtimestamp(timestamp, tz=timezone.utc)
-        
+
         return None
-    
-    def _sort_items(self, items: List[Dict[str, Any]], sort_config: dict) -> List[Dict[str, Any]]:
+
+    def _sort_items(self, items: list[dict[str, Any]], sort_config: dict) -> list[dict[str, Any]]:
         """Sort items based on sort configuration
-        
+
         Sort config format:
         {
             "field": "raw.LastUpdatedTime",  # Field path to sort by
@@ -840,39 +837,39 @@ class FeedManager:
         """
         if not sort_config or not items:
             return items
-        
+
         field_path = sort_config.get('field')
         order = sort_config.get('order', 'desc').lower()
-        
+
         if not field_path:
             return items
-        
+
         def get_sort_value(item):
             """Get the sort value for an item"""
             # Try raw data first
             raw_data = item.get('raw', {})
             value = self._get_nested_value(raw_data, field_path, '')
-            
+
             if not value and field_path.startswith('raw.'):
                 value = self._get_nested_value(raw_data, field_path[4:], '')
-            
+
             if not value:
                 value = self._get_nested_value(item, field_path, '')
-            
+
             # Handle Microsoft date format
             if isinstance(value, str) and value.startswith('/Date('):
                 dt = self._parse_microsoft_date(value)
                 if dt:
                     return dt.timestamp()
-            
+
             # Handle datetime objects
             if isinstance(value, datetime):
                 return value.timestamp()
-            
+
             # Handle numeric values
             if isinstance(value, (int, float)):
                 return float(value)
-            
+
             # Handle string timestamps
             if isinstance(value, str):
                 # Try to parse as ISO format
@@ -881,7 +878,7 @@ class FeedManager:
                     return dt.timestamp()
                 except ValueError:
                     pass
-                
+
                 # Try common date formats
                 for fmt in ['%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d']:
                     try:
@@ -889,10 +886,10 @@ class FeedManager:
                         return dt.timestamp()
                     except ValueError:
                         continue
-            
+
             # For strings, use lexicographic comparison
             return str(value)
-        
+
         # Sort items
         try:
             sorted_items = sorted(items, key=get_sort_value, reverse=(order == 'desc'))
@@ -900,10 +897,10 @@ class FeedManager:
         except Exception as e:
             self.logger.warning(f"Error sorting items: {e}")
             return items
-    
-    def format_message(self, item: Dict[str, Any], feed: Dict[str, Any]) -> str:
+
+    def format_message(self, item: dict[str, Any], feed: dict[str, Any]) -> str:
         """Format a feed item as a message for the mesh using configurable format with placeholders
-        
+
         Supported placeholders:
         - {title} - item title
         - {body} - item description/body
@@ -912,7 +909,7 @@ class FeedManager:
         - {link|shorten} - shorten this URL only (uses [External_Data] short_url_website); combine as {link|shorten|truncate:N}
         - {emoji} - emoji based on feed type
         - {raw.field} - access any field from raw API response (e.g., {raw.Priority}, {raw.StartRoadwayLocation.RoadName})
-        
+
         Supported shortening functions:
         - {field|shorten} - URL-shorten text (v.gd / is.gd); chain: {link|shorten|truncate:N}
         - {field|truncate:N} - truncate to N characters
@@ -925,10 +922,10 @@ class FeedManager:
         - {field|regex_cond:extract_pattern:check_pattern:then:group} - extract text, check if it matches check_pattern, return "then" if match else extracted text
         - {field|auto} - fill remaining characters up to max_message_length (at most one per format; see docs)
         """
-        
+
         # Get format string from feed config or use default
         format_str = feed.get('output_format') or self.default_output_format
-        
+
         # Extract field values (DB/feed may store NULL; .get('k', default) still returns None if key present)
         title = item.get('title') or 'Untitled'
         body = item.get('description', '') or item.get('body', '')
@@ -949,11 +946,11 @@ class FeedManager:
             lines = body.split('\n')
             body = '\n'.join(' '.join(line.split()) for line in lines)  # Normalize spaces per line
             body = body.strip()
-        
+
         link_original = _coerce_url_string(item.get('link', ''))
         published = item.get('published')
         date_str = self._format_timestamp(published)
-        
+
         # Choose emoji based on feed type or content
         emoji = "📢"
         feed_name = (feed.get('feed_name') or '').lower()
@@ -963,7 +960,7 @@ class FeedManager:
             emoji = "⚠️"
         elif 'info' in feed_name or 'news' in feed_name:
             emoji = "ℹ️"
-        
+
         # Build replacement dictionary (link is always long URL; shortening is per-placeholder or global)
         replacements = {
             'title': title,
@@ -972,29 +969,29 @@ class FeedManager:
             'link': link_original,
             'emoji': emoji
         }
-        
+
         # Get raw API data if available
         raw_data = item.get('raw', {})
-        
+
         # Process format string with placeholders and functions
         # Pattern: {field|function} or {field} or {raw.field.path}
         def replace_placeholder(match):
-            full_match = match.group(0)
+            match.group(0)
             content = match.group(1)  # Content inside {}
-            
+
             if '|' in content:
                 field_name, function = content.split('|', 1)
                 field_name = field_name.strip()
                 function = function.strip()
                 if function == 'auto':
                     return ''
-                
+
                 # Check if it's a raw field access
                 if field_name.startswith('raw.'):
                     value = str(self._get_nested_value(raw_data, field_name[4:], ''))
                 else:
                     value = replacements.get(field_name, '')
-                
+
                 # Link field: start from long URL; global shorten applies to {link|...} except explicit |shorten|
                 if field_name == 'link':
                     value = link_original
@@ -1007,11 +1004,11 @@ class FeedManager:
                         )
                         if s:
                             value = s
-                
+
                 return self._apply_shortening(value, function)
             else:
                 field_name = content.strip()
-                
+
                 # Check if it's a raw field access
                 if field_name.startswith('raw.'):
                     value = self._get_nested_value(raw_data, field_name[4:], '')
@@ -1035,7 +1032,7 @@ class FeedManager:
                     return s if s else link_original
                 else:
                     return replacements.get(field_name, '')
-        
+
         auto_slots = self._feed_format_auto_slots(format_str)
         if len(auto_slots) > 1:
             self.logger.warning(
@@ -1058,7 +1055,7 @@ class FeedManager:
             message = prefix_r + auto_text + suffix_r
         else:
             message = re.sub(r"\{([^}]+)\}", replace_placeholder, format_str)
-        
+
         # Final truncation if message is too long
         if len(message) > self.max_message_length:
             # Try to preserve structure by truncating at newline if possible
@@ -1075,16 +1072,16 @@ class FeedManager:
                     message = message[:self.max_message_length - 3] + "..."
             else:
                 message = message[:self.max_message_length - 3] + "..."
-        
+
         return message
-    
-    def _queue_feed_message(self, feed: Dict[str, Any], item: Dict[str, Any], message: str):
+
+    def _queue_feed_message(self, feed: dict[str, Any], item: dict[str, Any], message: str):
         """Queue a feed message for later sending"""
         try:
             with self.bot.db_manager.connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    INSERT INTO feed_message_queue 
+                    INSERT INTO feed_message_queue
                     (feed_id, channel_name, message, item_id, item_title, priority)
                     VALUES (?, ?, ?, ?, ?, 0)
                 ''', (
@@ -1099,8 +1096,8 @@ class FeedManager:
         except Exception as e:
             self.logger.error(f"Error queuing feed message: {e}")
             self._record_feed_error(feed['id'], 'queue', str(e))
-    
-    def _should_send_item(self, feed: Dict[str, Any], item: Dict[str, Any]) -> bool:
+
+    def _should_send_item(self, feed: dict[str, Any], item: dict[str, Any]) -> bool:
         """Check if an item should be sent based on filter configuration.
 
         See modules/feed_filter_eval.py and docs/FEEDS.md for operators.
@@ -1113,8 +1110,8 @@ class FeedManager:
             feed.get('filter_config'),
             log_warning=_warn,
         )
-    
-    async def _send_feed_item(self, feed: Dict[str, Any], item: Dict[str, Any]):
+
+    async def _send_feed_item(self, feed: dict[str, Any], item: dict[str, Any]):
         """Queue a feed item message instead of sending immediately"""
         try:
             message = self.format_message(item, feed)
@@ -1123,7 +1120,7 @@ class FeedManager:
         except Exception as e:
             self.logger.error(f"Error processing feed item: {e}")
             self._record_feed_error(feed['id'], 'other', str(e))
-    
+
     async def _wait_for_rate_limit(self, domain: str):
         """Wait if needed to respect rate limits"""
         if domain in self._domain_last_request:
@@ -1132,10 +1129,10 @@ class FeedManager:
             if elapsed < self.rate_limit_seconds:
                 wait_time = self.rate_limit_seconds - elapsed
                 await asyncio.sleep(wait_time)
-        
+
         self._domain_last_request[domain] = time.time()
-    
-    def _get_enabled_feeds(self) -> List[Dict[str, Any]]:
+
+    def _get_enabled_feeds(self) -> list[dict[str, Any]]:
         """Get all enabled feed subscriptions from database"""
         try:
             with self.bot.db_manager.connection() as conn:
@@ -1151,7 +1148,7 @@ class FeedManager:
         except Exception as e:
             self.logger.error(f"Error getting enabled feeds: {e}")
             return []
-    
+
     def _update_feed_last_check(self, feed_id: int):
         """Update the last check time for a feed"""
         try:
@@ -1160,7 +1157,7 @@ class FeedManager:
             # Store in ISO format with timezone for JavaScript compatibility
             now = datetime.now(timezone.utc)
             now_str = now.isoformat()  # ISO format: 2025-12-05T12:34:56.789+00:00
-            
+
             with self.bot.db_manager.connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
@@ -1173,7 +1170,7 @@ class FeedManager:
                 self.logger.debug(f"Updated last_check_time for feed {feed_id} to {now_str}")
         except Exception as e:
             self.logger.error(f"Error updating feed last check: {e}")
-    
+
     def _update_feed_last_item_id(self, feed_id: int, item_id: str):
         """Update the last processed item ID for a feed"""
         try:
@@ -1188,7 +1185,7 @@ class FeedManager:
                 conn.commit()
         except Exception as e:
             self.logger.error(f"Error updating feed last item ID: {e}")
-    
+
     def _record_feed_activity(self, feed_id: int, item_id: str, item_title: str):
         """Record that a feed item was processed"""
         try:
@@ -1201,7 +1198,7 @@ class FeedManager:
                 conn.commit()
         except Exception as e:
             self.logger.error(f"Error recording feed activity: {e}")
-    
+
     def _record_feed_error(self, feed_id: int, error_type: str, error_message: str):
         """Record a feed error"""
         try:
@@ -1214,7 +1211,7 @@ class FeedManager:
                 conn.commit()
         except Exception as e:
             self.logger.error(f"Error recording feed error: {e}")
-    
+
     async def process_message_queue(self):
         """Process queued feed messages and send them at configured intervals"""
         if self._process_queue_lock is None:
@@ -1240,13 +1237,13 @@ class FeedManager:
                     LIMIT 100
                 ''')
                 messages = cursor.fetchall()
-            
+
             if not messages:
                 return
-            
+
             # Group messages by feed to respect per-feed send intervals
-            feed_last_send: Dict[int, float] = {}
-            
+            feed_last_send: dict[int, float] = {}
+
             for msg in messages:
                 feed_id = msg['feed_id']
                 channel_name = msg['channel_name']
@@ -1254,21 +1251,21 @@ class FeedManager:
                 queue_id = msg['id']
                 item_id = msg['item_id']
                 item_title = msg['item_title']
-                
+
                 # Get send interval for this feed (default if not set)
                 send_interval = msg['message_send_interval_seconds'] or self.default_send_interval
-                
+
                 # Check if we need to wait before sending this feed's message
                 if feed_id in feed_last_send:
                     elapsed = time.time() - feed_last_send[feed_id]
                     if elapsed < send_interval:
                         wait_time = send_interval - elapsed
                         await asyncio.sleep(wait_time)
-                
+
                 # Send the message
                 try:
                     success = await self.bot.command_manager.send_channel_message(channel_name, message_text)
-                    
+
                     if success:
                         # Mark as sent
                         with self.bot.db_manager.connection() as conn:
@@ -1279,7 +1276,7 @@ class FeedManager:
                                 WHERE id = ?
                             ''', (queue_id,))
                             conn.commit()
-                        
+
                         # Record activity
                         self._record_feed_activity(feed_id, item_id, item_title)
                         self.logger.debug(f"Sent queued feed message to {channel_name}: {item_title[:50]}")
@@ -1288,12 +1285,12 @@ class FeedManager:
                         self.logger.warning(f"Failed to send queued feed message to channel {channel_name}")
                         self._record_feed_error(feed_id, 'channel', f"Failed to send to channel {channel_name}")
                         # Don't mark as sent, will retry later
-                
+
                 except Exception as e:
                     self.logger.error(f"Error sending queued feed message: {e}")
                     self._record_feed_error(feed_id, 'other', str(e))
                     # Don't mark as sent, will retry later
-        
+
         except Exception as e:
             db_path = getattr(self, 'db_path', 'unknown')
             db_path_str = str(db_path) if db_path != 'unknown' else 'unknown'
