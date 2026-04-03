@@ -44,7 +44,7 @@ RUN useradd -m -u 1000 -G dialout,tty meshcore && \
     mkdir -p /app /data/config /data/databases /data/logs /data/backups && \
     chown -R meshcore:meshcore /app /data
 
-COPY --from=builder /root/.local /home/meshcore/.local
+COPY --from=builder --chown=meshcore:meshcore /root/.local /home/meshcore/.local
 
 WORKDIR /app
 
@@ -58,12 +58,12 @@ ENV PATH=/home/meshcore/.local/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-USER meshcore
-
 # OCI image labels for supply-chain transparency.
 LABEL org.opencontainers.image.title="meshcore-bot" \
       org.opencontainers.image.description="MeshCore Bot for mesh radio networks" \
       org.opencontainers.image.source="https://github.com/agessaman/meshcore-bot"
+
+USER meshcore
 
 # Health check: verify PID 1 (the bot process) is still alive.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
