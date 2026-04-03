@@ -15,6 +15,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-$TARGETARCH \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-$TARGETARCH \
     apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    libffi-dev \
+    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
@@ -37,6 +39,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-$TARGETARCH \
     apt-get update && apt-get install -y --no-install-recommends \
     udev \
     libbluetooth3 \
+    libffi8 \
     && rm -rf /var/lib/apt/lists/*
 
 # Non-root user with dialout group for serial port access.
