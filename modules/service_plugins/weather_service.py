@@ -11,7 +11,7 @@ import re
 import time
 import xml.dom.minidom
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Optional
 
 import ephem
 import requests
@@ -29,9 +29,9 @@ except ImportError:
 
 import contextlib
 
-from .base_service import BaseServicePlugin
 from ..url_shortener import shorten_url
 from ..utils import format_temperature_high_low
+from .base_service import BaseServicePlugin
 
 
 class WeatherService(BaseServicePlugin):

@@ -88,6 +88,7 @@ from modules.url_shortener import _coerce_url_string
 from modules.utils import calculate_distance, resolve_path
 from modules.web_viewer.config_panels import CONFIG_PANELS, PANEL_CATEGORIES
 
+
 class BotDataViewer:
     """Complete web interface using Flask-SocketIO 5.x best practices"""
 

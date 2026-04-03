@@ -9,12 +9,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
+mqtt: Any = None
 try:
     import paho.mqtt.client as mqtt
 except ImportError:
-    mqtt = None
+    pass
 
 from ..clients.mqtt_weather import MqttWeatherCache, iter_mqtt_weather_topics
 from .base_service import BaseServicePlugin
@@ -31,10 +32,10 @@ class MqttWeatherService(BaseServicePlugin):
         self.logger = logging.getLogger("MqttWeatherService")
         self.logger.setLevel(bot.logger.level)
         self._client: Any = None
-        self._cache: Optional[MqttWeatherCache] = None
+        self._cache: MqttWeatherCache | None = None
         self._topics: list[str] = []
 
-    def _parse_broker_config(self) -> Optional[dict[str, Any]]:
+    def _parse_broker_config(self) -> dict[str, Any] | None:
         cfg = self.bot.config
         sec = "MqttWeather"
         if not cfg.has_section(sec):

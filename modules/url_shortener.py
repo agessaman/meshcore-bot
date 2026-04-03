@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import quote
 
 import requests
@@ -71,7 +71,7 @@ def _host_allows_key_in_query(host: str) -> bool:
     return h not in _VGD_COMPAT_HOSTS
 
 
-def _parse_simple_response(body: str) -> Optional[str]:
+def _parse_simple_response(body: str) -> str | None:
     text = (body or "").strip()
     if not text:
         return None
@@ -109,8 +109,8 @@ def shorten_url_sync(
     url: Any,
     *,
     config: Any,
-    session: Optional[requests.Session] = None,
-    logger: Optional[logging.Logger] = None,
+    session: requests.Session | None = None,
+    logger: logging.Logger | None = None,
     timeout: float = 5.0,
 ) -> str:
     """Shorten a URL using [External_Data] short_url_website (default v.gd).
@@ -161,8 +161,8 @@ async def shorten_url(
     url: str,
     *,
     config: Any,
-    session: Optional[requests.Session] = None,
-    logger: Optional[logging.Logger] = None,
+    session: requests.Session | None = None,
+    logger: logging.Logger | None = None,
     timeout: float = 5.0,
 ) -> str:
     """Async wrapper: runs shorten_url_sync in the default executor."""

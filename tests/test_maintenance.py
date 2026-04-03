@@ -5,13 +5,10 @@ from __future__ import annotations
 import datetime
 import json
 import sqlite3
-from configparser import ConfigParser
-import tempfile
 import time
+from configparser import ConfigParser
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
-
-import pytest
 
 from modules.maintenance import (
     MaintenanceRunner,
@@ -20,7 +17,6 @@ from modules.maintenance import (
     _row_n,
 )
 from modules.scheduler import MessageScheduler
-
 
 # ---------------------------------------------------------------------------
 # _iso_week_key_from_ran_at

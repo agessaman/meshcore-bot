@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable
 
 
 def get_nested_value(data: Any, path: str, default: Any = "") -> Any:
@@ -41,7 +41,7 @@ def get_nested_value(data: Any, path: str, default: Any = "") -> Any:
     return value if value is not None else default
 
 
-def parse_microsoft_date(date_str: str) -> Optional[datetime]:
+def parse_microsoft_date(date_str: str) -> datetime | None:
     """Parse Microsoft JSON date format: /Date(timestamp-offset)/"""
     if not date_str or not isinstance(date_str, str):
         return None
@@ -78,7 +78,7 @@ def _normalize_to_utc(dt: datetime) -> datetime:
     return dt.replace(tzinfo=timezone.utc)
 
 
-def parse_item_field_as_datetime(item: Dict[str, Any], field_path: str) -> Optional[datetime]:
+def parse_item_field_as_datetime(item: dict[str, Any], field_path: str) -> datetime | None:
     """
     Resolve field_path on item and parse to datetime (aligned with FeedManager._sort_items get_sort_value).
     """
@@ -126,7 +126,7 @@ def parse_item_field_as_datetime(item: Dict[str, Any], field_path: str) -> Optio
     return None
 
 
-def _get_field_value_for_string_ops(item: Dict[str, Any], field_path: str) -> Any:
+def _get_field_value_for_string_ops(item: dict[str, Any], field_path: str) -> Any:
     raw_data = item.get("raw", {})
     field_value = get_nested_value(raw_data, field_path, "")
     if not field_value and field_path.startswith("raw."):
@@ -137,11 +137,11 @@ def _get_field_value_for_string_ops(item: Dict[str, Any], field_path: str) -> An
 
 
 def evaluate_filter_condition(
-    item: Dict[str, Any],
-    condition: Dict[str, Any],
+    item: dict[str, Any],
+    condition: dict[str, Any],
     *,
-    log_warning: Optional[Callable[[str], None]] = None,
-) -> Optional[bool]:
+    log_warning: Callable[[str], None] | None = None,
+) -> bool | None:
     """
     Evaluate a single filter condition. Returns None if the condition should be skipped
     (invalid / missing field path for operators that require it).
@@ -228,10 +228,10 @@ def evaluate_filter_condition(
 
 
 def item_passes_filter_config(
-    item: Dict[str, Any],
-    filter_config: Union[str, Dict[str, Any], None],
+    item: dict[str, Any],
+    filter_config: str | dict[str, Any] | None,
     *,
-    log_warning: Optional[Callable[[str], None]] = None,
+    log_warning: Callable[[str], None] | None = None,
 ) -> bool:
     """
     Return True if the item passes all filter conditions (AND) or any (OR), matching FeedManager behavior.

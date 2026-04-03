@@ -10,7 +10,7 @@ import asyncio
 import copy
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Optional
 
 from meshcore import EventType
 
@@ -33,10 +33,10 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
         section = self.config_section
 
         # Channels
-        self.channels: List[str] = self._load_channels(section)
+        self.channels: list[str] = self._load_channels(section)
 
         # Prefix match lengths to notify on: 1/2/3 bytes (hex chars = bytes*2)
-        self.notify_on_prefix_bytes: List[int] = self._load_notify_on_prefix_bytes(section)
+        self.notify_on_prefix_bytes: list[int] = self._load_notify_on_prefix_bytes(section)
 
         # Optional windowing
         self.heard_window_days = self.bot.config.getint(section, "heard_window_days", fallback=30)
@@ -62,8 +62,8 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
         self.cooldown_minutes_per_prefix = self.bot.config.getint(
             section, "cooldown_minutes_per_prefix", fallback=60
         )
-        self._notified: Dict[_NotifyKey, float] = {}  # key -> last_sent_epoch_seconds
-        self._prefix_cooldown: Dict[Tuple[int, str], float] = {}  # (bytes, prefix_hex_lower) -> last_sent_epoch_seconds
+        self._notified: dict[_NotifyKey, float] = {}  # key -> last_sent_epoch_seconds
+        self._prefix_cooldown: dict[tuple[int, str], float] = {}  # (bytes, prefix_hex_lower) -> last_sent_epoch_seconds
         self._dedupe_prune_max_age_seconds = max(
             3600.0,
             float(self.cooldown_minutes_per_prefix) * 120.0,
@@ -122,7 +122,7 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
         except Exception as e:
             self.logger.error("Error scheduling RepeaterPrefixCollision handler: %s", e, exc_info=True)
 
-    async def _handle_new_contact_payload(self, payload: Dict[str, Any]) -> None:
+    async def _handle_new_contact_payload(self, payload: dict[str, Any]) -> None:
         """
         Process NEW_CONTACT after MessageHandler has persisted the row.
 
@@ -194,7 +194,7 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
         except Exception as e:
             self.logger.error("Error in RepeaterPrefixCollision NEW_CONTACT handler: %s", e, exc_info=True)
 
-    async def _wait_for_contact_row(self, public_key: str) -> Optional[Dict[str, Any]]:
+    async def _wait_for_contact_row(self, public_key: str) -> Optional[dict[str, Any]]:
         deadline = time.time() + max(0.0, float(self.post_process_timeout_seconds))
         poll = max(0.05, float(self.post_process_poll_interval_seconds))
         while time.time() <= deadline:
@@ -204,7 +204,7 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
             await asyncio.sleep(poll)
         return None
 
-    def _db_get_contact_row(self, public_key: str) -> Optional[Dict[str, Any]]:
+    def _db_get_contact_row(self, public_key: str) -> Optional[dict[str, Any]]:
         if not getattr(self.bot, "db_manager", None):
             return None
         rows = self.bot.db_manager.execute_query(
@@ -254,12 +254,12 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
         cutoff = now - self._dedupe_prune_max_age_seconds
         if self._notified:
             stale = [k for k, ts in self._notified.items() if ts < cutoff]
-            for k in stale:
-                del self._notified[k]
+            for notify_key in stale:
+                del self._notified[notify_key]
         if self._prefix_cooldown:
             stale_p = [k for k, ts in self._prefix_cooldown.items() if ts < cutoff]
-            for k in stale_p:
-                del self._prefix_cooldown[k]
+            for prefix_key in stale_p:
+                del self._prefix_cooldown[prefix_key]
 
     async def _maybe_notify_for_prefix_bytes(
         self,
@@ -313,7 +313,7 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
         if not getattr(self.bot, "db_manager", None):
             return False
         where_window = ""
-        params: List[Any] = [public_key, prefix_hex_chars, prefix, prefix_hex_chars]
+        params: list[Any] = [public_key, prefix_hex_chars, prefix, prefix_hex_chars]
         if self.heard_window_days and self.heard_window_days > 0:
             where_window = (
                 f" AND last_heard >= datetime('now', 'localtime', '-{int(self.heard_window_days)} days')"
@@ -390,7 +390,7 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
                 ch, text, skip_user_rate_limit=True
             )
 
-    def _format_location(self, row: Dict[str, Any]) -> str:
+    def _format_location(self, row: dict[str, Any]) -> str:
         city = (row.get("city") or "").strip()
         state = (row.get("state") or "").strip()
         country = (row.get("country") or "").strip()
@@ -422,7 +422,7 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
         cooldown_s = max(0, int(self.cooldown_minutes_per_prefix)) * 60
         return (time.time() - ts) < cooldown_s if cooldown_s else False
 
-    def _load_channels(self, section: str) -> List[str]:
+    def _load_channels(self, section: str) -> list[str]:
         raw = ""
         if self.bot.config.has_option(section, "channels"):
             raw = (self.bot.config.get(section, "channels") or "").strip()
@@ -433,9 +433,9 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
             channels = ["#general"]
         return channels
 
-    def _load_notify_on_prefix_bytes(self, section: str) -> List[int]:
+    def _load_notify_on_prefix_bytes(self, section: str) -> list[int]:
         raw = (self.bot.config.get(section, "notify_on_prefix_bytes", fallback="1") or "").strip()
-        vals: Set[int] = set()
+        vals: set[int] = set()
         for part in raw.split(","):
             p = part.strip()
             if not p:

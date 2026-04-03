@@ -4,8 +4,8 @@ Channel pause command
 DM-only admin: pause or resume bot responses on public channels (in-memory only).
 """
 
-from .base_command import BaseCommand
 from ..models import MeshMessage
+from .base_command import BaseCommand
 
 
 class ChannelPauseCommand(BaseCommand):
@@ -21,10 +21,10 @@ class ChannelPauseCommand(BaseCommand):
     def __init__(self, bot):
         super().__init__(bot)
 
-    def can_execute(self, message: MeshMessage) -> bool:
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         if not self.requires_admin_access():
             return False
-        return super().can_execute(message)
+        return super().can_execute(message, skip_channel_check=skip_channel_check)
 
     def requires_admin_access(self) -> bool:
         return True

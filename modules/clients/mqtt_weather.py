@@ -14,7 +14,7 @@ import threading
 import time
 from configparser import ConfigParser
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from ..security_utils import sanitize_input
 
@@ -45,7 +45,7 @@ def validate_mqtt_weather_topic(topic: str) -> bool:
     return True
 
 
-def get_mqtt_weather_topic(config: ConfigParser, location: Optional[str]) -> Optional[str]:
+def get_mqtt_weather_topic(config: ConfigParser, location: str | None) -> str | None:
     """Resolve MQTT topic for a logical source name (mirrors WXSIM URL lookup).
 
     Args:
@@ -191,7 +191,7 @@ def _safe_device_str(value: Any) -> str:
     return sanitize_input(s, max_length=_MAX_DEVICE_STR_LEN, strip_controls=True)
 
 
-def _coerce_float(value: Any) -> Optional[float]:
+def _coerce_float(value: Any) -> float | None:
     if value is None:
         return None
     if isinstance(value, bool):
@@ -212,7 +212,7 @@ def _coerce_float(value: Any) -> Optional[float]:
     return None
 
 
-def _validate_json_template(template: str) -> Optional[str]:
+def _validate_json_template(template: str) -> str | None:
     """Return error message if template uses unknown placeholders."""
     for m in re.finditer(r"\{([^}]+)\}", template):
         name = m.group(1).strip()
@@ -224,7 +224,7 @@ def _validate_json_template(template: str) -> Optional[str]:
 def format_mqtt_weather_payload(
     payload: bytes,
     fmt: MqttWeatherFormatConfig,
-) -> tuple[Optional[str], Optional[str]]:
+) -> tuple[str | None, str | None]:
     """Turn raw MQTT payload bytes into display text.
 
     Returns:
@@ -275,7 +275,7 @@ def format_mqtt_weather_payload(
         if hum < 0 or hum > 100:
             hum = None
 
-    temp_c: Optional[float] = None
+    temp_c: float | None = None
     if temp_f is not None:
         temp_c = (temp_f - 32.0) * 5.0 / 9.0
 
@@ -309,7 +309,7 @@ class MqttWeatherCache:
         with self._lock:
             self._by_topic[topic] = (payload, time.monotonic())
 
-    def get(self, topic: str) -> tuple[Optional[bytes], Optional[float]]:
+    def get(self, topic: str) -> tuple[bytes | None, float | None]:
         with self._lock:
             row = self._by_topic.get(topic)
             if not row:
@@ -323,9 +323,9 @@ class MqttWeatherCache:
 
 def mqtt_weather_display_for_topic(
     topic: str,
-    cache: Optional[MqttWeatherCache],
+    cache: MqttWeatherCache | None,
     fmt: MqttWeatherFormatConfig,
-) -> tuple[Optional[str], Optional[str]]:
+) -> tuple[str | None, str | None]:
     """Read cache for topic, check staleness, return formatted line or error key."""
     if cache is None:
         return None, "no_cache"

@@ -1,7 +1,7 @@
 import asyncio
 import configparser
 from datetime import date, timedelta
-from unittest.mock import AsyncMock, Mock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 

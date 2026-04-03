@@ -2,7 +2,6 @@
 """Unit tests for format_temperature_high_low ([Weather] templates)."""
 
 import configparser
-from unittest.mock import Mock
 
 import pytest
 

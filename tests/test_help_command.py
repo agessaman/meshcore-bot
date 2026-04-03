@@ -471,7 +471,7 @@ class TestGetAvailableCommandsList:
         @contextmanager
         def _bad_conn():
             raise Exception("DB down")
-            yield  # noqa: unreachable
+            yield
 
         bad_db.connection = _bad_conn
         bot.db_manager = bad_db
