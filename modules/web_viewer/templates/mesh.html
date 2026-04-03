@@ -392,7 +392,7 @@
     let highlightedPath = null; // Currently highlighted path data
     let pathHighlightTimeout = null; // Debounce timer for path resolution
 
-    const PREFIX_HEX_CHARS = {{ prefix_hex_chars|default(2) }};  
+    const PREFIX_HEX_CHARS = parseInt('{{ prefix_hex_chars|default(2) }}', 10);
     // Graph prefix length from edges API (2, 4, or 6 hex chars); used for node prefix display and node fetch.
     let graphPrefixHexChars = PREFIX_HEX_CHARS;
     // Format prefix for display: add byte count when multi-byte (2 or 3 bytes)

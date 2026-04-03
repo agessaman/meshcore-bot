@@ -201,20 +201,20 @@
                             </h2>
                             <div id="apiConfigCollapse" class="accordion-collapse collapse" data-bs-parent="#advancedOptions">
                                 <div class="accordion-body">
-                                    <textarea class="form-control font-monospace" id="apiConfig" name="api_config" rows="8" placeholder='{
-  "method": "GET",
-  "headers": {},
-  "params": {
-    "AccessCode": "YOUR_ACCESS_CODE"
+                                    <textarea class="form-control font-monospace" id="apiConfig" name="api_config" rows="8" placeholder="{
+  &quot;method&quot;: &quot;GET&quot;,
+  &quot;headers&quot;: {},
+  &quot;params&quot;: {
+    &quot;AccessCode&quot;: &quot;YOUR_ACCESS_CODE&quot;
   },
-  "response_parser": {
-    "items_path": "",
-    "id_field": "AlertID",
-    "title_field": "HeadlineDescription",
-    "description_field": "ExtendedDescription",
-    "timestamp_field": "LastUpdatedTime"
+  &quot;response_parser&quot;: {
+    &quot;items_path&quot;: &quot;&quot;,
+    &quot;id_field&quot;: &quot;AlertID&quot;,
+    &quot;title_field&quot;: &quot;HeadlineDescription&quot;,
+    &quot;description_field&quot;: &quot;ExtendedDescription&quot;,
+    &quot;timestamp_field&quot;: &quot;LastUpdatedTime&quot;
   }
-}'></textarea>
+}"></textarea>
                                     <small class="form-text text-muted mt-2 d-block">
                                         Configure API request and parsing. Use <code>params</code> for query parameters (e.g., AccessCode for WSDOT) or <code>headers</code> for HTTP headers.
                                     </small>
@@ -230,21 +230,21 @@
                             </h2>
                             <div id="filterConfigCollapse" class="accordion-collapse collapse" data-bs-parent="#advancedOptions">
                                 <div class="accordion-body">
-                                    <textarea class="form-control font-monospace" id="filterConfig" name="filter_config" rows="8" placeholder='{
-  "conditions": [
+                                    <textarea class="form-control font-monospace" id="filterConfig" name="filter_config" rows="8" placeholder="{
+  &quot;conditions&quot;: [
     {
-      "field": "raw.Priority",
-      "operator": "in",
-      "values": ["highest", "high"]
+      &quot;field&quot;: &quot;raw.Priority&quot;,
+      &quot;operator&quot;: &quot;in&quot;,
+      &quot;values&quot;: [&quot;highest&quot;, &quot;high&quot;]
     },
     {
-      "field": "raw.EventStatus",
-      "operator": "equals",
-      "value": "open"
+      &quot;field&quot;: &quot;raw.EventStatus&quot;,
+      &quot;operator&quot;: &quot;equals&quot;,
+      &quot;value&quot;: &quot;open&quot;
     }
   ],
-  "logic": "AND"
-}'></textarea>
+  &quot;logic&quot;: &quot;AND&quot;
+}"></textarea>
                                     <small class="form-text text-muted mt-2 d-block">
                                         Only send items that match these conditions. Leave empty to send all items.<br>
                                         <strong>Operators:</strong> equals, not_equals, in, not_in, matches (regex), not_matches, contains, not_contains, within_days, within_weeks (see docs/FEEDS.md)<br>
@@ -263,10 +263,10 @@
                             </h2>
                             <div id="sortConfigCollapse" class="accordion-collapse collapse" data-bs-parent="#advancedOptions">
                                 <div class="accordion-body">
-                                    <textarea class="form-control font-monospace" id="sortConfig" name="sort_config" rows="4" placeholder='{
-  "field": "raw.LastUpdatedTime",
-  "order": "desc"
-}'></textarea>
+                                    <textarea class="form-control font-monospace" id="sortConfig" name="sort_config" rows="4" placeholder="{
+  &quot;field&quot;: &quot;raw.LastUpdatedTime&quot;,
+  &quot;order&quot;: &quot;desc&quot;
+}"></textarea>
                                     <small class="form-text text-muted mt-2 d-block">
                                         Sort items before processing. Leave empty to use default order (oldest first).<br>
                                         <strong>Field:</strong> Field path to sort by (e.g., raw.LastUpdatedTime, raw.Priority, published)<br>
