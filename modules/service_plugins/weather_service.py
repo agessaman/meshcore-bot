@@ -15,7 +15,8 @@ from typing import Any, Optional
 
 import ephem
 import requests
-import schedule
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -30,7 +31,7 @@ except ImportError:
 import contextlib
 
 from ..url_shortener import shorten_url
-from ..utils import format_temperature_high_low
+from ..utils import format_temperature_high_low, get_config_timezone
 from .base_service import BaseServicePlugin
 
 
@@ -98,7 +99,7 @@ class WeatherService(BaseServicePlugin):
         self._alerts_task: Optional[asyncio.Task] = None
         self._forecast_task: Optional[asyncio.Task] = None
         self._lightning_task: Optional[asyncio.Task] = None
-        self._forecast_job = None  # Store schedule job for cleanup
+        self._forecast_scheduler: Optional[BackgroundScheduler] = None
         self._running = False
 
         # Track recent lightning strikes to avoid duplicates
@@ -209,7 +210,7 @@ class WeatherService(BaseServicePlugin):
             # For sunrise/sunset, use a background task that reschedules daily
             self._forecast_task = asyncio.create_task(self._sunrise_sunset_forecast_loop())
         else:
-            # For fixed times, use schedule library
+            # For fixed times, use APScheduler (BackgroundScheduler + daily cron)
             self._setup_daily_forecast()
 
         # Start background tasks
@@ -263,19 +264,17 @@ class WeatherService(BaseServicePlugin):
             except Exception:
                 pass
 
-        # Clear scheduled forecast
-        # Note: schedule library doesn't have a direct way to cancel a specific job
-        # The job will simply not execute if _running is False
-        # If needed, we could use schedule.clear() but that would clear ALL scheduled jobs
-        pass
+        if self._forecast_scheduler is not None:
+            try:
+                self._forecast_scheduler.shutdown(wait=False)
+            except Exception as e:
+                self.logger.debug("Error shutting down weather forecast scheduler: %s", e)
+            self._forecast_scheduler = None
 
         self.logger.info("Weather service stopped")
 
     def _setup_daily_forecast(self) -> None:
-        """Setup daily weather forecast schedule for fixed times.
-
-        Configures the schedule library to trigger _send_daily_forecast at the configured time.
-        """
+        """Setup daily weather forecast schedule for fixed times (APScheduler cron, bot timezone)."""
         try:
             # Parse time (format: "HH:MM" or "H:MM")
             if ':' in self.weather_alarm_time:
@@ -285,9 +284,28 @@ class WeatherService(BaseServicePlugin):
                 hour = int(self.weather_alarm_time[:2])
                 minute = int(self.weather_alarm_time[2:])
 
-            schedule_time = f"{hour:02d}:{minute:02d}"
-            self._forecast_job = schedule.every().day.at(schedule_time).do(self._send_daily_forecast)
-            self.logger.info(f"Scheduled daily weather forecast at {schedule_time}")
+            if self._forecast_scheduler is not None:
+                try:
+                    self._forecast_scheduler.shutdown(wait=False)
+                except Exception as e:
+                    self.logger.debug("Error shutting down prior weather forecast scheduler: %s", e)
+                self._forecast_scheduler = None
+
+            tz, _ = get_config_timezone(self.bot.config, self.logger)
+            self._forecast_scheduler = BackgroundScheduler(timezone=tz)
+            self._forecast_scheduler.add_job(
+                self._send_daily_forecast,
+                CronTrigger(hour=hour, minute=minute),
+                id="weather_daily_forecast",
+                replace_existing=True,
+            )
+            self._forecast_scheduler.start()
+            self.logger.info(
+                "Scheduled daily weather forecast at %02d:%02d (%s)",
+                hour,
+                minute,
+                getattr(tz, "zone", tz),
+            )
         except Exception as e:
             self.logger.error(f"Error setting up daily forecast schedule: {e}")
 
@@ -344,9 +362,9 @@ class WeatherService(BaseServicePlugin):
                 await asyncio.sleep(3600)  # Wait 1 hour on error
 
     def _send_daily_forecast(self) -> None:
-        """Send daily weather forecast (called by schedule library).
+        """Send daily weather forecast (called by APScheduler background thread).
 
-        Wrapper to run the async forecast sender from the synchronous schedule job.
+        Wrapper to run the async forecast sender from the synchronous job callback.
         """
         if not self._running:
             return
