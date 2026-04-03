@@ -258,7 +258,8 @@ class DatabaseInfoManager {
                 const response = await fetch('/api/optimize-database', {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
                     }
                 });
                 

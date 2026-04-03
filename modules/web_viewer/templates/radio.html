@@ -6,9 +6,18 @@
 <div class="container-fluid">
     <div class="row">
         <div class="col-12">
-            <h1 class="mb-4">
-                <i class="fas fa-broadcast-tower"></i> Radio Settings
-            </h1>
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="mb-0">
+                    <i class="fas fa-broadcast-tower"></i> Radio Settings
+                </h1>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-secondary" id="connectToggleBtn" disabled>
+                        <span class="spinner-border spinner-border-sm me-1"
+                              id="connectBtnSpinner" style="display:none" role="status"></span>
+                        <span id="connectBtnText">Loading...</span>
+                    </button>
+                </div>
+            </div>
             
             <!-- Statistics Cards -->
             <div class="row mb-4">
@@ -147,17 +156,20 @@ class RadioManager {
     constructor() {
         this.channels = [];
         this.maxChannels = 40; // Default, will be updated from API
+        this.radioConnected = null;
         this.initialize();
     }
-    
+
     async initialize() {
         await this.loadChannels();
         await this.loadStatistics();
+        await this.loadRadioStatus();
         this.setupEventHandlers();
-        
+
         // Auto-refresh every 30 seconds
         setInterval(() => this.loadChannels(), 30000);
         setInterval(() => this.loadStatistics(), 60000);
+        setInterval(() => this.loadRadioStatus(), 15000);
     }
     
     async loadChannels() {
@@ -238,17 +250,7 @@ class RadioManager {
     }
     
     getLowestAvailableChannelIndex() {
-        const usedIndices = new Set(this.channels.map(c => c.channel_idx || c.index));
-        
-        // Find the lowest available index (0 to maxChannels-1)
-        for (let i = 0; i < this.maxChannels; i++) {
-            if (!usedIndices.has(i)) {
-                return i;
-            }
-        }
-        
-        // All channels are used
-        return null;
+        return MeshCoreChannelOps.getLowestAvailableChannelIndex(this.channels, this.maxChannels);
     }
     
     updateChannelIndexDisplay() {
@@ -331,6 +333,117 @@ class RadioManager {
         if (saveBtn) {
             saveBtn.addEventListener('click', () => this.saveChannel());
         }
+
+        // Radio control buttons
+        const connectToggleBtn = document.getElementById('connectToggleBtn');
+        if (connectToggleBtn) {
+            connectToggleBtn.addEventListener('click', () => this.handleConnectToggle());
+        }
+    }
+
+    async loadRadioStatus() {
+        try {
+            const response = await fetch('/api/radio/status');
+            const data = await response.json();
+            this.radioConnected = data.connected;
+            this.updateConnectButton();
+        } catch (error) {
+            console.error('Error loading radio status:', error);
+        }
+    }
+
+    updateConnectButton() {
+        const btn = document.getElementById('connectToggleBtn');
+        const txt = document.getElementById('connectBtnText');
+        if (!btn || !txt) return;
+
+        btn.disabled = false;
+        if (this.radioConnected === null) {
+            btn.className = 'btn btn-secondary';
+            txt.textContent = 'Status Unknown';
+        } else if (this.radioConnected) {
+            btn.className = 'btn btn-danger';
+            txt.textContent = 'Disconnect';
+        } else {
+            btn.className = 'btn btn-success';
+            txt.textContent = 'Connect';
+        }
+    }
+
+    async handleConnectToggle() {
+        const action = this.radioConnected ? 'disconnect' : 'connect';
+        const spinner = document.getElementById('connectBtnSpinner');
+        const btn = document.getElementById('connectToggleBtn');
+        const txt = document.getElementById('connectBtnText');
+
+        btn.disabled = true;
+        spinner.style.display = 'inline-block';
+        txt.textContent = action === 'connect' ? 'Connecting...' : 'Disconnecting...';
+
+        try {
+            const response = await fetch('/api/radio/connect', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({ action })
+            });
+            const data = await response.json();
+
+            if (response.ok && data.operation_id) {
+                await this.pollConnectOperation(data.operation_id, action);
+            } else {
+                this.showError(data.error || 'Failed to queue operation');
+                spinner.style.display = 'none';
+                btn.disabled = false;
+                this.updateConnectButton();
+            }
+        } catch (error) {
+            this.showError('Error: ' + error.message);
+            spinner.style.display = 'none';
+            btn.disabled = false;
+            this.updateConnectButton();
+        }
+    }
+
+    async pollConnectOperation(operationId, action, maxWait = 60) {
+        const startTime = Date.now();
+        const spinner = document.getElementById('connectBtnSpinner');
+        const txt = document.getElementById('connectBtnText');
+        const btn = document.getElementById('connectToggleBtn');
+
+        for (let attempts = 0; attempts < maxWait; attempts++) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            txt.textContent = `${action === 'connect' ? 'Connecting' : 'Disconnecting'}... (${elapsed}s)`;
+
+            try {
+                const response = await fetch(`/api/channel-operations/${operationId}`);
+                const result = await response.json();
+
+                if (result.status === 'completed') {
+                    spinner.style.display = 'none';
+                    await this.loadRadioStatus();
+                    this.showSuccess(`Radio ${action}ed successfully`);
+                    return;
+                } else if (result.status === 'failed') {
+                    spinner.style.display = 'none';
+                    btn.disabled = false;
+                    this.updateConnectButton();
+                    this.showError(result.error_message || `Failed to ${action} radio`);
+                    return;
+                }
+            } catch (error) {
+                console.error('Error polling operation:', error);
+            }
+        }
+
+        // Timeout
+        spinner.style.display = 'none';
+        btn.disabled = false;
+        await this.loadRadioStatus();
+        this.showError('Operation timed out — check radio status.');
     }
     
     handleChannelNameChange(channelName) {
@@ -408,21 +521,36 @@ class RadioManager {
         saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Creating...';
         
         try {
-            const response = await fetch('/api/channels', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(data)
-            });
+            const pr = await MeshCoreChannelOps.postChannel(data);
+            const result = pr.result;
             
-            const result = await response.json();
-            
-            if (response.ok) {
+            if (pr.ok) {
                 if (result.pending && result.operation_id) {
-                    // Operation is queued, poll for status
                     saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Processing...';
-                    await this.pollOperationStatus(result.operation_id, saveBtn, originalBtnText);
+                    const pollStatus = await MeshCoreChannelOps.pollChannelOperation(result.operation_id, {
+                        button: saveBtn,
+                        originalButtonText: originalBtnText,
+                        onFailed: (msg) => { this.showError(msg); },
+                        onSlowOperationWarning: () => {
+                            this.showError('Channel operation is taking longer than expected. The dialog will close automatically when complete.');
+                        },
+                        onFinalTimeout: async () => {
+                            this.showError('Channel operation timed out. Please check the channel list to see if it was created.');
+                            await this.loadChannels();
+                            await this.loadStatistics();
+                        }
+                    });
+                    if (pollStatus === 'completed') {
+                        this.showSuccess('Channel created successfully');
+                        bootstrap.Modal.getInstance(document.getElementById('createChannelModal')).hide();
+                        form.reset();
+                        this.handleChannelNameChange('');
+                        await this.loadChannels();
+                        await this.loadStatistics();
+                    }
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = originalBtnText;
                 } else {
-                    // Immediate success
                     this.showSuccess('Channel created successfully');
                     bootstrap.Modal.getInstance(document.getElementById('createChannelModal')).hide();
                     form.reset();
@@ -442,129 +570,6 @@ class RadioManager {
             saveBtn.disabled = false;
             saveBtn.innerHTML = originalBtnText;
         }
-    }
-    
-    async pollOperationStatus(operationId, button, originalButtonText, maxWait = 60) {
-        const startTime = Date.now();
-        const checkInterval = 1000; // Check every second
-        let attempts = 0;
-        const maxAttempts = Math.floor(maxWait * 1000 / checkInterval);
-        
-        while (attempts < maxAttempts) {
-            await new Promise(resolve => setTimeout(resolve, checkInterval));
-            attempts++;
-            
-            try {
-                const response = await fetch(`/api/channel-operations/${operationId}`);
-                const result = await response.json();
-                
-                if (result.status === 'completed') {
-                    this.showSuccess('Channel created successfully');
-                    bootstrap.Modal.getInstance(document.getElementById('createChannelModal')).hide();
-                    document.getElementById('createChannelForm').reset();
-                    this.handleChannelNameChange('');
-                    await this.loadChannels();
-                    await this.loadStatistics();
-                    button.disabled = false;
-                    button.innerHTML = originalButtonText;
-                    return;
-                } else if (result.status === 'failed') {
-                    this.showError(result.error_message || 'Channel operation failed');
-                    button.disabled = false;
-                    button.innerHTML = originalButtonText;
-                    return;
-                }
-                // If still pending, continue polling
-                
-                // Update button text with elapsed time
-                const elapsed = Math.floor((Date.now() - startTime) / 1000);
-                button.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status"></span>Processing... (${elapsed}s)`;
-                
-            } catch (error) {
-                console.error('Error polling operation status:', error);
-                // Continue polling on error
-            }
-        }
-        
-        // Timeout - but continue polling in background and check if it completed
-        // Give it one more check after timeout message
-        await new Promise(resolve => setTimeout(resolve, checkInterval));
-        
-        try {
-            const response = await fetch(`/api/channel-operations/${operationId}`);
-            const result = await response.json();
-            
-            if (result.status === 'completed') {
-                // It completed! Show success and close dialog
-                this.showSuccess('Channel created successfully');
-                bootstrap.Modal.getInstance(document.getElementById('createChannelModal')).hide();
-                document.getElementById('createChannelForm').reset();
-                this.handleChannelNameChange('');
-                await this.loadChannels();
-                await this.loadStatistics();
-                button.disabled = false;
-                button.innerHTML = originalButtonText;
-                return;
-            } else if (result.status === 'failed') {
-                this.showError(result.error_message || 'Channel operation failed');
-                button.disabled = false;
-                button.innerHTML = originalButtonText;
-                return;
-            }
-        } catch (error) {
-            console.error('Error checking final status:', error);
-        }
-        
-        // Still pending after timeout - show info message but keep dialog open
-        // and continue checking in background
-        this.showError('Channel operation is taking longer than expected. The dialog will close automatically when complete.');
-        button.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Still processing...';
-        
-        // Continue polling in background (extend timeout to 120 seconds total)
-        const extendedMaxWait = 120;
-        const extendedMaxAttempts = Math.floor(extendedMaxWait * 1000 / checkInterval);
-        
-        while (attempts < extendedMaxAttempts) {
-            await new Promise(resolve => setTimeout(resolve, checkInterval));
-            attempts++;
-            
-            try {
-                const response = await fetch(`/api/channel-operations/${operationId}`);
-                const result = await response.json();
-                
-                if (result.status === 'completed') {
-                    this.showSuccess('Channel created successfully');
-                    bootstrap.Modal.getInstance(document.getElementById('createChannelModal')).hide();
-                    document.getElementById('createChannelForm').reset();
-                    this.handleChannelNameChange('');
-                    await this.loadChannels();
-                    await this.loadStatistics();
-                    button.disabled = false;
-                    button.innerHTML = originalButtonText;
-                    return;
-                } else if (result.status === 'failed') {
-                    this.showError(result.error_message || 'Channel operation failed');
-                    button.disabled = false;
-                    button.innerHTML = originalButtonText;
-                    return;
-                }
-                
-                // Update button text with elapsed time
-                const elapsed = Math.floor((Date.now() - startTime) / 1000);
-                button.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status"></span>Still processing... (${elapsed}s)`;
-                
-            } catch (error) {
-                console.error('Error polling operation status:', error);
-                // Continue polling on error
-            }
-        }
-        
-        // Final timeout - really give up now
-        this.showError('Channel operation timed out. Please check the channel list to see if it was created.');
-        button.disabled = false;
-        button.innerHTML = originalButtonText;
-        await this.loadChannels();
-        await this.loadStatistics();
     }
     
     async viewChannel(channelIdx) {
@@ -646,7 +651,8 @@ class RadioManager {
             
             try {
                 const response = await fetch(`/api/channels/${channelIdx}`, {
-                    method: 'DELETE'
+                    method: 'DELETE',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
                 });
                 
                 const result = await response.json();
@@ -679,7 +685,8 @@ class RadioManager {
             // Fallback if button not found
             try {
                 const response = await fetch(`/api/channels/${channelIdx}`, {
-                    method: 'DELETE'
+                    method: 'DELETE',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
                 });
                 
                 const result = await response.json();

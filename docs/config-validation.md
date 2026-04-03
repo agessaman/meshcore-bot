@@ -46,7 +46,7 @@ The bot will not start without these sections. The validator reports them as **e
 
 If these are absent, the validator reports **info** (no error):
 
-- **`[Admin_ACL]`** – Absent means admin commands (repeater, webviewer, reload) are disabled.
+- **`[Admin_ACL]`** – Absent means admin commands (repeater, webviewer, reload, channelpause) are disabled.
 - **`[Banned_Users]`** – Absent means no users are banned.
 - **`[Localization]`** – Absent means defaults (e.g. `language=en`, `translation_path=translations/`) are used.
 

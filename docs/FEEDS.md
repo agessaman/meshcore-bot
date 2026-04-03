@@ -50,7 +50,14 @@ default_output_format = {emoji} {body|truncate:100} - {date}\n{link|truncate:50}
 
 # Default interval between sending queued messages (seconds)
 default_message_send_interval_seconds = 2.0
+
+# Shorten item link URLs via [External_Data] short_url_website (v.gd / is.gd)
+shorten_urls = false
+
+# Or shorten only where the format says {link|shorten} (see placeholders below)
 ```
+
+Per-output-format URL shortening: use `{link|shorten}` for a single shortened link, or `{link|shorten|truncate:N}` to shorten then cap length. `shorten_urls = true` shortens every plain `{link}`.
 
 ## RSS Feed Configuration
 
@@ -186,6 +193,8 @@ The output format string controls how feed items are formatted before sending to
 
 Apply functions to placeholders using the pipe operator:
 
+- `{field|auto}` - Use the **remaining** characters up to `max_message_length` (from `[Feed_Manager]`). The format string is read **left to right**: every placeholder **before** `{field|auto}` is rendered, then every placeholder **after** it; the space left in the message is filled with that field’s text. If the text is longer than that space, it is cut with `...` (same idea as `truncate:N`). Use **at most one** `{field|auto}` per format. If more than one appears, the bot logs a warning, **only the first** expands, and any extra `{field|auto}` render **empty**. If the fixed prefix and suffix already exceed `max_message_length`, the auto segment is empty and the normal end-of-message truncation may still run.
+
 - `{field|truncate:N}` - Truncate to N characters
 - `{field|word_wrap:N}` - Wrap at N characters, breaking at word boundaries
 - `{field|first_words:N}` - Take first N words
@@ -264,6 +273,42 @@ Filter configuration determines which items are sent to channels.
 - `not_matches` - Regex does not match
 - `contains` - String contains value
 - `not_contains` - String does not contain value
+- `within_days` - Item timestamp is within the last **N** calendar days (rolling window from **now**, UTC)
+- `within_weeks` - Same as `within_days` with **N** × 7 days (e.g. four weeks ≈ `within_weeks` `4` or `within_days` `28`)
+
+`within_days` / `within_weeks` require a `field` pointing at a date (same paths as sort: `published` for RSS, or `raw.SomeTimeField` for APIs). They also require `days` or `weeks` respectively.
+
+If the date is missing or cannot be parsed, the condition **fails** (item is excluded). Set `"include_if_missing": true` on that condition to treat missing/unparseable dates as a pass instead.
+
+**Examples:**
+
+```json
+{
+  "conditions": [
+    {
+      "field": "published",
+      "operator": "within_days",
+      "days": 28
+    }
+  ],
+  "logic": "AND"
+}
+```
+
+```json
+{
+  "conditions": [
+    {
+      "field": "raw.LastUpdatedTime",
+      "operator": "within_weeks",
+      "weeks": 4
+    }
+  ],
+  "logic": "AND"
+}
+```
+
+Date parsing for filters matches sorting: ISO strings, Microsoft `/Date(...)/`, Unix timestamps (seconds or milliseconds), and common string formats.
 
 ### Logic
 
@@ -276,6 +321,8 @@ For API feeds, use `raw.field` or `raw.nested.field` to access API response fiel
 - `raw.Priority`
 - `raw.EventStatus`
 - `raw.StartRoadwayLocation.RoadName`
+
+For RSS feeds, use `published` for the item publication time in `within_days` / `within_weeks` conditions.
 
 ## Sort Configuration
 

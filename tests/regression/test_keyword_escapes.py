@@ -1,6 +1,5 @@
 """Regression tests for keyword escape sequences."""
 
-import pytest
 
 from modules.utils import decode_escape_sequences
 

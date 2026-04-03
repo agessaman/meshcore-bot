@@ -1,18 +1,17 @@
 """Tests for modules.config_validation."""
 
-import pytest
 from pathlib import Path
 
 from modules.config_validation import (
     SEVERITY_ERROR,
     SEVERITY_INFO,
     SEVERITY_WARNING,
+    _check_path_writable,
+    _get_command_prefix_to_section,
+    _resolve_path,
+    _suggest_similar_command,
     strip_optional_quotes,
     validate_config,
-    _resolve_path,
-    _check_path_writable,
-    _suggest_similar_command,
-    _get_command_prefix_to_section,
 )
 
 
@@ -392,5 +391,5 @@ class TestGetCommandPrefixToSection:
     def test_contains_known_commands(self):
         result = _get_command_prefix_to_section()
         assert "stats" in result or "ping" in result
-        for k, v in result.items():
+        for _k, v in result.items():
             assert v.endswith("_Command")

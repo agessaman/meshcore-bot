@@ -10,6 +10,32 @@ import signal
 import sys
 
 
+def _configure_unix_signal_handlers(loop, bot, shutdown_event: asyncio.Event) -> None:
+    """Register Unix signal handlers for shutdown and config reload."""
+
+    def shutdown_handler():
+        """Signal handler for graceful shutdown."""
+        print("\nShutting down...")
+        shutdown_event.set()
+
+    def reload_handler():
+        """Reload config on SIGHUP without exiting."""
+        bot.logger.info("Received SIGHUP, reloading configuration...")
+        success, msg = bot.reload_config()
+        if success:
+            bot.logger.info("SIGHUP config reload succeeded: %s", msg)
+        else:
+            bot.logger.warning("SIGHUP config reload failed: %s", msg)
+
+    # Register shutdown signals
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, shutdown_handler)
+
+    # Register config reload signal (Unix daemons convention)
+    if hasattr(signal, "SIGHUP"):
+        loop.add_signal_handler(signal.SIGHUP, reload_handler)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="MeshCore Bot - Mesh network bot for MeshCore devices"
@@ -75,26 +101,20 @@ def main():
         if sys.platform != 'win32':
             shutdown_event = asyncio.Event()
             bot_task = None
-            
-            def signal_handler():
-                """Signal handler for graceful shutdown"""
-                print("\nShutting down...")
-                shutdown_event.set()
-            
+
             try:
                 # Register signal handlers
-                for sig in (signal.SIGTERM, signal.SIGINT):
-                    loop.add_signal_handler(sig, signal_handler)
-                
+                _configure_unix_signal_handlers(loop, bot, shutdown_event)
+
                 # Start bot
                 bot_task = asyncio.create_task(bot.start())
-                
+
                 # Wait for shutdown or completion
                 done, pending = await asyncio.wait(
                     [bot_task, asyncio.create_task(shutdown_event.wait())],
                     return_when=asyncio.FIRST_COMPLETED
                 )
-                
+
                 # Cancel pending tasks
                 for task in pending:
                     task.cancel()
@@ -102,13 +122,13 @@ def main():
                         await task
                     except asyncio.CancelledError:
                         pass
-                
+
                 # Handle bot task completion
                 if bot_task:
                     if shutdown_event.is_set() and not bot_task.done():
                         # Shutdown triggered: cancel if still running
                         bot_task.cancel()
-                    
+
                     # Always await bot_task to ensure proper cleanup
                     # This is necessary because:
                     # 1. If the task completed normally, we need to await to surface exceptions

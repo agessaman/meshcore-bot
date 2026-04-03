@@ -5,11 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}MeshCore Bot Data Viewer{% endblock %}</title>
     
-    <!-- Favicons -->
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
-    <link rel="manifest" href="/site.webmanifest">
+    <!-- Manifest served from Flask static folder -->
+    <link rel="manifest" href="{{ url_for('static', filename='ico/site.webmanifest') }}">
     
     <!-- Apply theme immediately to prevent flash -->
     <script>
@@ -313,6 +310,40 @@
             color: var(--text-color) !important;
         }
 
+        /* Dark mode dropdown menus */
+        [data-theme="dark"] .dropdown-menu {
+            background-color: var(--card-bg);
+            border-color: var(--border-color);
+            box-shadow: 0 0.5rem 1rem var(--shadow-color);
+        }
+
+        [data-theme="dark"] .dropdown-item {
+            color: var(--text-color);
+        }
+
+        [data-theme="dark"] .dropdown-item:hover,
+        [data-theme="dark"] .dropdown-item:focus {
+            background-color: var(--bg-tertiary);
+            color: var(--text-color);
+        }
+
+        [data-theme="dark"] .dropdown-item.text-danger {
+            color: #f5c2c7;
+        }
+
+        [data-theme="dark"] .dropdown-item.text-danger:hover,
+        [data-theme="dark"] .dropdown-item.text-danger:focus {
+            color: #f8d7da;
+        }
+
+        [data-theme="dark"] .dropdown-header {
+            color: var(--text-muted);
+        }
+
+        [data-theme="dark"] .dropdown-divider {
+            border-top-color: var(--border-color);
+        }
+
         /* Dark mode accordion styling */
         [data-theme="dark"] .accordion-item {
             background-color: var(--card-bg);
@@ -375,11 +406,6 @@
                             <i class="fas fa-project-diagram"></i> Mesh Graph
                         </a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/cache">
-                            <i class="fas fa-database"></i> Cache
-                        </a>
-                    </li>
                     {% if greeter_enabled %}
                     <li class="nav-item">
                         <a class="nav-link" href="/greeter">
@@ -397,6 +423,16 @@
                     <li class="nav-item">
                         <a class="nav-link" href="/radio">
                             <i class="fas fa-broadcast-tower"></i> Radio
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/config">
+                            <i class="fas fa-cog"></i> Config
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/logs">
+                            <i class="fas fa-file-alt"></i> Logs
                         </a>
                     </li>
                 </ul>
@@ -470,10 +506,12 @@
             }
             
             initializeSocket() {
+                // Use io() without forceNew so that realtime.html's io() shares
+                // this same manager/socket.  forceNew created a second independent
+                // connection that interfered with the realtime-page socket.
                 this.socket = io({
                     transports: ['websocket', 'polling'],
-                    timeout: 5000,
-                    forceNew: true
+                    timeout: 5000
                 });
                 
                 this.setupSocketEvents();
@@ -657,6 +695,7 @@
         });
     </script>
     
+    <script src="{{ url_for('static', filename='js/channel_operations.js') }}"></script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>

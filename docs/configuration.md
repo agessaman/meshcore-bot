@@ -20,6 +20,14 @@ The main sections include:
 | `[Weather]` | Units and settings shared by `wx` / `gwx` and Weather Service |
 | `[Logging]` | Log file path and level |
 
+### Logging and log rotation
+
+- **Startup (config.ini):** Under `[Logging]`, `log_file`, `log_max_bytes`, and `log_backup_count` are read when the bot starts. They control the initial `RotatingFileHandler` for the bot log file (see `config.ini.example`).
+
+- **Live changes (web viewer):** The Config tab can store **`maint.log_max_bytes`** and **`maint.log_backup_count`** in the database (`bot_metadata`). The scheduler’s maintenance loop applies those values to the existing rotating file handler **without restarting** the bot—**but only after** you save rotation settings from the web UI (which writes the metadata keys). Editing `config.ini` alone does not update `bot_metadata`, so hot-apply will not see a change until you save from the viewer (or set the keys another way).
+
+If you rely on config-file-only workflows, restart the bot after changing `[Logging]` rotation options.
+
 ## Channels section
 
 `[Channels]` controls where the bot responds:
@@ -27,6 +35,7 @@ The main sections include:
 - **`monitor_channels`** – Comma-separated channel names. The bot only responds to messages on these channels (and in DMs if enabled).
 - **`respond_to_dms`** – If `true`, the bot responds to direct messages; if `false`, it ignores DMs.
 - **`channel_keywords`** – Optional. When set (comma-separated command/keyword names), only those triggers are answered **in channels**; DMs always get all triggers. Use this to reduce channel traffic by making heavy triggers (e.g. `wx`, `satpass`, `joke`) DM-only. Leave empty or omit to allow all triggers in monitored channels. Per-command **`channels = `** (empty) in a command’s section also forces that command to be DM-only; see `config.ini.example` for examples (e.g. `[Joke_Command]`).
+- **`max_response_hops`** - Default: 64. The bot will ignore messages that have traveled more than this number of hops. Suggested to set at 10 or below, since in most meshes that is not an intentional message meant to trigger this particular bot.
 
 ## Command and feature sections
 
@@ -54,6 +63,14 @@ Examples of sections that configure specific commands or features:
 - **`[Sports_Command]`** – Sports scores (teams, leagues).
 - **`[Joke_Command]`**, **`[DadJoke_Command]`** – Joke sources and options.
 
+Common per-command options (when supported by that command):
+
+- **`channels`** – Restrict where that command runs in channels:
+  - Omit key: follow global `[Channels] monitor_channels`
+  - Empty (`channels =`): DM-only
+  - Comma list: only those channels
+- **`aliases`** – Extra trigger words for that command, comma-separated **stems only** (e.g. `aliases = weather, w`). Do not put the bot's **`command_prefix`** or punctuation in this value (no `!` or `.`)
+
 Full reference: see `config.ini.example` in the repository for every section and option, with inline comments.
 
 ## Data retention
@@ -77,3 +94,7 @@ Before starting the bot, you can validate section names and path writability. Se
 ## Reloading configuration
 
 Some configuration can be reloaded without restarting the bot using the **`reload`** command (admin only). Radio/connection settings are not changed by reload; restart the bot for those.
+
+## Pausing channel responses (remote)
+
+Admins can DM **`channelpause`** or **`channelresume`** (see `[Admin_ACL]` in `config.ini`) to stop or resume bot reactions on **public channels** only—greeter, keywords, and commands on channels are skipped; DMs still work. The setting is **in memory only** (back to responding on channels after restart). Scheduled channel posts from the scheduler are **not** blocked by this toggle.
