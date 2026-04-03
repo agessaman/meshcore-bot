@@ -163,7 +163,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .npm
-package-lock.json
+# package-lock.json is committed for reproducible npm ci in CI
 # keep package.json, .eslintrc.json, .htmlhintrc (committed)
 
 # .deb build artifacts

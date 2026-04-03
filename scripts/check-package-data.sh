@@ -22,12 +22,14 @@ WHEEL_FILE="$(ls "${DIST_DIR}/_pkgcheck"/*.whl | head -n 1)"
 SDIST_FILE="$(ls "${DIST_DIR}/_pkgcheck"/*.tar.gz | head -n 1)"
 
 echo "==> Inspecting wheel: $(basename "${WHEEL_FILE}")"
-if ! python3 - <<'PY' "${WHEEL_FILE}" "${TARGET_ASSET}"; then
-import sys
+export _PKGDATA_WHEEL="${WHEEL_FILE}"
+export _PKGDATA_TARGET="${TARGET_ASSET}"
+python3 <<'PY' || exit 1
+import os
 import zipfile
 
-wheel_path = sys.argv[1]
-target = sys.argv[2]
+wheel_path = os.environ["_PKGDATA_WHEEL"]
+target = os.environ["_PKGDATA_TARGET"]
 
 with zipfile.ZipFile(wheel_path, "r") as zf:
     names = set(zf.namelist())
@@ -36,15 +38,17 @@ with zipfile.ZipFile(wheel_path, "r") as zf:
         raise SystemExit(1)
 print("OK: wheel contains target asset")
 PY
-fi
+unset _PKGDATA_WHEEL _PKGDATA_TARGET
 
 echo "==> Inspecting sdist: $(basename "${SDIST_FILE}")"
-if ! python3 - <<'PY' "${SDIST_FILE}" "${TARGET_ASSET}"; then
-import sys
+export _PKGDATA_SDIST="${SDIST_FILE}"
+export _PKGDATA_TARGET="${TARGET_ASSET}"
+python3 <<'PY' || exit 1
+import os
 import tarfile
 
-sdist_path = sys.argv[1]
-target_suffix = "/" + sys.argv[2]
+sdist_path = os.environ["_PKGDATA_SDIST"]
+target_suffix = "/" + os.environ["_PKGDATA_TARGET"]
 
 with tarfile.open(sdist_path, "r:gz") as tf:
     names = tf.getnames()
@@ -53,6 +57,6 @@ with tarfile.open(sdist_path, "r:gz") as tf:
         raise SystemExit(1)
 print("OK: sdist contains target asset")
 PY
-fi
+unset _PKGDATA_SDIST _PKGDATA_TARGET
 
 echo "==> Package-data check passed"

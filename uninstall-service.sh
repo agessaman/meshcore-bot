@@ -25,7 +25,7 @@ IS_LINUX=false
 
 if [[ "$OS" == "Darwin" ]]; then
     IS_MACOS=true
-    SERVICE_TYPE="launchd"
+    _SERVICE_TYPE="launchd" # launchd (macOS); reserved for future diagnostics
 elif [[ "$OS" == "Linux" ]]; then
     IS_LINUX=true
 else
@@ -40,7 +40,7 @@ PLIST_NAME="com.meshcore.bot"
 
 if [[ "$IS_MACOS" == true ]]; then
     SERVICE_USER="$(whoami)"
-    SERVICE_GROUP="staff"
+    _SERVICE_GROUP="staff" # default macOS group; reserved for future ownership hints
     INSTALL_DIR="/usr/local/meshcore-bot"
     LOG_DIR="/usr/local/var/log/meshcore-bot"
     SERVICE_FILE="com.meshcore.bot.plist"
