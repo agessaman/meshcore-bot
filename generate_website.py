@@ -4,27 +4,26 @@ Generate Command Reference Website
 Creates a single-page HTML website with bot introduction and command reference
 """
 
+import argparse
 import configparser
-import sqlite3
-import os
 import html
 import logging
+import os
+import sqlite3
 import sys
-import argparse
-from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Any
 from collections import defaultdict
 from contextlib import closing
+from typing import Any, Dict, List, Optional, Tuple
 
 # Import bot modules with error handling
 try:
     # Add project root to path
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    
-    from modules.plugin_loader import PluginLoader
-    from modules.db_manager import DBManager
-    from modules.utils import resolve_path
+
     from modules.config_validation import strip_optional_quotes
+    from modules.db_manager import DBManager
+    from modules.plugin_loader import PluginLoader
+    from modules.utils import resolve_path
 except ImportError as e:
     print("Error: Missing required dependencies.")
     print(f"Details: {e}")
@@ -38,19 +37,19 @@ except ImportError as e:
 
 class MinimalBot:
     """Minimal bot mock for plugin loading without full bot initialization"""
-    
+
     def __init__(self, config, logger, db_manager=None):
         self.config = config
         self.logger = logger
         self.db_manager = db_manager
-        
+
         # Dummy translator
         class DummyTranslator:
             def translate(self, key, **kwargs):
                 return key
             def get_value(self, key):
                 return None
-        
+
         self.translator = DummyTranslator()
         self.command_manager = None  # Will be set after plugin loading
 
@@ -949,7 +948,7 @@ def get_website_intro(config: configparser.ConfigParser) -> str:
         intro = config.get('Website', 'introduction_text', fallback='')
         if intro:
             return intro
-    
+
     # Default introduction (first person from bot's perspective)
     bot_name = get_bot_name(config)
     return f"Hi, I'm {bot_name}! I provide various commands to help you interact with the mesh network. Use the commands below to get started."
@@ -961,7 +960,7 @@ def get_website_title(config: configparser.ConfigParser) -> str:
         title = config.get('Website', 'website_title', fallback='')
         if title:
             return title
-    
+
     bot_name = get_bot_name(config)
     return f"{bot_name} - Command Reference"
 
@@ -977,25 +976,25 @@ def load_channels_from_config(config: configparser.ConfigParser) -> Dict[str, Di
         }
     """
     channels = {'general': {}}
-    
+
     if not config.has_section('Channels_List'):
         return channels
-    
+
     for key, description in config.items('Channels_List'):
         key = key.strip()
         description = description.strip()
-        
+
         if not key or not description:
             continue
-        
+
         # Check if it's a categorized channel (has dot notation)
         if '.' in key:
             category = key.split('.')[0]
             channel_name = key.split('.', 1)[1]
-            
+
             if category not in channels:
                 channels[category] = {}
-            
+
             # Add # prefix if not present
             display_name = channel_name if channel_name.startswith('#') else f"#{channel_name}"
             channels[category][display_name] = description
@@ -1003,7 +1002,7 @@ def load_channels_from_config(config: configparser.ConfigParser) -> Dict[str, Di
             # General channel (no category)
             display_name = key if key.startswith('#') else f"#{key}"
             channels['general'][display_name] = description
-    
+
     # Remove empty categories
     return {cat: chans for cat, chans in channels.items() if chans}
 
@@ -1019,14 +1018,14 @@ def get_database_path(config: configparser.ConfigParser, bot_root: str) -> Optio
 def get_command_popularity(db_path: Optional[str], commands: Dict[str, Any]) -> Dict[str, int]:
     """Get command usage counts from database"""
     popularity = defaultdict(int)
-    
+
     if not db_path or not os.path.exists(db_path):
         return popularity
-    
+
     try:
         with closing(sqlite3.connect(db_path)) as conn:
             cursor = conn.cursor()
-            
+
             # Check if command_stats table exists
             cursor.execute("""
                 SELECT name FROM sqlite_master 
@@ -1034,18 +1033,18 @@ def get_command_popularity(db_path: Optional[str], commands: Dict[str, Any]) -> 
             """)
             if not cursor.fetchone():
                 return popularity
-            
+
             # Query command usage
             cursor.execute("""
                 SELECT command_name, COUNT(*) as count 
                 FROM command_stats 
                 GROUP BY command_name
             """)
-            
+
             for row in cursor.fetchall():
                 command_name = row[0]
                 count = row[1]
-                
+
                 # Map to primary command name if it's a keyword/alias
                 primary_name = command_name
                 for cmd_name, cmd_instance in commands.items():
@@ -1055,43 +1054,43 @@ def get_command_popularity(db_path: Optional[str], commands: Dict[str, Any]) -> 
                     if hasattr(cmd_instance, 'name') and cmd_instance.name == command_name:
                         primary_name = cmd_instance.name
                         break
-                
+
                 popularity[primary_name] += count
     except Exception as e:
         logging.warning(f"Could not query command popularity: {e}")
-    
+
     return popularity
 
 
 def filter_commands(commands: Dict[str, Any], admin_commands: List[str]) -> Dict[str, Any]:
     """Filter out admin and hidden commands"""
     filtered = {}
-    
+
     # Categories to exclude from public reference
     excluded_categories = {'hidden', 'admin', 'system', 'management', 'special'}
-    
+
     for cmd_name, cmd_instance in commands.items():
         # Skip commands in excluded categories
         if hasattr(cmd_instance, 'category') and cmd_instance.category in excluded_categories:
             continue
-        
+
         # Get primary command name
         primary_name = cmd_instance.name if hasattr(cmd_instance, 'name') else cmd_name
-        
+
         # Skip admin commands by name (check both dict key and primary name)
         if cmd_name in admin_commands or primary_name in admin_commands:
             continue
-        
+
         # Skip commands that require admin access
         if hasattr(cmd_instance, 'requires_admin_access') and cmd_instance.requires_admin_access():
             continue
-        
+
         # Skip commands with no keywords (automatic/system commands)
         if hasattr(cmd_instance, 'keywords') and not cmd_instance.keywords:
             continue
-        
+
         filtered[cmd_name] = cmd_instance
-    
+
     return filtered
 
 
@@ -1108,28 +1107,28 @@ def get_default_command_order() -> List[str]:
 def sort_commands_by_popularity(commands: Dict[str, Any], popularity: Dict[str, int]) -> List[Tuple[str, Any]]:
     """Sort commands by popularity, with fallback to default order"""
     default_order = get_default_command_order()
-    
+
     # Create list of (name, instance, priority) tuples
     command_list = []
     for cmd_name, cmd_instance in commands.items():
         primary_name = cmd_instance.name if hasattr(cmd_instance, 'name') else cmd_name
-        
+
         # Get popularity count
         count = popularity.get(primary_name, 0)
-        
+
         # Get default priority (lower is better)
         try:
             default_priority = default_order.index(primary_name)
         except ValueError:
             default_priority = 999  # Not in default order
-        
+
         # Priority: popularity count (descending), then default order, then alphabetical
         priority = (-count, default_priority, primary_name.lower())
         command_list.append((priority, cmd_name, cmd_instance))
-    
+
     # Sort by priority
     command_list.sort(key=lambda x: x[0])
-    
+
     # Return (name, instance) tuples
     return [(name, instance) for _, name, instance in command_list]
 
@@ -1143,7 +1142,7 @@ def get_channel_info(cmd_instance: Any, monitor_channels: List[str]) -> Optional
     """Get channel restriction information for a command"""
     allowed_channels = getattr(cmd_instance, 'allowed_channels', None)
     requires_dm = getattr(cmd_instance, 'requires_dm', False)
-    
+
     # If command has specific allowed channels configured
     if allowed_channels is not None:
         if allowed_channels == []:
@@ -1162,11 +1161,11 @@ def get_channel_info(cmd_instance: Any, monitor_channels: List[str]) -> Optional
                 return f"Channel: {', '.join(formatted_channels)}"
             else:
                 return f"Channels: {', '.join(formatted_channels)}"
-    
+
     # If command requires DM and has no channel override, it's DM only
     if requires_dm:
         return "DM only"
-    
+
     # No restrictions - works in all monitored channels (don't show anything)
     return None
 
@@ -1180,7 +1179,7 @@ def format_monitor_channels(monitor_channels: List[str], html: bool = False) -> 
     """
     if not monitor_channels:
         return ""
-    
+
     formatted = []
     for ch in monitor_channels:
         ch = ch.strip()
@@ -1188,13 +1187,13 @@ def format_monitor_channels(monitor_channels: List[str], html: bool = False) -> 
             channel_name = f"#{ch}"
         else:
             channel_name = ch
-        
+
         if html:
             # Wrap in span for inline highlighting
             formatted.append(f'<span class="channel-highlight">{escape_html(channel_name)}</span>')
         else:
             formatted.append(channel_name)
-    
+
     if len(formatted) == 1:
         return formatted[0]
     elif len(formatted) == 2:
@@ -1205,25 +1204,25 @@ def format_monitor_channels(monitor_channels: List[str], html: bool = False) -> 
 
 def generate_html(bot_name: str, title: str, introduction: str, commands: List[Tuple[str, Any]], monitor_channels: List[str] = None, channels_data: Dict[str, Dict[str, str]] = None, style: str = 'default') -> str:
     """Generate the HTML content"""
-    
+
     if monitor_channels is None:
         monitor_channels = []
-    
+
     if channels_data is None:
         channels_data = {}
-    
+
     # Format monitor channels message to append to introduction
     channels_suffix = ""
     if monitor_channels:
         formatted_channels = format_monitor_channels(monitor_channels, html=True)
         channels_suffix = f" I'll answer you if you send a message in {formatted_channels}."
-    
+
     # Group commands by category
     categories = defaultdict(list)
     for cmd_name, cmd_instance in commands:
         category = getattr(cmd_instance, 'category', 'general')
         categories[category].append((cmd_name, cmd_instance))
-    
+
     # Category display names
     category_names = {
         'basic': 'Basic Commands',
@@ -1239,46 +1238,46 @@ def generate_html(bot_name: str, title: str, introduction: str, commands: List[T
         'special': 'Special Commands',
         'general': 'General Commands',
     }
-    
+
     # Build navigation sidebar items
     nav_items = []
-    
+
     # Add command categories to nav (basic first, then alphabetically)
     sorted_categories = sorted(categories.keys())
     if 'basic' in sorted_categories:
         sorted_categories.remove('basic')
         sorted_categories.insert(0, 'basic')
-    
+
     for category in sorted_categories:
         category_display = category_names.get(category, category.title().replace('_', ' '))
         category_id = category.lower().replace('_', '-').replace(' ', '-')
         nav_items.append(('commands', category_display, f'commands-{category_id}'))
-    
+
     # Add channels section to nav if available
     if channels_data:
         nav_items.append(('channels', 'Available Channels', 'channels'))
-        
+
         # Add channel subcategories
-        sorted_channel_categories = ['general'] + sorted([c for c in channels_data.keys() if c != 'general'])
+        sorted_channel_categories = ['general'] + sorted([c for c in channels_data if c != 'general'])
         for category in sorted_channel_categories:
             if category not in channels_data or not channels_data[category]:
                 continue
             category_display = category.title().replace('_', ' ') if category != 'general' else 'General Channels'
             category_id = category.lower().replace('_', '-').replace(' ', '-')
             nav_items.append(('channels-sub', category_display, f'channels-{category_id}'))
-    
+
     # Build navigation sidebar HTML
     nav_html = '<nav class="sidebar-nav">\n'
     nav_html += '  <div class="nav-header">\n'
     nav_html += '    <h3>Navigation</h3>\n'
     nav_html += '  </div>\n'
     nav_html += '  <ul class="nav-list">\n'
-    
+
     # Add Commands section
     if nav_items:
         nav_html += '    <li class="nav-section-header">Commands</li>\n'
         nav_html += '    <ul class="nav-sublist">\n'
-        
+
         for nav_type, display_name, anchor_id in nav_items:
             if nav_type == 'commands':
                 nav_html += f'      <li><a href="#{anchor_id}" class="nav-link nav-sublink">{escape_html(display_name)}</a></li>\n'
@@ -1290,44 +1289,43 @@ def generate_html(bot_name: str, title: str, introduction: str, commands: List[T
                 nav_html += f'      <li><a href="#{anchor_id}" class="nav-link nav-sublink">{escape_html(display_name)}</a></li>\n'
             elif nav_type == 'channels-sub':
                 nav_html += f'      <li><a href="#{anchor_id}" class="nav-link nav-sublink">{escape_html(display_name)}</a></li>\n'
-        
+
         nav_html += '    </ul>\n'
-    
+
     nav_html += '  </ul>\n'
     nav_html += '</nav>\n'
-    
+
     # Build command HTML (basic first, then alphabetically)
     commands_html = ""
     sorted_command_categories = sorted(categories.keys())
     if 'basic' in sorted_command_categories:
         sorted_command_categories.remove('basic')
         sorted_command_categories.insert(0, 'basic')
-    
+
     for category in sorted_command_categories:
         category_commands = categories[category]
         category_display = category_names.get(category, category.title().replace('_', ' '))
         # Create anchor ID from category (lowercase, replace spaces with hyphens)
         category_id = category.lower().replace('_', '-').replace(' ', '-')
-        
+
         commands_html += f'<div class="category-section" id="commands-{category_id}">\n'
         commands_html += f'  <h2 class="category-title"><a href="#commands-{category_id}" class="anchor-link">{escape_html(category_display)}</a></h2>\n'
-        commands_html += f'  <div class="commands-grid">\n'
-        
+        commands_html += '  <div class="commands-grid">\n'
+
         for cmd_name, cmd_instance in category_commands:
             primary_name = cmd_instance.name if hasattr(cmd_instance, 'name') else cmd_name
             keywords = getattr(cmd_instance, 'keywords', [])
-            
+
             # Filter out the primary name from keywords to avoid duplication
             aliases = [k for k in keywords if k.lower() != primary_name.lower()]
-            
+
             # Get channel restriction info
             channel_info = get_channel_info(cmd_instance, monitor_channels)
-            
+
             # Get usage information including usage syntax, examples, parameters, and sub-commands
             try:
                 usage_info = cmd_instance.get_usage_info()
                 usage_syntax = usage_info.get('usage', '')
-                examples = usage_info.get('examples', [])
                 parameters = usage_info.get('parameters', [])
                 subcommands = usage_info.get('subcommands', [])
                 # Use short_description for website if available, otherwise fallback to description
@@ -1335,77 +1333,76 @@ def generate_html(bot_name: str, title: str, introduction: str, commands: List[T
                 description = short_desc if short_desc else usage_info.get('description', 'No description available')
             except Exception:
                 usage_syntax = ''
-                examples = []
                 parameters = []
                 subcommands = []
                 description = getattr(cmd_instance, 'description', 'No description available')
-            
-            commands_html += f'    <div class="command-card">\n'
-            commands_html += f'      <div class="command-header">\n'
+
+            commands_html += '    <div class="command-card">\n'
+            commands_html += '      <div class="command-header">\n'
             commands_html += f'        <h3 class="command-name">{escape_html(primary_name)}</h3>\n'
             if aliases:
-                commands_html += f'        <div class="command-keywords">\n'
+                commands_html += '        <div class="command-keywords">\n'
                 # Show first 5 aliases
                 visible_aliases = aliases[:5]
                 hidden_aliases = aliases[5:]
-                
+
                 for alias in visible_aliases:
                     commands_html += f'          <span class="keyword-badge">{escape_html(alias)}</span>\n'
-                
+
                 if hidden_aliases:
                     # Store hidden aliases in data attribute and create expandable badge
                     hidden_aliases_json = escape_html(','.join(hidden_aliases))
                     commands_html += f'          <span class="keyword-badge keyword-expand" data-hidden="{hidden_aliases_json}" data-command="{escape_html(primary_name)}">+{len(hidden_aliases)} more</span>\n'
-                
-                commands_html += f'        </div>\n'
-            commands_html += f'      </div>\n'
+
+                commands_html += '        </div>\n'
+            commands_html += '      </div>\n'
             commands_html += f'      <p class="command-description">{escape_html(description)}</p>\n'
-            
+
             # Render usage, examples, parameters, subcommands
             try:
-                
+
                 # Render usage syntax
                 if usage_syntax:
                     commands_html += f'      <div class="command-usage"><code>{escape_html(usage_syntax)}</code></div>\n'
-                
+
                 # Render parameters
                 if parameters:
-                    commands_html += f'      <div class="command-params">\n'
-                    commands_html += f'        <div class="params-header">Parameters:</div>\n'
+                    commands_html += '      <div class="command-params">\n'
+                    commands_html += '        <div class="params-header">Parameters:</div>\n'
                     for param in parameters:
                         param_name = param.get('name', '')
                         param_desc = param.get('description', '')
                         if param_name and param_desc:
-                            commands_html += f'        <div class="param-item">\n'
+                            commands_html += '        <div class="param-item">\n'
                             commands_html += f'          <span class="param-name">{escape_html(param_name)}</span>\n'
                             commands_html += f'          <span class="param-desc">{escape_html(param_desc)}</span>\n'
-                            commands_html += f'        </div>\n'
-                    commands_html += f'      </div>\n'
-                
+                            commands_html += '        </div>\n'
+                    commands_html += '      </div>\n'
+
                 # Render subcommands
                 if subcommands:
-                    commands_html += f'      <div class="command-subcommands">\n'
-                    commands_html += f'        <div class="subcommands-header">Sub-commands:</div>\n'
+                    commands_html += '      <div class="command-subcommands">\n'
+                    commands_html += '        <div class="subcommands-header">Sub-commands:</div>\n'
                     for subcmd in subcommands:
                         subcmd_name = subcmd.get('name', '')
                         subcmd_desc = subcmd.get('description', '')
                         if subcmd_name and subcmd_desc:
-                            commands_html += f'        <div class="subcommand-item">\n'
+                            commands_html += '        <div class="subcommand-item">\n'
                             commands_html += f'          <span class="subcommand-name">{escape_html(subcmd_name)}</span>\n'
                             commands_html += f'          <span class="subcommand-desc">{escape_html(subcmd_desc)}</span>\n'
-                            commands_html += f'        </div>\n'
-                    commands_html += f'      </div>\n'
-            except Exception as e:
+                            commands_html += '        </div>\n'
+                    commands_html += '      </div>\n'
+            except Exception:
                 # Silently fail if get_usage_info() is not available or fails
                 pass
-            
+
             if channel_info:
                 commands_html += f'      <div class="command-channels">{escape_html(channel_info)}</div>\n'
-            commands_html += f'    </div>\n'
-        
-        commands_html += f'  </div>\n'
-        commands_html += f'</div>\n'
-    
+            commands_html += '    </div>\n'
+
+        commands_html += '  </div>\n'
+        commands_html += '</div>\n'
+
     # Build channels HTML if channels are available
     channels_html = ""
     if channels_data:
@@ -1414,31 +1411,31 @@ def generate_html(bot_name: str, title: str, introduction: str, commands: List[T
         channels_html += '  <p class="channels-intro">These are semi-public channels that are in use on our local mesh! Join them to connect with others with common interests! <br/> To add these channels to your client, click on the three dot menu and select "Add Channel".</p>\n'
 
         # Sort categories: general first, then alphabetically
-        sorted_categories = ['general'] + sorted([c for c in channels_data.keys() if c != 'general'])
-        
+        sorted_categories = ['general'] + sorted([c for c in channels_data if c != 'general'])
+
         for category in sorted_categories:
             if category not in channels_data or not channels_data[category]:
                 continue
-            
+
             category_display = category.title().replace('_', ' ') if category != 'general' else 'General Channels'
             category_id = category.lower().replace('_', '-').replace(' ', '-')
             channels_html += f'  <div class="channel-category" id="channels-{category_id}">\n'
             channels_html += f'    <h3 class="channel-category-title"><a href="#channels-{category_id}" class="anchor-link">{escape_html(category_display)}</a></h3>\n'
-            channels_html += f'    <div class="channels-grid">\n'
-            
+            channels_html += '    <div class="channels-grid">\n'
+
             # Sort channels alphabetically
             sorted_channels = sorted(channels_data[category].items())
             for channel_name, description in sorted_channels:
-                channels_html += f'      <div class="channel-card">\n'
+                channels_html += '      <div class="channel-card">\n'
                 channels_html += f'        <div class="channel-name">{escape_html(channel_name)}</div>\n'
                 channels_html += f'        <div class="channel-description">{escape_html(description)}</div>\n'
-                channels_html += f'      </div>\n'
-            
-            channels_html += f'    </div>\n'
-            channels_html += f'  </div>\n'
-        
+                channels_html += '      </div>\n'
+
+            channels_html += '    </div>\n'
+            channels_html += '  </div>\n'
+
         channels_html += '</div>\n'
-    
+
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2416,7 +2413,7 @@ def generate_html(bot_name: str, title: str, introduction: str, commands: List[T
     </script>
 </body>
 </html>"""
-    
+
     return html_content
 
 
@@ -2425,7 +2422,7 @@ def list_styles():
     print("Available styles:\n")
 
     # Calculate max name length for alignment
-    max_len = max(len(name) for name in STYLES.keys())
+    max_len = max(len(name) for name in STYLES)
 
     for style_name, style_info in STYLES.items():
         padding = ' ' * (max_len - len(style_name))
@@ -2491,7 +2488,7 @@ def generate_samples(config_file):
 
     # Generate a page for each style
     generated_files = []
-    for style_name in STYLES.keys():
+    for style_name in STYLES:
         logger.info(f"Generating {style_name}.html...")
 
         html_content = generate_html(
@@ -2588,7 +2585,7 @@ def generate_samples(config_file):
     <div class="styles-grid">
 """
 
-    for style_name in STYLES.keys():
+    for style_name in STYLES:
         style_info = STYLES[style_name]
         index_html += f"""        <a href="{style_name}.html" class="style-link">
             <div class="style-name">{escape_html(style_info['name'])}</div>
@@ -2608,7 +2605,7 @@ def generate_samples(config_file):
     logger.info(f"  ✓ {index_path}")
     logger.info(f"\nGenerated {len(generated_files)} style samples + index.html in {output_dir}")
     print(f"\n✓ Sample files generated in {output_dir}/")
-    print(f"  - index.html (style browser)")
+    print("  - index.html (style browser)")
     for style_name in generated_files:
         print(f"  - {style_name}.html")
 
@@ -2663,38 +2660,38 @@ def main():
 
     config_file = args.config
     style = args.style
-    
+
     try:
         # Read config
         logger.info(f"Reading config from {config_file}")
         config = read_config(config_file)
-        
+
         # Get bot root directory
         bot_root = os.path.dirname(os.path.abspath(config_file))
         if not bot_root:
             bot_root = os.getcwd()
-        
+
         # Get bot information
         bot_name = get_bot_name(config)
         admin_commands = get_admin_commands(config)
         introduction = get_website_intro(config)
         title = get_website_title(config)
-        
+
         # Get monitor channels for channel restriction display (quoted or unquoted)
         monitor_channels_str = strip_optional_quotes(config.get('Channels', 'monitor_channels', fallback=''))
         monitor_channels = [ch.strip() for ch in monitor_channels_str.split(',') if ch.strip()]
-        
+
         # Load channels from Channels_List section
         channels_data = load_channels_from_config(config)
         logger.info(f"Loaded {sum(len(chans) for chans in channels_data.values())} channels from {len(channels_data)} categories")
-        
+
         logger.info(f"Bot name: {bot_name}")
         logger.info(f"Admin commands: {admin_commands}")
         logger.info(f"Monitor channels: {monitor_channels}")
-        
+
         # Setup minimal bot for plugin loading
         minimal_bot = MinimalBot(config, logger)
-        
+
         # Initialize database manager if database exists
         db_path = get_database_path(config, bot_root)
         if db_path and os.path.exists(db_path):
@@ -2707,21 +2704,21 @@ def main():
         else:
             logger.info("No database found, using default command ordering")
             minimal_bot.db_manager = None
-        
+
         # Load plugins
         logger.info("Loading command plugins...")
         plugin_loader = PluginLoader(minimal_bot)
         commands = plugin_loader.load_all_plugins()
         logger.info(f"Loaded {len(commands)} commands")
-        
+
         # Filter out admin and hidden commands
         filtered_commands = filter_commands(commands, admin_commands)
         logger.info(f"Filtered to {len(filtered_commands)} public commands")
-        
+
         # Log which commands are included
         included_names = sorted([cmd.name if hasattr(cmd, 'name') else name for name, cmd in filtered_commands.items()])
         logger.info(f"Included commands: {', '.join(included_names)}")
-        
+
         # Log which commands were excluded (for debugging)
         excluded = []
         for cmd_name, cmd_instance in commands.items():
@@ -2731,32 +2728,32 @@ def main():
                 excluded.append(f"{primary_name} ({category})")
         if excluded:
             logger.debug(f"Excluded commands: {', '.join(excluded)}")
-        
+
         # Get command popularity
         popularity = get_command_popularity(db_path, filtered_commands)
-        
+
         # Sort commands by popularity
         sorted_commands = sort_commands_by_popularity(filtered_commands, popularity)
-        
+
         # Generate HTML
         logger.info("Generating HTML...")
         html_content = generate_html(bot_name, title, introduction, sorted_commands, monitor_channels, channels_data, style)
-        
+
         # Create website directory
         website_dir = os.path.join(bot_root, "website")
         os.makedirs(website_dir, exist_ok=True)
-        
+
         # Write HTML file
         output_file = os.path.join(website_dir, "index.html")
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(html_content)
-        
+
         logger.info(f"Website generated successfully: {output_file}")
         print(f"\n✓ Website generated: {output_file}")
         print(f"  Bot: {bot_name}")
         print(f"  Commands: {len(sorted_commands)}")
         print(f"  Output: {output_file}")
-        
+
     except Exception as e:
         logger.error(f"Error generating website: {e}", exc_info=True)
         sys.exit(1)

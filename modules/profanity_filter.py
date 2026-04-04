@@ -39,6 +39,7 @@ try:
     _unidecode_available = True
 except ImportError:
     pass
+    unidecode = None
 
 
 def _has_hate_symbols(text: str) -> bool:

@@ -29,13 +29,10 @@ Navigation:
 
 import configparser
 import curses
-import os
-import re
 import sys
 import textwrap
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -58,7 +55,7 @@ def load_config(path: Path) -> configparser.ConfigParser:
     if path.exists():
         try:
             cfg.read(str(path), encoding="utf-8")
-        except (configparser.Error, IOError, OSError, UnicodeDecodeError) as e:
+        except (configparser.Error, OSError, UnicodeDecodeError) as e:
             # Return empty config rather than crash; caller may show a warning
             cfg._load_error = str(e)  # type: ignore[attr-defined]
     return cfg
@@ -88,7 +85,7 @@ def load_example_comments(example_path: Path) -> Dict[str, Dict[str, str]]:
                     pending = []
                 else:
                     pending = []
-    except (IOError, OSError, UnicodeDecodeError):
+    except (OSError, UnicodeDecodeError):
         pass
     return comments
 
@@ -110,7 +107,7 @@ def load_example_lines(example_path: Path) -> Dict[str, Dict[str, str]]:
                     key = stripped.split("=", 1)[0].strip()
                     if current_section:
                         lines.setdefault(current_section, {})[key] = stripped
-    except (IOError, OSError, UnicodeDecodeError):
+    except (OSError, UnicodeDecodeError):
         pass
     return lines
 
@@ -129,7 +126,7 @@ def load_example_keys(example_path: Path) -> Dict[str, Dict[str, str]]:
                 keys[section] = dict(cfg.items(section))
             except configparser.Error:
                 keys[section] = {}
-    except (configparser.Error, IOError, OSError, UnicodeDecodeError):
+    except (configparser.Error, OSError, UnicodeDecodeError):
         pass
     return keys
 
@@ -201,13 +198,13 @@ def migrate_config(
 def save_config(cfg: configparser.ConfigParser, path: Path) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-    except (IOError, OSError, PermissionError) as e:
-        raise IOError(f"Cannot create directory {path.parent}: {e}") from e
+    except (OSError, PermissionError) as e:
+        raise OSError(f"Cannot create directory {path.parent}: {e}") from e
     try:
         with open(path, "w", encoding="utf-8") as fh:
             cfg.write(fh)
-    except (IOError, OSError, PermissionError) as e:
-        raise IOError(f"Cannot write {path}: {e}") from e
+    except (OSError, PermissionError) as e:
+        raise OSError(f"Cannot write {path}: {e}") from e
 
 
 # ---------------------------------------------------------------------------
@@ -1189,7 +1186,7 @@ def main() -> None:
             print(f"config.ini not found — creating from {example_path.name}…")
             shutil.copy(str(example_path), str(config_path))
             print(f"Created {config_path}")
-        except (IOError, OSError, shutil.Error) as e:
+        except (OSError, shutil.Error) as e:
             print(f"ERROR: Could not create config from example: {e}", file=sys.stderr)
             sys.exit(1)
 

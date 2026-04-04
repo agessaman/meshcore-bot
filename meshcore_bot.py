@@ -56,7 +56,6 @@ def main():
     if args.validate_config:
         from modules.config_validation import (
             SEVERITY_ERROR,
-            SEVERITY_INFO,
             SEVERITY_WARNING,
             validate_config,
         )
@@ -74,7 +73,7 @@ def main():
 
     from modules.core import MeshCoreBot
     bot = MeshCoreBot(config_file=args.config)
-    
+
     # Use asyncio.run() which handles KeyboardInterrupt properly
     # For SIGTERM, we'll handle it in the async context
     async def run_bot():
@@ -149,7 +148,7 @@ def main():
                 await bot.start()
             finally:
                 await bot.stop()
-    
+
     try:
         asyncio.run(run_bot())
     except KeyboardInterrupt:

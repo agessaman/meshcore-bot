@@ -4,7 +4,7 @@ import json
 import sqlite3
 import time
 from configparser import ConfigParser
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
