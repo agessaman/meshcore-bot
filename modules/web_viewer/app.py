@@ -4106,6 +4106,53 @@ class BotDataViewer:
                 """)
                 stats['contacts_7d'] = cursor.fetchone()[0]
 
+                # Contacts heard in 7d with multibyte path evidence. Scope observed_paths to 7d so
+                # the pie chart matches "last 7 days" (lifetime paths + stale out_bytes_per_hop
+                # otherwise inflated the percentage).
+                stats['contacts_7d_multibyte_path'] = 0
+                multibyte_chunks: set[str] = set()
+                mb_advert_pks: set[str] = set()
+                if 'observed_paths' in tables:
+                    try:
+                        multibyte_chunks = self._collect_multibyte_hop_chunks(
+                            cursor, recent_days=7
+                        )
+                        # Use date() — julianday(iso8601) often returns NULL for Python isoformat() strings
+                        cursor.execute(
+                            """
+                            SELECT DISTINCT public_key FROM observed_paths
+                            WHERE packet_type = 'advert' AND public_key IS NOT NULL
+                            AND bytes_per_hop IN (2, 3)
+                            AND date(last_seen) >= date('now', '-7 days')
+                            """
+                        )
+                        mb_advert_pks = {
+                            row["public_key"] for row in cursor.fetchall() if row["public_key"]
+                        }
+                    except Exception as e:
+                        self.logger.debug(f"Could not load multibyte path sets for 7d stats: {e}")
+                try:
+                    cursor.execute(
+                        """
+                        SELECT public_key, role, out_bytes_per_hop
+                        FROM complete_contact_tracking
+                        WHERE last_heard > datetime('now', '-7 days')
+                        """
+                    )
+                    mb_7d = 0
+                    for row in cursor.fetchall():
+                        if self._contact_has_multibyte_path_evidence(
+                            row["public_key"],
+                            row["role"],
+                            row["out_bytes_per_hop"],
+                            mb_advert_pks,
+                            multibyte_chunks,
+                        ):
+                            mb_7d += 1
+                    stats['contacts_7d_multibyte_path'] = mb_7d
+                except Exception as e:
+                    self.logger.debug(f"Could not compute contacts_7d_multibyte_path: {e}")
+
                 cursor.execute("""
                     SELECT COUNT(*) FROM complete_contact_tracking
                     WHERE is_currently_tracked = 1
@@ -4136,6 +4183,37 @@ class BotDataViewer:
                     WHERE device_type IS NOT NULL
                 """)
                 stats['unique_device_types'] = cursor.fetchone()[0]
+
+            # Incoming packets (packet_stream): multibyte path share, last 7 days (decoded bytes_per_hop)
+            stats['incoming_packets_7d'] = 0
+            stats['incoming_packets_7d_multibyte_path'] = 0
+            if 'packet_stream' in tables:
+                try:
+                    cutoff_ts = time.time() - 7 * 86400
+                    cursor.execute(
+                        """
+                        SELECT COUNT(*) FROM packet_stream
+                        WHERE type = ? AND timestamp > ?
+                        """,
+                        ("packet", cutoff_ts),
+                    )
+                    stats['incoming_packets_7d'] = cursor.fetchone()[0] or 0
+                    mb_pk = 0
+                    try:
+                        cursor.execute(
+                            """
+                            SELECT COUNT(*) FROM packet_stream
+                            WHERE type = ? AND timestamp > ?
+                            AND CAST(json_extract(data, '$.bytes_per_hop') AS INTEGER) IN (2, 3)
+                            """,
+                            ("packet", cutoff_ts),
+                        )
+                        mb_pk = cursor.fetchone()[0] or 0
+                    except sqlite3.OperationalError:
+                        mb_pk = self._count_multibyte_packets_from_stream_json(cursor, cutoff_ts)
+                    stats['incoming_packets_7d_multibyte_path'] = mb_pk
+                except Exception as e:
+                    self.logger.debug(f"Could not compute incoming_packets_7d multibyte stats: {e}")
 
             # Advertisement statistics using daily tracking table
             if 'daily_stats' in tables:
@@ -4660,6 +4738,181 @@ class BotDataViewer:
             if conn:
                 conn.close()
 
+    @staticmethod
+    def _chunks_from_multibyte_path_hex(path_hex: str, bytes_per_hop: int) -> list[str]:
+        """Split path hex into per-hop segments for 2- or 3-byte hop encoding."""
+        if not path_hex or bytes_per_hop not in (2, 3):
+            return []
+        step = bytes_per_hop * 2
+        out: list[str] = []
+        for i in range(0, len(path_hex), step):
+            seg = path_hex[i : i + step]
+            if len(seg) == step:
+                out.append(seg.lower())
+        return out
+
+    def _count_multibyte_packets_from_stream_json(self, cursor, cutoff_ts: float) -> int:
+        """Count packet_stream rows (type=packet) since cutoff with bytes_per_hop in (2, 3). JSON parse fallback."""
+        import json
+
+        n = 0
+        try:
+            cursor.execute(
+                """
+                SELECT data FROM packet_stream
+                WHERE type = ? AND timestamp > ?
+                """,
+                ("packet", cutoff_ts),
+            )
+            for row in cursor.fetchall():
+                raw = row["data"]
+                if not raw:
+                    continue
+                try:
+                    d = json.loads(raw)
+                except (json.JSONDecodeError, TypeError):
+                    continue
+                bph = d.get("bytes_per_hop")
+                try:
+                    bph_i = int(bph) if bph is not None else None
+                except (TypeError, ValueError):
+                    bph_i = None
+                if bph_i in (2, 3):
+                    n += 1
+        except Exception as e:
+            self.logger.debug(f"packet_stream JSON scan for multibyte: {e}")
+        return n
+
+    def _collect_multibyte_hop_chunks(
+        self, cursor, recent_days: Optional[int] = None
+    ) -> set[str]:
+        """Hop prefixes from multibyte paths in observed_paths (for repeater/room pubkey matching).
+
+        If ``recent_days`` is set (e.g. 7), only paths whose ``last_seen`` falls within that
+        window are used. Default (None) keeps full history — used by the contacts API badge.
+        Dashboard 7d stats pass ``recent_days=7`` so percentages match the chart title.
+        """
+        chunks: set[str] = set()
+        try:
+            extra = ""
+            if recent_days is not None:
+                d = max(1, min(int(recent_days), 366))
+                extra = f" AND date(last_seen) >= date('now', '-{d} days')"
+            cursor.execute(
+                f"""
+                SELECT path_hex, bytes_per_hop FROM observed_paths
+                WHERE bytes_per_hop IN (2, 3) AND path_hex IS NOT NULL AND length(path_hex) > 0
+                {extra}
+                """
+            )
+            for row in cursor.fetchall():
+                ph = row["path_hex"]
+                bph = row["bytes_per_hop"]
+                try:
+                    bph_i = int(bph) if bph is not None else 0
+                except (TypeError, ValueError):
+                    bph_i = 0
+                for c in self._chunks_from_multibyte_path_hex(ph, bph_i):
+                    if len(c) in (4, 6):
+                        chunks.add(c)
+        except Exception as e:
+            self.logger.debug(f"Could not load multibyte hop chunks: {e}")
+        return chunks
+
+    def _compute_path_encoding_badge(
+        self,
+        row: Any,
+        all_paths: list[dict[str, Any]],
+        multibyte_hop_chunks: set[str],
+    ) -> Optional[str]:
+        """Return 'multibyte', 'one_byte', or None for contacts path-encoding badge."""
+        pk = row["public_key"] or ""
+        role = (row["role"] or "").lower()
+        obph_raw = row["out_bytes_per_hop"]
+        obph: Optional[int]
+        try:
+            obph = int(obph_raw) if obph_raw is not None else None
+        except (TypeError, ValueError):
+            obph = None
+        if obph is not None and obph not in (1, 2, 3):
+            obph = None
+
+        out_path_len = row["out_path_len"]
+        if out_path_len is None:
+            out_path_len = -1
+        try:
+            out_path_len = int(out_path_len)
+        except (TypeError, ValueError):
+            out_path_len = -1
+
+        advert_count = row["advert_count"] or 0
+
+        def norm_bph(b: Any) -> int:
+            if b is None:
+                return 1
+            try:
+                i = int(b)
+                return i if i in (1, 2, 3) else 1
+            except (TypeError, ValueError):
+                return 1
+
+        # Multibyte evidence
+        if obph in (2, 3):
+            return "multibyte"
+        for p in all_paths:
+            if norm_bph(p.get("bytes_per_hop")) in (2, 3):
+                return "multibyte"
+        if role in ("repeater", "roomserver") and pk:
+            pk_low = pk.lower()
+            for chunk in multibyte_hop_chunks:
+                if pk_low.startswith(chunk):
+                    return "multibyte"
+
+        # One-byte: positive signal and no multibyte observation
+        has_signal = bool(
+            advert_count > 0 or len(all_paths) > 0 or out_path_len >= 0
+        )
+        if not has_signal:
+            return None
+
+        if obph is not None and obph != 1:
+            return None
+        for p in all_paths:
+            if norm_bph(p.get("bytes_per_hop")) != 1:
+                return None
+
+        return "one_byte"
+
+    def _contact_has_multibyte_path_evidence(
+        self,
+        public_key: str,
+        role: Optional[str],
+        out_bytes_per_hop: Any,
+        multibyte_advert_public_keys: set[str],
+        multibyte_hop_chunks: set[str],
+    ) -> bool:
+        """Multibyte detection for dashboard 7d stats (observed_paths scoped by date in SQL)."""
+        pk = public_key or ""
+        role_l = (role or "").lower()
+        obph: Optional[int]
+        try:
+            obph = int(out_bytes_per_hop) if out_bytes_per_hop is not None else None
+        except (TypeError, ValueError):
+            obph = None
+        if obph is not None and obph not in (1, 2, 3):
+            obph = None
+
+        if obph in (2, 3):
+            return True
+        if pk and pk in multibyte_advert_public_keys:
+            return True
+        if role_l in ("repeater", "roomserver") and pk:
+            pk_low = pk.lower()
+            for chunk in multibyte_hop_chunks:
+                if pk_low.startswith(chunk):
+                    return True
+        return False
+
     def _get_tracking_data(self, since='30d'):
         """Get contact tracking data. since: 24h, 7d, 30d, 90d, or all (heard in that window)."""
         conn = None
@@ -4724,8 +4977,11 @@ class BotDataViewer:
                 ORDER BY c.last_heard DESC
             """, params)
 
+            main_rows = cursor.fetchall()
+            multibyte_hop_chunks = self._collect_multibyte_hop_chunks(cursor)
+
             tracking = []
-            for row in cursor.fetchall():
+            for row in main_rows:
                 # Parse raw advertisement data if available
                 raw_advert_data_parsed = None
                 if row['raw_advert_data']:
@@ -4768,6 +5024,10 @@ class BotDataViewer:
                                 'last_seen': paths_last_seen[i] if i < len(paths_last_seen) and paths_last_seen[i] else None
                             })
 
+                path_encoding_badge = self._compute_path_encoding_badge(
+                    row, all_paths, multibyte_hop_chunks
+                )
+
                 tracking.append({
                     'user_id': row['public_key'],
                     'username': row['name'],
@@ -4794,7 +5054,8 @@ class BotDataViewer:
                     'out_path': row['out_path'] if row['out_path'] is not None else '',
                     'out_path_len': row['out_path_len'] if row['out_path_len'] is not None else -1,
                     'out_bytes_per_hop': row['out_bytes_per_hop'] if row['out_bytes_per_hop'] is not None else None,
-                    'all_paths': all_paths
+                    'all_paths': all_paths,
+                    'path_encoding_badge': path_encoding_badge,
                 })
 
             # Get server statistics for daily tracking using direct database queries

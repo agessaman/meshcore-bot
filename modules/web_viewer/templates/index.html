@@ -2,6 +2,37 @@
 
 {% block title %}Bot Statistics - MeshCore Bot Data Viewer{% endblock %}
 
+{% block extra_css %}
+<style>
+    /* Equal-height columns: stacks fill the same vertical space as the path-encoding card (lg+) */
+    @media (min-width: 992px) {
+        .dashboard-overview-row > .col-lg-4 {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+        .dashboard-overview-stack {
+            flex: 1 1 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            min-height: 0;
+            width: 100%;
+        }
+    }
+    /* Multibyte explainer tooltip — allow wrapping for long copy */
+    .tooltip.multibyte-capable-hint .tooltip-inner {
+        max-width: min(22rem, 92vw);
+        text-align: left;
+    }
+    .path-encoding-info-btn:hover,
+    .path-encoding-info-btn:focus {
+        text-decoration: none;
+        color: var(--bs-info, #0dcaf0) !important;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="row">
     <div class="col-12">
@@ -60,50 +91,130 @@
     </div>
 </div>
 
-<!-- Network Activity Overview -->
-<div class="row mb-4">
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <i class="fas fa-users"></i> Active Contacts
+<!-- Network overview: 3 columns — (Active + Devices&amp;cache) | (Network + Geo) | Path encoding -->
+<div class="row mb-4 g-3 align-items-stretch dashboard-overview-row">
+    <div class="col-12 col-lg-4">
+        <div class="dashboard-overview-stack">
+            <div class="card flex-shrink-0">
+                <div class="card-header">
+                    <i class="fas fa-users"></i> Active Contacts
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-4">
+                            <h4 id="contacts-24h" class="text-primary">0</h4>
+                            <small class="text-muted">24h</small>
+                        </div>
+                        <div class="col-4">
+                            <h4 id="contacts-7d" class="text-info">0</h4>
+                            <small class="text-muted">7d</small>
+                        </div>
+                        <div class="col-4">
+                            <h4 id="total-contacts" class="text-success">0</h4>
+                            <small class="text-muted">All</small>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="card-body">
-                <div class="row text-center">
-                    <div class="col-4">
-                        <h4 id="contacts-24h" class="text-primary">0</h4>
-                        <small class="text-muted">24h</small>
-                    </div>
-                    <div class="col-4">
-                        <h4 id="contacts-7d" class="text-info">0</h4>
-                        <small class="text-muted">7d</small>
-                    </div>
-                    <div class="col-4">
-                        <h4 id="total-contacts" class="text-success">0</h4>
-                        <small class="text-muted">All</small>
+            <div class="card flex-grow-1 d-flex flex-column">
+                <div class="card-header">
+                    <i class="fas fa-microchip"></i> Devices &amp; cache
+                </div>
+                <div class="card-body flex-grow-1 d-flex align-items-center justify-content-center">
+                    <div class="row text-center w-100">
+                        <div class="col-4">
+                            <h4 id="unique-device-types" class="text-primary">0</h4>
+                            <small class="text-muted">Device types</small>
+                        </div>
+                        <div class="col-4">
+                            <h4 id="unique-roles" class="text-info">0</h4>
+                            <small class="text-muted">Roles</small>
+                        </div>
+                        <div class="col-4">
+                            <h4 id="active-cache-entries" class="text-success">0</h4>
+                            <small class="text-muted">Active cache</small>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-    
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <i class="fas fa-network-wired"></i> Network Health
+    <div class="col-12 col-lg-4">
+        <div class="dashboard-overview-stack">
+            <div class="card flex-shrink-0">
+                <div class="card-header">
+                    <i class="fas fa-network-wired"></i> Network Health
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-4">
+                            <h4 id="avg-hop-count" class="text-warning">0</h4>
+                            <small class="text-muted">Avg Hops</small>
+                        </div>
+                        <div class="col-4">
+                            <h4 id="max-hop-count" class="text-danger">0</h4>
+                            <small class="text-muted">Max Hops</small>
+                        </div>
+                        <div class="col-4">
+                            <h4 id="tracked-contacts" class="text-info">0</h4>
+                            <small class="text-muted">Tracked</small>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="card-body">
-                <div class="row text-center">
-                    <div class="col-4">
-                        <h4 id="avg-hop-count" class="text-warning">0</h4>
-                        <small class="text-muted">Avg Hops</small>
+            <div class="card flex-grow-1 d-flex flex-column">
+                <div class="card-header">
+                    <i class="fas fa-globe"></i> Geographic Coverage
+                </div>
+                <div class="card-body flex-grow-1 d-flex align-items-center justify-content-center">
+                    <div class="row text-center w-100">
+                        <div class="col-4">
+                            <h4 id="countries" class="text-primary">0</h4>
+                            <small class="text-muted">Countries</small>
+                        </div>
+                        <div class="col-4">
+                            <h4 id="states" class="text-info">0</h4>
+                            <small class="text-muted">States</small>
+                        </div>
+                        <div class="col-4">
+                            <h4 id="cities" class="text-success">0</h4>
+                            <small class="text-muted">Cities</small>
+                        </div>
                     </div>
-                    <div class="col-4">
-                        <h4 id="max-hop-count" class="text-danger">0</h4>
-                        <small class="text-muted">Max Hops</small>
-                    </div>
-                    <div class="col-4">
-                        <h4 id="tracked-contacts" class="text-info">0</h4>
-                        <small class="text-muted">Tracked</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-4">
+        <div class="dashboard-overview-stack">
+            <div class="card h-100 d-flex flex-column flex-grow-1">
+                <div class="card-header">
+                    <i class="fas fa-chart-pie"></i> Path encoding (7d)
+                </div>
+                <div class="card-body py-3 flex-grow-1">
+                    <div class="row g-3 justify-content-center align-items-start">
+                        <div class="col-12 col-md-6 text-center">
+                            <p class="small text-muted mb-2 d-flex align-items-center justify-content-center gap-1 flex-wrap">
+                                <span>Contacts (last 7 days)</span>
+                                <button type="button" class="btn btn-link p-0 border-0 align-baseline text-muted path-encoding-info-btn"
+                                        id="contacts-multibyte-chart-info"
+                                        aria-label="How multibyte capable contacts are counted"
+                                        data-bs-toggle="tooltip" data-bs-placement="top">
+                                    <i class="fas fa-info-circle" aria-hidden="true"></i>
+                                </button>
+                            </p>
+                            <div class="path-encoding-pie-wrap mx-auto" style="max-width: 200px; width: 100%;">
+                                <canvas id="pathEncodingPieChart" aria-label="Multibyte path share among contacts last 7 days"></canvas>
+                            </div>
+                            <p class="small text-muted mt-2 mb-0" id="path-encoding-pie-summary"></p>
+                        </div>
+                        <div class="col-12 col-md-6 text-center">
+                            <p class="small text-muted mb-2">Incoming packets (last 7 days)</p>
+                            <div class="path-encoding-pie-wrap mx-auto" style="max-width: 200px; width: 100%;">
+                                <canvas id="incomingPacketsPieChart" aria-label="Multibyte path share among incoming packets last 7 days"></canvas>
+                            </div>
+                            <p class="small text-muted mt-2 mb-0" id="incoming-packets-pie-summary"></p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -111,60 +222,9 @@
     </div>
 </div>
 
-<!-- Device types, roles, and repeater cache (IDs used by dashboard metrics JS) -->
+<!-- Network Performance -->
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card h-100">
-            <div class="card-header">
-                <i class="fas fa-microchip"></i> Devices &amp; cache
-            </div>
-            <div class="card-body">
-                <div class="row text-center">
-                    <div class="col-md-4">
-                        <h4 id="unique-device-types" class="text-primary">0</h4>
-                        <small class="text-muted">Device types</small>
-                    </div>
-                    <div class="col-md-4">
-                        <h4 id="unique-roles" class="text-info">0</h4>
-                        <small class="text-muted">Roles</small>
-                    </div>
-                    <div class="col-md-4">
-                        <h4 id="active-cache-entries" class="text-success">0</h4>
-                        <small class="text-muted">Active cache entries</small>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Network Performance - Two Columns -->
-<div class="row mb-4">
-    <div class="col-md-6">
-        <div class="card h-100">
-            <div class="card-header">
-                <i class="fas fa-globe"></i> Geographic Coverage
-            </div>
-            <div class="card-body">
-                <div class="row text-center">
-                    <div class="col-4">
-                        <h4 id="countries" class="text-primary">0</h4>
-                        <small class="text-muted">Countries</small>
-                    </div>
-                    <div class="col-4">
-                        <h4 id="states" class="text-info">0</h4>
-                        <small class="text-muted">States</small>
-                    </div>
-                    <div class="col-4">
-                        <h4 id="cities" class="text-success">0</h4>
-                        <small class="text-muted">Cities</small>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <div class="col-md-6">
         <div class="card h-100">
             <div class="card-header">
                 <i class="fas fa-hashtag"></i> Channel Statistics
@@ -440,6 +500,8 @@ class ModernDashboard {
         this.botStartTime = null;
         this.updateInterval = null;
         this.uptimeInterval = null;
+        this.pathEncodingPieChart = null;
+        this.incomingPacketsPieChart = null;
         this.initializeDashboard();
     }
     
@@ -583,7 +645,194 @@ class ModernDashboard {
         this.updateElement('bot-reply-rate-7d', data.bot_reply_rate_7d !== undefined ? `${data.bot_reply_rate_7d}%` : '0%');
         this.updateElement('bot-reply-rate-30d', data.bot_reply_rate_30d !== undefined ? `${data.bot_reply_rate_30d}%` : '0%');
         
+        this.updatePathEncodingPieChart(data);
+        this.updateIncomingPacketsPieChart(data);
+        
         // Analytics are loaded separately with time window selectors
+    }
+
+    updatePathEncodingPieChart(data) {
+        const canvas = document.getElementById('pathEncodingPieChart');
+        const summaryEl = document.getElementById('path-encoding-pie-summary');
+        if (!canvas || typeof Chart === 'undefined') {
+            return;
+        }
+        const total = Number(data.contacts_7d) || 0;
+        let mb = data.contacts_7d_multibyte_path;
+        mb = Number(mb);
+        if (!Number.isFinite(mb)) {
+            mb = 0;
+        }
+        mb = Math.max(0, Math.min(mb, total));
+        const other = Math.max(0, total - mb);
+
+        if (this.pathEncodingPieChart) {
+            this.pathEncodingPieChart.destroy();
+            this.pathEncodingPieChart = null;
+        }
+
+        const cs = getComputedStyle(document.documentElement);
+        const legendColor = (cs.getPropertyValue('--text-muted') || '#6c757d').trim();
+        const mbColor = '#0891b2';
+        const otherColor = '#a8a29e';
+        const emptyColor = (cs.getPropertyValue('--bg-tertiary') || '#dee2e6').trim();
+
+        if (total === 0) {
+            if (summaryEl) {
+                summaryEl.textContent = 'No contacts in the last 7 days.';
+            }
+            this.pathEncodingPieChart = new Chart(canvas.getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['—'],
+                    datasets: [{
+                        data: [1],
+                        backgroundColor: [emptyColor],
+                        borderWidth: 0,
+                    }],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                    cutout: '55%',
+                },
+            });
+            return;
+        }
+
+        const pct = Math.round((mb / total) * 1000) / 10;
+        if (summaryEl) {
+            summaryEl.textContent = `${pct}% multibyte (${mb} of ${total})`;
+        }
+
+        this.pathEncodingPieChart = new Chart(canvas.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Multibyte paths', 'Other'],
+                datasets: [{
+                    data: [mb, other],
+                    backgroundColor: [mbColor, otherColor],
+                    borderWidth: 0,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            color: legendColor,
+                            boxWidth: 12,
+                            font: { size: 11 },
+                        },
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => {
+                                const n = ctx.raw;
+                                const p = total ? Math.round((n / total) * 1000) / 10 : 0;
+                                return ` ${n} (${p}%)`;
+                            },
+                        },
+                    },
+                },
+                cutout: '55%',
+            },
+        });
+    }
+
+    updateIncomingPacketsPieChart(data) {
+        const canvas = document.getElementById('incomingPacketsPieChart');
+        const summaryEl = document.getElementById('incoming-packets-pie-summary');
+        if (!canvas || typeof Chart === 'undefined') {
+            return;
+        }
+        const total = Number(data.incoming_packets_7d) || 0;
+        let mb = data.incoming_packets_7d_multibyte_path;
+        mb = Number(mb);
+        if (!Number.isFinite(mb)) {
+            mb = 0;
+        }
+        mb = Math.max(0, Math.min(mb, total));
+        const other = Math.max(0, total - mb);
+
+        if (this.incomingPacketsPieChart) {
+            this.incomingPacketsPieChart.destroy();
+            this.incomingPacketsPieChart = null;
+        }
+
+        const cs = getComputedStyle(document.documentElement);
+        const legendColor = (cs.getPropertyValue('--text-muted') || '#6c757d').trim();
+        const mbColor = '#0891b2';
+        const otherColor = '#a8a29e';
+        const emptyColor = (cs.getPropertyValue('--bg-tertiary') || '#dee2e6').trim();
+
+        if (total === 0) {
+            if (summaryEl) {
+                summaryEl.textContent = 'No incoming packets in the last 7 days.';
+            }
+            this.incomingPacketsPieChart = new Chart(canvas.getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['—'],
+                    datasets: [{
+                        data: [1],
+                        backgroundColor: [emptyColor],
+                        borderWidth: 0,
+                    }],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                    cutout: '55%',
+                },
+            });
+            return;
+        }
+
+        const pct = Math.round((mb / total) * 1000) / 10;
+        if (summaryEl) {
+            summaryEl.textContent = `${pct}% multibyte (${mb} of ${total})`;
+        }
+
+        this.incomingPacketsPieChart = new Chart(canvas.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Multibyte paths', 'Other'],
+                datasets: [{
+                    data: [mb, other],
+                    backgroundColor: [mbColor, otherColor],
+                    borderWidth: 0,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            color: legendColor,
+                            boxWidth: 12,
+                            font: { size: 11 },
+                        },
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => {
+                                const n = ctx.raw;
+                                const p = total ? Math.round((n / total) * 1000) / 10 : 0;
+                                return ` ${n} (${p}%)`;
+                            },
+                        },
+                    },
+                },
+                cutout: '55%',
+            },
+        });
     }
     
     updateElement(elementId, value) {
@@ -822,6 +1071,14 @@ class ModernDashboard {
         if (this.uptimeInterval) {
             clearInterval(this.uptimeInterval);
         }
+        if (this.pathEncodingPieChart) {
+            this.pathEncodingPieChart.destroy();
+            this.pathEncodingPieChart = null;
+        }
+        if (this.incomingPacketsPieChart) {
+            this.incomingPacketsPieChart.destroy();
+            this.incomingPacketsPieChart = null;
+        }
     }
     
     async loadConnectedClients() {
@@ -884,10 +1141,30 @@ class ModernDashboard {
     }
 }
 
+function initMultibyteCapableTooltips() {
+    if (typeof bootstrap === 'undefined' || !bootstrap.Tooltip) return;
+    const dashboardTip =
+        'Contacts heard in the last 7 days are counted as multibyte capable if any apply: ' +
+        'stored path encoding (out bytes per hop) is 2 or 3; ' +
+        'we saw an advert from them in that window on observed paths with multibyte hops (2–3 bytes per hop); ' +
+        'or, for repeaters and room servers, their public key prefix matches a hop prefix from a multibyte advert path in that window.';
+    const el = document.getElementById('contacts-multibyte-chart-info');
+    if (el) {
+        const existing = bootstrap.Tooltip.getInstance(el);
+        if (existing) existing.dispose();
+        new bootstrap.Tooltip(el, {
+            title: dashboardTip,
+            html: false,
+            customClass: 'multibyte-capable-hint',
+        });
+    }
+}
+
 // Initialize dashboard when page loads
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM loaded, initializing dashboard...');
     window.dashboard = new ModernDashboard();
+    initMultibyteCapableTooltips();
 });
 
 // Clean up when page is unloaded

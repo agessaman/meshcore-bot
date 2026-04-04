@@ -177,6 +177,47 @@
     .contacts-mobile-sort-row .flex-grow-1 {
         min-width: 0;
     }
+
+    /* Path encoding (bytes/hop) — neutral, non-judgmental pairing */
+    .path-encoding-badge {
+        font-size: 0.65rem;
+        font-weight: 500;
+        line-height: 1.2;
+        padding: 0.2em 0.45em;
+    }
+    /* Multibyte: cool cyan (distinct from warm 1-byte) */
+    .path-encoding-badge-multibyte {
+        background-color: #cffafe;
+        color: #0c4a6e;
+        border: 1px solid #0ea5e9;
+    }
+    /* 1-byte: warm stone (hue-shifted from gray so it reads clearly vs cyan) */
+    .path-encoding-badge-onebyte {
+        background-color: #faf7f2;
+        color: #44403c;
+        border: 1px solid #a8a29e;
+    }
+    /* Dark mode: same cool vs warm split, higher saturation on borders */
+    [data-theme="dark"] .path-encoding-badge-multibyte {
+        background-color: #134e6a;
+        color: #bae6fd;
+        border-color: #38bdf8;
+    }
+    [data-theme="dark"] .path-encoding-badge-onebyte {
+        background-color: #3f3a36;
+        color: #f5f0eb;
+        border-color: #a8a29e;
+    }
+
+    .tooltip.multibyte-capable-hint .tooltip-inner {
+        max-width: min(22rem, 92vw);
+        text-align: left;
+    }
+    .path-encoding-info-btn:hover,
+    .path-encoding-info-btn:focus {
+        text-decoration: none;
+        color: var(--bs-info, #0dcaf0) !important;
+    }
 </style>
 {% endblock %}
 
@@ -421,7 +462,16 @@
                                 SNR <i class="fas fa-sort"></i>
                             </th>
                             <th class="sortable" data-sort="hop_count">
-                                Hops <i class="fas fa-sort"></i>
+                                <span class="d-inline-flex align-items-center gap-1">
+                                    Hops <i class="fas fa-sort"></i>
+                                    <button type="button" class="btn btn-link p-0 border-0 align-baseline text-muted path-encoding-info-btn"
+                                            id="contacts-list-multibyte-badge-info"
+                                            aria-label="How Multibyte and 1-byte only badges are determined"
+                                            data-bs-toggle="tooltip" data-bs-placement="top"
+                                            onclick="event.stopPropagation();">
+                                        <i class="fas fa-info-circle" aria-hidden="true"></i>
+                                    </button>
+                                </span>
                             </th>
                             <th class="sortable" data-sort="first_heard">
                                 First Heard <i class="fas fa-sort"></i>
@@ -840,7 +890,10 @@ class ModernContactsManager {
                         <div class="small text-muted">${this.formatTimestamp(contact.first_heard)} · ${this.formatTimeAgo(contact.last_seen)}</div>
                         <div class="contact-mobile-hops-adverts d-flex align-items-center justify-content-between flex-wrap gap-2 mt-2">
                             <div class="d-flex align-items-center flex-wrap gap-2 min-w-0">
+                                <div class="d-flex flex-column align-items-start gap-1 min-w-0">
                                 <div class="d-flex align-items-center min-w-0">${this.formatHops(contact)}</div>
+                                ${this.formatPathEncodingBadge(contact)}
+                                </div>
                                 <div class="d-flex align-items-center gap-1">
                                     <span class="badge bg-success">${contact.advert_count || 0}</span>
                                     <span class="text-muted small">adverts</span>
@@ -904,7 +957,7 @@ class ModernContactsManager {
                 <td>${this.formatLocation(contact)}</td>
                 <td>${this.formatDistance(contact)}</td>
                 <td>${this.formatSignal(contact)}</td>
-                <td>${this.formatHops(contact)}</td>
+                <td><div class="d-flex flex-column align-items-start gap-1">${this.formatHops(contact)}${this.formatPathEncodingBadge(contact)}</div></td>
                 <td>${this.formatTimestamp(contact.first_heard)}</td>
                 <td>${this.formatTimeAgo(contact.last_seen)}</td>
                 <td><span class="badge bg-success">${contact.advert_count || 0}</span></td>
@@ -1445,6 +1498,18 @@ class ModernContactsManager {
             // No path data
             return `<span class="badge bg-primary">${hopCount}</span>`;
         }
+    }
+
+    formatPathEncodingBadge(contact) {
+        const v = contact.path_encoding_badge;
+        if (!v) return '';
+        if (v === 'multibyte') {
+            return '<span class="badge path-encoding-badge path-encoding-badge-multibyte">Multibyte</span>';
+        }
+        if (v === 'one_byte') {
+            return '<span class="badge path-encoding-badge path-encoding-badge-onebyte">1-byte only</span>';
+        }
+        return '';
     }
     
     setupPathTooltips() {
@@ -2463,12 +2528,32 @@ function exportData(dataset, fmt) {
     document.body.removeChild(a);
 }
 
+function initContactsMultibyteBadgeTooltip() {
+    if (typeof bootstrap === 'undefined' || !bootstrap.Tooltip) return;
+    const listTip =
+        'Multibyte vs 1-byte only: multibyte if stored path encoding (out bytes per hop) is 2 or 3, ' +
+        'any loaded advert path shows multibyte hops (2–3 bytes per hop), ' +
+        'or (repeaters / room servers) their public key prefix matches a hop on a multibyte path. ' +
+        'Loaded paths can include more history than the 7-day dashboard chart.';
+    const el = document.getElementById('contacts-list-multibyte-badge-info');
+    if (el) {
+        const existing = bootstrap.Tooltip.getInstance(el);
+        if (existing) existing.dispose();
+        new bootstrap.Tooltip(el, {
+            title: listTip,
+            html: false,
+            customClass: 'multibyte-capable-hint',
+        });
+    }
+}
+
 // Initialize contacts manager when page loads
 document.addEventListener('DOMContentLoaded', () => {
     window.contactsManager = new ModernContactsManager();
     window.contactsManager.setupPurgeModal();
-        });
-        </script>
+    initContactsMultibyteBadgeTooltip();
+});
+</script>
 
 <style>
 /* Sortable column styling - subtle and clean */
