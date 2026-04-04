@@ -1006,7 +1006,7 @@ enabled = false
 # Example: "Found {path_count} unique path(s) for @[{sender}]:\n{paths}"
 response_format = @[{sender}] found {path_count} unique path(s):\n{paths}
 # When true, {paths} uses shared-prefix lines ending with ┐ U+2510 when branching, then ├ U+251C / └ U+2514 (nested rows use 　 U+3000 before ├/└)
-condense_paths = false
+condense_paths = true
 
 [Greeter_Command]
 # Enable greeter to greet users on first channel message (true/false)

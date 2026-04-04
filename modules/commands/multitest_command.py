@@ -285,7 +285,7 @@ class MultitestCommand(BaseCommand):
             self.response_format = None  # Use default format
 
         self.condense_paths = self.get_config_value(
-            'Multitest_Command', 'condense_paths', fallback=False, value_type='bool'
+            'Multitest_Command', 'condense_paths', fallback=True, value_type='bool'
         )
 
     def get_help_text(self) -> str:
