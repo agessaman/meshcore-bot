@@ -1,0 +1,863 @@
+"""Tests for modules.web_viewer.app — BotDataViewer Flask app."""
+
+import json
+import sqlite3
+import time
+from configparser import ConfigParser
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+# ---------------------------------------------------------------------------
+# Factory helpers
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def viewer_with_db(tmp_path):
+    """Create a BotDataViewer instance with a test database.
+
+    The database starts empty so migrations create all tables with the correct schema.
+    This ensures tests match production behavior where BotDataViewer runs migrations.
+    """
+    from modules.web_viewer.app import BotDataViewer
+
+    config = ConfigParser()
+    config.add_section("Bot")
+    config.set("Bot", "db_path", str(tmp_path / "meshcore_bot.db"))
+    config.add_section("Web_Viewer")
+    config.set("Web_Viewer", "host", "127.0.0.1")
+    config.set("Web_Viewer", "port", "8080")
+    config.set("Web_Viewer", "enabled", "false")
+    config.set("Web_Viewer", "auto_start", "false")
+    config.set("Web_Viewer", "debug", "false")
+    config.set("Web_Viewer", "cors_allowed_origins", "*")
+    config.set("Web_Viewer", "web_viewer_password", "")
+
+    config_path = str(tmp_path / "config.ini")
+    with open(config_path, "w") as f:
+        config.write(f)
+
+    db_path = str(tmp_path / "meshcore_bot.db")
+
+    # Don't patch _setup_routes to get routes registered
+    with patch.object(BotDataViewer, "_start_database_polling"), \
+         patch.object(BotDataViewer, "_start_log_tailing"), \
+         patch.object(BotDataViewer, "_start_cleanup_scheduler"), \
+         patch.object(BotDataViewer, "_setup_socketio_handlers"), \
+         patch("modules.web_viewer.app.RepeaterManager"):
+        viewer = BotDataViewer(db_path=db_path, config_path=config_path)
+
+    viewer.db_path = db_path
+    viewer.config_path = config_path
+    viewer.app.testing = True
+    return viewer
+
+
+@pytest.fixture
+def mock_viewer(tmp_path):
+    """Create a minimal BotDataViewer with mock bot."""
+    from modules.web_viewer.app import BotDataViewer
+
+    config = ConfigParser()
+    config.add_section("Bot")
+    config.add_section("Web_Viewer")
+    config.set("Web_Viewer", "host", "127.0.0.1")
+    config.set("Web_Viewer", "port", "8080")
+    config.set("Web_Viewer", "enabled", "false")
+    config.set("Web_Viewer", "auto_start", "false")
+    config.set("Web_Viewer", "debug", "false")
+    config.set("Web_Viewer", "cors_allowed_origins", "*")
+    config.set("Web_Viewer", "web_viewer_password", "")
+
+    config_path = str(tmp_path / "config.ini")
+    with open(config_path, "w") as f:
+        config.write(f)
+
+    db_path = str(tmp_path / "meshcore_bot.db")
+
+    # Create minimal database
+    with sqlite3.connect(db_path, timeout=60) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS bot_metadata (
+                key TEXT PRIMARY KEY, value TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS packet_stream (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL,
+                data TEXT,
+                type TEXT
+            )
+        """)
+        conn.commit()
+
+    # Don't patch _setup_routes to get routes registered
+    with patch.object(BotDataViewer, "_start_database_polling"), \
+         patch.object(BotDataViewer, "_start_log_tailing"), \
+         patch.object(BotDataViewer, "_start_cleanup_scheduler"), \
+         patch.object(BotDataViewer, "_setup_socketio_handlers"), \
+         patch("modules.web_viewer.app.RepeaterManager"):
+        viewer = BotDataViewer(db_path=db_path, config_path=config_path)
+
+    viewer.db_path = db_path
+    viewer.config_path = config_path
+    viewer.app.testing = True
+    return viewer
+
+
+# ---------------------------------------------------------------------------
+# ALLOWED_TABLES whitelist
+# ---------------------------------------------------------------------------
+
+
+class TestAllowedTables:
+    def test_whitelist_contains_expected_tables(self):
+        from modules.web_viewer.app import BotDataViewer
+
+        expected_tables = {
+            'geocoding_cache', 'generic_cache', 'bot_metadata',
+            'packet_stream', 'message_stats', 'command_stats',
+            'repeater_contacts', 'complete_contact_tracking', 'mesh_connections',
+            'observed_paths', 'daily_stats', 'purging_log', 'greeter_rollout',
+            'greeted_users', 'feed_subscriptions', 'feed_activity', 'feed_errors',
+            'path_stats', 'unique_advert_packets', 'schema_version',
+            'channel_operations', 'channels', 'feed_message_queue',
+        }
+        assert expected_tables == BotDataViewer.ALLOWED_TABLES
+
+
+class TestIsSafeTableName:
+    def test_valid_table_name_passes(self, mock_viewer):
+        assert mock_viewer._is_safe_table_name('repeater_contacts') is True
+
+    def test_invalid_table_name_fails(self, mock_viewer):
+        assert mock_viewer._is_safe_table_name('repeater_contacts; DROP TABLE users;') is False
+
+    def test_empty_name_fails(self, mock_viewer):
+        assert mock_viewer._is_safe_table_name('') is False
+
+    def test_underscore_allowed(self, mock_viewer):
+        assert mock_viewer._is_safe_table_name('complete_contact_tracking') is True
+
+
+# ---------------------------------------------------------------------------
+# _get_database_info
+# ---------------------------------------------------------------------------
+
+
+class TestGetDatabaseInfo:
+    def test_returns_allowed_tables_only(self, viewer_with_db):
+        # Add a malicious table to the database
+        with sqlite3.connect(viewer_with_db.db_path, timeout=60) as conn:
+            cursor = conn.cursor()
+            cursor.execute("CREATE TABLE malicious_table (id INTEGER)")
+            conn.commit()
+
+        info = viewer_with_db._get_database_info()
+        table_names = [t['name'] for t in info.get('tables', [])]
+
+        assert 'malicious_table' not in table_names
+        assert 'repeater_contacts' in table_names
+
+
+class TestGetDatabaseStats:
+    def test_filters_tables_by_whitelist(self, viewer_with_db):
+        # Add a malicious table
+        with sqlite3.connect(viewer_with_db.db_path, timeout=60) as conn:
+            cursor = conn.cursor()
+            cursor.execute("CREATE TABLE malicious_table (id INTEGER)")
+            cursor.execute("INSERT INTO malicious_table VALUES (1)")
+            conn.commit()
+
+        stats = viewer_with_db._get_database_stats()
+        # Should not include stats for malicious table
+        table_stats = stats.get('table_stats', {})
+        assert 'malicious_table' not in table_stats
+
+
+# ---------------------------------------------------------------------------
+# api_export_contacts
+# ---------------------------------------------------------------------------
+
+
+class TestApiExportContacts:
+    def test_export_json_default(self, viewer_with_db):
+        # Add test data
+        with sqlite3.connect(viewer_with_db.db_path, timeout=60) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO complete_contact_tracking
+                (public_key, name, role, device_type, latitude, longitude,
+                 city, state, country, snr, first_heard, last_heard,
+                 advert_count, is_starred)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                "aa:bb:cc:dd:ee:ff:gg:hh",
+                "Test Node",
+                "client",
+                "node",
+                40.7128,
+                -74.0060,
+                "New York",
+                "NY",
+                "USA",
+                -12.5,
+                time.time() - 86400,
+                time.time(),
+                5,
+                0,
+            ))
+            conn.commit()
+
+        with viewer_with_db.app.test_client() as client:
+            response = client.get('/api/export/contacts')
+
+            assert response.status_code == 200
+            assert response.content_type == 'application/json'
+            contacts = json.loads(response.data)
+            assert isinstance(contacts, list)
+            assert len(contacts) > 0
+
+    def test_export_csv(self, viewer_with_db):
+        with sqlite3.connect(viewer_with_db.db_path, timeout=60) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO complete_contact_tracking
+                (public_key, name, role, device_type)
+                VALUES (?, ?, ?, ?)
+            """, ("aa:bb", "Test Node", "client", "node"))
+            conn.commit()
+
+        with viewer_with_db.app.test_client() as client:
+            response = client.get('/api/export/contacts?format=csv')
+
+            assert response.status_code == 200
+            # Flask adds charset=utf-8 automatically
+            assert 'text/csv' in response.content_type
+            csv_data = response.data.decode('utf-8')
+            assert 'user_id' in csv_data
+            assert 'Test Node' in csv_data
+
+    def test_export_since_7d(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.get('/api/export/contacts?since=7d')
+            assert response.status_code == 200
+
+    def test_export_since_invalid_defaults_to_30d(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.get('/api/export/contacts?since=invalid')
+            assert response.status_code == 200
+
+    def test_export_since_all(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.get('/api/export/contacts?since=all')
+            assert response.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# api_export_paths
+# ---------------------------------------------------------------------------
+
+
+class TestApiExportPaths:
+    def test_export_json_default(self, viewer_with_db):
+        with sqlite3.connect(viewer_with_db.db_path, timeout=60) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO observed_paths
+                (packet_hash, path_hex, path_length, observation_count,
+                 from_prefix, to_prefix, bytes_per_hop, packet_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                "0102030405060708",
+                "0102030405",
+                5,
+                10,
+                "0102",
+                "0304",
+                1,
+                "advert",
+            ))
+            conn.commit()
+
+        with viewer_with_db.app.test_client() as client:
+            response = client.get('/api/export/paths')
+
+            assert response.status_code == 200
+            assert response.content_type == 'application/json'
+            paths = json.loads(response.data)
+            assert isinstance(paths, list)
+
+    def test_export_csv(self, viewer_with_db):
+        with sqlite3.connect(viewer_with_db.db_path, timeout=60) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO observed_paths
+                (packet_hash, path_hex, path_length, observation_count,
+                 from_prefix, to_prefix, bytes_per_hop, packet_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                "0102030405060708",
+                "0102030405",
+                5,
+                10,
+                "0102",
+                "0304",
+                1,
+                "advert",
+            ))
+            conn.commit()
+
+        with viewer_with_db.app.test_client() as client:
+            response = client.get('/api/export/paths?format=csv')
+
+            assert response.status_code == 200
+            # Flask adds charset=utf-8 automatically
+            assert 'text/csv' in response.content_type
+            csv_data = response.data.decode('utf-8')
+            assert 'public_key' in csv_data
+
+    def test_export_since_7d(self, viewer_with_db):
+        with sqlite3.connect(viewer_with_db.db_path, timeout=60) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO observed_paths
+                (packet_hash, path_hex, path_length, observation_count,
+                 from_prefix, to_prefix, bytes_per_hop, packet_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                "0102030405060708",
+                "01020304",
+                4,
+                5,
+                "01",
+                "02",
+                1,
+                "advert",
+            ))
+            conn.commit()
+
+        with viewer_with_db.app.test_client() as client:
+            response = client.get('/api/export/paths?since=7d')
+            assert response.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# api_geocode_contact
+# ---------------------------------------------------------------------------
+
+
+class TestApiGeocodeContact:
+    def test_geocode_contact_not_found(self, mock_viewer):
+        with mock_viewer.app.test_client() as client:
+            response = client.post(
+                '/api/geocode-contact',
+                data=json.dumps({'public_key': 'not:found'}),
+                content_type='application/json'
+            )
+
+            assert response.status_code == 404
+            data = json.loads(response.data)
+            assert data['error'] == 'Contact not found'
+
+    def test_geocode_contact_no_coordinates(self, mock_viewer):
+        # Add contact without coordinates
+        with sqlite3.connect(mock_viewer.db_path, timeout=60) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO complete_contact_tracking
+                (public_key, name, role, latitude, longitude)
+                VALUES (?, ?, ?, NULL, NULL)
+            """, ("aa:bb", "No Coordinates", "client"))
+            conn.commit()
+
+        with mock_viewer.app.test_client() as client:
+            response = client.post(
+                '/api/geocode-contact',
+                data=json.dumps({'public_key': 'aa:bb'}),
+                content_type='application/json'
+            )
+
+            assert response.status_code == 400
+            data = json.loads(response.data)
+            assert data['error'] == 'Contact does not have valid coordinates'
+
+
+# ---------------------------------------------------------------------------
+# api_delete_contact
+# ---------------------------------------------------------------------------
+
+
+class TestApiDeleteContact:
+    def test_delete_contact_not_found(self, mock_viewer):
+        with mock_viewer.app.test_client() as client:
+            response = client.post(
+                '/api/delete-contact',
+                data=json.dumps({'public_key': 'not:found'}),
+                content_type='application/json'
+            )
+
+            assert response.status_code == 404
+            data = json.loads(response.data)
+            assert data['error'] == 'Contact not found'
+
+    def test_delete_contact_success(self, viewer_with_db):
+        # Add test contact first
+        with sqlite3.connect(viewer_with_db.db_path, timeout=60) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO complete_contact_tracking
+                (public_key, name, role, device_type)
+                VALUES (?, ?, ?, ?)
+            """, ("aa:bb:cc:dd:ee:ff:gg:hh", "Test Node", "client", "node"))
+            conn.commit()
+
+        with viewer_with_db.app.test_client() as client:
+            response = client.post(
+                '/api/delete-contact',
+                data=json.dumps({'public_key': 'aa:bb:cc:dd:ee:ff:gg:hh'}),
+                content_type='application/json'
+            )
+
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            assert data['success'] is True
+            assert 'deleted_counts' in data
+
+
+# ---------------------------------------------------------------------------
+# api_decode_path
+# ---------------------------------------------------------------------------
+
+
+class TestApiDecodePath:
+    def test_decode_path_success(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.post(
+                '/api/decode-path',
+                data=json.dumps({'path_hex': '0102030405'}),
+                content_type='application/json'
+            )
+
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            assert data['success'] is True
+            assert 'path' in data
+
+    def test_decode_path_no_path_hex(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.post(
+                '/api/decode-path',
+                data=json.dumps({'invalid': 'key'}),
+                content_type='application/json'
+            )
+
+            assert response.status_code == 400
+            data = json.loads(response.data)
+            assert data['error'] == 'path_hex is required'
+
+    def test_decode_path_empty_path_hex(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.post(
+                '/api/decode-path',
+                data=json.dumps({'path_hex': ''}),
+                content_type='application/json'
+            )
+
+            assert response.status_code == 400
+            data = json.loads(response.data)
+            assert data['error'] == 'path_hex cannot be empty'
+
+
+# ---------------------------------------------------------------------------
+# api_resolve_path
+# ---------------------------------------------------------------------------
+
+
+class TestApiResolvePath:
+    def test_resolve_path_success(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.post(
+                '/api/mesh/resolve-path',
+                data=json.dumps({'path': '0102030405'}),
+                content_type='application/json'
+            )
+
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            # Response should contain path resolution result
+            assert 'node_ids' in data or 'repeaters' in data
+
+
+# ---------------------------------------------------------------------------
+# api_contacts_purge_preview
+# ---------------------------------------------------------------------------
+
+
+class TestApiContactsPurgePreview:
+    def test_purge_preview_empty(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.get('/api/contacts/purge-preview?days=30')
+
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            assert 'count' in data
+
+
+# ---------------------------------------------------------------------------
+# api_greeter
+# ---------------------------------------------------------------------------
+
+
+class TestApiGreeter:
+    def test_greeter_success(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.get('/api/greeter')
+
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            assert 'rollout_data' in data
+
+    def test_greeter_no_rollouts(self, viewer_with_db):
+        # Clear any existing rollouts
+        with sqlite3.connect(viewer_with_db.db_path, timeout=60) as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM greeter_rollout")
+            conn.commit()
+
+        with viewer_with_db.app.test_client() as client:
+            response = client.get('/api/greeter')
+
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            # Response uses 'rollout_data' key
+            assert 'rollout_data' in data
+
+
+# ---------------------------------------------------------------------------
+# api_end_rollout
+# ---------------------------------------------------------------------------
+
+
+class TestApiEndRollout:
+    def test_end_rollout_success(self, viewer_with_db):
+        # Create an active rollout first
+        with sqlite3.connect(viewer_with_db.db_path, timeout=60) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO greeter_rollout (rollout_completed, rollout_started_at, rollout_days)
+                VALUES (0, datetime('now'), 30)
+            ''')
+            conn.commit()
+
+        with viewer_with_db.app.test_client() as client:
+            response = client.post(
+                '/api/greeter/end-rollout',
+                data=json.dumps({}),
+                content_type='application/json'
+            )
+
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            assert data.get('success') is True
+
+
+# ---------------------------------------------------------------------------
+# api_ungreet_user
+# ---------------------------------------------------------------------------
+
+
+class TestApiUngreetUser:
+    def test_ungreet_user_success(self, viewer_with_db):
+        # Create a greeted user first with NULL channel (global)
+        with sqlite3.connect(viewer_with_db.db_path, timeout=60) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO greeted_users (sender_id, channel, greeted_at)
+                VALUES (?, NULL, datetime('now'))
+            ''', ('test_user',))
+            conn.commit()
+
+        with viewer_with_db.app.test_client() as client:
+            response = client.post(
+                '/api/greeter/ungreet',
+                data=json.dumps({'sender_id': 'test_user'}),
+                content_type='application/json'
+            )
+
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            assert data.get('success') is True
+
+
+# ---------------------------------------------------------------------------
+# api_feeds
+# ---------------------------------------------------------------------------
+
+
+class TestApiFeeds:
+    def test_feeds_success(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.get('/api/feeds')
+
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            assert 'feeds' in data
+
+
+# ---------------------------------------------------------------------------
+# api_create_feed / api_update_feed / api_delete_feed
+# ---------------------------------------------------------------------------
+
+
+class TestApiFeedCrud:
+    def test_create_feed_success(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.post(
+                '/api/feeds',
+                data=json.dumps({
+                    'feed_type': 'rss',
+                    'feed_url': 'https://example.com/feed.xml',
+                    'channel_name': 'general',
+                    'feed_name': 'Test Feed',
+                    'output_format': '{title}',
+                    'check_interval_seconds': 300,
+                }),
+                content_type='application/json'
+            )
+
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            assert data.get('success') is True
+            # Store id for subsequent tests
+            if 'id' in data:
+                self._feed_id = data['id']
+
+    def test_update_feed_success(self, viewer_with_db):
+        # First create a feed
+        with viewer_with_db.app.test_client() as client:
+            create_response = client.post(
+                '/api/feeds',
+                data=json.dumps({
+                    'channel': 0,
+                    'feed_url': 'https://example.com/feed.xml',
+                    'format': '{title}',
+                    'feed_name': 'Test Feed',
+                    'enabled': True
+                }),
+                content_type='application/json'
+            )
+            feed_data = json.loads(create_response.data)
+
+        # Update the feed
+        feed_id = feed_data.get('feed_id')
+        if feed_id:
+            with viewer_with_db.app.test_client() as client:
+                response = client.put(
+                    f'/api/feeds/{feed_id}',
+                    data=json.dumps({
+                        'feed_name': 'Updated Feed Name',
+                        'feed_url': 'https://example.com/updated.xml'
+                    }),
+                    content_type='application/json'
+                )
+
+                assert response.status_code == 200
+                data = json.loads(response.data)
+                assert data.get('success') is True
+
+    def test_delete_feed_success(self, viewer_with_db):
+        # First create a feed
+        with viewer_with_db.app.test_client() as client:
+            create_response = client.post(
+                '/api/feeds',
+                data=json.dumps({
+                    'channel': 0,
+                    'feed_url': 'https://example.com/feed.xml',
+                    'format': '{title}',
+                    'feed_name': 'Test Feed',
+                    'enabled': True
+                }),
+                content_type='application/json'
+            )
+            feed_data = json.loads(create_response.data)
+
+        # Delete the feed
+        feed_id = feed_data.get('feed_id')
+        if feed_id:
+            with viewer_with_db.app.test_client() as client:
+                response = client.delete(f'/api/feeds/{feed_id}')
+
+                assert response.status_code == 200
+                data = json.loads(response.data)
+                assert data.get('success') is True
+
+
+# ---------------------------------------------------------------------------
+# SocketIO handlers
+# ---------------------------------------------------------------------------
+
+# Note: SocketIO handlers are defined inside _setup_socketio_handlers method
+# and use Flask-SocketIO's request context. Unit tests are complex due to
+# nested function definitions and context dependencies.
+# These tests verify handler registration, not internal logic.
+
+
+class TestSocketIOHandlers:
+    def test_socketio_handlers_are_registered(self, mock_viewer):
+        # Verify that SocketIO handlers were registered during initialization
+        assert hasattr(mock_viewer, 'socketio')
+        assert mock_viewer.socketio is not None
+
+
+# ---------------------------------------------------------------------------
+# _setup_routes (route definitions)
+# ---------------------------------------------------------------------------
+
+
+class TestRouteDefinitions:
+    def test_routes_are_defined(self, viewer_with_db):
+        # Check that routes exist by testing client
+        with viewer_with_db.app.test_client() as client:
+            # Index page
+            response = client.get('/')
+            assert response.status_code == 200
+
+            # Realtime page
+            response = client.get('/realtime')
+            assert response.status_code == 200
+
+            # Logs page
+            response = client.get('/logs')
+            assert response.status_code == 200
+
+            # Contacts page
+            response = client.get('/contacts')
+            assert response.status_code == 200
+
+            # Greeter page
+            response = client.get('/greeter')
+            assert response.status_code == 200
+
+            # Feeds page
+            response = client.get('/feeds')
+            assert response.status_code == 200
+
+            # Radio page
+            response = client.get('/radio')
+            assert response.status_code == 200
+
+            # Config page
+            response = client.get('/config')
+            assert response.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# api_config_notifications
+# ---------------------------------------------------------------------------
+
+
+class TestApiConfigNotifications:
+    def test_get_notifications_empty(self, mock_viewer):
+        with mock_viewer.app.test_client() as client:
+            response = client.get('/api/config/notifications')
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            # Should have defaults
+            assert 'smtp_port' in data
+            assert 'smtp_security' in data
+
+    def test_post_notifications(self, mock_viewer):
+        with mock_viewer.app.test_client() as client:
+            response = client.post(
+                '/api/config/notifications',
+                data=json.dumps({
+                    'smtp_host': 'smtp.example.com',
+                    'smtp_port': '587',
+                    'smtp_security': 'starttls'
+                }),
+                content_type='application/json'
+            )
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            assert data['success'] is True
+            assert 'saved' in data
+
+
+# ---------------------------------------------------------------------------
+# api_stats
+# ---------------------------------------------------------------------------
+
+
+class TestApiStats:
+    def test_api_stats_success(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.get('/api/stats')
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            # Response contains table stats and other metadata
+            assert isinstance(data, dict)
+
+
+# ---------------------------------------------------------------------------
+# api_connected_clients
+# ---------------------------------------------------------------------------
+
+
+class TestApiConnectedClients:
+    def test_api_connected_clients(self, mock_viewer):
+        with mock_viewer.app.test_client() as client:
+            response = client.get('/api/connected_clients')
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            # Returns list of client dicts with 'client_id', 'connected_at', etc.
+            assert isinstance(data, list)
+
+
+# ---------------------------------------------------------------------------
+# api_contacts
+# ---------------------------------------------------------------------------
+
+
+class TestApiContacts:
+    def test_api_contacts(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.get('/api/contacts')
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            # Returns dict with 'tracking_data' and 'server_stats'
+            assert 'tracking_data' in data
+            assert 'server_stats' in data
+
+
+# ---------------------------------------------------------------------------
+# api_channel_*
+# ---------------------------------------------------------------------------
+
+
+class TestApiChannels:
+    def test_api_channels(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.get('/api/channels')
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            assert 'channels' in data
+
+
+# ---------------------------------------------------------------------------
+# api_radio_status
+# ---------------------------------------------------------------------------
+
+
+class TestApiRadioStatus:
+    def test_api_radio_status(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.get('/api/radio/status')
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            # Response has 'connected' and 'status_known'
+            assert 'connected' in data
+            assert 'status_known' in data

@@ -243,6 +243,39 @@ def sanitize_input(content: str, max_length: Optional[int] = 500, strip_controls
     return content.strip()
 
 
+def sanitize_name(name: str, max_length: int = 64) -> str:
+    """
+    Sanitize a display name or identifier for use in log messages and stored fields.
+
+    Unlike sanitize_input(), this strips ALL control characters including newline,
+    carriage return, and tab — preventing log injection via malicious node names.
+
+    Args:
+        name: Display name or identifier to sanitize (e.g., mesh node name)
+        max_length: Maximum allowed length (default: 64 chars)
+
+    Returns:
+        Sanitized string safe for log output and database storage
+    """
+    if not isinstance(name, str):
+        name = str(name)
+
+    if max_length < 0:
+        raise ValueError(f"max_length must be non-negative, got {max_length}")
+
+    # Truncate to max_length first
+    if len(name) > max_length:
+        name = name[:max_length]
+
+    # Strip ALL control characters including \n, \r, \t (log injection prevention)
+    name = ''.join(char for char in name if ord(char) >= 32)
+
+    # Remove null bytes
+    name = name.replace('\x00', '')
+
+    return name.strip()
+
+
 # Valid SQLite journal modes for PRAGMA journal_mode validation
 VALID_JOURNAL_MODES = {"DELETE", "TRUNCATE", "PERSIST", "MEMORY", "WAL", "OFF"}
 

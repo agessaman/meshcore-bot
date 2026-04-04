@@ -446,6 +446,24 @@ def _m0010_create_repeater_and_graph_tables(cursor: sqlite3.Cursor) -> None:
             last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             observation_count INTEGER DEFAULT 1
         );
+
+        -- Greeter tables for tracking greeting rollouts and users
+        CREATE TABLE IF NOT EXISTS greeted_users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sender_id TEXT NOT NULL,
+            channel TEXT,
+            greeted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            rollout_marked BOOLEAN DEFAULT 0,
+            UNIQUE(sender_id, channel)
+        );
+
+        CREATE TABLE IF NOT EXISTS greeter_rollout (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            rollout_started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            rollout_days INTEGER NOT NULL,
+            rollout_completed BOOLEAN DEFAULT 0,
+            active_users_marked INTEGER DEFAULT 0
+        );
         """
     )
 

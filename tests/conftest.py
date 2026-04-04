@@ -205,6 +205,24 @@ def test_db(mock_logger, tmp_path):
         is_starred INTEGER DEFAULT 0
     ''')
 
+    # Initialize repeater_contacts table schema (for web viewer)
+    db_manager.create_table('repeater_contacts', '''
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        public_key TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        device_type TEXT NOT NULL,
+        first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        contact_data TEXT,
+        latitude REAL,
+        longitude REAL,
+        city TEXT,
+        state TEXT,
+        country TEXT,
+        is_active BOOLEAN DEFAULT 1,
+        purge_count INTEGER DEFAULT 0
+    ''')
+
     # Create indexes (after tables are created)
     # Create indexes (db_manager created tables in same db_path)
     try:

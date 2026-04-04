@@ -92,6 +92,33 @@ from modules.web_viewer.config_panels import CONFIG_PANELS, PANEL_CATEGORIES
 class BotDataViewer:
     """Complete web interface using Flask-SocketIO 5.x best practices"""
 
+    # Whitelist of allowed tables for security
+    ALLOWED_TABLES = {
+        'geocoding_cache',
+        'generic_cache',
+        'bot_metadata',
+        'packet_stream',
+        'message_stats',
+        'command_stats',
+        'greeted_users',
+        'repeater_contacts',
+        'complete_contact_tracking',
+        'daily_stats',
+        'unique_advert_packets',
+        'purging_log',
+        'mesh_connections',
+        'observed_paths',
+        'feed_subscriptions',
+        'feed_activity',
+        'feed_errors',
+        'feed_message_queue',
+        'channel_operations',
+        'channels',
+        'path_stats',
+        'schema_version',
+        'greeter_rollout',
+    }
+
     def __init__(self, db_path="meshcore_bot.db", repeater_db_path=None, config_path="config.ini"):
         # Setup comprehensive logging
         self._setup_logging()
@@ -4039,6 +4066,9 @@ class BotDataViewer:
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = [row[0] for row in cursor.fetchall()]
 
+            # Filter tables by ALLOWED_TABLES whitelist for security
+            tables = [t for t in tables if t in self.ALLOWED_TABLES]
+
             with self._clients_lock:
                 client_count = len(self.connected_clients)
 
@@ -4529,16 +4559,17 @@ class BotDataViewer:
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
             table_names = [row[0] for row in cursor.fetchall()]
 
+            # Filter tables by ALLOWED_TABLES whitelist for security
+            table_names = [
+                name for name in table_names
+                if name in self.ALLOWED_TABLES
+            ]
+
             # Get table information
             tables = []
             total_records = 0
 
             for table_name in table_names:
-                try:
-                    validate_sql_identifier(table_name)
-                except ValueError:
-                    self.logger.warning(f"Skipping invalid table name: {table_name!r}")
-                    continue
                 try:
                     # Get record count
                     cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
@@ -4606,6 +4637,19 @@ class BotDataViewer:
             if conn:
                 conn.close()
 
+    def _is_safe_table_name(self, table_name: str) -> bool:
+        """Check if table name is in the ALLOWED_TABLES whitelist.
+
+        Args:
+            table_name: The table name to validate
+
+        Returns:
+            True if the table is in the allowed whitelist, False otherwise
+        """
+        if not table_name or not isinstance(table_name, str):
+            return False
+        return table_name in self.ALLOWED_TABLES
+
     def _get_table_description(self, table_name):
         """Get human-readable description for table"""
         descriptions = {
@@ -4645,17 +4689,13 @@ class BotDataViewer:
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = [row[0] for row in cursor.fetchall()]
 
+            # Filter tables by ALLOWED_TABLES whitelist for security
+            tables = [t for t in tables if t in self.ALLOWED_TABLES]
+
             # Perform REINDEX on all tables
             self.logger.info("Starting database REINDEX...")
             reindexed_tables = []
             for table in tables:
-                if table == 'sqlite_sequence':  # Skip system tables
-                    continue
-                try:
-                    validate_sql_identifier(table)
-                except ValueError:
-                    self.logger.warning(f"Skipping invalid table name for REINDEX: {table!r}")
-                    continue
                 try:
                     cursor.execute(f"REINDEX {table}")
                     reindexed_tables.append(table)
@@ -4884,18 +4924,19 @@ class BotDataViewer:
             bot_lon = self.config.getfloat('Bot', 'bot_longitude', fallback=None)
 
             # Filter by last_heard for performance (default: last 30 days)
+            # Note: last_heard is stored as Unix timestamp (float), so use strftime('%s', ...) for comparison
             if since == 'all':
                 where_clause = ''
                 params = ()
             else:
                 if since == '24h':
-                    where_clause = " WHERE c.last_heard >= datetime('now', '-24 hours')"
+                    where_clause = " WHERE c.last_heard >= strftime('%s', 'now', '-24 hours')"
                 elif since == '7d':
-                    where_clause = " WHERE c.last_heard >= datetime('now', '-7 days')"
+                    where_clause = " WHERE c.last_heard >= strftime('%s', 'now', '-7 days')"
                 elif since == '30d':
-                    where_clause = " WHERE c.last_heard >= datetime('now', '-30 days')"
+                    where_clause = " WHERE c.last_heard >= strftime('%s', 'now', '-30 days')"
                 else:  # 90d
-                    where_clause = " WHERE c.last_heard >= datetime('now', '-90 days')"
+                    where_clause = " WHERE c.last_heard >= strftime('%s', 'now', '-90 days')"
                 params = ()
 
             # Query with LEFT JOIN to a limited set of paths per contact (max 50 most recent per contact)

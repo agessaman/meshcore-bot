@@ -5,8 +5,15 @@ import asyncio
 import configparser
 from unittest.mock import Mock
 
-from modules.commands.alternatives.wx_international import GlobalWxCommand
-from modules.service_plugins.weather_service import WeatherService
+import pytest
+
+GEOPY_AVAILABLE = False
+try:
+    import geopy.geocoders  # noqa: F401
+
+    GEOPY_AVAILABLE = True
+except ImportError:
+    pass
 
 
 def _build_bot(mock_logger, config):
@@ -36,7 +43,10 @@ def _openmeteo_payload():
     }
 
 
+@pytest.mark.skipif(not GEOPY_AVAILABLE, reason="geopy dependency not installed")
 def test_gwx_blank_weather_model_omits_models_param(mock_logger, monkeypatch):
+    from modules.commands.alternatives.wx_international import GlobalWxCommand
+
     config = configparser.ConfigParser()
     config.add_section("Weather")
     config.set("Weather", "weather_model", "")
@@ -57,7 +67,10 @@ def test_gwx_blank_weather_model_omits_models_param(mock_logger, monkeypatch):
     assert "models" not in captured["params"]
 
 
+@pytest.mark.skipif(not GEOPY_AVAILABLE, reason="geopy dependency not installed")
 def test_gwx_unset_weather_model_uses_best_match(mock_logger, monkeypatch):
+    from modules.commands.alternatives.wx_international import GlobalWxCommand
+
     config = configparser.ConfigParser()
     config.add_section("Weather")
 
@@ -78,6 +91,8 @@ def test_gwx_unset_weather_model_uses_best_match(mock_logger, monkeypatch):
 
 
 def test_weather_service_blank_weather_model_omits_models_param(mock_logger):
+    from modules.service_plugins.weather_service import WeatherService
+
     config = configparser.ConfigParser()
     config.add_section("Weather")
     config.set("Weather", "weather_model", "")
@@ -103,6 +118,8 @@ def test_weather_service_blank_weather_model_omits_models_param(mock_logger):
 
 
 def test_weather_service_unset_weather_model_uses_best_match(mock_logger):
+    from modules.service_plugins.weather_service import WeatherService
+
     config = configparser.ConfigParser()
     config.add_section("Weather")
     config.add_section("Weather_Service")
