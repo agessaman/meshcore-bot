@@ -20,9 +20,45 @@ from ..security_utils import sanitize_input
 
 MQTT_WEATHER_PREFIX = "custom.mqtt_weather."
 
-# Placeholders allowed in json_template (str.format_map); no arbitrary JSON keys.
+# Placeholders allowed in json_template (str.format_map); keys match typical station JSON fields.
 JSON_TEMPLATE_PLACEHOLDERS = frozenset(
-    {"time", "temperature_f", "temperature_c", "humidity", "device"}
+    {
+        "time",
+        "temperature_f",
+        "temperature_c",
+        "humidity",
+        "device",
+        "dewpoint_f",
+        "heat_index_f",
+        "wind_chill_f",
+        "apparent_temperature_f",
+        "wet_bulb_temperature_f",
+        "pressure_hpa",
+        "humidity_percent",
+        "absolute_humidity_g_m3",
+        "altitude_ft",
+        "rain_10min_in",
+        "rain_1hour_in",
+        "rain_24hour_in",
+        "rain_today_in",
+        "wind_current_kmh",
+        "wind_avg_10min_kmh",
+        "wind_avg_1hour_kmh",
+        "wind_avg_24hour_kmh",
+        "wind_avg_today_kmh",
+        "wind_peak_kmh",
+        "wind_peak_10min_kmh",
+        "wind_peak_1hour_kmh",
+        "wind_peak_24hour_kmh",
+        "wind_peak_today_kmh",
+        "wind_direction_deg",
+        "battery_voltage_v",
+        "uptime_s",
+        "last_update",
+        "sensor_name",
+        "connection_status",
+        "error",
+    }
 )
 
 _TOPIC_INVALID_CHARS = re.compile(r"[\x00+#]")
@@ -134,7 +170,8 @@ def load_mqtt_weather_format_config(config: ConfigParser) -> MqttWeatherFormatCo
     stale = 3600.0
 
     if config.has_section(sec):
-        template = config.get(sec, "json_template", fallback=default_template)
+        # raw=True: literal "%" in templates (e.g. "% RH") must not use ConfigParser interpolation
+        template = config.get(sec, "json_template", fallback=default_template, raw=True)
         dev_key = config.get(sec, "json_device_key", fallback="").strip()
         dev_val = config.get(sec, "json_device_value", fallback="").strip()
         max_bytes = config.getint(sec, "max_payload_bytes", fallback=65536)
@@ -212,12 +249,57 @@ def _coerce_float(value: Any) -> float | None:
     return None
 
 
+def _coerce_nonnegative_int(value: Any, max_val: int = 2_000_000_000) -> int | None:
+    """Integer fields (e.g. uptime_s) — not subject to the float 1e6 bound."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        if value < 0 or value > max_val:
+            return None
+        return value
+    if isinstance(value, float):
+        if value != value or value < 0:
+            return None
+        i = int(round(value))
+        if i > max_val:
+            return None
+        return i
+    return None
+
+
+def _num_or_empty(value: float | int | None) -> float | int | str:
+    """Template value for numeric placeholders: number if present, else empty string.
+
+    str.format supports format specs (e.g. ``:.0f``) on numbers; missing fields must use
+    placeholders without a format spec, or formatting raises.
+    """
+    if value is None:
+        return ""
+    return value
+
+
+def _json_template_field_name(inner: str) -> str:
+    """Field name from brace contents, ignoring !conversion and :format_spec (PEP 3101)."""
+    inner = inner.strip()
+    if not inner:
+        return ""
+    if inner[0].isdigit():
+        return inner
+    for sep in ("!", ":"):
+        if sep in inner:
+            return inner.split(sep, 1)[0].strip()
+    return inner
+
+
 def _validate_json_template(template: str) -> str | None:
     """Return error message if template uses unknown placeholders."""
     for m in re.finditer(r"\{([^}]+)\}", template):
-        name = m.group(1).strip()
+        raw_inner = m.group(1).strip()
+        name = _json_template_field_name(raw_inner)
         if name and name not in JSON_TEMPLATE_PLACEHOLDERS:
-            return f"Invalid template placeholder: {{{name}}}"
+            return f"Invalid template placeholder: {{{raw_inner}}}"
     return None
 
 
@@ -270,26 +352,66 @@ def format_mqtt_weather_payload(
     if temp_f is None:
         temp_f = _coerce_float(data.get("temperature_f"))
     hum = _coerce_float(data.get("humidity"))
+    if hum is None:
+        hum = _coerce_float(data.get("humidity_percent"))
     if hum is not None:
         hum = round(hum, 2)
         if hum < 0 or hum > 100:
             hum = None
 
+    hum_pct = _coerce_float(data.get("humidity_percent"))
+    if hum_pct is not None:
+        hum_pct = round(hum_pct, 2)
+        if hum_pct < 0 or hum_pct > 100:
+            hum_pct = None
+
     temp_c: float | None = None
     if temp_f is not None:
         temp_c = (temp_f - 32.0) * 5.0 / 9.0
 
-    mapping = {
+    uptime_i = _coerce_nonnegative_int(data.get("uptime_s"))
+
+    mapping: dict[str, Any] = {
         "time": _safe_time_str(data.get("time")),
         "device": _safe_device_str(data.get("device")),
-        "temperature_f": f"{temp_f:.2f}" if temp_f is not None else "",
-        "temperature_c": f"{temp_c:.2f}" if temp_c is not None else "",
-        "humidity": f"{hum:.0f}" if hum is not None else "",
+        "temperature_f": _num_or_empty(temp_f),
+        "temperature_c": _num_or_empty(temp_c),
+        "humidity": _num_or_empty(hum),
+        "dewpoint_f": _num_or_empty(_coerce_float(data.get("dewpoint_f"))),
+        "heat_index_f": _num_or_empty(_coerce_float(data.get("heat_index_f"))),
+        "wind_chill_f": _num_or_empty(_coerce_float(data.get("wind_chill_f"))),
+        "apparent_temperature_f": _num_or_empty(_coerce_float(data.get("apparent_temperature_f"))),
+        "wet_bulb_temperature_f": _num_or_empty(_coerce_float(data.get("wet_bulb_temperature_f"))),
+        "pressure_hpa": _num_or_empty(_coerce_float(data.get("pressure_hpa"))),
+        "humidity_percent": _num_or_empty(hum_pct),
+        "absolute_humidity_g_m3": _num_or_empty(_coerce_float(data.get("absolute_humidity_g_m3"))),
+        "altitude_ft": _num_or_empty(_coerce_float(data.get("altitude_ft"))),
+        "rain_10min_in": _num_or_empty(_coerce_float(data.get("rain_10min_in"))),
+        "rain_1hour_in": _num_or_empty(_coerce_float(data.get("rain_1hour_in"))),
+        "rain_24hour_in": _num_or_empty(_coerce_float(data.get("rain_24hour_in"))),
+        "rain_today_in": _num_or_empty(_coerce_float(data.get("rain_today_in"))),
+        "wind_current_kmh": _num_or_empty(_coerce_float(data.get("wind_current_kmh"))),
+        "wind_avg_10min_kmh": _num_or_empty(_coerce_float(data.get("wind_avg_10min_kmh"))),
+        "wind_avg_1hour_kmh": _num_or_empty(_coerce_float(data.get("wind_avg_1hour_kmh"))),
+        "wind_avg_24hour_kmh": _num_or_empty(_coerce_float(data.get("wind_avg_24hour_kmh"))),
+        "wind_avg_today_kmh": _num_or_empty(_coerce_float(data.get("wind_avg_today_kmh"))),
+        "wind_peak_kmh": _num_or_empty(_coerce_float(data.get("wind_peak_kmh"))),
+        "wind_peak_10min_kmh": _num_or_empty(_coerce_float(data.get("wind_peak_10min_kmh"))),
+        "wind_peak_1hour_kmh": _num_or_empty(_coerce_float(data.get("wind_peak_1hour_kmh"))),
+        "wind_peak_24hour_kmh": _num_or_empty(_coerce_float(data.get("wind_peak_24hour_kmh"))),
+        "wind_peak_today_kmh": _num_or_empty(_coerce_float(data.get("wind_peak_today_kmh"))),
+        "wind_direction_deg": _num_or_empty(_coerce_float(data.get("wind_direction_deg"))),
+        "battery_voltage_v": _num_or_empty(_coerce_float(data.get("battery_voltage_v"))),
+        "uptime_s": uptime_i if uptime_i is not None else "",
+        "last_update": _safe_time_str(data.get("last_update")),
+        "sensor_name": _safe_device_str(data.get("sensor_name")),
+        "connection_status": _safe_device_str(data.get("connection_status")),
+        "error": _safe_device_str(data.get("error")),
     }
 
     try:
         out = fmt.json_template.format_map(mapping)
-    except (KeyError, ValueError, IndexError):
+    except (KeyError, ValueError, IndexError, TypeError):
         return None, "template_format_error"
 
     out = sanitize_input(out, max_length=fmt.passthrough_max_length, strip_controls=True)
