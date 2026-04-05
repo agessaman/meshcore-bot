@@ -2922,12 +2922,47 @@ class MessageHandler:
         meshcore update_contact uses out_path_len | (out_path_hash_mode << 6); hash_mode -1 with
         non-negative hop count produces a negative int and OverflowError on unsigned to_bytes.
         """
-        if contact_data.get('out_path_hash_mode', 0) != -1:
+        try:
+            hash_mode = int(contact_data.get('out_path_hash_mode', 0))
+        except (TypeError, ValueError):
             return
-        opl = contact_data.get('out_path_len')
-        if opl is None or opl < 0 or opl == -1:
+        if hash_mode != -1:
             return
-        bph = contact_data.get('out_bytes_per_hop', 1) or 1
+
+        opl: Optional[int]
+        raw_opl = contact_data.get('out_path_len')
+        try:
+            opl = None if raw_opl is None else int(raw_opl)
+        except (TypeError, ValueError):
+            opl = None
+
+        bph_raw = contact_data.get('out_bytes_per_hop', 1) or 1
+        try:
+            bph = int(bph_raw)
+        except (TypeError, ValueError):
+            bph = 1
+        if bph not in (1, 2, 3):
+            bph = 1
+
+        # Some NEW_CONTACT payloads omit out_path_len but include out_path + bytes_per_hop.
+        # Derive hop count here so meshcore doesn't combine a non-flood path with hash_mode=-1.
+        if opl is None:
+            out_path_hex = contact_data.get('out_path') or ''
+            if not isinstance(out_path_hex, str) or not out_path_hex:
+                return
+            if (len(out_path_hex) % 2) != 0:
+                return
+            path_bytes = len(out_path_hex) // 2
+            if path_bytes <= 0:
+                return
+            if (path_bytes % bph) == 0:
+                opl = path_bytes // bph
+            else:
+                opl = path_bytes
+
+        if opl < 0 or opl == -1:
+            return
+
         try:
             pb = encode_path_len_byte(opl, bph)
         except ValueError:

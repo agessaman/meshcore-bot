@@ -95,6 +95,17 @@ class TestEnsureContactMeshcorePathEncoding:
         assert c["out_path_len"] == 3
         assert (c["out_path_len"] | (c["out_path_hash_mode"] << 6)) == 0x43
 
+    def test_fixes_when_hash_mode_is_string_and_out_path_len_missing(self, message_handler):
+        c = {
+            "out_path_hash_mode": "-1",
+            "out_path": "01020304",
+            "out_bytes_per_hop": 1,
+        }
+        message_handler._ensure_contact_meshcore_path_encoding(c)
+        assert c["out_path_hash_mode"] == 0
+        assert c["out_path_len"] == 4
+        assert (c["out_path_len"] | (c["out_path_hash_mode"] << 6)) == 0x04
+
 
 class TestHandleNewContactAddContact:
     """handle_new_contact + mocked add_contact: path fields match wire encoding (no OverflowError)."""
