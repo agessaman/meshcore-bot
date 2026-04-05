@@ -666,38 +666,54 @@ class ModernDashboard {
         mb = Math.max(0, Math.min(mb, total));
         const other = Math.max(0, total - mb);
 
-        if (this.pathEncodingPieChart) {
-            this.pathEncodingPieChart.destroy();
-            this.pathEncodingPieChart = null;
-        }
-
         const cs = getComputedStyle(document.documentElement);
         const legendColor = (cs.getPropertyValue('--text-muted') || '#6c757d').trim();
         const mbColor = '#0891b2';
         const otherColor = '#a8a29e';
         const emptyColor = (cs.getPropertyValue('--bg-tertiary') || '#dee2e6').trim();
 
+        const setNoAnimationOptions = (options) => {
+            options.animation = false;
+            options.animations = false;
+            options.transitions = {
+                active: { animation: { duration: 0 } },
+                resize: { animation: { duration: 0 } },
+                show: { animation: { duration: 0 } },
+                hide: { animation: { duration: 0 } },
+            };
+        };
+
         if (total === 0) {
             if (summaryEl) {
                 summaryEl.textContent = 'No contacts in the last 7 days.';
             }
-            this.pathEncodingPieChart = new Chart(canvas.getContext('2d'), {
-                type: 'doughnut',
-                data: {
-                    labels: ['—'],
-                    datasets: [{
-                        data: [1],
-                        backgroundColor: [emptyColor],
-                        borderWidth: 0,
-                    }],
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    plugins: { legend: { display: false }, tooltip: { enabled: false } },
-                    cutout: '55%',
-                },
-            });
+            if (!this.pathEncodingPieChart) {
+                this.pathEncodingPieChart = new Chart(canvas.getContext('2d'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['—'],
+                        datasets: [{
+                            data: [1],
+                            backgroundColor: [emptyColor],
+                            borderWidth: 0,
+                        }],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                        cutout: '55%',
+                    },
+                });
+                setNoAnimationOptions(this.pathEncodingPieChart.options);
+            } else {
+                this.pathEncodingPieChart.data.labels = ['—'];
+                this.pathEncodingPieChart.data.datasets[0].data = [1];
+                this.pathEncodingPieChart.data.datasets[0].backgroundColor = [emptyColor];
+                this.pathEncodingPieChart.options.plugins.legend.display = false;
+                this.pathEncodingPieChart.options.plugins.tooltip.enabled = false;
+                this.pathEncodingPieChart.update('none');
+            }
             return;
         }
 
@@ -706,41 +722,64 @@ class ModernDashboard {
             summaryEl.textContent = `${pct}% multibyte (${mb} of ${total})`;
         }
 
-        this.pathEncodingPieChart = new Chart(canvas.getContext('2d'), {
-            type: 'doughnut',
-            data: {
-                labels: ['Multibyte paths', 'Other'],
-                datasets: [{
-                    data: [mb, other],
-                    backgroundColor: [mbColor, otherColor],
-                    borderWidth: 0,
-                }],
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: {
-                            color: legendColor,
-                            boxWidth: 12,
-                            font: { size: 11 },
+        if (!this.pathEncodingPieChart) {
+            this.pathEncodingPieChart = new Chart(canvas.getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Multibyte paths', 'Other'],
+                    datasets: [{
+                        data: [mb, other],
+                        backgroundColor: [mbColor, otherColor],
+                        borderWidth: 0,
+                    }],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: legendColor,
+                                boxWidth: 12,
+                                font: { size: 11 },
+                            },
                         },
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: (ctx) => {
-                                const n = ctx.raw;
-                                const p = total ? Math.round((n / total) * 1000) / 10 : 0;
-                                return ` ${n} (${p}%)`;
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => {
+                                    const n = ctx.raw;
+                                    const p = total ? Math.round((n / total) * 1000) / 10 : 0;
+                                    return ` ${n} (${p}%)`;
+                                },
                             },
                         },
                     },
+                    cutout: '55%',
                 },
-                cutout: '55%',
-            },
-        });
+            });
+            setNoAnimationOptions(this.pathEncodingPieChart.options);
+        } else {
+            this.pathEncodingPieChart.data.labels = ['Multibyte paths', 'Other'];
+            this.pathEncodingPieChart.data.datasets[0].data = [mb, other];
+            this.pathEncodingPieChart.data.datasets[0].backgroundColor = [mbColor, otherColor];
+            this.pathEncodingPieChart.options.plugins.legend.display = true;
+            this.pathEncodingPieChart.options.plugins.legend.position = 'bottom';
+            this.pathEncodingPieChart.options.plugins.legend.labels = {
+                color: legendColor,
+                boxWidth: 12,
+                font: { size: 11 },
+            };
+            this.pathEncodingPieChart.options.plugins.tooltip.enabled = true;
+            this.pathEncodingPieChart.options.plugins.tooltip.callbacks = {
+                label: (ctx) => {
+                    const n = ctx.raw;
+                    const p = total ? Math.round((n / total) * 1000) / 10 : 0;
+                    return ` ${n} (${p}%)`;
+                },
+            };
+            this.pathEncodingPieChart.update('none');
+        }
     }
 
     updateIncomingPacketsPieChart(data) {
@@ -758,38 +797,54 @@ class ModernDashboard {
         mb = Math.max(0, Math.min(mb, total));
         const other = Math.max(0, total - mb);
 
-        if (this.incomingPacketsPieChart) {
-            this.incomingPacketsPieChart.destroy();
-            this.incomingPacketsPieChart = null;
-        }
-
         const cs = getComputedStyle(document.documentElement);
         const legendColor = (cs.getPropertyValue('--text-muted') || '#6c757d').trim();
         const mbColor = '#0891b2';
         const otherColor = '#a8a29e';
         const emptyColor = (cs.getPropertyValue('--bg-tertiary') || '#dee2e6').trim();
 
+        const setNoAnimationOptions = (options) => {
+            options.animation = false;
+            options.animations = false;
+            options.transitions = {
+                active: { animation: { duration: 0 } },
+                resize: { animation: { duration: 0 } },
+                show: { animation: { duration: 0 } },
+                hide: { animation: { duration: 0 } },
+            };
+        };
+
         if (total === 0) {
             if (summaryEl) {
                 summaryEl.textContent = 'No incoming packets in the last 7 days.';
             }
-            this.incomingPacketsPieChart = new Chart(canvas.getContext('2d'), {
-                type: 'doughnut',
-                data: {
-                    labels: ['—'],
-                    datasets: [{
-                        data: [1],
-                        backgroundColor: [emptyColor],
-                        borderWidth: 0,
-                    }],
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    plugins: { legend: { display: false }, tooltip: { enabled: false } },
-                    cutout: '55%',
-                },
-            });
+            if (!this.incomingPacketsPieChart) {
+                this.incomingPacketsPieChart = new Chart(canvas.getContext('2d'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['—'],
+                        datasets: [{
+                            data: [1],
+                            backgroundColor: [emptyColor],
+                            borderWidth: 0,
+                        }],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                        cutout: '55%',
+                    },
+                });
+                setNoAnimationOptions(this.incomingPacketsPieChart.options);
+            } else {
+                this.incomingPacketsPieChart.data.labels = ['—'];
+                this.incomingPacketsPieChart.data.datasets[0].data = [1];
+                this.incomingPacketsPieChart.data.datasets[0].backgroundColor = [emptyColor];
+                this.incomingPacketsPieChart.options.plugins.legend.display = false;
+                this.incomingPacketsPieChart.options.plugins.tooltip.enabled = false;
+                this.incomingPacketsPieChart.update('none');
+            }
             return;
         }
 
@@ -798,41 +853,64 @@ class ModernDashboard {
             summaryEl.textContent = `${pct}% multibyte (${mb} of ${total})`;
         }
 
-        this.incomingPacketsPieChart = new Chart(canvas.getContext('2d'), {
-            type: 'doughnut',
-            data: {
-                labels: ['Multibyte paths', 'Other'],
-                datasets: [{
-                    data: [mb, other],
-                    backgroundColor: [mbColor, otherColor],
-                    borderWidth: 0,
-                }],
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: {
-                            color: legendColor,
-                            boxWidth: 12,
-                            font: { size: 11 },
+        if (!this.incomingPacketsPieChart) {
+            this.incomingPacketsPieChart = new Chart(canvas.getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Multibyte paths', 'Other'],
+                    datasets: [{
+                        data: [mb, other],
+                        backgroundColor: [mbColor, otherColor],
+                        borderWidth: 0,
+                    }],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: legendColor,
+                                boxWidth: 12,
+                                font: { size: 11 },
+                            },
                         },
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: (ctx) => {
-                                const n = ctx.raw;
-                                const p = total ? Math.round((n / total) * 1000) / 10 : 0;
-                                return ` ${n} (${p}%)`;
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => {
+                                    const n = ctx.raw;
+                                    const p = total ? Math.round((n / total) * 1000) / 10 : 0;
+                                    return ` ${n} (${p}%)`;
+                                },
                             },
                         },
                     },
+                    cutout: '55%',
                 },
-                cutout: '55%',
-            },
-        });
+            });
+            setNoAnimationOptions(this.incomingPacketsPieChart.options);
+        } else {
+            this.incomingPacketsPieChart.data.labels = ['Multibyte paths', 'Other'];
+            this.incomingPacketsPieChart.data.datasets[0].data = [mb, other];
+            this.incomingPacketsPieChart.data.datasets[0].backgroundColor = [mbColor, otherColor];
+            this.incomingPacketsPieChart.options.plugins.legend.display = true;
+            this.incomingPacketsPieChart.options.plugins.legend.position = 'bottom';
+            this.incomingPacketsPieChart.options.plugins.legend.labels = {
+                color: legendColor,
+                boxWidth: 12,
+                font: { size: 11 },
+            };
+            this.incomingPacketsPieChart.options.plugins.tooltip.enabled = true;
+            this.incomingPacketsPieChart.options.plugins.tooltip.callbacks = {
+                label: (ctx) => {
+                    const n = ctx.raw;
+                    const p = total ? Math.round((n / total) * 1000) / 10 : 0;
+                    return ` ${n} (${p}%)`;
+                },
+            };
+            this.incomingPacketsPieChart.update('none');
+        }
     }
     
     updateElement(elementId, value) {
