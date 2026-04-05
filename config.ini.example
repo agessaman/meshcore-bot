@@ -21,6 +21,20 @@ serial_port = /dev/ttyUSB0
 # Connection timeout in seconds
 timeout = 30
 
+# Automatic reconnection settings
+# Reconnect when the connection is lost (applies to all connection types: serial, BLE, TCP)
+
+# Maximum number of reconnect attempts before giving up and shutting down
+# 0 = unlimited (keep trying forever) — recommended for unattended deployments
+reconnect_max_retries = 0
+
+# Initial delay in seconds between reconnect attempts
+# Doubles after each failed attempt (exponential backoff) up to reconnect_max_delay_seconds
+reconnect_delay_seconds = 5
+
+# Maximum delay in seconds between reconnect attempts (cap on exponential backoff)
+reconnect_max_delay_seconds = 60
+
 [Bot]
 # Bot name for identification and logging
 bot_name = MeshCoreBot

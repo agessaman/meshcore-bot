@@ -1022,6 +1022,60 @@ long_jokes = false
         # Register signal handlers
         signal.signal(signal.SIGTERM, signal_handler)
         signal.signal(signal.SIGINT, signal_handler)
+    
+    async def _attempt_reconnect(self) -> bool:
+        """Attempt to reconnect to the MeshCore node with exponential backoff.
+
+        Reads reconnect settings from [Connection]:
+          reconnect_max_retries  – max attempts before giving up (0 = unlimited, default 0)
+          reconnect_delay_seconds – initial wait between attempts (default 5)
+          reconnect_max_delay_seconds – cap on wait time (default 60)
+
+        Returns:
+            bool: True if reconnection succeeded, False if max retries exhausted or shutdown.
+        """
+        max_retries = self.config.getint('Connection', 'reconnect_max_retries', fallback=0)
+        delay = self.config.getfloat('Connection', 'reconnect_delay_seconds', fallback=5.0)
+        max_delay = self.config.getfloat('Connection', 'reconnect_max_delay_seconds', fallback=60.0)
+
+        attempt = 0
+        while not self._shutdown_event.is_set():
+            if max_retries > 0 and attempt >= max_retries:
+                self.logger.error(f"Reconnect failed after {max_retries} attempt(s), giving up")
+                return False
+
+            attempt += 1
+            retry_label = f"{attempt}/{max_retries}" if max_retries > 0 else str(attempt)
+            self.logger.info(f"Reconnect attempt {retry_label}...")
+
+            # Clean up the stale connection object
+            old_meshcore = self.meshcore
+            self.meshcore = None
+            self.connected = False
+            if old_meshcore is not None:
+                try:
+                    await asyncio.wait_for(old_meshcore.disconnect(), timeout=5.0)
+                except Exception:
+                    pass
+
+            if await self.connect():
+                self.logger.info("Reconnected successfully")
+                if hasattr(self, 'transmission_tracker') and self.transmission_tracker:
+                    self.transmission_tracker._update_bot_prefix()
+                return True
+
+            self.logger.warning(
+                f"Reconnect attempt {retry_label} failed, retrying in {delay:.0f}s..."
+            )
+            # Interruptible sleep so shutdown isn't delayed
+            elapsed = 0.0
+            while elapsed < delay and not self._shutdown_event.is_set():
+                await asyncio.sleep(1.0)
+                elapsed += 1.0
+
+            delay = min(delay * 2, max_delay)
+
+        return False
 
     async def connect(self) -> bool:
         """Connect to MeshCore node using official package.
@@ -1437,6 +1491,14 @@ long_jokes = false
         self.logger.info("Bot is running. Press Ctrl+C to stop.")
         try:
             while self.connected and not self._shutdown_event.is_set():
+                # Check if the underlying connection dropped
+                if self.meshcore and not self.meshcore.is_connected:
+                    self.logger.warning("Connection lost, attempting to reconnect...")
+                    if not await self._attempt_reconnect():
+                        self.logger.error("Could not reconnect, shutting down")
+                        break
+                    continue
+
                 # Monitor web viewer process and health
                 if self.web_viewer_integration and self.web_viewer_integration.enabled:
                     # Check if process died
