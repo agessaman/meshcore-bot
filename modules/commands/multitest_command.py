@@ -9,7 +9,9 @@ import re
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal, Optional
+
+CondensePathsMode = Literal["off", "flat", "nested"]
 
 from ..models import MeshMessage
 from ..utils import calculate_packet_hash, parse_path_string
@@ -19,6 +21,47 @@ _BRANCH_INTER = "\u251c"  # ├ (intermediate branch)
 _BRANCH_LAST = "\u2514"  # └ (last branch)
 _INDENT_NEST = "\u3000"  # 　 ideographic space before nested ├/└
 _BRANCH_CORNER = "\u2510"  # ┐ (marks end of common path before branches)
+# Nested layout “continuation” column: ASCII space only (1 byte) vs U+2502 │ (3 bytes) to fit mesh limits.
+_NEST_PREFIX = "  "
+
+
+def _line_has_branch_prefix(line: str) -> bool:
+    """True if ``line`` starts with a tee (├/└), not a continuation indent."""
+    return bool(line) and line[0] in (_BRANCH_INTER, _BRANCH_LAST)
+
+
+def _nested_suffix_lines_disjoint(suffixes: list[list[str]]) -> list[str]:
+    """Format suffixes when non-empty paths share no LCP (split by first hop, recurse like nested cluster)."""
+    nonempty = [s for s in suffixes if s]
+    if not nonempty:
+        return []
+    by_first: dict[str, list[list[str]]] = defaultdict(list)
+    for t in nonempty:
+        by_first[t[0]].append(t[1:])
+    keys = sorted(by_first.keys())
+    groups_out: list[list[str]] = []
+    for ft in keys:
+        rests = by_first[ft]
+        sub = [[ft, *r] for r in rests]
+        groups_out.append(_format_path_cluster_nested(sub, use_brackets=False))
+    out: list[str] = []
+    ng = len(groups_out)
+    for gi, sub_lines in enumerate(groups_out):
+        last_group = gi == ng - 1
+        n_sub = len(sub_lines)
+        for j, sl in enumerate(sub_lines):
+            if j == 0:
+                if _line_has_branch_prefix(sl):
+                    out.append(sl)
+                else:
+                    br = _BRANCH_LAST if last_group and n_sub == 1 else _BRANCH_INTER
+                    out.append(f"{br} {sl}")
+            else:
+                if sl.startswith(_NEST_PREFIX) or sl.startswith(_INDENT_NEST):
+                    out.append(sl)
+                else:
+                    out.append(f"{_NEST_PREFIX}{sl}")
+    return out
 
 
 def _tree_branch_lines_flat(suffixes: list[str]) -> list[str]:
@@ -38,6 +81,9 @@ def _grouped_suffix_line_specs(non_empty: list[list[str]]) -> list[tuple[str, st
 
     So paths 96,e0 / 96,e0,01 / … share head '96,e0' and nest 01, … instead of head '96' with
     misleading 'e0' as if it were the only endpoint under that branch.
+
+    kind "end": path that ends exactly at inner_lcp (shorter alternate route) — top-level branch
+    with the same text as head, listed so every collected suffix appears as an endpoint.
     """
     by_first: dict[str, list[list[str]]] = defaultdict(list)
     for suf in non_empty:
@@ -53,6 +99,7 @@ def _grouped_suffix_line_specs(non_empty: list[list[str]]) -> list[tuple[str, st
         inner_lcp = _longest_common_prefix(full_sufs)
         head_text = ",".join(inner_lcp)
         remainders = [s[len(inner_lcp) :] for s in full_sufs]
+        has_exact = any(len(r) == 0 for r in remainders)
         nested = sorted((r for r in remainders if r), key=lambda x: ",".join(x))
         if not nested:
             specs.append(("head", head_text))
@@ -60,6 +107,8 @@ def _grouped_suffix_line_specs(non_empty: list[list[str]]) -> list[tuple[str, st
         specs.append(("head", head_text))
         for rem in nested:
             specs.append(("nest", ",".join(rem)))
+        if has_exact:
+            specs.append(("end", head_text))
     return specs
 
 
@@ -69,7 +118,7 @@ def _apply_tee_prefixes(specs: list[tuple[str, str]]) -> list[str]:
     out: list[str] = []
     for i, (kind, text) in enumerate(specs):
         last = i == n - 1
-        if kind == "head":
+        if kind in ("head", "end"):
             p = _BRANCH_LAST if last else _BRANCH_INTER
             out.append(f"{p} {text}")
         else:
@@ -78,22 +127,103 @@ def _apply_tee_prefixes(specs: list[tuple[str, str]]) -> list[str]:
     return out
 
 
-def _format_suffix_branch_lines(suffix_tokens: list[list[str]], short_ellipsis: bool) -> list[str]:
+def _apply_tee_prefixes_flat(specs: list[tuple[str, str]]) -> list[str]:
+    """Like `_apply_tee_prefixes` but nested rows use └ when the next row is a new top branch (head/end)."""
+    n = len(specs)
+    out: list[str] = []
+    for i, (kind, text) in enumerate(specs):
+        last = i == n - 1
+        if kind in ("head", "end"):
+            p = _BRANCH_LAST if last else _BRANCH_INTER
+            out.append(f"{p} {text}")
+        else:
+            next_kind = specs[i + 1][0] if i + 1 < n else None
+            nest_continues = next_kind == "nest"
+            p = _BRANCH_INTER if nest_continues else _BRANCH_LAST
+            out.append(f"{_INDENT_NEST}{p} {text}")
+    return out
+
+
+def _format_suffix_branch_lines(suffix_tokens: list[list[str]]) -> list[str]:
     """Format suffixes after display LCP: group by first hop, in-group LCP on head, nest tails indented with U+3000."""
     non_empty = [s for s in suffix_tokens if s]
     if not non_empty:
-        return _tree_branch_lines_flat(["..."]) if short_ellipsis else []
+        return []
 
     if len(non_empty) == 1:
-        parts = [",".join(non_empty[0])]
-        if short_ellipsis:
-            parts.append("...")
-        return _tree_branch_lines_flat(parts)
+        return _tree_branch_lines_flat([",".join(non_empty[0])])
 
     specs = _grouped_suffix_line_specs(non_empty)
-    if short_ellipsis:
-        specs.append(("head", "..."))
     return _apply_tee_prefixes(specs)
+
+
+def _flat_suffix_specs(acc: list[str], tails: list[list[str]]) -> list[tuple[str, str]]:
+    """Build (kind, text) rows for flat condensed layout: full ``cd,7e,01``-style lines where possible."""
+    ends_at_acc = [t for t in tails if len(t) == 0]
+    continuing = [t for t in tails if len(t) > 0]
+
+    # Exactly one path and it ends here (tail was [[]] from split).
+    if len(tails) == 1 and len(tails[0]) == 0:
+        return [("head", ",".join(acc))]
+
+    # One route ends at acc, one continues (e.g. [7a] vs [7a,09] → head + nest 09).
+    if len(ends_at_acc) >= 1 and len(continuing) == 1:
+        rest = continuing[0]
+        out: list[tuple[str, str]] = [("head", ",".join(acc))]
+        if len(rest) == 1:
+            out.append(("nest", rest[0]))
+        else:
+            out.extend(_flat_suffix_specs(acc, [rest]))
+        return out
+
+    specs: list[tuple[str, str]] = []
+
+    if continuing:
+        if len(continuing) == 1 and not ends_at_acc:
+            return [("head", ",".join(acc + continuing[0]))]
+
+        raw_lcp = _longest_common_prefix(continuing)
+        lcp = _shrink_display_lcp(continuing, raw_lcp)
+        if len(lcp) == 0:
+            by_first: dict[str, list[list[str]]] = defaultdict(list)
+            for t in continuing:
+                by_first[t[0]].append(t[1:])
+            for ft in sorted(by_first.keys()):
+                specs.extend(_flat_suffix_specs(acc + [ft], by_first[ft]))
+            if ends_at_acc:
+                specs.append(("end", ",".join(acc)))
+            return specs
+
+        rems = [t[len(lcp) :] for t in continuing]
+        has_exact = any(len(r) == 0 for r in rems)
+        active = [r for r in rems if r]
+        pre = acc + lcp
+
+        if has_exact and len(active) == 1:
+            specs.append(("head", ",".join(pre)))
+            specs.extend(_flat_suffix_specs(pre, active))
+            if ends_at_acc:
+                specs.append(("end", ",".join(acc)))
+            return specs
+
+        if active:
+            specs.extend(_flat_suffix_specs(pre, active))
+        if has_exact:
+            specs.append(("end", ",".join(pre)))
+    if ends_at_acc:
+        specs.append(("end", ",".join(acc)))
+    return specs
+
+
+def _format_suffix_branch_lines_flat(suffix_tokens: list[list[str]]) -> list[str]:
+    """Flat multitest layout (``condense_paths = true``): one full suffix per branch row when possible."""
+    non_empty = [list(t) for t in suffix_tokens if t]
+    if not non_empty:
+        return []
+    if len(non_empty) == 1:
+        return _tree_branch_lines_flat([",".join(non_empty[0])])
+    specs = _flat_suffix_specs([], non_empty)
+    return _apply_tee_prefixes_flat(specs)
 
 
 def _path_to_tokens(path: str) -> list[str]:
@@ -103,16 +233,6 @@ def _path_to_tokens(path: str) -> list[str]:
 
 def _is_strict_prefix(a: list[str], b: list[str]) -> bool:
     return len(a) < len(b) and b[: len(a)] == a
-
-
-def _is_truncated_prefix_path(t: list[str], all_paths: list[list[str]]) -> bool:
-    """True if t is a strict prefix of some path with more than one extra hop (incomplete trace)."""
-    for u in all_paths:
-        if t == u:
-            continue
-        if _is_strict_prefix(t, u) and (len(u) - len(t)) > 1:
-            return True
-    return False
 
 
 def _longest_common_prefix(token_lists: list[list[str]]) -> list[str]:
@@ -155,6 +275,8 @@ def _format_path_cluster(token_lists: list[list[str]], use_brackets: bool) -> li
 
     If one path stops exactly where another continues, the displayed LCP is shortened so the shared
     segment is not mistaken for a single endpoint (e.g. only └ tail after a full shorter path).
+
+    Every path in token_lists is represented (no prefix paths dropped as ``...``).
     """
     token_lists = [t for t in token_lists if t]
     if not token_lists:
@@ -163,19 +285,13 @@ def _format_path_cluster(token_lists: list[list[str]], use_brackets: bool) -> li
         s = ",".join(token_lists[0])
         return [f"[{s}]"] if use_brackets else [s]
 
-    maximal = [t for t in token_lists if not _is_truncated_prefix_path(t, token_lists)]
-    short_ellipsis = len(maximal) < len(token_lists)
-
-    if not maximal:
-        return _tree_branch_lines_flat(["..."]) if short_ellipsis else []
-
-    raw_lcp = _longest_common_prefix(maximal)
-    lcp = _shrink_display_lcp(maximal, raw_lcp)
+    raw_lcp = _longest_common_prefix(token_lists)
+    lcp = _shrink_display_lcp(token_lists, raw_lcp)
 
     if len(lcp) > 0:
-        suffix_tokens = [t[len(lcp) :] for t in maximal]
+        suffix_tokens = [t[len(lcp) :] for t in token_lists]
         common = ",".join(lcp)
-        branch_lines = _format_suffix_branch_lines(suffix_tokens, short_ellipsis)
+        branch_lines = _format_suffix_branch_lines(suffix_tokens)
         if branch_lines:
             lines = [f"{common} {_BRANCH_CORNER}"]
             lines.extend(branch_lines)
@@ -183,15 +299,8 @@ def _format_path_cluster(token_lists: list[list[str]], use_brackets: bool) -> li
             lines = [common]
         return lines
 
-    if len(maximal) == 1:
-        s = ",".join(maximal[0])
-        lines = [f"[{s}]"] if use_brackets else [s]
-        if short_ellipsis:
-            lines.extend(_tree_branch_lines_flat(["..."]))
-        return lines
-
     groups: dict[str, list[list[str]]] = {}
-    for t in maximal:
+    for t in token_lists:
         groups.setdefault(t[0], []).append(t)
 
     lines: list[str] = []
@@ -199,18 +308,228 @@ def _format_path_cluster(token_lists: list[list[str]], use_brackets: bool) -> li
     for ft in sorted(groups.keys()):
         sub_lines = _format_path_cluster(groups[ft], use_brackets=multi)
         lines.extend(sub_lines)
-    if short_ellipsis:
-        lines.extend(_tree_branch_lines_flat(["..."]))
     return lines
 
 
-def _condense_path_lines(paths: list[str]) -> str:
+def _format_path_cluster_flat(token_lists: list[list[str]], use_brackets: bool) -> list[str]:
+    """Like `_format_path_cluster` but suffix rows use the flat layout (full paths per branch when possible)."""
+    token_lists = [t for t in token_lists if t]
+    if not token_lists:
+        return []
+    if len(token_lists) == 1:
+        s = ",".join(token_lists[0])
+        return [f"[{s}]"] if use_brackets else [s]
+
+    raw_lcp = _longest_common_prefix(token_lists)
+    lcp = _shrink_display_lcp(token_lists, raw_lcp)
+
+    if len(lcp) > 0:
+        suffix_tokens = [t[len(lcp) :] for t in token_lists]
+        common = ",".join(lcp)
+        branch_lines = _format_suffix_branch_lines_flat(suffix_tokens)
+        if branch_lines:
+            lines = [f"{common} {_BRANCH_CORNER}"]
+            lines.extend(branch_lines)
+        else:
+            lines = [common]
+        return lines
+
+    groups: dict[str, list[list[str]]] = {}
+    for t in token_lists:
+        groups.setdefault(t[0], []).append(t)
+
+    lines: list[str] = []
+    multi = len(groups) > 1
+    for ft in sorted(groups.keys()):
+        sub_lines = _format_path_cluster_flat(groups[ft], use_brackets=multi)
+        lines.extend(sub_lines)
+    return lines
+
+
+def _nested_child_lines(paths: list[list[str]], col: str) -> list[str]:
+    """Render paths under a ``├ …`` / ``├ … ┐`` row using a leading continuation prefix (ASCII spaces)."""
+    paths = [p for p in paths if p]
+    if not paths:
+        return []
+    if len(paths) == 1:
+        return [f"{col}{_BRANCH_LAST} {','.join(paths[0])}"]
+
+    raw_lcp = _longest_common_prefix(paths)
+    lcp = _shrink_display_lcp(paths, raw_lcp)
+    if len(lcp) == 0:
+        lines: list[str] = []
+        by_first: dict[str, list[list[str]]] = defaultdict(list)
+        for t in paths:
+            by_first[t[0]].append(t[1:])
+        keys = sorted(by_first.keys())
+        for i, ft in enumerate(keys):
+            rests = by_first[ft]
+            sub = [[ft, *r] for r in rests]
+            is_last_ft = i == len(keys) - 1
+            if len(sub) == 1 and len(sub[0]) == 1:
+                br = _BRANCH_LAST if is_last_ft else _BRANCH_INTER
+                lines.append(f"{col}{br} {ft}")
+                continue
+            lines.extend(_nested_child_lines(sub, col))
+        return lines
+
+    inner = ",".join(lcp)
+    rest = [t[len(lcp) :] for t in paths]
+    has_exact = any(len(r) == 0 for r in rest)
+    cont = [r for r in rest if r]
+
+    if not cont:
+        return [f"{col}{_BRANCH_INTER} {inner}"]
+
+    # No ``┐`` on the trunk when one path ends here and others continue (direct route + deeper paths).
+    head_open = (
+        f"{col}{_BRANCH_INTER} {inner}"
+        if has_exact
+        else f"{col}{_BRANCH_INTER} {inner} {_BRANCH_CORNER}"
+    )
+    sub_col = f"{col}{_INDENT_NEST}"
+
+    if has_exact and len(cont) == 1:
+        only = cont[0]
+        if len(only) == 1:
+            return [
+                f"{col}{_BRANCH_INTER} {inner}",
+                f"{sub_col}{_BRANCH_LAST} {only[0]}",
+            ]
+        sub = _nested_child_lines(cont, sub_col)
+        return [head_open, *sub]
+
+    if len(cont) == 1 and not has_exact:
+        return [head_open, f"{sub_col}{_BRANCH_LAST} {','.join(cont[0])}"]
+
+    sub = _nested_child_lines(cont, sub_col)
+    return [head_open, *sub]
+
+
+def _nested_format_suffix_lines(suffixes: list[list[str]]) -> list[str]:
+    """Highly nested layout (``condense_paths = nested``): two ASCII spaces + ``├``/``└``; extra ``┐`` rows."""
+    if not suffixes:
+        return []
+    nonempty = [s for s in suffixes if s]
+    if not nonempty:
+        return []
+    if len(suffixes) == 1:
+        return _tree_branch_lines_flat([",".join(suffixes[0])])
+
+    # LCP among non-empty suffixes only: ``[]`` means “ends at parent” and must not collapse LCP
+    # (e.g. ``[[1ed6],[cc5d],[]]`` → still share ``e0ee`` in the caller, not flat ``e0ee,1ed6`` rows).
+    raw_lcp = _longest_common_prefix(nonempty)
+    lcp = _shrink_display_lcp(suffixes, raw_lcp)
+    # When shrink removes the whole LCP, nested ``├ {main} ┐`` would have empty ``main`` → ``├  ┐``.
+    if len(lcp) == 0:
+        return _nested_suffix_lines_disjoint(suffixes)
+
+    rems = [t[len(lcp) :] for t in suffixes]
+    has_exact = any(len(r) == 0 for r in rems)
+    cont = [r for r in rems if r]
+
+    if not cont:
+        return _tree_branch_lines_flat([",".join(lcp)])
+
+    # Two suffixes only, one ends at ``lcp`` (empty remainder) and one continues: ``cont`` is a
+    # single list — the inner2 merge would only see [[e0]] and can emit a bogus ``├ 7a,e0 ┐``.
+    # Example: ``7a,e0`` vs ``7a`` → use flat sibling rows (``├ 7a`` / ``└ 7a,e0``).
+    if has_exact and len(rems) == 2 and len(cont) == 1:
+        return _format_suffix_branch_lines_flat(suffixes)
+
+    # Pull one more shared segment into the open line when a shorter route ends at ``lcp`` only
+    # (e.g. ``cd`` vs ``cd,7e,…`` → ``├ cd,7e ┐`` then ``  ├ 01``, not ``├ cd ┐`` then ``  ├ 7e ┐``).
+    if has_exact and cont:
+        inner2 = _longest_common_prefix(cont)
+        inner2 = _shrink_display_lcp(cont, inner2)
+        if len(inner2) > 0:
+            main = ",".join(lcp + inner2)
+            cont = [t[len(inner2) :] for t in cont]
+            # Same trunk rule as the simple branch: if some remainders are empty, a route ends at
+            # ``main`` while others continue — use ``├ main`` without ``┐`` (not ``├ main ┐``).
+            inner_has_exact = any(len(t) == 0 for t in cont)
+            head_open = (
+                f"{_BRANCH_INTER} {main}"
+                if inner_has_exact
+                else f"{_BRANCH_INTER} {main} {_BRANCH_CORNER}"
+            )
+            col = _NEST_PREFIX
+            child = _nested_child_lines(cont, col)
+            lines = [head_open, *child]
+            lines.append(f"{_BRANCH_LAST} {','.join(lcp)}")
+            return lines
+
+    main = ",".join(lcp)
+    head_open = (
+        f"{_BRANCH_INTER} {main}"
+        if has_exact
+        else f"{_BRANCH_INTER} {main} {_BRANCH_CORNER}"
+    )
+    col = _NEST_PREFIX
+    child = _nested_child_lines(cont, col)
+    lines = [head_open, *child]
+    return lines
+
+
+def _format_path_cluster_nested(token_lists: list[list[str]], use_brackets: bool) -> list[str]:
+    """Highly nested tree: extra ┐ levels; continuation column uses ASCII spaces (not U+2502) to save bytes."""
+    token_lists = [t for t in token_lists if t]
+    if not token_lists:
+        return []
+    if len(token_lists) == 1:
+        s = ",".join(token_lists[0])
+        return [f"[{s}]"] if use_brackets else [s]
+
+    raw_lcp = _longest_common_prefix(token_lists)
+    lcp = _shrink_display_lcp(token_lists, raw_lcp)
+
+    if len(lcp) > 0:
+        suffix_tokens = [t[len(lcp) :] for t in token_lists]
+        common = ",".join(lcp)
+        branch_lines = _nested_format_suffix_lines(suffix_tokens)
+        if branch_lines:
+            nonempty_sfx = [s for s in suffix_tokens if s]
+            ne_lcp = _longest_common_prefix(nonempty_sfx) if nonempty_sfx else []
+            if any(len(t) == 0 for t in suffix_tokens) and len(ne_lcp) == 0:
+                return [f"{_BRANCH_INTER} {common}", *branch_lines]
+            return [f"{common} {_BRANCH_CORNER}", *branch_lines]
+        return [common]
+
+    groups: dict[str, list[list[str]]] = defaultdict(list)
+    for t in token_lists:
+        groups[t[0]].append(t[1:])
+
+    lines: list[str] = []
+    multi = len(groups) > 1
+    for ft in sorted(groups.keys()):
+        sub = [[ft, *r] for r in groups[ft]]
+        sub_lines = _format_path_cluster_nested(sub, use_brackets=multi)
+        lines.extend(sub_lines)
+    return lines
+
+
+def _condense_path_lines(paths: list[str], mode: Literal["flat", "nested"] = "flat") -> str:
     """Condense sorted unique path strings by shared prefix and branch suffixes."""
     if len(paths) <= 1:
         return "\n".join(paths)
     token_lists = [_path_to_tokens(p) for p in paths]
-    lines = _format_path_cluster(token_lists, use_brackets=False)
+    if mode == "nested":
+        lines = _format_path_cluster_nested(token_lists, use_brackets=False)
+    else:
+        lines = _format_path_cluster_flat(token_lists, use_brackets=False)
     return "\n".join(lines)
+
+
+def _parse_condense_paths_mode(raw: object) -> CondensePathsMode:
+    """Parse ``Multitest_Command.condense_paths``: ``false`` / ``true`` (flat) / ``nested``."""
+    s = str(raw).strip().lower()
+    if s in ("false", "0", "off", "no"):
+        return "off"
+    if s == "nested":
+        return "nested"
+    if s in ("true", "1", "yes", "flat"):
+        return "flat"
+    return "flat"
 
 
 @dataclass
@@ -284,9 +603,15 @@ class MultitestCommand(BaseCommand):
         else:
             self.response_format = None  # Use default format
 
-        self.condense_paths = self.get_config_value(
-            'Multitest_Command', 'condense_paths', fallback=True, value_type='bool'
+        raw_cp = self.get_config_value(
+            'Multitest_Command', 'condense_paths', fallback='true'
         )
+        self.condense_paths_mode: CondensePathsMode = _parse_condense_paths_mode(raw_cp)
+
+    @property
+    def condense_paths(self) -> bool:
+        """True when any condensed layout is enabled (flat or nested)."""
+        return self.condense_paths_mode != "off"
 
     def get_help_text(self) -> str:
         return self.translate('commands.multitest.help', fallback="Listens for 6 seconds and collects all unique paths from incoming messages")
@@ -713,8 +1038,10 @@ class MultitestCommand(BaseCommand):
         if session.collected_paths:
             # Sort paths for consistent output
             sorted_paths = sorted(session.collected_paths)
-            if self.condense_paths and len(sorted_paths) > 1:
-                paths_text = _condense_path_lines(sorted_paths)
+            if len(sorted_paths) > 1 and self.condense_paths_mode == "flat":
+                paths_text = _condense_path_lines(sorted_paths, "flat")
+            elif len(sorted_paths) > 1 and self.condense_paths_mode == "nested":
+                paths_text = _condense_path_lines(sorted_paths, "nested")
             else:
                 paths_text = "\n".join(sorted_paths)
             path_count = len(sorted_paths)
