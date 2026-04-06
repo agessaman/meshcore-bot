@@ -313,7 +313,7 @@ bot_name = MeshCoreBot            # Bot identification name
 enabled = true                    # Enable/disable bot
 rate_limit_seconds = 2            # Global: min seconds between any bot reply
 bot_tx_rate_limit_seconds = 1.0   # Min seconds between bot transmissions
-per_user_rate_limit_seconds = 5   # Per-user: min seconds between replies to same user (pubkey or name)
+per_user_rate_limit_seconds = 30  # Per-user: min seconds between replies to same user (pubkey or name)
 per_user_rate_limit_enabled = true
 startup_advert = flood            # Send advert on startup
 ```
@@ -460,7 +460,7 @@ Or if installed as a package entry point:
 For a comprehensive list of all available commands with examples and detailed explanations, see [Command reference](docs/command-reference.md).
 
 Quick reference:
-- **Basic:** `test`, `ping`, `help`, `hello`, `cmd`
+ - **Basic:** `test`, `ping`, `version`, `help`, `hello`, `cmd`
 - **Information:** `wx`, `gwx`, `aqi`, `sun`, `moon`, `solar`, `solarforecast`, `hfcond`, `satpass`, `channels`
 - **Emergency:** `alert`
 - **Gaming:** `dice`, `roll`, `magic8`

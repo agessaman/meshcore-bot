@@ -10,7 +10,6 @@ import logging
 import os
 import re
 import sqlite3
-import subprocess
 import sys
 import threading
 import time
@@ -35,6 +34,7 @@ from flask import (
 from flask_socketio import SocketIO, disconnect, emit
 
 from modules.security_utils import VALID_JOURNAL_MODES, validate_sql_identifier
+from modules.version_info import resolve_runtime_version
 
 
 def _apply_werkzeug_websocket_fix() -> None:
@@ -248,55 +248,14 @@ class BotDataViewer:
         return config
 
     def _get_version_info(self) -> dict[str, Optional[str]]:
-        """Get version info for footer: tag if on a tag, else branch, commit hash and date.
-        Checks MESHCORE_BOT_VERSION env (Docker/build), then .version_info, then git. Never raises."""
-        out: dict[str, Optional[str]] = {"tag": None, "branch": None, "commit": None, "date": None}
-        # Docker / CI: version set at build time (e.g. ARG + ENV in Dockerfile)
-        env_version = os.environ.get("MESHCORE_BOT_VERSION", "").strip()
-        if env_version:
-            out["tag"] = env_version if env_version.startswith("v") else f"v{env_version}"
-            return out
-        version_file = self.bot_root / ".version_info"
-        try:
-            if version_file.is_file():
-                with open(version_file) as f:
-                    data = json.load(f)
-                # Installer/tag installs write installer_version (often the tag name)
-                tag = data.get("installer_version") or data.get("tag")
-                if tag:
-                    out["tag"] = tag if tag.startswith("v") else f"v{tag}"
-                    return out
-        except (OSError, json.JSONDecodeError, KeyError):
-            pass
-        try:
-            def run(cmd: list[str]) -> Optional[str]:
-                args = ["git", "-C", str(self.bot_root)] + cmd
-                result = subprocess.run(
-                    args, capture_output=True, text=True, timeout=5
-                )
-                if result.returncode != 0:
-                    return None
-                return (result.stdout or "").strip() or None
-
-            # Check if HEAD is a tag
-            tag = run(["describe", "--exact-match", "HEAD"])
-            if tag:
-                out["tag"] = tag if tag.startswith("v") else f"v{tag}"
-                return out
-            branch = run(["rev-parse", "--abbrev-ref", "HEAD"])
-            commit = run(["rev-parse", "--short", "HEAD"])
-            date_raw = run(["show", "-s", "--format=%ci", "HEAD"])
-            out["branch"] = branch or None
-            out["commit"] = commit or None
-            if date_raw:
-                try:
-                    # %ci is "YYYY-MM-DD HH:MM:SS +tz"; take date part only
-                    out["date"] = date_raw.split()[0]
-                except IndexError:
-                    out["date"] = date_raw
-            return out
-        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError, OSError):
-            return out
+        """Get version info for footer from shared runtime resolver."""
+        info = resolve_runtime_version(self.bot_root)
+        return {
+            "tag": info.get("tag"),
+            "branch": info.get("branch"),
+            "commit": info.get("commit"),
+            "date": info.get("date"),
+        }
 
     def _setup_template_context(self):
         """Setup template context processor to inject global variables"""

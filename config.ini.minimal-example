@@ -4,6 +4,7 @@
 #                                                                                                  #
 #  This is a minimal configuration file that enables only the core testing commands:               #
 #  - ping: Simple connectivity test                                                                #
+#  - version (ver): Show running bot version                                                       #
 #  - test (t): Connection info with optional phrase                                                #
 #  - path (p): Decode hex path data to show repeaters                                              #
 #  - prefix: Look up repeaters by two-character prefix                                             #
@@ -84,7 +85,7 @@ bot_tx_rate_limit_seconds = 1.0
 
 # Per-user rate limit: minimum seconds between bot replies to the same user
 # User key: public key when available, else sender name
-per_user_rate_limit_seconds = 5
+per_user_rate_limit_seconds = 30
 per_user_rate_limit_enabled = true
 
 # Transmission delay in milliseconds before sending messages
@@ -255,6 +256,7 @@ meshcore_log_level = INFO
 #                                                                                                  #
 #  This minimal configuration enables only the core testing commands:                              #
 #  - ping: Simple connectivity test                                                                #
+#  - version (ver): Show running bot version                                                       #
 #  - test (t): Connection info with optional phrase                                                #
 #  - path (p): Decode hex path data to show repeaters                                              #
 #  - prefix: Look up repeaters by two-character prefix                                             #
@@ -266,6 +268,12 @@ meshcore_log_level = INFO
 # Enable or disable the ping command
 # true: Ping command is available
 # false: Ping command is disabled
+enabled = true
+
+[Version_Command]
+# Enable or disable the version command
+# true: Version command is available (responds to 'version' or 'ver')
+# false: Version command is disabled
 enabled = true
 
 [Test_Command]

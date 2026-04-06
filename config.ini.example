@@ -84,7 +84,7 @@ bot_tx_rate_limit_seconds = 1.0
 # Per-user rate limit: minimum seconds between bot replies to the same user
 # User is identified by public key when available (DMs and channel when provided), else sender name
 # Channel senders are often matched by name only. Set to 0 or disable to effectively turn off per-user limiting
-per_user_rate_limit_seconds = 5
+per_user_rate_limit_seconds = 30
 # Enable or disable per-user rate limiting (true/false)
 per_user_rate_limit_enabled = true
 
@@ -327,10 +327,10 @@ test = "ack @[{sender}]{phrase_part} | {connection_info} | Received at: {timesta
 ping = "Pong!"
 pong = "Ping!"
 # Override 'help' command output
-# help = "Bot Help: test (or t), ping, help, hello, cmd, advert, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats | More: 'help <command>'"
+# help = "Bot Help: test (or t), ping, version, help, hello, cmd, advert, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats | More: 'help <command>'"
 
 # Override 'cmd' command output
-# cmd = "Available commands: test (or t), ping, help, hello, cmd, advert, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats"
+# cmd = "Available commands: test (or t), ping, version, help, hello, cmd, advert, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats"
 
 [RandomLine]
 # Configurable command to act on a trigger word and respond with a random line from its file
@@ -1196,6 +1196,10 @@ enabled = true
 # channels =
 
 [Ping_Command]
+enabled = true
+# channels =
+
+[Version_Command]
 enabled = true
 # channels =
 

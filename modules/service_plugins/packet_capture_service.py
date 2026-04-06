@@ -19,6 +19,7 @@ from meshcore import EventType
 
 # Import bot's enums
 from ..enums import PayloadType, PayloadVersion, RouteType
+from ..version_info import resolve_runtime_version
 
 # Import bot's utilities for packet hash
 from ..utils import calculate_packet_hash, decode_path_len_byte, parse_trace_payload_route_hashes
@@ -1431,40 +1432,14 @@ class PacketCaptureService(BaseServicePlugin):
         return False
 
     def _load_client_version(self) -> str:
-        """Load client version (matches original script).
-
-        Returns:
-            str: Version string (e.g., 'meshcore-bot/1.0.0-abcdef').
-        """
+        """Load client version from shared runtime resolver."""
         try:
-            import os
-            import subprocess
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            version_file = os.path.join(script_dir, '..', '..', '.version_info')
-
-            # First try to load from .version_info file (created by installer)
-            if os.path.exists(version_file):
-                with open(version_file) as f:
-                    version_data = json.load(f)
-                    installer_ver = version_data.get('installer_version', 'unknown')
-                    git_hash = version_data.get('git_hash', 'unknown')
-                    return f"meshcore-bot/{installer_ver}-{git_hash}"
-
-            # Fallback: try to get git information directly
-            try:
-                result = subprocess.run(['git', 'rev-parse', '--short', 'HEAD'],
-                                      cwd=os.path.dirname(script_dir), capture_output=True, text=True, timeout=5)
-                if result.returncode == 0:
-                    git_hash = result.stdout.strip()
-                    return f"meshcore-bot/dev-{git_hash}"
-            except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
-                pass
-
+            info = resolve_runtime_version(self.bot.bot_root)
+            display = info.get("display") or "unknown"
+            return f"meshcore-bot/{display}"
         except Exception as e:
             self.logger.debug(f"Could not load version info: {e}")
-
-        # Final fallback
-        return "meshcore-bot/unknown"
+            return "meshcore-bot/unknown"
 
     async def get_firmware_info(self) -> dict[str, str]:
         """Get firmware information from meshcore device (matches original script).

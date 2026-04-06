@@ -300,7 +300,8 @@ class CommandManager:
                 if wait_time > 0.1:
                     return False, f"Rate limited. Wait {wait_time:.1f} seconds"
                 return False, ""
-            # Per-user rate limit when enabled and key present
+            # Per-user rate limit when enabled and key present.
+            # Admin ACL controls command authorization only; it does not bypass send rate limits.
             if getattr(self.bot, 'per_user_rate_limit_enabled', False) and rate_limit_key:
                 per_user = getattr(self.bot, 'per_user_rate_limiter', None)
                 if per_user and not per_user.can_send(rate_limit_key):

@@ -39,6 +39,7 @@ from .service_plugin_loader import ServicePluginLoader
 from .solar_conditions import set_config
 from .transmission_tracker import TransmissionTracker
 from .utils import resolve_path
+from .version_info import resolve_runtime_version
 from .web_viewer.integration import WebViewerIntegration
 
 
@@ -86,6 +87,9 @@ class MeshCoreBot:
 
         # Bot start time for uptime tracking
         self.start_time = time.time()
+        self.version_info = resolve_runtime_version(self.bot_root)
+        self.bot_version = self.version_info.get("display", "unknown")
+        self.logger.info(f"Bot version: {self.bot_version}")
 
         # Initialize database manager first (needed by plugins)
         db_path = self.config.get('Bot', 'db_path', fallback='meshcore_bot.db')
@@ -150,7 +154,7 @@ class MeshCoreBot:
             'Bot', 'per_user_rate_limit_enabled', fallback=True
         )
         self.per_user_rate_limiter = PerUserRateLimiter(
-            seconds=self.config.getfloat('Bot', 'per_user_rate_limit_seconds', fallback=5.0),
+            seconds=self.config.getfloat('Bot', 'per_user_rate_limit_seconds', fallback=30.0),
             max_entries=1000
         )
         # Nominatim rate limiter: 1.1 seconds between requests (Nominatim policy: max 1 req/sec)
@@ -397,7 +401,7 @@ class MeshCoreBot:
             self.per_user_rate_limit_enabled = self.config.getboolean(
                 'Bot', 'per_user_rate_limit_enabled', fallback=True
             )
-            new_per_user_seconds = self.config.getfloat('Bot', 'per_user_rate_limit_seconds', fallback=5.0)
+            new_per_user_seconds = self.config.getfloat('Bot', 'per_user_rate_limit_seconds', fallback=30.0)
             self.per_user_rate_limiter = PerUserRateLimiter(seconds=new_per_user_seconds, max_entries=1000)
 
             new_nominatim_rate_limit = self.config.getfloat('Bot', 'nominatim_rate_limit_seconds', fallback=1.1)
@@ -534,6 +538,15 @@ rate_limit_seconds = 2
 # Bot transmission rate limit in seconds between bot messages
 # Prevents bot from overwhelming the mesh network
 bot_tx_rate_limit_seconds = 1.0
+
+# Per-user rate limiting in seconds between replies to the same user
+# Helps reduce airtime use from rapid repeated responses to one sender
+per_user_rate_limit_seconds = 30
+
+# Enable or disable per-user rate limiting
+# true: Enforce per-user spacing (recommended)
+# false: Disable per-user limiter
+per_user_rate_limit_enabled = true
 
 # Transmission delay in milliseconds before sending messages
 # Helps prevent message collisions on the mesh network
