@@ -11,7 +11,7 @@ from collections import deque
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 # Import meshcore
 from meshcore import EventType
@@ -133,11 +133,11 @@ class DiscordBridgeService(BaseServicePlugin):
         self.rate_limit_max = 25  # Conservative limit (25/min instead of 30/min for safety)
 
         # HTTP session for async requests
-        self.http_session: Optional[aiohttp.ClientSession] = None
+        self.http_session: aiohttp.ClientSession | None = None
 
         # Background task handles
-        self._message_handler_task: Optional[asyncio.Task] = None
-        self._queue_processor_task: Optional[asyncio.Task] = None
+        self._message_handler_task: asyncio.Task | None = None
+        self._queue_processor_task: asyncio.Task | None = None
 
         if not self.channel_webhooks:
             self.logger.warning("No Discord channel mappings configured. Discord bridge will not post any messages.")
@@ -194,7 +194,7 @@ class DiscordBridgeService(BaseServicePlugin):
             f"Loaded {len(self.channel_webhooks)} Discord channel(s) with {total_mappings} webhook mapping(s)"
         )
 
-    def _generate_avatar_url(self, username: str) -> Optional[str]:
+    def _generate_avatar_url(self, username: str) -> str | None:
         """Generate a unique avatar URL for a username.
 
         Supports multiple avatar generation methods:
@@ -430,7 +430,7 @@ class DiscordBridgeService(BaseServicePlugin):
         except Exception as e:
             self.logger.error(f"Error handling mesh channel message: {e}", exc_info=True)
 
-    async def _queue_message(self, webhook_url: str, message: str, channel_name: str, sender_name: Optional[str] = None) -> None:
+    async def _queue_message(self, webhook_url: str, message: str, channel_name: str, sender_name: str | None = None) -> None:
         """Queue a message for posting to Discord webhook.
 
         Messages are queued and processed by a background task that handles
@@ -574,7 +574,7 @@ class DiscordBridgeService(BaseServicePlugin):
                 self.logger.error(f"Error in message queue processor: {e}", exc_info=True)
                 await asyncio.sleep(1.0)  # Wait a bit before retrying on error
 
-    async def _post_to_webhook(self, webhook_url: str, payload: dict[str, str], channel_name: str, queued_msg: Optional[QueuedMessage] = None) -> bool:
+    async def _post_to_webhook(self, webhook_url: str, payload: dict[str, str], channel_name: str, queued_msg: QueuedMessage | None = None) -> bool:
         """Post message to Discord webhook.
 
         Args:
@@ -600,7 +600,7 @@ class DiscordBridgeService(BaseServicePlugin):
             self.logger.error(f"Failed to post to Discord webhook [{channel_name}]: {e}", exc_info=True)
             return False
 
-    async def _post_async(self, webhook_url: str, payload: dict[str, str], channel_name: str, queued_msg: Optional[QueuedMessage] = None) -> bool:
+    async def _post_async(self, webhook_url: str, payload: dict[str, str], channel_name: str, queued_msg: QueuedMessage | None = None) -> bool:
         """Post to webhook using aiohttp (async).
 
         Args:
@@ -645,14 +645,14 @@ class DiscordBridgeService(BaseServicePlugin):
                     self._check_rate_limit_headers(response.headers, webhook_url, channel_name)
                     return False
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self.logger.error(f"Timeout posting to Discord webhook [{channel_name}]")
             return False
         except Exception as e:
             self.logger.error(f"Error posting to Discord webhook [{channel_name}]: {e}")
             return False
 
-    async def _post_sync(self, webhook_url: str, payload: dict[str, str], channel_name: str, queued_msg: Optional[QueuedMessage] = None) -> bool:
+    async def _post_sync(self, webhook_url: str, payload: dict[str, str], channel_name: str, queued_msg: QueuedMessage | None = None) -> bool:
         """Post to webhook using requests library (sync fallback).
 
         Args:

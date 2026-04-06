@@ -116,7 +116,7 @@ class TestCountLogErrorsLast24h:
         assert crit == 0
 
     def test_json_recent_error(self, tmp_path: Path):
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now = datetime.datetime.now(datetime.UTC)
         recent = (now - datetime.timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
         old = (now - datetime.timedelta(hours=48)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
         log = tmp_path / "json.log"

@@ -10,7 +10,7 @@ import random
 import re
 import time
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any
 
 import aiohttp
 
@@ -144,7 +144,7 @@ class PrefixCommand(BaseCommand):
         content_lower = content.lower()
         return content_lower == 'prefix' or content_lower.startswith('prefix ')
 
-    async def _parse_location_to_lat_lon(self, location: str) -> tuple[Optional[float], Optional[float], Optional[str]]:
+    async def _parse_location_to_lat_lon(self, location: str) -> tuple[float | None, float | None, str | None]:
         """Parse location string to latitude/longitude coordinates.
 
         Supports: coordinates (lat,lon), zipcode, city name, repeater name.
@@ -187,7 +187,7 @@ class PrefixCommand(BaseCommand):
 
         return None, None, None
 
-    async def _repeater_name_to_lat_lon(self, repeater_name: str) -> tuple[Optional[float], Optional[float]]:
+    async def _repeater_name_to_lat_lon(self, repeater_name: str) -> tuple[float | None, float | None]:
         """Look up repeater by name and return its lat/lon.
 
         Args:
@@ -568,7 +568,7 @@ class PrefixCommand(BaseCommand):
 
         return scored
 
-    async def find_best_prefix_for_location(self, location: str) -> Optional[dict[str, Any]]:
+    async def find_best_prefix_for_location(self, location: str) -> dict[str, Any] | None:
         """Find the best prefix for a given location.
 
         Args:
@@ -664,7 +664,7 @@ class PrefixCommand(BaseCommand):
             'expanded_radius': expanded_radius
         }
 
-    def format_best_prefix_response(self, result: dict[str, Any], message: Optional[MeshMessage] = None) -> str:
+    def format_best_prefix_response(self, result: dict[str, Any], message: MeshMessage | None = None) -> str:
         """Format the best prefix response.
 
         Args:
@@ -878,7 +878,7 @@ class PrefixCommand(BaseCommand):
         await self._send_prefix_response(message, response)
         return True
 
-    async def get_prefix_data(self, prefix: str, include_all: bool = False) -> Optional[dict[str, Any]]:
+    async def get_prefix_data(self, prefix: str, include_all: bool = False) -> dict[str, Any] | None:
         """Get prefix data from API first, enhanced with local database location data.
 
         Args:
@@ -918,7 +918,7 @@ class PrefixCommand(BaseCommand):
 
         return None
 
-    def _find_flexible_match(self, api_name: str, db_locations: dict[str, str]) -> Optional[str]:
+    def _find_flexible_match(self, api_name: str, db_locations: dict[str, str]) -> str | None:
         """
         Find a flexible match for an API name in the database locations.
 
@@ -1041,7 +1041,7 @@ class PrefixCommand(BaseCommand):
                 else:
                     self.logger.error(f"API request failed with status {response.status}")
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self.logger.error("API request timed out")
         except aiohttp.ClientError as e:
             self.logger.error(f"API request failed: {e}")
@@ -1050,7 +1050,7 @@ class PrefixCommand(BaseCommand):
         except Exception as e:
             self.logger.error(f"Unexpected error refreshing cache: {e}")
 
-    async def get_prefix_data_from_db(self, prefix: str, include_all: bool = False) -> Optional[dict[str, Any]]:
+    async def get_prefix_data_from_db(self, prefix: str, include_all: bool = False) -> dict[str, Any] | None:
         """Get prefix data from the bot's SQLite database as fallback.
 
         Args:

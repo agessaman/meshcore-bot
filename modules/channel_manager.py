@@ -9,7 +9,7 @@ import copy
 import hashlib
 import os
 import sys
-from typing import Any, Optional
+from typing import Any
 
 from meshcore import EventType
 
@@ -183,7 +183,7 @@ class ChannelManager:
                 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
             ''', (channel_idx, channel_name, channel_type, channel_key_hex))
 
-    async def _fetch_single_channel(self, channel_idx: int) -> Optional[dict[str, Any]]:
+    async def _fetch_single_channel(self, channel_idx: int) -> dict[str, Any] | None:
         """
         Fetch a single channel with error handling
 
@@ -222,7 +222,7 @@ class ChannelManager:
                 # Wait for the event with timeout
                 try:
                     await asyncio.wait_for(event_received.wait(), timeout=self._fetch_timeout)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     self.logger.debug(f"Timeout waiting for channel {channel_idx} response")
                     return None
 
@@ -250,7 +250,7 @@ class ChannelManager:
                 # Unsubscribe
                 self.bot.meshcore.unsubscribe(subscription)
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self.logger.debug(f"Timeout fetching channel {channel_idx}")
             return None
         except Exception as e:
@@ -264,7 +264,7 @@ class ChannelManager:
             for idx in sorted(self._channels_cache.keys())
         ]
 
-    async def get_channel(self, channel_idx: int, use_cache: bool = True) -> Optional[dict[str, Any]]:
+    async def get_channel(self, channel_idx: int, use_cache: bool = True) -> dict[str, Any] | None:
         """
         Get a specific channel, optionally from cache
 
@@ -294,7 +294,7 @@ class ChannelManager:
             self.logger.warning(f"Channel {channel_num} not found in cached channels")
             return f"Channel{channel_num}"
 
-    def get_channel_number(self, channel_name: str) -> Optional[int]:
+    def get_channel_number(self, channel_name: str) -> int | None:
         """
         Get channel number from channel name
 
@@ -329,7 +329,7 @@ class ChannelManager:
             }
         return {'name': f"Channel{channel_num}", 'key': '', 'info': {}}
 
-    def get_channel_by_name(self, name: str) -> Optional[dict[str, Any]]:
+    def get_channel_by_name(self, name: str) -> dict[str, Any] | None:
         """
         Find a channel by name from cache
 
@@ -420,7 +420,7 @@ class ChannelManager:
         # Use the simplified add_channel method - firmware will auto-generate key
         return await self.add_channel(channel_idx, channel_name)
 
-    async def add_channel(self, channel_idx: int, channel_name: str, channel_secret: Optional[bytes] = None, channel_secret_hex: Optional[str] = None) -> bool:
+    async def add_channel(self, channel_idx: int, channel_name: str, channel_secret: bytes | None = None, channel_secret_hex: str | None = None) -> bool:
         """
         Add or update a channel on the radio
 
@@ -594,7 +594,7 @@ class ChannelManager:
                 # Wait for confirmation with timeout
                 try:
                     await asyncio.wait_for(event_received.wait(), timeout=self._fetch_timeout * 2)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     self.logger.warning(f"Timeout waiting for channel {channel_idx} set confirmation")
                     await asyncio.sleep(0.5)
                     result = await self._fetch_single_channel(channel_idx)
@@ -685,7 +685,7 @@ class ChannelManager:
                 # Wait for confirmation with timeout
                 try:
                     await asyncio.wait_for(event_received.wait(), timeout=self._fetch_timeout * 2)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     self.logger.warning(f"Timeout waiting for channel {channel_idx} removal confirmation")
                     # Still try to verify by fetching the channel
                     await asyncio.sleep(0.5)

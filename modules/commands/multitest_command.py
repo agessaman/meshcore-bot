@@ -9,7 +9,7 @@ import re
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Literal, Optional
+from typing import Literal
 
 CondensePathsMode = Literal["off", "flat", "nested"]
 
@@ -541,7 +541,7 @@ class MultitestSession:
     listening_start_time: float
     listening_duration: float
     collected_paths: set[str]
-    initial_path: Optional[str] = None
+    initial_path: str | None = None
 
 
 class MultitestCommand(BaseCommand):
@@ -565,7 +565,7 @@ class MultitestCommand(BaseCommand):
         # Key: user_id, Value: MultitestSession
         self._active_sessions: dict[str, MultitestSession] = {}
         # Lock to prevent concurrent execution from interfering (lazily initialized)
-        self._execution_lock: Optional[asyncio.Lock] = None
+        self._execution_lock: asyncio.Lock | None = None
         self._load_config()
 
     def _get_execution_lock(self) -> asyncio.Lock:
@@ -641,7 +641,7 @@ class MultitestCommand(BaseCommand):
 
         return False
 
-    def extract_path_from_rf_data(self, rf_data: dict) -> Optional[str]:
+    def extract_path_from_rf_data(self, rf_data: dict) -> str | None:
         """Extract path in prefix string format from RF data routing_info.
         Supports 1-, 2-, and 3-byte-per-hop (2, 4, or 6 hex chars per node).
         """
@@ -677,7 +677,7 @@ class MultitestCommand(BaseCommand):
             self.logger.debug(f"Error extracting path from RF data: {e}")
             return None
 
-    def extract_path_from_message(self, message: MeshMessage) -> Optional[str]:
+    def extract_path_from_message(self, message: MeshMessage) -> str | None:
         """Extract path in prefix string format from a message.
         Prefers message.routing_info.path_nodes when present (multi-byte).
         When routing_info has bytes_per_hop, uses it instead of inferring hop size.
@@ -747,7 +747,7 @@ class MultitestCommand(BaseCommand):
             return ','.join(n.lower() for n in node_ids)
         return None
 
-    def get_rf_data_for_message(self, message: MeshMessage) -> Optional[dict]:
+    def get_rf_data_for_message(self, message: MeshMessage) -> dict | None:
         """Get RF data for a message by looking it up in recent RF data"""
         try:
             # Try multiple correlation strategies

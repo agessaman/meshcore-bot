@@ -9,7 +9,7 @@ and future automated mesh tracing service.
 import asyncio
 import random
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from meshcore import EventType
 
@@ -23,10 +23,10 @@ class RunTraceResult:
     path_nodes: list[dict[str, Any]] = field(default_factory=list)
     path_len: int = 0
     flags: int = 0
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
 
-def _get_timeout_seconds(bot: Any, path: Optional[list[str]]) -> float:
+def _get_timeout_seconds(bot: Any, path: list[str] | None) -> float:
     """Compute total timeout from path length and config."""
     per_hop = bot.config.getfloat("Trace_Command", "timeout_per_hop_seconds", fallback=0.5)
     base = bot.config.getfloat("Trace_Command", "timeout_base_seconds", fallback=1.0)
@@ -38,8 +38,8 @@ def _get_timeout_seconds(bot: Any, path: Optional[list[str]]) -> float:
 
 async def _run_trace_attempt(
     bot: Any,
-    path: Optional[list[str]],
-    path_string: Optional[str],
+    path: list[str] | None,
+    path_string: str | None,
     flags: int,
     timeout_seconds: float,
     tag: int,
@@ -106,9 +106,9 @@ async def _run_trace_attempt(
 
 async def run_trace(
     bot: Any,
-    path: Optional[list[str]] = None,
+    path: list[str] | None = None,
     flags: int = 0,
-    timeout_seconds: Optional[float] = None,
+    timeout_seconds: float | None = None,
 ) -> RunTraceResult:
     """
     Send a trace and wait for TRACE_DATA. Retries on failure per config (default 2 attempts, 1s delay).
@@ -140,7 +140,7 @@ async def run_trace(
     retry_delay = max(0.0, bot.config.getfloat("Trace_Command", "trace_retry_delay_seconds", fallback=1.0))
 
     path_str_debug = path_string if path_string else "(flood)"
-    last_result: Optional[RunTraceResult] = None
+    last_result: RunTraceResult | None = None
 
     for attempt in range(max_attempts):
         tag = random.randint(1, 0xFFFFFFFF)

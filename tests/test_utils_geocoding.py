@@ -5,7 +5,6 @@ parse_location_string, rate_limited_nominatim_* functions, geocode_zipcode,
 geocode_city (async + sync), check_internet_connectivity_async.
 """
 
-import asyncio
 import configparser
 import urllib.error
 from unittest.mock import AsyncMock, Mock, patch
@@ -686,7 +685,7 @@ class TestCheckInternetConnectivityAsync:
         from modules.utils import check_internet_connectivity_async
 
         async def timeout_open(host, port):
-            raise asyncio.TimeoutError()
+            raise TimeoutError()
 
         with patch("asyncio.open_connection", timeout_open):
             with patch(

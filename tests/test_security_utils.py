@@ -227,7 +227,7 @@ class TestValidateExternalUrlExtra:
             assert validate_external_url("http://nonexistent.invalid.example") is False
 
     def test_dns_timeout_returns_false(self):
-        with patch("socket.gethostbyname", side_effect=socket.timeout("timeout")):
+        with patch("socket.gethostbyname", side_effect=TimeoutError("timeout")):
             assert validate_external_url("http://slow.example.com") is False
 
     def test_allow_localhost_permits_loopback(self):

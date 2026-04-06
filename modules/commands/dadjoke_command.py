@@ -4,9 +4,8 @@ Dad Joke Command for MeshCore Bot
 Fetches dad jokes from icanhazdadjoke.com API
 """
 
-import asyncio
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import aiohttp
 
@@ -118,7 +117,7 @@ class DadJokeCommand(BaseCommand):
             await self.send_response(message, "Sorry, something went wrong getting a dad joke!")
             return True
 
-    async def get_dad_joke_from_api(self) -> Optional[dict[str, Any]]:
+    async def get_dad_joke_from_api(self) -> dict[str, Any] | None:
         """Get a dad joke from icanhazdadjoke.com API.
 
         Returns:
@@ -156,14 +155,14 @@ class DadJokeCommand(BaseCommand):
                     self.logger.error(f"Dad joke API returned status {response.status}")
                     return None
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self.logger.error("Timeout fetching dad joke from API")
             return None
         except Exception as e:
             self.logger.error(f"Error fetching dad joke from API: {e}")
             return None
 
-    async def get_dad_joke_with_length_handling(self) -> Optional[dict[str, Any]]:
+    async def get_dad_joke_with_length_handling(self) -> dict[str, Any] | None:
         """Get a dad joke from API with length handling based on configuration.
 
         Returns:

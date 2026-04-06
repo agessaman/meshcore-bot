@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from configparser import ConfigParser
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -71,8 +71,8 @@ def _fake_aiohttp_response(*, text_body: str | None = None, json_body: dict | li
 class TestSortItems:
     def test_sort_by_published_desc(self, fm_with_db):
         fm = fm_with_db
-        older = datetime(2020, 1, 1, tzinfo=timezone.utc)
-        newer = datetime(2025, 6, 1, tzinfo=timezone.utc)
+        older = datetime(2020, 1, 1, tzinfo=UTC)
+        newer = datetime(2025, 6, 1, tzinfo=UTC)
         items = [
             {"id": "a", "title": "old", "published": older, "raw": {}},
             {"id": "b", "title": "new", "published": newer, "raw": {}},
@@ -99,7 +99,7 @@ class TestSortItems:
 class TestFormatMessage:
     def test_basic_placeholders(self, fm_with_db):
         fm = fm_with_db
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         feed = {"output_format": "{emoji} {title}\n{link}\n{date}", "feed_name": "news"}
         item = {
             "title": "Hello",

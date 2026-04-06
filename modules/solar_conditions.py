@@ -7,7 +7,7 @@ Adapted from MeshLink bot by K7MHI Kelly Keeton 2024
 
 import logging
 import xml.dom.minidom
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import ephem
 import requests
@@ -205,7 +205,7 @@ def get_sun(lat=None, lon=None):
     """Get sunrise and sunset times using specified location or defaults"""
     try:
         obs = ephem.Observer()
-        obs.date = datetime.now(timezone.utc)
+        obs.date = datetime.now(UTC)
         sun = ephem.Sun()
 
         if lat is not None and lon is not None:
@@ -283,7 +283,7 @@ def get_moon(lat=None, lon=None):
             obs.lat = str(lat)
             obs.lon = str(lon)
 
-        obs.date = datetime.now(timezone.utc)
+        obs.date = datetime.now(UTC)
         moon.compute(obs)
         moon_table = {}
         illum = moon.phase  # 0 = new, 50 = first/last quarter, 100 = full
@@ -395,7 +395,7 @@ def get_next_satellite_pass(satellite, lat=None, lon=None, use_visual=False):
                     satname = pass_json['info']['satname']
 
                     # Find the first pass that hasn't occurred yet (startUTC is in the future)
-                    current_time_utc = datetime.now(timezone.utc).timestamp()
+                    current_time_utc = datetime.now(UTC).timestamp()
 
                     # Find the first future pass
                     next_pass = None
@@ -403,7 +403,7 @@ def get_next_satellite_pass(satellite, lat=None, lon=None, use_visual=False):
                         pass_utc_time = pass_entry['startUTC']
                         if pass_utc_time >= current_time_utc:
                             next_pass = pass_entry
-                            logger.debug(f"Selected pass {idx} for {satname}: {datetime.fromtimestamp(pass_utc_time, tz=timezone.utc).astimezone().strftime('%Y-%m-%d %H:%M')}, maxEl={pass_entry['maxEl']}°")
+                            logger.debug(f"Selected pass {idx} for {satname}: {datetime.fromtimestamp(pass_utc_time, tz=UTC).astimezone().strftime('%Y-%m-%d %H:%M')}, maxEl={pass_entry['maxEl']}°")
                             break
 
                     # If no future pass found, use the first one (shouldn't happen with 10-day lookahead)
@@ -430,9 +430,9 @@ def get_next_satellite_pass(satellite, lat=None, lon=None, use_visual=False):
                         return pass_data
 
                     # Convert UTC timestamp to local time
-                    pass_utc = datetime.fromtimestamp(pass_time, tz=timezone.utc)
+                    pass_utc = datetime.fromtimestamp(pass_time, tz=UTC)
                     pass_local = pass_utc.astimezone()
-                    set_utc = datetime.fromtimestamp(pass_time + pass_duration, tz=timezone.utc)
+                    set_utc = datetime.fromtimestamp(pass_time + pass_duration, tz=UTC)
                     set_local = set_utc.astimezone()
 
                     # Format times based on zulu time preference

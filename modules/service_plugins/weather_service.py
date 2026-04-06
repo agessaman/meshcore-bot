@@ -10,8 +10,8 @@ import math
 import re
 import time
 import xml.dom.minidom
-from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import ephem
 import requests
@@ -93,13 +93,13 @@ class WeatherService(BaseServicePlugin):
         self.seen_alert_ids: set[str] = set()
 
         # Track last alert check time to only send new alerts
-        self.last_alert_check_time: Optional[float] = None
+        self.last_alert_check_time: float | None = None
 
         # Background tasks
-        self._alerts_task: Optional[asyncio.Task] = None
-        self._forecast_task: Optional[asyncio.Task] = None
-        self._lightning_task: Optional[asyncio.Task] = None
-        self._forecast_scheduler: Optional[BackgroundScheduler] = None
+        self._alerts_task: asyncio.Task | None = None
+        self._forecast_task: asyncio.Task | None = None
+        self._lightning_task: asyncio.Task | None = None
+        self._forecast_scheduler: BackgroundScheduler | None = None
         self._running = False
 
         # Track recent lightning strikes to avoid duplicates
@@ -108,18 +108,18 @@ class WeatherService(BaseServicePlugin):
         # Lightning detection via MQTT
         self.blitz_buffer: list[dict[str, Any]] = []
         self.seen_blitz_keys: set[str] = set()
-        self.mqtt_client: Optional[Any] = None  # paho.mqtt.client.Client
-        self.mqtt_task: Optional[asyncio.Task] = None
+        self.mqtt_client: Any | None = None  # paho.mqtt.client.Client
+        self.mqtt_task: asyncio.Task | None = None
 
         # Check if using sunrise/sunset
         self.use_sunrise_sunset = self.weather_alarm_time.lower() in ['sunrise', 'sunset']
 
         # Cache for location name (to avoid repeated reverse geocoding)
-        self._cached_location_name: Optional[str] = None
+        self._cached_location_name: str | None = None
 
         self.logger.info(f"Weather service initialized: position=({self.my_position_lat}, {self.my_position_lon}), alarm={self.weather_alarm_time}")
 
-    def _load_weather_model(self) -> Optional[str]:
+    def _load_weather_model(self) -> str | None:
         """Load and normalize Open-Meteo model selection from config.
 
         Returns:
@@ -163,7 +163,7 @@ class WeatherService(BaseServicePlugin):
         session.mount("http://", adapter)
         return session
 
-    def _get_sunrise_sunset_time(self, event: str) -> Optional[datetime]:
+    def _get_sunrise_sunset_time(self, event: str) -> datetime | None:
         """Get sunrise or sunset time for configured position.
 
         Args:
@@ -174,7 +174,7 @@ class WeatherService(BaseServicePlugin):
         """
         try:
             obs = ephem.Observer()
-            obs.date = datetime.now(timezone.utc)
+            obs.date = datetime.now(UTC)
             obs.lat = str(self.my_position_lat)
             obs.lon = str(self.my_position_lon)
 
@@ -1006,7 +1006,7 @@ class WeatherService(BaseServicePlugin):
         index = int((heading + 11.25) / 22.5) % 16
         return compass_points[index]
 
-    async def _geocode_location(self, lat: float, lon: float) -> Optional[str]:
+    async def _geocode_location(self, lat: float, lon: float) -> str | None:
         """Geocode coordinates to location name (optional, may return None).
 
         Args:
@@ -1029,7 +1029,7 @@ class WeatherService(BaseServicePlugin):
             pass
         return None
 
-    def _parse_alert_entry(self, entry: Any, alert_id: str) -> Optional[dict[str, Any]]:
+    def _parse_alert_entry(self, entry: Any, alert_id: str) -> dict[str, Any] | None:
         """Parse alert XML entry and extract full metadata (same logic as wx_command).
 
         Args:
@@ -1546,7 +1546,7 @@ class WeatherService(BaseServicePlugin):
 
         return city[:4].upper() if len(city) >= 4 else city.upper()
 
-    def _parse_iso_time(self, time_str: str) -> Optional[float]:
+    def _parse_iso_time(self, time_str: str) -> float | None:
         """Parse ISO 8601 timestamp to Unix timestamp.
 
         Args:
@@ -1565,7 +1565,7 @@ class WeatherService(BaseServicePlugin):
         except (ValueError, AttributeError):
             return None
 
-    def _parse_alert_time(self, time_str: str) -> Optional[float]:
+    def _parse_alert_time(self, time_str: str) -> float | None:
         """Parse alert effective/issued time string to Unix timestamp.
 
         Args:

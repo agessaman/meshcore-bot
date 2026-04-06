@@ -6,7 +6,7 @@ Provides worldwide weather information using Open-Meteo API
 
 import re
 from datetime import datetime, timedelta
-from typing import Any, Optional, Union
+from typing import Any
 
 import requests
 
@@ -106,11 +106,11 @@ class GlobalWxCommand(BaseCommand):
         # Get database manager for geocoding cache
         self.db_manager = bot.db_manager
 
-    def _format_high_low(self, high: Optional[Union[int, float]], low: Optional[Union[int, float]], temp_symbol: str) -> str:
+    def _format_high_low(self, high: int | float | None, low: int | float | None, temp_symbol: str) -> str:
         """Format high/low using [Weather] temperature_*_format templates."""
         return format_temperature_high_low(self.bot.config, high, low, temp_symbol, self.logger)
 
-    def _load_weather_model(self) -> Optional[str]:
+    def _load_weather_model(self) -> str | None:
         """Load and normalize Open-Meteo model selection from config.
 
         Returns:
@@ -154,7 +154,7 @@ class GlobalWxCommand(BaseCommand):
         content_lower = content.lower()
         return any(content_lower.startswith(keyword + ' ') or content_lower == keyword for keyword in self.keywords)
 
-    def _get_companion_location(self, message: MeshMessage) -> Optional[tuple[float, float]]:
+    def _get_companion_location(self, message: MeshMessage) -> tuple[float, float] | None:
         """Get companion/sender location from database.
 
         Args:
@@ -194,7 +194,7 @@ class GlobalWxCommand(BaseCommand):
             self.logger.warning(f"Error getting companion location: {e}")
             return None
 
-    def _get_bot_location(self) -> Optional[tuple[float, float]]:
+    def _get_bot_location(self) -> tuple[float, float] | None:
         """Get bot location from config.
 
         Returns:
@@ -213,14 +213,14 @@ class GlobalWxCommand(BaseCommand):
             self.logger.debug(f"Error getting bot location: {e}")
             return None
 
-    def _get_custom_mqtt_weather_topic(self, location: Optional[str] = None) -> Optional[str]:
+    def _get_custom_mqtt_weather_topic(self, location: str | None = None) -> str | None:
         return get_mqtt_weather_topic(self.bot.config, location)
 
     def _mqtt_weather_line(
         self,
         topic: str,
         forecast_type: str,
-        location_name: Optional[str],
+        location_name: str | None,
     ) -> str:
         if forecast_type != "default":
             return self.translate("commands.gwx.mqtt_forecast_not_supported")
@@ -241,7 +241,7 @@ class GlobalWxCommand(BaseCommand):
         detail = (err or "unknown").replace("_", " ")
         return self.translate("commands.gwx.mqtt_weather_payload_error", detail=detail)
 
-    def _get_custom_wxsim_source(self, location: Optional[str] = None) -> Optional[str]:
+    def _get_custom_wxsim_source(self, location: str | None = None) -> str | None:
         """Get custom WXSIM source URL from config.
 
         Looks for keys in [Weather] section with pattern: custom.wxsim.<name> = <url>
@@ -283,7 +283,7 @@ class GlobalWxCommand(BaseCommand):
 
     def _get_wxsim_weather(self, source_url: str, forecast_type: str = "default",
                                 num_days: int = 7, message: MeshMessage = None,
-                                location_name: Optional[str] = None) -> str:
+                                location_name: str | None = None) -> str:
         """Get and format weather from WXSIM source.
 
         Args:
@@ -370,7 +370,7 @@ class GlobalWxCommand(BaseCommand):
                 return f"{location_name}: {current}"
             return current
 
-    def _coordinates_to_location_string(self, lat: float, lon: float) -> Optional[str]:
+    def _coordinates_to_location_string(self, lat: float, lon: float) -> str | None:
         """Convert coordinates to a location string (city name) using reverse geocoding.
 
         Args:
@@ -598,7 +598,7 @@ class GlobalWxCommand(BaseCommand):
             await self.send_response(message, self.translate('commands.gwx.error', error=str(e)))
             return True
 
-    async def get_weather_for_location(self, location: str, forecast_type: str = "default", num_days: int = 7, message: MeshMessage = None) -> Union[str, tuple[str, str, str]]:
+    async def get_weather_for_location(self, location: str, forecast_type: str = "default", num_days: int = 7, message: MeshMessage = None) -> str | tuple[str, str, str]:
         """Get weather data for any global location.
 
         Args:
@@ -1427,7 +1427,7 @@ class GlobalWxCommand(BaseCommand):
 
         return emoji_map.get(code, "🌤️")
 
-    def _check_extreme_conditions(self, weather_text: str) -> Optional[str]:
+    def _check_extreme_conditions(self, weather_text: str) -> str | None:
         """Check for extreme weather conditions that warrant warnings.
 
         Args:

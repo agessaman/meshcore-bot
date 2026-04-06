@@ -10,9 +10,9 @@ import re
 import socket
 import urllib.error
 import urllib.request
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 try:
     from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -39,7 +39,7 @@ def is_valid_timezone(tz_str: str) -> bool:
         return False
 
 
-def get_config_timezone(config: Any, logger: Optional[Any] = None) -> tuple[Any, str]:
+def get_config_timezone(config: Any, logger: Any | None = None) -> tuple[Any, str]:
     """Resolve [Bot] timezone from config; fall back to system timezone if invalid or empty.
 
     Returns:
@@ -59,10 +59,10 @@ def get_config_timezone(config: Any, logger: Optional[Any] = None) -> tuple[Any,
 
 def format_temperature_high_low(
     config: Any,
-    high: Optional[Union[int, float]],
-    low: Optional[Union[int, float]],
+    high: int | float | None,
+    low: int | float | None,
     units_str: str,
-    logger: Optional[Any] = None,
+    logger: Any | None = None,
 ) -> str:
     """Format a daily high/low pair (or single value) using [Weather] templates.
 
@@ -76,7 +76,7 @@ def format_temperature_high_low(
     default_high_only = "H:{high}{units}"
     default_low_only = "L:{low}{units}"
 
-    def _norm(v: Optional[Union[int, float]]) -> Optional[int]:
+    def _norm(v: int | float | None) -> int | None:
         if v is None:
             return None
         try:
@@ -98,7 +98,7 @@ def format_temperature_high_low(
     else:
         pair_fmt, high_only_fmt, low_only_fmt = default_pair, default_high_only, default_low_only
 
-    def _try_format(fmt: str, **kwargs: Any) -> Optional[str]:
+    def _try_format(fmt: str, **kwargs: Any) -> str | None:
         try:
             return fmt.format(**kwargs)
         except (KeyError, ValueError, IndexError) as e:
@@ -262,8 +262,8 @@ def decode_escape_sequences(text: str) -> str:
     return text
 
 
-def format_location_for_display(city: Optional[str], state: Optional[str] = None,
-                               country: Optional[str] = None, max_length: int = 20) -> Optional[str]:
+def format_location_for_display(city: str | None, state: str | None = None,
+                               country: str | None = None, max_length: int = 20) -> str | None:
     """Format location data for display with intelligent abbreviation.
 
     Args:
@@ -290,7 +290,7 @@ def format_location_for_display(city: Optional[str], state: Optional[str] = None
     return abbreviate_location(full_location, max_length)
 
 
-def get_major_city_queries(city: str, state_abbr: Optional[str] = None) -> list[str]:
+def get_major_city_queries(city: str, state_abbr: str | None = None) -> list[str]:
     """Get prioritized geocoding queries for major cities that have multiple locations.
 
     This helps ensure that common city names resolve to the most likely major city
@@ -462,7 +462,7 @@ def encode_path_len_byte(hop_count: int, bytes_per_hop: int) -> int:
     return (size_code << 6) | hop_count
 
 
-def calculate_packet_hash(raw_hex: str, payload_type: Optional[int] = None) -> str:
+def calculate_packet_hash(raw_hex: str, payload_type: int | None = None) -> str:
     """Calculate hash for packet identification - based on packet.cpp.
 
     Packet hashes are unique to the originally sent message, allowing
@@ -587,7 +587,7 @@ except ImportError:
     US_AVAILABLE = False
 
 
-def normalize_country_name(country_input: str) -> tuple[Optional[str], Optional[str]]:
+def normalize_country_name(country_input: str) -> tuple[str | None, str | None]:
     """Normalize country name to ISO code and standard name.
 
     Args:
@@ -654,7 +654,7 @@ def normalize_country_name(country_input: str) -> tuple[Optional[str], Optional[
     return None, None
 
 
-def normalize_us_state(state_input: str) -> tuple[Optional[str], Optional[str]]:
+def normalize_us_state(state_input: str) -> tuple[str | None, str | None]:
     """Normalize US state name to abbreviation and full name.
 
     Args:
@@ -739,7 +739,7 @@ def is_us_state(text: str) -> bool:
     return False
 
 
-def parse_location_string(location: str) -> tuple[str, Optional[str], Optional[str]]:
+def parse_location_string(location: str) -> tuple[str, str | None, str | None]:
     """Parse a location string into city, state/country parts.
 
     Args:
@@ -791,7 +791,7 @@ def get_nominatim_geocoder(user_agent: str = "meshcore-bot", timeout: int = 10) 
     return Nominatim(user_agent=user_agent, timeout=timeout)
 
 
-async def rate_limited_nominatim_geocode(bot: Any, query: str, timeout: int = 10) -> Optional[Any]:
+async def rate_limited_nominatim_geocode(bot: Any, query: str, timeout: int = 10) -> Any | None:
     """Perform rate-limited Nominatim geocoding (forward geocoding).
 
     Args:
@@ -820,7 +820,7 @@ async def rate_limited_nominatim_geocode(bot: Any, query: str, timeout: int = 10
     return result
 
 
-async def rate_limited_nominatim_reverse(bot: Any, coordinates: str, timeout: int = 10) -> Optional[Any]:
+async def rate_limited_nominatim_reverse(bot: Any, coordinates: str, timeout: int = 10) -> Any | None:
     """Perform rate-limited Nominatim reverse geocoding.
 
     Args:
@@ -849,7 +849,7 @@ async def rate_limited_nominatim_reverse(bot: Any, coordinates: str, timeout: in
     return result
 
 
-def rate_limited_nominatim_geocode_sync(bot: Any, query: str, timeout: int = 10) -> Optional[Any]:
+def rate_limited_nominatim_geocode_sync(bot: Any, query: str, timeout: int = 10) -> Any | None:
     """Perform rate-limited Nominatim geocoding (synchronous version).
 
     Args:
@@ -878,7 +878,7 @@ def rate_limited_nominatim_geocode_sync(bot: Any, query: str, timeout: int = 10)
     return result
 
 
-def rate_limited_nominatim_reverse_sync(bot: Any, coordinates: str, timeout: int = 10) -> Optional[Any]:
+def rate_limited_nominatim_reverse_sync(bot: Any, coordinates: str, timeout: int = 10) -> Any | None:
     """Perform rate-limited Nominatim reverse geocoding (synchronous version).
 
     Args:
@@ -907,7 +907,7 @@ def rate_limited_nominatim_reverse_sync(bot: Any, coordinates: str, timeout: int
     return result
 
 
-async def geocode_zipcode(bot: Any, zipcode: str, default_country: Optional[str] = None, timeout: int = 10) -> tuple[Optional[float], Optional[float]]:
+async def geocode_zipcode(bot: Any, zipcode: str, default_country: str | None = None, timeout: int = 10) -> tuple[float | None, float | None]:
     """Shared function to geocode a ZIP code to lat/lon coordinates.
 
     Checks cache first, then makes rate-limited API call if needed.
@@ -945,7 +945,7 @@ async def geocode_zipcode(bot: Any, zipcode: str, default_country: Optional[str]
         return None, None
 
 
-def geocode_zipcode_sync(bot: Any, zipcode: str, default_country: Optional[str] = None, timeout: int = 10) -> tuple[Optional[float], Optional[float]]:
+def geocode_zipcode_sync(bot: Any, zipcode: str, default_country: str | None = None, timeout: int = 10) -> tuple[float | None, float | None]:
     """Synchronous version of geocode_zipcode.
 
     Args:
@@ -981,10 +981,10 @@ def geocode_zipcode_sync(bot: Any, zipcode: str, default_country: Optional[str] 
         return None, None
 
 
-async def geocode_city(bot: Any, city: str, default_state: Optional[str] = None,
-                       default_country: Optional[str] = None,
+async def geocode_city(bot: Any, city: str, default_state: str | None = None,
+                       default_country: str | None = None,
                        include_address_info: bool = False,
-                       timeout: int = 10) -> tuple[Optional[float], Optional[float], Optional[dict]]:
+                       timeout: int = 10) -> tuple[float | None, float | None, dict | None]:
     """Shared function to geocode a city name to lat/lon coordinates.
 
     Uses intelligent fallback logic with major city prioritization.
@@ -1287,10 +1287,10 @@ async def geocode_city(bot: Any, city: str, default_state: Optional[str] = None,
         return None, None, None
 
 
-def geocode_city_sync(bot: Any, city: str, default_state: Optional[str] = None,
-                      default_country: Optional[str] = None,
+def geocode_city_sync(bot: Any, city: str, default_state: str | None = None,
+                      default_country: str | None = None,
                       include_address_info: bool = False,
-                      timeout: int = 10) -> tuple[Optional[float], Optional[float], Optional[dict]]:
+                      timeout: int = 10) -> tuple[float | None, float | None, dict | None]:
     """Synchronous version of geocode_city.
 
     Args:
@@ -1587,7 +1587,7 @@ def geocode_city_sync(bot: Any, city: str, default_state: Optional[str] = None,
         return None, None, None
 
 
-def resolve_path(file_path: Union[str, Path], base_dir: Union[str, Path] = '.') -> str:
+def resolve_path(file_path: str | Path, base_dir: str | Path = '.') -> str:
     """Resolve a file path relative to a base directory.
 
     If the path is absolute, it is returned as-is (no symlink/canonical resolution).
@@ -1639,7 +1639,7 @@ def check_internet_connectivity(host: str = "8.8.8.8", port: int = 53, timeout: 
         sock.close()
         socket.setdefaulttimeout(None)  # Reset to default
         return True
-    except (OSError, socket.timeout):
+    except (TimeoutError, OSError):
         socket.setdefaulttimeout(None)  # Reset to default
         # DNS check failed, try HTTP fallback
         pass
@@ -1651,13 +1651,13 @@ def check_internet_connectivity(host: str = "8.8.8.8", port: int = 53, timeout: 
         http_url = "http://1.1.1.1"  # Cloudflare DNS
         urllib.request.urlopen(http_url, timeout=timeout).close()
         return True
-    except (urllib.error.URLError, OSError, socket.timeout):
+    except (TimeoutError, urllib.error.URLError, OSError):
         # If IP-based check fails, try a hostname-based check
         try:
             http_url = "http://www.google.com"
             urllib.request.urlopen(http_url, timeout=timeout).close()
             return True
-        except (urllib.error.URLError, OSError, socket.timeout):
+        except (TimeoutError, urllib.error.URLError, OSError):
             return False
 
 
@@ -1684,7 +1684,7 @@ async def check_internet_connectivity_async(host: str = "8.8.8.8", port: int = 5
         writer.close()
         await writer.wait_closed()
         return True
-    except (asyncio.TimeoutError, OSError, ConnectionError):
+    except (TimeoutError, OSError, ConnectionError):
         # DNS check failed, try HTTP fallback
         pass
     except Exception:
@@ -1706,7 +1706,7 @@ async def check_internet_connectivity_async(host: str = "8.8.8.8", port: int = 5
             timeout=timeout
         )
         return True
-    except (asyncio.TimeoutError, urllib.error.URLError, OSError, socket.timeout):
+    except (TimeoutError, urllib.error.URLError, OSError):
         # If IP-based check fails, try a hostname-based check
         try:
             http_url = "http://www.google.com"
@@ -1718,7 +1718,7 @@ async def check_internet_connectivity_async(host: str = "8.8.8.8", port: int = 5
                 timeout=timeout
             )
             return True
-        except (asyncio.TimeoutError, urllib.error.URLError, OSError, socket.timeout):
+        except (TimeoutError, urllib.error.URLError, OSError):
             return False
     except Exception:
         return False
@@ -1825,7 +1825,7 @@ def node_ids_from_path_string(path_str: str, prefix_hex_chars: int = 2) -> list[
 
 
 def calculate_path_distances(
-    bot: Any, path_str: str, message: Optional[Any] = None
+    bot: Any, path_str: str, message: Any | None = None
 ) -> tuple[str, str]:
     """Calculate path distance metrics from a path string and optional message.
 
@@ -1876,7 +1876,7 @@ def calculate_path_distances(
 
         # Look up locations for each node ID
         # _get_node_location_from_db returns ((lat, lon), public_key) or None
-        node_locations: list[Optional[tuple[float, float]]] = []
+        node_locations: list[tuple[float, float] | None] = []
         for node_id in node_ids:
             result = _get_node_location_from_db(bot, node_id)
             if result:
@@ -1952,7 +1952,7 @@ def calculate_path_distances(
         return "", ""
 
 
-def _get_node_location_from_db(bot: Any, node_id: str, reference_location: Optional[tuple[float, float]] = None, recency_days: Optional[int] = None) -> Optional[tuple[tuple[float, float], Optional[str]]]:
+def _get_node_location_from_db(bot: Any, node_id: str, reference_location: tuple[float, float] | None = None, recency_days: int | None = None) -> tuple[tuple[float, float], str | None] | None:
     """Get location for a node ID from the database.
 
     For LoRa networks, prefers shorter distances when there are prefix collisions,
@@ -2026,7 +2026,7 @@ def _get_node_location_from_db(bot: Any, node_id: str, reference_location: Optio
                 # First sort by starred and distance, then stable sort by recency in reverse
                 from datetime import datetime
 
-                def get_timestamp_key(ts_str: Optional[str]) -> float:
+                def get_timestamp_key(ts_str: str | None) -> float:
                     """Convert timestamp string to sortable key (newer = smaller key for reverse sort)"""
                     if not ts_str:
                         return float('inf')  # Empty timestamps sort last
@@ -2064,7 +2064,7 @@ def _get_node_location_from_db(bot: Any, node_id: str, reference_location: Optio
         # For recency, parse timestamps properly to ensure newer comes first
         from datetime import datetime
 
-        def get_timestamp_key_no_ref(ts_str: Optional[str]) -> float:
+        def get_timestamp_key_no_ref(ts_str: str | None) -> float:
             """Convert timestamp string to sortable key (newer = smaller key)"""
             if not ts_str:
                 return float('inf')  # Empty timestamps sort last
@@ -2094,7 +2094,7 @@ def _get_node_location_from_db(bot: Any, node_id: str, reference_location: Optio
             bot.logger.debug(f"Error getting node location for {node_id}: {e}")
         return None
 
-def _get_node_location_and_key_from_db(bot: Any, node_id: str, reference_location: Optional[tuple[float, float]] = None) -> Optional[tuple[tuple[float, float], str]]:
+def _get_node_location_and_key_from_db(bot: Any, node_id: str, reference_location: tuple[float, float] | None = None) -> tuple[tuple[float, float], str] | None:
     """Get location and public key for a node ID from the database.
 
     For LoRa networks, prefers shorter distances when there are prefix collisions,
@@ -2214,8 +2214,7 @@ def format_elapsed_display(ts: Any, translator: Any = None) -> str:
         ts_f = float(ts)
     except (TypeError, ValueError):
         return _sync_str()
-    from datetime import datetime, timezone
-    UTC = timezone.utc
+    from datetime import datetime
     elapsed_ms = (datetime.now(UTC).timestamp() - ts_f) * 1000
     if elapsed_ms < 0 or elapsed_ms > _ELAPSED_MS_MAX:
         return _sync_str()
@@ -2226,7 +2225,7 @@ def format_keyword_response_with_placeholders(
     response_format: str,
     message: Any,
     bot: Any,
-    mesh_info: Optional[dict[str, Any]] = None
+    mesh_info: dict[str, Any] | None = None
 ) -> str:
     """Format a keyword response string with all available placeholders.
 

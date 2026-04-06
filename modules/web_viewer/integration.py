@@ -14,7 +14,6 @@ import threading
 import time
 from contextlib import closing, suppress
 from pathlib import Path
-from typing import Optional
 
 from ..utils import resolve_path
 
@@ -38,7 +37,7 @@ class BotIntegration:
         # Batched write queue: avoids a per-insert sqlite3.connect() round-trip
         self._write_queue: queue.Queue = queue.Queue()
         self._drain_stop = threading.Event()
-        self._drain_thread: Optional[threading.Thread] = None
+        self._drain_thread: threading.Thread | None = None
         # Initialize HTTP session with connection pooling for efficient reuse
         self._init_http_session()
         # Generate a shared secret for authenticating internal /api/stream_data calls.
@@ -362,7 +361,7 @@ class BotIntegration:
         except Exception as e:
             self.bot.logger.debug(f"Error storing routing data: {e}")
 
-    def cleanup_old_data(self, days_to_keep: Optional[int] = None):
+    def cleanup_old_data(self, days_to_keep: int | None = None):
         """Clean up old packet stream data to prevent database bloat.
         Uses [Data_Retention] packet_stream_retention_days when days_to_keep is not provided."""
         try:

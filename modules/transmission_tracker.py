@@ -8,7 +8,7 @@ import threading
 import time
 from contextlib import closing
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -18,11 +18,11 @@ class TransmissionRecord:
     content: str
     target: str  # Channel name or recipient ID
     message_type: str  # 'channel' or 'dm'
-    packet_hash: Optional[str] = None
+    packet_hash: str | None = None
     repeat_count: int = 0
     repeater_prefixes: set[str] = field(default_factory=set)
     repeater_counts: dict[str, int] = field(default_factory=dict)  # Count per repeater prefix
-    command_id: Optional[str] = None  # For correlating with command data
+    command_id: str | None = None  # For correlating with command data
 
 
 class TransmissionTracker:
@@ -54,7 +54,7 @@ class TransmissionTracker:
         self._lock = threading.Lock()
 
         # Track our bot's public key prefix (first 2 hex chars) for filtering
-        self.bot_prefix: Optional[str] = None
+        self.bot_prefix: str | None = None
         self._update_bot_prefix()
 
     def _update_bot_prefix(self):
@@ -73,7 +73,7 @@ class TransmissionTracker:
                 self.logger.debug(f"Could not determine bot prefix: {e}")
 
     def record_transmission(self, content: str, target: str, message_type: str,
-                          command_id: Optional[str] = None) -> TransmissionRecord:
+                          command_id: str | None = None) -> TransmissionRecord:
         """Record a transmission attempt.
 
         Args:
@@ -106,7 +106,7 @@ class TransmissionTracker:
 
         return record
 
-    def match_packet_hash(self, packet_hash: str, rf_timestamp: float) -> Optional[TransmissionRecord]:
+    def match_packet_hash(self, packet_hash: str, rf_timestamp: float) -> TransmissionRecord | None:
         """Match a received packet hash to a pending transmission.
 
         Args:
@@ -145,7 +145,7 @@ class TransmissionTracker:
 
         return None
 
-    def record_repeat(self, packet_hash: str, repeater_prefix: Optional[str] = None) -> bool:
+    def record_repeat(self, packet_hash: str, repeater_prefix: str | None = None) -> bool:
         """Record that we heard a repeat of one of our transmissions.
 
         Args:
@@ -262,8 +262,8 @@ class TransmissionTracker:
         except Exception as e:
             self.logger.debug(f"Error updating command in database: {e}")
 
-    def get_repeat_info(self, command_id: Optional[str] = None,
-                       packet_hash: Optional[str] = None) -> dict[str, Any]:
+    def get_repeat_info(self, command_id: str | None = None,
+                       packet_hash: str | None = None) -> dict[str, Any]:
         """Get repeat information for a command or packet hash.
 
         Args:
@@ -293,8 +293,8 @@ class TransmissionTracker:
 
         return {'repeat_count': 0, 'repeater_prefixes': [], 'repeater_counts': {}}
 
-    def extract_repeater_prefixes_from_path(self, path: Optional[str],
-                                           path_nodes: Optional[list[str]] = None) -> list[str]:
+    def extract_repeater_prefixes_from_path(self, path: str | None,
+                                           path_nodes: list[str] | None = None) -> list[str]:
         """Extract repeater prefix from the last hop in a message path.
 
         The repeater that sent the packet is always the last hop in the path.

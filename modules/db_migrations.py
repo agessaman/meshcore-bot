@@ -17,7 +17,7 @@ Never modify or remove an existing migration — add a new one instead.
 import logging
 import re
 import sqlite3
-from typing import Callable
+from collections.abc import Callable
 
 # ---------------------------------------------------------------------------
 # Helper utilities

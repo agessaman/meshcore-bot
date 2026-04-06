@@ -1,8 +1,7 @@
 import asyncio
 import logging
 import time
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 import aiohttp
 
@@ -15,7 +14,7 @@ class TheSportsDBClient:
     BASE_URL = "https://www.thesportsdb.com/api/v1/json"
     FREE_API_KEY = "123"  # Free public API key
 
-    def __init__(self, logger: Optional[logging.Logger] = None, timeout: int = 10, session: Optional[aiohttp.ClientSession] = None):
+    def __init__(self, logger: logging.Logger | None = None, timeout: int = 10, session: aiohttp.ClientSession | None = None):
         """Initialize the TheSportsDB API client with rate limiting.
 
         Args:
@@ -44,7 +43,7 @@ class TheSportsDBClient:
             await asyncio.sleep(sleep_time)
         self.last_request_time = time.time()
 
-    async def search_team(self, team_name: str) -> Optional[dict]:
+    async def search_team(self, team_name: str) -> dict | None:
         """Search for a team by name"""
         await self._rate_limit()
         url = f"{self.BASE_URL}/{self.FREE_API_KEY}/searchteams.php"
@@ -126,7 +125,7 @@ class TheSportsDBClient:
 
         return upcoming_games
 
-    def parse_event(self, event: dict, team_id: str, sport: str, league: str) -> Optional[dict]:
+    def parse_event(self, event: dict, team_id: str, sport: str, league: str) -> dict | None:
         """Parse a TheSportsDB event and return structured data with timestamp for sorting"""
         try:
             # Extract team info
@@ -150,13 +149,13 @@ class TheSportsDBClient:
 
             # Get timestamp for sorting
             timestamp: float = 0
-            event_timestamp: Optional[float] = None
+            event_timestamp: float | None = None
             if timestamp_str:
                 try:
                     # fromisoformat handles 'Z' in Python 3.11+, but we force UTC if naive
                     dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
                     if dt.tzinfo is None:
-                        dt = dt.replace(tzinfo=timezone.utc)
+                        dt = dt.replace(tzinfo=UTC)
                     event_timestamp = dt.timestamp()
                     timestamp = event_timestamp
                 except:
@@ -164,7 +163,7 @@ class TheSportsDBClient:
                         try:
                             dt_str = f"{date_str} {time_str}"
                             dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
-                            dt = dt.replace(tzinfo=timezone.utc)
+                            dt = dt.replace(tzinfo=UTC)
                             event_timestamp = dt.timestamp()
                             timestamp = event_timestamp
                         except: pass
@@ -173,7 +172,7 @@ class TheSportsDBClient:
             if status == 'Match Finished':
                 date_suffix = ""
                 if event_timestamp:
-                    dt = datetime.fromtimestamp(event_timestamp, tz=timezone.utc).astimezone()
+                    dt = datetime.fromtimestamp(event_timestamp, tz=UTC).astimezone()
                     if dt.date() != datetime.now().date():
                         date_suffix = f", {format_clean_date(dt)}"
 
@@ -193,7 +192,7 @@ class TheSportsDBClient:
             else:
                 # Scheduled or TBD
                 if event_timestamp:
-                    dt = datetime.fromtimestamp(event_timestamp, tz=timezone.utc).astimezone()
+                    dt = datetime.fromtimestamp(event_timestamp, tz=UTC).astimezone()
                     time_str_formatted = format_clean_date_time(dt)
                     if is_soccer(sport):
                         formatted = f"@{home_abbr} vs. {away_abbr} ({time_str_formatted})"
@@ -266,7 +265,7 @@ class TheSportsDBClient:
             self.logger.error(f"TheSportsDB get_league_events_past error: {e}")
             return []
 
-    async def get_events_by_day(self, date_str: str, league_id: Optional[str] = None) -> list[dict]:
+    async def get_events_by_day(self, date_str: str, league_id: str | None = None) -> list[dict]:
         """Get events for a specific day"""
         await self._rate_limit()
         url = f"{self.BASE_URL}/{self.FREE_API_KEY}/eventsday.php"

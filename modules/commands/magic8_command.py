@@ -4,7 +4,6 @@ Magic 8-ball command for the MeshCore Bot
 Handles the 'magic8' keyword response
 """
 import random
-from typing import Optional
 
 from ..models import MeshMessage
 from .base_command import BaseCommand
@@ -63,7 +62,7 @@ class Magic8Command(BaseCommand):
         """
         return self.translate('commands.magic8.description')
 
-    def get_response_format(self) -> Optional[str]:
+    def get_response_format(self) -> str | None:
         """Get the response format from config.
 
         Returns:

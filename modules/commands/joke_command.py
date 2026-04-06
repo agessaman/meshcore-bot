@@ -5,7 +5,7 @@ Provides clean, family-friendly jokes from the JokeAPI
 """
 
 import asyncio
-from typing import Any, Optional
+from typing import Any
 
 import aiohttp
 
@@ -189,7 +189,7 @@ class JokeCommand(BaseCommand):
             await self.send_response(message, "Sorry, something went wrong getting a joke!")
             return True
 
-    async def get_joke_from_api(self, category: Optional[str] = None) -> Optional[dict[str, Any]]:
+    async def get_joke_from_api(self, category: str | None = None) -> dict[str, Any] | None:
         """Get a joke from the JokeAPI.
 
         Args:
@@ -246,14 +246,14 @@ class JokeCommand(BaseCommand):
                         self.logger.error(f"JokeAPI returned status {response.status}")
                         return None
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self.logger.error("Timeout fetching joke from JokeAPI")
             return None
         except Exception as e:
             self.logger.error(f"Error fetching joke from JokeAPI: {e}")
             return None
 
-    async def get_joke_with_length_handling(self, category: str = None) -> Optional[dict[str, Any]]:
+    async def get_joke_with_length_handling(self, category: str = None) -> dict[str, Any] | None:
         """Get a joke from API with length handling based on configuration"""
         max_attempts = 5  # Prevent infinite loops
 

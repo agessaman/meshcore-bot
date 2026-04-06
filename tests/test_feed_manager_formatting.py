@@ -2,7 +2,7 @@
 
 import json
 from configparser import ConfigParser
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import Mock
 
 import pytest
@@ -138,7 +138,7 @@ class TestShouldSendItem:
         assert fm._should_send_item(feed, item) is False
 
     def test_within_days_passes_recent(self, fm):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         feed = {
             "id": 1,
             "filter_config": json.dumps({
@@ -151,7 +151,7 @@ class TestShouldSendItem:
         assert fm._should_send_item(feed, item) is True
 
     def test_within_days_rejects_old(self, fm):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         feed = {
             "id": 1,
             "filter_config": json.dumps({
@@ -168,7 +168,7 @@ class TestFormatTimestamp:
     """Tests for _format_timestamp()."""
 
     def test_recent_timestamp(self, fm):
-        five_min_ago = datetime.now(timezone.utc) - timedelta(minutes=5)
+        five_min_ago = datetime.now(UTC) - timedelta(minutes=5)
         result = fm._format_timestamp(five_min_ago)
         assert "5m ago" in result
 

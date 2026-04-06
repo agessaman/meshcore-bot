@@ -5,7 +5,6 @@ Handles random number generation between 1 and X (default 100)
 """
 
 import random
-from typing import Optional
 
 from ..models import MeshMessage
 from .base_command import BaseCommand
@@ -95,7 +94,7 @@ class RollCommand(BaseCommand):
 
         return False
 
-    def parse_roll_notation(self, roll_input: str) -> Optional[int]:
+    def parse_roll_notation(self, roll_input: str) -> int | None:
         """Parse roll notation and return the maximum number.
 
         Supports inputs like: 50, 100, 1000.
@@ -161,7 +160,7 @@ class RollCommand(BaseCommand):
 
         # Default to 1-100 if no specification
         if content.lower() == "roll":
-            max_num: Optional[int] = 100
+            max_num: int | None = 100
         else:
             # Parse roll specification
             roll_part = content[5:].strip()  # Get everything after "roll "

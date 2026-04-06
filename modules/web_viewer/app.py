@@ -14,9 +14,9 @@ import sys
 import threading
 import time
 from contextlib import closing, contextmanager, suppress
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 from flask import (
     Flask,
@@ -274,7 +274,7 @@ class BotDataViewer:
             config.read(config_path)
         return config
 
-    def _get_version_info(self) -> dict[str, Optional[str]]:
+    def _get_version_info(self) -> dict[str, str | None]:
         """Get version info for footer from shared runtime resolver."""
         info = resolve_runtime_version(self.bot_root)
         return {
@@ -1655,7 +1655,7 @@ class BotDataViewer:
                 data = request.get_json(silent=True) or {}
                 raw = data.get('keep_days', 'all')
                 if raw == 'all' or raw == 'All':
-                    keep_days: Union[str, int] = 'all'
+                    keep_days: str | int = 'all'
                 else:
                     try:
                         keep_days = int(raw)
@@ -1664,7 +1664,7 @@ class BotDataViewer:
                 if keep_days not in _VALID_KEEP_DAYS:
                     return jsonify({'error': f'keep_days must be one of {sorted(v for v in _VALID_KEEP_DAYS if isinstance(v, int))} or "all"'}), 400
 
-                tables_filter: Optional[list[str]] = None
+                tables_filter: list[str] | None = None
                 if 'tables' in data:
                     tf = data.get('tables')
                     if tf is None:
@@ -1694,7 +1694,7 @@ class BotDataViewer:
                 assert isinstance(keep_days, int)
                 from datetime import timedelta as _timedelta
                 cutoff_unix = time.time() - keep_days * 86400
-                _cutoff_dt = datetime.now(timezone.utc) - _timedelta(days=keep_days)
+                _cutoff_dt = datetime.now(UTC) - _timedelta(days=keep_days)
                 cutoff_iso = _cutoff_dt.strftime('%Y-%m-%d %H:%M:%S')
                 cutoff_date = _cutoff_dt.strftime('%Y-%m-%d')
 
@@ -4002,7 +4002,7 @@ class BotDataViewer:
         except Exception as e:
             self.logger.error(f"Error cleaning up stale clients: {e}")
 
-    def _cleanup_old_data(self, days_to_keep: Optional[int] = None):
+    def _cleanup_old_data(self, days_to_keep: int | None = None):
         """Clean up old packet stream data to prevent database bloat.
         Uses [Data_Retention] packet_stream_retention_days when days_to_keep is not provided."""
         try:
@@ -4783,7 +4783,7 @@ class BotDataViewer:
         return n
 
     def _collect_multibyte_hop_chunks(
-        self, cursor, recent_days: Optional[int] = None
+        self, cursor, recent_days: int | None = None
     ) -> set[str]:
         """Hop prefixes from multibyte paths in observed_paths (for repeater/room pubkey matching).
 
@@ -4823,12 +4823,12 @@ class BotDataViewer:
         row: Any,
         all_paths: list[dict[str, Any]],
         multibyte_hop_chunks: set[str],
-    ) -> Optional[str]:
+    ) -> str | None:
         """Return 'multibyte', 'one_byte', or None for contacts path-encoding badge."""
         pk = row["public_key"] or ""
         role = (row["role"] or "").lower()
         obph_raw = row["out_bytes_per_hop"]
-        obph: Optional[int]
+        obph: int | None
         try:
             obph = int(obph_raw) if obph_raw is not None else None
         except (TypeError, ValueError):
@@ -4885,7 +4885,7 @@ class BotDataViewer:
     def _contact_has_multibyte_path_evidence(
         self,
         public_key: str,
-        role: Optional[str],
+        role: str | None,
         out_bytes_per_hop: Any,
         multibyte_advert_public_keys: set[str],
         multibyte_hop_chunks: set[str],
@@ -4893,7 +4893,7 @@ class BotDataViewer:
         """Multibyte detection for dashboard 7d stats (observed_paths scoped by date in SQL)."""
         pk = public_key or ""
         role_l = (role or "").lower()
-        obph: Optional[int]
+        obph: int | None
         try:
             obph = int(out_bytes_per_hop) if out_bytes_per_hop is not None else None
         except (TypeError, ValueError):
@@ -5735,9 +5735,9 @@ class BotDataViewer:
             if conn:
                 conn.close()
 
-    def _preview_feed_items(self, feed_url: str, feed_type: str, output_format: str, api_config: Optional[dict[str, Any]] = None, filter_config: Optional[dict[str, Any]] = None, sort_config: Optional[dict[str, Any]] = None) -> list[dict[str, Any]]:
+    def _preview_feed_items(self, feed_url: str, feed_type: str, output_format: str, api_config: dict[str, Any] | None = None, filter_config: dict[str, Any] | None = None, sort_config: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """Preview feed items with custom output format (standalone, doesn't require bot)"""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         import feedparser
         import requests
@@ -5758,7 +5758,7 @@ class BotDataViewer:
                     if hasattr(entry, 'published_parsed') and entry.published_parsed:
                         with suppress(Exception):
                             pt = entry.published_parsed
-                            published = datetime(pt[0], pt[1], pt[2], pt[3], pt[4], pt[5], tzinfo=timezone.utc)
+                            published = datetime(pt[0], pt[1], pt[2], pt[3], pt[4], pt[5], tzinfo=UTC)
 
                     items.append({
                         'title': entry.get('title', 'Untitled'),
@@ -5873,7 +5873,7 @@ class BotDataViewer:
                         if ts_value:
                             try:
                                 if isinstance(ts_value, (int, float)):
-                                    published = datetime.fromtimestamp(ts_value, tz=timezone.utc)
+                                    published = datetime.fromtimestamp(ts_value, tz=UTC)
                                 elif isinstance(ts_value, str):
                                     # Try Microsoft date format first
                                     if ts_value.startswith('/Date('):
@@ -5888,7 +5888,7 @@ class BotDataViewer:
                                                 try:
                                                     published = datetime.strptime(ts_value, fmt)
                                                     if published.tzinfo is None:
-                                                        published = published.replace(tzinfo=timezone.utc)
+                                                        published = published.replace(tzinfo=UTC)
                                                     break
                                                 except ValueError:
                                                     continue
@@ -5942,10 +5942,9 @@ class BotDataViewer:
 
         return item_passes_filter_config(item, filter_config)
 
-    def _parse_microsoft_date(self, date_str: str) -> Optional[datetime]:
+    def _parse_microsoft_date(self, date_str: str) -> datetime | None:
         """Parse Microsoft JSON date format: /Date(timestamp-offset)/"""
         import re
-        from datetime import timezone
 
         if not date_str or not isinstance(date_str, str):
             return None
@@ -5968,7 +5967,7 @@ class BotDataViewer:
                     offset_seconds = -offset_seconds
 
                 # Create timezone-aware datetime
-                tz = timezone.utc
+                tz = UTC
                 if offset_seconds != 0:
                     from datetime import timedelta
                     tz = timezone(timedelta(seconds=offset_seconds))
@@ -5976,7 +5975,7 @@ class BotDataViewer:
                 return datetime.fromtimestamp(timestamp, tz=tz)
             except (ValueError, IndexError):
                 # Fallback to UTC if offset parsing fails
-                return datetime.fromtimestamp(timestamp, tz=timezone.utc)
+                return datetime.fromtimestamp(timestamp, tz=UTC)
 
         return None
 
@@ -6073,7 +6072,7 @@ class BotDataViewer:
         """Format a feed item using the output format (standalone version)"""
         import html
         import re
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         # Extract field values (NULL/missing fields must not become None for str ops)
         title = item.get('title') or 'Untitled'
@@ -6104,7 +6103,7 @@ class BotDataViewer:
         date_str = ""
         if published:
             try:
-                now = datetime.now(timezone.utc) if published.tzinfo else datetime.now()
+                now = datetime.now(UTC) if published.tzinfo else datetime.now()
 
                 diff = now - published
                 minutes = int(diff.total_seconds() / 60)
@@ -6551,7 +6550,7 @@ class BotDataViewer:
                 'error': str(e)
             }
 
-    def _decode_path_hex(self, path_hex: str, bytes_per_hop: Optional[int] = None) -> list[dict[str, Any]]:
+    def _decode_path_hex(self, path_hex: str, bytes_per_hop: int | None = None) -> list[dict[str, Any]]:
         """
         Decode hex path string to repeater names using the same sophisticated logic as path command.
         Returns a list of dictionaries with node_id and repeater info.

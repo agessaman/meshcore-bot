@@ -3,7 +3,7 @@
 import sqlite3
 import time
 from configparser import ConfigParser
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, Mock
 
 import pytest
@@ -342,22 +342,22 @@ class TestFormatTimestamp:
         assert self.fm._format_timestamp(None) == ""
 
     def test_just_now(self):
-        dt = datetime.now(timezone.utc)
+        dt = datetime.now(UTC)
         result = self.fm._format_timestamp(dt)
         assert result == "now"
 
     def test_30_minutes_ago(self):
-        dt = datetime.now(timezone.utc) - timedelta(minutes=30)
+        dt = datetime.now(UTC) - timedelta(minutes=30)
         result = self.fm._format_timestamp(dt)
         assert "m ago" in result
 
     def test_3_hours_ago(self):
-        dt = datetime.now(timezone.utc) - timedelta(hours=3, minutes=15)
+        dt = datetime.now(UTC) - timedelta(hours=3, minutes=15)
         result = self.fm._format_timestamp(dt)
         assert "h" in result and "m ago" in result
 
     def test_5_days_ago(self):
-        dt = datetime.now(timezone.utc) - timedelta(days=5)
+        dt = datetime.now(UTC) - timedelta(days=5)
         result = self.fm._format_timestamp(dt)
         assert result == "5d ago"
 
@@ -546,7 +546,7 @@ class TestFormatMessage:
             "title": "Test Title",
             "description": "Test body text",
             "link": "http://example.com/1",
-            "published": datetime.now(timezone.utc) - timedelta(minutes=5),
+            "published": datetime.now(UTC) - timedelta(minutes=5),
         }
         base.update(kw)
         return base

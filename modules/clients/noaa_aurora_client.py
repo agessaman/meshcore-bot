@@ -5,7 +5,6 @@ NOAA Aurora Client - Fetches KP index and Ovation aurora probability from NOAA S
 
 import time
 from dataclasses import dataclass
-from typing import Optional
 
 import requests
 
@@ -37,9 +36,9 @@ class NOAAAuroraClient:
         self.longitude = longitude
 
         # Cache storage
-        self._kp_cache: Optional[list] = None
+        self._kp_cache: list | None = None
         self._kp_cache_time: float = 0
-        self._ovation_cache: Optional[dict] = None
+        self._ovation_cache: dict | None = None
         self._ovation_cache_time: float = 0
 
     def _is_cache_valid(self, cache_time: float, duration: float) -> bool:

@@ -10,7 +10,6 @@ standalone via validate_config.py or at bot startup with --validate-config.
 import configparser
 import os
 from pathlib import Path
-from typing import Optional
 
 # Severity levels for validation results
 SEVERITY_ERROR = "error"
@@ -104,7 +103,7 @@ def _get_command_prefix_to_section() -> dict[str, str]:
     return result
 
 
-def _suggest_similar_command(section: str, prefix_to_section: dict[str, str]) -> Optional[str]:
+def _suggest_similar_command(section: str, prefix_to_section: dict[str, str]) -> str | None:
     """If section looks like a command name (e.g. Stats, Hacker), suggest the canonical section."""
     return prefix_to_section.get(section.strip().lower())
 
@@ -119,7 +118,7 @@ def _resolve_path(file_path: str, base_dir: Path) -> Path:
 
 def _check_path_writable(
     file_path: str, base_dir: Path, description: str
-) -> Optional[str]:
+) -> str | None:
     """Check if a file path can be written. Returns warning message if not."""
     if not file_path or not file_path.strip():
         return None
@@ -231,7 +230,7 @@ def validate_config(config_path: str) -> list[tuple[str, str]]:
             if msg:
                 results.append((SEVERITY_WARNING, msg))
 
-    prefix_to_section: Optional[dict[str, str]] = None
+    prefix_to_section: dict[str, str] | None = None
 
     for section in config.sections():
         section_stripped = section.strip()

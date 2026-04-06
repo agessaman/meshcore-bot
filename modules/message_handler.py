@@ -8,7 +8,7 @@ import asyncio
 import copy
 import time
 from collections import OrderedDict
-from typing import Any, Optional
+from typing import Any
 
 from .enums import AdvertFlags, DeviceRole, PayloadType, PayloadVersion, RouteType
 from .graph_trace_helper import update_mesh_graph_from_trace_data
@@ -937,7 +937,7 @@ class MessageHandler:
         except Exception as e:
             self.logger.error(f"Error handling RF log data: {e}")
 
-    def extract_path_from_raw_hex(self, raw_hex: str, expected_hops: int) -> Optional[str]:
+    def extract_path_from_raw_hex(self, raw_hex: str, expected_hops: int) -> str | None:
         """Extract path information directly from raw hex data.
 
         Attempts to find a sequence of node IDs in the raw packet data that matches
@@ -1009,7 +1009,7 @@ class MessageHandler:
             self.logger.debug(f"Error extracting path from raw hex: {e}")
             return None
 
-    def _cleanup_stale_cache_entries(self, current_time: Optional[float] = None) -> None:
+    def _cleanup_stale_cache_entries(self, current_time: float | None = None) -> None:
         """Remove stale entries from RF data caches and enforce maximum size limits.
 
         Args:
@@ -1212,7 +1212,7 @@ class MessageHandler:
 
 
 
-    def decode_meshcore_packet(self, raw_hex: str, payload_hex: Optional[str] = None) -> Optional[dict]:
+    def decode_meshcore_packet(self, raw_hex: str, payload_hex: str | None = None) -> dict | None:
         """
         Decode a MeshCore packet from raw hex data - matches Packet.cpp exactly
 
@@ -1446,7 +1446,7 @@ class MessageHandler:
             self.logger.error(f"Error parsing ADVERT payload: {e}", exc_info=True)
             return {}
 
-    def _path_bytes_to_nodes(self, path_bytes: bytes, prefix_hex_chars: Optional[int] = None) -> tuple:
+    def _path_bytes_to_nodes(self, path_bytes: bytes, prefix_hex_chars: int | None = None) -> tuple:
         """Chunk path bytes into hex node IDs using configured prefix length, with legacy 2-char fallback.
 
         Args:
@@ -1484,9 +1484,9 @@ class MessageHandler:
     def _get_path_from_rf_data(
         self,
         rf_data: dict[str, Any],
-        payload_hex: Optional[str] = None,
-        packet_info: Optional[dict[str, Any]] = None
-    ) -> tuple[Optional[str], Optional[list[str]], int]:
+        payload_hex: str | None = None,
+        packet_info: dict[str, Any] | None = None
+    ) -> tuple[str | None, list[str] | None, int]:
         """Get path string, path nodes, and hop count from RF data (single source for path extraction).
 
         Prefers routing_info.path_nodes when present (no re-decode; correct multi-byte).
@@ -2058,7 +2058,7 @@ class MessageHandler:
                 geographic_distance=geographic_distance
             )
 
-    def _store_observed_path(self, advert_data: dict[str, Any], path_hex: str, path_length: int, packet_type: str, packet_hash: Optional[str] = None, bytes_per_hop: Optional[int] = None):
+    def _store_observed_path(self, advert_data: dict[str, Any], path_hex: str, path_length: int, packet_type: str, packet_hash: str | None = None, bytes_per_hop: int | None = None):
         """Store a complete path in the observed_paths table.
 
         Args:
@@ -2152,7 +2152,7 @@ class MessageHandler:
             import traceback
             self.logger.debug(traceback.format_exc())
 
-    def _get_bot_location_fallback(self) -> Optional[tuple[float, float]]:
+    def _get_bot_location_fallback(self) -> tuple[float, float] | None:
         """Get bot location from config to use as fallback reference for distance-based selection.
 
         Returns:
@@ -2171,7 +2171,7 @@ class MessageHandler:
             self.logger.debug(f"Error getting bot location fallback: {e}")
             return None
 
-    def _get_location_by_public_key(self, public_key: str) -> Optional[tuple[float, float]]:
+    def _get_location_by_public_key(self, public_key: str) -> tuple[float, float] | None:
         """Get location for a full public key (more accurate than prefix lookup).
 
         Prefers starred repeaters if there are somehow multiple entries (shouldn't happen with full key).
@@ -2301,7 +2301,7 @@ class MessageHandler:
                 # Use bot location as fallback reference to ensure distance-based selection
                 bot_location_ref = self._get_bot_location_fallback()
                 first_hop_temp_result = _get_node_location_from_db(self.bot, first_hop, bot_location_ref, recency_days)
-                first_hop_location_temp: Optional[tuple[float, float]]
+                first_hop_location_temp: tuple[float, float] | None
                 if first_hop_temp_result:
                     first_hop_location_temp, _ = first_hop_temp_result
                 else:
@@ -2653,7 +2653,7 @@ class MessageHandler:
         except Exception as e:
             self.logger.error(f"Error in debug packet decoding: {e}")
 
-    def _format_path_string(self, hex_path: str, bytes_per_hop: Optional[int] = None) -> str:
+    def _format_path_string(self, hex_path: str, bytes_per_hop: int | None = None) -> str:
         """
         Convert a hex path string to node prefix format.
 
@@ -2929,7 +2929,7 @@ class MessageHandler:
         if hash_mode != -1:
             return
 
-        opl: Optional[int]
+        opl: int | None
         raw_opl = contact_data.get('out_path_len')
         try:
             opl = None if raw_opl is None else int(raw_opl)

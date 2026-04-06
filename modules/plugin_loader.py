@@ -11,7 +11,7 @@ import os
 import sys
 import types
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from .commands.base_command import BaseCommand
 
@@ -19,12 +19,12 @@ from .commands.base_command import BaseCommand
 class PluginLoader:
     """Handles dynamic loading and discovery of command plugins"""
 
-    def __init__(self, bot: Any, commands_dir: Optional[str] = None, local_commands_dir: Optional[str] = None) -> None:
+    def __init__(self, bot: Any, commands_dir: str | None = None, local_commands_dir: str | None = None) -> None:
         self.bot = bot
         self.logger = bot.logger
         self.commands_dir = commands_dir or os.path.join(os.path.dirname(__file__), 'commands')
         self.alternatives_dir = os.path.join(self.commands_dir, 'alternatives')
-        self.local_commands_dir: Optional[str]
+        self.local_commands_dir: str | None
         if local_commands_dir is not None:
             self.local_commands_dir = local_commands_dir
         else:
@@ -171,7 +171,7 @@ class PluginLoader:
 
         return errors
 
-    def load_plugin(self, plugin_name: str, from_alternatives: bool = False) -> Optional[BaseCommand]:
+    def load_plugin(self, plugin_name: str, from_alternatives: bool = False) -> BaseCommand | None:
         """Load a single plugin by name
 
         Args:
@@ -245,7 +245,7 @@ class PluginLoader:
             self._failed_plugins[plugin_name] = error_msg
             return None
 
-    def load_plugin_from_path(self, file_path: Path) -> Optional[BaseCommand]:
+    def load_plugin_from_path(self, file_path: Path) -> BaseCommand | None:
         """Load a single plugin from a file path (e.g. local/commands/my_command.py)."""
         # Ensure parent package exists so relative/absolute imports of "local_plugins" work.
         # Set __path__ so Python treats it as a package and can load submodules (e.g. local_plugins.utils).
@@ -443,14 +443,14 @@ class PluginLoader:
         for alias in metadata.get('aliases', []):
             self.keyword_mappings[alias.lower()] = plugin_name
 
-    def get_plugin_by_keyword(self, keyword: str) -> Optional[BaseCommand]:
+    def get_plugin_by_keyword(self, keyword: str) -> BaseCommand | None:
         """Get a plugin instance by keyword"""
         plugin_name = self.keyword_mappings.get(keyword.lower())
         if plugin_name:
             return self.loaded_plugins.get(plugin_name)
         return None
 
-    def get_plugin_by_name(self, name: str) -> Optional[BaseCommand]:
+    def get_plugin_by_name(self, name: str) -> BaseCommand | None:
         """Get a plugin instance by name"""
         return self.loaded_plugins.get(name)
 
@@ -458,7 +458,7 @@ class PluginLoader:
         """Get all loaded plugins"""
         return self.loaded_plugins.copy()
 
-    def get_plugin_metadata(self, plugin_name: Optional[str] = None) -> dict[str, Any]:
+    def get_plugin_metadata(self, plugin_name: str | None = None) -> dict[str, Any]:
         """Get metadata for a specific plugin or all plugins"""
         if plugin_name:
             return self.plugin_metadata.get(plugin_name, {})

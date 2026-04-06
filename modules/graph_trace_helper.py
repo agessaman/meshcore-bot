@@ -5,7 +5,7 @@ Shared by message_handler (on RX) and trace command (when TRACE_DATA is received
 """
 
 import time
-from typing import Any, Optional
+from typing import Any
 
 
 def update_mesh_graph_from_trace_data(
@@ -13,7 +13,7 @@ def update_mesh_graph_from_trace_data(
     path_hashes: list[str],
     packet_info: dict[str, Any],
     *,
-    is_our_trace: Optional[bool] = None,
+    is_our_trace: bool | None = None,
 ) -> None:
     """Update mesh graph with edges from a trace packet's pathHashes.
 

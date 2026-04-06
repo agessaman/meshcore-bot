@@ -7,7 +7,7 @@ Provides common functionality and interface for command implementations
 import re
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from ..models import MeshMessage
 from ..security_utils import validate_pubkey_format
@@ -329,7 +329,7 @@ class BaseCommand(ABC):
                                                 fallback=5.0)
         return max(0.0, min(threshold, self.cooldown_seconds))
 
-    def _load_allowed_channels(self) -> Optional[list[str]]:
+    def _load_allowed_channels(self) -> list[str] | None:
         """Load allowed channels from config.
 
         Config format: [CommandName_Command]
@@ -590,7 +590,7 @@ class BaseCommand(ABC):
         # Minimum of 130 bytes to ensure some functionality
         return max(130, max_length)
 
-    def check_cooldown(self, user_id: Optional[str] = None) -> tuple[bool, float]:
+    def check_cooldown(self, user_id: str | None = None) -> tuple[bool, float]:
         """Check if user is on cooldown.
 
         Args:
@@ -624,7 +624,7 @@ class BaseCommand(ABC):
                 return False, remaining
             return True, 0.0
 
-    def record_execution(self, user_id: Optional[str] = None) -> None:
+    def record_execution(self, user_id: str | None = None) -> None:
         """Record command execution for cooldown tracking.
 
         Args:
@@ -648,7 +648,7 @@ class BaseCommand(ABC):
             # Global cooldown (backward compatibility)
             self._last_execution_time = current_time
 
-    def _record_execution(self, user_id: Optional[str] = None) -> None:
+    def _record_execution(self, user_id: str | None = None) -> None:
         """Record the execution time for cooldown tracking (backward compatibility).
 
         Args:
@@ -656,7 +656,7 @@ class BaseCommand(ABC):
         """
         self.record_execution(user_id)
 
-    def get_remaining_cooldown(self, user_id: Optional[str] = None) -> int:
+    def get_remaining_cooldown(self, user_id: str | None = None) -> int:
         """Get remaining cooldown time in seconds.
 
         Args:
@@ -961,7 +961,7 @@ class BaseCommand(ABC):
             self.logger.warning(f"Error formatting response: {e}")
             return response_format
 
-    def get_response_format(self) -> Optional[str]:
+    def get_response_format(self) -> str | None:
         """Get the response format for this command from config"""
         # Override in subclasses to provide custom response formats
         return None

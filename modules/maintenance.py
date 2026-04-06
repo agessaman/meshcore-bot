@@ -8,8 +8,9 @@ import json
 import os
 import sqlite3
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     pass
@@ -17,7 +18,7 @@ if TYPE_CHECKING:
 
 def _utc_now() -> datetime.datetime:
     """Current time in UTC (timezone-aware; replaces deprecated utcnow())."""
-    return datetime.datetime.now(datetime.timezone.utc)
+    return datetime.datetime.now(datetime.UTC)
 
 
 def _iso_week_key_from_ran_at(ran_at: str) -> str:
@@ -56,7 +57,7 @@ def _count_log_errors_last_24h(log_path: Path) -> tuple[int | str, int | str]:
     JSON lines from json_logging (`_JsonFormatter` in core).
     """
     cutoff_local = datetime.datetime.now() - datetime.timedelta(hours=24)
-    cutoff_utc = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=24)
+    cutoff_utc = datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=24)
     err = crit = 0
     try:
         with open(log_path, encoding='utf-8', errors='replace') as fh:
@@ -79,9 +80,9 @@ def _count_log_errors_last_24h(log_path: Path) -> tuple[int | str, int | str]:
                     except ValueError:
                         continue
                     if line_dt.tzinfo is None:
-                        line_dt = line_dt.replace(tzinfo=datetime.timezone.utc)
+                        line_dt = line_dt.replace(tzinfo=datetime.UTC)
                     else:
-                        line_dt = line_dt.astimezone(datetime.timezone.utc)
+                        line_dt = line_dt.astimezone(datetime.UTC)
                     if line_dt < cutoff_utc:
                         continue
                     if level == 'ERROR':

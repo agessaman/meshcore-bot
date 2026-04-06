@@ -8,8 +8,7 @@ import base64
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 import requests
 from cryptography.hazmat.backends import default_backend
@@ -115,7 +114,7 @@ def _decrypt(data: dict) -> dict:
     return json.loads(out)
 
 
-def _parse_time(iso_str: str) -> Optional[datetime]:
+def _parse_time(iso_str: str) -> datetime | None:
     """Parse ISO timestamp to datetime and convert to local time.
 
     Args:
@@ -262,7 +261,7 @@ class AlertCommand(BaseCommand):
         """
         return location.lower().replace(' ', '_')
 
-    def _get_agency_ids(self, location: str = None, location_type: str = None) -> Optional[str]:
+    def _get_agency_ids(self, location: str = None, location_type: str = None) -> str | None:
         """Get agency IDs for a city or county, or default to all configured agencies.
 
         Args:
@@ -362,7 +361,7 @@ class AlertCommand(BaseCommand):
 
             # Only fetch active incidents (not recent/cleared)
             # Filter by age to exclude very old "active" incidents
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             max_age = self.max_incident_age_hours * 3600  # Convert hours to seconds
 
             for inc in decrypted.get("incidents", {}).get("active", []):
@@ -380,9 +379,9 @@ class AlertCommand(BaseCommand):
                 if call_time:
                     # Ensure timezone-aware for comparison
                     if call_time.tzinfo is None:
-                        call_time = call_time.replace(tzinfo=timezone.utc)
+                        call_time = call_time.replace(tzinfo=UTC)
                     else:
-                        call_time = call_time.astimezone(timezone.utc)
+                        call_time = call_time.astimezone(UTC)
 
                     age_seconds = (now - call_time).total_seconds()
                     if age_seconds > max_age:
@@ -434,7 +433,7 @@ class AlertCommand(BaseCommand):
             self.logger.error(f"Error fetching PulsePoint incidents: {e}")
             return []
 
-    def _parse_query(self, query: str) -> tuple[str, Optional[str], Optional[float], Optional[float]]:
+    def _parse_query(self, query: str) -> tuple[str, str | None, float | None, float | None]:
         """Parse query string to determine search type.
 
         Args:
@@ -634,10 +633,10 @@ class AlertCommand(BaseCommand):
         def get_time_key(inc):
             time = inc.get("time")
             if time is None:
-                return datetime.min.replace(tzinfo=timezone.utc)
+                return datetime.min.replace(tzinfo=UTC)
             # Ensure timezone-aware
             if time.tzinfo is None:
-                time = time.replace(tzinfo=timezone.utc)
+                time = time.replace(tzinfo=UTC)
             return time
 
         return sorted(incidents, key=get_time_key, reverse=True)
@@ -669,10 +668,10 @@ class AlertCommand(BaseCommand):
                 # Get time for secondary sort
                 time = inc.get("time")
                 if time is None:
-                    time_key = datetime.min.replace(tzinfo=timezone.utc)
+                    time_key = datetime.min.replace(tzinfo=UTC)
                 else:
                     if time.tzinfo is None:
-                        time = time.replace(tzinfo=timezone.utc)
+                        time = time.replace(tzinfo=UTC)
                     time_key = time
                 inc["_time_key"] = time_key
                 scored_incidents.append(inc)

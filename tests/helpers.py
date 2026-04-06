@@ -4,18 +4,18 @@ Test helper functions and factories for creating test data
 """
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 
 def create_test_repeater(
     prefix: str = "01",
     name: str = "Test Repeater",
-    public_key: Optional[str] = None,
+    public_key: str | None = None,
     latitude: float = 47.6062,
     longitude: float = -122.3321,
     is_starred: bool = False,
-    last_heard: Optional[datetime] = None,
-    last_advert_timestamp: Optional[datetime] = None,
+    last_heard: datetime | None = None,
+    last_advert_timestamp: datetime | None = None,
     role: str = "repeater"
 ) -> dict[str, Any]:
     """Factory function to create test repeater data.
@@ -68,13 +68,13 @@ def create_test_repeater(
 def create_test_edge(
     from_prefix: str,
     to_prefix: str,
-    from_public_key: Optional[str] = None,
-    to_public_key: Optional[str] = None,
+    from_public_key: str | None = None,
+    to_public_key: str | None = None,
     observation_count: int = 1,
-    first_seen: Optional[datetime] = None,
-    last_seen: Optional[datetime] = None,
-    avg_hop_position: Optional[float] = None,
-    geographic_distance: Optional[float] = None,
+    first_seen: datetime | None = None,
+    last_seen: datetime | None = None,
+    avg_hop_position: float | None = None,
+    geographic_distance: float | None = None,
     prefix_hex_chars: int = 2
 ) -> dict[str, Any]:
     """Factory function to create test edge data.

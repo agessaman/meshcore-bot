@@ -6,8 +6,8 @@ Polls USGS Earthquake API and notifies a channel when earthquakes occur in a con
 
 import asyncio
 import contextlib
-from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import requests
 
@@ -59,7 +59,7 @@ class EarthquakeService(BaseServicePlugin):
         )
 
         self._running = False
-        self._poll_task: Optional[asyncio.Task] = None
+        self._poll_task: asyncio.Task | None = None
         self.seen_event_ids: set[str] = set()
         self._last_posted_time_ms: int = self._load_last_posted_time_ms()
         self._session = requests.Session()
@@ -123,7 +123,7 @@ class EarthquakeService(BaseServicePlugin):
                 await asyncio.sleep(60)
 
     async def _check_earthquakes(self) -> None:
-        end_time = datetime.now(timezone.utc)
+        end_time = datetime.now(UTC)
         start_time = end_time - timedelta(minutes=self.time_window_minutes)
         params = {
             "format": "geojson",
@@ -207,7 +207,7 @@ class EarthquakeService(BaseServicePlugin):
         quake_time_ms = props.get("time")
         if quake_time_ms:
             quake_time = datetime.fromtimestamp(
-                quake_time_ms / 1000, tz=timezone.utc
+                quake_time_ms / 1000, tz=UTC
             )
             time_str = quake_time.strftime("%H:%M:%S UTC")
         else:

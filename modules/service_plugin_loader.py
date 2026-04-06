@@ -11,7 +11,7 @@ import os
 import sys
 import types
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from .service_plugins.base_service import BaseServicePlugin
 
@@ -19,13 +19,13 @@ from .service_plugins.base_service import BaseServicePlugin
 class ServicePluginLoader:
     """Handles dynamic loading and discovery of service plugins"""
 
-    def __init__(self, bot, services_dir: Optional[str] = None, local_services_dir: Optional[str] = None):
+    def __init__(self, bot, services_dir: str | None = None, local_services_dir: str | None = None):
         self.bot = bot
         self.logger = bot.logger
         self.services_dir: str = services_dir or os.path.join(
             os.path.dirname(__file__), 'service_plugins'
         )
-        self.local_services_dir: Optional[str]
+        self.local_services_dir: str | None
         if local_services_dir is not None:
             self.local_services_dir = local_services_dir
         else:
@@ -87,7 +87,7 @@ class ServicePluginLoader:
             self.logger.info(f"Discovered {len(stems)} local service file(s): {stems}")
         return stems
 
-    def load_service(self, service_name: str) -> Optional[BaseServicePlugin]:
+    def load_service(self, service_name: str) -> BaseServicePlugin | None:
         """Load a single service plugin by name"""
         try:
             # Construct the full module path
@@ -143,7 +143,7 @@ class ServicePluginLoader:
             self.logger.debug(traceback.format_exc())
             return None
 
-    def load_service_from_path(self, file_path: Path) -> Optional[BaseServicePlugin]:
+    def load_service_from_path(self, file_path: Path) -> BaseServicePlugin | None:
         """Load a single service plugin from a file path (e.g. local/service_plugins/my_service.py)."""
         # Ensure parent package exists so relative/absolute imports of "local_services" work.
         # Set __path__ so Python treats it as a package and can load submodules (e.g. local_services.utils).
@@ -208,7 +208,7 @@ class ServicePluginLoader:
             self.logger.debug(traceback.format_exc())
             return None
 
-    def _get_config_section_for_service(self, service_class) -> Optional[str]:
+    def _get_config_section_for_service(self, service_class) -> str | None:
         """Get config section name for a service class
 
         Tries multiple strategies:
@@ -289,7 +289,7 @@ class ServicePluginLoader:
         self.logger.info(f"Loaded {len(loaded_services)} service(s): {list(loaded_services.keys())}")
         return loaded_services
 
-    def get_service_by_name(self, name: str) -> Optional[BaseServicePlugin]:
+    def get_service_by_name(self, name: str) -> BaseServicePlugin | None:
         """Get a service instance by name"""
         return self.loaded_services.get(name)
 
@@ -297,7 +297,7 @@ class ServicePluginLoader:
         """Get all loaded services"""
         return self.loaded_services.copy()
 
-    def get_service_metadata(self, service_name: Optional[str] = None) -> dict[str, Any]:
+    def get_service_metadata(self, service_name: str | None = None) -> dict[str, Any]:
         """Get metadata for a specific service or all services"""
         if service_name:
             return self.service_metadata.get(service_name, {})

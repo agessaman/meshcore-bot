@@ -10,7 +10,7 @@ import asyncio
 import copy
 import time
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from meshcore import EventType
 
@@ -194,7 +194,7 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
         except Exception as e:
             self.logger.error("Error in RepeaterPrefixCollision NEW_CONTACT handler: %s", e, exc_info=True)
 
-    async def _wait_for_contact_row(self, public_key: str) -> Optional[dict[str, Any]]:
+    async def _wait_for_contact_row(self, public_key: str) -> dict[str, Any] | None:
         deadline = time.time() + max(0.0, float(self.post_process_timeout_seconds))
         poll = max(0.05, float(self.post_process_poll_interval_seconds))
         while time.time() <= deadline:
@@ -204,7 +204,7 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
             await asyncio.sleep(poll)
         return None
 
-    def _db_get_contact_row(self, public_key: str) -> Optional[dict[str, Any]]:
+    def _db_get_contact_row(self, public_key: str) -> dict[str, Any] | None:
         if not getattr(self.bot, "db_manager", None):
             return None
         rows = self.bot.db_manager.execute_query(
@@ -335,7 +335,7 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
             cnt = 0
         return cnt > 0
 
-    def _count_free_prefixes(self, prefix_hex_chars: int) -> Optional[int]:
+    def _count_free_prefixes(self, prefix_hex_chars: int) -> int | None:
         """
         Return how many prefixes are free (unused by repeaters/roomservers) for the given prefix length.
         Mirrors prefix_command behavior by excluding all-zeros and all-FF..FF.
@@ -372,7 +372,7 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
         name: str,
         prefix: str,
         location: str,
-        prefixes_free: Optional[int],
+        prefixes_free: int | None,
         prefix_bytes: int,
     ) -> str:
         free_str = "Unknown"

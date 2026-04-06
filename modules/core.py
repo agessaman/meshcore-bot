@@ -14,9 +14,10 @@ import sqlite3
 import struct
 import threading
 import time
+from collections.abc import Callable
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import colorlog
 
@@ -1171,7 +1172,7 @@ long_jokes = false
             if self.meshcore:
                 try:
                     await asyncio.wait_for(self.meshcore.disconnect(), timeout=10)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     self.logger.warning("Radio disconnect timed out after 10s — forcing disconnected state")
             self.connected = False
             self._update_radio_connected_metadata(False)
@@ -1189,14 +1190,14 @@ long_jokes = false
                 self.logger.info("Sending firmware reboot command")
                 try:
                     await asyncio.wait_for(self.meshcore.commands.reboot(), timeout=5)
-                except (asyncio.TimeoutError, Exception) as e:
+                except (TimeoutError, Exception) as e:
                     # Reboot command may drop the connection before a reply arrives
                     self.logger.debug(f"Reboot command response: {e} (expected on firmware reboot)")
             # Disconnect cleanly (firmware may have already dropped the link)
             try:
                 if self.meshcore:
                     await asyncio.wait_for(self.meshcore.disconnect(), timeout=5)
-            except (asyncio.TimeoutError, Exception):
+            except (TimeoutError, Exception):
                 pass
             self.connected = False
             self._update_radio_connected_metadata(False)
@@ -1214,7 +1215,7 @@ long_jokes = false
             if self.meshcore:
                 try:
                     await asyncio.wait_for(self.meshcore.disconnect(), timeout=10)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     self.logger.warning("Disconnect timed out during reconnect — proceeding")
             self.connected = False
             self._update_radio_connected_metadata(False)
@@ -1624,7 +1625,7 @@ long_jokes = false
             disconnect_timeout = self.config.getfloat('Bot', 'disconnect_timeout_seconds', fallback=10.0)
             try:
                 await asyncio.wait_for(self.meshcore.disconnect(), timeout=disconnect_timeout)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self.logger.warning(
                     "MeshCore disconnect timed out after %.1fs; continuing shutdown",
                     disconnect_timeout,

@@ -1,6 +1,6 @@
 """Unit tests for modules.feed_filter_eval (filter_config parsing and time windows)."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from modules.feed_filter_eval import (
     item_passes_filter_config,
@@ -10,7 +10,7 @@ from modules.feed_filter_eval import (
 
 
 def _utc_now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class TestParseItemFieldAsDatetime:

@@ -11,7 +11,7 @@ import sqlite3
 import threading
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -31,7 +31,7 @@ class MessageScheduler:
         self.logger = bot.logger
         self.scheduled_messages = {}
         self.scheduler_thread = None
-        self._apscheduler: Optional[BackgroundScheduler] = None
+        self._apscheduler: BackgroundScheduler | None = None
         self.last_channel_ops_check_time = 0
         self.last_message_queue_check_time = 0
         self.last_radio_ops_check_time = 0

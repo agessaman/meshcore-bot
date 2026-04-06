@@ -11,7 +11,6 @@ import platform
 import re
 import socket
 from pathlib import Path
-from typing import Optional
 from urllib.parse import urlparse
 
 logger = logging.getLogger('MeshCoreBot.Security')
@@ -99,7 +98,7 @@ def validate_external_url(url: str, allow_localhost: bool = False, timeout: floa
         except socket.gaierror as e:
             logger.warning(f"Failed to resolve hostname {parsed.hostname}: {e}")
             return False
-        except socket.timeout:
+        except TimeoutError:
             logger.warning(f"DNS resolution timeout for {parsed.hostname}")
             return False
 
@@ -202,7 +201,7 @@ def validate_safe_path(file_path: str, base_dir: str = '.', allow_absolute: bool
         raise ValueError(f"Invalid or unsafe file path: {file_path} - {e}")
 
 
-def sanitize_input(content: str, max_length: Optional[int] = 500, strip_controls: bool = True) -> str:
+def sanitize_input(content: str, max_length: int | None = 500, strip_controls: bool = True) -> str:
     """
     Sanitize user input to prevent injection attacks
 

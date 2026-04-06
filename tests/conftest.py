@@ -8,7 +8,7 @@ import sqlite3
 from contextlib import closing
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
@@ -21,10 +21,10 @@ from tests.helpers import create_test_edge, populate_test_graph
 
 def mock_message(
     content: str = "ping",
-    channel: Optional[str] = "general",
+    channel: str | None = "general",
     is_dm: bool = False,
-    sender_id: Optional[str] = "TestUser",
-    sender_pubkey: Optional[str] = None,
+    sender_id: str | None = "TestUser",
+    sender_pubkey: str | None = None,
     **kwargs: Any,
 ) -> MeshMessage:
     """Factory for creating MeshMessage instances in tests."""

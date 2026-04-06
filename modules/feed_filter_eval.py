@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timedelta, timezone
-from typing import Any, Callable
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta, timezone
+from typing import Any
 
 
 def get_nested_value(data: Any, path: str, default: Any = "") -> Any:
@@ -59,7 +60,7 @@ def parse_microsoft_date(date_str: str) -> datetime | None:
             if offset_str[0] == "-":
                 offset_seconds = -offset_seconds
 
-            tz = timezone.utc
+            tz = UTC
             if offset_seconds != 0:
                 from datetime import timedelta as td
 
@@ -67,15 +68,15 @@ def parse_microsoft_date(date_str: str) -> datetime | None:
 
             return datetime.fromtimestamp(timestamp, tz=tz)
         except (ValueError, IndexError):
-            return datetime.fromtimestamp(timestamp, tz=timezone.utc)
+            return datetime.fromtimestamp(timestamp, tz=UTC)
 
     return None
 
 
 def _normalize_to_utc(dt: datetime) -> datetime:
     if dt.tzinfo is not None:
-        return dt.astimezone(timezone.utc)
-    return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(UTC)
+    return dt.replace(tzinfo=UTC)
 
 
 def parse_item_field_as_datetime(item: dict[str, Any], field_path: str) -> datetime | None:
@@ -106,7 +107,7 @@ def parse_item_field_as_datetime(item: dict[str, Any], field_path: str) -> datet
         if num > 1e12:
             num = num / 1000.0
         try:
-            return datetime.fromtimestamp(num, tz=timezone.utc)
+            return datetime.fromtimestamp(num, tz=UTC)
         except (OSError, OverflowError, ValueError):
             return None
 
@@ -119,7 +120,7 @@ def parse_item_field_as_datetime(item: dict[str, Any], field_path: str) -> datet
         for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
             try:
                 dt = datetime.strptime(value, fmt)
-                return dt.replace(tzinfo=timezone.utc)
+                return dt.replace(tzinfo=UTC)
             except ValueError:
                 continue
 
@@ -176,7 +177,7 @@ def evaluate_filter_condition(
         if days < 0:
             days = 0.0
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         cutoff = now - timedelta(days=days)
         item_dt = _normalize_to_utc(dt)
         return item_dt >= cutoff

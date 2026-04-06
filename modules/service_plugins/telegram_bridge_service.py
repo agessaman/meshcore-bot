@@ -12,7 +12,7 @@ import re
 import time
 from collections import deque
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from meshcore import EventType
 
@@ -123,8 +123,8 @@ class TelegramBridgeService(BaseServicePlugin):
         self.retry_delay_base = 1.0
         self.max_queue_age = 300
 
-        self.http_session: Optional[aiohttp.ClientSession] = None
-        self._queue_processor_task: Optional[asyncio.Task] = None
+        self.http_session: aiohttp.ClientSession | None = None
+        self._queue_processor_task: asyncio.Task | None = None
 
         if not self.channel_chat_ids:
             self.logger.warning(
@@ -391,7 +391,7 @@ class TelegramBridgeService(BaseServicePlugin):
         chat_id: str,
         payload: dict[str, Any],
         channel_name: str,
-        queued_msg: Optional[QueuedMessage] = None,
+        queued_msg: QueuedMessage | None = None,
     ) -> bool:
         url = f"{TELEGRAM_API_BASE}{self.api_token}/sendMessage"
         if AIOHTTP_AVAILABLE and self.http_session:
@@ -406,7 +406,7 @@ class TelegramBridgeService(BaseServicePlugin):
         url: str,
         payload: dict[str, Any],
         channel_name: str,
-        queued_msg: Optional[QueuedMessage] = None,
+        queued_msg: QueuedMessage | None = None,
     ) -> bool:
         try:
             assert self.http_session is not None
@@ -430,7 +430,7 @@ class TelegramBridgeService(BaseServicePlugin):
                     f"Telegram API returned {response.status} for [{channel_name}]: {data.get('description', '')}"
                 )
                 return False
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self.logger.error(f"Timeout posting to Telegram [{channel_name}]")
             return False
         except Exception as e:
@@ -442,7 +442,7 @@ class TelegramBridgeService(BaseServicePlugin):
         url: str,
         payload: dict[str, Any],
         channel_name: str,
-        queued_msg: Optional[QueuedMessage] = None,
+        queued_msg: QueuedMessage | None = None,
     ) -> bool:
         try:
             loop = asyncio.get_event_loop()

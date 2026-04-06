@@ -13,9 +13,9 @@ import os
 import re
 import sqlite3
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import urlparse
 
 import aiohttp
@@ -63,13 +63,13 @@ class FeedManager:
         self._domain_last_request: dict[str, float] = {}
 
         # HTTP session
-        self.session: Optional[aiohttp.ClientSession] = None
+        self.session: aiohttp.ClientSession | None = None
 
         # Semaphore to limit concurrent requests
         self._request_semaphore = asyncio.Semaphore(5)
 
         # Serialize process_message_queue (scheduler may schedule another run if result() times out)
-        self._process_queue_lock: Optional[asyncio.Lock] = None
+        self._process_queue_lock: asyncio.Lock | None = None
 
         self.logger.info("FeedManager initialized")
 
@@ -120,23 +120,23 @@ class FeedManager:
                                 # Try SQLite format (YYYY-MM-DD HH:MM:SS) - treat as UTC
                                 try:
                                     last_check_dt = datetime.strptime(last_check, '%Y-%m-%d %H:%M:%S')
-                                    last_check_dt = last_check_dt.replace(tzinfo=timezone.utc)
+                                    last_check_dt = last_check_dt.replace(tzinfo=UTC)
                                 except ValueError:
                                     # Try with microseconds
                                     try:
                                         last_check_dt = datetime.strptime(last_check, '%Y-%m-%d %H:%M:%S.%f')
-                                        last_check_dt = last_check_dt.replace(tzinfo=timezone.utc)
+                                        last_check_dt = last_check_dt.replace(tzinfo=UTC)
                                     except ValueError:
                                         raise ValueError(f"Unknown timestamp format: {last_check}")
                         else:
-                            last_check_dt = datetime.fromtimestamp(last_check, tz=timezone.utc)
+                            last_check_dt = datetime.fromtimestamp(last_check, tz=UTC)
 
                         # Convert to timestamp
                         if last_check_dt.tzinfo:
                             last_check_ts = last_check_dt.timestamp()
                         else:
                             # Assume UTC if no timezone
-                            last_check_ts = last_check_dt.replace(tzinfo=timezone.utc).timestamp()
+                            last_check_ts = last_check_dt.replace(tzinfo=UTC).timestamp()
                     except Exception as e:
                         self.logger.debug(f"Error parsing last_check_time for feed {feed['id']}: {e}")
                         last_check_ts = 0
@@ -236,7 +236,7 @@ class FeedManager:
                         if response.status != 200:
                             raise Exception(f"HTTP {response.status}")
                         content = await response.text()
-                except (asyncio.TimeoutError, aiohttp.ServerTimeoutError):
+                except (TimeoutError, aiohttp.ServerTimeoutError):
                     raise Exception(f"Request timeout after {self.request_timeout} seconds")
 
             # Parse RSS feed
@@ -260,7 +260,7 @@ class FeedManager:
                 published = None
                 if hasattr(entry, 'published_parsed') and entry.published_parsed:
                     with contextlib.suppress(Exception):
-                        published = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+                        published = datetime(*entry.published_parsed[:6], tzinfo=UTC)
 
                 all_items.append({
                     'id': item_id,
@@ -356,7 +356,7 @@ class FeedManager:
                             if response.status != 200:
                                 raise Exception(f"HTTP {response.status}")
                             data = await response.json()
-                except (asyncio.TimeoutError, aiohttp.ServerTimeoutError):
+                except (TimeoutError, aiohttp.ServerTimeoutError):
                     raise Exception(f"Request timeout after {self.request_timeout} seconds")
 
             # Extract items using parser config
@@ -391,7 +391,7 @@ class FeedManager:
                     if ts_value:
                         try:
                             if isinstance(ts_value, (int, float)):
-                                published = datetime.fromtimestamp(ts_value, tz=timezone.utc)
+                                published = datetime.fromtimestamp(ts_value, tz=UTC)
                             elif isinstance(ts_value, str):
                                 # Try Microsoft date format first
                                 if ts_value.startswith('/Date('):
@@ -406,7 +406,7 @@ class FeedManager:
                                             try:
                                                 published = datetime.strptime(ts_value, fmt)
                                                 if published.tzinfo is None:
-                                                    published = published.replace(tzinfo=timezone.utc)
+                                                    published = published.replace(tzinfo=UTC)
                                                 break
                                             except ValueError:
                                                 continue
@@ -483,13 +483,13 @@ class FeedManager:
             self.logger.error(f"Error processing API feed: {e}")
             raise
 
-    def _format_timestamp(self, published: Optional[datetime]) -> str:
+    def _format_timestamp(self, published: datetime | None) -> str:
         """Format a timestamp as a relative time string"""
         if not published:
             return ""
 
         try:
-            now = datetime.now(timezone.utc) if published.tzinfo else datetime.now()
+            now = datetime.now(UTC) if published.tzinfo else datetime.now()
 
             diff = now - published
             minutes = int(diff.total_seconds() / 60)
@@ -791,7 +791,7 @@ class FeedManager:
 
         return value if value is not None else default
 
-    def _parse_microsoft_date(self, date_str: str) -> Optional[datetime]:
+    def _parse_microsoft_date(self, date_str: str) -> datetime | None:
         """Parse Microsoft JSON date format: /Date(timestamp-offset)/"""
         if not date_str or not isinstance(date_str, str):
             return None
@@ -814,7 +814,7 @@ class FeedManager:
                     offset_seconds = -offset_seconds
 
                 # Create timezone-aware datetime
-                tz = timezone.utc
+                tz = UTC
                 if offset_seconds != 0:
                     from datetime import timedelta
                     tz = timezone(timedelta(seconds=offset_seconds))
@@ -822,7 +822,7 @@ class FeedManager:
                 return datetime.fromtimestamp(timestamp, tz=tz)
             except (ValueError, IndexError):
                 # Fallback to UTC if offset parsing fails
-                return datetime.fromtimestamp(timestamp, tz=timezone.utc)
+                return datetime.fromtimestamp(timestamp, tz=UTC)
 
         return None
 
@@ -1152,10 +1152,10 @@ class FeedManager:
     def _update_feed_last_check(self, feed_id: int):
         """Update the last check time for a feed"""
         try:
-            from datetime import datetime, timezone
+            from datetime import datetime
             # Use Python's datetime to ensure proper timezone handling
             # Store in ISO format with timezone for JavaScript compatibility
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             now_str = now.isoformat()  # ISO format: 2025-12-05T12:34:56.789+00:00
 
             with self.bot.db_manager.connection() as conn:
