@@ -285,32 +285,27 @@ class TestGetNotifAndMaint:
 class TestMaybeRunDbBackup:
 
     def _setup(self, scheduler, enabled="true", schedule="daily",
-               time_str="02:00", last_ran="", backup_dir="/tmp/backup"):
-        """Setup db_backup configuration in bot.db_manager.get_metadata."""
-        bot = scheduler.bot
-        # Create db_manager if it doesn't exist
-        if not hasattr(bot, 'db_manager'):
-            bot.db_manager = Mock()
-        # Store maint config in get_metadata
-        maint_config = {
-            'maint.db_backup_enabled': enabled,
-            'maint.db_backup_schedule': schedule,
-            'maint.db_backup_time': time_str,
-            'maint.db_backup_retention_count': '7',
-            'maint.db_backup_dir': backup_dir,
-        }
-        bot.db_manager.get_metadata = Mock(side_effect=lambda k: maint_config.get(k, ''))
+               time_str="02:00", last_ran=""):
+        def maint(key):
+            return {
+                "db_backup_enabled": enabled,
+                "db_backup_schedule": schedule,
+                "db_backup_time": time_str,
+                "db_backup_retention_count": "7",
+                "db_backup_dir": "/tmp/backup",
+            }.get(key, "")
+        scheduler.maintenance.get_maint = Mock(side_effect=maint)
         scheduler._last_db_backup_stats = {"ran_at": last_ran}
 
     def test_disabled_does_not_run(self, scheduler):
         self._setup(scheduler, enabled="false")
-        with patch.object(scheduler, "_run_db_backup") as mock_run:
+        with patch.object(scheduler.maintenance, "run_db_backup") as mock_run:
             scheduler._maybe_run_db_backup()
         mock_run.assert_not_called()
 
     def test_manual_schedule_does_not_run(self, scheduler):
         self._setup(scheduler, schedule="manual")
-        with patch.object(scheduler, "_run_db_backup") as mock_run:
+        with patch.object(scheduler.maintenance, "run_db_backup") as mock_run:
             scheduler._maybe_run_db_backup()
         mock_run.assert_not_called()
 
@@ -321,9 +316,8 @@ class TestMaybeRunDbBackup:
         sched_time = now - datetime.timedelta(minutes=1)
         time_str = sched_time.strftime("%H:%M")
         self._setup(scheduler, time_str=time_str, last_ran=f"{today}T00:01:00")
-        with patch.object(scheduler, "get_current_time", return_value=now):
-            with patch.object(scheduler, "_run_db_backup") as mock_run:
-                scheduler._maybe_run_db_backup()
+        with patch.object(scheduler.maintenance, "run_db_backup") as mock_run:
+            scheduler._maybe_run_db_backup()
         mock_run.assert_not_called()
 
     def test_runs_within_fire_window(self, scheduler):
@@ -334,9 +328,8 @@ class TestMaybeRunDbBackup:
         time_str = sched_time.strftime("%H:%M")
         yesterday = (now - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
         self._setup(scheduler, time_str=time_str, last_ran=f"{yesterday}T00:01:00")
-        with patch.object(scheduler, "get_current_time", return_value=now):
-            with patch.object(scheduler, "_run_db_backup") as mock_run:
-                scheduler._maybe_run_db_backup()
+        with patch.object(scheduler.maintenance, "run_db_backup") as mock_run:
+            scheduler._maybe_run_db_backup()
         mock_run.assert_called_once()
 
     def test_does_not_run_outside_fire_window(self, scheduler):
@@ -347,9 +340,8 @@ class TestMaybeRunDbBackup:
         time_str = sched_time.strftime("%H:%M")
         yesterday = (now - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
         self._setup(scheduler, time_str=time_str, last_ran=f"{yesterday}T00:01:00")
-        with patch.object(scheduler, "get_current_time", return_value=now):
-            with patch.object(scheduler, "_run_db_backup") as mock_run:
-                scheduler._maybe_run_db_backup()
+        with patch.object(scheduler.maintenance, "run_db_backup") as mock_run:
+            scheduler._maybe_run_db_backup()
         mock_run.assert_not_called()
 
     def test_does_not_run_before_scheduled_time(self, scheduler):
@@ -358,9 +350,8 @@ class TestMaybeRunDbBackup:
         sched_time = now + datetime.timedelta(minutes=30)
         time_str = sched_time.strftime("%H:%M")
         self._setup(scheduler, time_str=time_str, last_ran="")
-        with patch.object(scheduler, "get_current_time", return_value=now):
-            with patch.object(scheduler, "_run_db_backup") as mock_run:
-                scheduler._maybe_run_db_backup()
+        with patch.object(scheduler.maintenance, "run_db_backup") as mock_run:
+            scheduler._maybe_run_db_backup()
         mock_run.assert_not_called()
 
     def test_weekly_on_wrong_day_does_not_run(self, scheduler):
@@ -381,8 +372,9 @@ class TestMaybeRunDbBackup:
         fake_now.strftime = now.strftime
         fake_now.isocalendar.return_value = (2026, 11, 2)
         with patch.object(scheduler, "get_current_time", return_value=fake_now):
-            with patch.object(scheduler, "_run_db_backup") as mock_run:
-                scheduler._maybe_run_db_backup()
+            with patch.object(scheduler.maintenance, "_get_current_time", return_value=fake_now):
+                with patch.object(scheduler.maintenance, "run_db_backup") as mock_run:
+                    scheduler._maybe_run_db_backup()
         mock_run.assert_not_called()
 
 
