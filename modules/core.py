@@ -1157,7 +1157,7 @@ long_jokes = false
         # Register signal handlers
         signal.signal(signal.SIGTERM, signal_handler)
         signal.signal(signal.SIGINT, signal_handler)
-    
+
     async def _attempt_reconnect(self) -> bool:
         """Attempt to reconnect to the MeshCore node with exponential backoff.
 
