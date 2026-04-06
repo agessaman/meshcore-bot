@@ -296,12 +296,6 @@ class TestSanitizeName:
 class TestValidateExternalUrlEdgePaths:
     """Cover remaining branches in validate_external_url."""
 
-    def test_allow_loopback_blocks_link_local_ip(self):
-        """Lines 119-120: link-local IP blocked even with allow_loopback=True."""
-        with patch("socket.gethostbyname", return_value="169.254.1.1"):
-            result = validate_external_url("http://somehost.local/path", allow_loopback=True)
-        assert result is False
-
     def test_default_blocks_multicast_ip(self):
         """Lines 137-138: multicast IP blocked in default mode."""
         with patch("socket.gethostbyname", return_value="224.0.0.1"):

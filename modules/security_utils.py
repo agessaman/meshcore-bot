@@ -243,6 +243,32 @@ def sanitize_input(content: str, max_length: Optional[int] = 500, strip_controls
     return content.strip()
 
 
+def sanitize_name(name: object, max_length: int = 64) -> str:
+    """
+    Sanitize a short identifier (node name, channel name, etc.) for safe logging and storage.
+
+    Strips all control characters including newlines, carriage returns, tabs,
+    null bytes, and ANSI escape sequences.  Truncates to max_length.
+
+    Args:
+        name: Value to sanitize (coerced to str if not already).
+        max_length: Maximum character length (default: 64).
+
+    Returns:
+        Sanitized string.
+
+    Raises:
+        ValueError: If max_length is negative.
+    """
+    if max_length < 0:
+        raise ValueError(f"max_length must be non-negative, got {max_length}")
+    text = str(name) if not isinstance(name, str) else name
+    # Strip all control characters (including \n \r \t \x00 and ANSI escapes)
+    import re as _re
+    text = _re.sub(r'[\x00-\x1f\x7f]|\x1b\[[0-9;]*[A-Za-z]', '', text)
+    return text[:max_length]
+
+
 # Valid SQLite journal modes for PRAGMA journal_mode validation
 VALID_JOURNAL_MODES = {"DELETE", "TRUNCATE", "PERSIST", "MEMORY", "WAL", "OFF"}
 
