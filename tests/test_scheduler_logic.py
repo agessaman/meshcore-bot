@@ -372,8 +372,9 @@ class TestMaybeRunDbBackup:
         fake_now.strftime = now.strftime
         fake_now.isocalendar.return_value = (2026, 11, 2)
         with patch.object(scheduler, "get_current_time", return_value=fake_now):
-            with patch.object(scheduler.maintenance, "run_db_backup") as mock_run:
-                scheduler._maybe_run_db_backup()
+            with patch.object(scheduler.maintenance, "_get_current_time", return_value=fake_now):
+                with patch.object(scheduler.maintenance, "run_db_backup") as mock_run:
+                    scheduler._maybe_run_db_backup()
         mock_run.assert_not_called()
 
 
