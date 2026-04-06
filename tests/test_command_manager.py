@@ -33,6 +33,8 @@ def cm_bot(mock_logger):
         side_effect=lambda key, **kw: f"{key}: {' '.join(str(v) for v in kw.values())}"
     )
     bot.meshcore = None
+    bot.is_radio_zombie = False
+    bot.is_radio_offline = False
     bot.rate_limiter = Mock()
     bot.rate_limiter.can_send = Mock(return_value=True)
     bot.bot_tx_rate_limiter = Mock()
