@@ -13,10 +13,9 @@ import os
 import re
 import subprocess
 from pathlib import Path
-from typing import Any, Optional
 
 
-def _normalize_tag(value: Optional[str]) -> Optional[str]:
+def _normalize_tag(value: str | None) -> str | None:
     if not value:
         return None
     value = value.strip()
@@ -25,7 +24,7 @@ def _normalize_tag(value: Optional[str]) -> Optional[str]:
     return value if value.startswith("v") else f"v{value}"
 
 
-def _safe_git_run(repo_root: Path, args: list[str]) -> Optional[str]:
+def _safe_git_run(repo_root: Path, args: list[str]) -> str | None:
     try:
         result = subprocess.run(
             ["git", "-C", str(repo_root)] + args,
@@ -41,7 +40,7 @@ def _safe_git_run(repo_root: Path, args: list[str]) -> Optional[str]:
         return None
 
 
-def _read_version_file(repo_root: Path) -> Optional[str]:
+def _read_version_file(repo_root: Path) -> str | None:
     version_file = repo_root / ".version_info"
     if not version_file.is_file():
         return None
@@ -54,7 +53,7 @@ def _read_version_file(repo_root: Path) -> Optional[str]:
         return None
 
 
-def _read_pyproject_version(repo_root: Path) -> Optional[str]:
+def _read_pyproject_version(repo_root: Path) -> str | None:
     pyproject_path = repo_root / "pyproject.toml"
     if not pyproject_path.is_file():
         return None
@@ -79,7 +78,7 @@ def _read_pyproject_version(repo_root: Path) -> Optional[str]:
     return None
 
 
-def resolve_runtime_version(repo_root: Path | str) -> dict[str, Optional[str]]:
+def resolve_runtime_version(repo_root: Path | str) -> dict[str, str | None]:
     """Resolve version metadata and a single runtime display value.
 
     Returns a dict with:
@@ -103,7 +102,7 @@ def resolve_runtime_version(repo_root: Path | str) -> dict[str, Optional[str]]:
         # %ci format is "YYYY-MM-DD HH:MM:SS +TZ"; keep date only.
         date = date_raw.split()[0] if " " in date_raw else date_raw
 
-    display: Optional[str]
+    display: str | None
     if branch and branch != "main" and commit:
         display = f"{branch}-{commit}"
     elif branch == "main" and baked:
