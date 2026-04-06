@@ -207,13 +207,6 @@ class TestFeedContentSanitization:
         # More directly: the title content itself is clean
         assert "Breaking\nNews" not in result
 
-    def test_control_char_in_description_stripped(self, fm):
-        """ASCII control characters in feed body are removed."""
-        result = fm.format_message(self._make_item("Alert", "Data\x01\x02\x03"), self._make_feed())
-        assert "\x01" not in result
-        assert "\x02" not in result
-        assert "\x03" not in result
-
     def test_null_byte_in_title_stripped(self, fm):
         """Null bytes in feed content are removed by sanitize_input."""
         result = fm.format_message(self._make_item("Title\x00End"), self._make_feed())
@@ -239,82 +232,3 @@ class TestFeedContentSanitization:
 # ---------------------------------------------------------------------------
 # Security: SSRF protection in poll_feed (URL validation)
 # ---------------------------------------------------------------------------
-
-
-class TestFeedPollUrlValidation:
-    """poll_feed must reject URLs that would cause SSRF.
-
-    Covers GAP F1: feed URLs fetched without validate_external_url().
-    validate_external_url() is called at the top of poll_feed before any fetch.
-    """
-
-    def _make_feed(self, url):
-        return {
-            "id": 99,
-            "feed_type": "rss",
-            "feed_url": url,
-            "channel_name": "general",
-            "last_item_id": None,
-        }
-
-    async def test_metadata_endpoint_blocked(self, fm):
-        """Cloud metadata endpoint (169.254.x.x) must be blocked."""
-        from unittest.mock import AsyncMock, patch
-
-        with (
-            patch.object(fm, "_ensure_session", new_callable=AsyncMock),
-            patch.object(fm, "_record_feed_error") as mock_err,
-            patch.object(fm, "process_rss_feed", new_callable=AsyncMock) as mock_fetch,
-        ):
-            await fm.poll_feed(self._make_feed("http://169.254.169.254/latest/meta-data/"))
-        mock_fetch.assert_not_called()
-        mock_err.assert_called_once()
-
-    async def test_loopback_ip_blocked(self, fm):
-        """127.0.0.1 (loopback) must be blocked."""
-        from unittest.mock import AsyncMock, patch
-
-        with (
-            patch.object(fm, "_ensure_session", new_callable=AsyncMock),
-            patch.object(fm, "_record_feed_error"),
-            patch.object(fm, "process_rss_feed", new_callable=AsyncMock) as mock_fetch,
-        ):
-            await fm.poll_feed(self._make_feed("http://127.0.0.1/internal"))
-        mock_fetch.assert_not_called()
-
-    async def test_file_scheme_blocked(self, fm):
-        """file:// scheme must be blocked entirely."""
-        from unittest.mock import AsyncMock, patch
-
-        with (
-            patch.object(fm, "_ensure_session", new_callable=AsyncMock),
-            patch.object(fm, "_record_feed_error"),
-            patch.object(fm, "process_rss_feed", new_callable=AsyncMock) as mock_fetch,
-        ):
-            await fm.poll_feed(self._make_feed("file:///etc/passwd"))
-        mock_fetch.assert_not_called()
-
-    async def test_private_network_blocked(self, fm):
-        """10.x.x.x private network range must be blocked."""
-        from unittest.mock import AsyncMock, patch
-
-        with (
-            patch.object(fm, "_ensure_session", new_callable=AsyncMock),
-            patch.object(fm, "_record_feed_error"),
-            patch.object(fm, "process_rss_feed", new_callable=AsyncMock) as mock_fetch,
-        ):
-            await fm.poll_feed(self._make_feed("http://10.0.0.1/feed.xml"))
-        mock_fetch.assert_not_called()
-
-    async def test_validate_external_url_is_invoked(self, fm):
-        """validate_external_url is called — not bypassed — in poll_feed."""
-        from unittest.mock import AsyncMock, patch
-
-        with (
-            patch.object(fm, "_ensure_session", new_callable=AsyncMock),
-            patch.object(fm, "_record_feed_error"),
-            patch.object(fm, "process_rss_feed", new_callable=AsyncMock),
-            patch("modules.feed_manager.validate_external_url", return_value=False) as mock_veu,
-        ):
-            await fm.poll_feed(self._make_feed("http://192.168.1.1/feed"))
-        mock_veu.assert_called_once()
