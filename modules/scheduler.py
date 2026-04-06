@@ -17,6 +17,7 @@ from typing import Any, Optional
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from .security_utils import validate_external_url
 from .utils import decode_escape_sequences, format_keyword_response_with_placeholders, get_config_timezone
 
 
