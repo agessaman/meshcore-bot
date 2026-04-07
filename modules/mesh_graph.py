@@ -24,7 +24,7 @@ import threading
 import time
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any
 
 
 class MeshGraph:
@@ -103,7 +103,7 @@ class MeshGraph:
         a, b = a.lower().strip(), b.lower().strip()
         return a == b or a.startswith(b) or b.startswith(a)
 
-    def _get_edge_by_prefix_match(self, from_q: str, to_q: str) -> Optional[dict]:
+    def _get_edge_by_prefix_match(self, from_q: str, to_q: str) -> dict | None:
         """Return the best matching edge for a prefix query. Single edge only; never merge counts.
         Tie-break: exact key if present, else longest combined prefix length, then max
         observation_count, then most recent last_seen.
@@ -172,7 +172,7 @@ class MeshGraph:
         self._notification_timestamps.pop(edge_key, None)
 
     def _delete_edge_from_db(
-        self, edge_key: tuple[str, str], conn: Optional[sqlite3.Connection] = None
+        self, edge_key: tuple[str, str], conn: sqlite3.Connection | None = None
     ) -> int:
         """Delete a single edge row from mesh_connections. Returns rows affected."""
         from_p, to_p = edge_key
@@ -186,10 +186,10 @@ class MeshGraph:
         self,
         edge: dict,
         now: datetime,
-        hop_position: Optional[int] = None,
-        from_public_key: Optional[str] = None,
-        to_public_key: Optional[str] = None,
-        geographic_distance: Optional[float] = None,
+        hop_position: int | None = None,
+        from_public_key: str | None = None,
+        to_public_key: str | None = None,
+        geographic_distance: float | None = None,
         prefix_bytes: int = 1,
     ) -> None:
         """Apply one observation to an edge dict (increment count, last_seen, optional fields)."""
@@ -289,10 +289,10 @@ class MeshGraph:
             # Continue with empty graph
 
     def add_edge(self, from_prefix: str, to_prefix: str,
-                 from_public_key: Optional[str] = None,
-                 to_public_key: Optional[str] = None,
-                 hop_position: Optional[int] = None,
-                 geographic_distance: Optional[float] = None,
+                 from_public_key: str | None = None,
+                 to_public_key: str | None = None,
+                 hop_position: int | None = None,
+                 geographic_distance: float | None = None,
                  prefix_bytes: int = 1):
         """Add or update an edge in the graph.
 
@@ -528,9 +528,9 @@ class MeshGraph:
     def _recalculate_distance_if_needed(
         self,
         edge: dict,
-        conn: Optional[sqlite3.Connection] = None,
-        location_cache: Optional[dict[str, tuple[float, float]]] = None,
-    ) -> Optional[float]:
+        conn: sqlite3.Connection | None = None,
+        location_cache: dict[str, tuple[float, float]] | None = None,
+    ) -> float | None:
         """Recalculate geographic distance using full public keys if available.
 
         This ensures we get the correct location when there are prefix collisions.
@@ -590,9 +590,9 @@ class MeshGraph:
     def _get_location_by_public_key(
         self,
         public_key: str,
-        conn: Optional[sqlite3.Connection] = None,
-        location_cache: Optional[dict[str, tuple[float, float]]] = None,
-    ) -> Optional[tuple[float, float]]:
+        conn: sqlite3.Connection | None = None,
+        location_cache: dict[str, tuple[float, float]] | None = None,
+    ) -> tuple[float, float] | None:
         """Get location for a full public key (more accurate than prefix lookup).
 
         Prefers starred repeaters if there are somehow multiple entries (shouldn't happen with full key).
@@ -631,10 +631,10 @@ class MeshGraph:
     def _get_location_by_prefix(
         self,
         prefix: str,
-        reference_location: Optional[tuple[float, float]] = None,
-        conn: Optional[sqlite3.Connection] = None,
-        location_cache: Optional[dict[str, tuple[float, float]]] = None,
-    ) -> Optional[tuple[float, float]]:
+        reference_location: tuple[float, float] | None = None,
+        conn: sqlite3.Connection | None = None,
+        location_cache: dict[str, tuple[float, float]] | None = None,
+    ) -> tuple[float, float] | None:
         """Get location for a prefix (fallback when full public key not available).
 
         For LoRa networks, prefers shorter distances when there are prefix collisions,
@@ -733,8 +733,8 @@ class MeshGraph:
         self,
         edge_key: tuple[str, str],
         is_new: bool,
-        conn: Optional[sqlite3.Connection] = None,
-        location_cache: Optional[dict[str, tuple[float, float]]] = None,
+        conn: sqlite3.Connection | None = None,
+        location_cache: dict[str, tuple[float, float]] | None = None,
         skip_distance_recalc: bool = False,
     ):
         """Write a single edge to the database.
@@ -855,9 +855,9 @@ class MeshGraph:
     def _build_update_params_for_edge(
         self,
         edge_key: tuple[str, str],
-        conn: Optional[sqlite3.Connection],
-        location_cache: Optional[dict[str, tuple[float, float]]],
-    ) -> Optional[tuple]:
+        conn: sqlite3.Connection | None,
+        location_cache: dict[str, tuple[float, float]] | None,
+    ) -> tuple | None:
         """Build UPDATE params for an edge (for batch executemany). Returns None to skip."""
         if edge_key not in self.edges:
             return None
@@ -1042,7 +1042,7 @@ class MeshGraph:
         """
         return self.get_edge(from_prefix, to_prefix) is not None
 
-    def get_edge(self, from_prefix: str, to_prefix: str) -> Optional[dict]:
+    def get_edge(self, from_prefix: str, to_prefix: str) -> dict | None:
         """Get edge data if it exists (exact key first, then prefix match).
 
         Args:
@@ -1175,9 +1175,9 @@ class MeshGraph:
         avg_confidence = sum(validations) / len(validations) if validations else 0.0
         return (True, avg_confidence)
 
-    def get_candidate_score(self, candidate_prefix: str, prev_prefix: Optional[str],
-                           next_prefix: Optional[str], min_observations: int = 1,
-                           hop_position: Optional[int] = None,
+    def get_candidate_score(self, candidate_prefix: str, prev_prefix: str | None,
+                           next_prefix: str | None, min_observations: int = 1,
+                           hop_position: int | None = None,
                            use_bidirectional: bool = True,
                            use_hop_position: bool = True) -> float:
         """Get graph-based score for a candidate node in a path.

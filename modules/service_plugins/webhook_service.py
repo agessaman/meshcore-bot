@@ -38,7 +38,7 @@ Response codes:
 import secrets
 import time
 from collections import OrderedDict
-from typing import Any, Optional
+from typing import Any
 
 from .base_service import BaseServicePlugin
 
@@ -90,8 +90,8 @@ class WebhookService(BaseServicePlugin):
             else set()
         )
 
-        self._runner: Optional[Any] = None  # aio_web.AppRunner
-        self._site: Optional[Any] = None    # aio_web.TCPSite
+        self._runner: Any | None = None  # aio_web.AppRunner
+        self._site: Any | None = None    # aio_web.TCPSite
 
         # Per-IP rate limiting
         self._rate_limit_per_minute: int = cfg.getint(

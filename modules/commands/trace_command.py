@@ -6,7 +6,6 @@ Link diagnostics: trace (manual path when given, reciprocal when no path); trace
 
 import asyncio
 import re
-from typing import Optional
 
 from ..graph_trace_helper import update_mesh_graph_from_trace_data
 from ..models import MeshMessage
@@ -93,7 +92,7 @@ class TraceCommand(BaseCommand):
                 valid.append(part.lower())
         return valid
 
-    def _parse_path_arg(self, content: str) -> Optional[list[str]]:
+    def _parse_path_arg(self, content: str) -> list[str] | None:
         """Parse path from command content after 'trace ' or 'tracer '.
         Accepts: comma-separated 2-char hex (01,7a,55), contiguous hex (01e07a), or mixed (01,e001).
         Returns list of 2-char hex bytes, or None if no path args / invalid.

@@ -8,7 +8,8 @@ import asyncio
 import contextlib
 import re
 import time
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 from ..models import MeshMessage
 from ..utils import calculate_distance, parse_path_string
@@ -262,7 +263,7 @@ class PathCommand(BaseCommand):
     async def _lookup_repeater_names(
         self,
         node_ids: list[str],
-        lookup_func: Optional[Callable[[str], list[dict[str, Any]]]] = None,
+        lookup_func: Callable[[str], list[dict[str, Any]]] | None = None,
     ) -> dict[str, dict[str, Any]]:
         """Look up repeater names for given node IDs.
 
@@ -627,7 +628,7 @@ class PathCommand(BaseCommand):
 
         return repeater_info
 
-    async def _get_api_cache_data(self) -> Optional[dict[str, dict[str, Any]]]:
+    async def _get_api_cache_data(self) -> dict[str, dict[str, Any]] | None:
         """Get API cache data from the prefix command if available"""
         try:
             # Try to get the prefix command instance and its cache data
@@ -644,7 +645,7 @@ class PathCommand(BaseCommand):
         return None
 
 
-    def _get_sender_location(self) -> Optional[tuple[float, float]]:
+    def _get_sender_location(self) -> tuple[float, float] | None:
         """Get sender location from current message if available"""
         try:
             if not hasattr(self, '_current_message') or not self._current_message:
@@ -675,7 +676,7 @@ class PathCommand(BaseCommand):
             self.logger.debug(f"Error getting sender location: {e}")
             return None
 
-    def _select_repeater_by_proximity(self, repeaters: list[dict[str, Any]], node_id: str = None, path_context: list[str] = None, sender_location: Optional[tuple[float, float]] = None) -> tuple[Optional[dict[str, Any]], float]:
+    def _select_repeater_by_proximity(self, repeaters: list[dict[str, Any]], node_id: str = None, path_context: list[str] = None, sender_location: tuple[float, float] | None = None) -> tuple[dict[str, Any] | None, float]:
         """
         Select the most likely repeater based on geographic proximity.
 
@@ -723,7 +724,7 @@ class PathCommand(BaseCommand):
         else:
             return self._select_by_simple_proximity(repeaters_with_location)
 
-    def _select_by_simple_proximity(self, repeaters_with_location: list[dict[str, Any]]) -> tuple[Optional[dict[str, Any]], float]:
+    def _select_by_simple_proximity(self, repeaters_with_location: list[dict[str, Any]]) -> tuple[dict[str, Any] | None, float]:
         """Select repeater based on proximity to bot location with strong recency bias"""
         # Calculate recency-weighted scores for all repeaters
         scored_repeaters = self._calculate_recency_weighted_scores(repeaters_with_location)
@@ -1032,7 +1033,7 @@ class PathCommand(BaseCommand):
 
         return tied_repeaters[0]
 
-    def _select_by_path_proximity(self, repeaters_with_location: list[dict[str, Any]], node_id: str, path_context: list[str], sender_location: Optional[tuple[float, float]] = None) -> tuple[Optional[dict[str, Any]], float]:
+    def _select_by_path_proximity(self, repeaters_with_location: list[dict[str, Any]], node_id: str, path_context: list[str], sender_location: tuple[float, float] | None = None) -> tuple[dict[str, Any] | None, float]:
         """Select repeater based on proximity to previous/next nodes in path"""
         try:
             # Filter out repeaters with very low recency scores first
@@ -1095,7 +1096,7 @@ class PathCommand(BaseCommand):
             self.logger.warning(f"Error in path proximity calculation: {e}")
             return None, 0.0
 
-    def _get_node_location(self, node_id: str) -> Optional[tuple[float, float]]:
+    def _get_node_location(self, node_id: str) -> tuple[float, float] | None:
         """Get location for a node ID from the complete_contact_tracking database"""
         try:
             # Build query with age filtering if configured
@@ -1132,7 +1133,7 @@ class PathCommand(BaseCommand):
             self.logger.warning(f"Error getting location for node {node_id}: {e}")
             return None
 
-    def _select_by_dual_proximity(self, repeaters: list[dict[str, Any]], prev_location: tuple[float, float], next_location: tuple[float, float]) -> tuple[Optional[dict[str, Any]], float]:
+    def _select_by_dual_proximity(self, repeaters: list[dict[str, Any]], prev_location: tuple[float, float], next_location: tuple[float, float]) -> tuple[dict[str, Any] | None, float]:
         """Select repeater based on proximity to both previous and next nodes with strong recency bias"""
         # Calculate recency-weighted scores for all repeaters
         scored_repeaters = self._calculate_recency_weighted_scores(repeaters)
@@ -1207,7 +1208,7 @@ class PathCommand(BaseCommand):
 
         return None, 0.0
 
-    def _select_by_single_proximity(self, repeaters: list[dict[str, Any]], reference_location: tuple[float, float], direction: str) -> tuple[Optional[dict[str, Any]], float]:
+    def _select_by_single_proximity(self, repeaters: list[dict[str, Any]], reference_location: tuple[float, float], direction: str) -> tuple[dict[str, Any] | None, float]:
         """Select repeater based on proximity to single reference node with strong recency bias"""
         # Calculate recency-weighted scores for all repeaters
         scored_repeaters = self._calculate_recency_weighted_scores(repeaters)
@@ -1286,7 +1287,7 @@ class PathCommand(BaseCommand):
 
     def _select_repeater_by_graph(self, repeaters: list[dict[str, Any]], node_id: str,
                                   path_context: list[str],
-                                  path_prefix_hex_chars: Optional[int] = None) -> tuple[Optional[dict[str, Any]], float, str]:
+                                  path_prefix_hex_chars: int | None = None) -> tuple[dict[str, Any] | None, float, str]:
         """Select repeater based on graph evidence.
 
         Uses enhanced direct-edge validation and multi-hop path inference.

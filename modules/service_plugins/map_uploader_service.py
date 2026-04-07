@@ -11,7 +11,7 @@ import hashlib
 import json
 import logging
 import time
-from typing import Any, Optional
+from typing import Any
 
 # Import meshcore
 from meshcore import EventType
@@ -140,13 +140,13 @@ class MapUploaderService(BaseServicePlugin):
         self._advert_dedupe_lock = asyncio.Lock()
 
         # Device keys and info
-        self.private_key_hex: Optional[str] = None
-        self.public_key_hex: Optional[str] = None
+        self.private_key_hex: str | None = None
+        self.public_key_hex: str | None = None
         self.radio_params: dict[str, Any] = {}
 
         # HTTP session
         # HTTP session
-        self.http_session: Optional[aiohttp.ClientSession] = None
+        self.http_session: aiohttp.ClientSession | None = None
 
         # Event subscriptions
         self.event_subscriptions: list[Any] = []
@@ -602,7 +602,7 @@ class MapUploaderService(BaseServicePlugin):
         except Exception as e:
             self.logger.error(f"Error processing packet: {e}", exc_info=True)
 
-    def _parse_advert(self, payload: bytes) -> Optional[dict[str, Any]]:
+    def _parse_advert(self, payload: bytes) -> dict[str, Any] | None:
         """Parse advert payload.
 
         Args:

@@ -7,7 +7,7 @@ Handles the 'test' keyword response
 import math
 import re
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from ..models import MeshMessage
 from ..utils import calculate_distance, extract_path_node_ids_from_message
@@ -133,19 +133,16 @@ class TestCommand(BaseCommand):
 
         return False
 
-    DEFAULT_FORMAT = "ack @[{sender}]{phrase_part} | {connection_info} | Received at: {timestamp}"
-
-    def get_response_format(self) -> Optional[str]:
-        """Get the response format from config, falling back to the built-in default.
+    def get_response_format(self) -> str | None:
+        """Get the response format from config.
 
         Returns:
-            Optional[str]: The configured or default response format string.
+            Optional[str]: The configured response format string, or None if not set.
         """
         if self.bot.config.has_section('Keywords'):
             format_str = self.bot.config.get('Keywords', 'test', fallback=None)
-            if format_str:
-                return self._strip_quotes_from_config(format_str)
-        return self.DEFAULT_FORMAT
+            return self._strip_quotes_from_config(format_str) if format_str else None
+        return None
 
     def _extract_path_node_ids(self, message: MeshMessage) -> list[str]:
         """Extract path node IDs from message. Prefers routing_info.path_nodes (multi-byte); else parses message.path.
@@ -156,7 +153,7 @@ class TestCommand(BaseCommand):
         return extract_path_node_ids_from_message(message)
 
 
-    def _lookup_repeater_location(self, node_id: str, path_context: Optional[list[str]] = None) -> Optional[tuple[float, float]]:
+    def _lookup_repeater_location(self, node_id: str, path_context: list[str] | None = None) -> tuple[float, float] | None:
         """Look up repeater location for a node ID using geographic proximity selection when path context is available.
 
         Args:
@@ -224,7 +221,7 @@ class TestCommand(BaseCommand):
             self.logger.debug(f"Error looking up repeater location for {node_id}: {e}")
             return None
 
-    def _get_sender_location(self) -> Optional[tuple[float, float]]:
+    def _get_sender_location(self) -> tuple[float, float] | None:
         """Get sender location from current message if available.
 
         Returns:
@@ -313,7 +310,7 @@ class TestCommand(BaseCommand):
         scored_repeaters.sort(key=lambda x: x[1], reverse=True)
         return scored_repeaters
 
-    def _get_node_location_simple(self, node_id: str) -> Optional[tuple[float, float]]:
+    def _get_node_location_simple(self, node_id: str) -> tuple[float, float] | None:
         """Simple lookup without proximity selection - used for reference nodes.
 
         Args:
@@ -351,7 +348,7 @@ class TestCommand(BaseCommand):
             self.logger.debug(f"Error in simple location lookup for {node_id}: {e}")
             return None
 
-    def _select_by_path_proximity(self, repeaters: list[dict[str, Any]], node_id: str, path_context: list[str], sender_location: Optional[tuple[float, float]] = None) -> Optional[dict[str, Any]]:
+    def _select_by_path_proximity(self, repeaters: list[dict[str, Any]], node_id: str, path_context: list[str], sender_location: tuple[float, float] | None = None) -> dict[str, Any] | None:
         """Select repeater based on proximity to previous/next nodes in path.
 
         Args:
@@ -422,7 +419,7 @@ class TestCommand(BaseCommand):
             self.logger.debug(f"Error in path proximity selection: {e}")
             return None
 
-    def _select_by_dual_proximity(self, repeaters: list[dict[str, Any]], prev_location: tuple[float, float], next_location: tuple[float, float]) -> Optional[dict[str, Any]]:
+    def _select_by_dual_proximity(self, repeaters: list[dict[str, Any]], prev_location: tuple[float, float], next_location: tuple[float, float]) -> dict[str, Any] | None:
         """Select repeater based on proximity to both previous and next nodes.
 
         Args:
@@ -475,7 +472,7 @@ class TestCommand(BaseCommand):
 
         return best_repeater
 
-    def _select_by_single_proximity(self, repeaters: list[dict[str, Any]], reference_location: tuple[float, float], direction: str = "unknown") -> Optional[dict[str, Any]]:
+    def _select_by_single_proximity(self, repeaters: list[dict[str, Any]], reference_location: tuple[float, float], direction: str = "unknown") -> dict[str, Any] | None:
         """Select repeater based on proximity to single reference node.
 
         Args:

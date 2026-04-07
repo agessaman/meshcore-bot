@@ -4,7 +4,6 @@ Ping command for the MeshCore Bot
 Handles the 'ping' keyword response
 """
 
-from typing import Optional
 
 from ..models import MeshMessage
 from .base_command import BaseCommand
@@ -58,7 +57,7 @@ class PingCommand(BaseCommand):
         """
         return self.translate('commands.ping.description')
 
-    def get_response_format(self) -> Optional[str]:
+    def get_response_format(self) -> str | None:
         """Get the response format from config.
 
         Returns:

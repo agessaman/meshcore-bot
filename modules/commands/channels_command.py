@@ -6,7 +6,6 @@ Lists common hashtag channels for the region with multi-message support
 
 import asyncio
 import re
-from typing import Optional
 
 from ..models import MeshMessage
 from .base_command import BaseCommand
@@ -273,7 +272,7 @@ class ChannelsCommand(BaseCommand):
 
         return categories
 
-    def _find_channel_by_name(self, search_name: str) -> Optional[str]:
+    def _find_channel_by_name(self, search_name: str) -> str | None:
         """Find a channel by partial name match across all categories.
 
         Args:

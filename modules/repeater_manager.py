@@ -8,10 +8,11 @@ import asyncio
 import json
 import time
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any
 
 from meshcore import EventType
 
+from .security_utils import sanitize_name
 from .utils import rate_limited_nominatim_reverse_sync
 
 
@@ -101,12 +102,12 @@ class RepeaterManager:
             self.logger.error(f"Failed to initialize repeater database: {e}")
             raise
 
-    async def track_contact_advertisement(self, advert_data: dict, signal_info: Optional[dict] = None, packet_hash: Optional[str] = None) -> bool:
+    async def track_contact_advertisement(self, advert_data: dict, signal_info: dict | None = None, packet_hash: str | None = None) -> bool:
         """Track any contact advertisement in the complete tracking database"""
         try:
             # Extract basic information
             public_key = advert_data.get('public_key', '')
-            name = advert_data.get('name', advert_data.get('adv_name', 'Unknown'))
+            name = sanitize_name(advert_data.get('name', advert_data.get('adv_name', 'Unknown')))
             device_type = advert_data.get('type', 'Unknown')
 
             if not public_key:
@@ -244,8 +245,8 @@ class RepeaterManager:
             return False
 
     def _track_daily_advertisement_on_conn(self, conn, public_key: str, name: str, role: str, device_type: str,
-                                            location_info: dict, signal_strength: Optional[float], snr: Optional[float],
-                                            hop_count: Optional[int], timestamp: datetime, packet_hash: Optional[str] = None):
+                                            location_info: dict, signal_strength: float | None, snr: float | None,
+                                            hop_count: int | None, timestamp: datetime, packet_hash: str | None = None):
         """Track daily advertisement statistics on an existing connection (no commit).
 
         Same logic as _track_daily_advertisement but uses caller's connection
@@ -302,8 +303,8 @@ class RepeaterManager:
                 self.logger.debug(f"Added daily stats for {name}: first unique advert today")
 
     async def _track_daily_advertisement(self, public_key: str, name: str, role: str, device_type: str,
-                                       location_info: dict, signal_strength: Optional[float], snr: Optional[float],
-                                       hop_count: Optional[int], timestamp: datetime, packet_hash: Optional[str] = None):
+                                       location_info: dict, signal_strength: float | None, snr: float | None,
+                                       hop_count: int | None, timestamp: datetime, packet_hash: str | None = None):
         """Track daily advertisement statistics for accurate time-based reporting.
 
         Args:
@@ -436,7 +437,7 @@ class RepeaterManager:
             # Default to companion for unknown contacts (human users)
             return 'companion'
 
-    def _determine_device_type(self, device_type: int, name: str, advert_data: Optional[dict] = None) -> str:
+    def _determine_device_type(self, device_type: int, name: str, advert_data: dict | None = None) -> str:
         """Determine device type string from numeric type and name following MeshCore specs"""
         from .enums import DeviceRole
 
@@ -512,7 +513,7 @@ class RepeaterManager:
         except Exception as e:
             self.logger.error(f"Error updating currently tracked status: {e}")
 
-    async def get_complete_contact_database(self, role_filter: Optional[str] = None, include_historical: bool = True) -> list[dict]:
+    async def get_complete_contact_database(self, role_filter: str | None = None, include_historical: bool = True) -> list[dict]:
         """Get complete contact database for path estimation and analysis"""
         try:
             if include_historical:
@@ -789,7 +790,7 @@ class RepeaterManager:
                 # Check if this is a repeater device
                 if self._is_repeater_device(contact_data):
                     public_key = contact_data.get('public_key', contact_key)
-                    name = contact_data.get('adv_name', contact_data.get('name', 'Unknown'))
+                    name = sanitize_name(contact_data.get('adv_name', contact_data.get('name', 'Unknown')))
                     device_type = 'Repeater'
                     if contact_data.get('type') == 3:
                         device_type = 'RoomServer'
@@ -887,7 +888,7 @@ class RepeaterManager:
                     continue
 
                 public_key = contact_data.get('public_key', contact_key)
-                name = contact_data.get('adv_name', contact_data.get('name', 'Unknown'))
+                name = sanitize_name(contact_data.get('adv_name', contact_data.get('name', 'Unknown')))
 
                 # Skip if in ACL (never purge ACL members)
                 if self._is_in_acl(public_key):
@@ -1042,7 +1043,7 @@ class RepeaterManager:
             self.logger.error(f"Error getting companions for purging: {e}")
             return []
 
-    def _extract_location_data(self, contact_data: dict, should_geocode: bool = True, packet_hash: Optional[str] = None) -> dict[str, Any]:
+    def _extract_location_data(self, contact_data: dict, should_geocode: bool = True, packet_hash: str | None = None) -> dict[str, Any]:
         """Extract location data from contact_data JSON"""
         location_info: dict[str, Any] = {
             'latitude': None,
@@ -1186,7 +1187,7 @@ class RepeaterManager:
 
         return location_info
 
-    def _should_geocode_location(self, location_info: dict, existing_data: Optional[dict] = None, name: str = "Unknown", packet_hash: Optional[str] = None) -> tuple[bool, dict]:
+    def _should_geocode_location(self, location_info: dict, existing_data: dict | None = None, name: str = "Unknown", packet_hash: str | None = None) -> tuple[bool, dict]:
         """
         Determine if geocoding should be performed based on location changes.
 
@@ -1293,7 +1294,7 @@ class RepeaterManager:
 
         return should_geocode, updated_location_info
 
-    def _get_existing_geocoded_data(self, latitude: float, longitude: float) -> Optional[dict[str, Optional[str]]]:
+    def _get_existing_geocoded_data(self, latitude: float, longitude: float) -> dict[str, str | None] | None:
         """Check database for existing geocoded data for the same coordinates"""
         try:
             # Use a small tolerance for coordinate matching (0.001 degrees ≈ 111 meters)
@@ -1326,7 +1327,7 @@ class RepeaterManager:
 
         return None
 
-    def _get_state_country_from_coordinates(self, latitude: float, longitude: float, packet_hash: Optional[str] = None) -> tuple[Optional[str], Optional[str]]:
+    def _get_state_country_from_coordinates(self, latitude: float, longitude: float, packet_hash: str | None = None) -> tuple[str | None, str | None]:
         """Get state and country from coordinates using reverse geocoding"""
         # Check packet hash cache first to prevent duplicate API calls
         if packet_hash and packet_hash != "0000000000000000":
@@ -1369,7 +1370,7 @@ class RepeaterManager:
 
         return None, None
 
-    def _get_city_from_coordinates(self, latitude: float, longitude: float, packet_hash: Optional[str] = None) -> Optional[str]:
+    def _get_city_from_coordinates(self, latitude: float, longitude: float, packet_hash: str | None = None) -> str | None:
         """Get city name from coordinates using reverse geocoding, with neighborhood for large cities"""
         # Check packet hash cache first to prevent duplicate API calls
         if packet_hash and packet_hash != "0000000000000000":
@@ -1428,9 +1429,9 @@ class RepeaterManager:
             self.logger.debug(f"Error getting city from coordinates {latitude}, {longitude}: {e}")
             return None
 
-    def _get_full_location_from_coordinates(self, latitude: float, longitude: float, packet_hash: Optional[str] = None) -> dict[str, Optional[str]]:
+    def _get_full_location_from_coordinates(self, latitude: float, longitude: float, packet_hash: str | None = None) -> dict[str, str | None]:
         """Get complete location information (city, state, country) from coordinates using reverse geocoding"""
-        location_info: dict[str, Optional[str]] = {
+        location_info: dict[str, str | None] = {
             'city': None,
             'state': None,
             'country': None
@@ -1540,7 +1541,7 @@ class RepeaterManager:
                 self.logger.debug(f"Error getting full location from coordinates {latitude}, {longitude}: {e}")
             return location_info
 
-    def _get_neighborhood_for_large_city(self, address: dict, city: str) -> Optional[str]:
+    def _get_neighborhood_for_large_city(self, address: dict, city: str) -> str | None:
         """Get neighborhood information for large cities"""
         try:
             # List of large cities where neighborhood info is useful
@@ -1696,7 +1697,7 @@ class RepeaterManager:
             self.logger.error(f"Error checking ACL membership: {e}")
             return False  # Default to not in ACL on error (safer)
 
-    def _get_last_dm_activity(self, public_key: str, sender_id: Optional[str] = None) -> Optional[datetime]:
+    def _get_last_dm_activity(self, public_key: str, sender_id: str | None = None) -> datetime | None:
         """Get the timestamp of the last DM from a contact"""
         try:
 
@@ -1746,7 +1747,7 @@ class RepeaterManager:
             self.logger.debug(f"Error getting last DM activity for {public_key}: {e}")
             return None
 
-    def _get_last_advert_activity(self, public_key: str) -> Optional[datetime]:
+    def _get_last_advert_activity(self, public_key: str) -> datetime | None:
         """Get the timestamp of the last advert from a contact"""
         try:
             # Query complete_contact_tracking for last advert
@@ -1819,7 +1820,7 @@ class RepeaterManager:
 
                 if self._is_repeater_device(contact_data):
                     public_key = contact_data.get('public_key', contact_key)
-                    name = contact_data.get('adv_name', contact_data.get('name', 'Unknown'))
+                    name = sanitize_name(contact_data.get('adv_name', contact_data.get('name', 'Unknown')))
                     self.logger.info(f"Found repeater: {name} (type: {contact_data.get('type')}, key: {public_key[:16]}...)")
 
                     # Determine device type based on contact data
@@ -2357,7 +2358,7 @@ class RepeaterManager:
                 for contact_key, contact_data in list(self.bot.meshcore.contacts.items()):
                     if self._is_repeater_device(contact_data):
                         last_advert = contact_data.get('last_advert', 'No last_advert')
-                        name = contact_data.get('adv_name', contact_data.get('name', 'Unknown'))
+                        name = sanitize_name(contact_data.get('adv_name', contact_data.get('name', 'Unknown')))
                         if last_advert != 'No last_advert':
                             try:
                                 if isinstance(last_advert, (int, float)):
@@ -2679,7 +2680,7 @@ class RepeaterManager:
             self.logger.error(f"Error in aggressive contact cleanup: {e}")
             return 0
 
-    async def add_discovered_contact(self, contact_name: str, public_key: Optional[str] = None, reason: str = "Manual addition") -> bool:
+    async def add_discovered_contact(self, contact_name: str, public_key: str | None = None, reason: str = "Manual addition") -> bool:
         """Add a discovered contact to the contact list using multiple methods"""
         try:
             self.logger.info(f"Adding discovered contact: {contact_name}")
@@ -2978,7 +2979,7 @@ class RepeaterManager:
             self.logger.error(f"Error cleaning up repeater retention tables: {e}")
 
     # Delegate geocoding cache methods to db_manager
-    def get_cached_geocoding(self, query: str) -> tuple[Optional[float], Optional[float]]:
+    def get_cached_geocoding(self, query: str) -> tuple[float | None, float | None]:
         """Get cached geocoding result for a query"""
         return self.db_manager.get_cached_geocoding(query)
 

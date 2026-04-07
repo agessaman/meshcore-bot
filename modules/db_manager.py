@@ -10,7 +10,7 @@ import sqlite3
 from collections.abc import AsyncGenerator, Generator
 from contextlib import asynccontextmanager, contextmanager
 from datetime import date, datetime
-from typing import Any, Optional
+from typing import Any
 
 from .db_migrations import MigrationRunner
 from .security_utils import VALID_JOURNAL_MODES
@@ -77,7 +77,7 @@ class DBManager:
             raise
 
     # Geocoding cache methods
-    def get_cached_geocoding(self, query: str) -> tuple[Optional[float], Optional[float]]:
+    def get_cached_geocoding(self, query: str) -> tuple[float | None, float | None]:
         """Get cached geocoding result for a query.
 
         Args:
@@ -129,7 +129,7 @@ class DBManager:
             self.logger.error(f"Error caching geocoding: {e}")
 
     # Generic cache methods
-    def get_cached_value(self, cache_key: str, cache_type: str) -> Optional[str]:
+    def get_cached_value(self, cache_key: str, cache_type: str) -> str | None:
         """Get cached value for a key and type.
 
         Args:
@@ -180,7 +180,7 @@ class DBManager:
         except Exception as e:
             self.logger.error(f"Error caching value: {e}")
 
-    def get_cached_json(self, cache_key: str, cache_type: str) -> Optional[dict]:
+    def get_cached_json(self, cache_key: str, cache_type: str) -> dict | None:
         """Get cached JSON value for a key and type.
 
         Args:
@@ -400,7 +400,7 @@ class DBManager:
         desc = cursor.description
         if not desc:
             return []
-        return [dict(zip([c[0] for c in desc], row)) for row in rows]
+        return [dict(zip([c[0] for c in desc], row, strict=False)) for row in rows]
 
     def execute_update_on_connection(self, conn: sqlite3.Connection, query: str, params: tuple = ()) -> int:
         """Execute an update/insert/delete on an existing connection. Caller must commit."""
@@ -427,7 +427,7 @@ class DBManager:
         except Exception as e:
             self.logger.error(f"Error setting metadata {key}: {e}")
 
-    def get_metadata(self, key: str) -> Optional[str]:
+    def get_metadata(self, key: str) -> str | None:
         """Get a metadata value for the bot.
 
         Args:
@@ -448,7 +448,7 @@ class DBManager:
             self.logger.error(f"Error getting metadata {key}: {e}")
             return None
 
-    def get_bot_start_time(self) -> Optional[float]:
+    def get_bot_start_time(self) -> float | None:
         """Get bot start time from metadata"""
         start_time_str = self.get_metadata('start_time')
         if start_time_str:
@@ -539,7 +539,7 @@ class DBManager:
         except Exception as e:
             self.logger.error(f"Error storing system health: {e}")
 
-    def get_system_health(self) -> Optional[dict[str, Any]]:
+    def get_system_health(self) -> dict[str, Any] | None:
         """Get system health data from metadata"""
         try:
             import json
@@ -581,7 +581,7 @@ class AsyncDBManager:
             conn.row_factory = aiosqlite.Row
             yield conn
 
-    async def get_metadata(self, key: str) -> Optional[str]:
+    async def get_metadata(self, key: str) -> str | None:
         """Async version of DBManager.get_metadata."""
         try:
             async with self.connection() as conn:
@@ -629,7 +629,7 @@ class AsyncDBManager:
             self.logger.error(f"AsyncDBManager: error executing update: {e}")
             return 0
 
-    async def get_cached_value(self, cache_key: str, cache_type: str) -> Optional[str]:
+    async def get_cached_value(self, cache_key: str, cache_type: str) -> str | None:
         """Async version of DBManager.get_cached_value."""
         try:
             async with self.connection() as conn:

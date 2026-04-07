@@ -5,7 +5,7 @@ Contains shared data structures used across modules
 """
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 # Firmware reserves extra bytes for regional (non-global) TC_FLOOD scope on channel text.
 CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD = 10
@@ -15,20 +15,20 @@ CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD = 10
 class MeshMessage:
     """Simplified message structure for our bot"""
     content: str
-    sender_id: Optional[str] = None
-    sender_pubkey: Optional[str] = None
-    channel: Optional[str] = None
-    hops: Optional[int] = None
-    path: Optional[str] = None
+    sender_id: str | None = None
+    sender_pubkey: str | None = None
+    channel: str | None = None
+    hops: int | None = None
+    path: str | None = None
     is_dm: bool = False
-    timestamp: Optional[int] = None
-    snr: Optional[float] = None
-    rssi: Optional[int] = None
-    elapsed: Optional[str] = None
+    timestamp: int | None = None
+    snr: float | None = None
+    rssi: int | None = None
+    elapsed: str | None = None
     # When set from RF routing: path_nodes, path_hex, bytes_per_hop, path_length, route_type, etc.
-    routing_info: Optional[dict[str, Any]] = None
-    # Matched flood scope for the reply (e.g. "#west"), None means global flood
-    reply_scope: Optional[str] = None
+    routing_info: dict[str, Any] | None = None
+    # Flood scope tag matched from TC_FLOOD transport code (set by message_handler)
+    reply_scope: str | None = None
 
     def effective_outgoing_flood_scope(self, bot: Any) -> str:
         """Resolve outbound flood scope the same way as ``CommandManager.send_channel_message``.

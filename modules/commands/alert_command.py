@@ -9,7 +9,6 @@ import hashlib
 import json
 import re
 from datetime import datetime, timezone
-from typing import Optional
 
 import requests
 from cryptography.hazmat.backends import default_backend
@@ -115,7 +114,7 @@ def _decrypt(data: dict) -> dict:
     return json.loads(out)
 
 
-def _parse_time(iso_str: str) -> Optional[datetime]:
+def _parse_time(iso_str: str) -> datetime | None:
     """Parse ISO timestamp to datetime and convert to local time.
 
     Args:
@@ -262,7 +261,7 @@ class AlertCommand(BaseCommand):
         """
         return location.lower().replace(' ', '_')
 
-    def _get_agency_ids(self, location: str = None, location_type: str = None) -> Optional[str]:
+    def _get_agency_ids(self, location: str = None, location_type: str = None) -> str | None:
         """Get agency IDs for a city or county, or default to all configured agencies.
 
         Args:
@@ -434,7 +433,7 @@ class AlertCommand(BaseCommand):
             self.logger.error(f"Error fetching PulsePoint incidents: {e}")
             return []
 
-    def _parse_query(self, query: str) -> tuple[str, Optional[str], Optional[float], Optional[float]]:
+    def _parse_query(self, query: str) -> tuple[str, str | None, float | None, float | None]:
         """Parse query string to determine search type.
 
         Args:

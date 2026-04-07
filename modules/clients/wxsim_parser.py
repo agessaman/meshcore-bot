@@ -31,7 +31,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 import requests
 
@@ -66,13 +66,13 @@ class ForecastPeriod:
     day_name: str  # e.g., "Friday", "Today"
     date: str  # e.g., "May 5"
     period_type: PeriodType
-    high_temp: Optional[float] = None
-    low_temp: Optional[float] = None
+    high_temp: float | None = None
+    low_temp: float | None = None
     conditions: str = ""
-    wind_speed: Optional[int] = None
-    wind_direction: Optional[str] = None
-    precip_chance: Optional[int] = None
-    precip_amount: Optional[float] = None
+    wind_speed: int | None = None
+    wind_direction: str | None = None
+    precip_chance: int | None = None
+    precip_amount: float | None = None
     hourly_data: list[HourlyData] = field(default_factory=list)
 
 
@@ -237,7 +237,7 @@ class WXSIMParser:
 
         return hourly_data
 
-    def _parse_data_row(self, line: str) -> Optional[HourlyData]:
+    def _parse_data_row(self, line: str) -> HourlyData | None:
         """Parse a single data row.
 
         Args:
@@ -328,7 +328,7 @@ class WXSIMParser:
         day_separators = self._find_day_separators(lines)
 
         # Group hourly data by day
-        current_day: Optional[str] = None
+        current_day: str | None = None
         current_period_data: list[Any] = []
 
         for data in hourly_data:
@@ -385,7 +385,7 @@ class WXSIMParser:
         return separators
 
     def _create_period_from_hourly(self, date: str, hourly_data: list[HourlyData],
-                                   day_separators: dict[str, str]) -> Optional[ForecastPeriod]:
+                                   day_separators: dict[str, str]) -> ForecastPeriod | None:
         """Create a forecast period from hourly data.
 
         Args:
@@ -654,7 +654,7 @@ class WXSIMParser:
         # Return original if no match
         return condition.strip() if condition else "Unknown"
 
-    def get_forecast_date(self, forecast: WXSIMForecast) -> Optional[datetime]:
+    def get_forecast_date(self, forecast: WXSIMForecast) -> datetime | None:
         """Get the forecast date as a datetime object.
 
         Args:
@@ -711,7 +711,7 @@ class WXSIMParser:
         except (ValueError, KeyError, AttributeError):
             return None
 
-    def is_forecast_stale(self, forecast: WXSIMForecast, max_age_hours: int = 48) -> tuple[bool, Optional[str]]:
+    def is_forecast_stale(self, forecast: WXSIMForecast, max_age_hours: int = 48) -> tuple[bool, str | None]:
         """Check if forecast is stale (too old).
 
         Args:
@@ -739,7 +739,7 @@ class WXSIMParser:
         return False, None
 
     @staticmethod
-    def fetch_from_url(url: str, timeout: int = 10) -> Optional[str]:
+    def fetch_from_url(url: str, timeout: int = 10) -> str | None:
         """Fetch WXSIM plaintext data from a URL.
 
         Args:

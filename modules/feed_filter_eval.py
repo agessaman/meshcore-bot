@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable
+from typing import Any
 
 
 def get_nested_value(data: Any, path: str, default: Any = "") -> Any:

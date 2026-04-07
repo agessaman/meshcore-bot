@@ -4,7 +4,7 @@ Base service plugin class for background services
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any
 
 
 class BaseServicePlugin(ABC):
@@ -17,7 +17,7 @@ class BaseServicePlugin(ABC):
 
     # Optional: Config section name (if different from class name)
     # If not set, will be derived from class name (e.g., PacketCaptureService -> PacketCapture)
-    config_section: Optional[str] = None
+    config_section: str | None = None
 
     # Optional: Service description for metadata
     description: str = ""

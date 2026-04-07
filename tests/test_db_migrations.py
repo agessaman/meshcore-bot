@@ -80,7 +80,7 @@ class TestMigrationRunner:
         runner.run()
         rows = conn.execute("SELECT version, description FROM schema_version ORDER BY version").fetchall()
         assert len(rows) == len(MIGRATIONS)
-        for (version, description), (expected_v, expected_d, _) in zip(rows, MIGRATIONS):
+        for (version, description), (expected_v, expected_d, _) in zip(rows, MIGRATIONS, strict=False):
             assert version == expected_v
             assert description == expected_d
 

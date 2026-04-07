@@ -8,7 +8,7 @@ name = "meshcore-bot"
 version = "0.1.0"
 description = "MeshCore Bot using the meshcore-cli and meshcore.py packages"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dependencies = [
     "pyserial>=3.5",
     "bleak>=0.20.0",
@@ -65,7 +65,7 @@ modules = [
 
 [tool.ruff]
 line-length = 120
-target-version = "py39"
+target-version = "py311"
 exclude = [".venv", "build", "dist"]
 
 [tool.ruff.lint]
@@ -97,6 +97,8 @@ ignore = [
     "SIM115", # open-file-with-context-handler
     "SIM117", # multiple-with-statements
     "SIM210", # if-expr-with-true-false
+    "UP017",  # datetime.UTC (Python 3.11+ only; local dev may use 3.10)
+    "UP041",  # asyncio.TimeoutError alias changed in 3.11; keep explicit form
 ]
 
 [tool.ruff.lint.per-file-ignores]

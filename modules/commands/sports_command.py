@@ -20,7 +20,7 @@ Team IDs should be periodically verified, especially after:
 """
 
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from ..clients.espn_client import ESPNClient
 from ..clients.sports_mappings import LEAGUE_MAPPINGS, SPORT_EMOJIS, TEAM_MAPPINGS
@@ -53,10 +53,10 @@ class SportsCommand(BaseCommand):
     ]
 
     # ESPN client
-    espn_client: Optional[ESPNClient] = None
+    espn_client: ESPNClient | None = None
 
     # TheSportsDB client for leagues not supported by ESPN
-    thesportsdb_client: Optional[TheSportsDBClient] = None
+    thesportsdb_client: TheSportsDBClient | None = None
 
 
     def __init__(self, bot: "MeshCoreBot"):
@@ -180,7 +180,7 @@ class SportsCommand(BaseCommand):
 
         return result
 
-    def get_league_info(self, league_name: str) -> Optional[dict[str, str]]:
+    def get_league_info(self, league_name: str) -> dict[str, str] | None:
         """Get league information for league queries"""
         return LEAGUE_MAPPINGS.get(league_name.lower())
 
@@ -470,7 +470,7 @@ class SportsCommand(BaseCommand):
             self.logger.error(f"Error fetching score for {team_name}: {e}")
             return self.translate('commands.sports.error_fetching_team', team=team_name)
 
-    async def fetch_team_score(self, team_info: dict[str, str]) -> Optional[str]:
+    async def fetch_team_score(self, team_info: dict[str, str]) -> str | None:
         """Fetch score information for a team - returns current/next game plus past results"""
         games = await self.fetch_team_games(team_info)
         if not games:
@@ -640,7 +640,7 @@ class SportsCommand(BaseCommand):
             team_info['sport'], team_info['league'], team_info['team_id']
         )
 
-    async def fetch_team_game_data(self, team_info: dict[str, str]) -> Optional[dict]:
+    async def fetch_team_game_data(self, team_info: dict[str, str]) -> dict | None:
         """Fetch structured game data for a team with timestamp for sorting
 
         Uses the team schedule endpoint which returns both past and upcoming games
@@ -705,7 +705,7 @@ class SportsCommand(BaseCommand):
             team_info['sport'], team_info['league'], team_info['team_id']
         )
 
-    async def fetch_team_schedule_formatted(self, team_info: dict[str, str]) -> Optional[str]:
+    async def fetch_team_schedule_formatted(self, team_info: dict[str, str]) -> str | None:
         """Fetch and format upcoming scheduled games for a team
 
         Returns formatted schedule with as many games as fit in 130 characters.

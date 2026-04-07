@@ -1,6 +1,5 @@
 import logging
 from datetime import datetime, timezone
-from typing import Optional
 
 import aiohttp
 
@@ -12,7 +11,7 @@ class ESPNClient:
 
     BASE_URL = "http://site.api.espn.com/apis/site/v2/sports"
 
-    def __init__(self, logger: Optional[logging.Logger] = None, timeout: int = 10, session: Optional[aiohttp.ClientSession] = None):
+    def __init__(self, logger: logging.Logger | None = None, timeout: int = 10, session: aiohttp.ClientSession | None = None):
         """Initialize the ESPN API client.
 
         Args:
@@ -126,7 +125,7 @@ class ESPNClient:
             self.logger.error(f"Error finding team in scoreboard: {e}")
             return []
 
-    async def fetch_live_event_data(self, event_id: str, sport: str, league: str) -> Optional[dict]:
+    async def fetch_live_event_data(self, event_id: str, sport: str, league: str) -> dict | None:
         """Fetch live event data from the scoreboard endpoint for real-time scores
 
         The scoreboard endpoint provides more up-to-date scores for live games than the schedule endpoint.
@@ -174,7 +173,7 @@ class ESPNClient:
             return str(score)
         return '0'
 
-    def extract_shootout_score(self, competitor: dict) -> Optional[int]:
+    def extract_shootout_score(self, competitor: dict) -> int | None:
         """Extract penalty shootout score from competitor data"""
         score = competitor.get('score', {})
         if isinstance(score, dict) and 'shootoutScore' in score:
@@ -183,7 +182,7 @@ class ESPNClient:
                 return int(shootout)
         return None
 
-    def parse_game_event_with_timestamp(self, event: dict, team_id: str, sport: str, league: str) -> Optional[dict]:
+    def parse_game_event_with_timestamp(self, event: dict, team_id: str, sport: str, league: str) -> dict | None:
         """Parse a game event and return structured data with timestamp for sorting"""
         try:
             competitions = event.get('competitions', [])
@@ -223,7 +222,7 @@ class ESPNClient:
             # Get timestamp for sorting
             date_str = event.get('date', '')
             timestamp: float = 0
-            event_timestamp: Optional[float] = None
+            event_timestamp: float | None = None
             if date_str:
                 try:
                     dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
@@ -322,6 +321,6 @@ class ESPNClient:
             self.logger.error(f"Error parsing ESPN event {event.get('id')}: {e}")
             return None
 
-    def parse_league_game_event(self, event: dict, sport: str, league: str) -> Optional[dict]:
+    def parse_league_game_event(self, event: dict, sport: str, league: str) -> dict | None:
         """Parse a league game event (scoreboard)"""
         return self.parse_game_event_with_timestamp(event, "", sport, league)

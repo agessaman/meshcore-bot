@@ -4,7 +4,7 @@ Schedule command for the MeshCore Bot
 Lists upcoming scheduled messages and interval advertising settings.
 """
 
-from typing import Any, Optional
+from typing import Any
 
 from ..models import MeshMessage
 from .base_command import BaseCommand
@@ -99,7 +99,7 @@ class ScheduleCommand(BaseCommand):
             results.append((time_str, channel, preview))
         return results
 
-    def _get_advert_info(self) -> Optional[str]:
+    def _get_advert_info(self) -> str | None:
         """Return a one-line advert interval summary, or None if disabled."""
         try:
             interval_hours = self.bot.config.getint(

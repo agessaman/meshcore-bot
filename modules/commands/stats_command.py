@@ -5,7 +5,7 @@ Provides comprehensive statistics about bot usage, messages, and activity
 """
 
 import time
-from typing import Any, Optional
+from typing import Any
 
 from ..models import MeshMessage
 from .base_command import BaseCommand
@@ -539,7 +539,7 @@ class StatsCommand(BaseCommand):
             self.logger.error(f"Error getting channel leaderboard: {e}")
             return self.translate('commands.stats.error_channels', error=str(e))
 
-    async def _get_path_leaderboard(self, message: Optional[MeshMessage] = None) -> str:
+    async def _get_path_leaderboard(self, message: MeshMessage | None = None) -> str:
         """Get leaderboard for longest paths seen.
 
         Returns:
@@ -600,7 +600,7 @@ class StatsCommand(BaseCommand):
             self.logger.error(f"Error getting path leaderboard: {e}")
             return self.translate('commands.stats.error_paths', error=str(e))
 
-    async def _get_adverts_leaderboard(self, message: Optional[MeshMessage] = None, show_hashes: bool = False) -> str:
+    async def _get_adverts_leaderboard(self, message: MeshMessage | None = None, show_hashes: bool = False) -> str:
         """Get leaderboard for nodes with most unique advert packets in last 24 hours.
 
         Args:

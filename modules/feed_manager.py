@@ -15,7 +15,7 @@ import sqlite3
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import urlparse
 
 import aiohttp
@@ -63,13 +63,13 @@ class FeedManager:
         self._domain_last_request: dict[str, float] = {}
 
         # HTTP session
-        self.session: Optional[aiohttp.ClientSession] = None
+        self.session: aiohttp.ClientSession | None = None
 
         # Semaphore to limit concurrent requests
         self._request_semaphore = asyncio.Semaphore(5)
 
         # Serialize process_message_queue (scheduler may schedule another run if result() times out)
-        self._process_queue_lock: Optional[asyncio.Lock] = None
+        self._process_queue_lock: asyncio.Lock | None = None
 
         self.logger.info("FeedManager initialized")
 
@@ -236,7 +236,7 @@ class FeedManager:
                         if response.status != 200:
                             raise Exception(f"HTTP {response.status}")
                         content = await response.text()
-                except (asyncio.TimeoutError, aiohttp.ServerTimeoutError):
+                except (TimeoutError, aiohttp.ServerTimeoutError):
                     raise Exception(f"Request timeout after {self.request_timeout} seconds")
 
             # Parse RSS feed
@@ -356,7 +356,7 @@ class FeedManager:
                             if response.status != 200:
                                 raise Exception(f"HTTP {response.status}")
                             data = await response.json()
-                except (asyncio.TimeoutError, aiohttp.ServerTimeoutError):
+                except (TimeoutError, aiohttp.ServerTimeoutError):
                     raise Exception(f"Request timeout after {self.request_timeout} seconds")
 
             # Extract items using parser config
@@ -483,7 +483,7 @@ class FeedManager:
             self.logger.error(f"Error processing API feed: {e}")
             raise
 
-    def _format_timestamp(self, published: Optional[datetime]) -> str:
+    def _format_timestamp(self, published: datetime | None) -> str:
         """Format a timestamp as a relative time string"""
         if not published:
             return ""
@@ -791,7 +791,7 @@ class FeedManager:
 
         return value if value is not None else default
 
-    def _parse_microsoft_date(self, date_str: str) -> Optional[datetime]:
+    def _parse_microsoft_date(self, date_str: str) -> datetime | None:
         """Parse Microsoft JSON date format: /Date(timestamp-offset)/"""
         if not date_str or not isinstance(date_str, str):
             return None
@@ -1152,7 +1152,7 @@ class FeedManager:
     def _update_feed_last_check(self, feed_id: int):
         """Update the last check time for a feed"""
         try:
-            from datetime import datetime, timezone
+            from datetime import datetime
             # Use Python's datetime to ensure proper timezone handling
             # Store in ISO format with timezone for JavaScript compatibility
             now = datetime.now(timezone.utc)

@@ -14,7 +14,6 @@ import threading
 import time
 from contextlib import closing, suppress
 from pathlib import Path
-from typing import Optional
 
 from ..utils import resolve_path
 
@@ -59,9 +58,9 @@ class BotIntegration:
         self.circuit_breaker_last_failure_time = 0.0
         self.is_shutting_down = False
         # Batched write queue: avoids a per-insert sqlite3.connect() round-trip
-        self._write_queue: queue.Queue = queue.Queue()
+        self._write_queue: queue.Queue = queue.Queue(maxsize=1000)
         self._drain_stop = threading.Event()
-        self._drain_thread: Optional[threading.Thread] = None
+        self._drain_thread: threading.Thread | None = None
         # Initialize HTTP session with connection pooling for efficient reuse
         self._init_http_session()
         # Generate a shared secret for authenticating internal /api/stream_data calls.
@@ -219,7 +218,6 @@ class BotIntegration:
         self._drain_thread = threading.Thread(
             target=self._drain_loop,
             name="packet-stream-drain",
-            daemon=True,
         )
         self._drain_thread.start()
 
@@ -247,11 +245,15 @@ class BotIntegration:
         for attempt in range(max_retries):
             try:
                 with closing(sqlite3.connect(str(db_path), timeout=60.0)) as conn:
-                    conn.executemany(
-                        'INSERT INTO packet_stream (timestamp, data, type) VALUES (?, ?, ?)',
-                        rows,
-                    )
-                    conn.commit()
+                    try:
+                        conn.executemany(
+                            'INSERT INTO packet_stream (timestamp, data, type) VALUES (?, ?, ?)',
+                            rows,
+                        )
+                        conn.commit()
+                    except Exception:
+                        conn.rollback()
+                        raise
                 return
             except sqlite3.OperationalError as e:
                 if "locked" in str(e).lower() and attempt < max_retries - 1:
@@ -385,7 +387,7 @@ class BotIntegration:
         except Exception as e:
             self.bot.logger.debug(f"Error storing routing data: {e}")
 
-    def cleanup_old_data(self, days_to_keep: Optional[int] = None):
+    def cleanup_old_data(self, days_to_keep: int | None = None):
         """Clean up old packet stream data to prevent database bloat.
         Uses [Data_Retention] packet_stream_retention_days when days_to_keep is not provided."""
         try:
@@ -729,8 +731,11 @@ class WebViewerIntegration:
                 text=True
             )
 
-            # Give it a moment to start up
-            time.sleep(2)
+            # Wait up to 2s for an immediate crash; TimeoutExpired means it's still running (good)
+            try:
+                self.viewer_process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                pass  # still running — expected success path
 
             # Check if it started successfully
             if self.viewer_process and self.viewer_process.poll() is not None:
@@ -770,9 +775,12 @@ class WebViewerIntegration:
             # Web viewer is ready
             self.logger.info("Web viewer integration ready for data streaming")
 
-            # Monitor the process
+            # Monitor the process; process.wait(timeout=1) wakes immediately on exit
             while self.running and self.viewer_process and self.viewer_process.poll() is None:
-                time.sleep(1)
+                try:
+                    self.viewer_process.wait(timeout=1)
+                except subprocess.TimeoutExpired:
+                    pass  # still running — check loop condition again
 
             # Process exited - read from log files for error reporting if needed
             if self.viewer_process and self.viewer_process.returncode != 0:
@@ -828,12 +836,16 @@ class WebViewerIntegration:
         }
 
     def restart_viewer(self):
-        """Restart the web viewer with rate limiting"""
+        """Restart the web viewer with exponential backoff rate limiting."""
         current_time = time.time()
 
-        # Rate limit restarts to prevent restart loops
-        if current_time - self.last_restart < 30:  # 30 seconds between restarts
-            self.logger.warning("Restart rate limited - too soon since last restart")
+        # Exponential backoff: 30s, 60s, 120s, 240s, capped at 300s
+        backoff = min(30 * (2 ** self.restart_count), 300)
+        if current_time - self.last_restart < backoff:
+            self.logger.warning(
+                "Restart rate limited - %ds backoff not elapsed (attempt %d)",
+                backoff, self.restart_count,
+            )
             return
 
         if self.restart_count >= self.max_restarts:
@@ -845,9 +857,7 @@ class WebViewerIntegration:
         self.last_restart = current_time
 
         self.logger.info(f"Restarting web viewer (attempt {self.restart_count}/{self.max_restarts})...")
-        self.stop_viewer()
-        time.sleep(3)  # Give it more time to stop
-
+        self.stop_viewer()  # already terminates + kills with timeouts; no sleep needed
         self.start_viewer()
 
     def is_viewer_healthy(self):

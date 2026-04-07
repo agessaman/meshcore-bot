@@ -7,7 +7,7 @@ Polls USGS Earthquake API and notifies a channel when earthquakes occur in a con
 import asyncio
 import contextlib
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any
 
 import requests
 
@@ -59,7 +59,7 @@ class EarthquakeService(BaseServicePlugin):
         )
 
         self._running = False
-        self._poll_task: Optional[asyncio.Task] = None
+        self._poll_task: asyncio.Task | None = None
         self.seen_event_ids: set[str] = set()
         self._last_posted_time_ms: int = self._load_last_posted_time_ms()
         self._session = requests.Session()

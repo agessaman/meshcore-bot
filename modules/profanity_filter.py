@@ -8,7 +8,6 @@ better-profanity can detect them.
 Also checks for hate symbols (e.g. swastika Unicode) that word lists do not catch.
 """
 
-from typing import Any, Optional
 
 # Unicode code points for symbols we treat as profanity (e.g. swastika forms).
 # These are checked in addition to better-profanity's word list.
@@ -22,23 +21,17 @@ _profanity_initialized = False
 _warned_unavailable = False
 _unidecode_available = False
 
-profanity: Any = None
 try:
-    from better_profanity import profanity as _better_profanity
-
-    profanity = _better_profanity
+    from better_profanity import profanity
     _profanity_available = True
 except ImportError:
-    pass
+    profanity = None
 
-unidecode: Any = None
 try:
-    from unidecode import unidecode as _unidecode_impl
-
-    unidecode = _unidecode_impl
+    from unidecode import unidecode
     _unidecode_available = True
 except ImportError:
-    pass
+    unidecode = None
 
 
 def _has_hate_symbols(text: str) -> bool:
@@ -61,7 +54,7 @@ def _normalize_for_profanity(text: str) -> str:
     return text
 
 
-def _ensure_initialized(logger: Optional[object] = None) -> bool:
+def _ensure_initialized(logger: object | None = None) -> bool:
     """Load censor wordlist on first use. Returns True if filtering is available."""
     global _profanity_initialized, _warned_unavailable
     if not _profanity_available:
@@ -79,7 +72,7 @@ def _ensure_initialized(logger: Optional[object] = None) -> bool:
     return True
 
 
-def censor(text: Optional[str], logger: Optional[object] = None) -> str:
+def censor(text: str | None, logger: object | None = None) -> str:
     """
     Replace profanity in text with ****. Returns original text if library unavailable.
     Hate symbols (e.g. swastika Unicode) are replaced with ***.
@@ -105,7 +98,7 @@ def censor(text: Optional[str], logger: Optional[object] = None) -> str:
     return profanity.censor(normalized)
 
 
-def contains_profanity(text: Optional[str], logger: Optional[object] = None) -> bool:
+def contains_profanity(text: str | None, logger: object | None = None) -> bool:
     """
     Return True if text contains any word from the profanity wordlist or a blocked hate symbol.
 

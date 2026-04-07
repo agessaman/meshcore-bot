@@ -5,7 +5,7 @@ Provides help information for commands and general usage
 """
 
 from collections import defaultdict
-from typing import Any, Optional
+from typing import Any
 
 from ..models import MeshMessage
 from .base_command import BaseCommand
@@ -148,7 +148,7 @@ class HelpCommand(BaseCommand):
         help_text += self.translate('commands.help.custom_syntax')
         return help_text
 
-    def _is_command_valid_for_channel(self, cmd_name: str, cmd_instance: Any, message: Optional[MeshMessage]) -> bool:
+    def _is_command_valid_for_channel(self, cmd_name: str, cmd_instance: Any, message: MeshMessage | None) -> bool:
         """Return True if this command is valid in the message's channel context."""
         if message is None:
             return True
@@ -164,7 +164,7 @@ class HelpCommand(BaseCommand):
     HELP_LIST_SUFFIX = " | More: 'help <command>'"
 
     def get_available_commands_list(
-        self, message: Optional[MeshMessage] = None, max_length: Optional[int] = None
+        self, message: MeshMessage | None = None, max_length: int | None = None
     ) -> str:
         """Get a list of most popular commands in descending order.
 
@@ -285,7 +285,7 @@ class HelpCommand(BaseCommand):
             return self._format_commands_list_to_length(command_names, max_length)
 
     def _format_commands_list_to_length(
-        self, command_names: list, max_length: Optional[int] = None
+        self, command_names: list, max_length: int | None = None
     ) -> str:
         """Format command names as comma-separated list, optionally truncated to max_length."""
         if not max_length or max_length <= 0:

@@ -8,7 +8,7 @@ import asyncio
 import sqlite3
 import time
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any
 
 from ..models import MeshMessage
 from ..utils import decode_escape_sequences
@@ -377,7 +377,7 @@ class GreeterCommand(BaseCommand):
         except Exception as e:
             self.logger.error(f"Error marking active users as greeted: {e}")
 
-    def backfill_greeted_users(self, lookback_days: Optional[int] = None) -> dict[str, Any]:
+    def backfill_greeted_users(self, lookback_days: int | None = None) -> dict[str, Any]:
         """Backfill greeted_users table from historical message_stats data.
 
         This allows marking all users who have posted on public channels in the past,
@@ -485,7 +485,7 @@ class GreeterCommand(BaseCommand):
                 'marked_count': 0
             }
 
-    def start_rollout(self, days: Optional[int] = None, backfill_first: bool = True) -> bool:
+    def start_rollout(self, days: int | None = None, backfill_first: bool = True) -> bool:
         """Start a rollout period where all active users are marked as greeted.
 
         Args:
@@ -569,7 +569,7 @@ class GreeterCommand(BaseCommand):
 
         return previous_row[-1]
 
-    def _find_similar_greeted_user(self, sender_id: str, channel: str) -> Optional[str]:
+    def _find_similar_greeted_user(self, sender_id: str, channel: str) -> str | None:
         """Find if a user with a similar name has been greeted.
 
         Args:
@@ -975,7 +975,7 @@ class GreeterCommand(BaseCommand):
             return self.channel_greetings[channel.lower()]['greeting']
         return self.greeting_message
 
-    async def _format_greeting_parts(self, sender_id: str, channel: Optional[str] = None, mesh_info: Optional[dict[str, Any]] = None) -> list[str]:
+    async def _format_greeting_parts(self, sender_id: str, channel: str | None = None, mesh_info: dict[str, Any] | None = None) -> list[str]:
         """Format greeting message parts with mesh information.
 
         Args:

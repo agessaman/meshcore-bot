@@ -8,8 +8,9 @@ import json
 import os
 import sqlite3
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     pass
@@ -169,6 +170,8 @@ class MaintenanceRunner:
                     )
                     try:
                         future.result(timeout=60)
+                    except RuntimeError as e:
+                        self.logger.warning(f"Event loop gone during cleanup_database: {e}")
                     except Exception as e:
                         self.logger.error(f"Error in repeater_manager.cleanup_database: {e}")
                 else:

@@ -7,7 +7,7 @@ Provides aircraft tracking using ADS-B data from airplanes.live or compatible AP
 import asyncio
 import math
 import re
-from typing import Any, Optional
+from typing import Any
 
 import requests
 
@@ -111,7 +111,7 @@ class AirplanesCommand(BaseCommand):
         index = round(bearing / 45) % 8
         return directions[index]
 
-    def _get_companion_location(self, message: MeshMessage) -> Optional[tuple[float, float]]:
+    def _get_companion_location(self, message: MeshMessage) -> tuple[float, float] | None:
         """Get companion/sender location from database.
 
         Args:
@@ -145,7 +145,7 @@ class AirplanesCommand(BaseCommand):
             self.logger.debug(f"Error getting companion location: {e}")
             return None
 
-    def _get_bot_location(self) -> Optional[tuple[float, float]]:
+    def _get_bot_location(self) -> tuple[float, float] | None:
         """Get bot location from config.
 
         Returns:
@@ -164,7 +164,7 @@ class AirplanesCommand(BaseCommand):
             self.logger.debug(f"Error getting bot location: {e}")
             return None
 
-    def _parse_coordinates(self, args: str) -> Optional[tuple[float, float]]:
+    def _parse_coordinates(self, args: str) -> tuple[float, float] | None:
         """Parse latitude and longitude from command arguments.
 
         Args:
@@ -290,7 +290,7 @@ class AirplanesCommand(BaseCommand):
 
         return filters
 
-    def _fetch_aircraft_data(self, lat: float, lon: float, radius: float) -> Optional[dict[str, Any]]:
+    def _fetch_aircraft_data(self, lat: float, lon: float, radius: float) -> dict[str, Any] | None:
         """Fetch aircraft data from API.
 
         Args:

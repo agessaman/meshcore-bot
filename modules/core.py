@@ -14,9 +14,10 @@ import sqlite3
 import struct
 import threading
 import time
+from collections.abc import Callable
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import colorlog
 
@@ -1035,7 +1036,7 @@ long_jokes = false
         # Register signal handlers
         signal.signal(signal.SIGTERM, signal_handler)
         signal.signal(signal.SIGINT, signal_handler)
-    
+
     async def _attempt_reconnect(self) -> bool:
         """Attempt to reconnect to the MeshCore node with exponential backoff.
 

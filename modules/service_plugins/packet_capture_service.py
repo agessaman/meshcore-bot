@@ -12,7 +12,7 @@ import logging
 import os
 import time
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 # Import meshcore
 from meshcore import EventType
@@ -450,7 +450,7 @@ class PacketCaptureService(BaseServicePlugin):
 
         self.logger.info("Packet capture event handlers registered")
 
-    async def handle_rx_log_data(self, event: Any, metadata: Optional[dict[str, Any]] = None) -> None:
+    async def handle_rx_log_data(self, event: Any, metadata: dict[str, Any] | None = None) -> None:
         """Handle RX log data events (matches original script).
 
         Args:
@@ -488,7 +488,7 @@ class PacketCaptureService(BaseServicePlugin):
         except Exception as e:
             self.logger.error(f"Error handling RX log data: {e}")
 
-    async def handle_raw_data(self, event: Any, metadata: Optional[dict[str, Any]] = None) -> None:
+    async def handle_raw_data(self, event: Any, metadata: dict[str, Any] | None = None) -> None:
         """Handle raw data events.
 
         Args:
@@ -522,7 +522,7 @@ class PacketCaptureService(BaseServicePlugin):
         except Exception as e:
             self.logger.error(f"Error handling raw data: {e}")
 
-    def _format_packet_data(self, raw_hex: str, packet_info: dict[str, Any], payload: dict[str, Any], metadata: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    def _format_packet_data(self, raw_hex: str, packet_info: dict[str, Any], payload: dict[str, Any], metadata: dict[str, Any] | None = None) -> dict[str, Any]:
         """Format packet data to match original script's format_packet_data exactly.
 
         Args:
@@ -736,7 +736,7 @@ class PacketCaptureService(BaseServicePlugin):
 
         return packet_data
 
-    async def process_packet(self, raw_hex: str, payload: dict[str, Any], metadata: Optional[dict[str, Any]] = None) -> None:
+    async def process_packet(self, raw_hex: str, payload: dict[str, Any], metadata: dict[str, Any] | None = None) -> None:
         """Process a captured packet.
 
         Decodes the packet, formats it, writes to file, and publishes to MQTT.
@@ -814,7 +814,7 @@ class PacketCaptureService(BaseServicePlugin):
         except Exception as e:
             self.logger.error(f"Error processing packet: {e}")
 
-    def decode_packet(self, raw_hex: str, payload: dict[str, Any]) -> Optional[dict[str, Any]]:
+    def decode_packet(self, raw_hex: str, payload: dict[str, Any]) -> dict[str, Any] | None:
         """Decode a MeshCore packet - matches original packet_capture.py functionality.
 
         Args:
@@ -1242,7 +1242,7 @@ class PacketCaptureService(BaseServicePlugin):
         else:
             self.logger.warning("MQTT enabled but no brokers connected")
 
-    def _resolve_topic_template(self, template: str, packet_type: str = 'packet') -> Optional[str]:
+    def _resolve_topic_template(self, template: str, packet_type: str = 'packet') -> str | None:
         """Resolve topic template with placeholders.
 
         Args:
@@ -1536,7 +1536,7 @@ class PacketCaptureService(BaseServicePlugin):
         self.stats_supported = available
         return available
 
-    async def refresh_stats(self, force: bool = False) -> Optional[dict[str, Any]]:
+    async def refresh_stats(self, force: bool = False) -> dict[str, Any] | None:
         """Fetch stats from the radio and cache them for status publishing (matches original script).
 
         Args:

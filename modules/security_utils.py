@@ -11,10 +11,12 @@ import platform
 import re
 import socket
 from pathlib import Path
-from typing import Optional
 from urllib.parse import urlparse
 
 logger = logging.getLogger('MeshCoreBot.Security')
+
+# CGN (Carrier-Grade NAT) network 100.64.0.0/10 - RFC 6598
+_CGN_NETWORK = ipaddress.ip_network("100.64.0.0/10")
 
 
 def _is_nix_environment() -> bool:
@@ -42,13 +44,22 @@ def _is_nix_environment() -> bool:
     return bool(any(var in os.environ for var in nix_env_vars))
 
 
-def validate_external_url(url: str, allow_localhost: bool = False, timeout: float = 2.0) -> bool:
+def validate_external_url(
+    url: str,
+    allow_private: bool = False,
+    allow_loopback: bool | None = None,  # Deprecated: use allow_localhost=True instead
+    allow_localhost: bool = False,
+    timeout: float = 2.0
+) -> bool:
     """
     Validate that URL points to safe external resource (SSRF protection)
 
     Args:
         url: URL to validate
-        allow_localhost: Whether to allow localhost/private IPs (default: False)
+        allow_private: Whether to allow private/internal IPs (default: False)
+        allow_loopback: Deprecated. Use allow_localhost=True instead.
+        allow_localhost: Permit loopback-only addresses (127.0.0.1, ::1) — useful
+            for internal health-check or admin URLs (default: False)
         timeout: DNS resolution timeout in seconds (default: 2.0)
 
     Returns:
@@ -56,6 +67,10 @@ def validate_external_url(url: str, allow_localhost: bool = False, timeout: floa
 
     Raises:
         ValueError: If URL is invalid or unsafe
+
+    Note:
+        - allow_localhost=True permits only loopback (127.x, ::1)
+        - allow_private=True permits all internal ranges (loopback, RFC1918, CGN, link-local)
     """
     try:
         parsed = urlparse(url)
@@ -84,17 +99,31 @@ def validate_external_url(url: str, allow_localhost: bool = False, timeout: floa
 
             ip_obj = ipaddress.ip_address(ip)
 
-            # If localhost is not allowed, reject private/internal IPs
-            if not allow_localhost:
-                # Reject private/internal IPs
+            # If loopback is not allowed, reject loopback addresses
+            _allow_loopback_only = allow_localhost or (allow_loopback is True)
+            if _allow_loopback_only:
+                # Only allow loopback, reject everything else
+                if not ip_obj.is_loopback:
+                    logger.warning(f"URL resolves to non-loopback IP with allow_localhost: {ip}")
+                    return False
+            elif allow_loopback is False or not allow_private:
+                # Reject private/internal IPs (RFC1918, CGN, link-local)
                 if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local:
                     logger.warning(f"URL resolves to private/internal IP: {ip}")
+                    return False
+
+                # Reject CGN (Carrier-Grade NAT) - RFC 6598
+                if ip_obj in _CGN_NETWORK:
+                    logger.warning(f"URL resolves to CGN IP: {ip}")
                     return False
 
                 # Reject reserved ranges
                 if ip_obj.is_reserved or ip_obj.is_multicast:
                     logger.warning(f"URL resolves to reserved/multicast IP: {ip}")
                     return False
+            else:
+                # allow_private=True: allow all internal ranges
+                pass
 
         except socket.gaierror as e:
             logger.warning(f"Failed to resolve hostname {parsed.hostname}: {e}")
@@ -202,7 +231,7 @@ def validate_safe_path(file_path: str, base_dir: str = '.', allow_absolute: bool
         raise ValueError(f"Invalid or unsafe file path: {file_path} - {e}")
 
 
-def sanitize_input(content: str, max_length: Optional[int] = 500, strip_controls: bool = True) -> str:
+def sanitize_input(content: str, max_length: int | None = 500, strip_controls: bool = True) -> str:
     """
     Sanitize user input to prevent injection attacks
 
@@ -241,6 +270,39 @@ def sanitize_input(content: str, max_length: Optional[int] = 500, strip_controls
     content = content.replace('\x00', '')
 
     return content.strip()
+
+
+def sanitize_name(name: str, max_length: int = 64) -> str:
+    """
+    Sanitize a display name or identifier for use in log messages and stored fields.
+
+    Unlike sanitize_input(), this strips ALL control characters including newline,
+    carriage return, and tab — preventing log injection via malicious node names.
+
+    Args:
+        name: Display name or identifier to sanitize (e.g., mesh node name)
+        max_length: Maximum allowed length (default: 64 chars)
+
+    Returns:
+        Sanitized string safe for log output and database storage
+    """
+    if not isinstance(name, str):
+        name = str(name)
+
+    if max_length < 0:
+        raise ValueError(f"max_length must be non-negative, got {max_length}")
+
+    # Truncate to max_length first
+    if len(name) > max_length:
+        name = name[:max_length]
+
+    # Strip ALL control characters including \n, \r, \t (log injection prevention)
+    name = ''.join(char for char in name if ord(char) >= 32)
+
+    # Remove null bytes
+    name = name.replace('\x00', '')
+
+    return name.strip()
 
 
 # Valid SQLite journal modes for PRAGMA journal_mode validation

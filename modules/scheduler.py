@@ -4,6 +4,7 @@ Message scheduler functionality for the MeshCore Bot
 Handles scheduled messages and timing
 """
 
+import asyncio
 import datetime
 import json
 import os
@@ -11,16 +12,13 @@ import sqlite3
 import threading
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from .maintenance import MaintenanceRunner
+from .security_utils import validate_external_url
 from .utils import decode_escape_sequences, format_keyword_response_with_placeholders, get_config_timezone
-
-# process_message_queue may await long per-feed intervals across many queued items; 30s is too short.
-_FEED_MESSAGE_QUEUE_FUTURE_TIMEOUT = 600
 
 
 class MessageScheduler:
@@ -31,17 +29,19 @@ class MessageScheduler:
         self.logger = bot.logger
         self.scheduled_messages = {}
         self.scheduler_thread = None
-        self._apscheduler: Optional[BackgroundScheduler] = None
+        self._apscheduler: BackgroundScheduler | None = None
         self.last_channel_ops_check_time = 0
         self.last_message_queue_check_time = 0
         self.last_radio_ops_check_time = 0
-        # Align with nightly email: first retention run after ~24h uptime (not immediately on boot).
         self.last_data_retention_run = time.time()
         self._data_retention_interval_seconds = 86400  # 24 hours
         self.last_nightly_email_time = time.time()     # don't send immediately on startup
+        self._last_retention_stats: dict[str, Any] = {}
         self.last_db_backup_run = 0
+        self._last_db_backup_stats: dict[str, Any] = {}
         self.last_log_rotation_check_time = 0
-        self.maintenance = MaintenanceRunner(bot, get_current_time=self.get_current_time)
+        self._last_log_rotation_applied: dict[str, str] = {}
+        self._stop_event = threading.Event()
 
     def get_current_time(self):
         """Get current time in configured timezone"""
@@ -54,8 +54,8 @@ class MessageScheduler:
         if self._apscheduler is not None:
             try:
                 self._apscheduler.shutdown(wait=False)
-            except Exception as e:
-                self.logger.debug("Error shutting down scheduler: %s", e)
+            except Exception:  # noqa: BLE001 — SchedulerNotRunningError or misc shutdown error
+                pass
         tz, _ = get_config_timezone(self.bot.config, self.logger)
         self._apscheduler = BackgroundScheduler(timezone=tz)
         self.scheduled_messages.clear()
@@ -123,6 +123,13 @@ class MessageScheduler:
 
     def send_scheduled_message(self, channel: str, message: str):
         """Send a scheduled message (synchronous wrapper for schedule library)"""
+        if self.bot.is_radio_zombie:
+            self.logger.warning("send_scheduled_message suppressed — radio is in zombie state")
+            return
+        if self.bot.is_radio_offline:
+            self.logger.warning("send_scheduled_message suppressed — radio is offline (repeated send timeouts)")
+            return
+
         current_time = self.get_current_time()
         self.logger.info(f"📅 Sending scheduled message at {current_time.strftime('%H:%M:%S')} to {channel}: {message}")
 
@@ -139,15 +146,23 @@ class MessageScheduler:
             # Wait for completion (with timeout to prevent indefinite blocking)
             try:
                 future.result(timeout=60)  # 60 second timeout
+                self.bot._record_send_success()
+            except RuntimeError as e:
+                self.logger.warning(f"Event loop gone while sending scheduled message: {e}")
+                self.bot._record_send_failure(scheduler=self)
             except Exception as e:
-                self.logger.error(f"Error sending scheduled message: {e}")
+                self.logger.error(f"Error sending scheduled message: {type(e).__name__}: {e}", exc_info=True)
+                self.bot._record_send_failure(scheduler=self)
         else:
-            # Fallback: create a temporary event loop and close it when done
-            loop = asyncio.new_event_loop()
+            # Fallback: create new event loop if main loop not available
             try:
-                loop.run_until_complete(self._send_scheduled_message_async(channel, message))
-            finally:
-                loop.close()
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            # Run the async function in the event loop
+            loop.run_until_complete(self._send_scheduled_message_async(channel, message))
 
     async def _get_mesh_info(self) -> dict[str, Any]:
         """Get mesh network information for scheduled messages"""
@@ -217,8 +232,8 @@ class MessageScheduler:
                             result = cursor.fetchone()
                             if result:
                                 info['recent_activity_24h'] = result[0]
-                except Exception as e:
-                    self.logger.debug("Error querying message_stats: %s", e)
+                except (sqlite3.Error, OSError):
+                    pass
 
             # Calculate new devices in last 7 days (matching web viewer logic)
             # Query devices first heard in the last 7 days, grouped by role
@@ -325,7 +340,11 @@ class MessageScheduler:
             except Exception as e:
                 self.logger.warning(f"Error fetching mesh info for scheduled message: {e}. Sending message as-is.")
 
-        await self.bot.command_manager.send_channel_message(channel, message)
+        send_timeout = self.bot.config.getint('Bot', 'send_timeout_seconds', fallback=30)
+        await asyncio.wait_for(
+            self.bot.command_manager.send_channel_message(channel, message),
+            timeout=send_timeout,
+        )
 
     def start(self):
         """Start the scheduler in a separate thread"""
@@ -334,11 +353,12 @@ class MessageScheduler:
 
     def join(self, timeout: float = 5.0) -> None:
         """Wait for the scheduler thread to finish and stop APScheduler (e.g. during shutdown)."""
+        self._stop_event.set()
         if self._apscheduler is not None:
             try:
                 self._apscheduler.shutdown(wait=False)
-            except Exception as e:
-                self.logger.debug("Error shutting down scheduler: %s", e)
+            except Exception:  # noqa: BLE001 — SchedulerNotRunningError or misc shutdown error
+                pass
         if self.scheduler_thread and self.scheduler_thread.is_alive():
             self.scheduler_thread.join(timeout=timeout)
             if self.scheduler_thread.is_alive():
@@ -391,15 +411,18 @@ class MessageScheduler:
                             if not f.cancelled() and f.exception() else None
                         )
                     else:
-                        # Fallback: create a temporary event loop and close it when done
-                        loop = asyncio.new_event_loop()
+                        # Fallback: create new event loop if main loop not available
+                        try:
+                            loop = asyncio.get_event_loop()
+                        except RuntimeError:
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+
                         try:
                             loop.run_until_complete(self.bot.feed_manager.poll_all_feeds())
                             self.logger.debug("Feed polling cycle completed")
                         except Exception as e:
                             self.logger.error(f"Error in feed polling cycle: {e}")
-                        finally:
-                            loop.close()
                     last_feed_poll_time = time.time()
 
             # Channels are fetched once on launch only - no periodic refresh
@@ -456,16 +479,10 @@ class MessageScheduler:
                             self.bot.feed_manager.process_message_queue(),
                             self.bot.main_event_loop
                         )
-                        try:
-                            future.result(timeout=_FEED_MESSAGE_QUEUE_FUTURE_TIMEOUT)
-                        except TimeoutError:
-                            self.logger.warning(
-                                "Timed out waiting for feed message queue after %ss; "
-                                "work may still be running on the main loop (per-feed send spacing).",
-                                _FEED_MESSAGE_QUEUE_FUTURE_TIMEOUT,
-                            )
-                        except Exception as e:
-                            self.logger.exception(f"Error processing message queue: {e}")
+                        future.add_done_callback(
+                            lambda f: self.logger.exception("Error processing message queue: %s", f.exception())
+                            if not f.cancelled() and f.exception() else None
+                        )
                     else:
                         # Fallback: create new event loop if main loop not available
                         try:
@@ -479,27 +496,111 @@ class MessageScheduler:
 
             # Data retention: run daily (packet_stream, repeater tables, stats, caches, mesh_connections)
             if time.time() - self.last_data_retention_run >= self._data_retention_interval_seconds:
-                self.maintenance.run_data_retention()
+                self._run_data_retention()
                 self.last_data_retention_run = time.time()
 
             # Nightly maintenance email (24 h interval, after retention so stats are fresh)
             if time.time() - self.last_nightly_email_time >= self._data_retention_interval_seconds:
-                self.maintenance.send_nightly_email()
+                self._send_nightly_email()
                 self.last_nightly_email_time = time.time()
 
             # Log rotation live-apply: check bot_metadata for config changes every 60 s
             if time.time() - self.last_log_rotation_check_time >= 60:
-                self.maintenance.apply_log_rotation_config()
+                self._apply_log_rotation_config()
                 self.last_log_rotation_check_time = time.time()
 
             # DB backup: evaluate schedule every 5 minutes
             if time.time() - self.last_db_backup_run >= 300:
-                self.maintenance.maybe_run_db_backup()
+                self._maybe_run_db_backup()
                 self.last_db_backup_run = time.time()
 
-            time.sleep(1)
+            self._stop_event.wait(timeout=1)
 
         self.logger.info("Scheduler thread stopped")
+
+    def _run_data_retention(self):
+        """Run data retention cleanup: packet_stream, repeater tables, stats, caches, mesh_connections."""
+        import asyncio
+
+        def get_retention_days(section: str, key: str, default: int) -> int:
+            try:
+                if self.bot.config.has_section(section) and self.bot.config.has_option(section, key):
+                    return self.bot.config.getint(section, key)
+            except ValueError:  # malformed integer in config
+                pass
+            return default
+
+        packet_stream_days = get_retention_days('Data_Retention', 'packet_stream_retention_days', 3)
+        purging_log_days = get_retention_days('Data_Retention', 'purging_log_retention_days', 90)
+        daily_stats_days = get_retention_days('Data_Retention', 'daily_stats_retention_days', 90)
+        observed_paths_days = get_retention_days('Data_Retention', 'observed_paths_retention_days', 90)
+        mesh_connections_days = get_retention_days('Data_Retention', 'mesh_connections_retention_days', 7)
+        stats_days = get_retention_days('Stats_Command', 'data_retention_days', 7)
+
+        try:
+            # Packet stream (web viewer integration)
+            if hasattr(self.bot, 'web_viewer_integration') and self.bot.web_viewer_integration:
+                bi = getattr(self.bot.web_viewer_integration, 'bot_integration', None)
+                if bi and hasattr(bi, 'cleanup_old_data'):
+                    bi.cleanup_old_data(packet_stream_days)
+
+            # Repeater manager: purging_log and optional daily_stats / unique_advert / observed_paths
+            if hasattr(self.bot, 'repeater_manager') and self.bot.repeater_manager:
+                if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
+                    future = asyncio.run_coroutine_threadsafe(
+                        self.bot.repeater_manager.cleanup_database(purging_log_days),
+                        self.bot.main_event_loop
+                    )
+                    try:
+                        future.result(timeout=60)
+                    except RuntimeError as e:
+                        self.logger.warning(f"Event loop gone during cleanup_database: {e}")
+                    except Exception as e:
+                        self.logger.error(f"Error in repeater_manager.cleanup_database: {type(e).__name__}: {e}")
+                else:
+                    try:
+                        loop = asyncio.get_event_loop()
+                    except RuntimeError:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                    loop.run_until_complete(self.bot.repeater_manager.cleanup_database(purging_log_days))
+                if hasattr(self.bot.repeater_manager, 'cleanup_repeater_retention'):
+                    self.bot.repeater_manager.cleanup_repeater_retention(
+                        daily_stats_days=daily_stats_days,
+                        observed_paths_days=observed_paths_days
+                    )
+
+            # Stats tables (message_stats, command_stats, path_stats)
+            if hasattr(self.bot, 'command_manager') and self.bot.command_manager:
+                stats_cmd = self.bot.command_manager.commands.get('stats') if getattr(self.bot.command_manager, 'commands', None) else None
+                if stats_cmd and hasattr(stats_cmd, 'cleanup_old_stats'):
+                    stats_cmd.cleanup_old_stats(stats_days)
+
+            # Expired caches (geocoding_cache, generic_cache)
+            if hasattr(self.bot, 'db_manager') and self.bot.db_manager and hasattr(self.bot.db_manager, 'cleanup_expired_cache'):
+                self.bot.db_manager.cleanup_expired_cache()
+
+            # Mesh connections (DB prune to match in-memory expiration)
+            if hasattr(self.bot, 'mesh_graph') and self.bot.mesh_graph and hasattr(self.bot.mesh_graph, 'delete_expired_edges_from_db'):
+                self.bot.mesh_graph.delete_expired_edges_from_db(mesh_connections_days)
+
+            ran_at = datetime.datetime.utcnow().isoformat()
+            self._last_retention_stats['ran_at'] = ran_at
+            try:
+                self.bot.db_manager.set_metadata('maint.status.data_retention_ran_at', ran_at)
+                self.bot.db_manager.set_metadata('maint.status.data_retention_outcome', 'ok')
+            except (sqlite3.Error, OSError):  # best-effort status write
+                pass
+
+        except Exception as e:
+            self.logger.exception(f"Error during data retention cleanup: {e}")
+            self._last_retention_stats['error'] = str(e)
+            try:
+                ran_at = datetime.datetime.utcnow().isoformat()
+                self.bot.db_manager.set_metadata('maint.status.data_retention_ran_at', ran_at)
+                self.bot.db_manager.set_metadata('maint.status.data_retention_outcome', f'error: {e}')
+            except (sqlite3.Error, OSError):  # best-effort status write
+                pass
 
     def check_interval_advertising(self):
         """Check if it's time to send an interval-based advert"""
@@ -529,6 +630,10 @@ class MessageScheduler:
 
     def send_interval_advert(self):
         """Send an interval-based advert (synchronous wrapper)"""
+        if self.bot.is_radio_offline:
+            self.logger.warning("send_interval_advert suppressed — radio is offline (repeated send timeouts)")
+            return
+
         current_time = self.get_current_time()
         self.logger.info(f"📢 Sending interval-based flood advert at {current_time.strftime('%H:%M:%S')}")
 
@@ -545,8 +650,13 @@ class MessageScheduler:
             # Wait for completion (with timeout to prevent indefinite blocking)
             try:
                 future.result(timeout=60)  # 60 second timeout
+                self.bot._record_send_success()
+            except RuntimeError as e:
+                self.logger.warning(f"Event loop gone while sending interval advert: {e}")
+                self.bot._record_send_failure(scheduler=self)
             except Exception as e:
-                self.logger.error(f"Error sending interval advert: {e}")
+                self.logger.error(f"Error sending interval advert: {type(e).__name__}: {e}", exc_info=True)
+                self.bot._record_send_failure(scheduler=self)
         else:
             # Fallback: create new event loop if main loop not available
             try:
@@ -560,12 +670,28 @@ class MessageScheduler:
 
     async def _send_interval_advert_async(self):
         """Send an interval-based advert (async implementation)"""
+        if self.bot.is_radio_zombie:
+            self.bot.logger.warning("send_advert suppressed — radio is in zombie state; power cycle required")
+            return
+        from meshcore.events import EventType
         try:
-            # Use the same advert functionality as the manual advert command
-            await self.bot.meshcore.commands.send_advert(flood=True)
-            self.logger.info("Interval-based flood advert sent successfully")
-        except Exception as e:
-            self.logger.error(f"Error sending interval-based advert: {e}")
+            result = await asyncio.wait_for(
+                self.bot.meshcore.commands.send_advert(flood=True),
+                timeout=30.0,
+            )
+        except asyncio.TimeoutError:
+            # Radio did not respond — increment the zombie fail counter so that
+            # repeated timeouts eventually trigger zombie detection via the
+            # normal _probe_radio_health threshold.
+            self.bot._radio_fail_count = getattr(self.bot, '_radio_fail_count', 0) + 1
+            raise RuntimeError(
+                f"send_advert timed out after 30 s "
+                f"(radio_fail_count={self.bot._radio_fail_count})"
+            )
+        if result.type == EventType.ERROR:
+            reason = result.payload.get('reason', 'unknown')
+            raise RuntimeError(f"send_advert failed: {reason}")
+        self.logger.info("Interval-based flood advert sent successfully")
 
     async def _process_channel_operations(self):
         """Process pending channel operations from the web viewer"""
@@ -835,62 +961,692 @@ class MessageScheduler:
             self.logger.error(f"Firmware write failed: {e}")
             return False, {'error': str(e)}
 
-    # ── Maintenance (delegates to MaintenanceRunner) ─────────────────────────
-
-    @property
-    def _last_retention_stats(self) -> dict[str, Any]:
-        return self.maintenance._last_retention_stats
-
-    @_last_retention_stats.setter
-    def _last_retention_stats(self, value: dict[str, Any]) -> None:
-        self.maintenance._last_retention_stats.clear()
-        self.maintenance._last_retention_stats.update(value)
-
-    @property
-    def _last_db_backup_stats(self) -> dict[str, Any]:
-        return self.maintenance._last_db_backup_stats
-
-    @_last_db_backup_stats.setter
-    def _last_db_backup_stats(self, value: dict[str, Any]) -> None:
-        self.maintenance._last_db_backup_stats.clear()
-        self.maintenance._last_db_backup_stats.update(value)
-
-    @property
-    def _last_log_rotation_applied(self) -> dict[str, str]:
-        return self.maintenance._last_log_rotation_applied
-
-    @_last_log_rotation_applied.setter
-    def _last_log_rotation_applied(self, value: dict[str, str]) -> None:
-        self.maintenance._last_log_rotation_applied.clear()
-        self.maintenance._last_log_rotation_applied.update(value)
-
-    def run_db_backup(self) -> None:
-        """Run a DB backup immediately (manual / HTTP)."""
-        self.maintenance.run_db_backup()
-
-    def _run_data_retention(self) -> None:
-        self.maintenance.run_data_retention()
+    # ── Nightly maintenance email ────────────────────────────────────────────
 
     def _get_notif(self, key: str) -> str:
-        return self.maintenance.get_notif(key)
+        """Read a notification setting from bot_metadata."""
+        try:
+            val = self.bot.db_manager.get_metadata(f'notif.{key}')
+            return val if val is not None else ''
+        except Exception:
+            return ''
 
     def _collect_email_stats(self) -> dict[str, Any]:
-        return self.maintenance.collect_email_stats()
+        """Gather 24h summary stats for the nightly digest."""
+        stats: dict[str, Any] = {}
+
+        # Bot uptime
+        try:
+            start = getattr(self.bot, 'connection_time', None)
+            if start:
+                delta = datetime.timedelta(seconds=int(time.time() - start))
+                hours, rem = divmod(delta.seconds, 3600)
+                minutes = rem // 60
+                parts = []
+                if delta.days:
+                    parts.append(f"{delta.days}d")
+                parts.append(f"{hours}h {minutes}m")
+                stats['uptime'] = ' '.join(parts)
+            else:
+                stats['uptime'] = 'unknown'
+        except Exception:
+            stats['uptime'] = 'unknown'
+
+        # Contact counts from DB
+        try:
+            with self.bot.db_manager.connection() as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute("SELECT COUNT(*) AS n FROM complete_contact_tracking")
+                stats['contacts_total'] = (cur.fetchone() or {}).get('n', 0)
+                cur.execute(
+                    "SELECT COUNT(*) AS n FROM complete_contact_tracking "
+                    "WHERE last_heard >= datetime('now', '-1 day')"
+                )
+                stats['contacts_24h'] = (cur.fetchone() or {}).get('n', 0)
+                cur.execute(
+                    "SELECT COUNT(*) AS n FROM complete_contact_tracking "
+                    "WHERE first_heard >= datetime('now', '-1 day')"
+                )
+                stats['contacts_new_24h'] = (cur.fetchone() or {}).get('n', 0)
+        except Exception as e:
+            stats['contacts_error'] = str(e)
+
+        # DB file size
+        try:
+            db_path = str(self.bot.db_manager.db_path)
+            size_bytes = os.path.getsize(db_path)
+            stats['db_size_mb'] = f'{size_bytes / 1_048_576:.1f}'
+            stats['db_path'] = db_path
+        except Exception:
+            stats['db_size_mb'] = 'unknown'
+
+        # Log file stats + rotation
+        try:
+            log_file = self.bot.config.get('Logging', 'log_file', fallback='').strip()
+            if log_file:
+                log_path = Path(log_file)
+                stats['log_file'] = str(log_path)
+                if log_path.exists():
+                    stats['log_size_mb'] = f'{log_path.stat().st_size / 1_048_576:.1f}'
+                    # Count ERROR/CRITICAL lines written in the last 24h by scanning the file
+                    time.time() - 86400
+                    error_count = critical_count = 0
+                    try:
+                        with open(log_path, encoding='utf-8', errors='replace') as fh:
+                            for line in fh:
+                                if ' ERROR ' in line or ' CRITICAL ' in line:
+                                    if ' ERROR ' in line:
+                                        error_count += 1
+                                    else:
+                                        critical_count += 1
+                        stats['errors_24h'] = error_count
+                        stats['criticals_24h'] = critical_count
+                    except Exception:
+                        stats['errors_24h'] = 'n/a'
+                        stats['criticals_24h'] = 'n/a'
+                    # Detect recent rotation: check for .1 backup file newer than 24h
+                    backup = Path(str(log_path) + '.1')
+                    if backup.exists() and (time.time() - backup.stat().st_mtime) < 86400:
+                        stats['log_rotated_24h'] = True
+                        stats['log_backup_size_mb'] = f'{backup.stat().st_size / 1_048_576:.1f}'
+                    else:
+                        stats['log_rotated_24h'] = False
+        except OSError:  # Path.stat() may fail if log file is inaccessible
+            pass
+
+        # Data retention last run
+        stats['retention'] = self._last_retention_stats.copy()
+
+        return stats
 
     def _format_email_body(self, stats: dict[str, Any], period_start: str, period_end: str) -> str:
-        return self.maintenance.format_email_body(stats, period_start, period_end)
+        lines = [
+            'MeshCore Bot — Nightly Maintenance Report',
+            '=' * 44,
+            f'Period : {period_start} → {period_end}',
+            '',
+            'BOT STATUS',
+            '─' * 30,
+            f"  Uptime    : {stats.get('uptime', 'unknown')}",
+            f"  Connected : {'yes' if getattr(self.bot, 'connected', False) else 'no'}",
+            '',
+            'NETWORK ACTIVITY (past 24 h)',
+            '─' * 30,
+            f"  Active contacts  : {stats.get('contacts_24h', 'n/a')}",
+            f"  New contacts     : {stats.get('contacts_new_24h', 'n/a')}",
+            f"  Total tracked    : {stats.get('contacts_total', 'n/a')}",
+            '',
+            'DATABASE',
+            '─' * 30,
+            f"  Size : {stats.get('db_size_mb', 'n/a')} MB",
+        ]
+        if self._last_retention_stats.get('ran_at'):
+            lines.append(f"  Last retention run : {self._last_retention_stats['ran_at']} UTC")
+        if self._last_retention_stats.get('error'):
+            lines.append(f"  Retention error    : {self._last_retention_stats['error']}")
+
+        lines += [
+            '',
+            'ERRORS (past 24 h)',
+            '─' * 30,
+            f"  ERROR    : {stats.get('errors_24h', 'n/a')}",
+            f"  CRITICAL : {stats.get('criticals_24h', 'n/a')}",
+        ]
+        if stats.get('log_file'):
+            lines += [
+                '',
+                'LOG FILES',
+                '─' * 30,
+                f"  Current : {stats.get('log_file')} ({stats.get('log_size_mb', '?')} MB)",
+            ]
+            if stats.get('log_rotated_24h'):
+                lines.append(
+                    f"  Rotated : yes — backup is {stats.get('log_backup_size_mb', '?')} MB"
+                )
+            else:
+                lines.append('  Rotated : no')
+
+        lines += [
+            '',
+            '─' * 44,
+            'Manage notification settings: /config',
+        ]
+        return '\n'.join(lines)
 
     def _send_nightly_email(self) -> None:
-        self.maintenance.send_nightly_email()
+        """Build and dispatch the nightly maintenance digest if enabled."""
+        import smtplib
+        import ssl as _ssl
+        from email.message import EmailMessage
+
+        if self._get_notif('nightly_enabled') != 'true':
+            return
+
+        smtp_host     = self._get_notif('smtp_host')
+        smtp_security = self._get_notif('smtp_security') or 'starttls'
+        smtp_user     = self._get_notif('smtp_user')
+        smtp_password = self._get_notif('smtp_password')
+        from_name     = self._get_notif('from_name') or 'MeshCore Bot'
+        from_email    = self._get_notif('from_email')
+        recipients    = [r.strip() for r in self._get_notif('recipients').split(',') if r.strip()]
+
+        if not smtp_host or not from_email or not recipients:
+            self.logger.warning(
+                "Nightly email enabled but SMTP settings incomplete "
+                f"(host={smtp_host!r}, from={from_email!r}, recipients={recipients})"
+            )
+            return
+
+        allow_local = self._get_notif('allow_local_smtp').lower() == 'true'
+        if not validate_external_url(f'http://{smtp_host}', allow_private=allow_local):
+            self.logger.error(
+                "Nightly email aborted: SMTP host %r resolves to a private or reserved address",
+                smtp_host,
+            )
+            return
+
+        try:
+            smtp_port = int(self._get_notif('smtp_port') or (465 if smtp_security == 'ssl' else 587))
+        except ValueError:
+            smtp_port = 587
+
+        now_utc   = datetime.datetime.utcnow()
+        yesterday = now_utc - datetime.timedelta(days=1)
+        period_start = yesterday.strftime('%Y-%m-%d %H:%M UTC')
+        period_end   = now_utc.strftime('%Y-%m-%d %H:%M UTC')
+
+        try:
+            stats = self._collect_email_stats()
+            body  = self._format_email_body(stats, period_start, period_end)
+
+            msg = EmailMessage()
+            msg['Subject'] = f'MeshCore Bot — Nightly Report {now_utc.strftime("%Y-%m-%d")}'
+            msg['From']    = f'{from_name} <{from_email}>'
+            msg['To']      = ', '.join(recipients)
+            msg.set_content(body)
+
+            # Optionally attach current log file before rotation
+            if self._get_maint('email_attach_log') == 'true':
+                log_file = self.bot.config.get('Logging', 'log_file', fallback='').strip()
+                if log_file:
+                    log_path = Path(log_file)
+                    max_attach = 5 * 1024 * 1024  # 5 MB cap on attachment
+                    if log_path.exists() and log_path.stat().st_size <= max_attach:
+                        try:
+                            with open(log_path, 'rb') as fh:
+                                msg.add_attachment(fh.read(), maintype='text', subtype='plain',
+                                                   filename=log_path.name)
+                        except Exception as attach_err:
+                            self.logger.warning(f"Could not attach log file to nightly email: {attach_err}")
+
+            context = _ssl.create_default_context()
+
+            _smtp_timeout = 30  # seconds — prevents indefinite hang on unreachable host
+            if smtp_security == 'ssl':
+                with smtplib.SMTP_SSL(smtp_host, smtp_port, context=context, timeout=_smtp_timeout) as s:
+                    if smtp_user and smtp_password:
+                        s.login(smtp_user, smtp_password)
+                    s.send_message(msg)
+            else:
+                with smtplib.SMTP(smtp_host, smtp_port, timeout=_smtp_timeout) as s:
+                    if smtp_security == 'starttls':
+                        s.ehlo()
+                        s.starttls(context=context)
+                        s.ehlo()
+                    if smtp_user and smtp_password:
+                        s.login(smtp_user, smtp_password)
+                    s.send_message(msg)
+
+            self.logger.info(
+                f"Nightly maintenance email sent to {recipients} "
+                f"(contacts_24h={stats.get('contacts_24h')}, "
+                f"errors={stats.get('errors_24h')})"
+            )
+            try:
+                ran_at = datetime.datetime.utcnow().isoformat()
+                self.bot.db_manager.set_metadata('maint.status.nightly_email_ran_at', ran_at)
+                self.bot.db_manager.set_metadata('maint.status.nightly_email_outcome', 'ok')
+            except (sqlite3.Error, OSError):  # best-effort status write
+                pass
+
+        except Exception as e:
+            self.logger.error(f"Failed to send nightly maintenance email: {e}")
+            try:
+                ran_at = datetime.datetime.utcnow().isoformat()
+                self.bot.db_manager.set_metadata('maint.status.nightly_email_ran_at', ran_at)
+                self.bot.db_manager.set_metadata('maint.status.nightly_email_outcome', f'error: {e}')
+            except (sqlite3.Error, OSError):  # best-effort status write
+                pass
+
+    # ── Zombie radio alert email ─────────────────────────────────────────────
+
+    def send_zombie_alert_email(self, fail_count: int, threshold: int, interval: int) -> None:
+        """Send an immediate alert email when a zombie radio is detected.
+
+        Uses the same SMTP settings as the nightly digest.  Recipients are taken
+        from the ``radio_zombie_alert_email`` config key; if that key is empty the
+        nightly maintenance recipients are used as a fallback.
+
+        This method is intentionally synchronous so it can be run in a thread
+        executor from the async event loop without blocking it.
+        """
+        import smtplib
+        import ssl as _ssl
+        from email.message import EmailMessage
+
+        # Prefer bot_metadata (set via web UI) over config.ini so the config page
+        # takes effect without requiring a config.ini edit or bot restart.
+        # Use isinstance(…, str) so a missing/mock value safely falls through.
+        try:
+            alert_enabled_meta = self.bot.db_manager.get_metadata('zombie.alert_enabled')
+        except Exception:
+            alert_enabled_meta = None
+        if isinstance(alert_enabled_meta, str) and alert_enabled_meta:
+            alert_enabled = alert_enabled_meta.lower() == 'true'
+        else:
+            alert_enabled = self.bot.config.getboolean('Bot', 'radio_zombie_alert_enabled', fallback=True)
+        if not alert_enabled:
+            return
+
+        smtp_host     = self._get_notif('smtp_host')
+        smtp_security = self._get_notif('smtp_security') or 'starttls'
+        smtp_user     = self._get_notif('smtp_user')
+        smtp_password = self._get_notif('smtp_password')
+        from_name     = self._get_notif('from_name') or 'MeshCore Bot'
+        from_email    = self._get_notif('from_email')
+
+        # Alert recipients: bot_metadata first, then config.ini, then nightly recipients
+        try:
+            _email_meta = self.bot.db_manager.get_metadata('zombie.alert_email')
+            alert_email_meta = _email_meta.strip() if isinstance(_email_meta, str) else ''
+        except Exception:
+            alert_email_meta = ''
+        alert_email_cfg = (
+            alert_email_meta
+            or self.bot.config.get('Bot', 'radio_zombie_alert_email', fallback='').strip()
+        )
+        if alert_email_cfg:
+            recipients = [r.strip() for r in alert_email_cfg.split(',') if r.strip()]
+        else:
+            recipients = [r.strip() for r in self._get_notif('recipients').split(',') if r.strip()]
+
+        if not smtp_host or not from_email or not recipients:
+            self.bot.logger.warning(
+                "Zombie alert email enabled but SMTP settings incomplete "
+                f"(host={smtp_host!r}, from={from_email!r}, recipients={recipients}) "
+                "— alert email not sent"
+            )
+            return
+
+        allow_local = self._get_notif('allow_local_smtp').lower() == 'true'
+        if not validate_external_url(f'http://{smtp_host}', allow_private=allow_local):
+            self.bot.logger.error(
+                "Zombie alert email aborted: SMTP host %r resolves to a private or reserved address",
+                smtp_host,
+            )
+            return
+
+        try:
+            smtp_port = int(self._get_notif('smtp_port') or (465 if smtp_security == 'ssl' else 587))
+        except ValueError:
+            smtp_port = 587
+
+        now_utc         = datetime.datetime.utcnow()
+        connection_type = self.bot.config.get('Connection', 'connection_type', fallback='unknown')
+        serial_port     = self.bot.config.get('Connection', 'serial_port', fallback='n/a')
+        interval_min    = interval // 60
+
+        subject = (
+            f'ALERT: MeshCore Bot — Zombie Radio Detected '
+            f'[{now_utc.strftime("%Y-%m-%d %H:%M UTC")}]'
+        )
+        body = '\n'.join([
+            'MeshCore Bot — Zombie Radio Alert',
+            '=' * 44,
+            f'Time          : {now_utc.strftime("%Y-%m-%d %H:%M:%S UTC")}',
+            '',
+            'RADIO STATUS',
+            '─' * 30,
+            f'  Connection    : {connection_type}',
+            f'  Port / Device : {serial_port}',
+            f'  Failed probes : {fail_count} of {threshold} (threshold)',
+            f'  Probe interval: {interval}s ({interval_min} min)',
+            '',
+            'ACTION REQUIRED',
+            '─' * 30,
+            '  The radio firmware is unresponsive (zombie state).',
+            '  A physical POWER CYCLE of the radio is required.',
+            '  Disconnect/reconnect of the serial/BLE transport will NOT fix this.',
+            '',
+            '  Steps to recover:',
+            '    1. Power off the radio hardware',
+            '    2. Wait 10 seconds',
+            '    3. Power on the radio hardware',
+            '    4. The bot will reconnect and resume normal operation automatically',
+            '',
+            '─' * 44,
+            'Probe monitoring has been suspended to avoid log spam.',
+            'It will resume automatically after the next successful reconnect.',
+        ])
+
+        try:
+            msg = EmailMessage()
+            msg['Subject'] = subject
+            msg['From']    = f'{from_name} <{from_email}>'
+            msg['To']      = ', '.join(recipients)
+            msg.set_content(body)
+
+            context = _ssl.create_default_context()
+            _smtp_timeout = 30
+
+            if smtp_security == 'ssl':
+                with smtplib.SMTP_SSL(smtp_host, smtp_port, context=context, timeout=_smtp_timeout) as s:
+                    if smtp_user and smtp_password:
+                        s.login(smtp_user, smtp_password)
+                    s.send_message(msg)
+            else:
+                with smtplib.SMTP(smtp_host, smtp_port, timeout=_smtp_timeout) as s:
+                    if smtp_security == 'starttls':
+                        s.ehlo()
+                        s.starttls(context=context)
+                        s.ehlo()
+                    if smtp_user and smtp_password:
+                        s.login(smtp_user, smtp_password)
+                    s.send_message(msg)
+
+            self.bot.logger.info(
+                f"Zombie radio alert email sent to {recipients}"
+            )
+        except Exception as e:
+            self.bot.logger.error(f"Failed to send zombie radio alert email: {e}")
+
+    # ── Radio offline alert email ────────────────────────────────────────────
+
+    def send_radio_offline_alert_email(self, fail_count: int, threshold: int) -> None:
+        """Send an immediate alert email when the radio-offline state is entered.
+
+        Uses the same SMTP settings as the nightly digest.  Recipients are taken
+        from the ``radio_offline_alert_email`` config key; if that key is empty the
+        nightly maintenance recipients are used as a fallback.
+
+        Intentionally synchronous — intended to be run in a daemon thread.
+        """
+        import smtplib
+        import ssl as _ssl
+        from email.message import EmailMessage
+
+        alert_enabled = self.bot.config.getboolean('Bot', 'radio_offline_alert_enabled', fallback=True)
+        if not alert_enabled:
+            return
+
+        smtp_host     = self._get_notif('smtp_host')
+        smtp_security = self._get_notif('smtp_security') or 'starttls'
+        smtp_user     = self._get_notif('smtp_user')
+        smtp_password = self._get_notif('smtp_password')
+        from_name     = self._get_notif('from_name') or 'MeshCore Bot'
+        from_email    = self._get_notif('from_email')
+
+        alert_email_cfg = self.bot.config.get('Bot', 'radio_offline_alert_email', fallback='').strip()
+        if alert_email_cfg:
+            recipients = [r.strip() for r in alert_email_cfg.split(',') if r.strip()]
+        else:
+            recipients = [r.strip() for r in self._get_notif('recipients').split(',') if r.strip()]
+
+        if not smtp_host or not from_email or not recipients:
+            self.bot.logger.warning(
+                "Radio-offline alert email enabled but SMTP settings incomplete "
+                f"(host={smtp_host!r}, from={from_email!r}, recipients={recipients}) "
+                "— alert email not sent"
+            )
+            return
+
+        allow_local = self._get_notif('allow_local_smtp').lower() == 'true'
+        if not validate_external_url(f'http://{smtp_host}', allow_private=allow_local):
+            self.bot.logger.error(
+                "Radio-offline alert email aborted: SMTP host %r resolves to a private or reserved address",
+                smtp_host,
+            )
+            return
+
+        try:
+            smtp_port = int(self._get_notif('smtp_port') or (465 if smtp_security == 'ssl' else 587))
+        except ValueError:
+            smtp_port = 587
+
+        now_utc         = datetime.datetime.utcnow()
+        connection_type = self.bot.config.get('Connection', 'connection_type', fallback='unknown')
+        serial_port     = self.bot.config.get('Connection', 'serial_port', fallback='n/a')
+
+        subject = (
+            f'ALERT: MeshCore Bot — Radio Offline '
+            f'[{now_utc.strftime("%Y-%m-%d %H:%M UTC")}]'
+        )
+        body = '\n'.join([
+            'MeshCore Bot — Radio Offline Alert',
+            '=' * 44,
+            f'Time          : {now_utc.strftime("%Y-%m-%d %H:%M:%S UTC")}',
+            '',
+            'RADIO STATUS',
+            '─' * 30,
+            f'  Connection      : {connection_type}',
+            f'  Port / Device   : {serial_port}',
+            f'  Failed sends    : {fail_count} of {threshold} (threshold)',
+            '',
+            'WHAT THIS MEANS',
+            '─' * 30,
+            '  The bot can no longer send outbound messages to the mesh.',
+            '  Inbound packets from the radio may still be arriving normally.',
+            '  This is NOT a zombie (firmware lock-up) — the radio is responsive',
+            '  but outbound sends are timing out.',
+            '',
+            'ACTION REQUIRED',
+            '─' * 30,
+            '  Check the radio power supply and physical connection.',
+            '  Use the dashboard "Clear Offline Flag" button once the issue',
+            '  is resolved, or restart the bot to auto-probe.',
+            '',
+            '─' * 44,
+            'Outbound sends will be suppressed until the offline flag is cleared.',
+        ])
+
+        try:
+            msg = EmailMessage()
+            msg['Subject'] = subject
+            msg['From']    = f'{from_name} <{from_email}>'
+            msg['To']      = ', '.join(recipients)
+            msg.set_content(body)
+
+            context = _ssl.create_default_context()
+            _smtp_timeout = 30
+
+            if smtp_security == 'ssl':
+                with smtplib.SMTP_SSL(smtp_host, smtp_port, context=context, timeout=_smtp_timeout) as s:
+                    if smtp_user and smtp_password:
+                        s.login(smtp_user, smtp_password)
+                    s.send_message(msg)
+            else:
+                with smtplib.SMTP(smtp_host, smtp_port, timeout=_smtp_timeout) as s:
+                    if smtp_security == 'starttls':
+                        s.ehlo()
+                        s.starttls(context=context)
+                        s.ehlo()
+                    if smtp_user and smtp_password:
+                        s.login(smtp_user, smtp_password)
+                    s.send_message(msg)
+
+            self.bot.logger.info(f"Radio-offline alert email sent to {recipients}")
+        except Exception as e:
+            self.bot.logger.error(f"Failed to send radio-offline alert email: {e}")
+
+    # ── Maintenance helpers ──────────────────────────────────────────────────
 
     def _get_maint(self, key: str) -> str:
-        return self.maintenance.get_maint(key)
+        """Read a maintenance setting from bot_metadata."""
+        try:
+            val = self.bot.db_manager.get_metadata(f'maint.{key}')
+            return val if val is not None else ''
+        except Exception:
+            return ''
 
     def _apply_log_rotation_config(self) -> None:
-        self.maintenance.apply_log_rotation_config()
+        """Check bot_metadata for log rotation settings and replace the RotatingFileHandler if changed."""
+        from logging.handlers import RotatingFileHandler as _RFH
+
+        max_bytes_str = self._get_maint('log_max_bytes')
+        backup_count_str = self._get_maint('log_backup_count')
+
+        if not max_bytes_str and not backup_count_str:
+            return  # Nothing stored yet — nothing to apply
+
+        new_cfg = {'max_bytes': max_bytes_str, 'backup_count': backup_count_str}
+        if new_cfg == self._last_log_rotation_applied:
+            return  # No change
+
+        try:
+            max_bytes = int(max_bytes_str) if max_bytes_str else 5 * 1024 * 1024
+            backup_count = int(backup_count_str) if backup_count_str else 3
+        except ValueError:
+            self.logger.warning(f"Invalid log rotation config in bot_metadata: {new_cfg}")
+            return
+
+        logger = self.bot.logger
+        for i, handler in enumerate(logger.handlers):
+            if isinstance(handler, _RFH):
+                log_path = handler.baseFilename
+                formatter = handler.formatter
+                level = handler.level
+                handler.close()
+                new_handler = _RFH(log_path, maxBytes=max_bytes, backupCount=backup_count, encoding='utf-8')
+                new_handler.setFormatter(formatter)
+                new_handler.setLevel(level)
+                logger.handlers[i] = new_handler
+                self._last_log_rotation_applied = new_cfg
+                self.logger.info(f"Log rotation config applied: maxBytes={max_bytes}, backupCount={backup_count}")
+                try:
+                    ran_at = datetime.datetime.utcnow().isoformat()
+                    self.bot.db_manager.set_metadata('maint.status.log_rotation_applied_at', ran_at)
+                except (sqlite3.Error, OSError):  # best-effort status write
+                    pass
+                break
 
     def _maybe_run_db_backup(self) -> None:
-        self.maintenance.maybe_run_db_backup()
+        """Check if a scheduled DB backup is due and run it."""
+        if self._get_maint('db_backup_enabled') != 'true':
+            return
+
+        sched = self._get_maint('db_backup_schedule') or 'daily'
+        if sched == 'manual':
+            return
+
+        backup_time_str = self._get_maint('db_backup_time') or '02:00'
+        now = self.get_current_time()
+        try:
+            bh, bm = [int(x) for x in backup_time_str.split(':')]
+        except Exception:
+            bh, bm = 2, 0
+
+        scheduled_today = now.replace(hour=bh, minute=bm, second=0, microsecond=0)
+
+        # Only fire within a 2-minute window after the scheduled time.
+        # This allows for scheduler lag while preventing a late bot startup
+        # from triggering an immediate backup for a time that passed hours ago.
+        fire_window_end = scheduled_today + datetime.timedelta(minutes=2)
+        if now < scheduled_today or now > fire_window_end:
+            return
+
+        if sched == 'weekly' and now.weekday() != 0:  # Monday only
+            return
+
+        # Deduplicate: don't re-run if already ran today (daily) / this week (weekly).
+        # Seed from DB on first check so restarts don't re-trigger a backup that
+        # already ran earlier today.
+        if not self._last_db_backup_stats:
+            try:
+                db_ran_at = self.bot.db_manager.get_metadata('maint.status.db_backup_ran_at') or ''
+                if db_ran_at:
+                    self._last_db_backup_stats['ran_at'] = db_ran_at
+            except (sqlite3.Error, OSError):  # best-effort metadata read
+                pass
+
+        date_key = now.strftime('%Y-%m-%d')
+        week_key = f"{now.year}-W{now.isocalendar()[1]}"
+        last_ran = self._last_db_backup_stats.get('ran_at', '')
+        if sched == 'daily' and last_ran.startswith(date_key):
+            return
+        if sched == 'weekly' and self._last_db_backup_stats.get('week_key') == week_key:
+            return
+
+        self._run_db_backup()
+        if sched == 'weekly':
+            self._last_db_backup_stats['week_key'] = week_key
 
     def _run_db_backup(self) -> None:
-        self.maintenance.run_db_backup()
+        """Backup the SQLite database using sqlite3.Connection.backup(), then prune old backups."""
+        import sqlite3 as _sqlite3
+
+        backup_dir_str = self._get_maint('db_backup_dir') or '/data/backups'
+        try:
+            retention_count = int(self._get_maint('db_backup_retention_count') or '7')
+        except ValueError:
+            retention_count = 7
+
+        backup_dir = Path(backup_dir_str)
+        ran_at = datetime.datetime.utcnow().isoformat()
+
+        try:
+            backup_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            self.logger.error(f"DB backup: cannot create backup directory {backup_dir}: {e}")
+            self._last_db_backup_stats = {'ran_at': ran_at, 'error': str(e)}
+            try:
+                self.bot.db_manager.set_metadata('maint.status.db_backup_ran_at', ran_at)
+                self.bot.db_manager.set_metadata('maint.status.db_backup_outcome', f'error: {e}')
+            except (sqlite3.Error, OSError):  # best-effort status write
+                pass
+            return
+
+        db_path = Path(str(self.bot.db_manager.db_path))
+        ts = datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%S')
+        backup_path = backup_dir / f"{db_path.stem}_{ts}.db"
+
+        try:
+            src = _sqlite3.connect(str(db_path), check_same_thread=False)
+            dst = _sqlite3.connect(str(backup_path))
+            try:
+                src.backup(dst, pages=200)
+            finally:
+                dst.close()
+                src.close()
+
+            size_mb = backup_path.stat().st_size / 1_048_576
+            self.logger.info(f"DB backup created: {backup_path} ({size_mb:.1f} MB)")
+
+            # Prune oldest backups beyond retention count
+            stem = db_path.stem
+            backups = sorted(backup_dir.glob(f"{stem}_*.db"), key=lambda p: p.stat().st_mtime)
+            while len(backups) > retention_count:
+                oldest = backups.pop(0)
+                try:
+                    oldest.unlink()
+                    self.logger.info(f"DB backup pruned: {oldest}")
+                except OSError:
+                    pass
+
+            ran_at = datetime.datetime.utcnow().isoformat()
+            self._last_db_backup_stats = {'ran_at': ran_at, 'path': str(backup_path), 'size_mb': f'{size_mb:.1f}'}
+            try:
+                self.bot.db_manager.set_metadata('maint.status.db_backup_ran_at', ran_at)
+                self.bot.db_manager.set_metadata('maint.status.db_backup_outcome', 'ok')
+                self.bot.db_manager.set_metadata('maint.status.db_backup_path', str(backup_path))
+            except (sqlite3.Error, OSError):  # best-effort status write
+                pass
+
+        except Exception as e:
+            self.logger.error(f"DB backup failed: {e}")
+            self._last_db_backup_stats = {'ran_at': ran_at, 'error': str(e)}
+            try:
+                self.bot.db_manager.set_metadata('maint.status.db_backup_ran_at', ran_at)
+                self.bot.db_manager.set_metadata('maint.status.db_backup_outcome', f'error: {e}')
+            except (sqlite3.Error, OSError):  # best-effort status write
+                pass

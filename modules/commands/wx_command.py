@@ -7,7 +7,6 @@ Provides weather information using zip codes and NOAA APIs
 import re
 import xml.dom.minidom
 from datetime import datetime, timedelta
-from typing import Optional
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -120,7 +119,7 @@ class WxCommand(BaseCommand):
             # This makes the API more resilient to timeouts and transient errors
             self.noaa_session = self._create_retry_session()
 
-    def _format_high_low(self, high: Optional[float], low: Optional[float], temp_symbol: str) -> str:
+    def _format_high_low(self, high: float | None, low: float | None, temp_symbol: str) -> str:
         """Format high/low using [Weather] temperature_*_format templates."""
         return format_temperature_high_low(self.bot.config, high, low, temp_symbol, self.logger)
 
@@ -190,7 +189,7 @@ class WxCommand(BaseCommand):
         # Use base class for cooldown and other checks
         return super().can_execute(message)
 
-    def get_remaining_cooldown(self, user_id: Optional[str] = None) -> int:
+    def get_remaining_cooldown(self, user_id: str | None = None) -> int:
         """Get remaining cooldown time for a specific user"""
         if self.delegate_command:
             return self.delegate_command.get_remaining_cooldown(user_id)
@@ -198,7 +197,7 @@ class WxCommand(BaseCommand):
         # Use base class method
         return super().get_remaining_cooldown(user_id)
 
-    def _get_companion_location(self, message: MeshMessage) -> Optional[tuple[float, float]]:
+    def _get_companion_location(self, message: MeshMessage) -> tuple[float, float] | None:
         """Get companion/sender location from database.
 
         Args:
@@ -238,7 +237,7 @@ class WxCommand(BaseCommand):
             self.logger.warning(f"Error getting companion location: {e}")
             return None
 
-    def _get_bot_location(self) -> Optional[tuple[float, float]]:
+    def _get_bot_location(self) -> tuple[float, float] | None:
         """Get bot location from config.
 
         Returns:
@@ -257,7 +256,7 @@ class WxCommand(BaseCommand):
             self.logger.debug(f"Error getting bot location: {e}")
             return None
 
-    def _get_custom_wxsim_source(self, location: Optional[str] = None) -> Optional[str]:
+    def _get_custom_wxsim_source(self, location: str | None = None) -> str | None:
         """Get custom WXSIM source URL from config.
 
         Looks for keys in [Weather] section with pattern: custom.wxsim.<name> = <url>
@@ -306,7 +305,7 @@ class WxCommand(BaseCommand):
 
         return None
 
-    def _get_custom_mqtt_weather_topic(self, location: Optional[str] = None) -> Optional[str]:
+    def _get_custom_mqtt_weather_topic(self, location: str | None = None) -> str | None:
         """MQTT topic for custom.mqtt_weather.<name> (see get_mqtt_weather_topic)."""
         return get_mqtt_weather_topic(self.bot.config, location)
 
@@ -314,7 +313,7 @@ class WxCommand(BaseCommand):
         self,
         topic: str,
         forecast_type: str,
-        location_name: Optional[str],
+        location_name: str | None,
     ) -> str:
         """Format cached MQTT payload for wx output."""
         if forecast_type != "default":
@@ -329,7 +328,7 @@ class WxCommand(BaseCommand):
             return text
         return self._mqtt_weather_error_key(err)
 
-    def _mqtt_weather_error_key(self, err: Optional[str]) -> str:
+    def _mqtt_weather_error_key(self, err: str | None) -> str:
         if err == "no_cache":
             return self.translate("commands.wx.mqtt_weather_no_subscriber")
         if err in ("no_data", "empty_payload", "empty_after_sanitize"):
@@ -341,7 +340,7 @@ class WxCommand(BaseCommand):
 
     def _get_wxsim_weather(self, source_url: str, forecast_type: str = "default",
                                 num_days: int = 7, message: MeshMessage = None,
-                                location_name: Optional[str] = None) -> str:
+                                location_name: str | None = None) -> str:
         """Get and format weather from WXSIM source.
 
         Args:
@@ -435,7 +434,7 @@ class WxCommand(BaseCommand):
                 return f"{location_name}: {current}"
             return current
 
-    def _coordinates_to_location_string(self, lat: float, lon: float) -> Optional[str]:
+    def _coordinates_to_location_string(self, lat: float, lon: float) -> str | None:
         """Convert coordinates to a location string (city name) using reverse geocoding.
 
         Args:

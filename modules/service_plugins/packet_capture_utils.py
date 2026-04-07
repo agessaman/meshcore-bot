@@ -11,7 +11,7 @@ import json
 import logging
 import os
 import time
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +160,7 @@ def ed25519_sign_with_expanded_key(message: bytes, scalar: bytes, prefix: bytes,
     return R + s_bytes
 
 
-def read_private_key_file(key_file_path: str) -> Optional[str]:
+def read_private_key_file(key_file_path: str) -> str | None:
     """Read a private key from a file (64-byte hex format for orlp/ed25519).
 
     Args:
@@ -427,7 +427,7 @@ def _create_auth_token_python(
     return token
 
 
-async def _fetch_private_key_from_device(meshcore_instance: Any) -> Optional[str]:
+async def _fetch_private_key_from_device(meshcore_instance: Any) -> str | None:
     """Attempt to export private key from device.
 
     Args:
@@ -478,15 +478,15 @@ async def _fetch_private_key_from_device(meshcore_instance: Any) -> Optional[str
 
 
 async def create_auth_token_async(
-    meshcore_instance: Optional[Any] = None,
-    public_key_hex: Optional[str] = None,
-    private_key_hex: Optional[str] = None,
+    meshcore_instance: Any | None = None,
+    public_key_hex: str | None = None,
+    private_key_hex: str | None = None,
     iata: str = "LOC",
-    timestamp: Optional[int] = None,
-    audience: Optional[str] = None,
-    exp: Optional[int] = None,
-    owner_public_key: Optional[str] = None,
-    owner_email: Optional[str] = None,
+    timestamp: int | None = None,
+    audience: str | None = None,
+    exp: int | None = None,
+    owner_public_key: str | None = None,
+    owner_email: str | None = None,
     use_device: bool = True
 ) -> str:
     """Create a JWT-style authentication token for MQTT authentication.
@@ -613,8 +613,8 @@ def create_auth_token(
     private_key_hex: str,
     public_key_hex: str,
     iata: str = "LOC",
-    timestamp: Optional[int] = None,
-    audience: Optional[str] = None
+    timestamp: int | None = None,
+    audience: str | None = None
 ) -> str:
     """Synchronous version of create_auth_token (Python signing only).
 

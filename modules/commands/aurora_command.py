@@ -6,7 +6,6 @@ Aurora command - NOAA KP index and Ovation aurora probability for a location.
 import asyncio
 import re
 from datetime import datetime, timezone
-from typing import Optional
 
 from ..clients.noaa_aurora_client import NOAAAuroraClient
 from ..models import MeshMessage
@@ -43,7 +42,7 @@ class AuroraCommand(BaseCommand):
             return False
         return super().can_execute(message)
 
-    def _get_companion_location(self, message: MeshMessage) -> Optional[tuple[float, float]]:
+    def _get_companion_location(self, message: MeshMessage) -> tuple[float, float] | None:
         """Get companion/sender location from database."""
         try:
             sender_pubkey = getattr(message, "sender_pubkey", None)
@@ -67,7 +66,7 @@ class AuroraCommand(BaseCommand):
             self.logger.debug(f"Error getting companion location: {e}")
             return None
 
-    def _get_bot_location(self) -> Optional[tuple[float, float]]:
+    def _get_bot_location(self) -> tuple[float, float] | None:
         """Get bot location from config ([Bot] bot_latitude, bot_longitude)."""
         try:
             lat = self.bot.config.getfloat("Bot", "bot_latitude", fallback=None)
@@ -128,8 +127,8 @@ class AuroraCommand(BaseCommand):
         return local.strftime("%b %d %I:%M%p")
 
     def _resolve_location(
-        self, message: MeshMessage, location: Optional[str]
-    ) -> tuple[Optional[float], Optional[float], Optional[str], Optional[str]]:
+        self, message: MeshMessage, location: str | None
+    ) -> tuple[float | None, float | None, str | None, str | None]:
         """
         Resolve to (lat, lon, location_label, error_key).
         location_label is for display; error_key is a translation key if resolution failed.
@@ -194,7 +193,7 @@ class AuroraCommand(BaseCommand):
         if content.startswith("!"):
             content = content[1:].strip()
         parts = content.split()
-        location: Optional[str] = None
+        location: str | None = None
         if len(parts) >= 2:
             location = " ".join(parts[1:]).strip()
 

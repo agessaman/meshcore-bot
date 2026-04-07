@@ -8,7 +8,6 @@ import hashlib
 import re
 import time
 from datetime import datetime, timedelta
-from typing import Optional
 
 import requests
 
@@ -246,7 +245,7 @@ class SolarforecastCommand(BaseCommand):
 
         return cleaned
 
-    async def _parse_location(self, location: str) -> tuple[Optional[float], Optional[float], str]:
+    async def _parse_location(self, location: str) -> tuple[float | None, float | None, str]:
         """Parse location string to lat/lon"""
         # First, check if it's a repeater name
         self.logger.debug(f"Checking if '{location}' is a repeater name...")
@@ -278,7 +277,7 @@ class SolarforecastCommand(BaseCommand):
         lat, lon = await self._city_to_lat_lon(location)
         return lat, lon, "city"
 
-    async def _repeater_name_to_lat_lon(self, repeater_name: str) -> tuple[Optional[float], Optional[float]]:
+    async def _repeater_name_to_lat_lon(self, repeater_name: str) -> tuple[float | None, float | None]:
         """Look up repeater by name and return its lat/lon"""
         try:
             if not hasattr(self.bot, 'db_manager'):
@@ -352,7 +351,7 @@ class SolarforecastCommand(BaseCommand):
             self.logger.debug(f"Error looking up repeater '{repeater_name}': {e}")
             return None, None
 
-    async def _zipcode_to_lat_lon(self, zipcode: str) -> tuple[Optional[float], Optional[float]]:
+    async def _zipcode_to_lat_lon(self, zipcode: str) -> tuple[float | None, float | None]:
         """Convert zipcode to lat/lon using shared geocoding function"""
         try:
             lat, lon = await geocode_zipcode(self.bot, zipcode, timeout=self.url_timeout)
@@ -361,7 +360,7 @@ class SolarforecastCommand(BaseCommand):
             self.logger.error(f"Error geocoding zipcode {zipcode}: {e}")
             return None, None
 
-    async def _city_to_lat_lon(self, city: str) -> tuple[Optional[float], Optional[float]]:
+    async def _city_to_lat_lon(self, city: str) -> tuple[float | None, float | None]:
         """Convert city name to lat/lon using shared geocoding function"""
         try:
             # Get defaults from config
@@ -479,7 +478,7 @@ class SolarforecastCommand(BaseCommand):
             return self.translate('commands.solarforecast.error', error=str(e))
 
     def _get_cache_key(self, lat: float, lon: float, declination: float,
-                      azimuth: float, kwp: float, api_key: Optional[str]) -> str:
+                      azimuth: float, kwp: float, api_key: str | None) -> str:
         """Generate a cache key from request parameters"""
         # Round parameters to avoid cache misses due to floating point precision
         key_data = f"{lat:.4f},{lon:.4f},{declination:.1f},{azimuth:.1f},{kwp:.4f},{api_key or 'free'}"
@@ -500,7 +499,7 @@ class SolarforecastCommand(BaseCommand):
         if expired_keys:
             self.logger.debug(f"Cleaned up {len(expired_keys)} expired cache entries")
 
-    def _get_cached_forecast(self, cache_key: str) -> Optional[dict]:
+    def _get_cached_forecast(self, cache_key: str) -> dict | None:
         """Get cached forecast if available and not expired"""
         # Clean up expired entries periodically (every 10th access to avoid overhead)
         if len(self.forecast_cache) > 0 and len(self.forecast_cache) % 10 == 0:
@@ -528,7 +527,7 @@ class SolarforecastCommand(BaseCommand):
 
     async def _query_forecast_solar_scaled(self, lat: float, lon: float, declination: float,
                                           azimuth: float, kwp: float,
-                                          api_key: Optional[str]) -> Optional[dict]:
+                                          api_key: str | None) -> dict | None:
         """Query Forecast.Solar API with automatic scaling for small panels"""
         # Generate cache key for the actual query parameters (before scaling)
         # We cache the base query (with MIN_KWP if scaling needed)
@@ -584,7 +583,7 @@ class SolarforecastCommand(BaseCommand):
 
     async def _query_forecast_solar(self, lat: float, lon: float, declination: float,
                                     azimuth: float, kwp: float,
-                                    api_key: Optional[str]) -> Optional[dict]:
+                                    api_key: str | None) -> dict | None:
         """Query Forecast.Solar API"""
         import asyncio
         # Build URL
