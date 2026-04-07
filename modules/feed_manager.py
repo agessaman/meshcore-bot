@@ -303,7 +303,7 @@ class FeedManager:
                     for row in cursor.fetchall():
                         processed_item_ids.add(row[0])
             except Exception as e:
-                self.logger.debug(f"Error querying processed items for feed {feed['id']}: {e}")
+                self.logger.warning(f"Error querying processed items for feed {feed['id']}: {e}")
 
             # Filter out already processed items
             for item in all_items:
@@ -462,7 +462,7 @@ class FeedManager:
                     for row in cursor.fetchall():
                         processed_item_ids.add(row[0])
             except Exception as e:
-                self.logger.debug(f"Error querying processed items for feed {feed['id']}: {e}")
+                self.logger.warning(f"Error querying processed items for feed {feed['id']}: {e}")
 
             # Filter out already processed items
             for item in all_items:
