@@ -477,6 +477,30 @@ class TestNormalizedWebViewerPassword:
 # ---------------------------------------------------------------------------
 
 
+class TestConfigurableTimeouts:
+    """stream_timeout and admin_timeout are read from [Web_Viewer] config."""
+
+    def test_default_stream_timeout(self):
+        bi = _make_bot_integration()
+        assert bi._stream_timeout == 1.0
+
+    def test_default_admin_timeout(self):
+        bi = _make_bot_integration()
+        assert bi._admin_timeout == 0.5
+
+    def test_custom_stream_timeout(self):
+        bot = _make_bot()
+        bot.config.set("Web_Viewer", "stream_timeout", "2.5")
+        bi = _make_bot_integration(bot)
+        assert bi._stream_timeout == 2.5
+
+    def test_custom_admin_timeout(self):
+        bot = _make_bot()
+        bot.config.set("Web_Viewer", "admin_timeout", "1.0")
+        bi = _make_bot_integration(bot)
+        assert bi._admin_timeout == 1.0
+
+
 class TestShutdown:
     def test_shutdown_sets_flag(self):
         bi = _make_bot_integration()

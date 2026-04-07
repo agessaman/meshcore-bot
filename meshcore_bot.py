@@ -50,8 +50,24 @@ def main():
         action="store_true",
         help="Validate config section names and exit before starting the bot (exit 1 on errors)",
     )
+    parser.add_argument(
+        "--show-config",
+        action="store_true",
+        help="Print the effective configuration (all sections and values) and exit",
+    )
 
     args = parser.parse_args()
+
+    if args.show_config:
+        import configparser
+        cfg = configparser.ConfigParser()
+        cfg.read(args.config)
+        print(f"# Effective config from: {args.config}")
+        for section in cfg.sections():
+            print(f"\n[{section}]")
+            for key, value in cfg.items(section):
+                print(f"{key} = {value}")
+        sys.exit(0)
 
     if args.validate_config:
         from modules.config_validation import (

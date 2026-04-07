@@ -58,6 +58,9 @@ class BotIntegration:
         self.circuit_breaker_failures = 0
         self.circuit_breaker_last_failure_time = 0.0
         self.is_shutting_down = False
+        # Configurable HTTP timeouts (seconds) for internal web viewer API calls
+        self._stream_timeout: float = bot.config.getfloat('Web_Viewer', 'stream_timeout', fallback=1.0)
+        self._admin_timeout: float = bot.config.getfloat('Web_Viewer', 'admin_timeout', fallback=0.5)
         # Batched write queue: avoids a per-insert sqlite3.connect() round-trip
         self._write_queue: queue.Queue = queue.Queue()
         self._drain_stop = threading.Event()
@@ -463,14 +466,14 @@ class BotIntegration:
             }
             if self.http_session:
                 try:
-                    self.http_session.post(url, json=payload, timeout=1.0)
+                    self.http_session.post(url, json=payload, timeout=self._stream_timeout)
                     self._record_web_viewer_result(True)
                 except Exception:
                     self._record_web_viewer_result(False)
             else:
                 import requests
                 try:
-                    requests.post(url, json=payload, timeout=1.0, headers=headers)
+                    requests.post(url, json=payload, timeout=self._stream_timeout, headers=headers)
                     self._record_web_viewer_result(True)
                 except Exception:
                     self._record_web_viewer_result(False)
@@ -498,7 +501,7 @@ class BotIntegration:
                 'X-Requested-With': 'BotIntegration',
             }
             try:
-                requests.post(url, json=payload, timeout=0.5, headers=headers)
+                requests.post(url, json=payload, timeout=self._admin_timeout, headers=headers)
                 self._record_web_viewer_result(True)
             except Exception:
                 self._record_web_viewer_result(False)
