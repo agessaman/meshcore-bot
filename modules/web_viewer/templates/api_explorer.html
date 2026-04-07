@@ -1,0 +1,293 @@
+{% extends "base.html" %}
+
+{% block title %}API Explorer — MeshCore Bot{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Align with other cards: global .table-responsive uses 8px radius + overflow:hidden,
+       which clashes with .card-header and breaks horizontal scroll. */
+    .api-section.card {
+        overflow: hidden;
+    }
+    .api-section .table-responsive {
+        border-radius: 0;
+        overflow-x: auto;
+        overflow-y: visible;
+        padding-right: 1rem;
+    }
+    .api-explorer-table thead th,
+    .api-explorer-table tbody td {
+        padding-top: 0.55rem;
+        padding-bottom: 0.55rem;
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+    /* Accent inside first column; text inset lines up with section title after icon. */
+    .api-explorer-table thead th:first-child,
+    .api-explorer-table tbody td:first-child {
+        border-left: 3px solid #0d6efd;
+        padding-left: calc(1rem + 1em + 0.5rem - 3px);
+    }
+    [data-theme="dark"] .api-explorer-table thead th:first-child,
+    [data-theme="dark"] .api-explorer-table tbody td:first-child {
+        border-left-color: #6ea8fe;
+    }
+
+    .api-explorer-table thead th {
+        background-color: var(--card-header-bg);
+        color: var(--text-color);
+        border-bottom: 1px solid var(--border-color);
+        font-weight: 600;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="row mb-3">
+            <div class="col">
+                <h1 class="mb-4">
+                    <i class="fas fa-plug me-2"></i>API Explorer
+                </h1>
+                <p class="text-muted mb-0">
+                    All endpoints require the <code>X-Requested-With: XMLHttpRequest</code> header on state-changing requests.
+                    If authentication is enabled, include a valid session cookie (log in first).
+                </p>
+            </div>
+            <div class="col-auto align-self-start">
+                <input type="text" id="api-filter" class="form-control form-control-sm" placeholder="Filter endpoints…" style="min-width:220px">
+            </div>
+        </div>
+
+{% set sections = [
+  ("System", "fa-heartbeat", [
+    ("GET",  "/api/health",           "Bot health: radio state, uptime, client count"),
+    ("GET",  "/api/banner-status",    "Banner state: zombie, offline, initializing flags"),
+    ("GET",  "/api/system-health",    "Extended system health: DB size, queue depths, scheduler"),
+    ("GET",  "/api/stats",            "Bot-wide statistics: messages, commands, contacts"),
+    ("GET",  "/api/stats/rate_limiters", "Per-sender rate limiter stats"),
+    ("GET",  "/api/connected_clients","SocketIO connected client count"),
+    ("GET",  "/api/cache",            "In-memory cache snapshot"),
+    ("GET",  "/api/database",         "Database metadata: path, size, table row counts"),
+    ("POST", "/api/optimize-database","Run VACUUM + ANALYZE on the SQLite database"),
+  ]),
+  ("Contacts", "fa-users", [
+    ("GET",  "/api/contacts",                  "List all contacts with last-seen and position"),
+    ("GET",  "/api/export/contacts",           "Export contacts as CSV"),
+    ("POST", "/api/geocode-contact",           "Reverse-geocode a contact's GPS position"),
+    ("POST", "/api/toggle-star-contact",       "Star or unstar a contact"),
+    ("POST", "/api/delete-contact",            "Delete a contact by node_id"),
+    ("GET",  "/api/contacts/purge-preview",    "Preview which contacts would be purged"),
+    ("POST", "/api/contacts/purge",            "Purge stale contacts older than threshold"),
+    ("POST", "/api/decode-path",               "Decode a raw path string into node labels"),
+  ]),
+  ("Mesh Graph", "fa-project-diagram", [
+    ("GET",  "/api/mesh/nodes",       "All mesh nodes with position, SNR, hop count"),
+    ("GET",  "/api/mesh/edges",       "All mesh edges with link quality metrics"),
+    ("GET",  "/api/mesh/stats",       "Mesh topology summary: node/edge counts, diameter"),
+    ("POST", "/api/mesh/resolve-path","Resolve a hop path to labelled node names"),
+    ("GET",  "/api/export/paths",     "Export observed mesh paths as CSV"),
+  ]),
+  ("Channels", "fa-layer-group", [
+    ("GET",  "/api/channels",                         "List configured channels"),
+    ("POST", "/api/channels",                         "Add a new channel"),
+    ("PUT",  "/api/channels/{channel_idx}",            "Update channel settings"),
+    ("DELETE","/api/channels/{channel_idx}",           "Remove a channel"),
+    ("GET",  "/api/channels/stats",                   "Per-channel message statistics"),
+    ("GET",  "/api/channels/{channel_idx}/feeds",     "Feeds assigned to a channel"),
+    ("POST", "/api/channels/validate",                "Validate a channel key/name before saving"),
+    ("GET",  "/api/channel-operations/{op_id}",       "Poll a pending channel operation result"),
+  ]),
+  ("Feeds", "fa-rss", [
+    ("GET",  "/api/feeds",                   "List all configured feeds"),
+    ("POST", "/api/feeds",                   "Create a new feed"),
+    ("GET",  "/api/feeds/{feed_id}",         "Get feed details"),
+    ("PUT",  "/api/feeds/{feed_id}",         "Update feed configuration"),
+    ("DELETE","/api/feeds/{feed_id}",        "Delete a feed"),
+    ("GET",  "/api/feeds/default-format",   "Get default message format string"),
+    ("POST", "/api/feeds/preview",          "Preview a feed format with sample data"),
+    ("POST", "/api/feeds/test",             "Test-fetch a feed URL and return items"),
+    ("GET",  "/api/feeds/stats",            "Aggregate feed delivery statistics"),
+    ("GET",  "/api/feeds/{feed_id}/activity","Recent delivery activity for a feed"),
+    ("GET",  "/api/feeds/{feed_id}/errors", "Recent errors for a feed"),
+    ("POST", "/api/feeds/{feed_id}/refresh","Force an immediate feed refresh"),
+  ]),
+  ("Radio", "fa-broadcast-tower", [
+    ("GET",  "/api/radio/status",              "Radio connection status and metadata"),
+    ("POST", "/api/radio/reboot",              "Send reboot command to the radio"),
+    ("POST", "/api/radio/connect",             "Trigger a radio reconnect"),
+    ("POST", "/api/radio/firmware/config/read", "Read firmware config from radio"),
+    ("POST", "/api/radio/firmware/config/write","Write firmware config to radio"),
+    ("GET",  "/api/recent_commands",           "Most recent bot commands received"),
+    ("POST", "/api/stream_data",               "Inject a raw packet into the stream viewer"),
+  ]),
+  ("Admin", "fa-shield-alt", [
+    ("POST", "/api/admin/zombie-recover",    "Clear zombie state and force radio reconnect"),
+    ("POST", "/api/admin/radio-offline-clear","Clear radio-offline flag and resume sends"),
+    ("GET",  "/api/config/radio-debug",      "Get radio debug logging state"),
+    ("POST", "/api/config/radio-debug",      "Enable or disable radio debug logging"),
+  ]),
+  ("Maintenance", "fa-tools", [
+    ("GET",  "/api/maintenance/status",   "Last maintenance run time and outcomes"),
+    ("POST", "/api/maintenance/backup_now","Trigger an immediate database backup"),
+    ("POST", "/api/maintenance/restore",  "Restore database from a backup file"),
+    ("GET",  "/api/maintenance/list_backups","List available backup files"),
+    ("POST", "/api/maintenance/purge",    "Purge backup files older than retention limit"),
+    ("GET",  "/api/config/maintenance",   "Get maintenance schedule config"),
+    ("POST", "/api/config/maintenance",   "Update maintenance schedule config"),
+  ]),
+  ("Config", "fa-cog", [
+    ("GET",  "/api/config/notifications",      "Get notification settings"),
+    ("POST", "/api/config/notifications",      "Update notification settings"),
+    ("POST", "/api/config/notifications/test", "Send a test notification"),
+    ("GET",  "/api/config/logging",            "Get log level configuration"),
+    ("POST", "/api/config/logging",            "Update log level configuration"),
+    ("GET",  "/api/config/zombie-alert",       "Get zombie-alert thresholds"),
+    ("POST", "/api/config/zombie-alert",       "Update zombie-alert thresholds"),
+  ]),
+  ("Greeter", "fa-hand-sparkles", [
+    ("GET",  "/api/greeter",                   "Greeter configuration and rollout state"),
+    ("POST", "/api/greeter/end-rollout",       "End active greeter rollout"),
+    ("POST", "/api/greeter/ungreet",           "Remove a node from the greeted list"),
+  ]),
+] %}
+
+{% for section_name, icon, endpoints in sections %}
+<div class="card mb-3 api-section">
+    <div class="card-header d-flex align-items-center" style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#section-{{ loop.index }}">
+        <i class="fas {{ icon }} me-2 text-primary"></i>
+        <strong>{{ section_name }}</strong>
+        <span class="badge bg-secondary ms-2">{{ endpoints|length }}</span>
+        <i class="fas fa-chevron-down ms-auto collapse-icon"></i>
+    </div>
+    <div class="collapse show" id="section-{{ loop.index }}">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 api-explorer-table">
+                <thead>
+                    <tr>
+                        <th style="width:80px">Method</th>
+                        <th style="width:340px">Path</th>
+                        <th>Description</th>
+                        <th style="width:90px"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for method, path, desc in endpoints %}
+                <tr class="api-row" data-search="{{ method }} {{ path }} {{ desc }}">
+                    <td>
+                        <span class="badge {% if method == 'GET' %}bg-success{% elif method == 'POST' %}bg-primary{% elif method == 'PUT' %}bg-warning text-dark{% elif method == 'DELETE' %}bg-danger{% else %}bg-secondary{% endif %}">
+                            {{ method }}
+                        </span>
+                    </td>
+                    <td><code>{{ path }}</code></td>
+                    <td class="text-muted small">{{ desc }}</td>
+                    <td>
+                        <button class="btn btn-outline-secondary btn-sm py-0 curl-btn"
+                                data-method="{{ method }}"
+                                data-path="{{ path }}"
+                                title="Show curl example">
+                            <i class="fas fa-terminal me-1"></i>curl
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+    </div>
+</div>
+
+<!-- Curl modal -->
+<div class="modal fade" id="curlModal" tabindex="-1" aria-labelledby="curlModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="curlModalLabel"><i class="fas fa-terminal me-2"></i>curl example</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <pre id="curl-output" class="bg-dark text-light p-3 rounded" style="white-space:pre-wrap;word-break:break-all;font-size:0.85rem"></pre>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-sm btn-outline-secondary" id="curl-copy-btn">
+                    <i class="fas fa-copy me-1"></i>Copy
+                </button>
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    var host = window.location.origin;
+
+    // Filter
+    document.getElementById('api-filter').addEventListener('input', function() {
+        var q = this.value.toLowerCase();
+        document.querySelectorAll('.api-row').forEach(function(row) {
+            var match = row.dataset.search.toLowerCase().includes(q);
+            row.style.display = match ? '' : 'none';
+        });
+        // Show sections that have visible rows
+        document.querySelectorAll('.api-section').forEach(function(section) {
+            var visible = section.querySelectorAll('.api-row:not([style*="display: none"])').length;
+            section.style.display = visible > 0 ? '' : 'none';
+        });
+    });
+
+    // Curl examples
+    function buildCurl(method, path) {
+        var url = host + path;
+        if (method === 'GET') {
+            return 'curl -s -X GET \\\n  -H "X-Requested-With: XMLHttpRequest" \\\n  ' + url;
+        }
+        return 'curl -s -X ' + method + ' \\\n  -H "Content-Type: application/json" \\\n  -H "X-Requested-With: XMLHttpRequest" \\\n  -d \'{"key": "value"}\' \\\n  ' + url;
+    }
+
+    document.querySelectorAll('.curl-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var example = buildCurl(this.dataset.method, this.dataset.path);
+            document.getElementById('curl-output').textContent = example;
+            document.getElementById('curlModalLabel').textContent = this.dataset.method + ' ' + this.dataset.path;
+            var modal = new bootstrap.Modal(document.getElementById('curlModal'));
+            modal.show();
+        });
+    });
+
+    // Copy button
+    document.getElementById('curl-copy-btn').addEventListener('click', function() {
+        var text = document.getElementById('curl-output').textContent;
+        navigator.clipboard.writeText(text).then(function() {
+            var btn = document.getElementById('curl-copy-btn');
+            btn.innerHTML = '<i class="fas fa-check me-1"></i>Copied!';
+            setTimeout(function() {
+                btn.innerHTML = '<i class="fas fa-copy me-1"></i>Copy';
+            }, 1500);
+        }).catch(function() {});
+    });
+
+    // Collapse chevron rotation
+    document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(function(trigger) {
+        var target = document.querySelector(trigger.dataset.bsTarget);
+        if (!target) return;
+        target.addEventListener('hide.bs.collapse', function() {
+            trigger.querySelector('.collapse-icon').style.transform = 'rotate(-90deg)';
+        });
+        target.addEventListener('show.bs.collapse', function() {
+            trigger.querySelector('.collapse-icon').style.transform = '';
+        });
+    });
+})();
+</script>
+{% endblock %}

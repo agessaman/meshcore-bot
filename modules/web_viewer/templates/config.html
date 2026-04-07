@@ -10,26 +10,32 @@
         grid-template-columns: 260px minmax(0, 1fr);
         gap: 1rem;
     }
-    .config-nav.card {
+    .config-nav.card,
+    .config-admin-tools.card {
         border: 1px solid var(--border-color);
         background-color: var(--card-bg);
+        border-left: 3px solid #0d6efd;
     }
-    .config-nav {
+    [data-theme="dark"] .config-nav.card,
+    [data-theme="dark"] .config-admin-tools.card {
+        border-left-color: #6ea8fe;
+    }
+    .config-sidebar {
         position: sticky;
         top: 1rem;
         align-self: start;
         max-height: calc(100vh - 2rem);
         overflow-y: auto;
     }
-    .config-nav .nav-link {
+    .config-sidebar .nav-link {
         color: var(--text-color);
         border-radius: 0.375rem;
     }
-    .config-nav .nav-link:hover,
-    .config-nav .nav-link:focus {
+    .config-sidebar .nav-link:hover,
+    .config-sidebar .nav-link:focus {
         background-color: var(--bg-secondary);
     }
-    .config-nav .nav-link.active {
+    .config-sidebar .nav-link.active {
         background-color: var(--bg-tertiary);
         font-weight: 600;
     }
@@ -147,7 +153,7 @@
         .config-layout {
             grid-template-columns: 1fr;
         }
-        .config-nav {
+        .config-sidebar {
             position: static;
             max-height: none;
         }
@@ -161,25 +167,42 @@
         <i class="fas fa-cog"></i> Configuration
     </h1>
     <div class="config-layout">
-        <aside class="config-nav card">
-            <div class="card-body p-3">
-                {% for category_key, category_label in panel_categories %}
-                {% set category_panels = config_panels | selectattr('category', 'equalto', category_key) | list %}
-                {% if category_panels %}
-                <div class="mb-3">
+        <aside class="config-sidebar d-flex flex-column gap-3">
+            <div class="config-nav card">
+                <div class="card-body p-3">
+                    {% for category_key, category_label in panel_categories %}
+                    {% set category_panels = config_panels | selectattr('category', 'equalto', category_key) | list %}
+                    {% if category_panels %}
+                    <div class="mb-3">
+                        <h6 class="text-uppercase text-muted fw-semibold mb-2" style="font-size:.75rem;letter-spacing:.05em;">
+                            {{ category_label }}
+                        </h6>
+                        <nav class="nav flex-column">
+                            {% for panel in category_panels %}
+                            <a class="nav-link px-2 py-1" href="#{{ panel.id }}" data-config-target="{{ panel.id }}">
+                                <i class="{{ panel.icon }} me-2"></i>{{ panel.title }}
+                            </a>
+                            {% endfor %}
+                        </nav>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="config-admin-tools card">
+                <div class="card-body p-3">
                     <h6 class="text-uppercase text-muted fw-semibold mb-2" style="font-size:.75rem;letter-spacing:.05em;">
-                        {{ category_label }}
+                        Admin Tools
                     </h6>
                     <nav class="nav flex-column">
-                        {% for panel in category_panels %}
-                        <a class="nav-link px-2 py-1" href="#{{ panel.id }}" data-config-target="{{ panel.id }}">
-                            <i class="{{ panel.icon }} me-2"></i>{{ panel.title }}
+                        <a class="nav-link px-2 py-1" href="/api-explorer">
+                            <i class="fas fa-plug me-2"></i>API
                         </a>
-                        {% endfor %}
+                        <a class="nav-link px-2 py-1" href="/admin/config">
+                            <i class="fas fa-file-code me-2"></i>Raw Config
+                        </a>
                     </nav>
                 </div>
-                {% endif %}
-                {% endfor %}
             </div>
         </aside>
         <main>

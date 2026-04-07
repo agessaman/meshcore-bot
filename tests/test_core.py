@@ -356,6 +356,7 @@ class TestProbeRadioHealth:
         assert not reconnect_called
 
     def test_error_event_at_threshold_triggers_zombie_detection(self, tmp_path):
+        """At threshold, zombie state is set and CRITICAL logged — no reconnect attempt."""
         from meshcore.events import EventType
         bot = self._make_bot(tmp_path)
         bot._radio_fail_count = 2  # this probe makes it 3
@@ -371,10 +372,19 @@ class TestProbeRadioHealth:
             return_value=_make_coro(error_event)
         )
 
+        reconnect_called = []
+
+        async def fake_reconnect():
+            reconnect_called.append(True)
+            return True
+
+        bot.reconnect_radio = fake_reconnect
+
         result = asyncio.run(bot._probe_radio_health())
         assert result is False
-        assert bot._radio_fail_count == 0  # reset after trigger
-        assert bot._radio_zombie_detected is True
+        assert bot._radio_fail_count == 0   # reset after trigger
+        assert bot.is_radio_zombie is True  # zombie flag set
+        assert not reconnect_called         # reconnect NOT called — power cycle needed
 
     def test_success_resets_fail_count(self, tmp_path):
         from meshcore.events import EventType
@@ -524,6 +534,10 @@ class TestRadioOfflineState:
         assert bot.is_radio_offline is False
         bot._record_send_failure()
         assert bot.is_radio_offline is True
+
+# ---------------------------------------------------------------------------
+# _BotAdminServer — admin HTTP API
+# ---------------------------------------------------------------------------
 class TestBotAdminServer:
     """Admin HTTP server: /api/admin/reload and /api/admin/health."""
 
@@ -599,7 +613,7 @@ token =
 
         bot, token, port = self._make_bot_with_admin(tmp_path, port=15003)
 
-        with patch.object(bot, "reload_config", return_value=(True, "Config reloaded")):
+        with patch.object(bot, "reload_config", return_value=(True, "Configuration reloaded successfully")):
             server = bot._admin_server
             server.start()
             time.sleep(0.4)
@@ -613,7 +627,7 @@ token =
                 import json
                 body = json.loads(resp.read())
             assert body["success"] is True
-            assert "Config reloaded" in body["message"]
+            assert "reloaded" in body["message"].lower()
 
     def test_reload_endpoint_failure(self, tmp_path):
         """POST /api/admin/reload returns 409 when reload is rejected."""
