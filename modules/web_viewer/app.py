@@ -10,13 +10,15 @@ import logging
 import os
 import re
 import sqlite3
+import subprocess
 import sys
 import threading
 import time
 from contextlib import closing, contextmanager, suppress
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
+from urllib.parse import urlparse
 
 # When started as a script (`python modules/web_viewer/app.py`), Python puts the
 # script's directory on sys.path, not the repo root — import modules.* fails
@@ -99,6 +101,33 @@ from modules.web_viewer.integration import normalized_web_viewer_password
 
 class BotDataViewer:
     """Complete web interface using Flask-SocketIO 5.x best practices"""
+
+    # Whitelist of allowed tables for security
+    ALLOWED_TABLES = {
+        'geocoding_cache',
+        'generic_cache',
+        'bot_metadata',
+        'packet_stream',
+        'message_stats',
+        'command_stats',
+        'greeted_users',
+        'repeater_contacts',
+        'complete_contact_tracking',
+        'daily_stats',
+        'unique_advert_packets',
+        'purging_log',
+        'mesh_connections',
+        'observed_paths',
+        'feed_subscriptions',
+        'feed_activity',
+        'feed_errors',
+        'feed_message_queue',
+        'channel_operations',
+        'channels',
+        'path_stats',
+        'schema_version',
+        'greeter_rollout',
+    }
 
     def __init__(self, db_path="meshcore_bot.db", repeater_db_path=None, config_path="config.ini"):
         # Setup comprehensive logging
@@ -256,15 +285,56 @@ class BotDataViewer:
             config.read(config_path)
         return config
 
-    def _get_version_info(self) -> dict[str, Optional[str]]:
-        """Get version info for footer from shared runtime resolver."""
-        info = resolve_runtime_version(self.bot_root)
-        return {
-            "tag": info.get("tag"),
-            "branch": info.get("branch"),
-            "commit": info.get("commit"),
-            "date": info.get("date"),
-        }
+    def _get_version_info(self) -> dict[str, str | None]:
+        """Get version info for footer: tag if on a tag, else branch, commit hash and date.
+        Checks MESHCORE_BOT_VERSION env (Docker/build), then .version_info, then git. Never raises."""
+        out: dict[str, str | None] = {"tag": None, "branch": None, "commit": None, "date": None}
+        # Docker / CI: version set at build time (e.g. ARG + ENV in Dockerfile)
+        env_version = os.environ.get("MESHCORE_BOT_VERSION", "").strip()
+        if env_version:
+            out["tag"] = env_version if env_version.startswith("v") else f"v{env_version}"
+            return out
+        version_file = self.bot_root / ".version_info"
+        try:
+            if version_file.is_file():
+                with open(version_file) as f:
+                    data = json.load(f)
+                # Installer/tag installs write installer_version (often the tag name)
+                tag = data.get("installer_version") or data.get("tag")
+                if tag:
+                    out["tag"] = tag if tag.startswith("v") else f"v{tag}"
+                    return out
+        except (OSError, json.JSONDecodeError, KeyError):
+            pass
+        try:
+            def run(cmd: list[str]) -> str | None:
+                args = ["git", "-C", str(self.bot_root)] + cmd
+                result = subprocess.run(
+                    args, capture_output=True, text=True, timeout=5
+                )
+                if result.returncode != 0:
+                    return None
+                return (result.stdout or "").strip() or None
+
+            # Check if HEAD is a tag
+            tag = run(["describe", "--exact-match", "HEAD"])
+            if tag:
+                out["tag"] = tag if tag.startswith("v") else f"v{tag}"
+                return out
+            branch = run(["rev-parse", "--abbrev-ref", "HEAD"])
+            commit = run(["rev-parse", "--short", "HEAD"])
+            date_raw = run(["show", "-s", "--format=%ci", "HEAD"])
+            out["branch"] = branch or None
+            out["commit"] = commit or None
+            if date_raw:
+                try:
+                    # %ci is "YYYY-MM-DD HH:MM:SS +tz"; take date part only
+                    out["date"] = date_raw.split()[0]
+                except IndexError:
+                    out["date"] = date_raw
+            return out
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError, OSError):
+            return out
 
     def _setup_template_context(self):
         """Setup template context processor to inject global variables"""
@@ -291,11 +361,13 @@ class BotDataViewer:
                     radio_zombie_since = self.db_manager.get_metadata('bot.radio_zombie_since') or None
                     radio_offline = self.db_manager.get_metadata('bot.radio_offline') == 'true'
                     radio_offline_since = self.db_manager.get_metadata('bot.radio_offline_since') or None
+                    bot_initializing = self.db_manager.get_metadata('bot.initializing') == 'true'
                 except Exception:
                     radio_zombie = False
                     radio_zombie_since = None
                     radio_offline = False
                     radio_offline_since = None
+                    bot_initializing = False
                 return {
                     'greeter_enabled': greeter_enabled,
                     'feed_manager_enabled': feed_manager_enabled,
@@ -305,6 +377,7 @@ class BotDataViewer:
                     'radio_zombie_since': radio_zombie_since,
                     'radio_offline': radio_offline,
                     'radio_offline_since': radio_offline_since,
+                    'bot_initializing': bot_initializing,
                 }
             except Exception as e:
                 self.logger.exception("Template context processor failed: %s", e)
@@ -312,6 +385,7 @@ class BotDataViewer:
                     'greeter_enabled': False,
                     'feed_manager_enabled': False,
                     'bot_name': 'MeshCore Bot',
+                    'bot_initializing': False,
                     'version_info': version_info,
                     'radio_zombie': False,
                     'radio_zombie_since': None,
@@ -470,7 +544,7 @@ class BotDataViewer:
                     bot_latitude = lat
                     bot_longitude = lon
                     geographic_guessing_enabled = True
-        except Exception:
+        except (ValueError, configparser.Error):  # malformed float or missing section
             pass
 
         # Path command settings
@@ -948,8 +1022,8 @@ class BotDataViewer:
                                         path_validation_bonus = min(graph_path_validation_max_bonus, path_validation_bonus)
                                         if path_validation_bonus >= graph_path_validation_max_bonus * 0.9:
                                             break  # Strong match found, no need to check more
-                    except Exception:
-                        pass
+                    except (sqlite3.Error, OSError, KeyError, ValueError) as _score_err:
+                        self.logger.debug("Path-scoring graph query failed: %s", _score_err)
 
                 # Add path validation bonus to graph score
                 candidate_score = min(1.0, candidate_score + path_validation_bonus)
@@ -1177,7 +1251,13 @@ class BotDataViewer:
         @self.app.errorhandler(500)
         def internal_error(e):
             self.logger.exception("Unhandled exception (500): %s", e)
-            return make_response(("Internal Server Error", 500))
+            if request.path.startswith('/api/') or request.accept_mimetypes.best == 'application/json':
+                return make_response(jsonify({'error': 'An internal error occurred — see server logs'}), 500)
+            return make_response(render_template('error.html',
+                error_code=500,
+                error_title='Internal Server Error',
+                error_message='Something went wrong on our end. The error has been logged.',
+            ), 500)
 
         # Authentication middleware (BUG-001)
         _EXEMPT_PATHS = frozenset([
@@ -1194,7 +1274,7 @@ class BotDataViewer:
                 return
             if session.get('authenticated'):
                 return
-            if request.path.startswith('/api/') or request.is_json:
+            if request.path.startswith('/api/'):
                 return make_response(jsonify({'error': 'Authentication required'}), 401)
             next_url = request.path
             return redirect(url_for('login', next=next_url))
@@ -1269,7 +1349,8 @@ class BotDataViewer:
                 if password == self.web_viewer_password:
                     session['authenticated'] = True
                     next_url = request.args.get('next', '/')
-                    if not next_url.startswith('/') or next_url.startswith('//'):
+                    parsed = urlparse(next_url)
+                    if parsed.scheme or parsed.netloc or not next_url.startswith('/'):
                         next_url = '/'
                     return redirect(next_url)
                 return render_template('login.html', error='Invalid password')
@@ -1878,7 +1959,7 @@ class BotDataViewer:
                 data = request.get_json(silent=True) or {}
                 raw = data.get('keep_days', 'all')
                 if raw == 'all' or raw == 'All':
-                    keep_days: Union[str, int] = 'all'
+                    keep_days: str | int = 'all'
                 else:
                     try:
                         keep_days = int(raw)
@@ -1887,7 +1968,7 @@ class BotDataViewer:
                 if keep_days not in _VALID_KEEP_DAYS:
                     return jsonify({'error': f'keep_days must be one of {sorted(v for v in _VALID_KEEP_DAYS if isinstance(v, int))} or "all"'}), 400
 
-                tables_filter: Optional[list[str]] = None
+                tables_filter: list[str] | None = None
                 if 'tables' in data:
                     tf = data.get('tables')
                     if tf is None:
@@ -1981,6 +2062,23 @@ class BotDataViewer:
                 result[short] = val if val is not None else ''
             return jsonify(result)
 
+        @self.app.route('/api-explorer')
+        def api_explorer():
+            """API Explorer — browse all endpoints with curl examples."""
+            return render_template('api_explorer.html')
+
+        @self.app.route('/admin/config')
+        def admin_config():
+            """Resolved config viewer — shows effective config.ini values with sensitive fields redacted."""
+            _REDACT_KEYS = {'password', 'smtp_password', 'api_key', 'token', 'secret', 'smtp_user'}
+            sections = {}
+            for section in self.config.sections():
+                sections[section] = {
+                    k: '●●●●●●' if any(r in k for r in _REDACT_KEYS) else v
+                    for k, v in self.config.items(section)
+                }
+            return render_template('admin_config.html', sections=sections, config_path=self.config_path)
+
         @self.app.route('/mesh')
         def mesh():
             """Mesh graph visualization page"""
@@ -2057,6 +2155,29 @@ class BotDataViewer:
                 'version': 'modern_2.0',
                 'radio_zombie': radio_zombie,
                 'radio_zombie_since': radio_zombie_since,
+            })
+
+        @self.app.route('/api/banner-status')
+        def api_banner_status():
+            """Return current banner states for live JS polling."""
+            try:
+                radio_zombie = self.db_manager.get_metadata('bot.radio_zombie') == 'true'
+                radio_zombie_since = self.db_manager.get_metadata('bot.radio_zombie_since') or None
+                radio_offline = self.db_manager.get_metadata('bot.radio_offline') == 'true'
+                radio_offline_since = self.db_manager.get_metadata('bot.radio_offline_since') or None
+                bot_initializing = self.db_manager.get_metadata('bot.initializing') == 'true'
+            except Exception:
+                radio_zombie = False
+                radio_zombie_since = None
+                radio_offline = False
+                radio_offline_since = None
+                bot_initializing = False
+            return jsonify({
+                'radio_zombie': radio_zombie,
+                'radio_zombie_since': radio_zombie_since,
+                'radio_offline': radio_offline,
+                'radio_offline_since': radio_offline_since,
+                'bot_initializing': bot_initializing,
             })
 
         @self.app.route('/api/system-health')
@@ -3803,7 +3924,7 @@ class BotDataViewer:
                     for row in rows:
                         try:
                             emit('command_data', json.loads(row['data']))
-                        except Exception:
+                        except (json.JSONDecodeError, KeyError, TypeError):
                             pass
                 except Exception as e:
                     self.logger.warning(f"Error replaying command history: {e}", exc_info=True)
@@ -3836,7 +3957,7 @@ class BotDataViewer:
                             data = json.loads(row['data'])
                             evt = 'command_data' if row['type'] == 'command' else 'packet_data'
                             emit(evt, data)
-                        except Exception:
+                        except (json.JSONDecodeError, KeyError, TypeError):
                             pass
                 except Exception as e:
                     self.logger.warning(f"Error replaying packet history: {e}", exc_info=True)
@@ -3880,7 +4001,7 @@ class BotDataViewer:
                     for row in rows:
                         try:
                             emit('message_data', json.loads(row['data']))
-                        except Exception:
+                        except (json.JSONDecodeError, KeyError, TypeError):
                             pass
                 except Exception as e:
                     self.logger.warning(f"Error replaying message history: {e}", exc_info=True)
@@ -3903,7 +4024,7 @@ class BotDataViewer:
                     log_file = self.config.get('Logging', 'log_file', fallback='').strip()
                     if log_file:
                         log_file = str(resolve_path(log_file, self._config_base))
-                except Exception:
+                except (configparser.Error, OSError, ValueError):  # bad config or inaccessible path
                     pass
                 if log_file and os.path.exists(log_file):
                     try:
@@ -4260,7 +4381,7 @@ class BotDataViewer:
         except Exception as e:
             self.logger.error(f"Error cleaning up stale clients: {e}")
 
-    def _cleanup_old_data(self, days_to_keep: Optional[int] = None):
+    def _cleanup_old_data(self, days_to_keep: int | None = None):
         """Clean up old packet stream data to prevent database bloat.
         Uses [Data_Retention] packet_stream_retention_days when days_to_keep is not provided."""
         try:
@@ -4323,6 +4444,9 @@ class BotDataViewer:
             # Get all available tables
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = [row[0] for row in cursor.fetchall()]
+
+            # Filter tables by ALLOWED_TABLES whitelist for security
+            tables = [t for t in tables if t in self.ALLOWED_TABLES]
 
             with self._clients_lock:
                 client_count = len(self.connected_clients)
@@ -4538,8 +4662,8 @@ class BotDataViewer:
                 try:
                     validate_sql_identifier(table)
                 except ValueError:
-                    self.logger.warning(f"Skipping invalid table name: {table!r}")
-                    continue
+                    self.logger.warning(f"Rejecting invalid table name: {table!r}")
+                    raise
                 cursor.execute(f"SELECT COUNT(*) FROM {table}")
                 count = cursor.fetchone()[0]
                 stats['total_cache_entries'] += count
@@ -4814,16 +4938,17 @@ class BotDataViewer:
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
             table_names = [row[0] for row in cursor.fetchall()]
 
+            # Filter tables by ALLOWED_TABLES whitelist for security
+            table_names = [
+                name for name in table_names
+                if name in self.ALLOWED_TABLES
+            ]
+
             # Get table information
             tables = []
             total_records = 0
 
             for table_name in table_names:
-                try:
-                    validate_sql_identifier(table_name)
-                except ValueError:
-                    self.logger.warning(f"Skipping invalid table name: {table_name!r}")
-                    continue
                 try:
                     # Get record count
                     cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
@@ -4891,6 +5016,19 @@ class BotDataViewer:
             if conn:
                 conn.close()
 
+    def _is_safe_table_name(self, table_name: str) -> bool:
+        """Check if table name is in the ALLOWED_TABLES whitelist.
+
+        Args:
+            table_name: The table name to validate
+
+        Returns:
+            True if the table is in the allowed whitelist, False otherwise
+        """
+        if not table_name or not isinstance(table_name, str):
+            return False
+        return table_name in self.ALLOWED_TABLES
+
     def _get_table_description(self, table_name):
         """Get human-readable description for table"""
         descriptions = {
@@ -4930,17 +5068,13 @@ class BotDataViewer:
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = [row[0] for row in cursor.fetchall()]
 
+            # Filter tables by ALLOWED_TABLES whitelist for security
+            tables = [t for t in tables if t in self.ALLOWED_TABLES]
+
             # Perform REINDEX on all tables
             self.logger.info("Starting database REINDEX...")
             reindexed_tables = []
             for table in tables:
-                if table == 'sqlite_sequence':  # Skip system tables
-                    continue
-                try:
-                    validate_sql_identifier(table)
-                except ValueError:
-                    self.logger.warning(f"Skipping invalid table name for REINDEX: {table!r}")
-                    continue
                 try:
                     cursor.execute(f"REINDEX {table}")
                     reindexed_tables.append(table)
@@ -5028,7 +5162,7 @@ class BotDataViewer:
         return n
 
     def _collect_multibyte_hop_chunks(
-        self, cursor, recent_days: Optional[int] = None
+        self, cursor, recent_days: int | None = None
     ) -> set[str]:
         """Hop prefixes from multibyte paths in observed_paths (for repeater/room pubkey matching).
 
@@ -5068,12 +5202,12 @@ class BotDataViewer:
         row: Any,
         all_paths: list[dict[str, Any]],
         multibyte_hop_chunks: set[str],
-    ) -> Optional[str]:
+    ) -> str | None:
         """Return 'multibyte', 'one_byte', or None for contacts path-encoding badge."""
         pk = row["public_key"] or ""
         role = (row["role"] or "").lower()
         obph_raw = row["out_bytes_per_hop"]
-        obph: Optional[int]
+        obph: int | None
         try:
             obph = int(obph_raw) if obph_raw is not None else None
         except (TypeError, ValueError):
@@ -5130,7 +5264,7 @@ class BotDataViewer:
     def _contact_has_multibyte_path_evidence(
         self,
         public_key: str,
-        role: Optional[str],
+        role: str | None,
         out_bytes_per_hop: Any,
         multibyte_advert_public_keys: set[str],
         multibyte_hop_chunks: set[str],
@@ -5138,7 +5272,7 @@ class BotDataViewer:
         """Multibyte detection for dashboard 7d stats (observed_paths scoped by date in SQL)."""
         pk = public_key or ""
         role_l = (role or "").lower()
-        obph: Optional[int]
+        obph: int | None
         try:
             obph = int(out_bytes_per_hop) if out_bytes_per_hop is not None else None
         except (TypeError, ValueError):
@@ -5169,18 +5303,19 @@ class BotDataViewer:
             bot_lon = self.config.getfloat('Bot', 'bot_longitude', fallback=None)
 
             # Filter by last_heard for performance (default: last 30 days)
+            # Note: last_heard is stored as Unix timestamp (float), so use strftime('%s', ...) for comparison
             if since == 'all':
                 where_clause = ''
                 params = ()
             else:
                 if since == '24h':
-                    where_clause = " WHERE c.last_heard >= datetime('now', '-24 hours')"
+                    where_clause = " WHERE c.last_heard >= strftime('%s', 'now', '-24 hours')"
                 elif since == '7d':
-                    where_clause = " WHERE c.last_heard >= datetime('now', '-7 days')"
+                    where_clause = " WHERE c.last_heard >= strftime('%s', 'now', '-7 days')"
                 elif since == '30d':
-                    where_clause = " WHERE c.last_heard >= datetime('now', '-30 days')"
+                    where_clause = " WHERE c.last_heard >= strftime('%s', 'now', '-30 days')"
                 else:  # 90d
-                    where_clause = " WHERE c.last_heard >= datetime('now', '-90 days')"
+                    where_clause = " WHERE c.last_heard >= strftime('%s', 'now', '-90 days')"
                 params = ()
 
             # Query with LEFT JOIN to a limited set of paths per contact (max 50 most recent per contact)
@@ -5979,9 +6114,9 @@ class BotDataViewer:
             if conn:
                 conn.close()
 
-    def _preview_feed_items(self, feed_url: str, feed_type: str, output_format: str, api_config: Optional[dict[str, Any]] = None, filter_config: Optional[dict[str, Any]] = None, sort_config: Optional[dict[str, Any]] = None) -> list[dict[str, Any]]:
+    def _preview_feed_items(self, feed_url: str, feed_type: str, output_format: str, api_config: dict[str, Any] | None = None, filter_config: dict[str, Any] | None = None, sort_config: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """Preview feed items with custom output format (standalone, doesn't require bot)"""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         import feedparser
         import requests
@@ -6208,10 +6343,9 @@ class BotDataViewer:
 
         return item_passes_filter_config(item, filter_config)
 
-    def _parse_microsoft_date(self, date_str: str) -> Optional[datetime]:
+    def _parse_microsoft_date(self, date_str: str) -> datetime | None:
         """Parse Microsoft JSON date format: /Date(timestamp-offset)/"""
         import re
-        from datetime import timezone
 
         if not date_str or not isinstance(date_str, str):
             return None
@@ -6339,7 +6473,7 @@ class BotDataViewer:
         """Format a feed item using the output format (standalone version)"""
         import html
         import re
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         # Extract field values (NULL/missing fields must not become None for str ops)
         title = item.get('title') or 'Untitled'
@@ -6817,7 +6951,7 @@ class BotDataViewer:
                 'error': str(e)
             }
 
-    def _decode_path_hex(self, path_hex: str, bytes_per_hop: Optional[int] = None) -> list[dict[str, Any]]:
+    def _decode_path_hex(self, path_hex: str, bytes_per_hop: int | None = None) -> list[dict[str, Any]]:
         """
         Decode hex path string to repeater names using the same sophisticated logic as path command.
         Returns a list of dictionaries with node_id and repeater info.
@@ -6870,7 +7004,7 @@ class BotDataViewer:
                     bot_latitude = lat
                     bot_longitude = lon
                     geographic_guessing_enabled = True
-        except Exception:
+        except (ValueError, configparser.Error):  # malformed float or missing section
             pass
 
         self.config.get('Path_Command', 'proximity_method', fallback='simple')
@@ -7181,8 +7315,8 @@ class BotDataViewer:
                                         path_validation_bonus = min(graph_path_validation_max_bonus, path_validation_bonus)
                                         if path_validation_bonus >= graph_path_validation_max_bonus * 0.9:
                                             break  # Strong match found, no need to check more
-                    except Exception:
-                        pass
+                    except (sqlite3.Error, OSError, KeyError, ValueError) as _score_err:
+                        self.logger.debug("Path-scoring graph query failed: %s", _score_err)
 
                 candidate_score = min(1.0, candidate_score + path_validation_bonus)
 

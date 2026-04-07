@@ -14,9 +14,10 @@ import sqlite3
 import struct
 import threading
 import time
+from collections.abc import Callable
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import colorlog
 
@@ -25,7 +26,7 @@ import meshcore
 from meshcore import EventType
 
 from .channel_manager import ChannelManager
-from .command_manager import PUBLIC_CHANNEL_KEY_HEX, PUBLIC_CHANNEL_OVERRIDE_KEY, CommandManager
+from .command_manager import CommandManager
 from .db_manager import AsyncDBManager, DBManager
 from .feed_manager import FeedManager
 from .i18n import Translator
@@ -39,7 +40,6 @@ from .service_plugin_loader import ServicePluginLoader
 from .solar_conditions import set_config
 from .transmission_tracker import TransmissionTracker
 from .utils import resolve_path
-from .version_info import resolve_runtime_version
 from .web_viewer.integration import WebViewerIntegration
 
 
@@ -142,9 +142,6 @@ class MeshCoreBot:
 
         # Bot start time for uptime tracking
         self.start_time = time.time()
-        self.version_info = resolve_runtime_version(self.bot_root)
-        self.bot_version = self.version_info.get("display", "unknown")
-        self.logger.info(f"Bot version: {self.bot_version}")
 
         # Initialize database manager first (needed by plugins)
         db_path = self.config.get('Bot', 'db_path', fallback='meshcore_bot.db')
@@ -219,7 +216,7 @@ class MeshCoreBot:
             'Bot', 'per_user_rate_limit_enabled', fallback=True
         )
         self.per_user_rate_limiter = PerUserRateLimiter(
-            seconds=self.config.getfloat('Bot', 'per_user_rate_limit_seconds', fallback=30.0),
+            seconds=self.config.getfloat('Bot', 'per_user_rate_limit_seconds', fallback=5.0),
             max_entries=1000
         )
         # Nominatim rate limiter: 1.1 seconds between requests (Nominatim policy: max 1 req/sec)
@@ -555,7 +552,7 @@ class MeshCoreBot:
             self.per_user_rate_limit_enabled = self.config.getboolean(
                 'Bot', 'per_user_rate_limit_enabled', fallback=True
             )
-            new_per_user_seconds = self.config.getfloat('Bot', 'per_user_rate_limit_seconds', fallback=30.0)
+            new_per_user_seconds = self.config.getfloat('Bot', 'per_user_rate_limit_seconds', fallback=5.0)
             self.per_user_rate_limiter = PerUserRateLimiter(seconds=new_per_user_seconds, max_entries=1000)
 
             new_nominatim_rate_limit = self.config.getfloat('Bot', 'nominatim_rate_limit_seconds', fallback=1.1)
@@ -692,15 +689,6 @@ rate_limit_seconds = 2
 # Bot transmission rate limit in seconds between bot messages
 # Prevents bot from overwhelming the mesh network
 bot_tx_rate_limit_seconds = 1.0
-
-# Per-user rate limiting in seconds between replies to the same user
-# Helps reduce airtime use from rapid repeated responses to one sender
-per_user_rate_limit_seconds = 30
-
-# Enable or disable per-user rate limiting
-# true: Enforce per-user spacing (recommended)
-# false: Disable per-user limiter
-per_user_rate_limit_enabled = true
 
 # Transmission delay in milliseconds before sending messages
 # Helps prevent message collisions on the mesh network
@@ -1356,7 +1344,6 @@ long_jokes = false
 
                 # Fetch channels
                 await self.channel_manager.fetch_channels()
-                self._check_public_channel_guard()
 
                 # Setup message event handlers
                 await self.setup_message_handlers()
@@ -1442,26 +1429,86 @@ long_jokes = false
             self.logger.error(f"Error reconnecting radio: {e}")
             return False
 
-    def _check_public_channel_guard(self) -> None:
-        """Refuse to run if any monitored channel's actual device key is the Public channel key.
+    async def _probe_radio_health(self) -> bool:
+        """Send a lightweight get_time() probe to verify the radio is responding.
 
-        This is a second-layer check (after the name-based check in load_monitor_channels)
-        that catches channels which have been renamed on the device but still use the Public key.
+        A connected serial transport does not guarantee the firmware is alive and
+        processing commands.  This probe detects the 'zombie connection' state
+        where the port is open and messages are received but all outgoing commands
+        time out with no_event_received.
+
+        When the configured fail threshold is reached the bot logs a CRITICAL
+        message and sends an immediate alert email (if enabled).  It does NOT
+        attempt to reconnect — a zombie radio requires a physical power cycle;
+        disconnect/reconnect of the transport does nothing.  Probing stops once
+        a zombie is confirmed to avoid log spam; it resumes automatically after
+        the next successful connect() call.
+
+        Returns True if the device responded, False otherwise.
         """
-        override = self.config.get("Bot", PUBLIC_CHANNEL_OVERRIDE_KEY, fallback="").strip().lower()
-        if override == "true":
-            return
-        for ch_name in (self.command_manager.monitor_channels or []):
-            num = self.channel_manager.get_channel_number(ch_name)
-            if num is not None:
-                key_hex = self.channel_manager.get_channel_key(num)
-                if key_hex == PUBLIC_CHANNEL_KEY_HEX:
-                    self.logger.error(
-                        f"FATAL: Channel '{ch_name}' (slot {num}) has the Public channel key. "
-                        "Running a bot on Public is disruptive to other mesh users. "
-                        f"To override, add to [Bot]: {PUBLIC_CHANNEL_OVERRIDE_KEY} = true"
+        # Stop probing once a zombie has been confirmed — only a power cycle
+        # can recover it; further probes just generate noise.
+        if getattr(self, '_radio_zombie_detected', False):
+            return False
+
+        if not self.meshcore or not self.meshcore.is_connected:
+            return False
+        try:
+            from meshcore.events import EventType
+            result = await asyncio.wait_for(
+                self.meshcore.commands.get_time(), timeout=10.0
+            )
+            if result.type == EventType.ERROR:
+                self._radio_fail_count = getattr(self, '_radio_fail_count', 0) + 1
+                threshold = self.config.getint('Bot', 'radio_probe_fail_threshold', fallback=3)
+                interval  = max(300, min(900, self.config.getint(
+                    'Bot', 'radio_probe_interval_seconds', fallback=300
+                )))
+                self.logger.warning(
+                    f"Radio health probe failed "
+                    f"({self._radio_fail_count}/{threshold}): no response to get_time"
+                )
+                if self._radio_fail_count >= threshold:
+                    fail_count = self._radio_fail_count
+                    self._radio_fail_count = 0
+                    self._radio_zombie_detected = True
+                    self.logger.critical(
+                        "ZOMBIE RADIO DETECTED after %d consecutive failed probes "
+                        "(probe interval %ds). The radio firmware is unresponsive. "
+                        "A physical POWER CYCLE is required — disconnect/reconnect "
+                        "will NOT fix this. Probing suspended until next reconnect.",
+                        fail_count, interval,
                     )
-                    raise SystemExit(1)
+                    # Persist zombie state to db so the web viewer health API reflects it
+                    try:
+                        import datetime as _dt
+                        self.db_manager.set_metadata('bot.radio_zombie', 'true')
+                        self.db_manager.set_metadata(
+                            'bot.radio_zombie_since',
+                            _dt.datetime.utcnow().isoformat(),
+                        )
+                    except Exception:
+                        pass
+                    # Send immediate alert email via scheduler (non-blocking)
+                    scheduler = getattr(self, 'scheduler', None)
+                    if scheduler is not None:
+                        loop = asyncio.get_event_loop()
+                        loop.run_in_executor(
+                            None,
+                            scheduler.send_zombie_alert_email,
+                            fail_count, threshold, interval,
+                        )
+                return False
+            if getattr(self, '_radio_fail_count', 0) > 0:
+                self.logger.info("Radio health probe recovered — resetting fail counter")
+            self._radio_fail_count = 0
+            return True
+        except asyncio.TimeoutError:
+            self.logger.warning("Radio health probe timed out")
+            return False
+        except Exception as e:
+            self.logger.warning(f"Radio health probe error: {e}")
+            return False
 
     async def _probe_radio_health(self) -> bool:
         """Send a lightweight get_time() probe to verify the radio is responding.
@@ -1797,10 +1844,32 @@ long_jokes = false
         if self._shutdown_lock is None:
             self._shutdown_lock = asyncio.Lock()
 
+        # Mark bot as initializing so the web viewer can show a status banner
+        try:
+            self.db_manager.set_metadata('bot.initializing', 'true')
+        except Exception as e:
+            self.logger.debug("Could not set bot.initializing metadata: %s", e)
+
+        # Start web viewer early (before radio connect) so operators can see the
+        # initializing banner and monitor startup progress
+        if self.web_viewer_integration and self.web_viewer_integration.enabled:
+            self.web_viewer_integration.start_viewer()
+            self.logger.info("Web viewer started (early, before radio connect)")
+
         # Connect to MeshCore node
         if not await self.connect():
             self.logger.error("Failed to connect to MeshCore node")
+            try:
+                self.db_manager.set_metadata('bot.initializing', 'false')
+            except Exception:
+                pass
             return
+
+        # Bot is now connected — clear the initializing flag
+        try:
+            self.db_manager.set_metadata('bot.initializing', 'false')
+        except Exception as e:
+            self.logger.debug("Could not clear bot.initializing metadata: %s", e)
 
         # Update transmission tracker bot prefix now that we're connected
         if hasattr(self, 'transmission_tracker') and self.transmission_tracker:
@@ -1824,10 +1893,7 @@ long_jokes = false
                 self.config.getint('Admin', 'port', fallback=5001),
             )
 
-        # Start web viewer if enabled
-        if self.web_viewer_integration and self.web_viewer_integration.enabled:
-            self.web_viewer_integration.start_viewer()
-            self.logger.info("Web viewer started")
+        # Web viewer already started early above (before radio connect)
 
         # Send startup advert if enabled
         await self.send_startup_advert()
