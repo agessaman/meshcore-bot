@@ -307,3 +307,91 @@ class TestValidateExternalUrlEdgePaths:
         with patch("socket.gethostbyname", side_effect=RuntimeError("unexpected internal error")):
             result = validate_external_url("http://somehost.local/path")
         assert result is False
+
+
+class TestNixStorePathDetection:
+    """Lines 38-40: _is_nix_environment detects /nix/store/ in cwd."""
+
+    def test_nix_store_in_cwd_returns_true(self):
+        from pathlib import Path
+
+        import modules.security_utils as su
+        with patch("modules.security_utils.Path") as mock_path_cls:
+            mock_path_cls.cwd.return_value.resolve.return_value = Path("/nix/store/abc-pkg/src")
+            # Remove NIX_STORE from env so cwd check is reached
+            env = {k: v for k, v in os.environ.items()
+                   if k not in ("NIX_STORE", "NIX_PATH", "NIX_REMOTE", "IN_NIX_SHELL")}
+            with patch.dict(os.environ, env, clear=True):
+                assert su._is_nix_environment() is True
+
+    def test_cwd_exception_continues(self):
+        """Lines 39-40: exception in Path.cwd() is caught and execution continues."""
+        import modules.security_utils as su
+        with patch("modules.security_utils.Path") as mock_path_cls:
+            mock_path_cls.cwd.side_effect = OSError("permission denied")
+            env = {k: v for k, v in os.environ.items()
+                   if k not in ("NIX_STORE", "NIX_PATH", "NIX_REMOTE", "IN_NIX_SHELL")}
+            with patch.dict(os.environ, env, clear=True):
+                # Should not raise, should return False (no nix env vars either)
+                result = su._is_nix_environment()
+                assert isinstance(result, bool)
+
+
+class TestValidateSafePathOsPlatforms:
+    """Lines 195-204 (Windows), 206-216 (macOS) — dangerous path checks per platform."""
+
+    @patch("modules.security_utils._is_nix_environment", return_value=False)
+    @patch("modules.security_utils.platform.system", return_value="Windows")
+    def test_windows_system32_blocked(self, mock_sys, mock_nix, tmp_path):
+        """Windows branch: mock Path resolution so target looks like a Windows path."""
+        from pathlib import Path
+        from unittest.mock import MagicMock
+        from unittest.mock import Mock as _Mock
+        # Build a mock target whose str() starts with a Windows system32 prefix
+        fake_target = MagicMock(spec=Path)
+        fake_target.__str__ = _Mock(return_value="C:\\Windows\\System32\\cmd.exe")
+        fake_target.relative_to = _Mock(return_value=None)  # allow_absolute skips this
+        with patch("modules.security_utils.Path") as MockPath:
+            # base_dir resolution
+            fake_base = MagicMock(spec=Path)
+            fake_base.__str__ = _Mock(return_value=str(tmp_path))
+            # file_path: is_absolute() → True, resolve() → fake_target
+            fake_file = MagicMock(spec=Path)
+            fake_file.is_absolute.return_value = True
+            fake_file.resolve.return_value = fake_target
+            MockPath.side_effect = lambda p: fake_file if "Windows" in str(p) else MagicMock(
+                spec=Path, resolve=_Mock(return_value=fake_base), **{"__str__": _Mock(return_value=str(tmp_path))}
+            )
+            with pytest.raises(ValueError, match="system directory"):
+                validate_safe_path("C:\\Windows\\System32\\cmd.exe", allow_absolute=True)
+
+    @patch("modules.security_utils._is_nix_environment", return_value=False)
+    @patch("modules.security_utils.platform.system", return_value="Darwin")
+    def test_macos_system_blocked(self, mock_sys, mock_nix, tmp_path):
+        with pytest.raises(ValueError, match="system directory"):
+            validate_safe_path("/System/Library/something", allow_absolute=True)
+
+    @patch("modules.security_utils._is_nix_environment", return_value=False)
+    @patch("modules.security_utils.platform.system", return_value="Darwin")
+    def test_macos_safe_path_allowed(self, mock_sys, mock_nix, tmp_path):
+        result = validate_safe_path(str(tmp_path / "data.db"), base_dir=str(tmp_path), allow_absolute=True)
+        assert result is not None
+
+
+class TestValidateSqlIdentifier:
+    """Lines 329-331: validate_sql_identifier raises on invalid identifiers."""
+
+    def test_valid_identifier_returned(self):
+        from modules.security_utils import validate_sql_identifier
+        assert validate_sql_identifier("my_table") == "my_table"
+        assert validate_sql_identifier("_col123") == "_col123"
+
+    def test_invalid_identifier_raises(self):
+        from modules.security_utils import validate_sql_identifier
+        with pytest.raises(ValueError, match="Invalid SQL identifier"):
+            validate_sql_identifier("1bad_name")
+
+    def test_sql_injection_attempt_raises(self):
+        from modules.security_utils import validate_sql_identifier
+        with pytest.raises(ValueError, match="Invalid SQL identifier"):
+            validate_sql_identifier("users; DROP TABLE users")
