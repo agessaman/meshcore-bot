@@ -244,3 +244,300 @@ class TestRunDbBackupIntegration:
         dst = sqlite3.connect(str(backups[0]))
         assert dst.execute("SELECT i FROM x").fetchone()[0] == 1
         dst.close()
+
+
+# ---------------------------------------------------------------------------
+# MaintenanceRunner.run_data_retention
+# ---------------------------------------------------------------------------
+
+
+def _make_retention_bot():
+    """MagicMock bot with optional attrs set to None so hasattr gates pass."""
+    bot = MagicMock()
+    bot.logger = Mock()
+    bot.config = ConfigParser()
+    bot.web_viewer_integration = None
+    bot.repeater_manager = None
+    bot.command_manager = None
+    bot.mesh_graph = None
+    return bot
+
+
+class TestMaintenanceRunDataRetention:
+    def test_sets_ran_at_on_success(self):
+        bot = _make_retention_bot()
+        runner = MaintenanceRunner(bot, get_current_time=datetime.datetime.now)
+        runner.run_data_retention()
+        assert "ran_at" in runner._last_retention_stats
+
+    def test_calls_db_cleanup_expired_cache(self):
+        bot = _make_retention_bot()
+        runner = MaintenanceRunner(bot, get_current_time=datetime.datetime.now)
+        runner.run_data_retention()
+        bot.db_manager.cleanup_expired_cache.assert_called_once()
+
+    def test_calls_mesh_graph_cleanup_when_present(self):
+        bot = _make_retention_bot()
+        mg = Mock()
+        bot.mesh_graph = mg
+        runner = MaintenanceRunner(bot, get_current_time=datetime.datetime.now)
+        runner.run_data_retention()
+        mg.delete_expired_edges_from_db.assert_called_once()
+
+    def test_calls_stats_cmd_cleanup_when_present(self):
+        bot = _make_retention_bot()
+        stats_cmd = Mock()
+        bot.command_manager = Mock()
+        bot.command_manager.commands = {"stats": stats_cmd}
+        runner = MaintenanceRunner(bot, get_current_time=datetime.datetime.now)
+        runner.run_data_retention()
+        stats_cmd.cleanup_old_stats.assert_called_once_with(7)
+
+    def test_sets_error_on_exception(self):
+        bot = _make_retention_bot()
+        bot.db_manager.cleanup_expired_cache.side_effect = RuntimeError("disk full")
+        runner = MaintenanceRunner(bot, get_current_time=datetime.datetime.now)
+        runner.run_data_retention()
+        assert "error" in runner._last_retention_stats
+
+    def test_calls_web_viewer_cleanup_when_present(self):
+        bot = _make_retention_bot()
+        bi = Mock()
+        wvi = Mock()
+        wvi.bot_integration = bi
+        bot.web_viewer_integration = wvi
+        runner = MaintenanceRunner(bot, get_current_time=datetime.datetime.now)
+        runner.run_data_retention()
+        bi.cleanup_old_data.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# MaintenanceRunner.collect_email_stats
+# ---------------------------------------------------------------------------
+
+
+class TestMaintenanceCollectEmailStats:
+    def _make_runner(self):
+        bot = MagicMock()
+        bot.logger = Mock()
+        bot.config = ConfigParser()
+        bot.connection_time = None
+        return bot
+
+    def test_returns_unknown_uptime_when_no_connection_time(self):
+        bot = self._make_runner()
+        runner = MaintenanceRunner(bot, get_current_time=datetime.datetime.now)
+        stats = runner.collect_email_stats()
+        assert stats["uptime"] == "unknown"
+
+    def test_returns_uptime_string_when_connected(self):
+        bot = self._make_runner()
+        bot.connection_time = time.time() - 3700  # ~1h 1m ago
+        runner = MaintenanceRunner(bot, get_current_time=datetime.datetime.now)
+        stats = runner.collect_email_stats()
+        assert "h" in stats["uptime"]
+
+    def test_includes_retention_key(self):
+        bot = self._make_runner()
+        runner = MaintenanceRunner(bot, get_current_time=datetime.datetime.now)
+        runner._last_retention_stats = {"ran_at": "2026-01-01T03:00:00"}
+        stats = runner.collect_email_stats()
+        assert stats["retention"]["ran_at"] == "2026-01-01T03:00:00"
+
+    def test_db_size_unknown_when_path_missing(self):
+        bot = self._make_runner()
+        bot.db_manager.db_path = "/nonexistent/path.db"
+        runner = MaintenanceRunner(bot, get_current_time=datetime.datetime.now)
+        stats = runner.collect_email_stats()
+        assert stats.get("db_size_mb") == "unknown"
+
+
+# ---------------------------------------------------------------------------
+# MaintenanceRunner.format_email_body
+# ---------------------------------------------------------------------------
+
+
+class TestMaintenanceFormatEmailBody:
+    def _runner(self):
+        bot = MagicMock()
+        bot.logger = Mock()
+        bot.connected = True
+        return MaintenanceRunner(bot, get_current_time=datetime.datetime.now)
+
+    def test_contains_period_and_sections(self):
+        runner = self._runner()
+        body = runner.format_email_body(
+            {"uptime": "2h 5m", "contacts_24h": 3, "db_size_mb": "1.2"},
+            "2026-04-07 06:00 UTC",
+            "2026-04-08 06:00 UTC",
+        )
+        assert "2026-04-07 06:00 UTC" in body
+        assert "BOT STATUS" in body
+        assert "NETWORK ACTIVITY" in body
+        assert "DATABASE" in body
+
+    def test_retention_ran_at_included_when_set(self):
+        runner = self._runner()
+        runner._last_retention_stats = {"ran_at": "2026-04-07T03:00:00"}
+        body = runner.format_email_body({}, "s", "e")
+        assert "2026-04-07T03:00:00" in body
+
+    def test_log_section_included_when_log_file_present(self):
+        runner = self._runner()
+        body = runner.format_email_body(
+            {"log_file": "/var/log/bot.log", "log_rotated_24h": True, "log_backup_size_mb": "0.5"},
+            "s", "e",
+        )
+        assert "LOG FILES" in body
+        assert "Rotated : yes" in body
+
+
+# ---------------------------------------------------------------------------
+# MaintenanceRunner.send_nightly_email
+# ---------------------------------------------------------------------------
+
+
+class TestMaintenanceSendNightlyEmail:
+    def _runner_with_notif(self, overrides: dict):
+        bot = MagicMock()
+        bot.logger = Mock()
+        bot.config = ConfigParser()
+        runner = MaintenanceRunner(bot, get_current_time=datetime.datetime.now)
+        defaults: dict = {
+            "nightly_enabled": "true",
+            "smtp_host": "smtp.example.com",
+            "from_email": "bot@example.com",
+            "recipients": "admin@example.com",
+            "smtp_security": "starttls",
+        }
+        defaults.update(overrides)
+        runner.get_notif = Mock(side_effect=lambda k: defaults.get(k, ""))
+        runner.get_maint = Mock(return_value="")
+        return runner
+
+    def test_skips_when_disabled(self):
+        runner = self._runner_with_notif({"nightly_enabled": "false"})
+        runner.send_nightly_email()
+        runner.bot.db_manager.set_metadata.assert_not_called()
+
+    def test_warns_when_smtp_incomplete(self):
+        runner = self._runner_with_notif({"smtp_host": "", "from_email": "", "recipients": ""})
+        runner.send_nightly_email()
+        runner.bot.logger.warning.assert_called()
+
+    def test_sends_via_starttls_when_configured(self):
+        runner = self._runner_with_notif({})
+        with patch("smtplib.SMTP") as mock_smtp:
+            mock_smtp.return_value.__enter__ = Mock(return_value=mock_smtp.return_value)
+            mock_smtp.return_value.__exit__ = Mock(return_value=False)
+            runner.send_nightly_email()
+        mock_smtp.assert_called_once()
+
+    def test_logs_error_on_smtp_failure(self):
+        runner = self._runner_with_notif({})
+        with patch("smtplib.SMTP", side_effect=ConnectionRefusedError("refused")):
+            runner.send_nightly_email()
+        runner.bot.logger.error.assert_called()
+
+
+# ---------------------------------------------------------------------------
+# MaintenanceRunner.apply_log_rotation_config
+# ---------------------------------------------------------------------------
+
+
+class TestMaintenanceApplyLogRotationConfig:
+    def _runner(self, max_bytes="", backup_count=""):
+        bot = MagicMock()
+        bot.logger = Mock()
+        runner = MaintenanceRunner(bot, get_current_time=datetime.datetime.now)
+        runner.get_maint = Mock(side_effect=lambda k: {
+            "log_max_bytes": max_bytes,
+            "log_backup_count": backup_count,
+        }.get(k, ""))
+        return runner
+
+    def test_no_op_when_no_metadata(self):
+        runner = self._runner()
+        runner.apply_log_rotation_config()
+        runner.bot.db_manager.set_metadata.assert_not_called()
+
+    def test_replaces_rotating_file_handler(self, tmp_path: Path):
+        import logging
+        from logging.handlers import RotatingFileHandler
+
+        log_file = tmp_path / "test.log"
+        log_file.touch()
+        handler = RotatingFileHandler(str(log_file))
+        runner = self._runner(max_bytes="1048576", backup_count="3")
+        logger = logging.getLogger("test_maintenance_replace")
+        logger.handlers = [handler]
+        runner.bot.logger = logger
+
+        runner.apply_log_rotation_config()
+
+        assert runner._last_log_rotation_applied == {
+            "max_bytes": "1048576", "backup_count": "3"
+        }
+
+    def test_same_config_twice_is_no_op(self):
+        runner = self._runner(max_bytes="5242880", backup_count="3")
+        runner._last_log_rotation_applied = {"max_bytes": "5242880", "backup_count": "3"}
+        runner.apply_log_rotation_config()
+        runner.bot.db_manager.set_metadata.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# MaintenanceRunner.maybe_run_db_backup — daily schedule paths
+# ---------------------------------------------------------------------------
+
+
+class TestMaintenanceMaybeRunDbBackupDaily:
+    def _runner(self, now: datetime.datetime, maint_overrides: dict):
+        bot = MagicMock()
+        bot.logger = Mock()
+        bot.db_manager.get_metadata = Mock(return_value=None)
+        runner = MaintenanceRunner(bot, get_current_time=lambda: now)
+        defaults = {
+            "db_backup_enabled": "true",
+            "db_backup_schedule": "daily",
+            "db_backup_time": f"{now.hour:02d}:{now.minute:02d}",
+        }
+        defaults.update(maint_overrides)
+        runner.get_maint = Mock(side_effect=lambda k: defaults.get(k, ""))
+        return runner
+
+    def test_manual_schedule_never_fires(self):
+        now = datetime.datetime(2026, 4, 7, 2, 1, 0)
+        runner = self._runner(now, {"db_backup_schedule": "manual"})
+        with patch.object(runner, "run_db_backup") as mock_run:
+            runner.maybe_run_db_backup()
+        mock_run.assert_not_called()
+
+    def test_disabled_never_fires(self):
+        now = datetime.datetime(2026, 4, 7, 2, 1, 0)
+        runner = self._runner(now, {"db_backup_enabled": "false"})
+        with patch.object(runner, "run_db_backup") as mock_run:
+            runner.maybe_run_db_backup()
+        mock_run.assert_not_called()
+
+    def test_daily_fires_in_window(self):
+        now = datetime.datetime(2026, 4, 7, 2, 1, 0)
+        runner = self._runner(now, {})
+        with patch.object(runner, "run_db_backup") as mock_run:
+            runner.maybe_run_db_backup()
+        mock_run.assert_called_once()
+
+    def test_daily_skips_outside_window(self):
+        now = datetime.datetime(2026, 4, 7, 3, 30, 0)
+        runner = self._runner(now, {"db_backup_time": "02:00"})
+        with patch.object(runner, "run_db_backup") as mock_run:
+            runner.maybe_run_db_backup()
+        mock_run.assert_not_called()
+
+    def test_daily_skips_when_already_ran_today(self):
+        now = datetime.datetime(2026, 4, 7, 2, 1, 0)
+        runner = self._runner(now, {})
+        runner._last_db_backup_stats = {"ran_at": "2026-04-07T01:00:00"}
+        with patch.object(runner, "run_db_backup") as mock_run:
+            runner.maybe_run_db_backup()
+        mock_run.assert_not_called()

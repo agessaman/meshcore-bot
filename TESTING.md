@@ -53,8 +53,36 @@ Test configuration lives in two files:
 |--------------|-----------------------------------------------------------------|
 | `source`     | `modules/`                                                      |
 | `omit`       | `tests/`, `.venv/`                                              |
-| `fail_under` | `40` — raised 2026-03-22; currently 40.00%; target met          |
+| `fail_under` | `40` — raised 2026-03-22; currently **41.1%** as of 2026-04-07  |
 |              | (hardware-dependent modules cap realistic ceiling at ~40-42%)   |
+
+---
+
+## Coverage Analysis (2026-04-07)
+
+Full run: **2614 passed, 31 skipped — 41.1% overall** (2645 collected).
+
+### Well-covered (≥85%) — no action needed
+`i18n` 98%, `rate_limiter` 97%, `stats_command` 97%, `announcements_command` 96%,
+`schedule_command` 95%, `security_utils` 93%, `graph_trace_helper` 93%,
+`aurora_command` 87%, `trace_command` 87%.
+
+### High-value improvement targets
+
+| Module | Cover | Notes |
+|--------|-------|-------|
+| `maintenance.py` | 71% *(was 34%)* | Improved 2026-04-07; `send_nightly_email` SMTP path, `apply_log_rotation_config` remaining |
+| `web_viewer/app.py` | 46% | Each new endpoint test adds ~0.5-1% overall; config, SocketIO replay, admin POST paths untested |
+| `scheduler.py` | 50% | `_process_channel_operations` (698-808), `_firmware_read/write_op` (893-962), nightly email body untested |
+| `message_handler.py` | 44% | DM/broadcast dispatch branching (473-621), admin command paths (953-1010) |
+| `command_manager.py` | 42% | Dispatch paths and BLE/TCP connection paths |
+| `core.py` | 40% | Bot startup/shutdown paths, most of the async run loop |
+
+### Near-zero — hardware/external API dependent (skip for now)
+`wx_command` 5%, `airplanes_command` 10%, `prefix_command` 10%,
+`solarforecast_command` 8%, `alert_command` 13%, `packet_capture_service` 9%,
+`weather_service` 17% — these require live radio, external APIs, or complex
+integration setup and are not practical to unit-test without significant mocking.
 
 ---
 
