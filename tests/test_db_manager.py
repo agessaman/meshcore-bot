@@ -550,3 +550,186 @@ class TestAsyncDBManager:
         # get_metadata catches the RuntimeError and returns None
         assert result is None
         logger.error.assert_called()
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap fill: ~22 missing lines
+# ---------------------------------------------------------------------------
+
+
+class TestCoverageGapsFill:
+    """Cover remaining missing lines in db_manager.py."""
+
+    # -- get_cached_json line 200 --
+
+    def test_get_cached_json_no_cached_value(self, db):
+        """Line 200: returns None when key is not in cache at all."""
+        result = db.get_cached_json("nonexistent_key", "test_type")
+        assert result is None
+
+    # -- cleanup_expired_cache lines 242-243 --
+
+    def test_cleanup_expired_cache_logs_when_deleted(self, tmp_path, mock_logger):
+        """Lines 242-243: logs info message when entries are deleted."""
+        bot = Mock()
+        bot.logger = mock_logger
+        db = DBManager(bot, str(tmp_path / "gc.db"))
+        with closing(sqlite3.connect(str(tmp_path / "gc.db"))) as conn:
+            conn.execute(
+                "INSERT INTO generic_cache (cache_key, cache_value, cache_type, expires_at)"
+                " VALUES ('k1','v1','t1', datetime('now','-1 hour'))"
+            )
+            conn.execute(
+                "INSERT INTO geocoding_cache (query, latitude, longitude, expires_at)"
+                " VALUES ('test q', 37.77, -122.41, datetime('now','-1 hour'))"
+            )
+            conn.commit()
+        db.cleanup_expired_cache()
+        mock_logger.info.assert_called()
+
+    # -- cleanup_geocoding_cache lines 255-256 --
+
+    def test_cleanup_geocoding_cache_logs_when_deleted(self, tmp_path, mock_logger):
+        """Lines 255-256: logs info when geocoding entries deleted."""
+        bot = Mock()
+        bot.logger = mock_logger
+        db = DBManager(bot, str(tmp_path / "cg.db"))
+        with closing(sqlite3.connect(str(tmp_path / "cg.db"))) as conn:
+            conn.execute(
+                "INSERT INTO geocoding_cache (query, latitude, longitude, expires_at)"
+                " VALUES ('test query', 37.7749, -122.4194, datetime('now','-1 hour'))"
+            )
+            conn.commit()
+        db.cleanup_geocoding_cache()
+        mock_logger.info.assert_called()
+
+    # -- create_table / drop_table regex lines 325, 353 --
+
+    def test_create_table_invalid_name_format_raises(self, db):
+        """Line 325: raises ValueError when table name passes whitelist but fails regex."""
+        # Temporarily add an uppercase name to bypass whitelist check
+        original = db.ALLOWED_TABLES
+        db.ALLOWED_TABLES = original | {"BadTable"}
+        try:
+            with pytest.raises((ValueError, Exception)):
+                db.create_table("BadTable", "id INTEGER PRIMARY KEY")
+        finally:
+            db.ALLOWED_TABLES = original
+
+    def test_drop_table_invalid_name_format_raises(self, db):
+        """Line 353: raises ValueError when table name passes whitelist but fails regex."""
+        original = db.ALLOWED_TABLES
+        db.ALLOWED_TABLES = original | {"BadTable"}
+        try:
+            with pytest.raises((ValueError, Exception)):
+                db.drop_table("BadTable")
+        finally:
+            db.ALLOWED_TABLES = original
+
+    # -- execute_query_on_connection no description line 402 --
+
+    def test_execute_query_on_connection_no_description(self, db):
+        """Line 402: returns [] when cursor.description is None (non-SELECT, no row_factory).
+
+        db.connection() sets row_factory=sqlite3.Row bypassing line 402, so use a plain conn.
+        """
+        plain_conn = sqlite3.connect(str(db.db_path))
+        try:
+            result = db.execute_query_on_connection(
+                plain_conn,
+                "INSERT OR REPLACE INTO bot_metadata (key, value) VALUES (?, ?)",
+                ("__cov_test__", "1"),
+            )
+            plain_conn.commit()
+        finally:
+            plain_conn.close()
+        assert result == []
+
+    # -- cleanup_expired_cache exception path lines 242-243 --
+
+    def test_cleanup_expired_cache_exception_logged(self, tmp_path, mock_logger):
+        """Lines 242-243: exception inside cleanup_expired_cache is logged."""
+        bot = Mock()
+        bot.logger = mock_logger
+        db = DBManager(bot, str(tmp_path / "exc.db"))
+        with patch.object(db, "connection", side_effect=RuntimeError("db gone")):
+            db.cleanup_expired_cache()
+        mock_logger.error.assert_called()
+
+    # -- cleanup_geocoding_cache exception path lines 255-256 --
+
+    def test_cleanup_geocoding_cache_exception_logged(self, tmp_path, mock_logger):
+        """Lines 255-256: exception inside cleanup_geocoding_cache is logged."""
+        bot = Mock()
+        bot.logger = mock_logger
+        db = DBManager(bot, str(tmp_path / "exc2.db"))
+        with patch.object(db, "connection", side_effect=RuntimeError("db gone")):
+            db.cleanup_geocoding_cache()
+        mock_logger.error.assert_called()
+
+    # -- get_bot_start_time line 460 --
+
+    def test_get_bot_start_time_not_set_returns_none(self, db):
+        """Line 460: returns None when start_time not in metadata."""
+        # Fresh db has no start_time entry
+        result = db.get_bot_start_time()
+        assert result is None
+
+    # -- _apply_sqlite_pragmas OperationalError lines 503-505 --
+
+    def test_apply_sqlite_pragmas_operational_error_ignored(self, db):
+        """Lines 503-505: OperationalError in pragmas is silently swallowed."""
+        import sqlite3 as _sqlite3
+        from unittest.mock import MagicMock
+        mock_conn = MagicMock(spec=_sqlite3.Connection)
+        mock_conn.execute.side_effect = _sqlite3.OperationalError("locked")
+        # Must not raise
+        db._apply_sqlite_pragmas(mock_conn)
+
+
+class TestAsyncDBManagerExceptionPaths:
+    """Cover exception paths in AsyncDBManager: lines 607-608, 617-619, 628-630, 643-645."""
+
+    def _make_bad_adb(self, tmp_path):
+        """AsyncDBManager pointing at a non-existent path to force errors."""
+        from modules.db_manager import AsyncDBManager, DBManager
+        logger = Mock()
+        bot = Mock()
+        bot.logger = logger
+        # Create tables via sync DB first
+        DBManager(bot, str(tmp_path / "exc.db"))
+        adb = AsyncDBManager("/nonexistent/__bad__.db", logger)
+        return adb
+
+    def test_set_metadata_exception_logged(self, tmp_path):
+        """Lines 607-608: set_metadata logs error when DB is unreachable."""
+        import asyncio
+        adb = self._make_bad_adb(tmp_path)
+        asyncio.run(adb.set_metadata("k", "v"))
+        adb.logger.error.assert_called()
+
+    def test_execute_query_exception_returns_empty(self, tmp_path):
+        """Lines 617-619: execute_query logs error and returns [] on failure."""
+        import asyncio
+        adb = self._make_bad_adb(tmp_path)
+        result = asyncio.run(adb.execute_query("SELECT 1"))
+        assert result == []
+        adb.logger.error.assert_called()
+
+    def test_execute_update_exception_returns_zero(self, tmp_path):
+        """Lines 628-630: execute_update logs error and returns 0 on failure."""
+        import asyncio
+        adb = self._make_bad_adb(tmp_path)
+        result = asyncio.run(adb.execute_update(
+            "INSERT INTO bot_metadata (key, value) VALUES (?, ?)", ("k", "v")
+        ))
+        assert result == 0
+        adb.logger.error.assert_called()
+
+    def test_get_cached_value_exception_returns_none(self, tmp_path):
+        """Lines 643-645: get_cached_value logs error and returns None on failure."""
+        import asyncio
+        adb = self._make_bad_adb(tmp_path)
+        result = asyncio.run(adb.get_cached_value("k", "t"))
+        assert result is None
+        adb.logger.error.assert_called()

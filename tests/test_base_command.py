@@ -5,6 +5,8 @@ import configparser
 import time
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
+import pytest
+
 from modules.commands.base_command import BaseCommand
 from modules.models import MeshMessage
 from tests.conftest import mock_message
@@ -834,3 +836,341 @@ class TestMiscMethods:
         cmd = _cmd()
         cmd.bot.translator.get_value = Mock(side_effect=RuntimeError("broken"))
         cmd._load_translated_keywords()  # should not raise
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap fill: ~40 missing lines in base_command.py
+# ---------------------------------------------------------------------------
+
+
+class TestGetConfigValueMigrationLogs:
+    """Lines 152, 185: migration log notices when old/legacy sections are used."""
+
+    def test_old_section_migration_log(self):
+        """Line 152: logs migration notice when value found in old section (e.g. [Hacker])."""
+        cfg = configparser.ConfigParser()
+        cfg.add_section("Bot")
+        cfg.set("Bot", "bot_name", "TestBot")
+        cfg.add_section("Channels")
+        cfg.set("Channels", "monitor_channels", "general")
+        cfg.set("Channels", "respond_to_dms", "true")
+        cfg.add_section("Keywords")
+        # Add value in old section [Hacker] not new [Hacker_Command]
+        cfg.add_section("Hacker")
+        cfg.set("Hacker", "hacker_enabled", "true")
+        cmd = _cmd(cfg)
+        result = cmd.get_config_value("Hacker_Command", "hacker_enabled", fallback=False, value_type='bool')
+        # Should find value in old [Hacker] section and log migration notice
+        assert result is True
+        cmd.bot.logger.info.assert_called()
+
+    def test_legacy_section_fallback_log(self):
+        """Line 185: logs migration notice when value found in legacy_section_fallback."""
+        cfg = configparser.ConfigParser()
+        cfg.add_section("Bot")
+        cfg.set("Bot", "bot_name", "TestBot")
+        cfg.add_section("Channels")
+        cfg.set("Channels", "monitor_channels", "general")
+        cfg.set("Channels", "respond_to_dms", "true")
+        cfg.add_section("Keywords")
+        # Add value in legacy [Jokes] section (for Joke_Command joke_enabled key)
+        cfg.add_section("Jokes")
+        cfg.set("Jokes", "joke_enabled", "true")
+        cmd = _cmd(cfg)
+        result = cmd.get_config_value("Joke_Command", "joke_enabled", fallback=False, value_type='bool')
+        assert result is True
+        cmd.bot.logger.info.assert_called()
+
+    def test_value_error_in_section_try_continues(self):
+        """Lines 188-190: ValueError during type conversion causes 'continue' to next section."""
+        cfg = configparser.ConfigParser()
+        cfg.add_section("Bot")
+        cfg.set("Bot", "bot_name", "TestBot")
+        cfg.add_section("Channels")
+        cfg.set("Channels", "monitor_channels", "general")
+        cfg.set("Channels", "respond_to_dms", "true")
+        cfg.add_section("Keywords")
+        # Only new section with bad bool value → ValueError → returns fallback
+        cfg.add_section("Hacker_Command")
+        cfg.set("Hacker_Command", "hacker_enabled", "NOTABOOL")
+        cmd = _cmd(cfg)
+        result = cmd.get_config_value("Hacker_Command", "hacker_enabled", fallback=False, value_type='bool')
+        assert result is False  # fallback after ValueError
+
+    def test_exception_in_section_try_continues(self):
+        """Lines 191-193: non-ValueError exception causes 'continue' to next section."""
+        cfg = configparser.ConfigParser()
+        cfg.add_section("Bot")
+        cfg.set("Bot", "bot_name", "TestBot")
+        cfg.add_section("Channels")
+        cfg.set("Channels", "monitor_channels", "general")
+        cfg.set("Channels", "respond_to_dms", "true")
+        cfg.add_section("Keywords")
+        cfg.add_section("Hacker_Command")
+        cfg.set("Hacker_Command", "hacker_enabled", "true")
+        cmd = _cmd(cfg)
+        with patch.object(cmd.bot.config, 'getboolean', side_effect=RuntimeError("unexpected")):
+            result = cmd.get_config_value("Hacker_Command", "hacker_enabled", fallback=False, value_type='bool')
+        assert result is False
+
+
+class TestGetConfigValueLegacyKeyAlias:
+    """Lines 204-215: legacy_key_alias iteration with various value types."""
+
+    def _cfg_with_jokes(self, value: str) -> configparser.ConfigParser:
+        cfg = configparser.ConfigParser()
+        cfg.add_section("Bot")
+        cfg.set("Bot", "bot_name", "TestBot")
+        cfg.add_section("Channels")
+        cfg.set("Channels", "monitor_channels", "general")
+        cfg.set("Channels", "respond_to_dms", "true")
+        cfg.add_section("Keywords")
+        cfg.add_section("Jokes")
+        cfg.set("Jokes", "joke_enabled", value)
+        return cfg
+
+    def test_legacy_key_alias_bool(self):
+        """Lines 202-203: bool branch in legacy alias."""
+        cmd = _cmd(self._cfg_with_jokes("true"))
+        result = cmd.get_config_value("Joke_Command", "enabled", fallback=False, value_type='bool')
+        assert result is True
+
+    def test_legacy_key_alias_int(self):
+        """Lines 204-205: int branch in legacy alias."""
+        cfg = self._cfg_with_jokes("42")
+        cmd = _cmd(cfg)
+        result = cmd.get_config_value("Joke_Command", "enabled", fallback=0, value_type='int')
+        assert result == 42
+
+    def test_legacy_key_alias_float(self):
+        """Lines 206-207: float branch in legacy alias."""
+        cfg = self._cfg_with_jokes("3.14")
+        cmd = _cmd(cfg)
+        result = cmd.get_config_value("Joke_Command", "enabled", fallback=0.0, value_type='float')
+        assert result == pytest.approx(3.14)
+
+    def test_legacy_key_alias_list(self):
+        """Lines 208-210: list branch in legacy alias."""
+        cfg = self._cfg_with_jokes("a, b, c")
+        cmd = _cmd(cfg)
+        result = cmd.get_config_value("Joke_Command", "enabled", fallback=[], value_type='list')
+        assert result == ["a", "b", "c"]
+
+    def test_legacy_key_alias_str(self):
+        """Lines 211-212: str (else) branch in legacy alias."""
+        cfg = self._cfg_with_jokes("hello")
+        cmd = _cmd(cfg)
+        result = cmd.get_config_value("Joke_Command", "enabled", fallback="", value_type='str')
+        assert result == "hello"
+
+    def test_legacy_key_alias_value_error_skipped(self):
+        """Lines 214-215: ValueError in legacy alias is caught; fallback returned."""
+        cfg = self._cfg_with_jokes("notabool")
+        cmd = _cmd(cfg)
+        result = cmd.get_config_value("Joke_Command", "enabled", fallback=False, value_type='bool')
+        assert result is False
+
+
+class TestNormalizeAliasFromConfig:
+    """Lines 376, 385, 390-391, 393-394: _normalize_alias_from_config edge cases."""
+
+    def test_empty_string_returns_empty(self):
+        """Line 376: empty alias → return ''."""
+        cmd = _cmd()
+        assert cmd._normalize_alias_from_config("") == ""
+
+    def test_alias_empties_after_stripping_becomes_empty(self):
+        """Line 385: loop strips all chars leaving empty alias → break."""
+        cmd = _cmd()
+        # command_prefix is '' so cp_lower is '', decorative stripping applies
+        result = cmd._normalize_alias_from_config("!")
+        assert result == ""
+
+    def test_no_prefix_strips_decorative_first_char(self):
+        """Lines 390-391: no cp_lower, alias starts with decorative char → strip it."""
+        cmd = _cmd()
+        # No command_prefix configured → cp_lower = ''
+        result = cmd._normalize_alias_from_config(".weather")
+        assert result == "weather"
+
+    def test_cp_lower_set_strips_decorative_not_prefix(self):
+        """Lines 393-394: cp_lower set, alias starts with different decorative char → strip it."""
+        cfg = configparser.ConfigParser()
+        cfg.add_section("Bot")
+        cfg.set("Bot", "bot_name", "TestBot")
+        cfg.set("Bot", "command_prefix", "!")
+        cfg.add_section("Channels")
+        cfg.set("Channels", "monitor_channels", "general")
+        cfg.set("Channels", "respond_to_dms", "true")
+        cfg.add_section("Keywords")
+        cmd = _cmd(cfg)
+        # cp_lower = '!' but alias starts with '.' (different decorative)
+        result = cmd._normalize_alias_from_config(".weather")
+        assert result == "weather"
+
+
+class TestLoadAliasesSkipsEmpty:
+    """Line 416: empty alias after normalization is skipped."""
+
+    def test_empty_alias_after_normalize_skipped(self):
+        """Line 416: ',' alone in aliases string produces empty alias → not added."""
+        cfg = configparser.ConfigParser()
+        cfg.add_section("Bot")
+        cfg.set("Bot", "bot_name", "TestBot")
+        cfg.add_section("Channels")
+        cfg.set("Channels", "monitor_channels", "general")
+        cfg.set("Channels", "respond_to_dms", "true")
+        cfg.add_section("Keywords")
+        cfg.add_section("Test_Command")
+        # Comma-only aliases → all empty after split+strip → all skipped
+        cfg.set("Test_Command", "aliases", ",")
+        cmd = _cmd(cfg)
+        initial_keywords = list(cmd.keywords)
+        cmd._load_aliases_from_config()
+        # No new keywords should have been added
+        assert cmd.keywords == initial_keywords
+
+
+class TestGetMaxMessageLengthMissingPaths:
+    """Lines 576-579, 583: get_max_message_length meshcore user_name paths."""
+
+    def test_self_info_dict_with_user_name_no_name(self):
+        """Lines 572-573: self_info dict with 'user_name' but no 'name' → uses user_name."""
+        cmd = _cmd()
+        cmd.bot.meshcore = MagicMock()
+        # dict has 'user_name' but no 'name' key → username = "RadioUser"
+        cmd.bot.meshcore.self_info = {"user_name": "RadioUser"}
+        msg = mock_message(channel="general")
+        msg.is_dm = False
+        length = cmd.get_max_message_length(msg)
+        # "RadioUser" = 9 bytes → 160 - 9 - 2 = 149, clamped to max(130, 149) = 149
+        assert isinstance(length, int)
+        assert length == 149
+
+    def test_self_info_object_with_user_name_attr(self):
+        """Lines 576-577: self_info object lacking 'name' but has 'user_name' attr."""
+        class _Info:
+            user_name = "AttrUser"
+        cmd = _cmd()
+        cmd.bot.meshcore = MagicMock()
+        cmd.bot.meshcore.self_info = _Info()
+        msg = mock_message(channel="general")
+        msg.is_dm = False
+        length = cmd.get_max_message_length(msg)
+        # "AttrUser" = 8 bytes → 160 - 8 - 2 = 150
+        assert isinstance(length, int)
+        assert length == 150
+
+    def test_self_info_dict_no_name_no_user_name_falls_back_to_config(self):
+        """Line 583: username is None after meshcore → fallback to bot_name config."""
+        cmd = _cmd()
+        cmd.bot.meshcore = MagicMock()
+        # dict with no 'name' or 'user_name' → username stays None → config fallback
+        cmd.bot.meshcore.self_info = {"other": "value"}
+        cmd.bot.config.set("Bot", "bot_name", "TestBot")
+        msg = mock_message(channel="general")
+        msg.is_dm = False
+        length = cmd.get_max_message_length(msg)
+        # "TestBot" = 7 bytes → 160 - 7 - 2 = 151
+        assert isinstance(length, int)
+        assert length == 151
+
+    def test_self_info_property_raises_exception_is_caught(self):
+        """Lines 578-579: exception accessing self_info → caught, fallback to config."""
+        cmd = _cmd()
+        cmd.bot.meshcore = MagicMock()
+        # Property raises RuntimeError → caught by the except Exception block
+        type(cmd.bot.meshcore).self_info = property(
+            lambda self: (_ for _ in ()).throw(RuntimeError("broken"))
+        )
+        cmd.bot.config.set("Bot", "bot_name", "TestBot")
+        msg = mock_message(channel="general")
+        msg.is_dm = False
+        length = cmd.get_max_message_length(msg)
+        assert isinstance(length, int)
+
+
+class TestCooldownExpiredPath:
+    """Line 625: global cooldown expired returns (True, 0.0)."""
+
+    def test_global_cooldown_expired_returns_true(self):
+        """Line 625: elapsed > cooldown → (True, 0.0)."""
+        cmd = _cmd()
+        cmd.cooldown_seconds = 5
+        cmd._last_execution_time = time.time() - 10  # 10 seconds ago
+        can, remaining = cmd.check_cooldown()
+        assert can is True
+        assert remaining == 0.0
+
+
+class TestShouldExecuteRequiresDmChannelNotAllowed:
+    """Lines 894-896: requires_dm=True + not DM + channel not allowed → False."""
+
+    def test_requires_dm_channel_not_allowed_returns_false(self):
+        """Lines 894-896: DM-only command in a non-DM channel that is not allowed."""
+        cmd = _cmd()
+        cmd.requires_dm = True
+        # allowed_channels restricts to 'admin' only
+        cmd.allowed_channels = ["admin"]
+        # Use content="test" so matches_keyword returns True (keyword is "test")
+        msg = mock_message(content="test", channel="private_ch", is_dm=False)
+        result = cmd.should_execute(msg)
+        assert result is False
+
+
+class TestRequiresAdminAccessExceptionPath:
+    """Lines 983-985: requires_admin_access exception → False."""
+
+    def test_requires_admin_access_exception_returns_false(self):
+        """Lines 983-985: exception in config.get → logs warning, returns False."""
+        cmd = _cmd()
+        cmd.bot.config.add_section("Admin_ACL")
+        cmd.bot.config.set("Admin_ACL", "admin_commands", "test")
+        # Force an exception inside the try block
+        with patch.object(cmd.bot.config, 'get', side_effect=RuntimeError("bad")):
+            result = cmd.requires_admin_access()
+        assert result is False
+        cmd.bot.logger.warning.assert_called()
+
+
+class TestCheckAdminAccessEdgePaths:
+    """Lines 1015, 1025-1026, 1062-1064: admin ACL edge cases."""
+
+    def _valid_pubkey(self):
+        return "a" * 64
+
+    def test_empty_key_in_pubkeys_list_skipped(self):
+        """Line 1015: empty string after split/strip is skipped (continue)."""
+        cmd = _cmd()
+        cmd.bot.config.add_section("Admin_ACL")
+        # Leading comma produces an empty entry that should be skipped
+        cmd.bot.config.set("Admin_ACL", "admin_pubkeys", f",{self._valid_pubkey()}")
+        msg = mock_message()
+        msg.sender_pubkey = self._valid_pubkey()
+        result = cmd._check_admin_access(msg)
+        assert result is True  # valid key still matched after skipping the empty entry
+
+    def test_no_valid_pubkeys_after_validation_returns_false(self):
+        """Lines 1025-1026: all pubkeys invalid → logs error, returns False."""
+        cmd = _cmd()
+        cmd.bot.config.add_section("Admin_ACL")
+        # Short (invalid) pubkeys → all fail validate_pubkey_format
+        cmd.bot.config.set("Admin_ACL", "admin_pubkeys", "short_invalid_key,another_bad")
+        msg = mock_message()
+        msg.sender_pubkey = "a" * 64
+        result = cmd._check_admin_access(msg)
+        assert result is False
+        cmd.bot.logger.error.assert_called()
+
+    def test_check_admin_access_exception_returns_false(self):
+        """Lines 1062-1064: unexpected exception in try → logs error, returns False."""
+        cmd = _cmd()
+        cmd.bot.config.add_section("Admin_ACL")
+        cmd.bot.config.set("Admin_ACL", "admin_pubkeys", self._valid_pubkey())
+        msg = mock_message()
+        msg.sender_pubkey = self._valid_pubkey()
+        # Force exception inside the try block after the section check
+        with patch("modules.commands.base_command.validate_pubkey_format", side_effect=RuntimeError("oops")):
+            result = cmd._check_admin_access(msg)
+        assert result is False
+        cmd.bot.logger.error.assert_called()
