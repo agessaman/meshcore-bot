@@ -55,18 +55,28 @@ def main():
         action="store_true",
         help="Print the effective configuration (all sections and values) and exit",
     )
+    parser.add_argument(
+        "--show-config-json",
+        action="store_true",
+        help="Print the effective configuration as JSON and exit (pipe to jq for filtering)",
+    )
 
     args = parser.parse_args()
 
-    if args.show_config:
+    if args.show_config or args.show_config_json:
         import configparser
+        import json as _json
         cfg = configparser.ConfigParser()
         cfg.read(args.config)
-        print(f"# Effective config from: {args.config}")
-        for section in cfg.sections():
-            print(f"\n[{section}]")
-            for key, value in cfg.items(section):
-                print(f"{key} = {value}")
+        if args.show_config_json:
+            data = {section: dict(cfg.items(section)) for section in cfg.sections()}
+            print(_json.dumps(data, indent=2))
+        else:
+            print(f"# Effective config from: {args.config}")
+            for section in cfg.sections():
+                print(f"\n[{section}]")
+                for key, value in cfg.items(section):
+                    print(f"{key} = {value}")
         sys.exit(0)
 
     if args.validate_config:

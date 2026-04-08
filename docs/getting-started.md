@@ -33,11 +33,20 @@ Get meshcore-bot running on your machine in a few minutes.
 
    Edit `config.ini`: set at least `[Connection]` (serial/BLE/TCP) and `[Bot]` (e.g. `bot_name`).
 
-3. **Run**
+3. **Verify your config** (optional but recommended)
+
+   ```bash
+   python3 meshcore_bot.py --validate-config
+   python3 meshcore_bot.py --show-config   # inspect all resolved values
+   ```
+
+4. **Run**
 
    ```bash
    python3 meshcore_bot.py
    ```
+
+   Use `--config <path>` to specify a non-default config file.
 
 ## Production deployment
 

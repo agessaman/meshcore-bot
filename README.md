@@ -455,6 +455,35 @@ Or if installed as a package entry point:
 .venv/bin/meshcore-bot
 ```
 
+### CLI Flags
+
+| Flag | Description |
+|------|-------------|
+| `--config <path>` | Path to the config file (default: `config.ini`) |
+| `--validate-config` | Validate config section names and paths, then exit (exit 1 on errors). See [Config validation](docs/config-validation.md). |
+| `--show-config` | Print every resolved section and key/value from the config file in INI format, then exit. |
+| `--show-config-json` | Same as `--show-config` but outputs JSON. Pipe to `jq` for filtering or use to diff configs. |
+
+Examples:
+
+```bash
+# Use a non-default config file
+.venv/bin/python meshcore_bot.py --config /etc/meshcore/prod.ini
+
+# Check the config before starting
+.venv/bin/python meshcore_bot.py --validate-config
+
+# Inspect the full resolved config
+.venv/bin/python meshcore_bot.py --show-config | less
+.venv/bin/python meshcore_bot.py --show-config > resolved.ini
+
+# JSON output — filter with jq or diff two configs
+.venv/bin/python meshcore_bot.py --show-config-json | jq '.Bot.bot_name'
+.venv/bin/python meshcore_bot.py --show-config-json > before.json
+```
+
+When the web viewer is running, the same resolved config is also available at `/admin/config` with sensitive fields redacted and a live filter box.
+
 ### Available Commands
 
 For a comprehensive list of all available commands with examples and detailed explanations, see [Command reference](docs/command-reference.md).

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Raw Config — MeshCore Bot{% endblock %}
+
+{% block content %}
+<div class="row mb-3 align-items-center">
+    <div class="col">
+        <h2><i class="fas fa-file-code me-2"></i>Raw Config</h2>
+        <p class="text-muted mb-0">
+            Effective values read from <code>{{ config_path }}</code>.
+            Sensitive fields (passwords, keys, tokens) are redacted.
+        </p>
+    </div>
+    <div class="col-auto">
+        <input type="text" id="cfg-filter" class="form-control form-control-sm"
+               placeholder="Filter keys…" style="min-width:200px">
+    </div>
+</div>
+
+{% if sections %}
+    {% for section, values in sections.items() %}
+    <div class="card mb-3 cfg-section">
+        <div class="card-header py-2">
+            <code class="fw-bold">[{{ section }}]</code>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-sm table-hover mb-0">
+                <tbody>
+                {% for key, value in values.items() %}
+                <tr class="cfg-row" data-key="{{ key }}" data-section="{{ section }}">
+                    <td class="ps-3 text-nowrap" style="width:35%;font-family:monospace">{{ key }}</td>
+                    <td style="font-family:monospace;word-break:break-all">
+                        {% if value == '●●●●●●' %}
+                            <span class="text-muted fst-italic">{{ value }}</span>
+                        {% elif value == '' %}
+                            <span class="text-muted fst-italic">(empty)</span>
+                        {% else %}
+                            {{ value }}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endfor %}
+{% else %}
+    <div class="alert alert-warning">No config sections found — check that <code>{{ config_path }}</code> exists and is readable.</div>
+{% endif %}
+
+<script>
+(function () {
+    var input = document.getElementById('cfg-filter');
+    input.addEventListener('input', function () {
+        var q = this.value.trim().toLowerCase();
+        document.querySelectorAll('.cfg-section').forEach(function (section) {
+            var rows = section.querySelectorAll('.cfg-row');
+            var anyVisible = false;
+            rows.forEach(function (row) {
+                var key = (row.dataset.key + ' ' + row.dataset.section).toLowerCase();
+                var text = row.textContent.toLowerCase();
+                var match = !q || key.includes(q) || text.includes(q);
+                row.style.display = match ? '' : 'none';
+                if (match) anyVisible = true;
+            });
+            section.style.display = anyVisible ? '' : 'none';
+        });
+    });
+})();
+</script>
+{% endblock %}

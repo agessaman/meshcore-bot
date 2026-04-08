@@ -1,8 +1,32 @@
-# Config validation
+# Config validation and inspection
 
-The bot can validate your `config.ini` for section names and path writability before you run it. Use this to catch typos (e.g. `[WebViewer]` instead of `[Web_Viewer]`) and missing required sections.
+The bot provides two pre-startup flags for verifying your `config.ini` without actually starting the bot.
 
-## How to run
+## `--show-config` / `--show-config-json` — inspect resolved values
+
+Prints every section and key/value that the bot will read, then exits. Use this to confirm the right file is being loaded and to see what defaults are active.
+
+```bash
+# Human-readable INI format
+python meshcore_bot.py --show-config [--config config.ini]
+python meshcore_bot.py --show-config | less
+python meshcore_bot.py --show-config > resolved.ini
+
+# Machine-readable JSON — pipe to jq for filtering/diffing
+python meshcore_bot.py --show-config-json
+python meshcore_bot.py --show-config-json | jq '.Bot.bot_name'
+python meshcore_bot.py --show-config-json > before.json && \
+    # edit config.ini, then:
+    python meshcore_bot.py --show-config-json > after.json && diff before.json after.json
+```
+
+## Web viewer — `/admin/config`
+
+When the web viewer is running, navigate to `/admin/config` to inspect the same resolved values in the browser. Sensitive fields (passwords, API keys, tokens) are automatically redacted. A filter box lets you search keys across all sections without scrolling.
+
+## `--validate-config` — check for errors
+
+Validates your `config.ini` for section names and path writability before you run it. Use this to catch typos (e.g. `[WebViewer]` instead of `[Web_Viewer]`) and missing required sections.
 
 **Standalone script** (no bot startup):
 
