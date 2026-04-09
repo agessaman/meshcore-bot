@@ -82,10 +82,10 @@ class ChannelManager:
         # Clear cache for fresh fetch
         self._channels_cache.clear()
         valid_channels = []
-        consecutive_timeouts = 0
-        max_consecutive_timeouts = 3  # Abort if first 3 channels all timeout
+        consecutive_empty = 0
+        max_consecutive_empty = 3  # Abort after 3 consecutive missing/empty channels
 
-        # Fetch channels sequentially but with optimized logic
+        # Fetch channels sequentially with a conservative delay between requests
         for channel_idx in range(self.max_channels):
             try:
                 result = await self._fetch_single_channel(channel_idx)
@@ -93,32 +93,28 @@ class ChannelManager:
                 if result and result.get("channel_name"):
                     self._channels_cache[channel_idx] = result
                     valid_channels.append(result)
-                    consecutive_timeouts = 0  # Reset timeout counter on success
+                    consecutive_empty = 0  # Reset on success
                     self.logger.debug(f"Found channel {channel_idx}: {result.get('channel_name')}")
-                elif result and not result.get("channel_name"):
-                    # Empty channel - log but don't stop
-                    consecutive_timeouts = 0  # Reset timeout counter (device responded)
-                    self.logger.debug(f"Channel {channel_idx} is empty")
                 else:
-                    # No response - channel doesn't exist
-                    consecutive_timeouts += 1
-                    self.logger.debug(f"Channel {channel_idx} not found")
+                    # Empty or no response — channels are typically contiguous from 0
+                    consecutive_empty += 1
+                    self.logger.debug(f"Channel {channel_idx} is empty or not found ({consecutive_empty} consecutive)")
 
-                    # If first few channels all timeout, device is likely unresponsive
-                    if consecutive_timeouts >= max_consecutive_timeouts and channel_idx < max_consecutive_timeouts:
-                        self.logger.warning(f"First {max_consecutive_timeouts} channels all timed out - device may be unresponsive, aborting fetch")
+                    if consecutive_empty >= max_consecutive_empty:
+                        self.logger.info(
+                            f"Stopping channel fetch after {max_consecutive_empty} consecutive "
+                            f"empty slots at index {channel_idx}"
+                        )
                         break
 
-                # Small delay between requests to avoid overwhelming the device
-                await asyncio.sleep(0.1)
+                # Conservative delay to avoid overwhelming the device
+                await asyncio.sleep(0.3)
 
             except Exception as e:
-                consecutive_timeouts += 1
+                consecutive_empty += 1
                 self.logger.debug(f"Error fetching channel {channel_idx}: {e}")
-
-                # Abort early if device appears unresponsive
-                if consecutive_timeouts >= max_consecutive_timeouts and channel_idx < max_consecutive_timeouts:
-                    self.logger.warning("Multiple consecutive errors fetching channels - device may be unresponsive, aborting fetch")
+                if consecutive_empty >= max_consecutive_empty:
+                    self.logger.warning("Multiple consecutive errors fetching channels — aborting fetch")
                     break
                 continue
 
@@ -194,61 +190,69 @@ class ChannelManager:
             Channel info dictionary or None if not configured
         """
         try:
-            # Create a future to capture the channel info event
-            channel_event = None
-            event_received = asyncio.Event()
-
-            async def on_channel_info(event):
-                nonlocal channel_event
-                if event.payload.get('channel_idx') == channel_idx:
-                    channel_event = event
-                    event_received.set()
-
-            # Subscribe to channel info events
-            subscription = self.bot.meshcore.subscribe(EventType.CHANNEL_INFO, on_channel_info)
-
-            try:
-                # Send the command (suppress raw JSON output)
-                from meshcore_cli.meshcore_cli import next_cmd
-
-                with open(os.devnull, 'w') as devnull:
-                    old_stdout = sys.stdout
-                    sys.stdout = devnull
-                    try:
-                        await next_cmd(self.bot.meshcore, ["get_channel", str(channel_idx)])
-                    finally:
-                        sys.stdout = old_stdout
-
-                # Wait for the event with timeout
+            # Use the native library API if available — avoids the CLI wrapper overhead
+            # that was causing rapid-fire requests to crash the device.
+            if hasattr(self.bot.meshcore, 'commands') and hasattr(self.bot.meshcore.commands, 'get_channel'):
                 try:
-                    await asyncio.wait_for(event_received.wait(), timeout=self._fetch_timeout)
+                    res = await asyncio.wait_for(
+                        self.bot.meshcore.commands.get_channel(channel_idx),
+                        timeout=self._fetch_timeout,
+                    )
                 except asyncio.TimeoutError:
                     self.logger.debug(f"Timeout waiting for channel {channel_idx} response")
                     return None
 
-                # Check if we got the channel info
-                if channel_event and channel_event.payload:
-                    payload = channel_event.payload
-
-                    # Store channel key for decryption
-                    channel_secret = payload.get('channel_secret', b'')
-                    if isinstance(channel_secret, bytes) and len(channel_secret) == 16:
-                        # Convert to hex for easier handling
-                        payload['channel_key_hex'] = channel_secret.hex()
-
-                    # Check if this is an empty channel (all-zero channel secret)
-                    if isinstance(channel_secret, bytes) and channel_secret == b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00':
-                        self.logger.debug(f"Channel {channel_idx} is empty (all-zero secret)")
-                        return None
-
-                    return payload
-                else:
+                if not hasattr(res, 'payload') or not res.payload:
                     self.logger.debug(f"No channel {channel_idx} found")
                     return None
 
-            finally:
-                # Unsubscribe
-                self.bot.meshcore.unsubscribe(subscription)
+                payload = res.payload
+            else:
+                # Fallback: CLI wrapper (legacy path)
+                channel_event = None
+                event_received = asyncio.Event()
+
+                async def on_channel_info(event):
+                    nonlocal channel_event
+                    if event.payload.get('channel_idx') == channel_idx:
+                        channel_event = event
+                        event_received.set()
+
+                subscription = self.bot.meshcore.subscribe(EventType.CHANNEL_INFO, on_channel_info)
+                try:
+                    from meshcore_cli.meshcore_cli import next_cmd
+                    with open(os.devnull, 'w') as devnull:
+                        old_stdout = sys.stdout
+                        sys.stdout = devnull
+                        try:
+                            await next_cmd(self.bot.meshcore, ["get_channel", str(channel_idx)])
+                        finally:
+                            sys.stdout = old_stdout
+
+                    try:
+                        await asyncio.wait_for(event_received.wait(), timeout=self._fetch_timeout)
+                    except asyncio.TimeoutError:
+                        self.logger.debug(f"Timeout waiting for channel {channel_idx} response")
+                        return None
+
+                    if not channel_event or not channel_event.payload:
+                        self.logger.debug(f"No channel {channel_idx} found")
+                        return None
+                    payload = channel_event.payload
+                finally:
+                    self.bot.meshcore.unsubscribe(subscription)
+
+            # Store channel key as hex for decryption
+            channel_secret = payload.get('channel_secret', b'')
+            if isinstance(channel_secret, bytes) and len(channel_secret) == 16:
+                payload['channel_key_hex'] = channel_secret.hex()
+
+            # Empty channel: all-zero secret
+            if isinstance(channel_secret, bytes) and channel_secret == b'\x00' * 16:
+                self.logger.debug(f"Channel {channel_idx} is empty (all-zero secret)")
+                return None
+
+            return payload
 
         except asyncio.TimeoutError:
             self.logger.debug(f"Timeout fetching channel {channel_idx}")

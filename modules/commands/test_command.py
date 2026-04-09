@@ -133,16 +133,19 @@ class TestCommand(BaseCommand):
 
         return False
 
+    DEFAULT_FORMAT = "ack @[{sender}]{phrase_part} | {connection_info} | Received at: {timestamp}"
+
     def get_response_format(self) -> Optional[str]:
-        """Get the response format from config.
+        """Get the response format from config, falling back to the built-in default.
 
         Returns:
-            Optional[str]: The configured response format string, or None if not set.
+            Optional[str]: The configured or default response format string.
         """
         if self.bot.config.has_section('Keywords'):
             format_str = self.bot.config.get('Keywords', 'test', fallback=None)
-            return self._strip_quotes_from_config(format_str) if format_str else None
-        return None
+            if format_str:
+                return self._strip_quotes_from_config(format_str)
+        return self.DEFAULT_FORMAT
 
     def _extract_path_node_ids(self, message: MeshMessage) -> list[str]:
         """Extract path node IDs from message. Prefers routing_info.path_nodes (multi-byte); else parses message.path.
