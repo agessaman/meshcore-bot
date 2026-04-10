@@ -16,11 +16,11 @@ from pathlib import Path
 def backup_database(db_path, backup_dir="backups"):
     """
     Create a timestamped backup of a SQLite database
-    
+
     Args:
         db_path: Path to the database file
         backup_dir: Directory to store backups (default: backups)
-    
+
     Returns:
         Path to the backup file if successful, None otherwise
     """
@@ -71,10 +71,10 @@ def backup_database(db_path, backup_dir="backups"):
 def check_database_status(db_path):
     """
     Check if a database file is actually used (has tables)
-    
+
     Args:
         db_path: Path to the database file
-    
+
     Returns:
         Tuple of (is_used, table_count, file_size_mb)
     """
@@ -106,11 +106,11 @@ def check_database_status(db_path):
 def find_database_files(root_dir=".", check_usage=True):
     """
     Find all SQLite database files in the root directory
-    
+
     Args:
         root_dir: Root directory to search (default: current directory)
         check_usage: If True, check which databases are actually used
-    
+
     Returns:
         List of database file paths, optionally sorted by priority (main database first)
     """
