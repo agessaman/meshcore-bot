@@ -1,9 +1,9 @@
 """Tests for meshcore_bot.py CLI flags (--show-config, --validate-config)."""
 
+import os
 import subprocess
 import sys
 import tempfile
-import os
 
 
 def _write_config(content: str) -> str:
