@@ -29,13 +29,10 @@ Navigation:
 
 import configparser
 import curses
-import os
-import re
 import sys
 import textwrap
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
-
+from typing import Optional
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -58,20 +55,20 @@ def load_config(path: Path) -> configparser.ConfigParser:
     if path.exists():
         try:
             cfg.read(str(path), encoding="utf-8")
-        except (configparser.Error, IOError, OSError, UnicodeDecodeError) as e:
+        except (configparser.Error, OSError, UnicodeDecodeError) as e:
             # Return empty config rather than crash; caller may show a warning
             cfg._load_error = str(e)  # type: ignore[attr-defined]
     return cfg
 
 
-def load_example_comments(example_path: Path) -> Dict[str, Dict[str, str]]:
+def load_example_comments(example_path: Path) -> dict[str, dict[str, str]]:
     """Parse config.ini.example — return {section: {key: comment_text}}."""
-    comments: Dict[str, Dict[str, str]] = {}
+    comments: dict[str, dict[str, str]] = {}
     if not example_path.exists():
         return comments
     try:
         current_section = ""
-        pending: List[str] = []
+        pending: list[str] = []
         with open(example_path, encoding="utf-8", errors="replace") as fh:
             for line in fh:
                 stripped = line.strip()
@@ -88,14 +85,14 @@ def load_example_comments(example_path: Path) -> Dict[str, Dict[str, str]]:
                     pending = []
                 else:
                     pending = []
-    except (IOError, OSError, UnicodeDecodeError):
+    except (OSError, UnicodeDecodeError):
         pass
     return comments
 
 
-def load_example_lines(example_path: Path) -> Dict[str, Dict[str, str]]:
+def load_example_lines(example_path: Path) -> dict[str, dict[str, str]]:
     """Return {section: {key: 'full raw line from example'}}."""
-    lines: Dict[str, Dict[str, str]] = {}
+    lines: dict[str, dict[str, str]] = {}
     if not example_path.exists():
         return lines
     try:
@@ -110,14 +107,14 @@ def load_example_lines(example_path: Path) -> Dict[str, Dict[str, str]]:
                     key = stripped.split("=", 1)[0].strip()
                     if current_section:
                         lines.setdefault(current_section, {})[key] = stripped
-    except (IOError, OSError, UnicodeDecodeError):
+    except (OSError, UnicodeDecodeError):
         pass
     return lines
 
 
-def load_example_keys(example_path: Path) -> Dict[str, Dict[str, str]]:
+def load_example_keys(example_path: Path) -> dict[str, dict[str, str]]:
     """Return {section: {key: default_value}} from config.ini.example."""
-    keys: Dict[str, Dict[str, str]] = {}
+    keys: dict[str, dict[str, str]] = {}
     if not example_path.exists():
         return keys
     try:
@@ -129,17 +126,17 @@ def load_example_keys(example_path: Path) -> Dict[str, Dict[str, str]]:
                 keys[section] = dict(cfg.items(section))
             except configparser.Error:
                 keys[section] = {}
-    except (configparser.Error, IOError, OSError, UnicodeDecodeError):
+    except (configparser.Error, OSError, UnicodeDecodeError):
         pass
     return keys
 
 
 def validate_config(
     cfg: configparser.ConfigParser,
-    example_keys: Dict[str, Dict[str, str]],
-) -> List[Tuple[str, str, str]]:
+    example_keys: dict[str, dict[str, str]],
+) -> list[tuple[str, str, str]]:
     """Return list of (severity, section, message) issues."""
-    issues: List[Tuple[str, str, str]] = []
+    issues: list[tuple[str, str, str]] = []
     try:
         required = {
             "Connection": {"connection_type"},
@@ -174,10 +171,10 @@ def validate_config(
 
 def migrate_config(
     cfg: configparser.ConfigParser,
-    example_keys: Dict[str, Dict[str, str]],
-    example_comments: Dict[str, Dict[str, str]],
-) -> List[str]:
-    changes: List[str] = []
+    example_keys: dict[str, dict[str, str]],
+    example_comments: dict[str, dict[str, str]],
+) -> list[str]:
+    changes: list[str] = []
     for section, keys in example_keys.items():
         if not cfg.has_section(section):
             try:
@@ -201,13 +198,13 @@ def migrate_config(
 def save_config(cfg: configparser.ConfigParser, path: Path) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-    except (IOError, OSError, PermissionError) as e:
-        raise IOError(f"Cannot create directory {path.parent}: {e}") from e
+    except (OSError, PermissionError) as e:
+        raise OSError(f"Cannot create directory {path.parent}: {e}") from e
     try:
         with open(path, "w", encoding="utf-8") as fh:
             cfg.write(fh)
-    except (IOError, OSError, PermissionError) as e:
-        raise IOError(f"Cannot write {path}: {e}") from e
+    except (OSError, PermissionError) as e:
+        raise OSError(f"Cannot write {path}: {e}") from e
 
 
 # ---------------------------------------------------------------------------
@@ -219,9 +216,9 @@ class TUIState:
         self,
         cfg: configparser.ConfigParser,
         path: Path,
-        example_keys: Dict[str, Dict[str, str]],
-        example_comments: Dict[str, Dict[str, str]],
-        example_lines: Dict[str, Dict[str, str]],
+        example_keys: dict[str, dict[str, str]],
+        example_comments: dict[str, dict[str, str]],
+        example_lines: dict[str, dict[str, str]],
     ) -> None:
         self.cfg = cfg
         self.path = path
@@ -229,7 +226,7 @@ class TUIState:
         self.example_comments = example_comments
         self.example_lines = example_lines
         self.dirty = False
-        self.sections: List[str] = []
+        self.sections: list[str] = []
         try:
             self.sections = cfg.sections()
         except Exception:
@@ -245,7 +242,7 @@ class TUIState:
             return ""
         return self.sections[self.section_idx]
 
-    def current_keys(self) -> List[str]:
+    def current_keys(self) -> list[str]:
         s = self.current_section()
         if not s:
             return []
@@ -442,7 +439,7 @@ def draw_hint_line(win, state: TUIState, top: int, left: int, width: int) -> Non
 # Overlays
 # ---------------------------------------------------------------------------
 
-def show_overlay(stdscr, title: str, items: List[Tuple[str, str, str]]) -> None:
+def show_overlay(stdscr, title: str, items: list[tuple[str, str, str]]) -> None:
     """Generic scrollable list overlay. Items: (tag, section, message)."""
     try:
         curses.curs_set(0)
@@ -561,7 +558,7 @@ def show_key_help(stdscr, state: TUIState) -> None:
             current_val = "(error reading value)"
         default_val = state.example_keys.get(section, {}).get(key, "")
 
-        lines: List[Tuple[str, str, str]] = [
+        lines: list[tuple[str, str, str]] = [
             ("INFO", "Section", section),
             ("INFO", "Key", key),
             ("INFO", "Current value", repr(current_val)),
@@ -1189,7 +1186,7 @@ def main() -> None:
             print(f"config.ini not found — creating from {example_path.name}…")
             shutil.copy(str(example_path), str(config_path))
             print(f"Created {config_path}")
-        except (IOError, OSError, shutil.Error) as e:
+        except (OSError, shutil.Error) as e:
             print(f"ERROR: Could not create config from example: {e}", file=sys.stderr)
             sys.exit(1)
 
