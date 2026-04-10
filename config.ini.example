@@ -191,21 +191,18 @@ max_response_hops = 10
 # conflating distinct links (see Path Command / path-command-config.md).
 prefix_bytes = 1
 
-# Flood scope for channel messages (MeshCore regions; optional)
-# Empty, * or 0: classic flood (default). Set to a region name using the auto-hashtag
-# format (e.g. #west) to limit channel sends to that scope. The value is SHA256-hashed
-# to a 16-byte scope key and sent to the device via SET_FLOOD_SCOPE (0x36). Plain names
-# without # (e.g. west) are accepted and will have # prepended automatically.
-# flood_scope = #west
+# List of region scopes (comma-separated) that the bot will reply to when messages arrive on those scopes.
+# Responses will be sent with the same scope hash.
+# Example: flood_scopes = *,#west,#east
+# Use * to allow replies to unscoped FLOOD messages.
+# Leave blank or commented to use the default (all).
+# flood_scopes = #region, #otherregion
 
-# Multi-scope reply: comma-separated list of named scopes the bot will reply into.
-# When a TC_FLOOD channel message arrives whose scope matches one of these entries,
-# the bot replies using that scope, then resets to flood_scope (or global if unset).
-# Scopes in this list are matched against incoming messages by computing
-# HMAC-SHA256(scope_key, payload_type || encrypted_payload)[0:2] and comparing
-# with the transport code in the TC_FLOOD packet header.
-# Values follow the same #name format as flood_scope.
-# flood_scopes = #west, #east
+# Outgoing flood scope override (optional)
+# Set this to a region (e.g. #west) to always use that scope for all outgoing channel messages.
+# Leave commented or empty to let the bot automatically match the incoming message’s region.
+# You can use "region" or "#region" (the # is added if missing).
+# outgoing_flood_scope_override = #west
 
 [Banned_Users]
 # List of banned sender names (comma-separated). Matching is prefix (starts-with):

@@ -927,6 +927,29 @@ class MessageHandler:
                                 }
                                 await self._process_advertisement_packet(decoded_packet, signal_info)
 
+                    # Prefer library-provided scope fields (already parsed by meshcore-py).
+                    # The library's parsePacketPayload populates these directly from the
+                    # inner MeshCore packet, avoiding any raw_hex prefix/offset issues.
+                    _lib_route_type = payload.get('route_type')      # int: 0=TC_FLOOD, 1=FLOOD
+                    _lib_tc_hex = payload.get('transport_code')       # hex str e.g. "26f10000"
+                    _lib_payload_type = payload.get('payload_type')   # int
+                    _lib_pkt_payload = payload.get('pkt_payload')     # bytes after path
+
+                    # Compute transport code1 (uint16 LE) from library hex string
+                    _lib_tc_code1 = None
+                    if _lib_tc_hex and len(_lib_tc_hex) >= 4:
+                        try:
+                            _lib_tc_code1 = int.from_bytes(bytes.fromhex(_lib_tc_hex[:4]), "little")
+                        except ValueError:
+                            pass
+
+                    # pkt_payload may be bytes or hex string depending on library version
+                    _lib_pkt_hex = None
+                    if isinstance(_lib_pkt_payload, bytes):
+                        _lib_pkt_hex = _lib_pkt_payload.hex()
+                    elif isinstance(_lib_pkt_payload, str) and _lib_pkt_payload:
+                        _lib_pkt_hex = _lib_pkt_payload
+
                     rf_data = {
                         'timestamp': current_time,
                         'packet_prefix': packet_prefix,  # Use packet prefix for correlation
@@ -938,12 +961,18 @@ class MessageHandler:
                         'payload_length': payload_length,  # Payload length
                         'routing_info': routing_info,  # Extracted routing information
                         'packet_hash': packet_hash,  # Packet hash for tracking same message via different paths
-                        # Fields for TC_FLOOD scope matching (only populated when decoded_packet available)
-                        'route_type_int': decoded_packet.get('route_type') if decoded_packet else None,
-                        'transport_code1': (decoded_packet.get('transport_codes') or {}).get('code1') if decoded_packet else None,
-                        'payload_type_int': decoded_packet.get('payload_type') if decoded_packet else None,
-                        'scope_payload_hex': decoded_packet.get('payload_hex') if decoded_packet else None,
+                        # Fields for TC_FLOOD scope matching — use library values first, decoded_packet as fallback
+                        'route_type_int': _lib_route_type if _lib_route_type is not None else (decoded_packet.get('route_type') if decoded_packet else None),
+                        'transport_code1': _lib_tc_code1 if _lib_tc_code1 is not None else ((decoded_packet.get('transport_codes') or {}).get('code1') if decoded_packet else None),
+                        'payload_type_int': _lib_payload_type if _lib_payload_type is not None else (decoded_packet.get('payload_type') if decoded_packet else None),
+                        'scope_payload_hex': _lib_pkt_hex if _lib_pkt_hex else (decoded_packet.get('payload_hex') if decoded_packet else None),
                     }
+                    if rf_data.get('route_type_int') == 0:
+                        self.logger.debug(
+                            "TC_FLOOD scope fields: tc_code1=%s payload_type=%s payload_hex_prefix=%s",
+                            rf_data.get('transport_code1'), rf_data.get('payload_type_int'),
+                            (rf_data.get('scope_payload_hex') or '')[:16],
+                        )
                     self.recent_rf_data.append(rf_data)
 
                     # Update correlation indexes

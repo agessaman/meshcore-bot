@@ -1016,8 +1016,9 @@ class CommandManager:
         """Send a channel message using meshcore_py (optional flood scope).
 
         Resolves channel names to numbers and handles rate limiting.
-        If [Channels] flood_scope is set (or scope is passed), uses that scope
-        for this send then restores global flood. Scope values "" / "*" / "0" mean global.
+        If [Channels] outgoing_flood_scope_override is set (or scope is passed explicitly),
+        uses that scope for this send then restores global flood. When neither is set,
+        scope defaults to global flood. Scope values "" / "*" / "0" mean global.
         """
         if not self.bot.connected or not self.bot.meshcore:
             return False
@@ -1060,8 +1061,8 @@ class CommandManager:
 
             # Optional flood scope (region): set before send, restore after
             scope_cfg = ""
-            if self.bot.config.has_section("Channels") and self.bot.config.has_option("Channels", "flood_scope"):
-                scope_cfg = (self.bot.config.get("Channels", "flood_scope") or "").strip()
+            if self.bot.config.has_section("Channels") and self.bot.config.has_option("Channels", "outgoing_flood_scope_override"):
+                scope_cfg = (self.bot.config.get("Channels", "outgoing_flood_scope_override") or "").strip()
             scope_to_use = (scope if scope is not None else scope_cfg) or ""
             scope_is_global = scope_to_use in ("", "*", "0", "None")
             if not scope_is_global:

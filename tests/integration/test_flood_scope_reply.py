@@ -46,7 +46,7 @@ def _tc_hex(scope_name: str, payload_type: int, pkt_payload: bytes) -> str:
     return tc1.to_bytes(2, "little").hex() + "0000"
 
 
-def make_config(flood_scopes: str = "", flood_scope: str = "") -> configparser.ConfigParser:
+def make_config(flood_scopes: str = "", outgoing_flood_scope_override: str = "") -> configparser.ConfigParser:
     config = configparser.ConfigParser()
     config.add_section("Bot")
     config.set("Bot", "bot_name", "TestBot")
@@ -54,8 +54,8 @@ def make_config(flood_scopes: str = "", flood_scope: str = "") -> configparser.C
     config.set("Channels", "monitor_channels", "general")
     if flood_scopes:
         config.set("Channels", "flood_scopes", flood_scopes)
-    if flood_scope:
-        config.set("Channels", "flood_scope", flood_scope)
+    if outgoing_flood_scope_override:
+        config.set("Channels", "outgoing_flood_scope_override", outgoing_flood_scope_override)
     return config
 
 

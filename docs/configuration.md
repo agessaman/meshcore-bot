@@ -36,29 +36,23 @@ If you rely on config-file-only workflows, restart the bot after changing `[Logg
 - **`respond_to_dms`** – If `true`, the bot responds to direct messages; if `false`, it ignores DMs.
 - **`channel_keywords`** – Optional. When set (comma-separated command/keyword names), only those triggers are answered **in channels**; DMs always get all triggers. Use this to reduce channel traffic by making heavy triggers (e.g. `wx`, `satpass`, `joke`) DM-only. Leave empty or omit to allow all triggers in monitored channels. Per-command **`channels = `** (empty) in a command’s section also forces that command to be DM-only; see `config.ini.example` for examples (e.g. `[Joke_Command]`).
 - **`max_response_hops`** - Default: 64. The bot will ignore messages that have traveled more than this number of hops. Suggested to set at 10 or below, since in most meshes that is not an intentional message meant to trigger this particular bot.
-- **`flood_scope`** – Optional. The scope (region) the bot uses when sending all outbound channel messages. Set to a channel name like `#west` to limit sends to that region. Leave empty or omit for classic/global flood (default). This affects outbound sends only and does not filter incoming messages.
-- **`flood_scopes`** – Optional. Comma-separated list of named scopes the bot will **accept and reply to**. When set, this acts as an allowlist: only TC_FLOOD messages matching one of these scopes receive a reply, and the reply is sent using the same scope as the incoming message. Regular (unscoped) FLOOD messages are blocked unless `*` is included in the list. Leave empty or omit to accept all messages regardless of scope.
+- **`outgoing_flood_scope_override`** – Optional. Overrides the scope the bot uses for all outbound channel message sends. When **not set** (default), the bot automatically mirrors the scope of each incoming TC_FLOOD message: a reply to a `#west`-scoped message is sent with `#west` scope, and a reply to a plain (unscoped) FLOOD message is sent as classic global flood. When **set** to a region name like `#west`, the bot always uses that fixed scope for every outbound send, ignoring the incoming message's scope.
+- **`flood_scopes`** – Optional. Comma-separated list of named scopes the bot will **accept and reply to**. When set, this acts as an allowlist: only TC_FLOOD messages matching one of these scopes receive a reply, and the reply is sent using the same scope as the incoming message (auto-mirror). Regular (unscoped) FLOOD messages are blocked unless `*` is included in the list. Leave empty or omit to accept all messages regardless of scope.
 
-### flood_scope vs flood_scopes
+### outgoing_flood_scope_override vs flood_scopes
 
 These two options are independent and serve different purposes:
 
 | Option | Controls |
 |--------|----------|
-| `flood_scope` | What scope the bot *sends replies with* (default outbound scope for all sends) |
+| `outgoing_flood_scope_override` | What scope the bot *sends replies with* (fixed outbound override; omit for auto-mirror) |
 | `flood_scopes` | Which incoming scopes the bot *accepts* (allowlist + per-message scope mirroring) |
 
-**Example — reply in a fixed region regardless of incoming scope:**
-```ini
-flood_scope = #west
-```
-The bot always sends replies using the `#west` scope. All incoming messages (scoped or not) are accepted.
-
-**Example — accept only specific regions, mirror their scope in replies:**
+**Example — auto-mirror incoming scope (default, no override needed):**
 ```ini
 flood_scopes = #west, #east
 ```
-Only TC_FLOOD messages scoped to `#west` or `#east` receive a reply; unscoped FLOOD is silently ignored. Replies automatically use the same scope as the incoming message.
+Only TC_FLOOD messages scoped to `#west` or `#east` receive a reply; unscoped FLOOD is silently ignored. Replies automatically use the same scope as the incoming message (`#west` → reply with `#west`, etc.).
 
 **Example — accept specific regions plus unscoped FLOOD:**
 ```ini
@@ -66,10 +60,16 @@ flood_scopes = #west, #east, *
 ```
 Same as above, but `*` opts in to also accepting regular (unscoped) FLOOD messages.
 
-**Example — fixed outbound scope, restrict inbound to matching scope:**
+**Example — fixed outbound scope regardless of incoming scope:**
 ```ini
-flood_scope  = #west
-flood_scopes = #west
+outgoing_flood_scope_override = #west
+```
+The bot always sends replies using the `#west` scope. All incoming messages (scoped or not) are accepted.
+
+**Example — fixed outbound scope, restricted to a matching inbound scope:**
+```ini
+outgoing_flood_scope_override = #west
+flood_scopes                  = #west
 ```
 
 ### Public channel guard

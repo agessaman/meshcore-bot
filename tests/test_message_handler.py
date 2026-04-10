@@ -1520,6 +1520,83 @@ class TestHandleRfLogData:
             await handler.handle_rf_log_data(event)
         handler.logger.error.assert_called()
 
+    async def test_tc_flood_scope_fields_from_library_payload(self, handler):
+        """Library-provided route_type/transport_code/pkt_payload populate scope fields."""
+        import hmac as hmac_mod
+        from hashlib import sha256
+        self._setup_handler(handler)
+
+        scope_name = "#waw"
+        payload_type = 5       # GRP_TXT
+        pkt_payload_bytes = b"\xca\xb2\x83\xf7\x84\xe1\x17\x40\x2c\x81"
+
+        # Compute the expected transport code (same HMAC logic as _match_scope)
+        key = sha256(scope_name.encode()).digest()[:16]
+        check_data = bytes([payload_type]) + pkt_payload_bytes
+        digest = hmac_mod.new(key, check_data, sha256).digest()
+        code1 = int.from_bytes(digest[:2], "little")
+        if code1 == 0:
+            code1 = 1
+        elif code1 == 0xFFFF:
+            code1 = 0xFFFE
+
+        # Transport code hex as the library emits it (4 bytes: code1 LE + code2 LE)
+        tc_hex = code1.to_bytes(2, "little").hex() + "0000"
+
+        raw_hex = "ab" * 32  # 64 hex chars → packet_prefix is first 32
+        event = self._make_event({
+            "snr": 5.0,
+            "raw_hex": raw_hex,
+            # Library-provided fields from meshcore-py parsePacketPayload
+            "route_type": 0,                  # TC_FLOOD
+            "transport_code": tc_hex,
+            "payload_type": payload_type,
+            "pkt_payload": pkt_payload_bytes,
+        })
+        await handler.handle_rf_log_data(event)
+
+        assert len(handler.recent_rf_data) == 1
+        entry = handler.recent_rf_data[0]
+        assert entry["route_type_int"] == 0
+        assert entry["transport_code1"] == code1
+        assert entry["payload_type_int"] == payload_type
+        assert entry["scope_payload_hex"] == pkt_payload_bytes.hex()
+
+    async def test_tc_flood_scope_fields_pkt_payload_as_hex_string(self, handler):
+        """pkt_payload stored as hex string (not bytes) is also accepted."""
+        self._setup_handler(handler)
+        pkt_payload_bytes = b"\xde\xad\xbe\xef"
+        raw_hex = "cd" * 32
+        event = self._make_event({
+            "snr": 3.0,
+            "raw_hex": raw_hex,
+            "route_type": 0,
+            "transport_code": "1234" + "0000",
+            "payload_type": 5,
+            "pkt_payload": pkt_payload_bytes.hex(),  # hex string variant
+        })
+        await handler.handle_rf_log_data(event)
+
+        entry = handler.recent_rf_data[0]
+        assert entry["scope_payload_hex"] == pkt_payload_bytes.hex()
+
+    async def test_flood_route_type_not_zero(self, handler):
+        """Plain FLOOD (route_type=1) stores route_type_int=1 and no transport code."""
+        self._setup_handler(handler)
+        raw_hex = "ef" * 32
+        event = self._make_event({
+            "snr": 2.0,
+            "raw_hex": raw_hex,
+            "route_type": 1,    # FLOOD, not TC_FLOOD
+            "payload_type": 5,
+            "pkt_payload": b"\xaa\xbb",
+        })
+        await handler.handle_rf_log_data(event)
+
+        entry = handler.recent_rf_data[0]
+        assert entry["route_type_int"] == 1
+        assert entry["transport_code1"] is None
+
 
 # ---------------------------------------------------------------------------
 # _get_path_from_rf_data
