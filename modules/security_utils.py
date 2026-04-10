@@ -16,6 +16,9 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger('MeshCoreBot.Security')
 
+# CGN (Carrier-Grade NAT) network 100.64.0.0/10 - RFC 6598
+_CGN_NETWORK = ipaddress.ip_network("100.64.0.0/10")
+
 
 def _is_nix_environment() -> bool:
     """
@@ -42,13 +45,14 @@ def _is_nix_environment() -> bool:
     return bool(any(var in os.environ for var in nix_env_vars))
 
 
-def validate_external_url(url: str, allow_localhost: bool = False, timeout: float = 2.0) -> bool:
+def validate_external_url(url: str, allow_localhost: bool = False, allow_private: bool = False, timeout: float = 2.0) -> bool:
     """
     Validate that URL points to safe external resource (SSRF protection)
 
     Args:
         url: URL to validate
         allow_localhost: Whether to allow localhost/private IPs (default: False)
+        allow_private: Alias for allow_localhost; permits RFC1918/CGN/loopback (default: False)
         timeout: DNS resolution timeout in seconds (default: 2.0)
 
     Returns:
@@ -84,11 +88,16 @@ def validate_external_url(url: str, allow_localhost: bool = False, timeout: floa
 
             ip_obj = ipaddress.ip_address(ip)
 
-            # If localhost is not allowed, reject private/internal IPs
-            if not allow_localhost:
+            # If localhost/private is not allowed, reject private/internal IPs
+            if not (allow_localhost or allow_private):
                 # Reject private/internal IPs
                 if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local:
                     logger.warning(f"URL resolves to private/internal IP: {ip}")
+                    return False
+
+                # Reject CGN (Carrier-Grade NAT) - RFC 6598
+                if ip_obj in _CGN_NETWORK:
+                    logger.warning(f"URL resolves to CGN IP: {ip}")
                     return False
 
                 # Reject reserved ranges
