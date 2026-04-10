@@ -4,8 +4,6 @@ needed for scope matching (transport_code, pkt_payload, payload_type) in LOG_DAT
 These tests exercise the meshcore library's MeshcorePacketParser directly.
 """
 
-import asyncio
-
 import pytest
 
 # Import the meshcore library parser directly
