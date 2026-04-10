@@ -1,17 +1,16 @@
 """Unit tests for the Public channel guard."""
 
 import configparser
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, patch
 
 from modules.config_validation import (
     PUBLIC_CHANNEL_KEY_HEX,
     PUBLIC_CHANNEL_OVERRIDE_KEY,
     SEVERITY_ERROR,
     _channel_name_is_public,
-    validate_config,
 )
-
 
 # --- _channel_name_is_public() ---
 
