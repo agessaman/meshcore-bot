@@ -488,7 +488,7 @@
         btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Restarting\u2026';
         fetch('/api/admin/zombie-recover', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'}
+            headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'}
         })
         .then(function(r) { return r.json(); })
         .then(function(data) {
@@ -544,7 +544,7 @@
         btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Clearing\u2026';
         fetch('/api/admin/radio-offline-clear', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'}
+            headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'}
         })
         .then(function(r) { return r.json(); })
         .then(function(data) {
