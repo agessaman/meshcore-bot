@@ -49,7 +49,7 @@ def validate_external_url(
     url: str,
     allow_private: bool = False,
     allow_loopback: bool | None = None,  # Deprecated: use allow_private=True instead
-    timeout: float = 2.0
+    timeout: float = 2.0,
 ) -> bool:
     """
     Validate that URL points to safe external resource (SSRF protection)
@@ -57,7 +57,8 @@ def validate_external_url(
     Args:
         url: URL to validate
         allow_private: Whether to allow private/internal IPs (default: False)
-        allow_loopback: Deprecated alias for allow_private
+        allow_loopback: If True, only loopback addresses are permitted. Deprecated for
+            broad internal access; use allow_private=True instead.
         timeout: DNS resolution timeout in seconds (default: 2.0)
 
     Returns:
@@ -97,30 +98,26 @@ def validate_external_url(
 
             ip_obj = ipaddress.ip_address(ip)
 
-            # If loopback is not allowed, reject loopback addresses
             if allow_loopback is True:
-                # Only allow loopback, reject everything else
                 if not ip_obj.is_loopback:
-                    logger.warning(f"URL resolves to non-loopback IP with allow_loopback: {ip}")
+                    logger.warning(
+                        f"URL resolves to non-loopback IP with allow_loopback: {ip}"
+                    )
                     return False
-            elif allow_loopback is False or not allow_private:
-                # Reject private/internal IPs (RFC1918, CGN, link-local)
+            elif allow_private:
+                pass
+            else:
                 if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local:
                     logger.warning(f"URL resolves to private/internal IP: {ip}")
                     return False
 
-                # Reject CGN (Carrier-Grade NAT) - RFC 6598
                 if ip_obj in _CGN_NETWORK:
                     logger.warning(f"URL resolves to CGN IP: {ip}")
                     return False
 
-                # Reject reserved ranges
                 if ip_obj.is_reserved or ip_obj.is_multicast:
                     logger.warning(f"URL resolves to reserved/multicast IP: {ip}")
                     return False
-            else:
-                # allow_private=True: allow all internal ranges
-                pass
 
         except socket.gaierror as e:
             logger.warning(f"Failed to resolve hostname {parsed.hostname}: {e}")
