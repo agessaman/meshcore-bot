@@ -10,7 +10,7 @@ These tests verify the full chain:
 import configparser
 import hmac as hmac_mod
 from hashlib import sha256
-from unittest.mock import AsyncMock, MagicMock, Mock, call
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 
