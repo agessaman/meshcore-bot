@@ -85,3 +85,35 @@ class TestPluginsCommandBuild:
         import asyncio
         result = asyncio.run(cmd.execute(mock_message()))
         assert result is False
+
+
+class TestPluginsCommandExecute:
+    """Cover the execute() success path and services exception path."""
+
+    def test_execute_success_returns_true(self):
+        import asyncio
+        from unittest.mock import AsyncMock
+        from unittest.mock import patch as _patch
+        bot = _make_bot()
+        cmd = PluginsCommand(bot)
+        with _patch.object(cmd, "send_response", new=AsyncMock(return_value=True)):
+            result = asyncio.run(cmd.execute(mock_message()))
+        assert result is True
+
+    def test_execute_exception_returns_false(self):
+        import asyncio
+        from unittest.mock import patch as _patch
+        bot = _make_bot()
+        cmd = PluginsCommand(bot)
+        with _patch.object(cmd, "_build_list", side_effect=RuntimeError("oops")):
+            result = asyncio.run(cmd.execute(mock_message()))
+        assert result is False
+
+    def test_build_list_services_exception_returns_no_plugins(self):
+        bot = _make_bot()
+        type(bot).services = property(
+            lambda self: (_ for _ in ()).throw(RuntimeError("gone"))
+        )
+        cmd = PluginsCommand(bot)
+        result = cmd._build_list()
+        assert "No service plugins loaded" in result

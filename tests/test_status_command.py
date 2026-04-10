@@ -114,3 +114,91 @@ class TestStatusCommandIsCallable:
         cmd = StatusCommand(bot)
         result = cmd._build_status()
         assert "Radio: OFFLINE" in result
+
+
+class TestStatusCommandEdgeCases:
+    """Cover missing branches: uptime minutes-only, DB size KB/B, exception paths."""
+
+    def _cmd(self, **kwargs):
+        return StatusCommand(_make_bot(**kwargs))
+
+    def test_uptime_minutes_only(self):
+        cmd = self._cmd(start_time=time.time() - 1800)  # 30 min
+        result = cmd._build_status()
+        assert "30m" in result
+        assert "h" not in result.split("Up:")[1].split("\n")[0]
+
+    def test_uptime_unknown_when_no_start_time(self):
+        bot = _make_bot()
+        bot.start_time = None
+        cmd = StatusCommand(bot)
+        result = cmd._build_status()
+        assert "Up: unknown" in result
+
+    def test_db_size_kb(self):
+        from unittest.mock import patch as _patch
+        bot = _make_bot()
+        bot.db_manager.db_path = "/fake/path.db"
+        cmd = StatusCommand(bot)
+        with _patch("os.path.getsize", return_value=2048):
+            result = cmd._build_status()
+        assert "KB" in result
+
+    def test_db_size_bytes(self):
+        from unittest.mock import patch as _patch
+        bot = _make_bot()
+        bot.db_manager.db_path = "/fake/path.db"
+        cmd = StatusCommand(bot)
+        with _patch("os.path.getsize", return_value=512):
+            result = cmd._build_status()
+        assert "B" in result and "KB" not in result and "MB" not in result
+
+    def test_channels_exception_is_silent(self):
+        bot = _make_bot()
+        type(bot.command_manager).monitor_channels = property(
+            lambda self: (_ for _ in ()).throw(RuntimeError("gone"))
+        )
+        cmd = StatusCommand(bot)
+        result = cmd._build_status()  # must not raise
+        assert "Up:" in result
+
+    def test_services_exception_is_silent(self):
+        bot = _make_bot()
+        type(bot).services = property(
+            lambda self: (_ for _ in ()).throw(RuntimeError("gone"))
+        )
+        cmd = StatusCommand(bot)
+        result = cmd._build_status()  # must not raise
+        assert "Up:" in result
+
+
+class TestStatusCommandExecute:
+    """Cover the execute() async method paths."""
+
+    def test_execute_success_returns_true(self):
+        import asyncio
+        from unittest.mock import AsyncMock
+        from unittest.mock import patch as _patch
+        bot = _make_bot()
+        cmd = StatusCommand(bot)
+        with _patch.object(cmd, "send_response", new=AsyncMock(return_value=True)):
+            result = asyncio.run(cmd.execute(mock_message()))
+        assert result is True
+
+    def test_execute_exception_returns_false(self):
+        import asyncio
+        from unittest.mock import patch as _patch
+        bot = _make_bot()
+        cmd = StatusCommand(bot)
+        with _patch.object(cmd, "_build_status", side_effect=RuntimeError("oops")):
+            result = asyncio.run(cmd.execute(mock_message()))
+        assert result is False
+
+    def test_db_size_mb(self):
+        from unittest.mock import patch as _patch
+        bot = _make_bot()
+        bot.db_manager.db_path = "/fake/path.db"
+        cmd = StatusCommand(bot)
+        with _patch("os.path.getsize", return_value=2 * 1_048_576):
+            result = cmd._build_status()
+        assert "MB" in result
