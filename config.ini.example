@@ -39,6 +39,10 @@ reconnect_max_delay_seconds = 60
 # Bot name for identification and logging
 bot_name = MeshCoreBot
 
+# Uncomment ONLY if you intentionally want to run this bot on the shared Public channel.
+# Running a bot on Public is potentially disruptive to other mesh users.
+# i_understand_that_running_the_bot_on_the_public_channel_is_potentially_disruptive_to_other_users_enjoyment_of_the_mesh_and_i_would_like_to_do_it_anyway = true
+
 # Automatically update device name to match bot_name on startup
 # true: Device name will be updated to match bot_name if they differ (default)
 # false: Device name will not be updated, keep device name separate from config

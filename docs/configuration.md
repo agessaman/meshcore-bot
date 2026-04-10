@@ -36,6 +36,51 @@ If you rely on config-file-only workflows, restart the bot after changing `[Logg
 - **`respond_to_dms`** – If `true`, the bot responds to direct messages; if `false`, it ignores DMs.
 - **`channel_keywords`** – Optional. When set (comma-separated command/keyword names), only those triggers are answered **in channels**; DMs always get all triggers. Use this to reduce channel traffic by making heavy triggers (e.g. `wx`, `satpass`, `joke`) DM-only. Leave empty or omit to allow all triggers in monitored channels. Per-command **`channels = `** (empty) in a command’s section also forces that command to be DM-only; see `config.ini.example` for examples (e.g. `[Joke_Command]`).
 - **`max_response_hops`** - Default: 64. The bot will ignore messages that have traveled more than this number of hops. Suggested to set at 10 or below, since in most meshes that is not an intentional message meant to trigger this particular bot.
+- **`flood_scope`** – Optional. The scope (region) the bot uses when sending all outbound channel messages. Set to a channel name like `#west` to limit sends to that region. Leave empty or omit for classic/global flood (default). This affects outbound sends only and does not filter incoming messages.
+- **`flood_scopes`** – Optional. Comma-separated list of named scopes the bot will **accept and reply to**. When set, this acts as an allowlist: only TC_FLOOD messages matching one of these scopes receive a reply, and the reply is sent using the same scope as the incoming message. Regular (unscoped) FLOOD messages are blocked unless `*` is included in the list. Leave empty or omit to accept all messages regardless of scope.
+
+### flood_scope vs flood_scopes
+
+These two options are independent and serve different purposes:
+
+| Option | Controls |
+|--------|----------|
+| `flood_scope` | What scope the bot *sends replies with* (default outbound scope for all sends) |
+| `flood_scopes` | Which incoming scopes the bot *accepts* (allowlist + per-message scope mirroring) |
+
+**Example — reply in a fixed region regardless of incoming scope:**
+```ini
+flood_scope = #west
+```
+The bot always sends replies using the `#west` scope. All incoming messages (scoped or not) are accepted.
+
+**Example — accept only specific regions, mirror their scope in replies:**
+```ini
+flood_scopes = #west, #east
+```
+Only TC_FLOOD messages scoped to `#west` or `#east` receive a reply; unscoped FLOOD is silently ignored. Replies automatically use the same scope as the incoming message.
+
+**Example — accept specific regions plus unscoped FLOOD:**
+```ini
+flood_scopes = #west, #east, *
+```
+Same as above, but `*` opts in to also accepting regular (unscoped) FLOOD messages.
+
+**Example — fixed outbound scope, restrict inbound to matching scope:**
+```ini
+flood_scope  = #west
+flood_scopes = #west
+```
+
+### Public channel guard
+
+The bot **refuses to start** if `monitor_channels` includes the Public channel, unless an explicit override key is set in `[Bot]`. This prevents accidental bot deployments on the shared channel that is visible to all mesh users by default.
+
+If you genuinely intend to run the bot on Public, add to `[Bot]`:
+
+```ini
+i_understand_that_running_the_bot_on_the_public_channel_is_potentially_disruptive_to_other_users_enjoyment_of_the_mesh_and_i_would_like_to_do_it_anyway = true
+```
 
 ## Command and feature sections
 

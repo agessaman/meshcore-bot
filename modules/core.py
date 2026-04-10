@@ -25,7 +25,7 @@ import meshcore
 from meshcore import EventType
 
 from .channel_manager import ChannelManager
-from .command_manager import CommandManager
+from .command_manager import PUBLIC_CHANNEL_KEY_HEX, PUBLIC_CHANNEL_OVERRIDE_KEY, CommandManager
 from .db_manager import AsyncDBManager, DBManager
 from .feed_manager import FeedManager
 from .i18n import Translator
@@ -1138,6 +1138,7 @@ long_jokes = false
 
                 # Fetch channels
                 await self.channel_manager.fetch_channels()
+                self._check_public_channel_guard()
 
                 # Setup message event handlers
                 await self.setup_message_handlers()
@@ -1222,6 +1223,27 @@ long_jokes = false
         except Exception as e:
             self.logger.error(f"Error reconnecting radio: {e}")
             return False
+
+    def _check_public_channel_guard(self) -> None:
+        """Refuse to run if any monitored channel's actual device key is the Public channel key.
+
+        This is a second-layer check (after the name-based check in load_monitor_channels)
+        that catches channels which have been renamed on the device but still use the Public key.
+        """
+        override = self.config.get("Bot", PUBLIC_CHANNEL_OVERRIDE_KEY, fallback="").strip().lower()
+        if override == "true":
+            return
+        for ch_name in (self.command_manager.monitor_channels or []):
+            num = self.channel_manager.get_channel_number(ch_name)
+            if num is not None:
+                key_hex = self.channel_manager.get_channel_key(num)
+                if key_hex == PUBLIC_CHANNEL_KEY_HEX:
+                    self.logger.error(
+                        f"FATAL: Channel '{ch_name}' (slot {num}) has the Public channel key. "
+                        "Running a bot on Public is disruptive to other mesh users. "
+                        f"To override, add to [Bot]: {PUBLIC_CHANNEL_OVERRIDE_KEY} = true"
+                    )
+                    raise SystemExit(1)
 
     async def set_radio_clock(self) -> bool:
         """Set radio clock if device time is earlier than system time.

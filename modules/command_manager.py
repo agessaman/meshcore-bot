@@ -14,7 +14,12 @@ from typing import Any, Optional
 from meshcore import EventType
 
 from .commands.base_command import BaseCommand
-from .config_validation import strip_optional_quotes
+from .config_validation import (
+    PUBLIC_CHANNEL_KEY_HEX,
+    PUBLIC_CHANNEL_OVERRIDE_KEY,
+    _channel_name_is_public,
+    strip_optional_quotes,
+)
 from .models import MeshMessage
 from .plugin_loader import PluginLoader
 from .utils import check_internet_connectivity_async, decode_escape_sequences, format_keyword_response_with_placeholders
@@ -506,7 +511,19 @@ class CommandManager:
         """
         raw = self.bot.config.get('Channels', 'monitor_channels', fallback='')
         channels = strip_optional_quotes(raw)
-        return [channel.strip() for channel in channels.split(',') if channel.strip()]
+        channel_list = [channel.strip() for channel in channels.split(',') if channel.strip()]
+
+        if any(_channel_name_is_public(ch) for ch in channel_list):
+            override = self.bot.config.get("Bot", PUBLIC_CHANNEL_OVERRIDE_KEY, fallback="").strip().lower()
+            if override != "true":
+                self.logger.error(
+                    "FATAL: monitor_channels includes the Public channel. Running a bot on "
+                    "Public is disruptive to other mesh users. To override, add to [Bot]:\n"
+                    f"  {PUBLIC_CHANNEL_OVERRIDE_KEY} = true"
+                )
+                raise SystemExit(1)
+
+        return channel_list
 
     def load_channel_keywords(self) -> Optional[list[str]]:
         """Load channel keyword whitelist from config.
