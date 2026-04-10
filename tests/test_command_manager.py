@@ -39,6 +39,7 @@ def cm_bot(mock_logger):
     bot.bot_tx_rate_limiter = Mock()
     bot.bot_tx_rate_limiter.wait_for_tx = Mock()
     bot.tx_delay_ms = 0
+    bot.is_radio_zombie = False
     return bot
 
 
@@ -551,6 +552,7 @@ class TestSendChannelMessageRetry:
 
     def _setup_bot(self, cm_bot):
         cm_bot.connected = True
+        cm_bot.is_radio_zombie = False
         cm_bot.channel_manager = Mock()
         cm_bot.channel_manager.get_channel_number = Mock(return_value=2)
         cm_bot.meshcore = Mock()
