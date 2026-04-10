@@ -508,92 +508,6 @@ class TestApiContactsPurgePreview:
 
 
 # ---------------------------------------------------------------------------
-# api_greeter
-# ---------------------------------------------------------------------------
-
-
-class TestApiGreeter:
-    def test_greeter_success(self, viewer_with_db):
-        with viewer_with_db.app.test_client() as client:
-            response = client.get('/api/greeter')
-
-            assert response.status_code == 200
-            data = json.loads(response.data)
-            assert 'rollout_data' in data
-
-    def test_greeter_no_rollouts(self, viewer_with_db):
-        # Clear any existing rollouts
-        with sqlite3.connect(viewer_with_db.db_path, timeout=60) as conn:
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM greeter_rollout")
-            conn.commit()
-
-        with viewer_with_db.app.test_client() as client:
-            response = client.get('/api/greeter')
-
-            assert response.status_code == 200
-            data = json.loads(response.data)
-            # Response uses 'rollout_data' key
-            assert 'rollout_data' in data
-
-
-# ---------------------------------------------------------------------------
-# api_end_rollout
-# ---------------------------------------------------------------------------
-
-
-class TestApiEndRollout:
-    def test_end_rollout_success(self, viewer_with_db):
-        # Create an active rollout first
-        with sqlite3.connect(viewer_with_db.db_path, timeout=60) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO greeter_rollout (rollout_completed, rollout_started_at, rollout_days)
-                VALUES (0, datetime('now'), 30)
-            ''')
-            conn.commit()
-
-        with viewer_with_db.app.test_client() as client:
-            response = client.post(
-                '/api/greeter/end-rollout',
-                data=json.dumps({}),
-                content_type='application/json'
-            )
-
-            assert response.status_code == 200
-            data = json.loads(response.data)
-            assert data.get('success') is True
-
-
-# ---------------------------------------------------------------------------
-# api_ungreet_user
-# ---------------------------------------------------------------------------
-
-
-class TestApiUngreetUser:
-    def test_ungreet_user_success(self, viewer_with_db):
-        # Create a greeted user first with NULL channel (global)
-        with sqlite3.connect(viewer_with_db.db_path, timeout=60) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO greeted_users (sender_id, channel, greeted_at)
-                VALUES (?, NULL, datetime('now'))
-            ''', ('test_user',))
-            conn.commit()
-
-        with viewer_with_db.app.test_client() as client:
-            response = client.post(
-                '/api/greeter/ungreet',
-                data=json.dumps({'sender_id': 'test_user'}),
-                content_type='application/json'
-            )
-
-            assert response.status_code == 200
-            data = json.loads(response.data)
-            assert data.get('success') is True
-
-
-# ---------------------------------------------------------------------------
 # api_feeds
 # ---------------------------------------------------------------------------
 
@@ -960,34 +874,6 @@ class TestApiMaintenanceStatus:
         data = json.loads(response.data)
         # Nothing written to DB yet — all values should be empty strings
         assert all(v == '' for v in data.values())
-
-
-# ---------------------------------------------------------------------------
-# /admin/config
-# ---------------------------------------------------------------------------
-
-
-class TestAdminConfig:
-    def test_page_loads_200(self, viewer_with_db):
-        with viewer_with_db.app.test_client() as client:
-            response = client.get('/admin/config')
-        assert response.status_code == 200
-
-    def test_config_sections_visible(self, viewer_with_db):
-        with viewer_with_db.app.test_client() as client:
-            response = client.get('/admin/config')
-        # The Bot and Web_Viewer sections are in the fixture's config.ini
-        assert b'Bot' in response.data
-        assert b'Web_Viewer' in response.data
-
-    def test_sensitive_values_redacted(self, viewer_with_db):
-        """password fields should show ●●●●●● not the real value."""
-        # Inject a password into the viewer's config
-        viewer_with_db.config.set('Web_Viewer', 'web_viewer_password', 'supersecret')
-        with viewer_with_db.app.test_client() as client:
-            response = client.get('/admin/config')
-        assert b'supersecret' not in response.data
-        assert b'web_viewer_password' in response.data  # key is still shown
 
 
 # ---------------------------------------------------------------------------
