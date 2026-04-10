@@ -16,6 +16,9 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger('MeshCoreBot.Security')
 
+# CGN (Carrier-Grade NAT) network 100.64.0.0/10 - RFC 6598
+_CGN_NETWORK = ipaddress.ip_network("100.64.0.0/10")
+
 
 def _is_nix_environment() -> bool:
     """
@@ -92,16 +95,14 @@ def validate_external_url(url: str, allow_localhost: bool = False, allow_private
                     logger.warning(f"URL resolves to private/internal IP: {ip}")
                     return False
 
+                # Reject CGN (Carrier-Grade NAT) - RFC 6598
+                if ip_obj in _CGN_NETWORK:
+                    logger.warning(f"URL resolves to CGN IP: {ip}")
+                    return False
+
                 # Reject reserved ranges
                 if ip_obj.is_reserved or ip_obj.is_multicast:
                     logger.warning(f"URL resolves to reserved/multicast IP: {ip}")
-                    return False
-
-                # Reject non-globally-routable addresses (e.g. RFC 6598 CGN 100.64.0.0/10)
-                # Python 3.10 does not classify these as private/reserved, but they are not
-                # publicly routable and should be blocked.
-                if not ip_obj.is_global:
-                    logger.warning(f"URL resolves to non-globally-routable IP: {ip}")
                     return False
 
         except socket.gaierror as e:
