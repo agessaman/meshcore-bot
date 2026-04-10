@@ -13,22 +13,27 @@ from .base_command import BaseCommand
 class PluginsCommand(BaseCommand):
     """Lists loaded service plugins with their descriptions."""
 
+    # Plugin metadata
     name = "plugins"
     keywords = ["plugins"]
     description = "List active service plugins and their descriptions."
     category = "admin"
 
+    # Documentation
     short_description = "List loaded service plugins"
     usage = "plugins"
     examples = ["plugins"]
 
     def __init__(self, bot: Any) -> None:
         super().__init__(bot)
-        self.enabled = self.get_config_value("Plugins_Command", "enabled", fallback=True, value_type="bool")
+        self.plugins_enabled = self.get_config_value("Plugins_Command", "enabled", fallback=True, value_type="bool")
+
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
+        if not self.plugins_enabled:
+            return False
+        return super().can_execute(message, skip_channel_check=skip_channel_check)
 
     async def execute(self, message: MeshMessage) -> bool:
-        if not self.enabled:
-            return False
         try:
             response = self._build_list()
             return await self.send_response(message, response)

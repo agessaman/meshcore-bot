@@ -15,23 +15,28 @@ from .base_command import BaseCommand
 class StatusCommand(BaseCommand):
     """Admin DM command returning a live health snapshot of the bot."""
 
+    # Plugin metadata
     name = "status"
     keywords = ["status"]
     description = "Show live bot status: uptime, radio state, DB size, loaded services."
     requires_dm = True
     category = "admin"
 
+    # Documentation
     short_description = "Show live bot health snapshot (admin DM only)"
     usage = "status"
     examples = ["status"]
 
     def __init__(self, bot: Any) -> None:
         super().__init__(bot)
-        self.enabled = self.get_config_value("Status_Command", "enabled", fallback=True, value_type="bool")
+        self.status_enabled = self.get_config_value("Status_Command", "enabled", fallback=True, value_type="bool")
+
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
+        if not self.status_enabled:
+            return False
+        return super().can_execute(message, skip_channel_check=skip_channel_check)
 
     async def execute(self, message: MeshMessage) -> bool:
-        if not self.enabled:
-            return False
         try:
             response = self._build_status()
             return await self.send_response(message, response)
