@@ -42,7 +42,7 @@ def _is_nix_environment() -> bool:
     return bool(any(var in os.environ for var in nix_env_vars))
 
 
-def validate_external_url(url: str, allow_localhost: bool = False, timeout: float = 2.0) -> bool:
+def validate_external_url(url: str, allow_localhost: bool = False, allow_private: bool = False, timeout: float = 2.0) -> bool:
     """
     Validate that URL points to safe external resource (SSRF protection)
 
@@ -84,8 +84,8 @@ def validate_external_url(url: str, allow_localhost: bool = False, timeout: floa
 
             ip_obj = ipaddress.ip_address(ip)
 
-            # If localhost is not allowed, reject private/internal IPs
-            if not allow_localhost:
+            # If localhost/private IPs are not allowed, reject them
+            if not (allow_localhost or allow_private):
                 # Reject private/internal IPs
                 if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local:
                     logger.warning(f"URL resolves to private/internal IP: {ip}")
