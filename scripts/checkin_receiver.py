@@ -19,7 +19,6 @@ import sqlite3
 import sys
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Optional
 from urllib.parse import urlparse
 
 REQUIRED_FIELDS = ("packet_hash", "username", "message", "channel", "timestamp")
@@ -99,7 +98,7 @@ class CheckinHandler(BaseHTTPRequestHandler):
         if body:
             self.wfile.write(body.encode("utf-8"))
 
-    def _bearer_token(self) -> Optional[str]:
+    def _bearer_token(self) -> str | None:
         auth = self.headers.get("Authorization") or ""
         if auth.startswith("Bearer "):
             return auth[7:].strip()

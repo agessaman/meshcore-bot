@@ -92,7 +92,7 @@ def build_section(todos, today: str) -> str:
             continue
         lines.append(f"### {emoji.get(marker, '')} {marker}\n")
         for rel, lineno, text in sorted(by_marker[marker]):
-            label = text if text else f"(no description — see file)"
+            label = text if text else "(no description — see file)"
             lines.append(f"- [ ] **`{rel}:{lineno}`** — {label}")
         lines.append("")
 

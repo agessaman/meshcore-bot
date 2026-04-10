@@ -312,6 +312,8 @@ class TestSendChannelMessageListeners:
         from meshcore import EventType
 
         cm_bot.connected = True
+        cm_bot.is_radio_zombie = False
+        cm_bot.is_radio_offline = False
         cm_bot.channel_manager = Mock()
         cm_bot.channel_manager.get_channel_number = Mock(return_value=3)
         cm_bot.meshcore = Mock()
@@ -372,6 +374,8 @@ class TestSendChannelMessageListeners:
         from meshcore import EventType
 
         cm_bot.connected = True
+        cm_bot.is_radio_zombie = False
+        cm_bot.is_radio_offline = False
         cm_bot.channel_manager = Mock()
         cm_bot.channel_manager.get_channel_number = Mock(return_value=1)
         cm_bot.meshcore = Mock()
@@ -551,6 +555,8 @@ class TestSendChannelMessageRetry:
 
     def _setup_bot(self, cm_bot):
         cm_bot.connected = True
+        cm_bot.is_radio_zombie = False
+        cm_bot.is_radio_offline = False
         cm_bot.channel_manager = Mock()
         cm_bot.channel_manager.get_channel_number = Mock(return_value=2)
         cm_bot.meshcore = Mock()
