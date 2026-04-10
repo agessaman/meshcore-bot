@@ -202,6 +202,24 @@ radio_probe_fail_threshold = 3
 # true: send alert email in addition to logging
 radio_zombie_alert_enabled = false
 
+<<<<<<< HEAD
+=======
+# SMTP security note: by default the bot blocks SMTP hosts that resolve to
+# any private, loopback, link-local, or reserved address to prevent SSRF.
+# Blocked ranges (per RFC):
+#   10.0.0.0/8        RFC 1918 — private
+#   172.16.0.0/12     RFC 1918 — private
+#   192.168.0.0/16    RFC 1918 — private
+#   127.0.0.0/8       RFC 1122 — loopback
+#   169.254.0.0/16    RFC 3927 — link-local
+#   100.64.0.0/10     RFC 6598 — shared address space (CGN)
+#   ::1/128           RFC 4291 — IPv6 loopback
+#   fc00::/7          RFC 4193 — IPv6 unique local (ULA)
+#   fe80::/10         RFC 4291 — IPv6 link-local
+# If you run a local SMTP relay (e.g. Postfix on localhost), enable
+# "Allow local SMTP host" in the web viewer → Settings → Notifications.
+
+>>>>>>> 38d040a (security: SSRF hardening, log injection sanitization, and allow_local_smtp)
 # Alert email recipients for zombie detection (comma-separated addresses).
 # If empty, falls back to the nightly maintenance email recipients.
 # Set this to a separate on-call address if needed.

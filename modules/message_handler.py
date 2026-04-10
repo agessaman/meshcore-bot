@@ -15,7 +15,7 @@ from typing import Any, Optional
 from .enums import AdvertFlags, DeviceRole, PayloadType, PayloadVersion, RouteType
 from .graph_trace_helper import update_mesh_graph_from_trace_data
 from .models import MeshMessage
-from .security_utils import sanitize_input
+from .security_utils import sanitize_input, sanitize_name
 from .utils import (
     calculate_packet_hash,
     decode_path_len_byte,
@@ -147,7 +147,7 @@ class MessageHandler:
             self.logger.debug(f"Payload keys: {list(payload.keys())}")
             self.logger.debug(f"Event metadata: {event.metadata if hasattr(event, 'metadata') else 'None'}")
 
-            self.logger.info(f"Received DM from {payload.get('pubkey_prefix', 'unknown')}: {payload.get('text', '')}")
+            self.logger.info(f"Received DM from {sanitize_name(payload.get('pubkey_prefix', 'unknown'))}: {sanitize_name(payload.get('text', ''))}")
 
             # Extract path information from contacts using pubkey_prefix
             path_info = "Unknown"
@@ -510,7 +510,7 @@ class MessageHandler:
                         parsed_advert = self.parse_advert(payload_bytes)
                         if parsed_advert:
                             advert_data = parsed_advert
-                            self.logger.info(f"✅ Parsed ADVERT: {advert_data.get('mode', 'Unknown')} - {advert_data.get('name', 'No name')}")
+                            self.logger.info(f"✅ Parsed ADVERT: {sanitize_name(advert_data.get('mode', 'Unknown'))} - {sanitize_name(advert_data.get('name', 'No name'))}")
                     except Exception as e:
                         self.logger.warning(f"Failed to parse ADVERT payload: {e}")
 
@@ -640,7 +640,7 @@ class MessageHandler:
 
                         self.logger.info(f"📡 Tracked {mode}: {name}{location}{hop_info}")
                     else:
-                        self.logger.warning(f"Failed to track contact advertisement: {advert_data.get('name', 'Unknown')}")
+                        self.logger.warning(f"Failed to track contact advertisement: {sanitize_name(advert_data.get('name', 'Unknown'))}")
 
         except Exception as e:
             self.logger.error(f"Error processing advertisement packet: {e}")

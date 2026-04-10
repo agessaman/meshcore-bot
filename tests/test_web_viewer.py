@@ -1026,6 +1026,56 @@ class TestConfigNotificationsRoutes:
         )
         assert resp.status_code in (200, 400, 500)
 
+    def test_notifications_test_rejects_private_smtp_host(self, client, viewer):
+        """SSRF guard: RFC 6598 shared/CGN address (100.64.0.0/10) must be rejected."""
+        viewer.db_manager.set_metadata('notif.smtp_host', '100.64.0.1')
+        viewer.db_manager.set_metadata('notif.smtp_port', '587')
+        viewer.db_manager.set_metadata('notif.smtp_security', 'starttls')
+        viewer.db_manager.set_metadata('notif.from_email', 'bot@example.com')
+        viewer.db_manager.set_metadata('notif.recipients', 'admin@example.com')
+        resp = client.post("/api/config/notifications/test")
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert 'private' in data.get('error', '').lower() or 'reserved' in data.get('error', '').lower()
+        # reset
+        viewer.db_manager.set_metadata('notif.smtp_host', '')
+
+    def test_notifications_test_rejects_loopback_smtp_host(self, client, viewer):
+        """SSRF guard: SMTP host of localhost/loopback must be rejected."""
+        viewer.db_manager.set_metadata('notif.smtp_host', '127.0.0.1')
+        viewer.db_manager.set_metadata('notif.smtp_port', '25')
+        viewer.db_manager.set_metadata('notif.smtp_security', 'none')
+        viewer.db_manager.set_metadata('notif.from_email', 'bot@example.com')
+        viewer.db_manager.set_metadata('notif.recipients', 'admin@example.com')
+        resp = client.post("/api/config/notifications/test")
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert 'private' in data.get('error', '').lower() or 'reserved' in data.get('error', '').lower()
+        # reset
+        viewer.db_manager.set_metadata('notif.smtp_host', '')
+
+    def test_notifications_test_allows_local_smtp_when_flag_set(self, client, viewer):
+        """allow_local_smtp=true permits private-IP SMTP hosts (e.g. local Postfix)."""
+        viewer.db_manager.set_metadata('notif.smtp_host', '127.0.0.1')
+        viewer.db_manager.set_metadata('notif.smtp_port', '25')
+        viewer.db_manager.set_metadata('notif.smtp_security', 'none')
+        viewer.db_manager.set_metadata('notif.from_email', 'bot@example.com')
+        viewer.db_manager.set_metadata('notif.recipients', 'admin@example.com')
+        viewer.db_manager.set_metadata('notif.allow_local_smtp', 'true')
+        resp = client.post("/api/config/notifications/test")
+        # Must not be rejected with 400 for private address — may be 200 or 500 (send attempt)
+        assert resp.status_code != 400 or 'private' not in (resp.get_json() or {}).get('error', '').lower()
+        # reset
+        viewer.db_manager.set_metadata('notif.smtp_host', '')
+        viewer.db_manager.set_metadata('notif.allow_local_smtp', '')
+
+    def test_notifications_get_includes_allow_local_smtp(self, client):
+        """GET /api/config/notifications must return allow_local_smtp field."""
+        resp = client.get("/api/config/notifications")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert 'allow_local_smtp' in data
+
 
 # ===========================================================================
 # Feed management API
@@ -2920,6 +2970,7 @@ class TestDbPathResolutionFromConfigDir:
         )
 
 
+<<<<<<< HEAD
 class TestRadioDebugConfig:
     """Tests for GET/POST /api/config/radio-debug endpoints."""
 
@@ -2989,3 +3040,152 @@ class TestRadioDebugConfig:
         data = resp.get_json()
         assert data["success"] is True
         assert data["op_id"] is None
+=======
+# ===========================================================================
+# Security: Restore endpoint path traversal prevention (GAP W1)
+# ===========================================================================
+
+
+class TestRestoreEndpointSecurity:
+    """POST /api/maintenance/restore must reject path traversal attacks.
+
+    Covers GAP W1: validate_safe_path() added before shutil.copy2().
+    Dangerous system directories and traversal patterns must return 400.
+    """
+
+    def test_etc_passwd_path_rejected(self, client):
+        """/etc/passwd supplied as db_file must be blocked."""
+        resp = client.post(
+            "/api/maintenance/restore",
+            json={"db_file": "/etc/passwd"},
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert "error" in data
+
+    def test_etc_shadow_path_rejected(self, client):
+        """/etc/shadow must be blocked (credential file)."""
+        resp = client.post(
+            "/api/maintenance/restore",
+            json={"db_file": "/etc/shadow"},
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+
+    def test_proc_self_environ_rejected(self, client):
+        """/proc/self/environ must be blocked (process secrets)."""
+        resp = client.post(
+            "/api/maintenance/restore",
+            json={"db_file": "/proc/self/environ"},
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+
+    def test_empty_db_file_rejected(self, client):
+        """Empty db_file must return 400."""
+        resp = client.post(
+            "/api/maintenance/restore",
+            json={"db_file": ""},
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+
+    def test_missing_db_file_key_rejected(self, client):
+        """Missing db_file key must return 400."""
+        resp = client.post(
+            "/api/maintenance/restore",
+            json={},
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+
+
+# ===========================================================================
+# Security: Feed preview/test SSRF prevention (GAP W2)
+# ===========================================================================
+
+
+class TestFeedPreviewSecurity:
+    """POST /api/feeds/preview and /api/feeds/test must reject SSRF-able URLs.
+
+    Covers GAP W2: validate_external_url() added before any outbound fetch.
+    Private IPs, loopback, and file:// schemes must return 400.
+    """
+
+    def test_metadata_endpoint_blocked_in_preview(self, client):
+        """169.254.169.254 (cloud metadata) must be blocked in feed preview."""
+        resp = client.post(
+            "/api/feeds/preview",
+            json={"feed_url": "http://169.254.169.254/latest/meta-data/", "feed_type": "rss"},
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert "error" in data
+
+    def test_loopback_blocked_in_preview(self, client):
+        """127.0.0.1 loopback must be blocked in feed preview."""
+        resp = client.post(
+            "/api/feeds/preview",
+            json={"feed_url": "http://127.0.0.1/internal", "feed_type": "rss"},
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+
+    def test_file_scheme_blocked_in_preview(self, client):
+        """file:// scheme must be blocked in feed preview."""
+        resp = client.post(
+            "/api/feeds/preview",
+            json={"feed_url": "file:///etc/passwd", "feed_type": "rss"},
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+
+    def test_private_network_blocked_in_preview(self, client):
+        """10.x.x.x (private RFC1918) must be blocked in feed preview."""
+        resp = client.post(
+            "/api/feeds/preview",
+            json={"feed_url": "http://10.0.0.1/feed.xml", "feed_type": "rss"},
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+
+    def test_missing_feed_url_rejected(self, client):
+        """Missing feed_url key must return 400."""
+        resp = client.post(
+            "/api/feeds/preview",
+            json={"feed_type": "rss"},
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+
+    def test_metadata_endpoint_blocked_in_test_route(self, client):
+        """169.254.169.254 must be blocked in /api/feeds/test as well."""
+        resp = client.post(
+            "/api/feeds/test",
+            json={"url": "http://169.254.169.254/metadata"},
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+
+    def test_loopback_blocked_in_test_route(self, client):
+        """127.0.0.1 must be blocked in /api/feeds/test."""
+        resp = client.post(
+            "/api/feeds/test",
+            json={"url": "http://127.0.0.1/internal"},
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+
+    def test_validate_external_url_called_for_preview(self, client):
+        """validate_external_url is invoked — not bypassed — in the preview handler."""
+        with patch("modules.web_viewer.app.validate_external_url", return_value=False) as mock_veu:
+            resp = client.post(
+                "/api/feeds/preview",
+                json={"feed_url": "http://192.168.1.1/feed.rss", "feed_type": "rss"},
+                content_type="application/json",
+            )
+        mock_veu.assert_called()
+        assert resp.status_code == 400
+>>>>>>> 38d040a (security: SSRF hardening, log injection sanitization, and allow_local_smtp)

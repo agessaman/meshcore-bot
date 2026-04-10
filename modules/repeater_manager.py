@@ -12,6 +12,7 @@ from typing import Any, Optional
 
 from meshcore import EventType
 
+from .security_utils import sanitize_name
 from .utils import rate_limited_nominatim_reverse_sync
 
 
@@ -1815,7 +1816,7 @@ class RepeaterManager:
 
                 # Debug logging for first few contacts to understand structure
                 if processed_count <= 5:
-                    self.logger.debug(f"Contact {processed_count}: {contact_data.get('name', 'Unknown')} (type: {contact_data.get('type')}, keys: {list(contact_data.keys())})")
+                    self.logger.debug(f"Contact {processed_count}: {sanitize_name(contact_data.get('name', 'Unknown'))} (type: {contact_data.get('type')}, keys: {list(contact_data.keys())})")
 
                 if self._is_repeater_device(contact_data):
                     public_key = contact_data.get('public_key', contact_key)
@@ -2549,7 +2550,7 @@ class RepeaterManager:
                                 'days_stale': (datetime.now() - last_seen_dt).days
                             })
                     except Exception as e:
-                        self.logger.debug(f"Error parsing timestamp for contact {contact_data.get('name', 'Unknown')}: {e}")
+                        self.logger.debug(f"Error parsing timestamp for contact {sanitize_name(contact_data.get('name', 'Unknown'))}: {e}")
                         continue
 
             # Sort by days stale (oldest first)
@@ -2650,7 +2651,7 @@ class RepeaterManager:
                     await asyncio.sleep(1)
 
                 except Exception as e:
-                    self.logger.error(f"Error removing stale contact {contact.get('name', 'Unknown')}: {e}")
+                    self.logger.error(f"Error removing stale contact {sanitize_name(contact.get('name', 'Unknown'))}: {e}")
                     continue
 
             return removed_count

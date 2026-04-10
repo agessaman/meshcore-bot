@@ -282,6 +282,7 @@ class TestLoopExceptionHandler:
         mock_loop.default_exception_handler.assert_called_once_with(ctx)
 
 
+<<<<<<< HEAD
 # ---------------------------------------------------------------------------
 # _probe_radio_health (PR4 — zombie-connection detection)
 # ---------------------------------------------------------------------------
@@ -538,3 +539,5 @@ async def _make_coro_async(value):
 def _make_coro(value):
     """Return a coroutine that immediately resolves to *value*."""
     return _make_coro_async(value)
+=======
+>>>>>>> 38d040a (security: SSRF hardening, log injection sanitization, and allow_local_smtp)

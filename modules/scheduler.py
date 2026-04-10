@@ -901,8 +901,130 @@ class MessageScheduler:
     def _format_email_body(self, stats: dict[str, Any], period_start: str, period_end: str) -> str:
         return self.maintenance.format_email_body(stats, period_start, period_end)
 
-    def _send_nightly_email(self) -> None:
-        self.maintenance.send_nightly_email()
+    # ── Zombie radio alert email ─────────────────────────────────────────────
+
+    def send_zombie_alert_email(self, fail_count: int, threshold: int, interval: int) -> None:
+        """Send an immediate alert email when a zombie radio is detected.
+
+        Uses the same SMTP settings as the nightly digest.  Recipients are taken
+        from the ``radio_zombie_alert_email`` config key; if that key is empty the
+        nightly maintenance recipients are used as a fallback.
+
+        This method is intentionally synchronous so it can be run in a thread
+        executor from the async event loop without blocking it.
+        """
+        import smtplib
+        import ssl as _ssl
+        from email.message import EmailMessage
+
+        if not self.bot.config.getboolean('Bot', 'radio_zombie_alert_enabled', fallback=True):
+            return
+
+        smtp_host     = self._get_notif('smtp_host')
+        smtp_security = self._get_notif('smtp_security') or 'starttls'
+        smtp_user     = self._get_notif('smtp_user')
+        smtp_password = self._get_notif('smtp_password')
+        from_name     = self._get_notif('from_name') or 'MeshCore Bot'
+        from_email    = self._get_notif('from_email')
+
+        # Alert recipients: dedicated config key, falls back to nightly recipients
+        alert_email_cfg = self.bot.config.get('Bot', 'radio_zombie_alert_email', fallback='').strip()
+        if alert_email_cfg:
+            recipients = [r.strip() for r in alert_email_cfg.split(',') if r.strip()]
+        else:
+            recipients = [r.strip() for r in self._get_notif('recipients').split(',') if r.strip()]
+
+        if not smtp_host or not from_email or not recipients:
+            self.bot.logger.warning(
+                "Zombie alert email enabled but SMTP settings incomplete "
+                f"(host={smtp_host!r}, from={from_email!r}, recipients={recipients}) "
+                "— alert email not sent"
+            )
+            return
+
+        allow_local = self._get_notif('allow_local_smtp').lower() == 'true'
+        if not validate_external_url(f'http://{smtp_host}', allow_private=allow_local):
+            self.bot.logger.error(
+                "Zombie alert email aborted: SMTP host %r resolves to a private or reserved address",
+                smtp_host,
+            )
+            return
+
+        try:
+            smtp_port = int(self._get_notif('smtp_port') or (465 if smtp_security == 'ssl' else 587))
+        except ValueError:
+            smtp_port = 587
+
+        now_utc         = datetime.datetime.utcnow()
+        connection_type = self.bot.config.get('Connection', 'connection_type', fallback='unknown')
+        serial_port     = self.bot.config.get('Connection', 'serial_port', fallback='n/a')
+        interval_min    = interval // 60
+
+        subject = (
+            f'ALERT: MeshCore Bot — Zombie Radio Detected '
+            f'[{now_utc.strftime("%Y-%m-%d %H:%M UTC")}]'
+        )
+        body = '\n'.join([
+            'MeshCore Bot — Zombie Radio Alert',
+            '=' * 44,
+            f'Time          : {now_utc.strftime("%Y-%m-%d %H:%M:%S UTC")}',
+            '',
+            'RADIO STATUS',
+            '─' * 30,
+            f'  Connection    : {connection_type}',
+            f'  Port / Device : {serial_port}',
+            f'  Failed probes : {fail_count} of {threshold} (threshold)',
+            f'  Probe interval: {interval}s ({interval_min} min)',
+            '',
+            'ACTION REQUIRED',
+            '─' * 30,
+            '  The radio firmware is unresponsive (zombie state).',
+            '  A physical POWER CYCLE of the radio is required.',
+            '  Disconnect/reconnect of the serial/BLE transport will NOT fix this.',
+            '',
+            '  Steps to recover:',
+            '    1. Power off the radio hardware',
+            '    2. Wait 10 seconds',
+            '    3. Power on the radio hardware',
+            '    4. The bot will reconnect and resume normal operation automatically',
+            '',
+            '─' * 44,
+            'Probe monitoring has been suspended to avoid log spam.',
+            'It will resume automatically after the next successful reconnect.',
+        ])
+
+        try:
+            msg = EmailMessage()
+            msg['Subject'] = subject
+            msg['From']    = f'{from_name} <{from_email}>'
+            msg['To']      = ', '.join(recipients)
+            msg.set_content(body)
+
+            context = _ssl.create_default_context()
+            _smtp_timeout = 30
+
+            if smtp_security == 'ssl':
+                with smtplib.SMTP_SSL(smtp_host, smtp_port, context=context, timeout=_smtp_timeout) as s:
+                    if smtp_user and smtp_password:
+                        s.login(smtp_user, smtp_password)
+                    s.send_message(msg)
+            else:
+                with smtplib.SMTP(smtp_host, smtp_port, timeout=_smtp_timeout) as s:
+                    if smtp_security == 'starttls':
+                        s.ehlo()
+                        s.starttls(context=context)
+                        s.ehlo()
+                    if smtp_user and smtp_password:
+                        s.login(smtp_user, smtp_password)
+                    s.send_message(msg)
+
+            self.bot.logger.info(
+                f"Zombie radio alert email sent to {recipients}"
+            )
+        except Exception as e:
+            self.bot.logger.error(f"Failed to send zombie radio alert email: {e}")
+
+    # ── Maintenance helpers ──────────────────────────────────────────────────
 
     def _get_maint(self, key: str) -> str:
         return self.maintenance.get_maint(key)

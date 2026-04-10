@@ -6,9 +6,9 @@ Handles RSS and API feed subscription management
 
 import json
 from typing import Optional
-from urllib.parse import urlparse
 
 from ..models import MeshMessage
+from ..security_utils import sanitize_input, sanitize_name, validate_external_url
 from .base_command import BaseCommand
 
 
@@ -103,13 +103,13 @@ feed status 1"""
             return await self.send_response(message, "Feed type must be 'rss' or 'api'")
 
         feed_url = args[1]
-        channel_name = args[2]
-        feed_name = args[3] if len(args) > 3 else None
+        channel_name = sanitize_name(args[2], max_length=64)
+        feed_name = sanitize_input(args[3], max_length=100) if len(args) > 3 else None
         api_config = args[4] if len(args) > 4 and feed_type == 'api' else None
 
-        # Validate URL
-        if not self._validate_url(feed_url):
-            return await self.send_response(message, "Invalid URL format")
+        # Validate URL — full SSRF protection (IP range + DNS check)
+        if not validate_external_url(feed_url):
+            return await self.send_response(message, "Invalid or unsafe URL")
 
         # Validate channel exists
         channel_num = self.bot.channel_manager.get_channel_number(channel_name)
@@ -242,8 +242,8 @@ feed status 1"""
 
         feed_url = args[0]
 
-        if not self._validate_url(feed_url):
-            return await self.send_response(message, "Invalid URL format")
+        if not validate_external_url(feed_url):
+            return await self.send_response(message, "Invalid or unsafe URL")
 
         # Test would require feed_manager to be available
         # For now, just validate URL
@@ -294,14 +294,6 @@ feed status 1"""
         except Exception as e:
             self.logger.error(f"Error updating feed: {e}")
             return await self.send_response(message, f"Error: {str(e)}")
-
-    def _validate_url(self, url: str) -> bool:
-        """Validate URL format"""
-        try:
-            result = urlparse(url)
-            return all([result.scheme in ['http', 'https'], result.netloc])
-        except Exception:
-            return False
 
     def _create_subscription(self, feed_type: str, feed_url: str, channel_name: str,
                             feed_name: Optional[str] = None, api_config: Optional[dict] = None) -> int:

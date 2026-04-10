@@ -22,6 +22,7 @@ import aiohttp
 import feedparser
 
 from modules.feed_filter_eval import item_passes_filter_config
+from modules.security_utils import sanitize_input, validate_external_url
 from modules.url_shortener import _coerce_url_string, shorten_url_sync
 
 
@@ -181,6 +182,12 @@ class FeedManager:
         feed['channel_name']
 
         try:
+            # Validate URL for SSRF protection
+            if not validate_external_url(feed_url):
+                self.logger.error(f"Feed URL validation failed: {feed_url}")
+                self._record_feed_error(feed_id, 'security', 'Invalid or unsafe URL')
+                return
+
             self.logger.debug(f"Polling {feed_type} feed {feed_id}: {feed_url}")
 
             # Rate limit per domain
@@ -927,8 +934,10 @@ class FeedManager:
         format_str = feed.get('output_format') or self.default_output_format
 
         # Extract field values (DB/feed may store NULL; .get('k', default) still returns None if key present)
-        title = item.get('title') or 'Untitled'
-        body = item.get('description', '') or item.get('body', '')
+        # Use sanitize_input with max_length=None to only strip control characters without truncating
+        # Truncation happens later via _apply_shortening when needed
+        title = sanitize_input(item.get('title') or 'Untitled', max_length=None)
+        body = sanitize_input(item.get('description', '') or item.get('body', ''), max_length=None)
         # Clean HTML from body if present
         if body:
             body = html.unescape(body)
