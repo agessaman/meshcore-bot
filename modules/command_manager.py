@@ -8,6 +8,7 @@ import asyncio
 import random
 import time
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import Any
 
 from meshcore import EventType
@@ -16,6 +17,7 @@ from .commands.base_command import BaseCommand
 from .config_validation import (
     PUBLIC_CHANNEL_KEY_HEX,  # noqa: F401 — re-exported; used by core.py
     PUBLIC_CHANNEL_OVERRIDE_KEY,  # noqa: F401 — re-exported; used by core.py
+    _channel_name_is_public,
     strip_optional_quotes,
 )
 from .models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, MeshMessage
@@ -110,7 +112,47 @@ class CommandManager:
         self._command_queue: dict[tuple[str, str], QueuedCommand] = {}
         self._queue_processor_task: asyncio.Task | None = None
 
+        # Multi-scope reply: map of normalized scope name → 16-byte HMAC key.
+        # flood_scope_allow_global is True when '*' (or equivalent) appears in
+        # flood_scopes, meaning unscoped FLOOD messages are also permitted.
+        self.flood_scope_allow_global: bool = False
+        self.flood_scope_keys: dict[str, bytes] = self._load_flood_scope_keys()
+
         self.logger.info(f"CommandManager initialized with {len(self.commands)} plugins")
+
+    def _load_flood_scope_keys(self) -> dict[str, bytes]:
+        """Load flood_scopes config into a name→16-byte-key dict for HMAC matching.
+
+        Global/wildcard entries ('*', '', '0', 'None') are not added to the key
+        dict (they have no HMAC) but set flood_scope_allow_global so unscoped
+        FLOOD messages are still permitted through the allowlist check.
+        """
+        scope_keys: dict[str, bytes] = {}
+        if not (self.bot.config.has_section("Channels") and
+                self.bot.config.has_option("Channels", "flood_scopes")):
+            return scope_keys
+        raw = (self.bot.config.get("Channels", "flood_scopes") or "").strip()
+        for entry in (s.strip() for s in raw.split(",") if s.strip()):
+            normalized = self._normalize_scope_name(entry)
+            if normalized in ("", "*", "0", "None"):
+                self.flood_scope_allow_global = True
+            elif normalized:
+                scope_keys[normalized] = sha256(normalized.encode()).digest()[:16]
+        if scope_keys or self.flood_scope_allow_global:
+            self.logger.info(
+                f"Flood scope allowlist active: {list(scope_keys.keys())} "
+                f"(global/unscoped permitted: {self.flood_scope_allow_global})"
+            )
+        return scope_keys
+
+    @staticmethod
+    def _normalize_scope_name(scope: str) -> str:
+        """Return scope with '#' prepended if it is a non-global named region without one."""
+        if scope in ("", "*", "0", "None"):
+            return scope
+        if not scope.startswith("#"):
+            return "#" + scope
+        return scope
 
     def _should_queue_command(self, command: BaseCommand, message: MeshMessage) -> tuple[bool, float]:
         """Check if command should be queued instead of rejected.
@@ -469,7 +511,19 @@ class CommandManager:
         """
         raw = self.bot.config.get('Channels', 'monitor_channels', fallback='')
         channels = strip_optional_quotes(raw)
-        return [channel.strip() for channel in channels.split(',') if channel.strip()]
+        channel_list = [channel.strip() for channel in channels.split(',') if channel.strip()]
+
+        if any(_channel_name_is_public(ch) for ch in channel_list):
+            override = self.bot.config.get("Bot", PUBLIC_CHANNEL_OVERRIDE_KEY, fallback="").strip().lower()
+            if override != "true":
+                self.logger.error(
+                    "FATAL: monitor_channels includes the Public channel. Running a bot on "
+                    "Public is disruptive to other mesh users. To override, add to [Bot]:\n"
+                    f"  {PUBLIC_CHANNEL_OVERRIDE_KEY} = true"
+                )
+                raise SystemExit(1)
+
+        return channel_list
 
     def load_channel_keywords(self) -> list[str] | None:
         """Load channel keyword whitelist from config.
@@ -1033,6 +1087,8 @@ class CommandManager:
                 scope_cfg = (self.bot.config.get("Channels", "outgoing_flood_scope_override") or "").strip()
             scope_to_use = (scope if scope is not None else scope_cfg) or ""
             scope_is_global = scope_to_use in ("", "*", "0", "None")
+            if not scope_is_global:
+                scope_to_use = self._normalize_scope_name(scope_to_use)
             if not scope_is_global and hasattr(self.bot.meshcore.commands, "set_flood_scope"):
                 await self.bot.meshcore.commands.set_flood_scope(scope_to_use)
 
@@ -1359,6 +1415,7 @@ class CommandManager:
                     message.channel or "", content,
                     skip_user_rate_limit=skip_user_rate_limit,
                     rate_limit_key=rate_limit_key,
+                    scope=getattr(message, 'reply_scope', None),
                 )
         except Exception as e:
             self.logger.error(f"Failed to send response: {e}")

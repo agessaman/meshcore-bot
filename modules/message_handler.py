@@ -6,8 +6,10 @@ Processes incoming messages and routes them to appropriate command handlers
 
 import asyncio
 import copy
+import hmac as hmac_mod
 import time
 from collections import OrderedDict
+from hashlib import sha256
 from typing import Any
 
 from .enums import AdvertFlags, DeviceRole, PayloadType, PayloadVersion, RouteType
@@ -65,6 +67,29 @@ class MessageHandler:
         self.multitest_listener = None
 
         self.logger.info(f"RF Data Correlation: timeout={self.rf_data_timeout}s, enhanced={self.enhanced_correlation}")
+
+    @staticmethod
+    def _match_scope(transport_code: int, payload_type: int, pkt_payload: bytes,
+                     scope_keys: dict[str, bytes]) -> str | None:
+        """Return the scope name whose HMAC matches transport_code, or None.
+
+        Mirrors the firmware's TransportKey::calcTransportCode: computes
+        HMAC-SHA256(scope_key, [payload_type_byte] + pkt_payload)[0:2] as uint16_le
+        and compares it against transport_code (transport_codes[0] from TC_FLOOD header).
+        """
+        if not scope_keys:
+            return None
+        check_data = bytes([payload_type]) + pkt_payload
+        for name, key in scope_keys.items():
+            digest = hmac_mod.new(key, check_data, sha256).digest()
+            computed = int.from_bytes(digest[:2], "little")
+            if computed == 0:
+                computed = 1
+            elif computed == 0xFFFF:
+                computed = 0xFFFE
+            if computed == transport_code:
+                return name
+        return None
 
     def _is_old_cached_message(self, timestamp: Any) -> bool:
         """Check if a message timestamp indicates it's from before bot connection.
