@@ -139,7 +139,7 @@ class MeshCoreBot:
             # Register cleanup handler for web viewer
             atexit.register(self._cleanup_web_viewer)
         except (OSError, ValueError, AttributeError, ImportError) as e:
-            self.logger.warning(f"Web viewer integration failed: {e}")
+            self.logger.error("Web viewer integration failed: %s", e)
             self.web_viewer_integration = None
 
         # Initialize modules

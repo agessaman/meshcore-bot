@@ -1307,18 +1307,17 @@ enabled = false
 # Enable web viewer (true/false). false recommended unless you have configured web_viewer_password.
 enabled = false
 
-# Password to protect the web viewer UI (BUG-001 fix)
-# If set, a login page is shown and all routes + SocketIO connections require authentication.
-# If left empty, the web viewer is accessible without any authentication.
+# If set to a non-empty value, a login page is shown and all routes + SocketIO require auth.
+# If empty, unset, "", or a null placeholder (none / null / nil), authentication is disabled.
 # Recommendation: always set a password when host != 127.0.0.1
 # web_viewer_password = changeme
 
 # Web viewer host address
 # SECURITY WARNING:
 # - 127.0.0.1: Only accessible from localhost (SECURE - recommended)
-# - 0.0.0.0: Accessible from any network interface (use only with web_viewer_password set)
+# - 0.0.0.0: Accessible from any network interface (strongly recommend web_viewer_password)
 #
-# Using 0.0.0.0 without web_viewer_password will expose:
+# Using 0.0.0.0 without a password is allowed but logs an ERROR at startup; it exposes:
 # - All messages and their contents
 # - Contact list and repeater information
 # - Real-time packet stream

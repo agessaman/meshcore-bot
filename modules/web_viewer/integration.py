@@ -19,6 +19,29 @@ from typing import Optional
 from ..utils import resolve_path
 
 
+def normalized_web_viewer_password(config) -> str:
+    """Return the effective web viewer password, or '' to disable the login screen.
+
+    Blank values, quoted empties (e.g. INI ``""``), and placeholders ``none`` / ``null`` /
+    ``nil`` (case-insensitive) are treated as no password.
+    """
+    if not config.has_section("Web_Viewer"):
+        return ""
+    raw = config.get("Web_Viewer", "web_viewer_password", fallback="")
+    if raw is None:
+        return ""
+    s = str(raw).strip()
+    if not s:
+        return ""
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in ('"', "'"):
+        s = s[1:-1].strip()
+    if not s:
+        return ""
+    if s.lower() in ("none", "null", "nil"):
+        return ""
+    return s
+
+
 class BotIntegration:
     """Simple bot integration for web viewer compatibility"""
 
@@ -548,14 +571,15 @@ class WebViewerIntegration:
                 f"Port must be between 1024-65535 (non-privileged), got: {self.port}"
             )
 
-        # Enforce authentication when binding to non-loopback interfaces
-        if self.host == '0.0.0.0':
-            password = self.bot.config.get('Web_Viewer', 'web_viewer_password', fallback='').strip()
-            if not password:
-                raise ValueError(
-                    "web_viewer_password must be set in [Web_Viewer] config when "
-                    "binding to all interfaces (host = 0.0.0.0). "
-                    "For unauthenticated local-only access, use host = 127.0.0.1."
+        # Insecure but allowed: binding to all interfaces without a password.
+        # Only warn when the web viewer is configured to run at startup.
+        if self.enabled and self.host == "0.0.0.0":
+            if not normalized_web_viewer_password(self.bot.config):
+                self.logger.error(
+                    "Web viewer is configured with host = 0.0.0.0 and no "
+                    "web_viewer_password (or password is empty/null); the UI is reachable "
+                    "from the network without authentication. Set web_viewer_password or use "
+                    "host = 127.0.0.1 for local-only access."
                 )
 
     def start_viewer(self):

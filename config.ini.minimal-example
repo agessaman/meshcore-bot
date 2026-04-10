@@ -375,7 +375,7 @@ enabled = true
 # {listening_duration}: Listening window duration in seconds
 # Leave empty to use default format
 # Example: "Found {path_count} unique path(s) for @[{sender}]:\n{paths}"
-response_format = 
+response_format = Found {path_count} unique path(s) for @[{sender}]:\n{paths}
 
 ####################################################################################################
 #                                                                                                  #

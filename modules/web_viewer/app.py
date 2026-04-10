@@ -87,6 +87,7 @@ from modules.repeater_manager import RepeaterManager
 from modules.url_shortener import _coerce_url_string
 from modules.utils import calculate_distance, resolve_path
 from modules.web_viewer.config_panels import CONFIG_PANELS, PANEL_CATEGORIES
+from modules.web_viewer.integration import normalized_web_viewer_password
 
 
 class BotDataViewer:
@@ -161,7 +162,7 @@ class BotDataViewer:
         self.logger.info(f"Using database: {self.db_path}")
 
         # Optional password authentication for web viewer (BUG-001)
-        self.web_viewer_password = self.config.get('Web_Viewer', 'web_viewer_password', fallback='').strip()
+        self.web_viewer_password = normalized_web_viewer_password(self.config)
         if self.web_viewer_password:
             self.logger.info("Web viewer authentication enabled")
         else:

@@ -413,6 +413,64 @@ class TestWebViewerIntegrationValidation:
         assert wvi.host == "127.0.0.1"
         assert wvi.port == 8080
 
+    def test_zero_host_without_password_logs_error_does_not_raise(self):
+        from modules.web_viewer.integration import WebViewerIntegration
+        bot = _make_bot()
+        bot.config.set("Web_Viewer", "enabled", "true")
+        bot.config.set("Web_Viewer", "host", "0.0.0.0")
+        bot.config.set("Web_Viewer", "web_viewer_password", "")
+        with patch.object(WebViewerIntegration, "start_viewer"):
+            with patch("modules.web_viewer.integration.BotIntegration._init_http_session"), \
+                 patch("modules.web_viewer.integration.BotIntegration._init_packet_stream_table"), \
+                 patch("modules.web_viewer.integration.BotIntegration._start_drain_thread"):
+                WebViewerIntegration(bot)
+        bot.logger.error.assert_called()
+        msg = bot.logger.error.call_args[0][0]
+        assert "0.0.0.0" in msg
+        assert "web_viewer_password" in msg
+
+    def test_zero_host_without_password_does_not_log_when_disabled(self):
+        from modules.web_viewer.integration import WebViewerIntegration
+        bot = _make_bot()
+        bot.config.set("Web_Viewer", "enabled", "false")
+        bot.config.set("Web_Viewer", "host", "0.0.0.0")
+        bot.config.set("Web_Viewer", "web_viewer_password", "")
+        with patch.object(WebViewerIntegration, "start_viewer"):
+            with patch("modules.web_viewer.integration.BotIntegration._init_http_session"), \
+                 patch("modules.web_viewer.integration.BotIntegration._init_packet_stream_table"), \
+                 patch("modules.web_viewer.integration.BotIntegration._start_drain_thread"):
+                WebViewerIntegration(bot)
+        bot.logger.error.assert_not_called()
+
+
+class TestNormalizedWebViewerPassword:
+    def test_blank_and_null_placeholders(self):
+        from modules.web_viewer.integration import normalized_web_viewer_password
+
+        c = ConfigParser()
+        c.add_section("Web_Viewer")
+        assert normalized_web_viewer_password(c) == ""
+        c.set("Web_Viewer", "web_viewer_password", "")
+        assert normalized_web_viewer_password(c) == ""
+        c.set("Web_Viewer", "web_viewer_password", "  ")
+        assert normalized_web_viewer_password(c) == ""
+        c.set("Web_Viewer", "web_viewer_password", '""')
+        assert normalized_web_viewer_password(c) == ""
+        c.set("Web_Viewer", "web_viewer_password", "null")
+        assert normalized_web_viewer_password(c) == ""
+        c.set("Web_Viewer", "web_viewer_password", "NONE")
+        assert normalized_web_viewer_password(c) == ""
+
+    def test_real_password_preserved(self):
+        from modules.web_viewer.integration import normalized_web_viewer_password
+
+        c = ConfigParser()
+        c.add_section("Web_Viewer")
+        c.set("Web_Viewer", "web_viewer_password", "secret")
+        assert normalized_web_viewer_password(c) == "secret"
+        c.set("Web_Viewer", "web_viewer_password", '"quoted"')
+        assert normalized_web_viewer_password(c) == "quoted"
+
 
 # ---------------------------------------------------------------------------
 # shutdown
