@@ -111,10 +111,12 @@ def validate_external_url(
                     logger.warning(f"URL resolves to private/internal IP: {ip}")
                     return False
 
+                # Reject CGN (Carrier-Grade NAT) - RFC 6598
                 if ip_obj in _CGN_NETWORK:
                     logger.warning(f"URL resolves to CGN IP: {ip}")
                     return False
 
+                # Reject reserved ranges
                 if ip_obj.is_reserved or ip_obj.is_multicast:
                     logger.warning(f"URL resolves to reserved/multicast IP: {ip}")
                     return False
