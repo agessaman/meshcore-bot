@@ -280,3 +280,5 @@ class TestLoopExceptionHandler:
         handler(mock_loop, ctx)
 
         mock_loop.default_exception_handler.assert_called_once_with(ctx)
+
+

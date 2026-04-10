@@ -157,6 +157,56 @@ db_path = meshcore_bot.db
 # Seconds to wait after a failed service restart before retrying (default: 300)
 service_restart_backoff_seconds = 300
 
+# Max seconds to wait for a channel message send before timing out (default: 30)
+send_timeout_seconds = 30
+
+# ── Radio health monitoring (zombie radio detection) ────────────────────────
+#
+# A zombie radio is one where the serial/BLE transport is still open and
+# incoming RF packets are still received, but the firmware is hung and stops
+# ACKing outgoing commands (all sends time out with no_event_received).
+# The ONLY recovery is a physical power cycle — disconnect/reconnect does nothing.
+#
+# Probe interval: how often to send a get_time() health check (seconds).
+# Valid range: 300–900 (5–15 minutes). Values outside this range are clamped.
+# Default: 300 (5 minutes)
+radio_probe_interval_seconds = 300
+
+# Number of consecutive failed probes before declaring zombie state.
+# At the default 300s interval: threshold 3 = ~15 min before zombie is logged.
+# Suggested values by interval:
+#   300s (5 min)  → threshold 3  (~15 min total)
+#   600s (10 min) → threshold 2  (~20 min total)
+#   900s (15 min) → threshold 2  (~30 min total)
+radio_probe_fail_threshold = 3
+
+# Send an immediate alert email when zombie state is confirmed.
+# Requires SMTP to be configured in the web viewer Notifications settings.
+# false: log CRITICAL only, no email (default)
+# true: send alert email in addition to logging
+radio_zombie_alert_enabled = false
+
+# SMTP security note: by default the bot blocks SMTP hosts that resolve to
+# any private, loopback, link-local, or reserved address to prevent SSRF.
+# Blocked ranges (per RFC):
+#   10.0.0.0/8        RFC 1918 — private
+#   172.16.0.0/12     RFC 1918 — private
+#   192.168.0.0/16    RFC 1918 — private
+#   127.0.0.0/8       RFC 1122 — loopback
+#   169.254.0.0/16    RFC 3927 — link-local
+#   100.64.0.0/10     RFC 6598 — shared address space (CGN)
+#   ::1/128           RFC 4291 — IPv6 loopback
+#   fc00::/7          RFC 4193 — IPv6 unique local (ULA)
+#   fe80::/10         RFC 4291 — IPv6 link-local
+# If you run a local SMTP relay (e.g. Postfix on localhost), enable
+# "Allow local SMTP host" in the web viewer → Settings → Notifications.
+
+# Alert email recipients for zombie detection (comma-separated addresses).
+# If empty, falls back to the nightly maintenance email recipients.
+# Set this to a separate on-call address if needed.
+# Example: oncall@example.com,admin@example.com
+radio_zombie_alert_email =
+
 [Channels]
 # Channels to monitor (comma-separated)
 # Bot will only respond to messages on these channels

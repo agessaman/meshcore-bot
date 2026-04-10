@@ -372,8 +372,9 @@ class TestMaybeRunDbBackup:
         fake_now.strftime = now.strftime
         fake_now.isocalendar.return_value = (2026, 11, 2)
         with patch.object(scheduler, "get_current_time", return_value=fake_now):
-            with patch.object(scheduler.maintenance, "run_db_backup") as mock_run:
-                scheduler._maybe_run_db_backup()
+            with patch.object(scheduler.maintenance, "_get_current_time", return_value=fake_now):
+                with patch.object(scheduler.maintenance, "run_db_backup") as mock_run:
+                    scheduler._maybe_run_db_backup()
         mock_run.assert_not_called()
 
 
@@ -695,9 +696,9 @@ class TestSendNightlyEmailDisabled:
         def _get_notif(key):
             return {"nightly_enabled": "false"}.get(key, "")
 
-        scheduler._get_notif = Mock(side_effect=_get_notif)
+        scheduler.maintenance.get_notif = Mock(side_effect=_get_notif)
         # Should not raise and should not call smtplib
-        scheduler._send_nightly_email()
+        scheduler.maintenance.send_nightly_email()
         # No assertion needed — if it reaches here without smtplib, it returned early
 
 
@@ -1229,3 +1230,100 @@ class TestCollectEmailStats:
         assert result.get("contacts_total") == 50
         assert result.get("contacts_24h") == 10
         assert result.get("contacts_new_24h") == 3
+
+# ---------------------------------------------------------------------------
+# SSRF guard — SMTP host validation in email-sending methods
+# ---------------------------------------------------------------------------
+
+
+def _make_smtp_scheduler(notif_overrides: dict) -> "MessageScheduler":
+    """Return a scheduler whose maintenance.get_notif returns values from notif_overrides."""
+    bot = Mock()
+    bot.logger = Mock()
+    bot.config = ConfigParser()
+    bot.config.add_section("Bot")
+    bot.config.set("Bot", "radio_zombie_alert_enabled", "true")
+    bot.config.set("Bot", "radio_zombie_alert_email", "")
+    bot.config.add_section("Connection")
+    bot.config.set("Connection", "connection_type", "serial")
+    sched = MessageScheduler(bot)
+    defaults = {
+        "nightly_enabled": "true",
+        "smtp_host": "smtp.example.com",
+        "smtp_port": "587",
+        "smtp_security": "starttls",
+        "smtp_user": "",
+        "smtp_password": "",
+        "from_name": "Bot",
+        "from_email": "bot@example.com",
+        "recipients": "admin@example.com",
+    }
+    defaults.update(notif_overrides)
+    sched.maintenance.get_notif = Mock(side_effect=lambda k: defaults.get(k, ""))
+    sched._get_notif = Mock(side_effect=lambda k: defaults.get(k, ""))  # zombie alert still uses _get_notif
+    return sched
+
+
+class TestNightlyEmailSsrfGuard:
+    """send_nightly_email must abort on private IP unless allow_local_smtp=true."""
+
+    @pytest.mark.parametrize("bad_host", [
+        "10.0.0.1",       # RFC 1918 10.0.0.0/8
+        "172.16.0.1",     # RFC 1918 172.16.0.0/12
+        "192.168.1.1",    # RFC 1918 192.168.0.0/16
+        "127.0.0.1",      # RFC 1122 127.0.0.0/8 loopback
+        "169.254.0.1",    # RFC 3927 169.254.0.0/16 link-local
+        "100.64.0.1",     # RFC 6598 100.64.0.0/10 shared/CGN
+        "::1",            # RFC 4291 ::1/128 IPv6 loopback
+        "fd00::1",        # RFC 4193 fc00::/7 IPv6 ULA
+        "fe80::1",        # RFC 4291 fe80::/10 IPv6 link-local
+    ])
+    def test_private_smtp_host_aborts_nightly_email(self, bad_host):
+        sched = _make_smtp_scheduler({"smtp_host": bad_host})
+        sched.maintenance.send_nightly_email()
+        sched.bot.logger.error.assert_called()
+        logged = str(sched.bot.logger.error.call_args_list)
+        assert "private" in logged.lower() or "reserved" in logged.lower()
+
+    @pytest.mark.parametrize("local_host", ["127.0.0.1", "192.168.1.1"])
+    def test_allow_local_smtp_bypasses_ssrf_guard(self, local_host):
+        """allow_local_smtp=true permits private-IP SMTP (e.g. local Postfix)."""
+        sched = _make_smtp_scheduler({"smtp_host": local_host, "allow_local_smtp": "true"})
+        # Should not abort at the SSRF guard — will fail at smtplib (connection refused)
+        # so error log must NOT contain the SSRF rejection message
+        with patch("smtplib.SMTP", side_effect=ConnectionRefusedError("no server")):
+            with patch("smtplib.SMTP_SSL", side_effect=ConnectionRefusedError("no server")):
+                sched.maintenance.send_nightly_email()
+        logged = str(sched.bot.logger.error.call_args_list)
+        assert "private" not in logged.lower() and "reserved" not in logged.lower()
+
+
+class TestZombieAlertEmailSsrfGuard:
+    """send_zombie_alert_email must abort on private IP unless allow_local_smtp=true."""
+
+    @pytest.mark.parametrize("bad_host", [
+        "10.0.0.1",       # RFC 1918 10.0.0.0/8
+        "172.16.0.1",     # RFC 1918 172.16.0.0/12
+        "192.168.1.1",    # RFC 1918 192.168.0.0/16
+        "127.0.0.1",      # RFC 1122 127.0.0.0/8 loopback
+        "169.254.0.1",    # RFC 3927 169.254.0.0/16 link-local
+        "100.64.0.1",     # RFC 6598 100.64.0.0/10 shared/CGN
+        "::1",            # RFC 4291 ::1/128 IPv6 loopback
+        "fd00::1",        # RFC 4193 fc00::/7 IPv6 ULA
+        "fe80::1",        # RFC 4291 fe80::/10 IPv6 link-local
+    ])
+    def test_private_smtp_host_aborts_zombie_alert(self, bad_host):
+        sched = _make_smtp_scheduler({"smtp_host": bad_host})
+        sched.send_zombie_alert_email(fail_count=5, threshold=3, interval=60)
+        sched.bot.logger.error.assert_called()
+        logged = str(sched.bot.logger.error.call_args_list)
+        assert "private" in logged.lower() or "reserved" in logged.lower()
+
+    def test_allow_local_smtp_bypasses_ssrf_guard_zombie_alert(self):
+        """allow_local_smtp=true permits private-IP SMTP for zombie alert."""
+        sched = _make_smtp_scheduler({"smtp_host": "127.0.0.1", "allow_local_smtp": "true"})
+        with patch("smtplib.SMTP", side_effect=ConnectionRefusedError("no server")):
+            with patch("smtplib.SMTP_SSL", side_effect=ConnectionRefusedError("no server")):
+                sched.send_zombie_alert_email(fail_count=5, threshold=3, interval=60)
+        logged = str(sched.bot.logger.error.call_args_list)
+        assert "private" not in logged.lower() and "reserved" not in logged.lower()

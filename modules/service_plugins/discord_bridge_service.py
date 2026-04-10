@@ -36,6 +36,7 @@ except ImportError:
 import contextlib
 
 from ..profanity_filter import censor, contains_profanity
+from ..security_utils import sanitize_name
 from .base_service import BaseServicePlugin
 
 
@@ -618,7 +619,7 @@ class DiscordBridgeService(BaseServicePlugin):
                 # Check response status
                 if response.status == 204:
                     # Success (Discord webhooks return 204 No Content on success)
-                    self.logger.debug(f"Posted to Discord [{channel_name}]: {payload['content'][:50]}...")
+                    self.logger.debug(f"Posted to Discord [{channel_name}]: {sanitize_name(payload['content'])[:50]}...")
                     # Monitor rate limit headers
                     self._check_rate_limit_headers(response.headers, webhook_url, channel_name)
                     return True
@@ -675,7 +676,7 @@ class DiscordBridgeService(BaseServicePlugin):
             # Check response status
             if response.status_code == 204:
                 # Success
-                self.logger.debug(f"Posted to Discord [{channel_name}]: {payload['content'][:50]}...")
+                self.logger.debug(f"Posted to Discord [{channel_name}]: {sanitize_name(payload['content'])[:50]}...")
                 # Monitor rate limit headers
                 self._check_rate_limit_headers(response.headers, webhook_url, channel_name)
                 return True

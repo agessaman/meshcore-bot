@@ -15,13 +15,14 @@ from meshcore import EventType
 
 from .commands.base_command import BaseCommand
 from .config_validation import (
-    PUBLIC_CHANNEL_KEY_HEX,
+    PUBLIC_CHANNEL_KEY_HEX,  # noqa: F401 — re-exported; used by core.py
     PUBLIC_CHANNEL_OVERRIDE_KEY,
     _channel_name_is_public,
     strip_optional_quotes,
 )
 from .models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, MeshMessage
 from .plugin_loader import PluginLoader
+from .security_utils import sanitize_name, validate_safe_path
 from .utils import check_internet_connectivity_async, decode_escape_sequences, format_keyword_response_with_placeholders
 
 
@@ -857,6 +858,15 @@ class CommandManager:
             self.logger.warning(f"RandomLine matched '{key}' but missing config file.{key}")
             return None
 
+        try:
+            validated_path = validate_safe_path(file_path, allow_absolute=True)
+        except ValueError:
+            validated_path = None
+        if validated_path is None:
+            self.logger.warning(f"RandomLine: unsafe or restricted path rejected for '{key}': {file_path}")
+            return None
+        file_path = str(validated_path)
+
         # Read usable lines
         try:
             with open(file_path, encoding="utf-8") as f:
@@ -948,7 +958,7 @@ class CommandManager:
 
             # Use the contact name for logging
             contact_name = contact.get('name', contact.get('adv_name', recipient_id))
-            self.logger.info(f"Sending DM to {contact_name}: {content}")
+            self.logger.info("Sending DM to %s", sanitize_name(contact_name))
 
             # Record transmission for repeat tracking (don't let this block sending)
             try:

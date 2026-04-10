@@ -33,7 +33,11 @@ from flask import (
 )
 from flask_socketio import SocketIO, disconnect, emit
 
-from modules.security_utils import VALID_JOURNAL_MODES, validate_sql_identifier
+from modules.security_utils import (
+    VALID_JOURNAL_MODES,
+    validate_external_url,
+    validate_sql_identifier,
+)
 from modules.version_info import resolve_runtime_version
 
 
@@ -1313,6 +1317,7 @@ class BotDataViewer:
                 'notif.smtp_user', 'notif.smtp_password',
                 'notif.from_name', 'notif.from_email',
                 'notif.recipients', 'notif.nightly_enabled',
+                'notif.allow_local_smtp',
             ]
             settings = {}
             for k in keys:
@@ -1371,6 +1376,14 @@ class BotDataViewer:
                 return jsonify({'error': 'Sender email is not configured'}), 400
             if not recipients:
                 return jsonify({'error': 'No recipients configured'}), 400
+
+            # Validate SMTP host for SSRF protection
+            # allow_local_smtp=true permits private/internal SMTP hosts (e.g., local Postfix)
+            allow_local_smtp = _get('allow_local_smtp').lower() == 'true'
+            if not validate_external_url(f'http://{smtp_host}', allow_private=allow_local_smtp):
+                if allow_local_smtp:
+                    return jsonify({'error': 'Invalid or unsafe SMTP host'}), 400
+                return jsonify({'error': 'Invalid or unsafe SMTP host (private/internal IP blocked)'}), 400
 
             try:
                 msg = EmailMessage()
@@ -1527,12 +1540,23 @@ class BotDataViewer:
                 backup_dir_str = self.db_manager.get_metadata('maint.db_backup_dir') or ''
                 if not backup_dir_str or not os.path.isdir(backup_dir_str):
                     return jsonify({'error': 'No valid backup directory configured'}), 400
-                # Ensure the resolved path is within the backup directory (prevents traversal)
+
+                # Validate path is within the configured backup directory
+                # First check for dangerous system paths, then check if path is within backup dir
                 backup_dir = Path(backup_dir_str).resolve()
                 src = Path(db_file).resolve()
+
+                # Check for dangerous system paths first (returns 400)
+                target_str = str(src).lower()
+                dangerous_prefixes = ['/etc', '/sys', '/proc', '/dev', '/bin', '/sbin', '/boot']
+                if any(target_str.startswith(prefix) for prefix in dangerous_prefixes):
+                    return jsonify({'error': 'Access to system directory denied'}), 400
+
+                # Check if path is within the backup directory (prevents traversal)
                 try:
                     src.relative_to(backup_dir)
                 except ValueError:
+                    # Path is outside backup directory - return 403
                     return jsonify({'error': 'Restore path must be within the configured backup directory'}), 403
 
                 if not src.exists():
@@ -3090,7 +3114,11 @@ class BotDataViewer:
                                                    fallback='{emoji} {body|truncate:100} - {date}\n{link|truncate:50}')
 
                 # Fetch and format feed items
-                preview_items = self._preview_feed_items(feed_url, feed_type, output_format, api_config, filter_config, sort_config)
+                try:
+                    preview_items = self._preview_feed_items(feed_url, feed_type, output_format, api_config, filter_config, sort_config)
+                except ValueError as e:
+                    # SSRF validation error - return 400
+                    return jsonify({'error': str(e)}), 400
 
                 return jsonify({
                     'success': True,
@@ -3108,14 +3136,13 @@ class BotDataViewer:
                 if not data or 'url' not in data:
                     return jsonify({'error': 'URL is required'}), 400
 
-                # This would require feed_manager - for now just validate URL
-                from urllib.parse import urlparse
                 url = data['url']
-                result = urlparse(url)
-                if not all([result.scheme in ['http', 'https'], result.netloc]):
-                    return jsonify({'error': 'Invalid URL format'}), 400
 
-                return jsonify({'success': True, 'message': 'URL validated (full test requires feed manager)'})
+                # Validate URL for SSRF protection
+                if not validate_external_url(url):
+                    return jsonify({'error': 'Invalid or unsafe URL'}), 400
+
+                return jsonify({'success': True, 'message': 'URL validated'})
             except Exception as e:
                 self.logger.error(f"Error testing feed: {e}")
                 return jsonify({'error': str(e)}), 500
@@ -5704,6 +5731,10 @@ class BotDataViewer:
 
         try:
             items = []
+
+            # Validate URL for SSRF protection
+            if not validate_external_url(feed_url):
+                raise ValueError("Invalid or unsafe feed URL")
 
             if feed_type == 'rss':
                 # Fetch RSS feed
