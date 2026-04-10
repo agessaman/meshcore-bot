@@ -16,6 +16,9 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger('MeshCoreBot.Security')
 
+# CGN (Carrier-Grade NAT) network 100.64.0.0/10 - RFC 6598
+_CGN_NETWORK = ipaddress.ip_network("100.64.0.0/10")
+
 
 def _is_nix_environment() -> bool:
     """
@@ -84,11 +87,16 @@ def validate_external_url(url: str, allow_localhost: bool = False, allow_private
 
             ip_obj = ipaddress.ip_address(ip)
 
-            # If localhost/private IPs are not allowed, reject them
+            # If localhost/private is not allowed, reject private/internal IPs
             if not (allow_localhost or allow_private):
                 # Reject private/internal IPs
                 if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local:
                     logger.warning(f"URL resolves to private/internal IP: {ip}")
+                    return False
+
+                # Reject CGN (Carrier-Grade NAT) - RFC 6598
+                if ip_obj in _CGN_NETWORK:
+                    logger.warning(f"URL resolves to CGN IP: {ip}")
                     return False
 
                 # Reject reserved ranges
