@@ -4,6 +4,7 @@ Message scheduler functionality for the MeshCore Bot
 Handles scheduled messages and timing
 """
 
+import asyncio
 import datetime
 import json
 import os
@@ -17,6 +18,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from .maintenance import MaintenanceRunner
+from .security_utils import validate_external_url
 from .utils import decode_escape_sequences, format_keyword_response_with_placeholders, get_config_timezone
 
 # process_message_queue may await long per-feed intervals across many queued items; 30s is too short.
@@ -123,10 +125,15 @@ class MessageScheduler:
 
     def send_scheduled_message(self, channel: str, message: str):
         """Send a scheduled message (synchronous wrapper for schedule library)"""
+        if getattr(self.bot, 'is_radio_zombie', False):
+            self.logger.debug("Scheduled message suppressed: radio zombie")
+            return
+        if getattr(self.bot, 'is_radio_offline', False):
+            self.logger.debug("Scheduled message suppressed: radio offline")
+            return
+
         current_time = self.get_current_time()
         self.logger.info(f"📅 Sending scheduled message at {current_time.strftime('%H:%M:%S')} to {channel}: {message}")
-
-        import asyncio
 
         # Use the main event loop if available, otherwise create a new one
         # This prevents deadlock when the main loop is already running
@@ -139,8 +146,12 @@ class MessageScheduler:
             # Wait for completion (with timeout to prevent indefinite blocking)
             try:
                 future.result(timeout=60)  # 60 second timeout
+                if hasattr(self.bot, '_record_send_success'):
+                    self.bot._record_send_success()
             except Exception as e:
-                self.logger.error(f"Error sending scheduled message: {e}")
+                self.logger.error(f"Error sending scheduled message: {type(e).__name__}: {e}")
+                if hasattr(self.bot, '_record_send_failure'):
+                    self.bot._record_send_failure()
         else:
             # Fallback: create a temporary event loop and close it when done
             loop = asyncio.new_event_loop()
@@ -325,7 +336,11 @@ class MessageScheduler:
             except Exception as e:
                 self.logger.warning(f"Error fetching mesh info for scheduled message: {e}. Sending message as-is.")
 
-        await self.bot.command_manager.send_channel_message(channel, message)
+        send_timeout = self.bot.config.getint('Bot', 'send_timeout_seconds', fallback=30)
+        await asyncio.wait_for(
+            self.bot.command_manager.send_channel_message(channel, message),
+            timeout=send_timeout,
+        )
 
     def start(self):
         """Start the scheduler in a separate thread"""
@@ -529,6 +544,10 @@ class MessageScheduler:
 
     def send_interval_advert(self):
         """Send an interval-based advert (synchronous wrapper)"""
+        if getattr(self.bot, 'is_radio_offline', False):
+            self.logger.debug("Interval advert suppressed: radio offline")
+            return
+
         current_time = self.get_current_time()
         self.logger.info(f"📢 Sending interval-based flood advert at {current_time.strftime('%H:%M:%S')}")
 
@@ -545,8 +564,12 @@ class MessageScheduler:
             # Wait for completion (with timeout to prevent indefinite blocking)
             try:
                 future.result(timeout=60)  # 60 second timeout
+                if hasattr(self.bot, '_record_send_success'):
+                    self.bot._record_send_success()
             except Exception as e:
-                self.logger.error(f"Error sending interval advert: {e}")
+                self.logger.error(f"Error sending interval advert: {type(e).__name__}: {e}")
+                if hasattr(self.bot, '_record_send_failure'):
+                    self.bot._record_send_failure()
         else:
             # Fallback: create new event loop if main loop not available
             try:
@@ -561,9 +584,14 @@ class MessageScheduler:
     async def _send_interval_advert_async(self):
         """Send an interval-based advert (async implementation)"""
         try:
-            # Use the same advert functionality as the manual advert command
-            await self.bot.meshcore.commands.send_advert(flood=True)
+            from meshcore.events import EventType
+            event = await self.bot.meshcore.commands.send_advert(flood=True)
+            if event is not None and getattr(event, 'type', None) == EventType.ERROR:
+                reason = (event.payload or {}).get('reason', '') if event.payload else ''
+                raise RuntimeError(f"send_advert failed: {reason}")
             self.logger.info("Interval-based flood advert sent successfully")
+        except RuntimeError:
+            raise
         except Exception as e:
             self.logger.error(f"Error sending interval-based advert: {e}")
 
@@ -882,6 +910,127 @@ class MessageScheduler:
 
     def _send_nightly_email(self) -> None:
         self.maintenance.send_nightly_email()
+
+    def send_zombie_alert_email(self, fail_count: int, threshold: int, interval: int) -> None:
+        """Send an immediate alert email when a zombie radio is detected.
+
+        Uses the same SMTP settings as the nightly digest.  Recipients are taken
+        from the ``radio_zombie_alert_email`` config key; if that key is empty the
+        nightly maintenance recipients are used as a fallback.
+
+        This method is intentionally synchronous so it can be run in a thread
+        executor from the async event loop without blocking it.
+        """
+        import smtplib
+        import ssl as _ssl
+        from email.message import EmailMessage
+
+        if not self.bot.config.getboolean('Bot', 'radio_zombie_alert_enabled', fallback=True):
+            return
+
+        smtp_host     = self._get_notif('smtp_host')
+        smtp_security = self._get_notif('smtp_security') or 'starttls'
+        smtp_user     = self._get_notif('smtp_user')
+        smtp_password = self._get_notif('smtp_password')
+        from_name     = self._get_notif('from_name') or 'MeshCore Bot'
+        from_email    = self._get_notif('from_email')
+
+        # Alert recipients: dedicated config key, falls back to nightly recipients
+        alert_email_cfg = self.bot.config.get('Bot', 'radio_zombie_alert_email', fallback='').strip()
+        if alert_email_cfg:
+            recipients = [r.strip() for r in alert_email_cfg.split(',') if r.strip()]
+        else:
+            recipients = [r.strip() for r in self._get_notif('recipients').split(',') if r.strip()]
+
+        if not smtp_host or not from_email or not recipients:
+            self.bot.logger.warning(
+                "Zombie alert email enabled but SMTP settings incomplete "
+                f"(host={smtp_host!r}, from={from_email!r}, recipients={recipients}) "
+                "— alert email not sent"
+            )
+            return
+
+        allow_local = self._get_notif('allow_local_smtp').lower() == 'true'
+        if not validate_external_url(f'http://{smtp_host}', allow_private=allow_local):
+            self.bot.logger.error(
+                "Zombie alert email aborted: SMTP host %r resolves to a private or reserved address",
+                smtp_host,
+            )
+            return
+
+        try:
+            smtp_port = int(self._get_notif('smtp_port') or (465 if smtp_security == 'ssl' else 587))
+        except ValueError:
+            smtp_port = 587
+
+        now_utc         = datetime.datetime.utcnow()
+        connection_type = self.bot.config.get('Connection', 'connection_type', fallback='unknown')
+        serial_port     = self.bot.config.get('Connection', 'serial_port', fallback='n/a')
+        interval_min    = interval // 60
+
+        subject = (
+            f'ALERT: MeshCore Bot — Zombie Radio Detected '
+            f'[{now_utc.strftime("%Y-%m-%d %H:%M UTC")}]'
+        )
+        body = '\n'.join([
+            'MeshCore Bot — Zombie Radio Alert',
+            '=' * 44,
+            f'Time          : {now_utc.strftime("%Y-%m-%d %H:%M:%S UTC")}',
+            '',
+            'RADIO STATUS',
+            '─' * 30,
+            f'  Connection    : {connection_type}',
+            f'  Port / Device : {serial_port}',
+            f'  Failed probes : {fail_count} of {threshold} (threshold)',
+            f'  Probe interval: {interval}s ({interval_min} min)',
+            '',
+            'ACTION REQUIRED',
+            '─' * 30,
+            '  The radio firmware is unresponsive (zombie state).',
+            '  A physical POWER CYCLE of the radio is required.',
+            '  Disconnect/reconnect of the serial/BLE transport will NOT fix this.',
+            '',
+            '  Steps to recover:',
+            '    1. Power off the radio hardware',
+            '    2. Wait 10 seconds',
+            '    3. Power on the radio hardware',
+            '    4. The bot will reconnect and resume normal operation automatically',
+            '',
+            '─' * 44,
+            'Probe monitoring has been suspended to avoid log spam.',
+            'It will resume automatically after the next successful reconnect.',
+        ])
+
+        try:
+            msg = EmailMessage()
+            msg['Subject'] = subject
+            msg['From']    = f'{from_name} <{from_email}>'
+            msg['To']      = ', '.join(recipients)
+            msg.set_content(body)
+
+            context = _ssl.create_default_context()
+            _smtp_timeout = 30
+
+            if smtp_security == 'ssl':
+                with smtplib.SMTP_SSL(smtp_host, smtp_port, context=context, timeout=_smtp_timeout) as s:
+                    if smtp_user and smtp_password:
+                        s.login(smtp_user, smtp_password)
+                    s.send_message(msg)
+            else:
+                with smtplib.SMTP(smtp_host, smtp_port, timeout=_smtp_timeout) as s:
+                    if smtp_security == 'starttls':
+                        s.ehlo()
+                        s.starttls(context=context)
+                        s.ehlo()
+                    if smtp_user and smtp_password:
+                        s.login(smtp_user, smtp_password)
+                    s.send_message(msg)
+
+            self.bot.logger.info(
+                f"Zombie radio alert email sent to {recipients}"
+            )
+        except Exception as e:
+            self.bot.logger.error(f"Failed to send zombie radio alert email: {e}")
 
     def _get_maint(self, key: str) -> str:
         return self.maintenance.get_maint(key)

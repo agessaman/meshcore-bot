@@ -427,7 +427,8 @@ class TestMaintenanceSendNightlyEmail:
 
     def test_sends_via_starttls_when_configured(self):
         runner = self._runner_with_notif({})
-        with patch("smtplib.SMTP") as mock_smtp:
+        with patch("modules.maintenance.validate_external_url", return_value=True), \
+             patch("smtplib.SMTP") as mock_smtp:
             mock_smtp.return_value.__enter__ = Mock(return_value=mock_smtp.return_value)
             mock_smtp.return_value.__exit__ = Mock(return_value=False)
             runner.send_nightly_email()
@@ -435,7 +436,8 @@ class TestMaintenanceSendNightlyEmail:
 
     def test_logs_error_on_smtp_failure(self):
         runner = self._runner_with_notif({})
-        with patch("smtplib.SMTP", side_effect=ConnectionRefusedError("refused")):
+        with patch("modules.maintenance.validate_external_url", return_value=True), \
+             patch("smtplib.SMTP", side_effect=ConnectionRefusedError("refused")):
             runner.send_nightly_email()
         runner.bot.logger.error.assert_called()
 

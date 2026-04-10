@@ -300,17 +300,17 @@ class TestMaybeRunDbBackup:
             'maint.db_backup_dir': backup_dir,
         }
         bot.db_manager.get_metadata = Mock(side_effect=lambda k: maint_config.get(k, ''))
-        scheduler._last_db_backup_stats = {"ran_at": last_ran}
+        scheduler.maintenance._last_db_backup_stats = {"ran_at": last_ran}
 
     def test_disabled_does_not_run(self, scheduler):
         self._setup(scheduler, enabled="false")
-        with patch.object(scheduler, "_run_db_backup") as mock_run:
+        with patch.object(scheduler.maintenance, "run_db_backup") as mock_run:
             scheduler._maybe_run_db_backup()
         mock_run.assert_not_called()
 
     def test_manual_schedule_does_not_run(self, scheduler):
         self._setup(scheduler, schedule="manual")
-        with patch.object(scheduler, "_run_db_backup") as mock_run:
+        with patch.object(scheduler.maintenance, "run_db_backup") as mock_run:
             scheduler._maybe_run_db_backup()
         mock_run.assert_not_called()
 
@@ -321,8 +321,8 @@ class TestMaybeRunDbBackup:
         sched_time = now - datetime.timedelta(minutes=1)
         time_str = sched_time.strftime("%H:%M")
         self._setup(scheduler, time_str=time_str, last_ran=f"{today}T00:01:00")
-        with patch.object(scheduler, "get_current_time", return_value=now):
-            with patch.object(scheduler, "_run_db_backup") as mock_run:
+        with patch.object(scheduler.maintenance, "_get_current_time", return_value=now):
+            with patch.object(scheduler.maintenance, "run_db_backup") as mock_run:
                 scheduler._maybe_run_db_backup()
         mock_run.assert_not_called()
 
@@ -334,8 +334,8 @@ class TestMaybeRunDbBackup:
         time_str = sched_time.strftime("%H:%M")
         yesterday = (now - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
         self._setup(scheduler, time_str=time_str, last_ran=f"{yesterday}T00:01:00")
-        with patch.object(scheduler, "get_current_time", return_value=now):
-            with patch.object(scheduler, "_run_db_backup") as mock_run:
+        with patch.object(scheduler.maintenance, "_get_current_time", return_value=now):
+            with patch.object(scheduler.maintenance, "run_db_backup") as mock_run:
                 scheduler._maybe_run_db_backup()
         mock_run.assert_called_once()
 
@@ -347,8 +347,8 @@ class TestMaybeRunDbBackup:
         time_str = sched_time.strftime("%H:%M")
         yesterday = (now - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
         self._setup(scheduler, time_str=time_str, last_ran=f"{yesterday}T00:01:00")
-        with patch.object(scheduler, "get_current_time", return_value=now):
-            with patch.object(scheduler, "_run_db_backup") as mock_run:
+        with patch.object(scheduler.maintenance, "_get_current_time", return_value=now):
+            with patch.object(scheduler.maintenance, "run_db_backup") as mock_run:
                 scheduler._maybe_run_db_backup()
         mock_run.assert_not_called()
 
@@ -358,8 +358,8 @@ class TestMaybeRunDbBackup:
         sched_time = now + datetime.timedelta(minutes=30)
         time_str = sched_time.strftime("%H:%M")
         self._setup(scheduler, time_str=time_str, last_ran="")
-        with patch.object(scheduler, "get_current_time", return_value=now):
-            with patch.object(scheduler, "_run_db_backup") as mock_run:
+        with patch.object(scheduler.maintenance, "_get_current_time", return_value=now):
+            with patch.object(scheduler.maintenance, "run_db_backup") as mock_run:
                 scheduler._maybe_run_db_backup()
         mock_run.assert_not_called()
 
@@ -380,8 +380,8 @@ class TestMaybeRunDbBackup:
         fake_now.__sub__ = lambda s, o: now - o  # for timedelta comparison
         fake_now.strftime = now.strftime
         fake_now.isocalendar.return_value = (2026, 11, 2)
-        with patch.object(scheduler, "get_current_time", return_value=fake_now):
-            with patch.object(scheduler, "_run_db_backup") as mock_run:
+        with patch.object(scheduler.maintenance, "_get_current_time", return_value=fake_now):
+            with patch.object(scheduler.maintenance, "run_db_backup") as mock_run:
                 scheduler._maybe_run_db_backup()
         mock_run.assert_not_called()
 
@@ -716,9 +716,9 @@ class TestSendNightlyEmailDisabled:
         def _get_notif(key):
             return {"nightly_enabled": "false"}.get(key, "")
 
-        scheduler._get_notif = Mock(side_effect=_get_notif)
+        scheduler.maintenance.get_notif = Mock(side_effect=_get_notif)
         # Should not raise and should not call smtplib
-        scheduler._send_nightly_email()
+        scheduler.maintenance.send_nightly_email()
         # No assertion needed — if it reaches here without smtplib, it returned early
 
 
@@ -740,6 +740,8 @@ def _make_scheduler():
     config.set("Bot", "advert_interval_hours", "0")
     bot.config = config
     bot.main_event_loop = None
+    bot.is_radio_zombie = False
+    bot.is_radio_offline = False
     bot.is_radio_zombie = False
     bot.is_radio_offline = False
 
@@ -1495,7 +1497,7 @@ class TestSendScheduledMessageAsyncTimeout:
 
 
 def _make_smtp_scheduler(notif_overrides: dict) -> "MessageScheduler":
-    """Return a scheduler whose _get_notif returns values from notif_overrides."""
+    """Return a scheduler whose maintenance.get_notif returns values from notif_overrides."""
     bot = Mock()
     bot.logger = Mock()
     bot.config = ConfigParser()
@@ -1517,12 +1519,13 @@ def _make_smtp_scheduler(notif_overrides: dict) -> "MessageScheduler":
         "recipients": "admin@example.com",
     }
     defaults.update(notif_overrides)
-    sched._get_notif = Mock(side_effect=lambda k: defaults.get(k, ""))
+    sched.maintenance.get_notif = Mock(side_effect=lambda k: defaults.get(k, ""))
+    sched._get_notif = Mock(side_effect=lambda k: defaults.get(k, ""))  # zombie alert still uses _get_notif
     return sched
 
 
 class TestNightlyEmailSsrfGuard:
-    """_send_nightly_email must abort on private IP unless allow_local_smtp=true."""
+    """send_nightly_email must abort on private IP unless allow_local_smtp=true."""
 
     @pytest.mark.parametrize("bad_host", [
         "10.0.0.1",       # RFC 1918 10.0.0.0/8
@@ -1537,7 +1540,7 @@ class TestNightlyEmailSsrfGuard:
     ])
     def test_private_smtp_host_aborts_nightly_email(self, bad_host):
         sched = _make_smtp_scheduler({"smtp_host": bad_host})
-        sched._send_nightly_email()
+        sched.maintenance.send_nightly_email()
         sched.bot.logger.error.assert_called()
         logged = str(sched.bot.logger.error.call_args_list)
         assert "private" in logged.lower() or "reserved" in logged.lower()
@@ -1550,7 +1553,7 @@ class TestNightlyEmailSsrfGuard:
         # so error log must NOT contain the SSRF rejection message
         with patch("smtplib.SMTP", side_effect=ConnectionRefusedError("no server")):
             with patch("smtplib.SMTP_SSL", side_effect=ConnectionRefusedError("no server")):
-                sched._send_nightly_email()
+                sched.maintenance.send_nightly_email()
         logged = str(sched.bot.logger.error.call_args_list)
         assert "private" not in logged.lower() and "reserved" not in logged.lower()
 
@@ -1717,67 +1720,67 @@ class TestSchedulerFormatEmailBody:
 
 
 # ---------------------------------------------------------------------------
-# _send_nightly_email — success and disabled paths (scheduler copy)
+# send_nightly_email — success and disabled paths
 # ---------------------------------------------------------------------------
 
 
 class TestSchedulerSendNightlyEmail:
     def test_skips_when_disabled(self):
         sched = _make_smtp_scheduler({"nightly_enabled": "false"})
-        sched._send_nightly_email()
+        sched.maintenance.send_nightly_email()
         sched.bot.db_manager.set_metadata.assert_not_called()
 
     def test_sends_and_logs_info_on_success(self):
         sched = _make_smtp_scheduler({})
-        with patch("modules.scheduler.validate_external_url", return_value=True), \
+        with patch("modules.maintenance.validate_external_url", return_value=True), \
              patch("smtplib.SMTP") as mock_smtp:
-            sched._send_nightly_email()
+            sched.maintenance.send_nightly_email()
         mock_smtp.assert_called_once()
         sched.bot.logger.info.assert_called()
 
     def test_logs_error_on_smtp_failure(self):
         sched = _make_smtp_scheduler({})
         with patch("smtplib.SMTP", side_effect=ConnectionRefusedError("refused")):
-            sched._send_nightly_email()
+            sched.maintenance.send_nightly_email()
         sched.bot.logger.error.assert_called()
 
 
 # ---------------------------------------------------------------------------
-# _send_nightly_email — additional branch coverage
+# send_nightly_email — additional branch coverage
 # ---------------------------------------------------------------------------
 
 
 class TestNightlyEmailBranches:
-    """Cover branches in _send_nightly_email not hit by earlier tests."""
+    """Cover branches in maintenance.send_nightly_email not hit by earlier tests."""
 
     def test_incomplete_config_logs_warning_and_returns(self):
         """Missing smtp_host → log warning and return before smtplib call."""
         sched = _make_smtp_scheduler({"smtp_host": ""})
         with patch("smtplib.SMTP") as mock_smtp:
-            sched._send_nightly_email()
+            sched.maintenance.send_nightly_email()
         mock_smtp.assert_not_called()
         sched.bot.logger.warning.assert_called()
 
     def test_invalid_smtp_port_falls_back_to_587(self):
         """Non-numeric smtp_port → ValueError caught → fallback port 587."""
         sched = _make_smtp_scheduler({"smtp_port": "notanumber"})
-        with patch("modules.scheduler.validate_external_url", return_value=True), \
+        with patch("modules.maintenance.validate_external_url", return_value=True), \
              patch("smtplib.SMTP") as mock_smtp:
-            sched._send_nightly_email()
+            sched.maintenance.send_nightly_email()
         # SMTP should have been called (port 587 fallback)
         mock_smtp.assert_called_once()
-        _, kwargs = mock_smtp.call_args
-        # port can be positional arg[1]
         call_args = mock_smtp.call_args[0]
         assert call_args[1] == 587
 
     def test_ssl_security_uses_smtp_ssl(self):
         """smtp_security='ssl' → SMTP_SSL called instead of SMTP."""
         sched = _make_smtp_scheduler({"smtp_security": "ssl", "smtp_port": "465"})
-        with patch("modules.scheduler.validate_external_url", return_value=True), \
+        with patch("modules.maintenance.validate_external_url", return_value=True), \
              patch("smtplib.SMTP_SSL") as mock_ssl, \
              patch("smtplib.SMTP") as mock_plain:
-            sched._send_nightly_email()
+            sced_maint = sched.maintenance
+            sced_maint.get_maint = Mock(return_value="")
+            sced_maint.send_nightly_email()
         mock_ssl.assert_called_once()
         mock_plain.assert_not_called()
 
@@ -1793,9 +1796,10 @@ class TestNightlyEmailBranches:
         ctx_mgr.__enter__ = Mock(return_value=smtp_instance)
         ctx_mgr.__exit__ = Mock(return_value=False)
 
-        with patch("modules.scheduler.validate_external_url", return_value=True), \
+        with patch("modules.maintenance.validate_external_url", return_value=True), \
              patch("smtplib.SMTP_SSL", return_value=ctx_mgr):
-            sched._send_nightly_email()
+            sched.maintenance.get_maint = Mock(return_value="")
+            sched.maintenance.send_nightly_email()
         smtp_instance.login.assert_called_once_with("user@example.com", "s3cr3t")
 
     def test_starttls_with_credentials_calls_login(self):
@@ -1810,9 +1814,10 @@ class TestNightlyEmailBranches:
         ctx_mgr.__enter__ = Mock(return_value=smtp_instance)
         ctx_mgr.__exit__ = Mock(return_value=False)
 
-        with patch("modules.scheduler.validate_external_url", return_value=True), \
+        with patch("modules.maintenance.validate_external_url", return_value=True), \
              patch("smtplib.SMTP", return_value=ctx_mgr):
-            sched._send_nightly_email()
+            sched.maintenance.get_maint = Mock(return_value="")
+            sched.maintenance.send_nightly_email()
         smtp_instance.login.assert_called_once_with("user@example.com", "s3cr3t")
 
 

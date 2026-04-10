@@ -11,6 +11,8 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
+from .security_utils import validate_external_url
+
 if TYPE_CHECKING:
     pass
 
@@ -170,7 +172,7 @@ class MaintenanceRunner:
                     try:
                         future.result(timeout=60)
                     except Exception as e:
-                        self.logger.error(f"Error in repeater_manager.cleanup_database: {e}")
+                        self.logger.warning(f"Error in repeater_manager.cleanup_database: {e}")
                 else:
                     try:
                         loop = asyncio.get_event_loop()
@@ -356,6 +358,14 @@ class MaintenanceRunner:
             self.logger.warning(
                 "Nightly email enabled but SMTP settings incomplete "
                 f"(host={smtp_host!r}, from={from_email!r}, recipients={recipients})"
+            )
+            return
+
+        allow_local = self.get_notif('allow_local_smtp').lower() == 'true'
+        if not validate_external_url(f'http://{smtp_host}', allow_private=allow_local):
+            self.logger.error(
+                "Nightly email aborted: SMTP host %r resolves to a private or reserved address",
+                smtp_host,
             )
             return
 

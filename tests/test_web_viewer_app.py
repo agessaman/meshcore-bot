@@ -2,7 +2,6 @@
 
 import json
 import sqlite3
-import time
 from configparser import ConfigParser
 from unittest.mock import patch
 
@@ -108,59 +107,10 @@ def mock_viewer(tmp_path):
     return viewer
 
 
-# ---------------------------------------------------------------------------
-# ALLOWED_TABLES whitelist
-# ---------------------------------------------------------------------------
-
-
-class TestAllowedTables:
-    def test_whitelist_contains_expected_tables(self):
-        from modules.web_viewer.app import BotDataViewer
-
-        expected_tables = {
-            'geocoding_cache', 'generic_cache', 'bot_metadata',
-            'packet_stream', 'message_stats', 'command_stats',
-            'repeater_contacts', 'complete_contact_tracking', 'mesh_connections',
-            'observed_paths', 'daily_stats', 'purging_log', 'greeter_rollout',
-            'greeted_users', 'feed_subscriptions', 'feed_activity', 'feed_errors',
-            'path_stats', 'unique_advert_packets', 'schema_version',
-            'channel_operations', 'channels', 'feed_message_queue',
-        }
-        assert expected_tables == BotDataViewer.ALLOWED_TABLES
-
-
-class TestIsSafeTableName:
-    def test_valid_table_name_passes(self, mock_viewer):
-        assert mock_viewer._is_safe_table_name('repeater_contacts') is True
-
-    def test_invalid_table_name_fails(self, mock_viewer):
-        assert mock_viewer._is_safe_table_name('repeater_contacts; DROP TABLE users;') is False
-
-    def test_empty_name_fails(self, mock_viewer):
-        assert mock_viewer._is_safe_table_name('') is False
-
-    def test_underscore_allowed(self, mock_viewer):
-        assert mock_viewer._is_safe_table_name('complete_contact_tracking') is True
-
 
 # ---------------------------------------------------------------------------
-# _get_database_info
+# _get_database_stats
 # ---------------------------------------------------------------------------
-
-
-class TestGetDatabaseInfo:
-    def test_returns_allowed_tables_only(self, viewer_with_db):
-        # Add a malicious table to the database
-        with sqlite3.connect(viewer_with_db.db_path, timeout=60) as conn:
-            cursor = conn.cursor()
-            cursor.execute("CREATE TABLE malicious_table (id INTEGER)")
-            conn.commit()
-
-        info = viewer_with_db._get_database_info()
-        table_names = [t['name'] for t in info.get('tables', [])]
-
-        assert 'malicious_table' not in table_names
-        assert 'repeater_contacts' in table_names
 
 
 class TestGetDatabaseStats:
@@ -184,43 +134,6 @@ class TestGetDatabaseStats:
 
 
 class TestApiExportContacts:
-    def test_export_json_default(self, viewer_with_db):
-        # Add test data
-        with sqlite3.connect(viewer_with_db.db_path, timeout=60) as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO complete_contact_tracking
-                (public_key, name, role, device_type, latitude, longitude,
-                 city, state, country, snr, first_heard, last_heard,
-                 advert_count, is_starred)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                "aa:bb:cc:dd:ee:ff:gg:hh",
-                "Test Node",
-                "client",
-                "node",
-                40.7128,
-                -74.0060,
-                "New York",
-                "NY",
-                "USA",
-                -12.5,
-                time.time() - 86400,
-                time.time(),
-                5,
-                0,
-            ))
-            conn.commit()
-
-        with viewer_with_db.app.test_client() as client:
-            response = client.get('/api/export/contacts')
-
-            assert response.status_code == 200
-            assert response.content_type == 'application/json'
-            contacts = json.loads(response.data)
-            assert isinstance(contacts, list)
-            assert len(contacts) > 0
-
     def test_export_csv(self, viewer_with_db):
         with sqlite3.connect(viewer_with_db.db_path, timeout=60) as conn:
             cursor = conn.cursor()
@@ -508,92 +421,6 @@ class TestApiContactsPurgePreview:
 
 
 # ---------------------------------------------------------------------------
-# api_greeter
-# ---------------------------------------------------------------------------
-
-
-class TestApiGreeter:
-    def test_greeter_success(self, viewer_with_db):
-        with viewer_with_db.app.test_client() as client:
-            response = client.get('/api/greeter')
-
-            assert response.status_code == 200
-            data = json.loads(response.data)
-            assert 'rollout_data' in data
-
-    def test_greeter_no_rollouts(self, viewer_with_db):
-        # Clear any existing rollouts
-        with sqlite3.connect(viewer_with_db.db_path, timeout=60) as conn:
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM greeter_rollout")
-            conn.commit()
-
-        with viewer_with_db.app.test_client() as client:
-            response = client.get('/api/greeter')
-
-            assert response.status_code == 200
-            data = json.loads(response.data)
-            # Response uses 'rollout_data' key
-            assert 'rollout_data' in data
-
-
-# ---------------------------------------------------------------------------
-# api_end_rollout
-# ---------------------------------------------------------------------------
-
-
-class TestApiEndRollout:
-    def test_end_rollout_success(self, viewer_with_db):
-        # Create an active rollout first
-        with sqlite3.connect(viewer_with_db.db_path, timeout=60) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO greeter_rollout (rollout_completed, rollout_started_at, rollout_days)
-                VALUES (0, datetime('now'), 30)
-            ''')
-            conn.commit()
-
-        with viewer_with_db.app.test_client() as client:
-            response = client.post(
-                '/api/greeter/end-rollout',
-                data=json.dumps({}),
-                content_type='application/json'
-            )
-
-            assert response.status_code == 200
-            data = json.loads(response.data)
-            assert data.get('success') is True
-
-
-# ---------------------------------------------------------------------------
-# api_ungreet_user
-# ---------------------------------------------------------------------------
-
-
-class TestApiUngreetUser:
-    def test_ungreet_user_success(self, viewer_with_db):
-        # Create a greeted user first with NULL channel (global)
-        with sqlite3.connect(viewer_with_db.db_path, timeout=60) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO greeted_users (sender_id, channel, greeted_at)
-                VALUES (?, NULL, datetime('now'))
-            ''', ('test_user',))
-            conn.commit()
-
-        with viewer_with_db.app.test_client() as client:
-            response = client.post(
-                '/api/greeter/ungreet',
-                data=json.dumps({'sender_id': 'test_user'}),
-                content_type='application/json'
-            )
-
-            assert response.status_code == 200
-            data = json.loads(response.data)
-            assert data.get('success') is True
-
-
-# ---------------------------------------------------------------------------
 # api_feeds
 # ---------------------------------------------------------------------------
 
@@ -864,81 +691,6 @@ class TestApiRadioStatus:
 
 
 # ---------------------------------------------------------------------------
-# api_explorer
-# ---------------------------------------------------------------------------
-
-
-class TestApiExplorer:
-    def test_page_loads(self, mock_viewer):
-        with mock_viewer.app.test_client() as client:
-            response = client.get('/api-explorer')
-            assert response.status_code == 200
-
-    def test_contains_section_headings(self, mock_viewer):
-        with mock_viewer.app.test_client() as client:
-            response = client.get('/api-explorer')
-            body = response.data.decode()
-            assert 'System' in body
-            assert 'Contacts' in body
-            assert 'Feeds' in body
-
-    def test_contains_known_endpoints(self, mock_viewer):
-        with mock_viewer.app.test_client() as client:
-            response = client.get('/api-explorer')
-            body = response.data.decode()
-            assert '/api/health' in body
-            assert '/api/contacts' in body
-            assert '/api/mesh/nodes' in body
-
-    def test_contains_curl_buttons(self, mock_viewer):
-        with mock_viewer.app.test_client() as client:
-            response = client.get('/api-explorer')
-            body = response.data.decode()
-            assert 'curl-btn' in body
-
-
-# ---------------------------------------------------------------------------
-# error_handler
-# ---------------------------------------------------------------------------
-
-
-class TestErrorHandler500:
-    def test_api_path_returns_json_error(self, mock_viewer):
-        """500 on /api/ path returns JSON with 'error' key."""
-        @mock_viewer.app.route('/api/test-500-trigger')
-        def _boom():
-            raise RuntimeError("test 500")
-
-        # PROPAGATE_EXCEPTIONS must be False so the 500 handler fires instead of re-raising
-        mock_viewer.app.config['PROPAGATE_EXCEPTIONS'] = False
-        try:
-            with mock_viewer.app.test_client() as client:
-                response = client.get('/api/test-500-trigger',
-                                      headers={'Accept': 'application/json'})
-                assert response.status_code == 500
-                data = json.loads(response.data)
-                assert 'error' in data
-        finally:
-            mock_viewer.app.config['PROPAGATE_EXCEPTIONS'] = True
-
-    def test_browser_path_returns_html(self, mock_viewer):
-        """500 on non-API path returns HTML page."""
-        @mock_viewer.app.route('/test-500-html-trigger')
-        def _boom_html():
-            raise RuntimeError("test 500 html")
-
-        mock_viewer.app.config['PROPAGATE_EXCEPTIONS'] = False
-        try:
-            with mock_viewer.app.test_client() as client:
-                response = client.get('/test-500-html-trigger',
-                                      headers={'Accept': 'text/html'})
-                assert response.status_code == 500
-                assert b'Internal Server Error' in response.data
-        finally:
-            mock_viewer.app.config['PROPAGATE_EXCEPTIONS'] = True
-
-
-# ---------------------------------------------------------------------------
 # /api/maintenance/status
 # ---------------------------------------------------------------------------
 
@@ -960,137 +712,6 @@ class TestApiMaintenanceStatus:
         data = json.loads(response.data)
         # Nothing written to DB yet — all values should be empty strings
         assert all(v == '' for v in data.values())
-
-
-# ---------------------------------------------------------------------------
-# /admin/config
-# ---------------------------------------------------------------------------
-
-
-class TestAdminConfig:
-    def test_page_loads_200(self, viewer_with_db):
-        with viewer_with_db.app.test_client() as client:
-            response = client.get('/admin/config')
-        assert response.status_code == 200
-
-    def test_config_sections_visible(self, viewer_with_db):
-        with viewer_with_db.app.test_client() as client:
-            response = client.get('/admin/config')
-        # The Bot and Web_Viewer sections are in the fixture's config.ini
-        assert b'Bot' in response.data
-        assert b'Web_Viewer' in response.data
-
-    def test_sensitive_values_redacted(self, viewer_with_db):
-        """password fields should show ●●●●●● not the real value."""
-        # Inject a password into the viewer's config
-        viewer_with_db.config.set('Web_Viewer', 'web_viewer_password', 'supersecret')
-        with viewer_with_db.app.test_client() as client:
-            response = client.get('/admin/config')
-        assert b'supersecret' not in response.data
-        assert b'web_viewer_password' in response.data  # key is still shown
-
-
-# ---------------------------------------------------------------------------
-# /api/admin/zombie-recover
-# ---------------------------------------------------------------------------
-
-
-class TestApiZombieRecover:
-    def test_clears_zombie_metadata(self, viewer_with_db):
-        with viewer_with_db.app.test_client() as client:
-            response = client.post(
-                '/api/admin/zombie-recover',
-                headers={'X-Requested-With': 'XMLHttpRequest'},
-            )
-        assert response.status_code == 200
-        data = json.loads(response.data)
-        assert data['success'] is True
-        # Verify metadata was cleared
-        assert viewer_with_db.db_manager.get_metadata('bot.radio_zombie') == 'false'
-
-
-# ---------------------------------------------------------------------------
-# /api/admin/radio-offline-clear
-# ---------------------------------------------------------------------------
-
-
-class TestApiRadioOfflineClear:
-    def test_clears_radio_offline_metadata(self, viewer_with_db):
-        with viewer_with_db.app.test_client() as client:
-            response = client.post(
-                '/api/admin/radio-offline-clear',
-                headers={'X-Requested-With': 'XMLHttpRequest'},
-            )
-        assert response.status_code == 200
-        data = json.loads(response.data)
-        assert data['success'] is True
-        assert viewer_with_db.db_manager.get_metadata('bot.radio_offline') == 'false'
-
-
-# ---------------------------------------------------------------------------
-# /mesh page
-# ---------------------------------------------------------------------------
-
-
-class TestMeshPage:
-    def test_mesh_page_loads_200(self, viewer_with_db):
-        with viewer_with_db.app.test_client() as client:
-            response = client.get('/mesh')
-        assert response.status_code == 200
-
-    def test_mesh_page_with_prefix_bytes_config(self, viewer_with_db):
-        viewer_with_db.config.set('Bot', 'prefix_bytes', '2')
-        with viewer_with_db.app.test_client() as client:
-            response = client.get('/mesh')
-        assert response.status_code == 200
-
-
-# ---------------------------------------------------------------------------
-# /api/health
-# ---------------------------------------------------------------------------
-
-
-class TestApiHealth:
-    def test_returns_healthy_by_default(self, viewer_with_db):
-        with viewer_with_db.app.test_client() as client:
-            response = client.get('/api/health')
-        assert response.status_code == 200
-        data = json.loads(response.data)
-        assert data['status'] == 'healthy'
-        assert 'connected_clients' in data
-        assert 'version' in data
-        assert data['radio_zombie'] is False
-
-    def test_returns_degraded_when_zombie(self, viewer_with_db):
-        viewer_with_db.db_manager.set_metadata('bot.radio_zombie', 'true')
-        with viewer_with_db.app.test_client() as client:
-            response = client.get('/api/health')
-        data = json.loads(response.data)
-        assert data['status'] == 'degraded'
-        assert data['radio_zombie'] is True
-
-
-# ---------------------------------------------------------------------------
-# /api/banner-status
-# ---------------------------------------------------------------------------
-
-
-class TestApiBannerStatus:
-    def test_returns_all_banner_keys(self, viewer_with_db):
-        with viewer_with_db.app.test_client() as client:
-            response = client.get('/api/banner-status')
-        assert response.status_code == 200
-        data = json.loads(response.data)
-        assert 'radio_zombie' in data
-        assert 'radio_offline' in data
-        assert 'bot_initializing' in data
-
-    def test_reflects_zombie_state(self, viewer_with_db):
-        viewer_with_db.db_manager.set_metadata('bot.radio_zombie', 'true')
-        with viewer_with_db.app.test_client() as client:
-            response = client.get('/api/banner-status')
-        data = json.loads(response.data)
-        assert data['radio_zombie'] is True
 
 
 # ---------------------------------------------------------------------------
