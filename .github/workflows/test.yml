@@ -71,6 +71,9 @@ jobs:
       - name: ruff check — fail on any lint error
         run: ruff check modules/ tests/
 
+      - name: Log injection check — fail on new unsanitized logger calls
+        run: python scripts/check_log_injection.py
+
   typecheck:
     name: Type check (mypy)
     runs-on: ubuntu-latest
