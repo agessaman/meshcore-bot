@@ -2657,7 +2657,7 @@ class MessageHandler:
         if not self.should_process_message(message):
             return
         
-        self.logger.info(f"Processing message: {message.content}")
+        self.logger.info(f"Processing message: '{message.content}' from {message.sender_id} in {'DM' if message.is_dm else message.channel}")
         
         # Check for advert command (DM only)
         if message.is_dm and message.content.strip().lower() == "advert":
