@@ -774,10 +774,11 @@ class BaseCommand(ABC):
             return ""
         
         # Strip @[username] mentions before checking keywords
-        content = self._strip_mentions(content)
+        # also puts back the message with the prefix or mentions removed for evaluating further
+        message.content = self._strip_mentions(content)
+        message.content_lower = message.content.lower()
 
-        content_lower = content.lower()
-        return content_lower       
+        return message.content_lower       
     
     def matches_keyword(self, message: MeshMessage) -> bool:
         """Check if this command matches the message content based on keywords.
