@@ -118,6 +118,10 @@ Common per-command options (when supported by that command):
 
 Full reference: see `config.ini.example` in the repository for every section and option, with inline comments.
 
+## Radio reliability (zombie and radio-offline)
+
+Optional `[Bot]` settings for periodic health probes, send timeouts, and alert email toggles are described in **[Radio reliability](radio-reliability.md)**. **Radio-offline** detection applies to **scheduler-driven** outbound sends (scheduled messages and interval adverts), not necessarily every interactive command reply; **zombie** state suppresses outbound sends more broadly once declared.
+
 ## Data retention
 
 Database tables (packet stream, stats, repeater data, mesh graph) are pruned automatically. Retention periods and defaults are described in **[Data retention](data-retention.md)**. The bot’s scheduler runs cleanup daily even when the standalone web viewer is not running.

@@ -2989,3 +2989,32 @@ class TestRadioDebugConfig:
         data = resp.get_json()
         assert data["success"] is True
         assert data["op_id"] is None
+
+
+class TestZombieAlertConfig:
+    """Tests for GET/POST /api/config/zombie-alert endpoints."""
+
+    def test_get_returns_200_and_shape(self, client):
+        resp = client.get("/api/config/zombie-alert")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert "meta" in data
+        assert "config_ini" in data
+        assert "alert_enabled" in data["meta"]
+        assert "alert_email" in data["meta"]
+        assert "alert_enabled" in data["config_ini"]
+        assert "alert_email" in data["config_ini"]
+
+    def test_post_saves_metadata(self, client, viewer):
+        resp = client.post(
+            "/api/config/zombie-alert",
+            json={"alert_enabled": "true", "alert_email": "ops@example.com"},
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["success"] is True
+        assert viewer.db_manager.get_metadata("zombie.alert_enabled") == "true"
+        assert viewer.db_manager.get_metadata("zombie.alert_email") == "ops@example.com"
+        viewer.db_manager.set_metadata("zombie.alert_enabled", "false")
+        viewer.db_manager.set_metadata("zombie.alert_email", "")

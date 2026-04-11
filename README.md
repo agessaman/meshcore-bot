@@ -316,14 +316,16 @@ bot_tx_rate_limit_seconds = 1.0   # Min seconds between bot transmissions
 per_user_rate_limit_seconds = 30  # Per-user: min seconds between replies to same user (pubkey or name)
 per_user_rate_limit_enabled = true
 startup_advert = flood            # Send advert on startup
-radio_probe_interval_seconds = 300   # probe interval in seconds (300–900 / 5–15 min)
-radio_probe_fail_threshold = 3       # consecutive failures before zombie is declared and logged
-send_timeout_seconds = 30            # max seconds to wait for a channel message send
-radio_zombie_alert_enabled = false   # send immediate alert email on zombie detection (default: log only)
-radio_zombie_alert_email =           # alert recipient(s); falls back to nightly email if blank
-radio_offline_threshold = 3          # consecutive send timeouts before radio-offline state is entered
-radio_offline_alert_enabled = true   # send alert email when radio-offline state is entered
-radio_offline_alert_email =          # alert recipient(s); falls back to nightly email if blank
+# Radio reliability — see docs/radio-reliability.md
+radio_probe_interval_seconds = 300   # get_time() probe interval (clamped 300–900 s)
+radio_probe_fail_threshold = 3       # failed probes before zombie state
+send_timeout_seconds = 30            # async timeout for scheduled channel sends only
+radio_zombie_alert_enabled = false   # email on zombie (SMTP in web viewer)
+radio_zombie_alert_email =           # optional; else nightly digest recipients
+# Offline detection counts scheduler send failures (scheduled msgs + interval adverts), not every command reply.
+radio_offline_threshold = 3
+radio_offline_alert_enabled = true
+radio_offline_alert_email =
 ```
 
 ### Keywords

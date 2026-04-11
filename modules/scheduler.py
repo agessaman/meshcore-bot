@@ -939,7 +939,7 @@ class MessageScheduler:
         if isinstance(alert_enabled_meta, str) and alert_enabled_meta:
             alert_enabled = alert_enabled_meta.lower() == 'true'
         else:
-            alert_enabled = self.bot.config.getboolean('Bot', 'radio_zombie_alert_enabled', fallback=True)
+            alert_enabled = self.bot.config.getboolean('Bot', 'radio_zombie_alert_enabled', fallback=False)
         if not alert_enabled:
             return
 
@@ -970,6 +970,14 @@ class MessageScheduler:
                 "Zombie alert email enabled but SMTP settings incomplete "
                 f"(host={smtp_host!r}, from={from_email!r}, recipients={recipients}) "
                 "— alert email not sent"
+            )
+            return
+
+        allow_local = self._get_notif('allow_local_smtp').lower() == 'true'
+        if not validate_external_url(f'http://{smtp_host}', allow_private=allow_local):
+            self.bot.logger.error(
+                "Zombie alert email aborted: SMTP host %r resolves to a private or reserved address",
+                smtp_host,
             )
             return
 
