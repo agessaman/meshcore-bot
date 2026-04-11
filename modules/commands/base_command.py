@@ -5,6 +5,7 @@ Provides common functionality and interface for command implementations
 """
 
 from abc import ABC, abstractmethod
+from email.mime import message
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime
 import pytz
@@ -747,6 +748,37 @@ class BaseCommand(ABC):
         cleaned = re.sub(r'\s+', ' ', cleaned).strip()
         return cleaned
     
+    def cleanup_message_for_matching(self, message: MeshMessage) -> str:
+        """Clean up message text before keyword checking.
+        
+        This includes stripping mentions and command prefix.
+        
+        Args:
+            text: The original message text.
+        """
+        content = message.content.strip()
+                
+        if self._command_prefix:
+            # If prefix is configured, message must start with it
+            if not content.startswith(self._command_prefix):
+                return ""
+            # Strip the prefix
+            content = content[len(self._command_prefix):].strip()
+        else:
+            # Handle command-style messages (legacy "!" prefix) for backward compatibility
+            if content.startswith('!'):
+                content = content[1:].strip()
+        
+        # Check if mentions are valid (bot must be mentioned if any mentions exist)
+        if not self._check_mentions_ok(content):
+            return ""
+        
+        # Strip @[username] mentions before checking keywords
+        content = self._strip_mentions(content)
+
+        content_lower = content.lower()
+        return content_lower       
+    
     def matches_keyword(self, message: MeshMessage) -> bool:
         """Check if this command matches the message content based on keywords.
         
@@ -764,27 +796,9 @@ class BaseCommand(ABC):
         if not self.keywords:
             return False
         
-        content = message.content.strip()
-        
-        # Check for command prefix if configured
-        if self._command_prefix:
-            # If prefix is configured, message must start with it
-            if not content.startswith(self._command_prefix):
-                return False
-            # Strip the prefix
-            content = content[len(self._command_prefix):].strip()
-        else:
-            # If no prefix configured, strip legacy "!" prefix for backward compatibility
-            if content.startswith('!'):
-                content = content[1:].strip()
-        
-        # Check if mentions are valid (bot must be mentioned if any mentions exist)
-        if not self._check_mentions_ok(content):
+        content_lower = self.cleanup_message_for_matching(message)
+        if not content_lower:
             return False
-        
-        # Strip @[username] mentions before checking keywords
-        content = self._strip_mentions(content)
-        content_lower = content.lower()
         
         for keyword in self.keywords:
             keyword_lower = keyword.lower()

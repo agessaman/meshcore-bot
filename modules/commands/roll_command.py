@@ -73,22 +73,18 @@ class RollCommand(BaseCommand):
         Returns:
             bool: True if the message matches the roll command syntax, False otherwise.
         """
-        content = message.content.strip().lower()
-        
-        # Handle command-style messages
-        if content.startswith('!'):
-            content = content[1:].strip().lower()
-        
+        content_lower = self.cleanup_message_for_matching(message)
+                
         # Check for exact "roll" match
-        if content == "roll":
+        if content_lower == "roll":
             return True
         
         # Check for roll with parameters (roll 50, roll 1000, etc.)
         # Ensure "roll" is the first word and followed by valid number
-        if content.startswith("roll "):
-            words = content.split()
+        if content_lower.startswith("roll "):
+            words = content_lower.split()
             if len(words) >= 2 and words[0] == "roll":
-                roll_part = content[5:].strip()  # Get everything after "roll "
+                roll_part = content_lower[5:].strip()  # Get everything after "roll "
                 # Check if the roll part is valid number notation (not just any word)
                 max_num = self.parse_roll_notation(roll_part)
                 return max_num is not None  # Only match if it's valid number notation

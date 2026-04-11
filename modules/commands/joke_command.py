@@ -84,10 +84,8 @@ class JokeCommand(BaseCommand):
         Returns:
             bool: True if a joke keyword matches, False otherwise.
         """
-        content = message.content.strip()
-        if content.startswith('!'):
-            content = content[1:].strip()
-        content_lower = content.lower()
+        content_lower = self.cleanup_message_for_matching(message)
+        
         for keyword in self.keywords:
             # Match if keyword is at start followed by space or end of message
             if content_lower == keyword or content_lower.startswith(keyword + ' '):

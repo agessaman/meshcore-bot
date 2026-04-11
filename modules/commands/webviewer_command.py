@@ -58,14 +58,9 @@ class WebViewerCommand(BaseCommand):
         Returns:
             bool: True if matches, False otherwise.
         """
-        content = message.content.strip()
-        
-        # Handle exclamation prefix
-        if content.startswith('!'):
-            content = content[1:].strip()
-        
+        content_lower = self.cleanup_message_for_matching(message)
+
         # Check if message starts with any of our keywords
-        content_lower = content.lower()
         for keyword in self.keywords:
             if content_lower.startswith(keyword + ' ') or content_lower == keyword:
                 return True

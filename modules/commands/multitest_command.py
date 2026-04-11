@@ -89,15 +89,9 @@ class MultitestCommand(BaseCommand):
         return self.translate('commands.multitest.help', fallback="Listens for 6 seconds and collects all unique paths from incoming messages")
     
     def matches_keyword(self, message: MeshMessage) -> bool:
-        """Check if message matches multitest keyword"""
-        content = message.content.strip()
-        
-        # Handle exclamation prefix
-        if content.startswith('!'):
-            content = content[1:].strip()
-        
-        content_lower = content.lower()
-        
+        """Check if message matches multitest keyword"""        
+        content_lower = self.cleanup_message_for_matching(message)
+                
         # Check for exact match or keyword followed by space
         for keyword in self.keywords:
             if content_lower == keyword or content_lower.startswith(keyword + ' '):

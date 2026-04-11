@@ -144,10 +144,8 @@ class WxCommand(BaseCommand):
         if self.delegate_command:
             return self.delegate_command.matches_keyword(message)
         
-        content = message.content.strip()
-        if content.startswith('!'):
-            content = content[1:].strip()
-        content_lower = content.lower()
+        content_lower = self.cleanup_message_for_matching(message)
+
         for keyword in self.keywords:
             if content_lower.startswith(keyword + ' ') or content_lower == keyword:
                 return True
