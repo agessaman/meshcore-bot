@@ -10,7 +10,7 @@ from modules.commands.joke_command import JokeCommand
 from modules.commands.ping_command import PingCommand
 from modules.commands.sports_command import SportsCommand
 from modules.commands.stats_command import StatsCommand
-from modules.models import MeshMessage
+from modules.models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, MeshMessage
 from tests.conftest import mock_message
 
 
@@ -224,6 +224,13 @@ class TestGetMaxMessageLength:
         cmd = _TestCommand(command_mock_bot)
         msg = mock_message(content="x", channel="general", is_dm=False)
         assert cmd.get_max_message_length(msg) == 130  # max(130, 160 - 40 - 2)
+
+    def test_channel_regional_reply_scope_reduces_budget_by_10_bytes(self, command_mock_bot):
+        command_mock_bot.meshcore = None
+        command_mock_bot.config.set("Bot", "bot_name", "LongBotName")
+        cmd = _TestCommand(command_mock_bot)
+        msg = mock_message(content="x", channel="general", is_dm=False, reply_scope="#west")
+        assert cmd.get_max_message_length(msg) == 147 - CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD
 
 
 class TestCanExecute:

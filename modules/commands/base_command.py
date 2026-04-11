@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any, Optional
 
-from ..models import MeshMessage
+from ..models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, MeshMessage
 from ..security_utils import validate_pubkey_format
 from ..utils import format_elapsed_display, get_config_timezone
 
@@ -549,6 +549,7 @@ class BaseCommand(ABC):
 
         Channel messages are formatted as "<username>: <message>", so the body budget is:
         160 - utf8_byte_len(username) - 2 (for ": "), matching firmware cipher block limits.
+        Regional (non-global) flood scope subtracts CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD bytes.
 
         DM (contact) messages have no username prefix; max safe payload is 158 bytes.
 
@@ -584,11 +585,10 @@ class BaseCommand(ABC):
 
         # 160 bytes are available for channel messages
         # Calculate max length: 160 - username_length - 2 (for ": ")
-        max_length = 160 - len(str(username).encode('utf-8')) - 2
-
-        # Ensure we don't return a negative or unreasonably small value
-        # Minimum of 130 bytes to ensure some functionality
-        return max(130, max_length)
+        max_length = max(130, 160 - len(str(username).encode('utf-8')) - 2)
+        if not MeshMessage.is_global_flood_scope(message.effective_outgoing_flood_scope(self.bot)):
+            max_length -= CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD
+        return max_length
 
     def check_cooldown(self, user_id: Optional[str] = None) -> tuple[bool, float]:
         """Check if user is on cooldown.

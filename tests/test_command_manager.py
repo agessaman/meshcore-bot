@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 import pytest
 
 from modules.command_manager import CommandManager, InternetStatusCache
+from modules.models import MeshMessage
 from tests.conftest import mock_message
 
 
@@ -728,39 +729,52 @@ class TestGetMaxMessageLength:
 
     def test_dm_returns_158_bytes(self):
         mgr = self._make_manager()
-        msg = Mock()
-        msg.is_dm = True
+        msg = MeshMessage(content="x", is_dm=True)
         assert mgr.get_max_message_length(msg) == 158
 
     def test_channel_uses_bot_name_utf8_bytes(self):
         mgr = self._make_manager(bot_name="LongBotName")
-        msg = Mock()
-        msg.is_dm = False
+        msg = MeshMessage(content="x", channel="general", is_dm=False)
         # 160 - utf8("LongBotName") - 2 = 160 - 11 - 2 = 147
         assert mgr.get_max_message_length(msg) == 147
 
     def test_channel_uses_meshcore_username_utf8_bytes(self):
         mgr = self._make_manager(bot_name="fallback", username="Radio")
-        msg = Mock()
-        msg.is_dm = False
+        msg = MeshMessage(content="x", channel="general", is_dm=False)
         # 160 - utf8("Radio") - 2 = 160 - 5 - 2 = 153
         assert mgr.get_max_message_length(msg) == 153
+
+    def test_channel_regional_reply_scope_reduces_budget_by_10_bytes(self):
+        mgr = self._make_manager(bot_name="LongBotName")
+        msg = MeshMessage(content="x", channel="general", is_dm=False, reply_scope="#west")
+        assert mgr.get_max_message_length(msg) == 137  # 147 - 10
+
+    def test_channel_outgoing_flood_scope_override_reduces_budget_by_10_bytes(self):
+        mgr = self._make_manager(bot_name="LongBotName")
+        mgr.bot.config.set("Channels", "outgoing_flood_scope_override", "#west")
+        msg = MeshMessage(content="x", channel="general", is_dm=False)
+        assert mgr.get_max_message_length(msg) == 137
 
     def test_parity_with_base_command_get_max_message_length(self):
         """CommandManager must mirror BaseCommand byte budgets (PR #128)."""
         from tests.commands.test_base_command import _TestCommand
 
-        cases: list[tuple[str, str | None, bool]] = [
-            ("LongBotName", None, False),
-            ("Bot", None, True),
-            ("fallback", "Radio", False),
-            ("x", "😀😀", False),
+        cases: list[tuple[str, str | None, bool, str | None]] = [
+            ("LongBotName", None, False, None),
+            ("Bot", None, True, None),
+            ("fallback", "Radio", False, None),
+            ("x", "😀😀", False, None),
+            ("LongBotName", None, False, "#west"),
         ]
-        for bot_name, username, is_dm in cases:
+        for bot_name, username, is_dm, reply_scope in cases:
             mgr = self._make_manager(bot_name=bot_name, username=username)
             cmd = _TestCommand(mgr.bot)
-            msg = Mock()
-            msg.is_dm = is_dm
+            msg = MeshMessage(
+                content="x",
+                channel=None if is_dm else "general",
+                is_dm=is_dm,
+                reply_scope=reply_scope,
+            )
             m_len = mgr.get_max_message_length(msg)
             b_len = cmd.get_max_message_length(msg)
-            assert m_len == b_len, (bot_name, username, is_dm, m_len, b_len)
+            assert m_len == b_len, (bot_name, username, is_dm, reply_scope, m_len, b_len)

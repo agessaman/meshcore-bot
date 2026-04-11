@@ -20,7 +20,7 @@ from .config_validation import (
     _channel_name_is_public,
     strip_optional_quotes,
 )
-from .models import MeshMessage
+from .models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, MeshMessage
 from .plugin_loader import PluginLoader
 from .utils import check_internet_connectivity_async, decode_escape_sequences, format_keyword_response_with_placeholders
 
@@ -576,6 +576,9 @@ class CommandManager:
     def get_max_message_length(self, message: MeshMessage) -> int:
         """Return max message body size in UTF-8 bytes (DM=158, channel per firmware budget).
 
+        Regional (non-global) flood scope reduces the channel body budget by
+        ``CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD`` bytes.
+
         Mirrors ``BaseCommand.get_max_message_length`` but works on the manager level so it
         can be called outside of a specific command instance.
         """
@@ -594,8 +597,10 @@ class CommandManager:
             pass
         if not username:
             username = self.bot.config.get('Bot', 'bot_name', fallback='Bot')
-        max_length = 160 - len(str(username).encode('utf-8')) - 2
-        return max(130, max_length)
+        max_length = max(130, 160 - len(str(username).encode('utf-8')) - 2)
+        if not MeshMessage.is_global_flood_scope(message.effective_outgoing_flood_scope(self.bot)):
+            max_length -= CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD
+        return max_length
 
     def check_keywords(self, message: MeshMessage) -> list[tuple]:
         """Check message content for keywords and return matching responses.
