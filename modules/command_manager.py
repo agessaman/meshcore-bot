@@ -9,7 +9,7 @@ import random
 import time
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Any, Optional
+from typing import Any
 
 from meshcore import EventType
 
@@ -22,6 +22,7 @@ from .config_validation import (
 )
 from .models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, MeshMessage
 from .plugin_loader import PluginLoader
+from .security_utils import sanitize_name, validate_safe_path
 from .utils import check_internet_connectivity_async, decode_escape_sequences, format_keyword_response_with_placeholders
 
 
@@ -36,7 +37,7 @@ class InternetStatusCache:
     """
     has_internet: bool
     timestamp: float
-    _lock: Optional[asyncio.Lock] = None
+    _lock: asyncio.Lock | None = None
 
     def _get_lock(self) -> asyncio.Lock:
         """Lazily initialize the async lock.
@@ -109,7 +110,7 @@ class CommandManager:
         # Command queue for near-expiring global cooldowns
         # Key: (command_name, user_id) tuple, Value: QueuedCommand
         self._command_queue: dict[tuple[str, str], QueuedCommand] = {}
-        self._queue_processor_task: Optional[asyncio.Task] = None
+        self._queue_processor_task: asyncio.Task | None = None
 
         # Multi-scope reply: map of normalized scope name → 16-byte HMAC key.
         # flood_scope_allow_global is True when '*' (or equivalent) appears in
@@ -305,11 +306,11 @@ class CommandManager:
             self.logger.debug(f"Applying {self.bot.tx_delay_ms}ms transmission delay")
             await asyncio.sleep(self.bot.tx_delay_ms / 1000.0)
 
-    def get_rate_limit_key(self, message: MeshMessage) -> Optional[str]:
+    def get_rate_limit_key(self, message: MeshMessage) -> str | None:
         """Return the key used for per-user rate limiting (pubkey when available, else sender name)."""
         return message.sender_pubkey or message.sender_id or None
 
-    def get_rate_limit_wait_seconds(self, rate_limit_key: Optional[str] = None) -> float:
+    def get_rate_limit_wait_seconds(self, rate_limit_key: str | None = None) -> float:
         """Return seconds to wait until we could pass rate limits (for reply retry)."""
         wait = 0.0
         if not self.bot.rate_limiter.can_send():
@@ -321,8 +322,8 @@ class CommandManager:
         return wait
 
     async def _check_rate_limits(
-        self, skip_user_rate_limit: bool = False, rate_limit_key: Optional[str] = None,
-        channel: Optional[str] = None,
+        self, skip_user_rate_limit: bool = False, rate_limit_key: str | None = None,
+        channel: str | None = None,
     ) -> tuple[bool, str]:
         """Check all rate limits before sending.
 
@@ -388,7 +389,7 @@ class CommandManager:
         operation_name: str,
         target: str,
         used_retry_method: bool = False,
-        rate_limit_key: Optional[str] = None,
+        rate_limit_key: str | None = None,
     ) -> bool:
         """Handle result from message send operations.
 
@@ -496,7 +497,7 @@ class CommandManager:
         banned = self.bot.config.get('Banned_Users', 'banned_users', fallback='')
         return [user.strip() for user in banned.split(',') if user.strip()]
 
-    def is_user_banned(self, sender_id: Optional[str]) -> bool:
+    def is_user_banned(self, sender_id: str | None) -> bool:
         """Check if sender is banned using prefix (starts-with) matching.
 
         A banned entry "Awful Username" matches "Awful Username" and "Awful Username 🍆".
@@ -525,7 +526,7 @@ class CommandManager:
 
         return channel_list
 
-    def load_channel_keywords(self) -> Optional[list[str]]:
+    def load_channel_keywords(self) -> list[str] | None:
         """Load channel keyword whitelist from config.
 
         When set, only these triggers (command/keyword names) are answered in channels;
@@ -614,7 +615,7 @@ class CommandManager:
         Returns:
             List[tuple]: List of (trigger, response) tuples for matched keywords.
         """
-        matches: list[tuple[str, Optional[str]]] = []
+        matches: list[tuple[str, str | None]] = []
         content = message.content.strip()
 
         # Check for command prefix if configured
@@ -777,7 +778,7 @@ class CommandManager:
         # case-insensitive + ignore extra spaces
         return " ".join(text.lower().split())
 
-    def match_randomline(self, message: MeshMessage) -> Optional[tuple[str, str]]:
+    def match_randomline(self, message: MeshMessage) -> tuple[str, str] | None:
         """
         Exact-match message content against RandomLine triggers.
         Returns (key, response) or None.
@@ -857,6 +858,15 @@ class CommandManager:
             self.logger.warning(f"RandomLine matched '{key}' but missing config file.{key}")
             return None
 
+        try:
+            validated_path = validate_safe_path(file_path, allow_absolute=True)
+        except ValueError:
+            validated_path = None
+        if validated_path is None:
+            self.logger.warning(f"RandomLine: unsafe or restricted path rejected for '{key}': {file_path}")
+            return None
+        file_path = str(validated_path)
+
         # Read usable lines
         try:
             with open(file_path, encoding="utf-8") as f:
@@ -909,9 +919,9 @@ class CommandManager:
         self,
         recipient_id: str,
         content: str,
-        command_id: Optional[str] = None,
+        command_id: str | None = None,
         skip_user_rate_limit: bool = False,
-        rate_limit_key: Optional[str] = None,
+        rate_limit_key: str | None = None,
     ) -> bool:
         """Send a direct message using meshcore-cli command.
 
@@ -952,7 +962,7 @@ class CommandManager:
 
             # Use the contact name for logging
             contact_name = contact.get('name', contact.get('adv_name', recipient_id))
-            self.logger.info(f"Sending DM to {contact_name}: {content}")
+            self.logger.info("Sending DM to %s", sanitize_name(contact_name))
 
             # Record transmission for repeat tracking (don't let this block sending)
             try:
@@ -1017,10 +1027,10 @@ class CommandManager:
         self,
         channel: str,
         content: str,
-        command_id: Optional[str] = None,
+        command_id: str | None = None,
         skip_user_rate_limit: bool = False,
-        rate_limit_key: Optional[str] = None,
-        scope: Optional[str] = None,
+        rate_limit_key: str | None = None,
+        scope: str | None = None,
     ) -> bool:
         """Send a channel message using meshcore_py (optional flood scope).
 
@@ -1137,10 +1147,10 @@ class CommandManager:
         channel: str,
         chunks: list[str],
         *,
-        command_id: Optional[str] = None,
+        command_id: str | None = None,
         skip_user_rate_limit: bool = True,
-        rate_limit_key: Optional[str] = None,
-        scope: Optional[str] = None,
+        rate_limit_key: str | None = None,
+        scope: str | None = None,
     ) -> bool:
         """Send multiple channel messages with rate-limit spacing between chunks.
 
@@ -1185,7 +1195,7 @@ class CommandManager:
                 return False
         return True
 
-    def get_help_for_command(self, command_name: str, message: Optional[MeshMessage] = None) -> str:
+    def get_help_for_command(self, command_name: str, message: MeshMessage | None = None) -> str:
         """Get help text for a specific command (LoRa-friendly compact format).
 
         Args:
@@ -1218,7 +1228,7 @@ class CommandManager:
             return f"Help {command_name}: {help_text}"
 
         # Next, consult plugin_loader keyword mappings (if available)
-        mapped_name: Optional[str] = None
+        mapped_name: str | None = None
         if hasattr(self, 'plugin_loader') and hasattr(self.plugin_loader, 'keyword_mappings'):
             mapped_name = self.plugin_loader.keyword_mappings.get(normalized_name)
         if mapped_name:
@@ -1275,7 +1285,7 @@ class CommandManager:
     _HELP_PREFIX = "Bot Help: "
     _HELP_SUFFIX = " | More: 'help <command>'"
 
-    def get_general_help(self, message: Optional[MeshMessage] = None) -> str:
+    def get_general_help(self, message: MeshMessage | None = None) -> str:
         """Get general help text from config (LoRa-friendly compact format).
 
         When message is provided, only lists commands valid for the message's channel.
@@ -1763,11 +1773,11 @@ class CommandManager:
 
             return has_internet
 
-    def get_plugin_by_keyword(self, keyword: str) -> Optional[BaseCommand]:
+    def get_plugin_by_keyword(self, keyword: str) -> BaseCommand | None:
         """Get a plugin by keyword"""
         return self.plugin_loader.get_plugin_by_keyword(keyword)
 
-    def get_plugin_by_name(self, name: str) -> Optional[BaseCommand]:
+    def get_plugin_by_name(self, name: str) -> BaseCommand | None:
         """Get a plugin by name"""
         return self.plugin_loader.get_plugin_by_name(name)
 
@@ -1775,6 +1785,6 @@ class CommandManager:
         """Reload a specific plugin"""
         return self.plugin_loader.reload_plugin(plugin_name)
 
-    def get_plugin_metadata(self, plugin_name: Optional[str] = None) -> dict[str, Any]:
+    def get_plugin_metadata(self, plugin_name: str | None = None) -> dict[str, Any]:
         """Get plugin metadata"""
         return self.plugin_loader.get_plugin_metadata(plugin_name)
