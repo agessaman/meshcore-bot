@@ -1,18 +1,33 @@
 """Tests for modules.utils."""
 
+import configparser
+from pathlib import Path
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import MagicMock
 
 from modules.utils import (
     abbreviate_location,
-    truncate_string,
-    decode_escape_sequences,
-    parse_location_string,
     calculate_distance,
-    format_elapsed_display,
-    parse_path_string,
-    decode_path_len_byte,
     calculate_packet_hash,
+    calculate_path_distances,
+    check_internet_connectivity,
+    decode_escape_sequences,
+    decode_path_len_byte,
+    encode_path_len_byte,
+    extract_path_node_ids_from_message,
+    format_elapsed_display,
+    format_keyword_response_with_placeholders,
+    format_location_for_display,
+    get_config_timezone,
+    get_major_city_queries,
+    is_valid_timezone,
+    node_ids_from_path_string,
+    parse_location_string,
+    parse_path_string,
+    parse_trace_payload_route_hashes,
+    resolve_path,
+    truncate_string,
 )
 
 
@@ -218,6 +233,48 @@ class TestDecodePathLenByte:
         assert bytes_per_hop == 1
 
 
+class TestParseTracePayloadRouteHashes:
+    """Tests for parse_trace_payload_route_hashes() (TRACE payload tail, MeshCore firmware)."""
+
+    def test_skye_sample_tail(self):
+        payload = bytes.fromhex("5F0AED1A000000000037D637")
+        assert parse_trace_payload_route_hashes(payload) == ["37", "D6", "37"]
+
+    def test_two_byte_hashes_flags_1(self):
+        pl = b"\x00" * 8 + b"\x01" + b"\xaa\xbb\xcc\xdd"
+        assert parse_trace_payload_route_hashes(pl) == ["AABB", "CCDD"]
+
+    def test_short_payload_returns_empty(self):
+        assert parse_trace_payload_route_hashes(b"\x00" * 8) == []
+
+
+class TestEncodePathLenByte:
+    """Tests for encode_path_len_byte() (inverse of decode_path_len_byte for valid encodings)."""
+
+    def test_four_hops_one_byte_per_hop(self):
+        assert encode_path_len_byte(4, 1) == 0x04
+        assert (0x04 >> 6) == 0
+        assert (0x04 & 0x3F) == 4
+
+    def test_three_hops_two_bytes_per_hop(self):
+        assert encode_path_len_byte(3, 2) == 0x43
+        pbl, bph = decode_path_len_byte(0x43)
+        assert pbl == 6
+        assert bph == 2
+
+    def test_roundtrip_with_decode(self):
+        for pb in (0x01, 0x03, 0x41, 0x43, 0x82, 0x00):
+            pbl, bph = decode_path_len_byte(pb)
+            if bph == 1 and pbl == pb:
+                continue  # legacy fallback path
+            hop_count = pb & 0x3F
+            assert encode_path_len_byte(hop_count, bph) == pb
+
+    def test_invalid_bytes_per_hop_raises(self):
+        with pytest.raises(ValueError):
+            encode_path_len_byte(4, 4)
+
+
 class TestParsePathString:
     """Tests for parse_path_string()."""
 
@@ -261,6 +318,390 @@ class TestParsePathString:
         """Ensure prefix_hex_chars=2 still works when passed explicitly."""
         assert parse_path_string("015fab", prefix_hex_chars=2) == ["01", "5F", "AB"]
 
+
+class TestNodeIdsFromPathString:
+    """Tests for node_ids_from_path_string() — multi-byte comma tokens vs legacy parse."""
+
+    def test_six_char_comma_tokens_not_split_into_one_byte_ids(self):
+        assert node_ids_from_path_string("28667c,e0eed9", 2) == ["28667C", "E0EED9"]
+
+    def test_strips_hop_suffix_before_comma_parse(self):
+        assert node_ids_from_path_string("28667c,e0eed9 (3 hops)", 2) == ["28667C", "E0EED9"]
+
+    def test_legacy_one_byte_comma_path(self):
+        assert node_ids_from_path_string("01,5f (2 hops)", 2) == ["01", "5F"]
+
+    def test_continuous_hex_uses_prefix_width(self):
+        assert node_ids_from_path_string("01025f7e", 2) == ["01", "02", "5F", "7E"]
+
+    def test_direct_returns_empty(self):
+        assert node_ids_from_path_string("Direct", 2) == []
+
+
+class TestExtractPathNodeIdsFromMessage:
+    """Tests for extract_path_node_ids_from_message()."""
+
+    def test_prefers_routing_info_path_nodes(self):
+        m = Mock()
+        m.path = "01,5f"
+        m.routing_info = {"path_length": 2, "path_nodes": ["28667C", "E0EED9"]}
+        assert extract_path_node_ids_from_message(m) == ["28667C", "E0EED9"]
+
+    def test_path_length_zero_returns_empty(self):
+        m = Mock()
+        m.path = "anything"
+        m.routing_info = {"path_length": 0}
+        assert extract_path_node_ids_from_message(m) == []
+
+    def test_comma_multibyte_from_path_string(self):
+        m = Mock()
+        m.path = "28667c,e0eed9 (3 hops)"
+        m.routing_info = None
+        assert extract_path_node_ids_from_message(m) == ["28667C", "E0EED9"]
+
+
+# ---------------------------------------------------------------------------
+# is_valid_timezone
+# ---------------------------------------------------------------------------
+
+class TestIsValidTimezone:
+    """Tests for is_valid_timezone()."""
+
+    def test_valid_utc(self):
+        assert is_valid_timezone("UTC") is True
+
+    def test_valid_us_eastern(self):
+        assert is_valid_timezone("America/New_York") is True
+
+    def test_valid_europe_london(self):
+        assert is_valid_timezone("Europe/London") is True
+
+    def test_invalid_returns_false(self):
+        assert is_valid_timezone("Not/A/Timezone") is False
+
+    def test_empty_string_returns_false(self):
+        assert is_valid_timezone("") is False
+
+    def test_whitespace_only_returns_false(self):
+        assert is_valid_timezone("   ") is False
+
+    def test_strips_whitespace_before_checking(self):
+        assert is_valid_timezone("  UTC  ") is True
+
+
+# ---------------------------------------------------------------------------
+# get_config_timezone
+# ---------------------------------------------------------------------------
+
+class TestGetConfigTimezone:
+    """Tests for get_config_timezone()."""
+
+    def _config(self, tz_value=""):
+        cfg = configparser.ConfigParser()
+        cfg.add_section("Bot")
+        if tz_value:
+            cfg.set("Bot", "timezone", tz_value)
+        return cfg
+
+    def test_valid_timezone_returned(self):
+        cfg = self._config("UTC")
+        tz, iana = get_config_timezone(cfg)
+        assert iana == "UTC"
+        assert tz is not None
+
+    def test_invalid_timezone_falls_back_to_utc_iana(self):
+        cfg = self._config("Not/Valid")
+        _, iana = get_config_timezone(cfg)
+        assert iana == "UTC"
+
+    def test_empty_timezone_falls_back(self):
+        cfg = self._config("")
+        _, iana = get_config_timezone(cfg)
+        assert iana == "UTC"
+
+    def test_invalid_timezone_logs_warning_when_logger_provided(self):
+        cfg = self._config("Bad/Zone")
+        logger = Mock()
+        get_config_timezone(cfg, logger)
+        logger.warning.assert_called_once()
+
+    def test_no_logger_no_crash_on_invalid(self):
+        cfg = self._config("Bad/Zone")
+        _, iana = get_config_timezone(cfg, None)
+        assert iana == "UTC"
+
+
+# ---------------------------------------------------------------------------
+# format_location_for_display
+# ---------------------------------------------------------------------------
+
+class TestFormatLocationForDisplay:
+    """Tests for format_location_for_display()."""
+
+    def test_none_city_returns_none(self):
+        assert format_location_for_display(None) is None
+
+    def test_empty_city_returns_none(self):
+        assert format_location_for_display("") is None
+
+    def test_city_only(self):
+        result = format_location_for_display("Seattle", max_length=50)
+        assert "Seattle" in result
+
+    def test_city_and_state(self):
+        result = format_location_for_display("Seattle", "WA", max_length=50)
+        assert "Seattle" in result
+        assert "WA" in result
+
+    def test_state_not_duplicated_when_same_as_city(self):
+        result = format_location_for_display("Seattle", "Seattle", max_length=50)
+        # "Seattle" should not appear twice as comma-joined
+        assert result.count("Seattle") == 1
+
+    def test_respects_max_length(self):
+        result = format_location_for_display("Very Long City Name That Goes On", "State", max_length=15)
+        assert len(result) <= 15
+
+
+# ---------------------------------------------------------------------------
+# get_major_city_queries
+# ---------------------------------------------------------------------------
+
+class TestGetMajorCityQueries:
+    """Tests for get_major_city_queries()."""
+
+    def test_known_city_returns_list(self):
+        result = get_major_city_queries("seattle")
+        assert isinstance(result, list)
+        assert len(result) > 0
+        assert any("Seattle" in q for q in result)
+
+    def test_unknown_city_returns_empty(self):
+        result = get_major_city_queries("tinyunknownvillage")
+        assert result == []
+
+    def test_case_insensitive(self):
+        assert get_major_city_queries("Seattle") == get_major_city_queries("seattle")
+
+    def test_new_york_returns_multiple_queries(self):
+        result = get_major_city_queries("new york")
+        assert len(result) >= 1
+
+    def test_portland_returns_multiple_queries(self):
+        # Portland has OR and ME variants
+        result = get_major_city_queries("portland")
+        assert len(result) >= 2
+
+
+# ---------------------------------------------------------------------------
+# resolve_path
+# ---------------------------------------------------------------------------
+
+class TestResolvePath:
+    """Tests for resolve_path()."""
+
+    def test_absolute_path_unchanged(self):
+        result = resolve_path("/var/lib/bot/data.db", "/opt/bot")
+        assert result == "/var/lib/bot/data.db"
+
+    def test_relative_path_resolved_to_base_dir(self):
+        result = resolve_path("data.db", "/opt/bot")
+        assert result == "/opt/bot/data.db"
+
+    def test_path_object_input(self):
+        result = resolve_path(Path("data.db"), Path("/opt/bot"))
+        assert result == "/opt/bot/data.db"
+
+    def test_returns_string(self):
+        result = resolve_path("data.db", "/opt/bot")
+        assert isinstance(result, str)
+
+    def test_dot_base_dir_resolves_to_cwd(self):
+        import os
+        result = resolve_path("data.db", ".")
+        assert result == os.path.join(os.getcwd(), "data.db")
+
+
+# ---------------------------------------------------------------------------
+# check_internet_connectivity
+# ---------------------------------------------------------------------------
+
+class TestCheckInternetConnectivity:
+    """Tests for check_internet_connectivity()."""
+
+    def test_returns_true_when_socket_connects(self):
+        mock_sock = Mock()
+        with patch("modules.utils.socket.socket") as mock_socket_cls:
+            mock_socket_cls.return_value = mock_sock
+            result = check_internet_connectivity(host="8.8.8.8", port=53, timeout=1.0)
+        assert result is True
+        mock_sock.connect.assert_called_once_with(("8.8.8.8", 53))
+
+    def test_returns_false_when_all_fail(self):
+        with patch("modules.utils.socket.socket") as mock_socket_cls, \
+             patch("modules.utils.urllib.request.urlopen") as mock_urlopen:
+            mock_socket_cls.return_value.connect.side_effect = OSError("refused")
+            mock_urlopen.side_effect = OSError("no net")
+            result = check_internet_connectivity(host="8.8.8.8", port=53, timeout=1.0)
+        assert result is False
+
+    def test_falls_back_to_http_when_socket_fails(self):
+        mock_response = Mock()
+        mock_response.close = Mock()
+        with patch("modules.utils.socket.socket") as mock_socket_cls, \
+             patch("modules.utils.urllib.request.urlopen") as mock_urlopen:
+            mock_socket_cls.return_value.connect.side_effect = OSError("refused")
+            mock_urlopen.return_value = mock_response
+            result = check_internet_connectivity(host="8.8.8.8", port=53, timeout=1.0)
+        assert result is True
+
+
+# ---------------------------------------------------------------------------
+# calculate_path_distances
+# ---------------------------------------------------------------------------
+
+class TestCalculatePathDistances:
+    """Tests for calculate_path_distances()."""
+
+    def _bot(self):
+        bot = Mock()
+        bot.db_manager = Mock()
+        bot.prefix_hex_chars = 2
+        bot.logger = Mock()
+        return bot
+
+    def test_empty_path_returns_direct(self):
+        path_dist, fl_dist = calculate_path_distances(self._bot(), "")
+        assert "direct" in path_dist.lower()
+
+    def test_direct_path_returns_direct(self):
+        path_dist, fl_dist = calculate_path_distances(self._bot(), "Direct")
+        assert "direct" in path_dist.lower()
+
+    def test_no_db_manager_returns_unknown(self):
+        bot = Mock(spec=[])  # No db_manager attribute
+        path_dist, fl_dist = calculate_path_distances(bot, "01,5f")
+        assert "unknown" in path_dist.lower()
+
+    def test_single_node_returns_locally(self):
+        bot = self._bot()
+        with patch("modules.utils._get_node_location_from_db", return_value=None):
+            path_dist, fl_dist = calculate_path_distances(bot, "01")
+        assert "local" in path_dist.lower() or "1 hop" in path_dist.lower()
+
+    def test_two_nodes_with_locations_returns_distance(self):
+        bot = self._bot()
+        # Seattle and Portland coords
+        locations = [((47.6062, -122.3321), None), ((45.5152, -122.6784), None)]
+        with patch("modules.utils._get_node_location_from_db", side_effect=locations):
+            path_dist, fl_dist = calculate_path_distances(bot, "01,5f")
+        assert "km" in path_dist
+        assert "km" in fl_dist
+
+    def test_two_nodes_no_locations_returns_unknown(self):
+        bot = self._bot()
+        with patch("modules.utils._get_node_location_from_db", return_value=None):
+            path_dist, fl_dist = calculate_path_distances(bot, "01,5f")
+        assert "unknown" in path_dist.lower()
+
+    def test_multibyte_comma_path_one_segment_not_five(self):
+        """6-char hop IDs must not be split into 2-char tokens (would inflate segment count)."""
+        bot = self._bot()
+        bot.prefix_hex_chars = 2
+        locations = [((47.6062, -122.3321), None), ((45.5152, -122.6784), None)]
+        with patch("modules.utils._get_node_location_from_db", side_effect=locations):
+            path_dist, fl_dist = calculate_path_distances(bot, "28667c,e0eed9")
+        assert "(1 segs)" in path_dist
+        assert "km" in fl_dist
+
+    def test_message_routing_info_path_nodes_overrides_display_path(self):
+        bot = self._bot()
+        bot.prefix_hex_chars = 2
+        msg = Mock()
+        msg.path = "01,5f"
+        msg.routing_info = {
+            "path_length": 2,
+            "path_nodes": ["28667c", "e0eed9"],
+        }
+        locations = [((47.6062, -122.3321), None), ((45.5152, -122.6784), None)]
+        with patch("modules.utils._get_node_location_from_db", side_effect=locations):
+            path_dist, fl_dist = calculate_path_distances(bot, "", message=msg)
+        assert "(1 segs)" in path_dist
+
+
+# ---------------------------------------------------------------------------
+# format_keyword_response_with_placeholders
+# ---------------------------------------------------------------------------
+
+class TestFormatKeywordResponseWithPlaceholders:
+    """Tests for format_keyword_response_with_placeholders()."""
+
+    def _bot(self):
+        bot = Mock()
+        bot.config = configparser.ConfigParser()
+        bot.config.add_section("Bot")
+        bot.config.set("Bot", "timezone", "UTC")
+        bot.db_manager = Mock()
+        bot.prefix_hex_chars = 2
+        bot.logger = Mock()
+        bot.translator = None
+        return bot
+
+    def _msg(self, **kwargs):
+        msg = Mock()
+        msg.sender_id = kwargs.get("sender_id", "Alice")
+        msg.path = kwargs.get("path", "01,5f")
+        msg.snr = kwargs.get("snr", 10)
+        msg.rssi = kwargs.get("rssi", -80)
+        msg.timestamp = kwargs.get("timestamp")
+        msg.hops = kwargs.get("hops")
+        return msg
+
+    def test_sender_placeholder(self):
+        bot = self._bot()
+        msg = self._msg(sender_id="Bob")
+        with patch("modules.utils.calculate_path_distances", return_value=("", "")):
+            result = format_keyword_response_with_placeholders("{sender}", msg, bot)
+        assert result == "Bob"
+
+    def test_no_message_uses_unknown_defaults(self):
+        bot = self._bot()
+        result = format_keyword_response_with_placeholders("{sender}", None, bot)
+        assert result == "Unknown"
+
+    def test_mesh_info_total_contacts(self):
+        bot = self._bot()
+        mesh_info = {"total_contacts": 42}
+        result = format_keyword_response_with_placeholders("{total_contacts}", None, bot, mesh_info)
+        assert result == "42"
+
+    def test_missing_placeholder_returns_format_string(self):
+        bot = self._bot()
+        # {nonexistent} is not in replacements -> KeyError -> returns raw string
+        result = format_keyword_response_with_placeholders("{nonexistent}", None, bot)
+        assert result == "{nonexistent}"
+
+    def test_hops_label_singular(self):
+        bot = self._bot()
+        msg = self._msg(hops=1)
+        with patch("modules.utils.calculate_path_distances", return_value=("", "")):
+            result = format_keyword_response_with_placeholders("{hops_label}", msg, bot)
+        assert result == "1 hop"
+
+    def test_hops_label_plural(self):
+        bot = self._bot()
+        msg = self._msg(hops=3)
+        with patch("modules.utils.calculate_path_distances", return_value=("", "")):
+            result = format_keyword_response_with_placeholders("{hops_label}", msg, bot)
+        assert result == "3 hops"
+
+    def test_connection_info_contains_snr_rssi(self):
+        bot = self._bot()
+        msg = self._msg(snr=12, rssi=-75)
+        with patch("modules.utils.calculate_path_distances", return_value=("", "")):
+            result = format_keyword_response_with_placeholders("{connection_info}", msg, bot)
+        assert "SNR" in result
+        assert "RSSI" in result
 
 class TestCalculatePacketHashPathLength:
     """Tests that calculate_packet_hash uses decode_path_len_byte so multi-byte paths skip correctly."""
@@ -306,4 +747,55 @@ class TestMultiBytePathDisplayContract:
         assert nodes == ["01", "02", "5F", "AB"]
         display = ",".join(n.lower() for n in nodes)
         assert display == "01,02,5f,ab"
+
+
+class TestCalculatePacketHashEdgeCases:
+    """Additional calculate_packet_hash branch coverage."""
+
+    def test_payload_type_with_value_attr_handled(self):
+        """Lines 376-378: payload_type object with .value attribute is accepted."""
+        # FLOOD+TXT_MSG header: (0<<6)|(2<<2)|1 = 0x09, no transport, 0 hops, 1 payload byte
+        raw = "090000ff"
+
+        class FakeEnum:
+            value = 2  # TXT_MSG
+
+        h = calculate_packet_hash(raw, payload_type=FakeEnum())
+        assert h != "0000000000000000"
+        assert len(h) == 16
+
+    def test_too_short_for_path_len_returns_default(self):
+        """Line 391: packet with only header byte (and transport if applicable) → default hash."""
+        # Header only, no path_len_byte: just "09" (1 byte, offset=1, len<=1 → too short)
+        h = calculate_packet_hash("09")
+        assert h == "0000000000000000"
+
+    def test_not_enough_path_bytes_returns_default(self):
+        """Line 399: path_len_byte says N hops but fewer bytes available → default hash."""
+        # Header 0x09 (FLOOD+TXT_MSG), path_len_byte=0x02 (2 hops 1-byte), but only 1 path byte
+        h = calculate_packet_hash("09020100")  # header, path_len(2 hops), 1 path byte + 1 'payload'?
+        # Actually: header(09), path_len(02)=2 hops → needs 2 path bytes + 1 payload byte = 5 bytes total
+        # We provide 4 bytes: 09 02 01 00 → path bytes = 01 00 but payload missing?
+        # Let's check: offset=1, path_len_byte=02 → path_byte_length=2, offset after path_len=2
+        # need len>=2+2=4 for path, but payload needed too: len>=5
+        # Exactly 4 bytes → payload_start=4 → len==4 not > 4 → return default
+        assert h == "0000000000000000"
+
+    def test_exception_in_packet_hash_returns_default(self):
+        """Lines 427-429: exception during processing returns default hash."""
+        h = calculate_packet_hash("not-valid-hex!!!")
+        assert h == "0000000000000000"
+
+    def test_non_transport_type_skips_transport_bytes(self):
+        """Route type 1 (FLOOD) → no transport bytes; hash succeeds."""
+        # Header 0x09 = FLOOD + TXT_MSG, path_len=0, payload=0xFF
+        h = calculate_packet_hash("090000ff")
+        assert h != "0000000000000000"
+        assert len(h) == 16
+
+    def test_transport_type_skips_4_bytes(self):
+        """Route type 0 (TRANSPORT_FLOOD) → offset +=4; packet big enough."""
+        # Header 0x08 = TRANSPORT_FLOOD + TXT_MSG, 4 transport bytes, path_len=0, payload=0xFF
+        h = calculate_packet_hash("0800000000" + "00" + "ff")
+        assert h != "0000000000000000"
 

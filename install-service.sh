@@ -17,7 +17,7 @@
 #
 # Prerequisites:
 #   - Linux system with systemd OR macOS
-#   - Python 3.7+ installed
+#   - Python 3.9+ installed
 #   - sudo access (script will prompt if needed)
 #   - Run from the meshcore-bot directory
 
@@ -34,14 +34,11 @@ NC='\033[0m' # No Color
 # Detect operating system
 OS="$(uname -s)"
 IS_MACOS=false
-IS_LINUX=false
 
 if [[ "$OS" == "Darwin" ]]; then
     IS_MACOS=true
-    SERVICE_TYPE="launchd"
 elif [[ "$OS" == "Linux" ]]; then
-    IS_LINUX=true
-    SERVICE_TYPE="systemd"
+    : # Linux detected; service paths configured below
 else
     echo "Error: Unsupported operating system: $OS"
     echo "This script supports Linux (systemd) and macOS (launchd)"
@@ -128,6 +125,29 @@ print_error() {
     echo -e "${RED}✗${NC}  $1"
 }
 
+# Function to ask yes/no question
+ask_yes_no() {
+    local prompt="$1"
+    local default="${2:-n}"
+    local response
+
+    if [[ "$default" == "y" ]]; then
+        prompt="${prompt} [Y/n]: "
+    else
+        prompt="${prompt} [y/N]: "
+    fi
+
+    while true; do
+        read -p "$(echo -e "${YELLOW}${prompt}${NC}")" response
+        response="${response:-$default}"
+        case "$response" in
+            [Yy]|[Yy][Ee][Ss]) return 0 ;;
+            [Nn]|[Nn][Oo])     return 1 ;;
+            *) echo "Please answer yes or no." ;;
+        esac
+    done
+}
+
 if [[ "$UPGRADE_MODE" == true ]]; then
     print_section "MeshCore Bot Service Upgrader"
     print_info "Running in UPGRADE mode - will update files and dependencies"
@@ -202,7 +222,7 @@ fi
 # Check if Python 3 is available
 if ! command -v python3 &> /dev/null; then
     print_error "Python 3 is not installed or not in PATH"
-    print_error "Please install Python 3.7 or higher before running this script"
+    print_error "Please install Python 3.9 or higher before running this script"
     exit 1
 fi
 
@@ -361,7 +381,8 @@ copy_files_smart() {
     while IFS= read -r file; do
         local rel_path="${file#$source_dir/}"
         local dest_file="$dest_dir/$rel_path"
-        local dest_dir_path="$(dirname "$dest_file")"
+        local dest_dir_path
+        dest_dir_path="$(dirname "$dest_file")"
         
         # Skip excluded patterns
         [[ "$rel_path" == *".git"* ]] && continue
@@ -504,6 +525,33 @@ $VENV_PYTHON -m pip install --quiet -r "$INSTALL_DIR/requirements.txt" || {
     exit 1
 }
 print_success "Installed all Python dependencies"
+
+# Optional extras
+echo ""
+print_info "Optional feature packages are available:"
+echo "  • Profanity filter (better-profanity, unidecode) — drop/censor offensive messages"
+echo "  • Geocoding extras (pycountry, us) — improved country/state name resolution"
+echo ""
+
+if ask_yes_no "Install profanity filter packages? (recommended if using the profanity filter feature)" "n"; then
+    print_info "Installing profanity filter packages..."
+    "$INSTALL_DIR/venv/bin/pip" install --quiet "better-profanity>=0.7.0" "unidecode>=1.3.0" || {
+        print_warning "Failed to install profanity filter packages (non-fatal)"
+    }
+    print_success "Installed profanity filter packages"
+else
+    print_info "Skipping profanity filter packages"
+fi
+
+if ask_yes_no "Install geocoding extras? (recommended if using location/path commands)" "n"; then
+    print_info "Installing geocoding extras..."
+    "$INSTALL_DIR/venv/bin/pip" install --quiet "pycountry>=23.12.0" "us>=2.0.0" || {
+        print_warning "Failed to install geocoding extras (non-fatal)"
+    }
+    print_success "Installed geocoding extras"
+else
+    print_info "Skipping geocoding extras"
+fi
 
 print_section "Step 5: Setting File Permissions"
 print_info "Configuring file ownership and permissions for security"

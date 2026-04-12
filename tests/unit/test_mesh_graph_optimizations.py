@@ -10,15 +10,15 @@ Covers the optimizations added for low-memory devices (Raspberry Pi Zero 2 W):
   - capture_enabled flag (graph_capture_enabled config setting)
 """
 
-import time
 import sqlite3
-import pytest
+import time
 from contextlib import closing
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
-from modules.mesh_graph import MeshGraph
+import pytest
 
+from modules.mesh_graph import MeshGraph
 
 # ---------------------------------------------------------------------------
 # Helper

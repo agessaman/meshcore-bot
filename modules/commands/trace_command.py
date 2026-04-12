@@ -6,12 +6,12 @@ Link diagnostics: trace (manual path when given, reciprocal when no path); trace
 
 import asyncio
 import re
-from typing import List, Optional
+from typing import Optional
 
-from .base_command import BaseCommand
-from ..models import MeshMessage
-from ..trace_runner import run_trace, RunTraceResult
 from ..graph_trace_helper import update_mesh_graph_from_trace_data
+from ..models import MeshMessage
+from ..trace_runner import RunTraceResult, run_trace
+from .base_command import BaseCommand
 
 
 class TraceCommand(BaseCommand):
@@ -47,7 +47,7 @@ class TraceCommand(BaseCommand):
         output_fmt = (self.bot.config.get("Trace_Command", "output_format", fallback="inline") or "inline").strip().lower()
         self.output_format = output_fmt if output_fmt in ("inline", "vertical") else "inline"
 
-    def can_execute(self, message: MeshMessage) -> bool:
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         if not self.trace_enabled:
             return False
         return super().can_execute(message)
@@ -61,14 +61,11 @@ class TraceCommand(BaseCommand):
 
     def matches_keyword(self, message: MeshMessage) -> bool:
         content_lower = self.cleanup_message_for_matching(message)
-
         if content_lower == "trace" or content_lower == "tracer":
             return True
-        if content_lower.startswith("trace ") or content_lower.startswith("tracer "):
-            return True
-        return False
+        return bool(content_lower.startswith("trace ") or content_lower.startswith("tracer "))
 
-    def _extract_path_from_message(self, message: MeshMessage) -> List[str]:
+    def _extract_path_from_message(self, message: MeshMessage) -> list[str]:
         """Extract path node IDs from message.path (supports 1-hop and multi-hop)."""
         if not message.path:
             return []
@@ -93,7 +90,7 @@ class TraceCommand(BaseCommand):
                 valid.append(part.lower())
         return valid
 
-    def _parse_path_arg(self, content: str) -> Optional[List[str]]:
+    def _parse_path_arg(self, content: str) -> Optional[list[str]]:
         """Parse path from command content after 'trace ' or 'tracer '.
         Accepts: comma-separated 2-char hex (01,7a,55), contiguous hex (01e07a), or mixed (01,e001).
         Returns list of 2-char hex bytes, or None if no path args / invalid.
@@ -117,7 +114,7 @@ class TraceCommand(BaseCommand):
         # Split into 2-char (1-byte) nodes
         return [hex_chars[i : i + 2] for i in range(0, len(hex_chars), 2)]
 
-    def _build_reciprocal_path(self, nodes: List[str]) -> List[str]:
+    def _build_reciprocal_path(self, nodes: list[str]) -> list[str]:
         """Build round-trip path: [01,7a,55] -> [01,7a,55,7a,01] (out then back without duplicating destination)."""
         if not nodes or len(nodes) < 2:
             return list(nodes)
@@ -139,10 +136,7 @@ class TraceCommand(BaseCommand):
         for node in result.path_nodes:
             s = node.get("snr")
             h = node.get("hash")
-            if h:
-                node_str = f"[{h}]"
-            else:
-                node_str = self.bot_label
+            node_str = f"[{h}]" if h else self.bot_label
             if s is not None:
                 parts.append(f"{s:.1f}")
             parts.append(node_str)

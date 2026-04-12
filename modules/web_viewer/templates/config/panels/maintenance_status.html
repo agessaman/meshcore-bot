@@ -1,0 +1,25 @@
+<section class="card mb-4 config-panel-card config-maintenance-panel" id="maintenance-status">
+    <div class="card-header d-flex justify-content-between align-items-center px-3 py-3">
+        <h5 class="mb-0"><i class="fas fa-tasks me-2"></i>Maintenance Status</h5>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="refresh-status-btn">
+            <i class="fas fa-redo me-1"></i>Refresh
+        </button>
+    </div>
+    <div class="card-body config-maintenance-panel-body">
+        <p class="text-muted small mb-3 mb-md-2">Last run times and results for scheduled maintenance jobs.</p>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0 config-maintenance-table" id="maintenance-status-table">
+                <thead class="config-table-thead">
+                    <tr>
+                        <th scope="col" class="config-maint-col-job">Job</th>
+                        <th scope="col" class="config-maint-col-ran text-center">Last ran (UTC)</th>
+                        <th scope="col" class="config-maint-col-outcome text-end">Outcome</th>
+                    </tr>
+                </thead>
+                <tbody id="maintenance-status-body">
+                    <tr><td colspan="3" class="text-center text-muted py-4">Loading…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>

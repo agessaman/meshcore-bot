@@ -8,7 +8,7 @@ better-profanity can detect them.
 Also checks for hate symbols (e.g. swastika Unicode) that word lists do not catch.
 """
 
-from typing import Optional
+from typing import Any, Optional
 
 # Unicode code points for symbols we treat as profanity (e.g. swastika forms).
 # These are checked in addition to better-profanity's word list.
@@ -22,25 +22,28 @@ _profanity_initialized = False
 _warned_unavailable = False
 _unidecode_available = False
 
+profanity: Any = None
 try:
-    from better_profanity import profanity  # type: ignore
+    from better_profanity import profanity as _better_profanity
+
+    profanity = _better_profanity
     _profanity_available = True
 except ImportError:
-    profanity = None  # type: ignore
+    pass
 
+unidecode: Any = None
 try:
-    from unidecode import unidecode  # type: ignore
+    from unidecode import unidecode as _unidecode_impl
+
+    unidecode = _unidecode_impl
     _unidecode_available = True
 except ImportError:
-    unidecode = None  # type: ignore
+    pass
 
 
 def _has_hate_symbols(text: str) -> bool:
     """Return True if text contains any blocked hate-symbol code point."""
-    for cp in _HATE_SYMBOL_CODEPOINTS:
-        if chr(cp) in text:
-            return True
-    return False
+    return any(chr(cp) in text for cp in _HATE_SYMBOL_CODEPOINTS)
 
 
 def _replace_hate_symbols(text: str, replacement: str = "***") -> str:

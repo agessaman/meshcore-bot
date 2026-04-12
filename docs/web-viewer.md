@@ -7,7 +7,7 @@ A web-based interface for viewing and analyzing data from your MeshCore Bot.
 - **Dashboard**: Overview of database statistics and bot status
 - **Repeater Contacts**: View active repeater contacts with location and status information
 - **Contact Tracking**: Complete history of all heard contacts with signal strength and routing data
-- **Cache Data**: View cached geocoding and API responses
+- **Config panel**: Structured settings with categorized topics and database tools
 - **Purging Log**: Audit trail of contact purging operations
 - **Real-time Updates**: Auto-refreshes every 30 seconds
 - **API Endpoints**: JSON API for programmatic access
@@ -92,11 +92,10 @@ Once started, open your web browser and navigate to:
 - Advertisement data
 - Currently tracked status
 
-### Cache Data
-- Geocoding cache entries
-- Generic cache entries (weather, sports, etc.)
-- Expiration status
-- Cache value previews
+### Config
+- Categorized configuration topics in a left navigation column
+- Core settings such as notifications, log rotation, backup, and maintenance status
+- Database operations and database information views in the same tab
 
 ### Purging Log
 - Audit trail of contact purging operations

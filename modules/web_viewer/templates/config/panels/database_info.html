@@ -1,0 +1,63 @@
+<section class="card mb-4 config-panel-card" id="database">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="fas fa-table me-2"></i>Database Information</h5>
+    </div>
+    <div class="card-body">
+        <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
+            Overview
+        </h6>
+        <div class="row g-3 mb-4">
+            <div class="col-6 col-md-3">
+                <div class="config-stat-tile rounded border p-3 h-100">
+                    <div class="text-muted small mb-1"><i class="fas fa-table me-1"></i>Total tables</div>
+                    <div class="h4 mb-0" id="total-tables">0</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="config-stat-tile rounded border p-3 h-100">
+                    <div class="text-muted small mb-1"><i class="fas fa-list me-1"></i>Total records</div>
+                    <div class="h4 mb-0" id="total-records">0</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="config-stat-tile rounded border p-3 h-100">
+                    <div class="text-muted small mb-1"><i class="fas fa-clock me-1"></i>Last updated</div>
+                    <div class="mb-0 fw-semibold" id="last-updated">-</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="config-stat-tile rounded border p-3 h-100">
+                    <div class="text-muted small mb-1"><i class="fas fa-hdd me-1"></i>Database size</div>
+                    <div class="mb-0 fw-semibold" id="db-size">-</div>
+                </div>
+            </div>
+        </div>
+
+        <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
+            Actions
+        </h6>
+        <p class="text-muted small mb-2">Refresh stats, export a CSV summary of table sizes, or run VACUUM / ANALYZE / REINDEX.</p>
+        <div class="btn-group flex-wrap mb-4" role="group" aria-label="Database operations">
+            <button type="button" class="btn btn-primary" id="refresh-db">
+                <i class="fas fa-sync"></i> Refresh
+            </button>
+            <button type="button" class="btn btn-info config-btn-info" id="export-db">
+                <i class="fas fa-download"></i> Export
+            </button>
+            <button type="button" class="btn btn-warning config-btn-warning" id="optimize-db">
+                <i class="fas fa-tools"></i> Optimize
+            </button>
+            <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#purgeRecordsModal"
+                    aria-label="Open purge records dialog">
+                <i class="fas fa-trash-alt me-1"></i>Purge Records…
+            </button>
+        </div>
+
+        <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
+            Tables
+        </h6>
+        <div id="tables-info" class="config-tables-list">
+            <div class="loading">Loading database information...</div>
+        </div>
+    </div>
+</section>

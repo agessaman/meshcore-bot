@@ -5,14 +5,14 @@ Posts MeshCore channel messages to Telegram via the Bot API (one-way, read-only)
 """
 
 import asyncio
+import copy
 import html
 import os
 import re
 import time
-import copy
 from collections import deque
 from dataclasses import dataclass
-from typing import Dict, Optional, Any, List
+from typing import Any, Optional
 
 from meshcore import EventType
 
@@ -20,19 +20,20 @@ try:
     import aiohttp
     AIOHTTP_AVAILABLE = True
 except ImportError:
-    aiohttp = None
+    aiohttp = None  # type: ignore[assignment]
     AIOHTTP_AVAILABLE = False
 
 try:
     import requests
     REQUESTS_AVAILABLE = True
 except ImportError:
-    requests = None
+    requests = None  # type: ignore[assignment]
     REQUESTS_AVAILABLE = False
 
-from .base_service import BaseServicePlugin
-from ..profanity_filter import censor, contains_profanity
+import contextlib
 
+from ..profanity_filter import censor, contains_profanity
+from .base_service import BaseServicePlugin
 
 # Telegram API
 TELEGRAM_API_BASE = "https://api.telegram.org/bot"
@@ -44,7 +45,7 @@ TELEGRAM_TRUNCATE_AT = 4000
 class QueuedMessage:
     """Represents a message queued for Telegram posting."""
     chat_id: str
-    payload: Dict[str, Any]
+    payload: dict[str, Any]
     channel_name: str
     retry_count: int = 0
     first_queued: float = 0.0
@@ -88,7 +89,7 @@ class TelegramBridgeService(BaseServicePlugin):
             self.enabled = False
             return
 
-        self.channel_chat_ids: Dict[str, str] = {}
+        self.channel_chat_ids: dict[str, str] = {}
         self._load_channel_mappings()
 
         # Optional settings
@@ -115,8 +116,8 @@ class TelegramBridgeService(BaseServicePlugin):
         )
 
         # Rate limiting: ~1 message per second per chat
-        self.message_queues: Dict[str, List[QueuedMessage]] = {}
-        self.send_times: Dict[str, deque] = {}
+        self.message_queues: dict[str, list[QueuedMessage]] = {}
+        self.send_times: dict[str, deque] = {}
         self.rate_limit_min_interval = 1.0
         self.max_retries = 5
         self.retry_delay_base = 1.0
@@ -181,10 +182,7 @@ class TelegramBridgeService(BaseServicePlugin):
         ]
         safe_body = ''.join(escaped_parts)
 
-        if use_channel_tag:
-            prefix = f"<i>[{self._escape_html(channel_name)}]</i> "
-        else:
-            prefix = ""
+        prefix = f"<i>[{self._escape_html(channel_name)}]</i> " if use_channel_tag else ""
         return f"{prefix}<b>{safe_sender}</b>: {safe_body}"
 
     def _truncate_text(self, text: str) -> str:
@@ -235,17 +233,13 @@ class TelegramBridgeService(BaseServicePlugin):
 
         # Unregister bot channel-sent listener
         if getattr(self.bot, 'channel_sent_listeners', None) is not None:
-            try:
+            with contextlib.suppress(ValueError):
                 self.bot.channel_sent_listeners.remove(self._on_mesh_channel_message)
-            except ValueError:
-                pass
 
         if self._queue_processor_task:
             self._queue_processor_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._queue_processor_task
-            except asyncio.CancelledError:
-                pass
         if self.http_session:
             await self.http_session.close()
             self.http_session = None
@@ -307,7 +301,7 @@ class TelegramBridgeService(BaseServicePlugin):
             self.logger.error(f"Error handling mesh channel message: {e}", exc_info=True)
 
     async def _queue_message(self, chat_id: str, text: str, channel_name: str) -> None:
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "chat_id": chat_id,
             "text": text,
         }
@@ -395,7 +389,7 @@ class TelegramBridgeService(BaseServicePlugin):
     async def _send_to_telegram(
         self,
         chat_id: str,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         channel_name: str,
         queued_msg: Optional[QueuedMessage] = None,
     ) -> bool:
@@ -410,11 +404,12 @@ class TelegramBridgeService(BaseServicePlugin):
     async def _send_async(
         self,
         url: str,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         channel_name: str,
         queued_msg: Optional[QueuedMessage] = None,
     ) -> bool:
         try:
+            assert self.http_session is not None
             async with self.http_session.post(
                 url, json=payload, timeout=aiohttp.ClientTimeout(total=10)
             ) as response:
@@ -445,7 +440,7 @@ class TelegramBridgeService(BaseServicePlugin):
     async def _send_sync(
         self,
         url: str,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         channel_name: str,
         queued_msg: Optional[QueuedMessage] = None,
     ) -> bool:

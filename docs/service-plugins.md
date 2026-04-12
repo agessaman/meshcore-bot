@@ -9,6 +9,7 @@ Service plugins extend the bot with background services that run alongside the m
 | [Map Uploader](map-uploader.md) | Upload node advertisements to [map.meshcore.dev](https://map.meshcore.dev) for network visualization |
 | [Weather Service](weather-service.md) | Scheduled weather forecasts, weather alerts, and lightning detection |
 | [Earthquake Service](earthquake-service.md) | Earthquake alerts for a configured region (USGS API, defaults: California) |
+| [Repeater Prefix Collision Service](repeater-prefix-collision-service.md) | Alerts when a newly heard repeater prefix collides with an existing repeater prefix |
 
 ## Enabling a plugin
 

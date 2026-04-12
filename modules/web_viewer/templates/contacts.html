@@ -2,6 +2,225 @@
 
 {% block title %}Contacts - MeshCore Bot Data Viewer{% endblock %}
 
+{% block extra_css %}
+<style>
+    /* Square hit target for the overflow (⋯) menu trigger */
+    .contacts-overflow-btn {
+        width: 2rem;
+        height: 2.375rem;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 0.25rem;
+    }
+
+    #contacts-mobile-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        overflow-x: hidden;
+    }
+
+    .contact-mobile-card {
+        background-color: var(--card-bg);
+        color: var(--text-color);
+        border: 1px solid var(--border-color);
+        border-radius: 0.375rem;
+        padding: 0.75rem 0.85rem;
+        min-width: 0;
+    }
+
+    .contact-mobile-card .contact-mobile-device {
+        max-width: 65%;
+    }
+
+    .contact-mobile-card .contact-mobile-device .badge {
+        font-size: 0.75rem;
+        white-space: normal;
+        text-align: right;
+        line-height: 1.2;
+    }
+
+    .contact-mobile-card .contact-mobile-hops-adverts {
+        min-width: 0;
+    }
+
+    .contact-mobile-card .contact-mobile-hops-adverts .badge {
+        font-size: 0.75rem;
+        line-height: 1.25;
+        padding: 0.35em 0.55em;
+    }
+
+    /* Contacts table toolbar: one row on mobile, matching control heights */
+    .contacts-toolbar-filters-wrap {
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .contacts-toolbar-filters {
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 0.35rem;
+        width: 100%;
+        min-height: 2.375rem;
+    }
+
+    @media (min-width: 768px) {
+        .contacts-toolbar-filters {
+            justify-content: flex-end;
+            gap: 0.5rem;
+        }
+    }
+
+    @media (min-width: 576px) and (max-width: 767.98px) {
+        .contacts-toolbar-filters {
+            gap: 0.5rem;
+        }
+    }
+
+    .contacts-toolbar-filters .form-select-sm,
+    .contacts-toolbar-filters .input-group-sm,
+    .contacts-toolbar-filters #contacts-timespan {
+        flex-shrink: 0;
+    }
+
+    .contacts-toolbar-filters #contacts-timespan {
+        min-height: 2.375rem;
+        padding-top: 0.375rem;
+        padding-bottom: 0.375rem;
+        font-size: 0.875rem;
+        box-sizing: border-box;
+    }
+
+    .contacts-toolbar-search {
+        flex: 1 1 7.5rem;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    @media (min-width: 768px) {
+        .contacts-toolbar-search {
+            flex: 0 1 300px;
+            max-width: 300px;
+        }
+    }
+
+    .contacts-toolbar-filters .contacts-overflow-btn {
+        flex-shrink: 0;
+        width: 2.375rem;
+        height: 2.375rem;
+        box-sizing: border-box;
+    }
+
+    /* Match search + refresh to the same row height as overflow icon buttons (2.375rem) */
+    .contacts-toolbar-filters .contacts-toolbar-search.input-group {
+        min-height: 2.375rem;
+        align-items: stretch;
+    }
+
+    .contacts-toolbar-filters .contacts-toolbar-search > .input-group-text,
+    .contacts-toolbar-filters .contacts-toolbar-search > .form-control {
+        min-height: 2.375rem;
+        padding-top: 0.375rem;
+        padding-bottom: 0.375rem;
+        font-size: 0.875rem;
+        box-sizing: border-box;
+    }
+
+    .contacts-toolbar-filters .contacts-toolbar-search > .input-group-text {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding-left: 0.65rem;
+        padding-right: 0.65rem;
+    }
+
+    .contacts-toolbar-filters .contacts-toolbar-search .input-group-text i {
+        font-size: 1rem;
+    }
+
+    .contacts-toolbar-filters #refresh-contacts {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 2.375rem;
+        padding-top: 0.375rem;
+        padding-bottom: 0.375rem;
+        font-size: 0.875rem;
+        box-sizing: border-box;
+    }
+
+    .contacts-toolbar-filters #refresh-contacts i {
+        font-size: 1rem;
+    }
+
+    @media (max-width: 575.98px) {
+        .contacts-toolbar-filters #refresh-contacts {
+            min-width: 2.375rem;
+            padding-left: 0.5rem;
+            padding-right: 0.5rem;
+        }
+    }
+
+    .contacts-mobile-sort-row {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        min-width: 0;
+    }
+
+    .contacts-mobile-sort-row .flex-grow-1 {
+        min-width: 0;
+    }
+
+    /* Path encoding (bytes/hop) — neutral, non-judgmental pairing */
+    .path-encoding-badge {
+        font-size: 0.65rem;
+        font-weight: 500;
+        line-height: 1.2;
+        padding: 0.2em 0.45em;
+    }
+    /* Multibyte: cool cyan (distinct from warm 1-byte) */
+    .path-encoding-badge-multibyte {
+        background-color: #cffafe;
+        color: #0c4a6e;
+        border: 1px solid #0ea5e9;
+    }
+    /* 1-byte: warm stone (hue-shifted from gray so it reads clearly vs cyan) */
+    .path-encoding-badge-onebyte {
+        background-color: #faf7f2;
+        color: #44403c;
+        border: 1px solid #a8a29e;
+    }
+    /* Dark mode: same cool vs warm split, higher saturation on borders */
+    [data-theme="dark"] .path-encoding-badge-multibyte {
+        background-color: #134e6a;
+        color: #bae6fd;
+        border-color: #38bdf8;
+    }
+    [data-theme="dark"] .path-encoding-badge-onebyte {
+        background-color: #3f3a36;
+        color: #f5f0eb;
+        border-color: #a8a29e;
+    }
+
+    .tooltip.multibyte-capable-hint .tooltip-inner {
+        max-width: min(22rem, 92vw);
+        text-align: left;
+    }
+    .path-encoding-info-btn:hover,
+    .path-encoding-info-btn:focus {
+        text-decoration: none;
+        color: var(--bs-info, #0dcaf0) !important;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="row">
     <div class="col-12">
@@ -107,37 +326,120 @@
 <!-- Tracking Table -->
 <div class="row">
     <div class="col-12">
-        <div class="card">
+        <div class="card" id="contacts-list-panel">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center flex-wrap mb-3 gap-2">
-                    <div>
+                    <div class="flex-shrink-0">
                         <button class="btn btn-sm btn-danger" id="bulk-delete-contacts" style="display: none;" title="Delete selected contacts">
                             <i class="fas fa-trash"></i> Delete selected (<span id="bulk-delete-count">0</span>)
                         </button>
                     </div>
-                    <div class="d-flex gap-2 align-items-center flex-wrap justify-content-end">
-                        <label class="mb-0 text-nowrap" for="contacts-timespan">
+                    <div class="contacts-toolbar-filters-wrap flex-grow-1 min-w-0 w-100">
+                        <div class="contacts-toolbar-filters">
+                        <label class="mb-0 text-nowrap small align-self-center d-none d-md-flex align-items-center gap-1 flex-shrink-0" for="contacts-timespan">
                             <i class="fas fa-clock"></i> Heard in:
                         </label>
-                        <select class="form-select form-select-sm" id="contacts-timespan" style="width: auto;">
+                        <select class="form-select flex-shrink-0 d-none d-md-block" id="contacts-timespan" style="width: auto; min-width: 7rem;">
                             <option value="24h">Last 24 hours</option>
                             <option value="7d">Last 7 days</option>
                             <option value="30d" selected>Last 30 days</option>
                             <option value="90d">Last 90 days</option>
                             <option value="all">All time</option>
                         </select>
-                        <div class="input-group" style="width: 300px;">
+                        <div class="dropdown d-md-none flex-shrink-0">
+                            <button type="button" class="btn btn-sm btn-outline-secondary contacts-overflow-btn" id="contacts-timespan-mobile-trigger"
+                                    data-bs-toggle="dropdown" aria-expanded="false"
+                                    aria-haspopup="true" title="Heard in: Last 30 days" aria-label="Heard in: Last 30 days">
+                                <i class="fas fa-clock" aria-hidden="true"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-start" id="contacts-timespan-mobile-menu">
+                                <li><h6 class="dropdown-header mb-0">Heard in</h6></li>
+                                <li><button type="button" class="dropdown-item" data-timespan="24h">Last 24 hours</button></li>
+                                <li><button type="button" class="dropdown-item" data-timespan="7d">Last 7 days</button></li>
+                                <li><button type="button" class="dropdown-item" data-timespan="30d">Last 30 days</button></li>
+                                <li><button type="button" class="dropdown-item" data-timespan="90d">Last 90 days</button></li>
+                                <li><button type="button" class="dropdown-item" data-timespan="all">All time</button></li>
+                            </ul>
+                        </div>
+                        <div class="input-group contacts-toolbar-search">
                             <span class="input-group-text">
                                 <i class="fas fa-search"></i>
                             </span>
                             <input type="text" class="form-control" id="search-contacts" placeholder="Search contacts..." autocomplete="off">
                         </div>
-                        <button class="btn btn-sm btn-primary" id="refresh-contacts">
-                            <i class="fas fa-sync"></i> Refresh
+                        <button type="button" class="btn btn-primary flex-shrink-0" id="refresh-contacts">
+                            <i class="fas fa-sync"></i><span class="d-none d-sm-inline"> Refresh</span>
                         </button>
+                        <div class="dropdown flex-shrink-0">
+                            <button type="button" class="btn btn-sm btn-outline-secondary contacts-overflow-btn"
+                                    data-bs-toggle="dropdown" aria-expanded="false"
+                                    aria-label="More actions" title="More actions">
+                                <i class="fas fa-ellipsis-vertical" aria-hidden="true"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li>
+                                    <button type="button" class="dropdown-item text-danger"
+                                            data-bs-toggle="modal" data-bs-target="#purgeContactsModal"
+                                            title="Delete contacts not heard recently">
+                                        <i class="fas fa-broom me-2"></i>Purge Inactive
+                                    </button>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><h6 class="dropdown-header">Export Contacts</h6></li>
+                                <li><a class="dropdown-item" href="#" onclick="exportData('contacts','csv');return false;"><i class="fas fa-file-csv me-2 text-success"></i>CSV</a></li>
+                                <li><a class="dropdown-item" href="#" onclick="exportData('contacts','json');return false;"><i class="fas fa-file-code me-2 text-warning"></i>JSON</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><h6 class="dropdown-header">Export Paths</h6></li>
+                                <li><a class="dropdown-item" href="#" onclick="exportData('paths','csv');return false;"><i class="fas fa-file-csv me-2 text-success"></i>CSV</a></li>
+                                <li><a class="dropdown-item" href="#" onclick="exportData('paths','json');return false;"><i class="fas fa-file-code me-2 text-warning"></i>JSON</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><h6 class="dropdown-header">Time range</h6></li>
+                                <li>
+                                    <div class="px-3 py-1">
+                                        <select class="form-select form-select-sm" id="export-since">
+                                            <option value="24h">Last 24 hours</option>
+                                            <option value="7d">Last 7 days</option>
+                                            <option value="30d" selected>Last 30 days</option>
+                                            <option value="90d">Last 90 days</option>
+                                            <option value="all">All time</option>
+                                        </select>
+                                    </div>
+                                </li>
+                            </ul>
+                        </div>
+                        </div>
                     </div>
                 </div>
-            <div class="table-responsive">
+                <div class="d-md-none w-100 d-flex flex-nowrap align-items-center gap-2 mb-3 contacts-mobile-sort-row">
+                    <div class="form-check mb-0">
+                        <input type="checkbox" class="form-check-input" id="contacts-select-all-mobile" title="Select all on page">
+                        <label class="form-check-label small" for="contacts-select-all-mobile">Select all on page</label>
+                    </div>
+                    <div class="flex-grow-1 min-w-0" style="min-width: 10rem;">
+                        <label class="visually-hidden" for="contacts-mobile-sort">Sort by</label>
+                        <select class="form-select form-select-sm" id="contacts-mobile-sort" title="Sort contacts">
+                            <option value="username|asc">Name (A–Z)</option>
+                            <option value="username|desc">Name (Z–A)</option>
+                            <option value="device_type|asc">Device type (A–Z)</option>
+                            <option value="device_type|desc">Device type (Z–A)</option>
+                            <option value="location|asc">Location (A–Z)</option>
+                            <option value="location|desc">Location (Z–A)</option>
+                            <option value="distance|asc">Distance (low first)</option>
+                            <option value="distance|desc">Distance (high first)</option>
+                            <option value="snr|asc">SNR (low first)</option>
+                            <option value="snr|desc">SNR (high first)</option>
+                            <option value="hop_count|asc">Hops (low first)</option>
+                            <option value="hop_count|desc">Hops (high first)</option>
+                            <option value="first_heard|asc">First heard (oldest first)</option>
+                            <option value="first_heard|desc">First heard (newest first)</option>
+                            <option value="last_seen|asc">Last heard (oldest first)</option>
+                            <option value="last_seen|desc" selected>Last heard (newest first)</option>
+                            <option value="advert_count|asc">Adverts (low first)</option>
+                            <option value="advert_count|desc">Adverts (high first)</option>
+                        </select>
+                    </div>
+                </div>
+            <div class="d-none d-md-block table-responsive">
                 <table class="table table-striped table-hover">
                         <thead class="table-dark">
                         <tr>
@@ -160,7 +462,16 @@
                                 SNR <i class="fas fa-sort"></i>
                             </th>
                             <th class="sortable" data-sort="hop_count">
-                                Hops <i class="fas fa-sort"></i>
+                                <span class="d-inline-flex align-items-center gap-1">
+                                    Hops <i class="fas fa-sort"></i>
+                                    <button type="button" class="btn btn-link p-0 border-0 align-baseline text-muted path-encoding-info-btn"
+                                            id="contacts-list-multibyte-badge-info"
+                                            aria-label="How Multibyte and 1-byte only badges are determined"
+                                            data-bs-toggle="tooltip" data-bs-placement="top"
+                                            onclick="event.stopPropagation();">
+                                        <i class="fas fa-info-circle" aria-hidden="true"></i>
+                                    </button>
+                                </span>
                             </th>
                             <th class="sortable" data-sort="first_heard">
                                 First Heard <i class="fas fa-sort"></i>
@@ -183,7 +494,44 @@
                     </tbody>
                 </table>
             </div>
+            <div class="d-md-none" id="contacts-mobile-stack" aria-live="polite">
+                <div class="loading text-center py-3">Loading contacts data...</div>
+            </div>
         </div>
+        </div>
+    </div>
+</div>
+
+<!-- Purge Inactive Contacts Modal -->
+<div class="modal fade" id="purgeContactsModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-broom text-danger me-2"></i>Purge Inactive Contacts</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Delete contacts that have not been heard within a threshold. This removes them from the database entirely.</p>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Remove contacts not heard in:</label>
+                    <select class="form-select" id="purge-days-select">
+                        <option value="7">7 days</option>
+                        <option value="14">14 days</option>
+                        <option value="30" selected>30 days</option>
+                        <option value="60">60 days</option>
+                        <option value="90">90 days</option>
+                    </select>
+                </div>
+                <div id="purge-preview-area" class="alert alert-secondary py-2 mb-0" style="min-height:2.5rem;">
+                    <span id="purge-preview-text"><i class="fas fa-spinner fa-spin me-1"></i>Loading preview...</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirm-purge-btn" disabled>
+                    <i class="fas fa-broom me-1"></i><span id="confirm-purge-label">Purge</span>
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -210,11 +558,14 @@ class ModernContactsManager {
         if (el) {
             el.value = (savedTimespan && valid.includes(savedTimespan)) ? savedTimespan : '30d';
         }
+        this.syncContactsTimespanMobileUI();
         await this.loadContactsData();
         this.setupEventHandlers();
         this.applySort();
         this.updateSortIcons();
         this.renderContactsData();
+        const toolbarWrap = document.querySelector('.contacts-toolbar-filters-wrap');
+        if (toolbarWrap) this.initContactsDropdowns(toolbarWrap);
         this.updateStatistics();
     }
     
@@ -263,6 +614,7 @@ class ModernContactsManager {
         document.getElementById('contacts-timespan').addEventListener('change', () => {
             const since = document.getElementById('contacts-timespan').value;
             localStorage.setItem('contactsTimespan', since);
+            this.syncContactsTimespanMobileUI();
             this.loadContactsData().then(() => {
                 this.applySearch();
                 this.applySort();
@@ -270,29 +622,58 @@ class ModernContactsManager {
                 this.updateStatistics();
             });
         });
+
+        const mobileTimespanMenu = document.getElementById('contacts-timespan-mobile-menu');
+        if (mobileTimespanMenu) {
+            mobileTimespanMenu.addEventListener('click', (e) => {
+                const item = e.target.closest('[data-timespan]');
+                if (!item) return;
+                const sel = document.getElementById('contacts-timespan');
+                if (!sel) return;
+                const val = item.getAttribute('data-timespan');
+                if (sel.value === val) return;
+                sel.value = val;
+                sel.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+        }
         
         document.getElementById('bulk-delete-contacts').addEventListener('click', () => {
             this.showBulkDeleteConfirmation();
         });
         
-        const contactsTable = document.querySelector('.table-responsive table');
-        if (contactsTable) {
-            contactsTable.addEventListener('change', (e) => {
-                if (e.target.id === 'contacts-select-all') {
-                    const checked = e.target.checked;
+        const listPanel = document.getElementById('contacts-list-panel');
+        if (listPanel) {
+            listPanel.addEventListener('change', (e) => {
+                const t = e.target;
+                if (t.id === 'contacts-select-all' || t.id === 'contacts-select-all-mobile') {
+                    const checked = t.checked;
                     this.filteredData.forEach(c => {
                         if (checked) this.selectedContactIds.add(c.user_id);
                         else this.selectedContactIds.delete(c.user_id);
                     });
-                    contactsTable.querySelectorAll('.contact-row-checkbox').forEach(cb => cb.checked = checked);
+                    listPanel.querySelectorAll('.contact-row-checkbox').forEach(cb => { cb.checked = checked; });
                     this.updateBulkDeleteButton();
                     this.updateSelectAllCheckbox();
-                } else if (e.target.classList.contains('contact-row-checkbox')) {
-                    const userId = e.target.dataset.userId;
-                    if (e.target.checked) this.selectedContactIds.add(userId);
+                } else if (t.classList.contains('contact-row-checkbox')) {
+                    const userId = t.dataset.userId;
+                    if (t.checked) this.selectedContactIds.add(userId);
                     else this.selectedContactIds.delete(userId);
                     this.updateBulkDeleteButton();
                     this.updateSelectAllCheckbox();
+                }
+            });
+        }
+
+        const mobileSort = document.getElementById('contacts-mobile-sort');
+        if (mobileSort) {
+            mobileSort.addEventListener('change', () => {
+                const v = mobileSort.value.split('|');
+                if (v.length === 2) {
+                    this.sortColumn = v[0];
+                    this.sortDirection = v[1];
+                    this.applySort();
+                    this.renderContactsData();
+                    this.updateSortIcons();
                 }
             });
         }
@@ -409,6 +790,47 @@ class ModernContactsManager {
                 icon.className = this.sortDirection === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down';
             }
         }
+        this.syncMobileSortSelect();
+    }
+
+    syncMobileSortSelect() {
+        const sel = document.getElementById('contacts-mobile-sort');
+        if (!sel) return;
+        const val = `${this.sortColumn}|${this.sortDirection}`;
+        if ([...sel.options].some(o => o.value === val)) {
+            sel.value = val;
+        }
+    }
+
+    syncContactsTimespanMobileUI() {
+        const sel = document.getElementById('contacts-timespan');
+        const trigger = document.getElementById('contacts-timespan-mobile-trigger');
+        if (!sel || !trigger) return;
+        const opt = sel.options[sel.selectedIndex];
+        const label = opt ? opt.text : 'Time period';
+        const tip = `Heard in: ${label}`;
+        trigger.setAttribute('title', tip);
+        trigger.setAttribute('aria-label', tip);
+        document.querySelectorAll('#contacts-timespan-mobile-menu [data-timespan]').forEach((btn) => {
+            btn.classList.toggle('active', btn.getAttribute('data-timespan') === sel.value);
+        });
+    }
+
+    /**
+     * Toolbar and mobile cards sit inside overflow-x scroll/clipping regions; default
+     * Popper (absolute) menus are clipped. Fixed strategy keeps menus visible.
+     */
+    initContactsDropdowns(root) {
+        if (typeof bootstrap === 'undefined' || !bootstrap.Dropdown || !root) return;
+        root.querySelectorAll('[data-bs-toggle="dropdown"]').forEach((toggle) => {
+            const existing = bootstrap.Dropdown.getInstance(toggle);
+            if (existing) existing.dispose();
+            new bootstrap.Dropdown(toggle, {
+                popperConfig: {
+                    strategy: 'fixed',
+                },
+            });
+        });
     }
     
     applySearch() {
@@ -441,12 +863,70 @@ class ModernContactsManager {
         });
     }
     
+    renderContactCardHtml(contact) {
+        const uidEsc = this.escapeHtml(contact.user_id);
+        const uidJs = contact.user_id.replace(/'/g, "\\'");
+        const nameJs = (contact.username || 'Unknown').replace(/'/g, "\\'");
+        const checked = this.selectedContactIds.has(contact.user_id) ? 'checked' : '';
+        const hasGeo = !!(contact.latitude && contact.longitude && contact.latitude !== 0 && contact.longitude !== 0);
+        const starLabel = contact.is_starred ? 'Unstar contact' : 'Star contact';
+        const geoMenuItem = hasGeo
+            ? `<li><button type="button" class="dropdown-item" onclick="contactsManager.geocodeContact('${uidJs}', this)"><i class="fas fa-map-marker-alt me-2 text-primary"></i>Geocode location</button></li>`
+            : '';
+        return `
+            <div class="contact-mobile-card">
+                <div class="d-flex align-items-start gap-2">
+                    <input type="checkbox" class="form-check-input contact-row-checkbox mt-1 flex-shrink-0" data-user-id="${uidEsc}" ${checked}>
+                    <div class="flex-grow-1 min-w-0">
+                        <div class="d-flex justify-content-between align-items-start gap-2">
+                            <div class="min-w-0">
+                                <div class="fw-bold">${contact.username || 'Unknown'}</div>
+                                <small class="text-muted text-break d-block">${contact.user_id ? contact.user_id.substring(0, 16) + '...' : 'Unknown'}</small>
+                            </div>
+                            <div class="contact-mobile-device text-end flex-shrink-0">${this.formatDeviceType(contact)}</div>
+                        </div>
+                        <div class="small text-muted mt-1">${this.formatLocation(contact)}</div>
+                        <div class="small">${this.formatDistance(contact)} · ${this.formatSignal(contact)}</div>
+                        <div class="small text-muted">${this.formatTimestamp(contact.first_heard)} · ${this.formatTimeAgo(contact.last_seen)}</div>
+                        <div class="contact-mobile-hops-adverts d-flex align-items-center justify-content-between flex-wrap gap-2 mt-2">
+                            <div class="d-flex align-items-center flex-wrap gap-2 min-w-0">
+                                <div class="d-flex flex-column align-items-start gap-1 min-w-0">
+                                <div class="d-flex align-items-center min-w-0">${this.formatHops(contact)}</div>
+                                ${this.formatPathEncodingBadge(contact)}
+                                </div>
+                                <div class="d-flex align-items-center gap-1">
+                                    <span class="badge bg-success">${contact.advert_count || 0}</span>
+                                    <span class="text-muted small">adverts</span>
+                                </div>
+                            </div>
+                            <div class="dropdown flex-shrink-0">
+                                <button type="button" class="btn btn-sm btn-outline-secondary contacts-overflow-btn"
+                                        data-bs-toggle="dropdown" aria-expanded="false"
+                                        aria-label="Contact actions" title="Contact actions">
+                                    <i class="fas fa-ellipsis-vertical" aria-hidden="true"></i>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><button type="button" class="dropdown-item" onclick="contactsManager.toggleStar('${uidJs}', this)"><i class="fas fa-star me-2 text-warning"></i>${starLabel}</button></li>
+                                    <li><button type="button" class="dropdown-item" onclick="contactsManager.viewAdvertData('${contact.user_id}')"><i class="fas fa-info-circle me-2 text-info"></i>View advertisement data</button></li>
+                                    ${geoMenuItem}
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><button type="button" class="dropdown-item text-danger" onclick="contactsManager.showDeleteConfirmation('${uidJs}', '${nameJs}')"><i class="fas fa-trash me-2"></i>Delete contact</button></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
     renderContactsData() {
         const tbody = document.getElementById('contacts-table-body');
-        
+        const mobileStack = document.getElementById('contacts-mobile-stack');
+
         if (this.filteredData.length === 0) {
-            const message = this.searchTerm ? 
-                `No contacts match "${this.searchTerm}"` : 
+            const message = this.searchTerm ?
+                `No contacts match "${this.searchTerm}"` :
                 'No contacts data available';
             tbody.innerHTML = `
                 <tr>
@@ -455,11 +935,14 @@ class ModernContactsManager {
                     </td>
                 </tr>
             `;
+            if (mobileStack) {
+                mobileStack.innerHTML = `<div class="text-center text-muted py-4">${message}</div>`;
+            }
             this.updateBulkDeleteButton();
             this.updateSelectAllCheckbox();
             return;
         }
-        
+
         tbody.innerHTML = this.filteredData.map(contact => `
             <tr>
                 <td class="text-center align-middle">
@@ -474,18 +957,15 @@ class ModernContactsManager {
                 <td>${this.formatLocation(contact)}</td>
                 <td>${this.formatDistance(contact)}</td>
                 <td>${this.formatSignal(contact)}</td>
-                <td>${this.formatHops(contact)}</td>
+                <td><div class="d-flex flex-column align-items-start gap-1">${this.formatHops(contact)}${this.formatPathEncodingBadge(contact)}</div></td>
                 <td>${this.formatTimestamp(contact.first_heard)}</td>
                 <td>${this.formatTimeAgo(contact.last_seen)}</td>
                 <td><span class="badge bg-success">${contact.advert_count || 0}</span></td>
                 <td>
                     <div class="btn-group" role="group">
-                        ${contact.role && (contact.role.toLowerCase() === 'repeater' || contact.role.toLowerCase() === 'roomserver') ? 
-                            `<button class="btn btn-sm ${contact.is_starred ? 'btn-warning' : 'btn-outline-warning'}" onclick="contactsManager.toggleStar('${contact.user_id.replace(/'/g, "\\'")}', this)" title="${contact.is_starred ? 'Unstar contact (removes path bias)' : 'Star contact (adds strong path bias)'}">
-                                <i class="fas ${contact.is_starred ? 'fa-star' : 'fa-star'}"></i>
-                            </button>` : 
-                            ''
-                        }
+                        <button class="btn btn-sm ${contact.is_starred ? 'btn-warning' : 'btn-outline-warning'}" onclick="contactsManager.toggleStar('${contact.user_id.replace(/'/g, "\\'")}', this)" title="${contact.is_starred ? 'Unstar contact' : 'Star contact'}">
+                            <i class="fas fa-star"></i>
+                        </button>
                         <button class="btn btn-sm btn-outline-info" onclick="contactsManager.viewAdvertData('${contact.user_id}')" title="View Advertisement Data">
                             <i class="fas fa-info-circle"></i>
                         </button>
@@ -502,11 +982,18 @@ class ModernContactsManager {
                 </td>
             </tr>
         `).join('');
-        
+
+        if (mobileStack) {
+            mobileStack.innerHTML = this.filteredData.map(contact => this.renderContactCardHtml(contact)).join('');
+        }
+
         // Setup path tooltips after rendering
         this.setupPathTooltips();
         this.updateBulkDeleteButton();
         this.updateSelectAllCheckbox();
+        if (mobileStack) {
+            this.initContactsDropdowns(mobileStack);
+        }
     }
     
     updateBulkDeleteButton() {
@@ -526,12 +1013,17 @@ class ModernContactsManager {
     
     updateSelectAllCheckbox() {
         const selectAll = document.getElementById('contacts-select-all');
-        if (!selectAll) return;
+        const selectAllMobile = document.getElementById('contacts-select-all-mobile');
         const visibleIds = new Set(this.filteredData.map(c => c.user_id));
         const allSelected = visibleIds.size > 0 && [...visibleIds].every(id => this.selectedContactIds.has(id));
         const someSelected = [...visibleIds].some(id => this.selectedContactIds.has(id));
-        selectAll.checked = allSelected;
-        selectAll.indeterminate = someSelected && !allSelected;
+        const sync = (el) => {
+            if (!el) return;
+            el.checked = allSelected;
+            el.indeterminate = someSelected && !allSelected;
+        };
+        sync(selectAll);
+        sync(selectAllMobile);
     }
     
     updateStatistics() {
@@ -1007,6 +1499,18 @@ class ModernContactsManager {
             return `<span class="badge bg-primary">${hopCount}</span>`;
         }
     }
+
+    formatPathEncodingBadge(contact) {
+        const v = contact.path_encoding_badge;
+        if (!v) return '';
+        if (v === 'multibyte') {
+            return '<span class="badge path-encoding-badge path-encoding-badge-multibyte">Multibyte</span>';
+        }
+        if (v === 'one_byte') {
+            return '<span class="badge path-encoding-badge path-encoding-badge-onebyte">1-byte only</span>';
+        }
+        return '';
+    }
     
     setupPathTooltips() {
         // Create a global custom tooltip element if it doesn't exist
@@ -1084,7 +1588,8 @@ class ModernContactsManager {
                         const response = await fetch('/api/decode-path', {
                             method: 'POST',
                             headers: {
-                                'Content-Type': 'application/json'
+                                'Content-Type': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest'
                             },
                             body: JSON.stringify(body)
                         });
@@ -1358,7 +1863,8 @@ class ModernContactsManager {
             const response = await fetch('/api/decode-path', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
                 },
                 body: JSON.stringify(body)
             });
@@ -1513,7 +2019,8 @@ class ModernContactsManager {
             const response = await fetch('/api/geocode-contact', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
                 },
                 body: JSON.stringify({
                     public_key: userId
@@ -1590,7 +2097,8 @@ class ModernContactsManager {
             const response = await fetch('/api/toggle-star-contact', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
                 },
                 body: JSON.stringify({
                     public_key: userId
@@ -1725,7 +2233,8 @@ class ModernContactsManager {
             const response = await fetch('/api/delete-contact', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
                 },
                 body: JSON.stringify({
                     public_key: userId
@@ -1847,7 +2356,10 @@ class ModernContactsManager {
                 try {
                     const response = await fetch('/api/delete-contact', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
                         body: JSON.stringify({ public_key: userId })
                     });
                     const data = await response.json();
@@ -1930,13 +2442,118 @@ class ModernContactsManager {
             }, 5000);
         }
     }
+
+    // ── Purge Inactive Contacts ──────────────────────────────────────────────
+
+    async loadPurgePreview(days) {
+        const previewText = document.getElementById('purge-preview-text');
+        const confirmBtn = document.getElementById('confirm-purge-btn');
+        const confirmLabel = document.getElementById('confirm-purge-label');
+        if (!previewText) return;
+        previewText.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Loading...';
+        confirmBtn.disabled = true;
+        try {
+            const resp = await fetch(`/api/contacts/purge-preview?days=${days}`);
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Failed to load preview');
+            if (data.count === 0) {
+                previewText.innerHTML = `<i class="fas fa-check-circle text-success me-1"></i>No contacts found that are older than <strong>${days} days</strong>.`;
+                confirmBtn.disabled = true;
+            } else {
+                const sampleNames = (data.samples || []).map(s => `<em>${s.name}</em>`).join(', ');
+                const more = data.count > 5 ? ` and ${data.count - 5} more` : '';
+                previewText.innerHTML = `<i class="fas fa-exclamation-triangle text-warning me-1"></i><strong>${data.count}</strong> contact(s) will be deleted: ${sampleNames}${more}.`;
+                confirmLabel.textContent = `Purge ${data.count} contact(s)`;
+                confirmBtn.disabled = false;
+            }
+        } catch (err) {
+            previewText.innerHTML = `<i class="fas fa-times-circle text-danger me-1"></i>Error: ${err.message}`;
+            confirmBtn.disabled = true;
+        }
+    }
+
+    async executePurge(days) {
+        const confirmBtn = document.getElementById('confirm-purge-btn');
+        const confirmLabel = document.getElementById('confirm-purge-label');
+        const originalLabel = confirmLabel.textContent;
+        confirmBtn.disabled = true;
+        confirmLabel.textContent = 'Purging...';
+        try {
+            const resp = await fetch('/api/contacts/purge', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({ days })
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Purge failed');
+            bootstrap.Modal.getInstance(document.getElementById('purgeContactsModal')).hide();
+            this.showSuccess(data.message || `Purged ${data.deleted} contact(s)`);
+            await this.loadContactsData();
+        } catch (err) {
+            this.showError('Purge failed: ' + err.message);
+            confirmLabel.textContent = originalLabel;
+            confirmBtn.disabled = false;
+        }
+    }
+
+    setupPurgeModal() {
+        const modal = document.getElementById('purgeContactsModal');
+        const select = document.getElementById('purge-days-select');
+        const confirmBtn = document.getElementById('confirm-purge-btn');
+        if (!modal) return;
+
+        modal.addEventListener('show.bs.modal', () => {
+            this.loadPurgePreview(parseInt(select.value));
+        });
+        select.addEventListener('change', () => {
+            this.loadPurgePreview(parseInt(select.value));
+        });
+        confirmBtn.addEventListener('click', () => {
+            this.executePurge(parseInt(select.value));
+        });
+    }
+}
+
+function exportData(dataset, fmt) {
+    const since = document.getElementById('export-since').value || '30d';
+    const url = `/api/export/${dataset}?format=${fmt}&since=${since}`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
+
+function initContactsMultibyteBadgeTooltip() {
+    if (typeof bootstrap === 'undefined' || !bootstrap.Tooltip) return;
+    const listTip =
+        'Multibyte vs 1-byte only: multibyte if stored path encoding (out bytes per hop) is 2 or 3, ' +
+        'any loaded advert path shows multibyte hops (2–3 bytes per hop), ' +
+        'or (repeaters / room servers) their public key prefix matches a hop on a multibyte path. ' +
+        'Loaded paths can include more history than the 7-day dashboard chart.';
+    const el = document.getElementById('contacts-list-multibyte-badge-info');
+    if (el) {
+        const existing = bootstrap.Tooltip.getInstance(el);
+        if (existing) existing.dispose();
+        new bootstrap.Tooltip(el, {
+            title: listTip,
+            html: false,
+            customClass: 'multibyte-capable-hint',
+        });
+    }
 }
 
 // Initialize contacts manager when page loads
 document.addEventListener('DOMContentLoaded', () => {
     window.contactsManager = new ModernContactsManager();
-        });
-        </script>
+    window.contactsManager.setupPurgeModal();
+    initContactsMultibyteBadgeTooltip();
+});
+</script>
 
 <style>
 /* Sortable column styling - subtle and clean */

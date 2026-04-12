@@ -1,11 +1,12 @@
 """Tests for modules.plugin_loader."""
 
-import pytest
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
-from modules.plugin_loader import PluginLoader
+import pytest
+
 from modules.commands.base_command import BaseCommand
+from modules.plugin_loader import PluginLoader
 
 
 @pytest.fixture

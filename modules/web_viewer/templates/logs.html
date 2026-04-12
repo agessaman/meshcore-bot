@@ -1,0 +1,327 @@
+{% extends "base.html" %}
+
+{% block title %}Live Log Viewer - MeshCore Bot Data Viewer{% endblock %}
+
+{% block extra_css %}
+<style>
+    .log-container {
+        height: calc(100vh - 260px);
+        min-height: 400px;
+        overflow-y: auto;
+        background-color: #0d1117;
+        border: 1px solid #30363d;
+        border-radius: 0.375rem;
+        padding: 0.75rem 1rem;
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        font-size: 0.82rem;
+        line-height: 1.6;
+    }
+
+    [data-theme="light"] .log-container {
+        background-color: #f8f9fa;
+        border-color: var(--border-color);
+        color: #212529;
+    }
+
+    .log-line {
+        white-space: pre-wrap;
+        word-break: break-all;
+        padding: 1px 0;
+        color: #c9d1d9;
+        border-bottom: 1px solid rgba(48, 54, 61, 0.3);
+    }
+
+    [data-theme="light"] .log-line {
+        color: #212529;
+        border-bottom-color: rgba(0,0,0,0.05);
+    }
+
+    /* Level-based coloring */
+    .log-line.level-debug   { color: #2dd4bf; }
+    .log-line.level-info    { color: #58a6ff; }
+    .log-line.level-warning { color: #d29922; }
+    .log-line.level-error   { color: #f85149; }
+    .log-line.level-critical{ color: #ff79c6; font-weight: bold; }
+
+    [data-theme="light"] .log-line.level-debug   { color: #0d9488; }
+    [data-theme="light"] .log-line.level-info    { color: #0d6efd; }
+    [data-theme="light"] .log-line.level-warning { color: #fd7e14; }
+    [data-theme="light"] .log-line.level-error   { color: #dc3545; }
+    [data-theme="light"] .log-line.level-critical{ color: #6610f2; font-weight: bold; }
+
+    .log-controls {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    #line-count {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+    }
+
+    .log-level-toggles {
+        gap: 0.35rem;
+    }
+
+    .log-level-toggle {
+        font-size: 0.7rem;
+        font-weight: 600;
+        padding: 0.2rem 0.5rem;
+        line-height: 1.2;
+        border-radius: 0.25rem;
+        border: 1px solid transparent;
+        cursor: pointer;
+        transition: opacity 0.15s ease, transform 0.1s ease;
+    }
+
+    .log-level-toggle:focus {
+        outline: 2px solid #58a6ff;
+        outline-offset: 2px;
+    }
+
+    [data-theme="light"] .log-level-toggle:focus {
+        outline-color: #0d6efd;
+    }
+
+    .log-level-toggle.is-off {
+        background: transparent !important;
+        color: var(--text-muted) !important;
+        border-color: var(--border-color) !important;
+        border-style: dashed;
+        opacity: 0.65;
+    }
+
+    /* Dark theme — on (matches log line colors) */
+    .log-level-toggle[data-level="DEBUG"].is-on    { background: #2dd4bf; color: #0d1117; border-color: #2dd4bf; }
+    .log-level-toggle[data-level="INFO"].is-on     { background: #58a6ff; color: #0d1117; border-color: #58a6ff; }
+    .log-level-toggle[data-level="WARNING"].is-on  { background: #d29922; color: #0d1117; border-color: #d29922; }
+    .log-level-toggle[data-level="ERROR"].is-on    { background: #f85149; color: #fff; border-color: #f85149; }
+    .log-level-toggle[data-level="CRITICAL"].is-on { background: #ff79c6; color: #0d1117; border-color: #ff79c6; }
+
+    /* Light theme — on */
+    [data-theme="light"] .log-level-toggle[data-level="DEBUG"].is-on    { background: #0d9488; color: #fff; border-color: #0d9488; }
+    [data-theme="light"] .log-level-toggle[data-level="INFO"].is-on     { background: #0d6efd; color: #fff; border-color: #0d6efd; }
+    [data-theme="light"] .log-level-toggle[data-level="WARNING"].is-on  { background: #fd7e14; color: #212529; border-color: #fd7e14; }
+    [data-theme="light"] .log-level-toggle[data-level="ERROR"].is-on    { background: #dc3545; color: #fff; border-color: #dc3545; }
+    [data-theme="light"] .log-level-toggle[data-level="CRITICAL"].is-on { background: #6610f2; color: #fff; border-color: #6610f2; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12 d-flex justify-content-between align-items-center mb-4">
+        <h1 class="mb-0">
+            <i class="fas fa-file-alt"></i> Live Log Viewer
+        </h1>
+        <a href="/realtime" class="btn btn-outline-secondary">
+            <i class="fas fa-broadcast-tower"></i> Real-time Monitor
+        </a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <div class="d-flex align-items-center gap-2">
+            <h6 class="mb-0"><i class="fas fa-terminal"></i> Bot Log Stream</h6>
+            <span class="badge bg-success" id="log-status">Connecting…</span>
+        </div>
+        <div class="log-controls">
+            <span id="line-count">0 lines</span>
+            <div class="log-level-toggles d-flex flex-wrap align-items-center" id="log-level-toggles" role="group" aria-label="Log level filters">
+                <span class="text-muted small d-none d-md-inline me-1">Levels</span>
+                <button type="button" class="log-level-toggle is-on" data-level="DEBUG" aria-pressed="true" title="Toggle DEBUG lines">DEBUG</button>
+                <button type="button" class="log-level-toggle is-on" data-level="INFO" aria-pressed="true" title="Toggle INFO lines">INFO</button>
+                <button type="button" class="log-level-toggle is-on" data-level="WARNING" aria-pressed="true" title="Toggle WARNING lines">WARNING</button>
+                <button type="button" class="log-level-toggle is-on" data-level="ERROR" aria-pressed="true" title="Toggle ERROR lines">ERROR</button>
+                <button type="button" class="log-level-toggle is-on" data-level="CRITICAL" aria-pressed="true" title="Toggle CRITICAL lines">CRITICAL</button>
+            </div>
+            <button class="btn btn-sm btn-outline-secondary" id="pause-btn" onclick="togglePause()">
+                <i class="fas fa-pause" id="pause-icon"></i> Pause
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="clearLog()">
+                <i class="fas fa-trash"></i> Clear
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="scrollToBottom()">
+                <i class="fas fa-arrow-down"></i> Bottom
+            </button>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div id="log-container" class="log-container">
+            <div class="text-muted py-3 text-center" id="log-placeholder">
+                <i class="fas fa-hourglass-half"></i> Waiting for log data…
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    const MAX_LINES = 2000;
+    const LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'];
+    const STORAGE_KEY = 'meshcore_logs_level_toggles';
+
+    let paused = false;
+    let autoScroll = true;
+    let lineCount = 0;
+    const container = document.getElementById('log-container');
+    const placeholder = document.getElementById('log-placeholder');
+    const levelToggleGroup = document.getElementById('log-level-toggles');
+
+    function defaultEnabledLevels() {
+        return { DEBUG: true, INFO: true, WARNING: true, ERROR: true, CRITICAL: true };
+    }
+
+    function loadLevelToggles() {
+        const d = defaultEnabledLevels();
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (!raw) return d;
+            const parsed = JSON.parse(raw);
+            if (typeof parsed !== 'object' || parsed === null) return d;
+            for (const k of LEVELS) {
+                if (typeof parsed[k] === 'boolean') d[k] = parsed[k];
+            }
+            return d;
+        } catch (e) {
+            return d;
+        }
+    }
+
+    let enabledLevels = loadLevelToggles();
+
+    function saveLevelToggles() {
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(enabledLevels));
+        } catch (e) {
+            /* ignore quota / private mode */
+        }
+    }
+
+    function syncToggleButtons() {
+        document.querySelectorAll('.log-level-toggle').forEach(function (btn) {
+            const lvl = btn.getAttribute('data-level');
+            const on = enabledLevels[lvl];
+            btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+            btn.classList.toggle('is-on', on);
+            btn.classList.toggle('is-off', !on);
+        });
+    }
+
+    syncToggleButtons();
+
+    if (levelToggleGroup) {
+        levelToggleGroup.addEventListener('click', function (e) {
+            const btn = e.target.closest('.log-level-toggle');
+            if (!btn) return;
+            const lvl = btn.getAttribute('data-level');
+            if (!lvl || !Object.prototype.hasOwnProperty.call(enabledLevels, lvl)) return;
+            enabledLevels[lvl] = !enabledLevels[lvl];
+            syncToggleButtons();
+            saveLevelToggles();
+        });
+    }
+
+    const socket = io({ transports: ['websocket', 'polling'] });
+
+    socket.on('connect', function () {
+        updateStatus('log-status', 'Connected', 'success');
+        socket.emit('subscribe_logs');
+    });
+
+    socket.on('disconnect', function () {
+        updateStatus('log-status', 'Disconnected', 'danger');
+    });
+
+    socket.on('log_line', function (data) {
+        if (paused) return;
+        addLogLine(data.line || '');
+    });
+
+    function detectLevel(line) {
+        /* Word boundaries: avoid false INFO from keys like routing_info (substring INFO). */
+        const m = line.match(/\b(CRITICAL|ERROR|WARNING|INFO|DEBUG)\b/i);
+        return m ? m[1].toUpperCase() : '';
+    }
+
+    function levelPasses(line) {
+        const lineLevel = detectLevel(line);
+        if (!lineLevel) return true;
+        return enabledLevels[lineLevel] === true;
+    }
+
+    function addLogLine(text) {
+        if (!levelPasses(text)) return;
+        if (placeholder) placeholder.remove();
+
+        const div = document.createElement('div');
+        div.className = 'log-line';
+        const lvl = detectLevel(text);
+        if (lvl) div.classList.add('level-' + lvl.toLowerCase());
+        div.textContent = text;
+        container.appendChild(div);
+
+        lineCount++;
+        document.getElementById('line-count').textContent = lineCount + ' lines';
+
+        // Trim old lines
+        while (container.children.length > MAX_LINES) {
+            container.removeChild(container.firstChild);
+        }
+
+        if (autoScroll) {
+            container.scrollTop = container.scrollHeight;
+        }
+    }
+
+    function togglePause() {
+        paused = !paused;
+        const icon = document.getElementById('pause-icon');
+        const btn = document.getElementById('pause-btn');
+        if (paused) {
+            icon.className = 'fas fa-play';
+            btn.innerHTML = '<i class="fas fa-play" id="pause-icon"></i> Resume';
+            autoScroll = false;
+        } else {
+            icon.className = 'fas fa-pause';
+            btn.innerHTML = '<i class="fas fa-pause" id="pause-icon"></i> Pause';
+            autoScroll = true;
+            container.scrollTop = container.scrollHeight;
+        }
+    }
+
+    function clearLog() {
+        container.innerHTML = '';
+        lineCount = 0;
+        document.getElementById('line-count').textContent = '0 lines';
+    }
+
+    function scrollToBottom() {
+        container.scrollTop = container.scrollHeight;
+        autoScroll = true;
+    }
+
+    function updateStatus(id, text, cls) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.className = 'badge bg-' + cls;
+        el.textContent = text;
+    }
+
+    // Pause auto-scroll when user scrolls up
+    container.addEventListener('scroll', function () {
+        const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 40;
+        autoScroll = atBottom;
+    });
+
+    // Expose for inline handlers
+    window.togglePause = togglePause;
+    window.clearLog = clearLog;
+    window.scrollToBottom = scrollToBottom;
+})();
+</script>
+{% endblock %}

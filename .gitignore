@@ -157,6 +157,18 @@ config-pymc.ini
 data/*
 !data/.gitkeep
 
+# Node.js / frontend test framework artifacts
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+# package-lock.json is committed for reproducible npm ci in CI
+# keep package.json, .eslintrc.json, .htmlhintrc (committed)
+
+# .deb build artifacts
+dist/deb-build/
+
 # Local user plugins and config (keep README and .gitkeep only)
 local/config.ini
 local/commands/*
