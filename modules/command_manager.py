@@ -15,7 +15,7 @@ from meshcore import EventType
 
 from .commands.base_command import BaseCommand
 from .config_validation import (
-    PUBLIC_CHANNEL_KEY_HEX,
+    PUBLIC_CHANNEL_KEY_HEX,  # noqa: F401
     PUBLIC_CHANNEL_OVERRIDE_KEY,
     _channel_name_is_public,
     strip_optional_quotes,

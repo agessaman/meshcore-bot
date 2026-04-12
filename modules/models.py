@@ -15,6 +15,7 @@ CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD = 10
 class MeshMessage:
     """Simplified message structure for our bot"""
     content: str
+    content_lower: str = ""  # set by base_command.cleanup_message_for_matching
     sender_id: Optional[str] = None
     sender_pubkey: Optional[str] = None
     channel: Optional[str] = None

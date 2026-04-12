@@ -13,7 +13,7 @@ import os
 import re
 import subprocess
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 
 def _normalize_tag(value: Optional[str]) -> Optional[str]:
