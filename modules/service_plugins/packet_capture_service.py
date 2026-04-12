@@ -19,10 +19,10 @@ from meshcore import EventType
 
 # Import bot's enums
 from ..enums import PayloadType, PayloadVersion, RouteType
-from ..version_info import resolve_runtime_version
 
 # Import bot's utilities for packet hash
 from ..utils import calculate_packet_hash, decode_path_len_byte, parse_trace_payload_route_hashes
+from ..version_info import resolve_runtime_version
 
 # Import MQTT client
 try:
