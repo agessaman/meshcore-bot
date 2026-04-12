@@ -74,7 +74,7 @@ class RollCommand(BaseCommand):
             bool: True if the message matches the roll command syntax, False otherwise.
         """
         content_lower = self.cleanup_message_for_matching(message)
-
+                
         # Check for exact "roll" match
         if content_lower == "roll":
             return True

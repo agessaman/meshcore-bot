@@ -111,9 +111,9 @@ class SportsCommand(BaseCommand):
         """Check if this command matches the message content - sports must be first word"""
         if not self.keywords:
             return False
-
+        
         content_lower = self.cleanup_message_for_matching(message)
-
+                
         # Split into words and check if first word matches any keyword
         words = content_lower.split()
         if not words:
