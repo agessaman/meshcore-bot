@@ -182,7 +182,7 @@ class PathCommand(BaseCommand):
     def matches_keyword(self, message: MeshMessage) -> bool:
         """Check if message starts with 'path' keyword or 'p' shortcut (if enabled)"""
         content_lower = self.cleanup_message_for_matching(message)
-                
+
         # Handle "p" shortcut if enabled
         if self.enable_p_shortcut:
             if content_lower == "p":
