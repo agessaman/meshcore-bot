@@ -18,6 +18,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional, Union
 
+# When started as a script (`python modules/web_viewer/app.py`), Python puts the
+# script's directory on sys.path, not the repo root — import modules.* fails
+# unless we prepend the project root first.
+_project_root = str(Path(__file__).resolve().parent.parent.parent)
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
 from flask import (
     Flask,
     Response,
@@ -77,10 +84,6 @@ def _strip_ansi_codes(text: str) -> str:
     """Remove ANSI color and reset codes from log lines for SocketIO web clients."""
     return _ANSI_ESCAPE_RE.sub("", text)
 
-
-# Add the project root to the path so we can import bot components
-project_root = os.path.join(os.path.dirname(__file__), '..', '..')
-sys.path.insert(0, project_root)
 
 from modules.feed_manager import FeedManager
 from modules.repeater_manager import RepeaterManager
