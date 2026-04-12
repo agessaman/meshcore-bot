@@ -331,6 +331,7 @@
       "path_prefix": "📡 Path: {path_string}",
       "direct_connection": "📡 Direct connection (0 hops)",
       "node_format": "{node_id}: {name}",
+      "initial_source": "Path from {node_id}:",
       "node_unknown": "{node_id}: Unknown",
       "node_collision": "{node_id}: {matches} repeaters",
       "node_geographic": "{node_id}: {name} {confidence}",
