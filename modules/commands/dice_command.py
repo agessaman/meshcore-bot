@@ -83,20 +83,16 @@ class DiceCommand(BaseCommand):
         Returns:
             bool: True if message is a dice command, False otherwise.
         """
-        content = message.content.strip().lower()
-
-        # Handle command-style messages
-        if content.startswith('!'):
-            content = content[1:].strip().lower()
+        content_lower = self.cleanup_message_for_matching(message)
 
         # Check for exact "dice" match
-        if content == "dice":
+        if content_lower == "dice":
             return True
 
         # Check for dice with parameters (dice d20, dice 20, dice d6, etc.)
         # Match any message starting with "dice " - validation happens in execute()
-        if content.startswith("dice "):
-            words = content.split()
+        if content_lower.startswith("dice "):
+            words = content_lower.split()
             if len(words) >= 2 and words[0] == "dice":
                 return True  # Match any dice command, validation in execute()
 

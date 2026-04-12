@@ -618,13 +618,7 @@ class MultitestCommand(BaseCommand):
 
     def matches_keyword(self, message: MeshMessage) -> bool:
         """Check if message matches multitest keyword"""
-        content = message.content.strip()
-
-        # Handle exclamation prefix
-        if content.startswith('!'):
-            content = content[1:].strip()
-
-        content_lower = content.lower()
+        content_lower = self.cleanup_message_for_matching(message)
 
         # Check for exact match or keyword followed by space
         for keyword in self.keywords:

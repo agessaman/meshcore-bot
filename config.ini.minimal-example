@@ -65,6 +65,16 @@ enable_enhanced_correlation = true
 # Bot node ID (leave empty for auto-assignment)
 node_id = 
 
+# Respond to channel messages when the bot is mentioned via @[bot_name]
+# Controls how the bot handles @[bot_name] mentions in channel messages:
+#   also   - Default. Mention is stripped when present, but commands also work without a mention.
+#            Lets "@[BotName] ping" and "ping" both work.
+#   only   - Bot only responds to channel messages that include @[bot_name].
+#            Messages without a mention are silently ignored.
+#   false  - Mentions not handled; bot responds to all matching commands as before.
+# DMs are always processed normally regardless of this setting.
+respond_to_mentions = also
+
 # Enable/disable bot responses
 # true: Bot will respond to keywords and commands
 # false: Bot will only listen and log messages

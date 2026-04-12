@@ -65,7 +65,17 @@ node_id =
 # If set, all commands must start with this prefix (e.g., "!", ".", "b", "abc")
 # Examples: "!" for !ping, "." for .ping, "b" for bping, "abc" for abcping
 # Leave empty or unset to allow commands without prefix (backward compatible)
-#command_prefix = 
+#command_prefix =
+
+# Respond to channel messages when the bot is mentioned via @[bot_name]
+# Controls how the bot handles @[bot_name] mentions in channel messages:
+#   also   - Default. Mention is stripped when present, but commands also work without a mention.
+#            Lets "@[BotName] ping" and "ping" both work.
+#   only   - Bot only responds to channel messages that include @[bot_name].
+#            Messages without a mention are silently ignored.
+#   false  - Mentions not handled; bot responds to all matching commands as before.
+# DMs are always processed normally regardless of this setting.
+respond_to_mentions = also
 
 # Enable/disable bot responses
 # true: Bot will respond to keywords and commands

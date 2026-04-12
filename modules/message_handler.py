@@ -2849,7 +2849,21 @@ class MessageHandler:
         if not self.should_process_message(message):
             return
 
-        self.logger.info(f"Processing message: {message.content}")
+        # Handle respond_to_mentions for channel messages
+        if not message.is_dm:
+            _mention_mode = self.bot.config.get('Bot', 'respond_to_mentions', fallback='also').strip().lower()
+            if _mention_mode in ('also', 'only'):
+                import re
+                _bot_name = self.bot.config.get('Bot', 'bot_name', fallback='Bot')
+                _mention = f'@[{_bot_name}]'
+                _has_mention = _mention.lower() in message.content.lower()
+                if _mention_mode == 'only' and not _has_mention:
+                    self.logger.debug(f"Ignoring channel message (respond_to_mentions=only, no mention of {_mention})")
+                    return
+                if _has_mention:
+                    message.content = re.sub(re.escape(_mention), '', message.content, flags=re.IGNORECASE).strip()
+
+        self.logger.info(f"Processing message: '{message.content}' from {message.sender_id} in {'DM' if message.is_dm else message.channel}")
 
         # Check for advert command (DM only)
         if message.is_dm and message.content.strip().lower() == "advert":

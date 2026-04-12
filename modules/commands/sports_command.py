@@ -112,17 +112,14 @@ class SportsCommand(BaseCommand):
         if not self.keywords:
             return False
 
-        # Strip exclamation mark if present (for command-style messages)
-        content = message.content.strip()
-        if content.startswith('!'):
-            content = content[1:].strip()
+        content_lower = self.cleanup_message_for_matching(message)
 
         # Split into words and check if first word matches any keyword
-        words = content.split()
+        words = content_lower.split()
         if not words:
             return False
 
-        first_word = words[0].lower()
+        first_word = words[0]
 
         return any(first_word == keyword.lower() for keyword in self.keywords)
 

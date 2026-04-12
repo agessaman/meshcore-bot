@@ -802,6 +802,42 @@ class BaseCommand(ABC):
         cleaned = re.sub(r'\s+', ' ', cleaned).strip()
         return cleaned
 
+    def cleanup_message_for_matching(self, message: MeshMessage) -> str:
+        """Clean up message text before keyword checking.
+
+        Strips the command prefix and, when respond_to_mentions is not 'false',
+        validates mention rules and strips all @[...] mentions. Also updates
+        message.content and message.content_lower with the cleaned text so that
+        downstream processing (the execute step) sees the same clean content.
+
+        Args:
+            message: The incoming message.
+
+        Returns:
+            str: Cleaned, lowercased content ready for keyword comparison,
+                 or empty string if the message should be ignored (wrong prefix,
+                 or mentions present but bot not among them).
+        """
+        content = message.content.strip()
+
+        if self._command_prefix:
+            if not content.startswith(self._command_prefix):
+                return ""
+            content = content[len(self._command_prefix):].strip()
+        else:
+            if content.startswith('!'):
+                content = content[1:].strip()
+
+        mention_mode = self.bot.config.get('Bot', 'respond_to_mentions', fallback='also').strip().lower()
+        if mention_mode != 'false':
+            if not self._check_mentions_ok(content):
+                return ""
+            content = self._strip_mentions(content)
+
+        message.content = content
+        message.content_lower = content.lower()
+        return message.content_lower
+
     def matches_keyword(self, message: MeshMessage) -> bool:
         """Check if this command matches the message content based on keywords.
 
@@ -819,27 +855,9 @@ class BaseCommand(ABC):
         if not self.keywords:
             return False
 
-        content = message.content.strip()
-
-        # Check for command prefix if configured
-        if self._command_prefix:
-            # If prefix is configured, message must start with it
-            if not content.startswith(self._command_prefix):
-                return False
-            # Strip the prefix
-            content = content[len(self._command_prefix):].strip()
-        else:
-            # If no prefix configured, strip legacy "!" prefix for backward compatibility
-            if content.startswith('!'):
-                content = content[1:].strip()
-
-        # Check if mentions are valid (bot must be mentioned if any mentions exist)
-        if not self._check_mentions_ok(content):
+        content_lower = self.cleanup_message_for_matching(message)
+        if not content_lower:
             return False
-
-        # Strip @[username] mentions before checking keywords
-        content = self._strip_mentions(content)
-        content_lower = content.lower()
 
         for keyword in self.keywords:
             keyword_lower = keyword.lower()

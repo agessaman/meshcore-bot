@@ -8,6 +8,7 @@ import pytest
 
 from modules.message_handler import MessageHandler
 from modules.models import MeshMessage
+from tests.conftest import mock_message as make_message
 
 
 @pytest.fixture
@@ -1694,3 +1695,125 @@ class TestSignalCacheLRUBounds:
         assert len(handler.snr_cache) == 2
         assert handler.snr_cache["a"] == 5.0
         assert handler.snr_cache["b"] == 2.0
+
+
+# ---------------------------------------------------------------------------
+# respond_to_mentions — process_message gate and stripping
+# ---------------------------------------------------------------------------
+
+class TestRespondToMentions:
+    """Tests for the respond_to_mentions config gate in process_message.
+
+    process_message is async; we short-circuit the command execution
+    side-effects by mocking should_process_message to return True and
+    stubbing out check_keywords / execute_commands so only the mention
+    block is exercised.
+    """
+
+    @pytest.fixture
+    def mention_bot(self, mock_logger):
+        """Bot fixture with respond_to_mentions support."""
+        bot = Mock()
+        bot.logger = mock_logger
+        bot.config = configparser.ConfigParser()
+        bot.config.add_section("Bot")
+        bot.config.set("Bot", "enabled", "true")
+        bot.config.set("Bot", "bot_name", "TestBot")
+        bot.config.set("Bot", "rf_data_timeout", "15.0")
+        bot.config.set("Bot", "message_correlation_timeout", "10.0")
+        bot.config.set("Bot", "enable_enhanced_correlation", "true")
+        bot.config.add_section("Channels")
+        bot.config.set("Channels", "respond_to_dms", "true")
+        bot.config.set("Channels", "max_response_hops", "64")
+        bot.connection_time = None
+        bot.prefix_hex_chars = 2
+        bot.channel_responses_enabled = True
+        bot.command_manager = Mock()
+        bot.command_manager.monitor_channels = ["general"]
+        bot.command_manager.is_user_banned = Mock(return_value=False)
+        bot.command_manager.commands = {}
+        bot.command_manager.check_keywords = Mock(return_value=[])
+        bot.command_manager.match_randomline = Mock(return_value=None)
+        bot.command_manager.execute_commands = AsyncMock()
+        return bot
+
+    @pytest.fixture
+    def mention_handler(self, mention_bot):
+        return MessageHandler(mention_bot)
+
+    def _channel_msg(self, content, channel="general"):
+        return make_message(content=content, channel=channel, is_dm=False, sender_id="User")
+
+    def _dm_msg(self, content):
+        return make_message(content=content, channel=None, is_dm=True, sender_id="User")
+
+    # ------------------------------------------------------------------ also --
+    async def test_also_plain_command_processed(self, mention_handler, mention_bot):
+        """'also': plain channel message (no mention) is still processed."""
+        mention_bot.config.set("Bot", "respond_to_mentions", "also")
+        msg = self._channel_msg("ping")
+        await mention_handler.process_message(msg)
+        # Command execution was reached; content unchanged
+        assert msg.content == "ping"
+
+    async def test_also_strips_bot_mention_from_content(self, mention_handler, mention_bot):
+        """'also': @[TestBot] is stripped before command dispatch."""
+        mention_bot.config.set("Bot", "respond_to_mentions", "also")
+        msg = self._channel_msg("@[TestBot] ping")
+        await mention_handler.process_message(msg)
+        assert msg.content == "ping"
+
+    async def test_also_case_insensitive_strip(self, mention_handler, mention_bot):
+        """'also': bot name match is case-insensitive."""
+        mention_bot.config.set("Bot", "respond_to_mentions", "also")
+        msg = self._channel_msg("@[testbot] ping")
+        await mention_handler.process_message(msg)
+        assert msg.content == "ping"
+
+    async def test_also_dm_bypasses_mention_logic(self, mention_handler, mention_bot):
+        """'also': DMs are never subject to mention stripping or gating."""
+        mention_bot.config.set("Bot", "respond_to_mentions", "also")
+        msg = self._dm_msg("@[TestBot] ping")
+        await mention_handler.process_message(msg)
+        # Content should remain as-is — mention logic skipped for DMs
+        assert "@[TestBot]" in msg.content
+
+    # ------------------------------------------------------------------ only --
+    async def test_only_with_mention_processes(self, mention_handler, mention_bot):
+        """'only': message with bot mention is processed (mention stripped)."""
+        mention_bot.config.set("Bot", "respond_to_mentions", "only")
+        msg = self._channel_msg("@[TestBot] ping")
+        await mention_handler.process_message(msg)
+        assert msg.content == "ping"
+        mention_bot.command_manager.execute_commands.assert_called_once()
+
+    async def test_only_without_mention_ignored(self, mention_handler, mention_bot):
+        """'only': plain channel message is silently dropped."""
+        mention_bot.config.set("Bot", "respond_to_mentions", "only")
+        msg = self._channel_msg("ping")
+        await mention_handler.process_message(msg)
+        mention_bot.command_manager.execute_commands.assert_not_called()
+
+    async def test_only_dm_always_processed(self, mention_handler, mention_bot):
+        """'only': DMs bypass the mention gate and are always processed."""
+        mention_bot.config.set("Bot", "respond_to_mentions", "only")
+        msg = self._dm_msg("ping")
+        await mention_handler.process_message(msg)
+        mention_bot.command_manager.execute_commands.assert_called_once()
+
+    # ------------------------------------------------------------------ false --
+    async def test_false_no_stripping(self, mention_handler, mention_bot):
+        """'false': mention is NOT stripped from message content."""
+        mention_bot.config.set("Bot", "respond_to_mentions", "false")
+        msg = self._channel_msg("@[TestBot] ping")
+        await mention_handler.process_message(msg)
+        # Content must still contain the mention — no stripping in false mode
+        assert "@[TestBot]" in msg.content
+
+    async def test_false_plain_command_processed(self, mention_handler, mention_bot):
+        """'false': plain commands work exactly as before."""
+        mention_bot.config.set("Bot", "respond_to_mentions", "false")
+        msg = self._channel_msg("ping")
+        await mention_handler.process_message(msg)
+        assert msg.content == "ping"
+        mention_bot.command_manager.execute_commands.assert_called_once()
