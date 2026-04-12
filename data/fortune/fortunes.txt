@@ -1,0 +1,3804 @@
+login: 
+%
+        Welcome to VAX/VMS Version 1.60    
+%
+$3,000,000
+%
+'Tis an ill wind that blows no minds.  -Malaclypse the Younger
+%
+'Tis better playing with a lion's whelp,/Than with an old one dying.
+%
+'Tis nobler in the mind to Look Things Up than to Pull Them Out Of The Air.
+%
+* UNIX is a Trademark of Bell Laboratories.
+%
+*** LGP ERROR ***: Initialize -- Cannot initialize graphics hardware device.
+%
+-1: No code table for op: ++post
+%
+...and on the seventh day, He exited from append mode.
+%
+/usr/games/fortune: not found
+%
+/usr/news/gotcha
+%
+1 bulls, 3 cows
+%
+127 now in the unregulated subsidiary; see /usr/news/btl-split
+%
+2 lacks generality in a way that 1 doesn't.
+%
+23. ...  r-q1
+%
+355/113 -- not the famous irrational number PI, but an incredible simulation.
+%
+: is not an identifier
+%
+A Cray is the best machine for simulating the performance of a Cray.
+%
+A Smith and Wesson beats four aces.
+%
+A billion here, a billion there; soon you're talking real money.  -E. Dirksen
+%
+A bird in hand is safer than one overhead.
+%
+A bird in the hand is worth what it will bring.
+%
+A block grant is a solid mass of money surrounded on all sides by governors.
+%
+A chicken is just an egg's way of making more eggs.
+%
+A closed mouth gathers no foot.
+%
+A conservative is one who is too cowardly to fight and too fat to run.
+%
+A couch is as good as a chair.
+%
+A coward is one who in a perilous emergency thinks with his legs.
+%
+A critic is a legless man who teaches running.
+%
+A day for firm decisions!!!!!  Or is it?
+%
+A day without sunshine is like night.
+%
+A duck with three wings and a loaf of bread is brother to the turkey.
+%
+A fly by night leaves no shadow beyond a doubt.
+%
+A foolish consistency is the hobgoblin of little minds.
+%
+A furore Normanorum libera nos, O Domine!
+%
+A game, a teaching aid, a sport, and a piece of art. -Erno Rubik
+%
+A good memory does not equal pale ink.
+%
+A good plan today is better than a perfect plan tomorrow.
+%
+A goodly apple rotten at the heart:/Oh, what a goodly outside falsehood hath!
+%
+A homeowner's reach should exceed his grasp, or what's a weekend for?
+%
+A hypothesis is an opinion that you are trying to prove true.
+%
+A journey of a thousand miles begins with a cash advance from Sam.
+%
+A king's castle is his home.
+%
+A lone dime always gets the number nearly right.
+%
+A man does not attain the status of Galileo merely because he is persecuted; he must also be right. - S. J. Gould
+%
+A man must destroy himself before others can destroy him.  -Mong Tse
+%
+A man who fishes for marlin in ponds will put his money in Etruscan bonds.
+%
+A man who turns green has eschewed protein.
+%
+A man with 3 wings and a dictionary is cousin to the turkey.
+%
+A man without a faith is like a fish without a bicycle.
+%
+A megaflop is a failure of gigantic proportions.
+%
+A movie studio is the best toy a boy ever had. -Orson Welles
+%
+A penny saved is ridiculous.
+%
+A plague o' both your houses! They have made worms' meat of me.
+%
+A plucked goose doesn't lay golden eggs.
+%
+A poet who reads his verse in public may have other nasty habits.
+%
+A professor is one who talks in someone else's sleep.
+%
+A radical is a person with both feet firmly planted in the air.
+%
+A real Initiation never ends.  -Aleister Crowley
+%
+A really busy person never knows how much he weighs. -Edgar Watson Howe
+%
+A song in time is worth a dime.
+%
+A system programmer is someone who debugs his programs with an oscilloscope.
+%
+A theory is better than an explanation.
+%
+A thousand throats may be slit in one night by a running man.
+%
+A truly wise man never plays leapfrog with a Unicorn.
+%
+A twisting road will take you to Warsaw, but you won't be bored.
+%
+A u.f.o. closely encountered is no longer a u.f.o.
+%
+A watched terminal, never prints.
+%
+A wise man never tries to warm himself in front of a painting of a fire.
+%
+A witty saying means nothing.  -Voltaire
+%
+A woman is only a woman, but a good cigar is a smoke. -Rudyard Kipling
+%
+AAAOO OOZOR AZZAZ ZAIEO AZAEI IIOZA KHOEO OOYTH OEAZA EAOOZ AKHOZ AKHEY THXAA LETHX KH
+%
+About all some parents accomplish in life is to send a child to Harvard.
+%
+About the only thing on a farm that has an easy time is the dog.
+%
+Absence is better than a cure.
+%
+According to the latest official figures, 43% of all statistics are worthless.
+%
+Ad pulchritudinem tria requiruntur; integritas, consonantia, claritas. -Aquinas
+%
+Admiration is our polite recognition of another's resemblance to ourselves.
+%
+After 24 hours, corpses and guests smell bad.
+%
+Afternoon very favorable for romance.  Try a single person for a change.
+%
+All articles that coruscate with resplendence are not truly aurifers.
+%
+All dare to write, who can or cannot read. -Horace, `Epistles', Book II
+%
+All of the bridges between our today and our yesteryear have been burnt.
+%
+All syllogisms have three parts; therefore this is not a syllogism.
+%
+All that does not glitter is not not-gold.
+%
+All the ethics in Hollywood can be rolled up and fit into a gnat's navel.
+%
+All the good ones are taken.
+%
+All things considered, life is 9-to-5 against.
+%
+All things that are, are lights.
+%
+Almost all good computer programs contain at least one random-number generator.
+%
+Always keep a record of data. It indicates you've been working.
+%
+America's best buy for a dime is a telephone call to the right person.
+%
+An asylum for the sane would be empty in America.
+%
+An atheist is a man with no invisible means of support.
+%
+An elephant is a mouse built to government specifications.
+%
+An elephant is a mouse with an operating system.
+%
+An idle mind is worth two in the bush.
+%
+An oscilloscope is what cavemen used to debug fire.  -Jim Veres
+%
+An ounce of application is worth a ton of abstraction.
+%
+And I alone am returned to wag the tail.
+%
+And malt does more than Milton can/to justify God's ways to man  -A.E. Housman
+%
+And so to bed.
+%
+Another good night not to sleep in a eucalyptus tree.
+%
+Any change or reform you make is going to have consequences you don't like.
+%
+Any country with "democratic" in the title isn't.
+%
+Any fool can paint a picture, but it takes a wise person to be able to sell it.
+%
+Any small object that is accidentally dropped will hide under a larger object.
+%
+Any sufficiently advanced technology is indistinguishable from a rigged demo.
+%
+Any sufficiently advanced technology is indistinguishable from magic.  -Clarke
+%
+Anyone can win, unless there happens to be a second entry.
+%
+Anyone who buys Wisconsin cheese is a traitor to mankind! -J. Pournelle
+%
+Anyone who understands my music will never be unhappy again. -L. Van Beethoven
+%
+Anything good in life is either illegal, immoral or fattening.
+%
+Are we not men?
+%
+Aries -- this is your lucky day!
+%
+Art is merely cheese made visible.
+%
+Artistic ventures highlighted.  Rob a museum.
+%
+As above, so below.
+%
+As goatherd learns his trade by goat, so writer learns his trade by wrote.
+%
+As of Tuesday, C will be flushed in favor of COBOL. Please update all programs.
+%
+Assassination is the extreme form of censorship.
+%
+At the feast of souls failure is always the guest of honor.
+%
+Auribus teneo lupum.
+%
+Avoid reality at all costs.
+%
+Away put your weapon!  I mean you no harm.
+%
+BLISS is ignorance.
+%
+Bad taste is timeless.
+%
+Ban the bomb.  Save the world for conventional warfare.
+%
+Bank error in your favor.  Collect $200.
+%
+Be sure to evaluate the bird-hand/bush ratio.
+%
+Be the sea, and see me be.
+%
+Beauty is only skin deep, but ugly goes clean to the bone.
+%
+Beauty times brains equals a constant.
+%
+Becoming an overnight success usually takes years.
+%
+Been Transferred Lately?
+%
+Better to have failed your Wasserman than never to have loved at all.
+%
+Between the idea and the reality, between the motion and the act falls the shadow.
+%
+Beware -- local customs vary. Check with a native before going into the jungle.
+%
+Beware of a dark-haired man with a loud tie.
+%
+Beware of low-flying butterflies.
+%
+Beware the foot of Nessus!
+%
+Beware:  the light at the end of the tunnel may be New Jersey.
+%
+Beyond a certain point, the whole universe becomes a continuous Initiation.
+%
+Biggus Diggus wants YOU.
+%
+Bignose from Winnetka.
+%
+Blessed St. Leibowitz, let them keep on dreamin' down there...
+%
+Blessed are the meek for they shall inhibit the earth.
+%
+Blessed are they who Go Around in Circles, for they Shall be Known as Wheels.
+%
+Bourne again.
+%
+Brain fried -- core dumped
+%
+Brashith Alhim
+%
+Bring your wife or husband and pink slip for the best trade-in deal in town.
+%
+Bubble bubble, toil and trouble; cast that float into a double.
+%
+Build a better mousetrap, and nature will build a better mouse.
+%
+Build it so that even a fool can use it, and only a fool will want to use it.
+%
+Bus error -- core dumped
+%
+But he who kisses the joy as it flies/Lives in Eternity's sunrise.  -Wm. Blake
+%
+But many are not capable of a firm persuasion of anything.  -Wm. Blake
+%
+But you'll never become a rhinoceros...you haven't got the vocation!
+%
+But, Siriusly...
+%
+By failing to prepare, you are preparing to fail.
+%
+By the pricking of my thumbs,/Something wicked this way comes.
+%
+Campus Crusade for Cthulhu -- It found me.
+%
+Can all this just be an accident?  Or could there be some alien intelligence behind it?
+%
+Can tomorrow be more than just the end of today?
+%
+Cannot fork -- try again.
+%
+Captain Clark welcomes you aboard.
+%
+Caution -- be sure brain is engaged before putting mouth in gear.
+%
+Caution: breathing may be hazardous to your health.
+%
+Celebrate Hannibal Day this year.  Take an elephant to lunch.
+%
+Celibacy is not hereditary.
+%
+Center 1127 -- It's not just a job, it's an adventure!
+%
+Center meeting at 4pm in 2C-543
+%
+Centran manuals are available in 2B-515.
+%
+Charlie don't surf.
+%
+Children are hereditary: if your parents didn't have any, neither will you.
+%
+Clothes make the man.  Naked people have little or no influence on society.
+%
+Cocaine is nature's way of saying you make too much money.
+%
+Cogito Ergo Spud.
+%
+Cogito cogito ergo cogito sum.
+%
+Colorless green ideas sleep furiously.
+%
+Communication is only possible between equals.
+%
+Computers are not intelligent.  They only think they are.
+%
+Consistency is always easier to defend than correctness.
+%
+Continental Life. Why do you ask?
+%
+Convictions cause convicts -- what you believe imprisons you.
+%
+Could not open 2147478952 framebuffers.
+%
+Courage is something you can never totally own or totally lose.
+%
+Cowards die many times before their deaths;/The valiant never taste of death but once.
+%
+Crazee Edeee,  his prices are INSANE!!!
+%
+Creditors have much better memories than debtors.
+%
+Cthulhu Saves! ... in case He's hungry later.
+%
+Dames lie about anything - just for practice. -Raymond Chandler
+%
+Damn it, i gotta get outta here!
+%
+Day of inquiry.  You will be subpoenaed.
+%
+De minimis non curat lex.
+%
+Death is nature's way of telling you to slow down.
+%
+Death to all fanatics!
+%
+Deep down, we all need that escape velocity.  -Steven Spielberg.
+%
+Democracy is also a form of worship. It is the worship of Jackals by Jackasses.
+%
+Department meeting in 3 minutes.
+%
+Deprive a mirror of its silver and even the Czar won't see his face.
+%
+Der Herrgott wurfelt nicht. -A. Einstein
+%
+Did you know ... that no-one ever reads these things?
+%
+Did you know that clones never use mirrors?
+%
+Die: to stop sinning suddenly.
+%
+Diplomacy is the art of saying "nice doggy" until you can find a rock.
+%
+Disco delenda est.
+%
+Disk crisis, please clean up!
+%
+Disobedience was Man's Original Virtue.  -Oscar Wilde.
+%
+Ditat Deus.
+%
+Do not believe in miracles -- rely on them.
+%
+Do not clog intellect's sluices with bits of knowledge of questionable uses.
+%
+Do not drink coffee in early A.M.  It will keep you awake until noon.
+%
+Do not go gentle into that good night/Rage, rage against the dying of the light
+%
+Do not meddle in the affairs of troff; it is subtle and quick to anger.
+%
+Do not meddle in the affairs of wizards: it makes them soggy and hard to light.
+%
+Do not meddle in the affairs of wizards: they are subtle and quick to anger.
+%
+Do not sleep in a eucalyptus tree tonight.
+%
+Do not take life too seriously; you will never get out if it alive.
+%
+Do not throw butts in the urinal: it makes them soggy and hard to light.
+%
+Do not throw butts in the urinal: they are subtle and quick to anger.
+%
+Do not underestimate the power of the Force.
+%
+Do not use the blue keys on this terminal.
+%
+Do something unusual today.  Pay a bill.
+%
+Do what comes naturally now.  Seethe and fume and throw a tantrum.
+%
+Do what thou wilt shall be the whole of the law.
+%
+Does George know what he's got here?  -Steven Speilberg.
+%
+Does a firm persuasion that a thing is so make it so?  -Wm. Blake
+%
+Don't believe everything you hear or anything you say.
+%
+Don't call me a mindless philosopher, you overweight glob of grease.
+%
+Don't commute, communicate.
+%
+Don't conscience-stricken before they're hatched.
+%
+Don't eat yellow snow.
+%
+Don't feed the bats tonight.
+%
+Don't force it, use a bigger hammer.
+%
+Don't go surfing in South Dakota for a while.
+%
+Don't hate yourself in the morning -- sleep till noon.
+%
+Don't kiss an elephant on the lips today.
+%
+Don't let your thoughts get in a rut. The knife which spreads may also cut.
+%
+Don't lie if you don't have to. -Leo Szilard
+%
+Don't look back -- something may be gaining on you.  -Satchel Paige.
+%
+Don't play games with me.  You weren't on any mercy mission this time.
+%
+Don't put a loaded rifle on the stage unless someone intends to fire it.
+%
+Don't speak about Time, until you have spoken to him.
+%
+Don't tell any big lies today.  Small ones can be just as effective.
+%
+Don't try to have the last word. You might get it.
+%
+Don't try to out-weird me, I get stranger things than you free with my breakfast cereal.
+%
+Don't type so hard.
+%
+Don't vote -- it only encourages them.
+%
+Don't worry -- dat mine, it can't hurt us -- it's one of ours.  -Eccles
+%
+Don't worry if it doesn't work right; if everything did, you'd be out of a job.
+%
+Don't you have anything better to do with your time?
+%
+Down with categorical imperative!
+%
+Dreams are free, but there's a small charge for alterations.
+%
+Dreams are free, but you get soaked on the connect time.
+%
+Drive defensively, buy a tank.
+%
+Dyslexics of the world, untie!
+%
+E Pluribus Unix.
+%
+E Unibus Plurum.
+%
+E pur si muove.
+%
+EVACUATION ROUTE  ---->
+%
+Each man's death diminishes me for I am involved in Humanity.  -John Donne
+%
+Easy for you to type, I have to do all the work.
+%
+Eat snart foods.  -Unknown Jerome
+%
+Ego sum ens omnipotens.
+%
+Either I'm dead or my watch has stopped.  -Groucho Marx' last words
+%
+Either we are alone or we are not.  Either way is mind-boggling.
+%
+Eleesosynary deeds have their incipience intramurally.
+%
+English is a stretch language; one size fits all.  -W. Safire
+%
+Eschew the implement of correction and vitiate the scion.
+%
+Even a cabbage may look at a king.
+%
+Even a hawk is an eagle among crows.
+%
+Even paranoia can sometimes be taken to extremes.
+%
+Even the boldest zebra fears the hungry lion.
+%
+Even the smallest candle burns brighter in the dark.
+%
+Even the thousand-zloty note can't tapdance.
+%
+Even these days, it's not as easy to go crazy as you think.
+%
+Every absurdity has a champion to defend it.
+%
+Every cloud has a silver lining; you should have sold it, and bought titanium.
+%
+Every law creates a whole new criminal class overnight.
+%
+Every little picofarad has a nanohenry all its own.
+%
+Every purchase has its price.
+%
+Every solution breeds new problems.
+%
+Every time you make something foolproof, along comes a better class of fool.
+%
+Everybody should believe in something -- I believe I'll have another drink.
+%
+Everything breaks down.
+%
+Everything east of the San Andreas Fault will eventually plunge into the ocean.
+%
+Everything is funny so long as it is happening to someone else.  -Will Rogers
+%
+Everything takes longer than you think.
+%
+Everything you know is wrong.
+%
+Ewige Blumenkraft.
+%
+Excellent day for drinking heavily.  Spike the office water cooler.
+%
+Excellent day to have a rotten day.
+%
+Excellent time to become a missing person.
+%
+Expansion means complexity; and complexity decay.
+%
+Experience varies directly with the equipment ruined.
+%
+Explicit liber viri elephantini.
+%
+External Security:
+%
+FORTRAN 8X combines the simplicity of PL/I and the parsimony of ADA. -S Feldman
+%
+Fact without theory is trivia, theory without fact is bullshit.
+%
+Facta, non verba.
+%
+Fairness?  Decency?  How can you expect fairness and decency on a planet of sleeping people?
+%
+Far duller than a serpent's tooth it is to spend a quiet youth.
+%
+Favor negative lobes.
+%
+Fear is failure and the forerunner of failure.
+%
+Fear not, the end of the world isn't until next week.
+%
+Few things are harder to put up with than the annoyance of a good example.
+%
+Fiat lux.
+%
+Fiat voluntas tua.
+%
+Fine day to throw a party.  Throw him as far as you can.
+%
+Fine day to work off excess energy.  Steal something heavy.
+%
+First there is a mountain, then there is no mountain, then there is.
+%
+Fleas can be taught nearly anything that a congressperson can.
+%
+Flee at once, all is discovered.
+%
+Flight 23 is down in the Bermuda Triangle.
+%
+Fnord.
+%
+For a good time, call 8367-3100.
+%
+For every action there is an equal and opposite government program.
+%
+For people who like that kind of book, that is the kind of book they will like.
+%
+Forget it, Jake...it's Chinatown.
+%
+Forsan et haec olim meminisse juvabit.
+%
+Fortunate are they who can laugh at themselves; they will never want for amusement.
+%
+Frankly, I'd rather be in Philadelphia.
+%
+Freedom is the right to be our own potty little selves.  -G. K. Chesterton
+%
+Freedom of incrustations of grime is contiguous with rectitude.
+%
+Friends come and go, but enemies accumulate.
+%
+Fritter and waste the hours in an offhand way.
+%
+Future looks spotty.  You will spill soup in late evening.
+%
+Gaffer's tape, like The Force, has a light and a dark side and binds the universe together.
+%
+Generousity and perfection are your everlasting goals.
+%
+Genius is the talent of a person who is dead.
+%
+Gentlemen, you can't fight here.  This is the war room.
+%
+Give me a sleeping pill and tell me your troubles.
+%
+Give your child mental blocks for Christmas.
+%
+Given enough inside information and unlimited credit, you've got to go broke.
+%
+Go directly to jail.  Do not pass Go, do not collect $200.
+%
+Go out and see what the real world has to offer -Gerry Todd
+%
+God does not play dice.
+%
+God gives us relatives; thank goodness we can choose our friends.
+%
+God is in the rock too -- in the rock!
+%
+God isn't dead, he just couldn't find a parking place.
+%
+God made the integers; all else is the work of Man.
+%
+God not only plays dice with the universe, He loads the dice too.
+%
+Golden lads and girls all must,/Like chimney sweepers, come to dust.
+%
+Good day for a change of scene.  Repaper the bedroom wall.
+%
+Good day for overcoming obstacles.  Try a steeplechase.
+%
+Good day to avoid cops.  Crawl to work.
+%
+Good day to let down old friends who need help.
+%
+Good health is just the slowest, most lingering way of dying.
+%
+Good manners and bad breath get you nowhere
+%
+Good news.  Ten weeks from Friday will be a pretty good day.
+%
+Gort!  Klaatu barada...uh...uh...
+%
+Government expands to absorb all available revenue and then some.
+%
+Government is just Anarchy's way of making more anarchy.
+%
+Great shot, kid.  That was one in a million.
+%
+Great warrior?  Heh-heh-heh.  Wars do not make one great.
+%
+Green light in A.M. for new projects.  Red light in P.M. for traffic tickets.
+%
+Growth itself becomes the only moral end. -John Dewey
+%
+Guns don't kill detectives -- love does.
+%
+Ha! You killed my husband, Sam.  Be kind to me.
+%
+Hail to the sun god/He sure is a fun god/Ra! Ra! Ra!
+%
+Half Moon tonight.  (At least its better than no Moon at all.)
+%
+Hangover is the wrath of the grapes.
+%
+Have a nice diurnal anomaly.
+%
+Have you done your Christmas chopping yet? -anon. White House Advisor 12/24/81
+%
+He can't think without his hat.
+%
+He gave her a look that you could have poured on a waffle.
+%
+He is no lawyer who cannot take two sides.
+%
+He is truly wise who gains wisdom from another's mishap.
+%
+He is winding the watch of his wit; by and by it will strike.
+%
+He looked at me as if I was a side dish he hadn't ordered.
+%
+He missed an invaluable opportunity to hold his tongue.
+%
+He serves the state best who opposes it most. -Thoreau
+%
+He thinks by infection, catching an opinion like a cold.
+%
+He was al coltissh, ful of ragerye,/And ful of jargon as a flekke pye. -Chaucer
+%
+He was so narrow-minded he could see through a keyhole with two eyes.
+%
+He who binds himself to a joy/Does the winged life destroy.  -Wm. Blake
+%
+He who has a shady past knows that nice guys finish last.
+%
+He who has imagination without learning has wings but no feet.
+%
+He who has science and art has religion. -Goethe
+%
+He who hesitates is last.
+%
+He who hesitates is sometimes saved.
+%
+He who invents adages for others to peruse takes along rowboat when going on cruise.
+%
+He who keeps his nose to the grindstone, has a flat face.
+%
+He who laughs last is a little slow on the uptake.
+%
+He who laughs, lasts.
+%
+He who listens last is the last one listening.
+%
+He who spends a storm beneath a tree, takes life with a grain of TNT.
+%
+He who wears belt and suspenders needs tighter belt.
+%
+Hell hath no fury like a woman beaten out of a million dollars.
+%
+Help a swallow land at Capistrano.
+%
+Help conquer the IQ shortage: worry less and think more.
+%
+Help me, i'm a prisoner in a chinese computer terminal!
+%
+Hey, I've got it -- let's put on a show!
+%
+Hindsight is an exact science.
+%
+His heart was yours from the first moment that you met.
+%
+His money is twice tainted: 'taint yours and 'taint mine.
+%
+History is a race between education and catastrophe.  -H. G. Wells
+%
+Hit space to start
+%
+Home is the place where, when you have to go there, they have to take you in.
+%
+Honi soit la vache qui rit.
+%
+Hop before you skip.
+%
+Horse sense is the thing a horse has which keeps it from betting on people.
+%
+How can I take an interest in my work when I don't like it?
+%
+How can you work when the system's so crowded?
+%
+How did the Universe manage to go bang in such an unreasonable way? -PCW Davies
+%
+How do I love thee?  Hand me my calculator...
+%
+How is it far, if you can think of it?
+%
+How long you live has nothing to do with how long you are going to be dead.
+%
+How sharper than a child's tooth it is to have a thankless serpent.
+%
+How sharper than a serpent's tooth it is to have a thankless child.
+%
+How the elephant got into my pyjamas I'll never know.  -Marx, Animal Crackers
+%
+How wonderful opera would be if there were no singers.
+%
+How you look depends on where you go.
+%
+Human beings are the only animals of which I am thoroughly and cravenly afraid. 
+%
+Human kind cannot bear very much reality. -T.S. Eliot
+%
+Hypocrisy is the tribute vice pays to virtue.
+%
+I am Magnus.  You are registered in my memory banks...
+%
+I am free of the wheel of Maya; I am dead to the dance of life.
+%
+I am large; I contain multitudes.
+%
+I am the Supreme Being, you know.  I'm not dim.
+%
+I am the beast, I am the Word of the Aeon...I am a hell of a Holy Guru.
+%
+I am the wandering glitch -- catch me if you can.
+%
+I can call spirits from the vasty deep./Why, so can I, or so can any man.
+%
+I can resist everything except temptation.  -Oscar Wilde.
+%
+I can't decide whether to throw you overboard or just change the way you look.
+%
+I cannot teach him.  The boy has no patience.
+%
+I contradict myself?  Very well, then: I contradict myself.  I am large.
+%
+I dinna believe she'll hold up much longer, Captin.
+%
+I do not sketch or design a work, I merely begin. -Joan Miro
+%
+I don't have a moral plan... I'm a Canadian. -David Cronenberg
+%
+I don't love you any more since you ate my dog.
+%
+I don't mind your thinking slowly; i mind your publishing faster than you think. -W. Pauli
+%
+I give presents to the mother, but I think of the daughter.
+%
+I have never let my schooling interfere with my educations.
+%
+I have nothing to say and I am saying it and that is poetry as I need it. -Cage
+%
+I have the most perfect confidence in your indiscretion.
+%
+I know the difference between real-real and drug-real.
+%
+I like work; it fascinates me; I can sit and look at it for hours.
+%
+I love the smell of napalm in the morning.
+%
+I must have slipped a disk; my pack hurts.
+%
+I never dringk ... wine.  -Bela Lugosi
+%
+I see no login here!
+%
+I see only darkness in the crystal ball
+%
+I sense something -- a presence I haven't felt since....
+%
+I taught him everything he knows.  Now he knows more.  -Randal L. Schwartz
+%
+I thank you from the heart of my bottom.
+%
+I think Isaac Newton is doing most of the driving right now.
+%
+I think my spaceship knows which way to go.
+%
+I think; therefore I am confused.
+%
+I will not suffer fools gladly, but I will gladly make fools suffer. -Bimmler
+%
+I wish you humans would leave me alone.
+%
+I wouldn't let a knight out on a dog like this!
+%
+I wouldn't marry her to a ten foot Pole.
+%
+I wouldn't marry him with a ten foot pole.
+%
+I'd give my right arm to be ambidextrous.
+%
+I'd rather have a bottle in front of me than a frontal lobotomy.
+%
+I'd rather have my mail delivered by Lockheed than ride in a plane built by the Post Office.
+%
+I'll produce anything that gets high ratings.  -Anonymous NBC official
+%
+I'll smoke when the pope's wife takes the pill.
+%
+I'm a Hollywood writer; so I put on a sports jacket and take off my brain.
+%
+I'm free -- and freedom tastes of reality.
+%
+I'm prepared for all emergencies but totally unprepared for everyday life.
+%
+I'm so hip I have difficulty seeing over my pelvis.
+%
+IOT trap -- core dumped
+%
+IOT trap -- core melted
+%
+If A=B and B=C, then A=C, except where void or prohibited by law.  -Roy Santoro
+%
+If Congress must do a painful thing, it must be done in an odd-numbered year.
+%
+If God could perform the tricks we do, He'd be a happy man.
+%
+If God had wanted you to go around nude, He would have given you bigger hands.
+%
+If God is perfect, why did He create discontinuous functions?
+%
+If God lived on Earth, people would knock out all His windows.
+%
+If God meant for Texans to ski, He would have made them a mountain.
+%
+If God wanted us to have a President, He would have sent us a candidate.
+%
+If I had only known, I would have been a locksmith.  -Albert Einstein
+%
+If I owned Texas and Hell, I'd rent out Texas and live in Hell.
+%
+If I say it's safe to surf this beach, Captain, it's safe to surf this beach.
+%
+If I should return in my absence, kindly detain me until I get back.
+%
+If I wanted your opinion, I'd tell it to you.  -Samuel Goldwyn
+%
+If all economists were laid end to end, they would not reach a conclusion.
+%
+If anything can go wrong, it will.
+%
+If at first you don't succeed, quit; don't be a nut about success.
+%
+If at first you succeed, try to hide your astonishment.
+%
+If bankers can count, why do they have eight windows and only four tellers?
+%
+If butterflies had teeth like tigers they would never make it out of the hangar.
+%
+If ever I utter an oath again may my soul be blasted to eternal damnation.
+%
+If everything is coming your way, you're in the wrong lane.
+%
+If it doesn't matter, it does not matter.
+%
+If it happens, it must be possible.
+%
+If it pours before seven, it has rained by eleven.
+%
+If it's gratitude you want, get a dog. -- P. T. Barnum
+%
+If it's not broken, don't fix it.
+%
+If it's not worth doing, it's not worth doing well.
+%
+If it's worth doing well, it's worth doing.
+%
+If more is better then too much is just enough.
+%
+If music be the breakfast food of love, kindly do not disturb until lunch time. 
+%
+If the check is truly in the mail, it is surely made out to someone else.
+%
+If the coin is heads up don't pick it up.
+%
+If the experiment works, you must be using the wrong equipment.
+%
+If the facts do not support the theory, they must be disposed of.
+%
+If the government doesn't trust the people, why doesn't it elect a new people?
+%
+If the shoe fits, buy the other one, too.
+%
+If there is no God, who pops up the next Kleenex?  -Art Hoppe
+%
+If time heals all wounds, how come the belly button stays the same?
+%
+If voting could change the system, it would be against the law.
+%
+If we'd all been living in California, we wouldn't have worked at ALL.
+%
+If you ask how much it is, you can't afford it.
+%
+If you can't stand the heat, remove your clothing!
+%
+If you cannot convince them, confuse them.  -Harry S. Truman
+%
+If you do a job too well, you'll get stuck with it.
+%
+If you don't care where you are, then you ain't lost.
+%
+If you don't insist on correct answers, I can make it run as fast as you want.
+%
+If you don't know where you're going, it doesn't matter how you get there.
+%
+If you don't like the weather in New England, just wait a few minutes.
+%
+If you don't pay attention to every little detail, you miss most of the jokes.
+%
+If you gaze long enough into the abyss, the abyss will gaze back into you.
+%
+If you have to lie to someone, it's their fault.
+%
+If you have to think twice about it, you're wrong.
+%
+If you have to travel on the Titanic, why not go first class?
+%
+If you start now you might finish on time.
+%
+If you suspect a man, don't employ him.
+%
+If you take the last cup, make a new pot.
+%
+If you take the last pot, make a new cup.
+%
+If you think before you speak the other guy gets his joke in first.
+%
+If you think big enough, you'll never have to do it.
+%
+If you think it's hard going to the moon, you should try staying home.
+%
+If you think last Tuesday was a drag, wait till you see what happens tomorrow!
+%
+If you want to have clean ideas, change them like shirts.
+%
+If you were able to count up to infinity I'll bet you would never get over it.
+%
+If you're asked to join a parade, don't march behind the elephants.
+%
+If you're feeling good, don't worry.  You'll get over it.
+%
+If you're not apprehensive then you don't understand the situation.
+%
+If your experiment needs statistics, you ought to have done a better experiment. - E. Rutherford
+%
+Ignore alien orders.
+%
+Ignore previous fortune.
+%
+Il faut cultiver son jardins.  -Voltaire
+%
+Illegitimi non carborundum.
+%
+Immanuel Kant but Kubla Khan.
+%
+In Africa the tusks are too firmly rooted, but in Alabama the Tuscaloosa.
+%
+In addition to a yes and a no, the universe contains a maybe. -D. Finkelstein
+%
+In an evolving universe, who stands still moves backwards.
+%
+In challenging a kzin, a simple scream of rage is sufficient.
+%
+In marriage, as in war, it is permitted to take every advantage of the enemy.
+%
+In nature there is immediate adjustment but no compulsion. -Chuang Chou
+%
+In rebus mathematicis errores quam minimi non sunt contemnendi.
+%
+In the land of the blind the one-eyed man can see across the road and prove it.
+%
+In the land of the blind, the one-eyed man is king.
+%
+In the land of the one-eyed men, the blind have to wear glasses.
+%
+In this world, truth can wait; she's used to it.
+%
+Incest, like charity, begins at home.
+%
+Insanity is always the best defense against boredom.
+%
+Inside every large problem is a small problem struggling to get out.  -N. Wirth
+%
+Intermittent resolutions lack potency. -Robert Silverberg
+%
+Into each life a little fallout must rain. -Baba Rebop
+%
+It got to a point where I had to get a haircut or a violin. -F.D.Roosevelt
+%
+It is a poor judge who cannot award a prize.
+%
+It is a tale told by an idiot, full of sound and fury, signifying nothing.
+%
+It is a very sad thing nowadays that there is so little useless information.
+%
+It is absurd to deny the role of fantasy in even the strictest science. -Lenin
+%
+It is bad luck to be superstitious.  -Andrew W. Mathis
+%
+It is better to have loved and lost -- much better.
+%
+It is better to have loved and lost than just to have lost.
+%
+It is better to kiss an avocado than to get in a fight with an aardvark.
+%
+It is better to light a single candle than to curse the darkness, except at the Browns Ferry reactor.
+%
+It is better to rule in Hell than to serve in Heaven.  -Milton
+%
+It is better to wear out than to rust out.
+%
+It is easier to get forgiveness than permission.
+%
+It is far better to vote for a loser than to elect?
+%
+It is fruitless to become lachrymal over precipitately departed lacteal fluid.
+%
+It is hard to sit with the turkeys when you soar with the eagles.
+%
+It is much easier to suggest solutions when you know nothing about the problem.
+%
+It is the business of the future to be dangerous.  -Hawkwind
+%
+It is the wise bird who builds her nest in a tree.
+%
+It seems like the less a statesman amounts to, the more he loves the flag.
+%
+It seems to make an auto driver mad if he misses you.
+%
+It steam-engines when it becomes steam-engine time.  -Charles Fort
+%
+It was a book to kill time for those who liked it better dead.
+%
+It works better if you plug it in.
+%
+It's a hardware problem.
+%
+It's a sad woman who buys her own perfume.
+%
+It's a software problem.
+%
+It's a useless but absolutely vital precaution.
+%
+It's business doing pleasure with you.
+%
+It's clever, but is it art?
+%
+It's difficult to explain Kleenex to an aborigine.
+%
+It's earlier than you think.
+%
+It's hard to be humble when you're perfect.
+%
+It's later than you think.
+%
+It's morally wrong to allow suckers to keep their money.
+%
+It's not Camelot, but it's not Cleveland, either.  -Boston Mayor Kevin White
+%
+It's not cool enough for the eighties.
+%
+It's not easy to play the clown when you've got to run the whole circus.
+%
+It's not my fault -- it's a mechanical problem!
+%
+It's not my fault!
+%
+It's not reality that's important, but how you perceive things.
+%
+It's not the years, it's the mileage.
+%
+It's simple, clean, it works, and you can get it right now. -Mike O'Dell
+%
+It's some kind of instinct...This was an important place in their lives.
+%
+It's the law: Use a pun, go to prism (for minor refractions of the law only!)
+%
+It's worse than being at the theatre.
+%
+Jam tomorrow and jam yesterday -- but never jam today.
+%
+Jesus saves, Moses invests, the Mongol Hoards, but only Buddah pays dividends.
+%
+Join me and I will complete your training.
+%
+Journalism will kill you, but it will keep you alive while you're at it.
+%
+Keep emotionally active.  Cater to your favorite neurosis.
+%
+Kids are always the only future the human race has. -William Saroyan
+%
+Kill ugly radio!
+%
+Klaatu barada nikto.
+%
+Kleeneliness is next to Goedeliness.
+%
+Label on a bottle of pills: "Do not take these pills if this label is missing"
+%
+Lack of leadership is no substitute for inaction.
+%
+Lando's not a system, he's a man.  He's a gambler, scoundrel.  You'd like him.
+%
+Language is a virus from outer space.  -William Burroughs.
+%
+Language is all that separates us from the lower animals and the bureaucrats.
+%
+Laugh and the world laughs with you;  snore and you sleep alone.
+%
+Laugh, and the world ignores you.  Crying doesn't help either.
+%
+Lay on, MacDuff, and curs'd be him who first cries, `Hold, enough!'
+%
+Leadership means taxes.
+%
+Lest men suspect your tale untrue,/Keep probability in view.  -John Gay (1727)
+%
+Let a fool hold his tongue and he will pass for a sage.
+%
+Let him who takes the Plunge remember to return it by Tuesday.
+%
+Let no one unskilled in geometry enter here.  -Plato
+%
+Let not the sands of time get in your lunch.
+%
+Let sleeping wraiths lie.
+%
+Let's look at the record.  -Al Smith
+%
+Li'l dollink, always fetful.
+%
+Liar: One who tells an unpleasant truth.
+%
+Life is a giant shell and we're just processes.
+%
+Life is a yo-yo, and mankind ties knots in the string.
+%
+Life is hard but unjust.
+%
+Life is just a bowl.
+%
+Life is not for everyone.  -M. O'Donoghue
+%
+Life is what happens to you while you're busy making other plans.
+%
+Like winter snow on summer lawn, time past is time gone.
+%
+Little girls have pretty curls, but I like Oreos.
+%
+Little things come in small packages.
+%
+Live forever, or die trying.
+%
+Live long and perspire.
+%
+Living in the past has one thing in its favour - it's cheaper.
+%
+Local disks are our FORTRAN.  -Warren Teitelman
+%
+Long computations which yield 0 (zero) are probably all for naught.
+%
+Longevity is an optimist's heaven and a pessimist's hell.
+%
+Look after the molehills and the mountains will look after themselves.
+%
+Lose a few, lose a few.
+%
+Losing your servo track is just God's way of saying `BOOGA, BOOGA!'
+%
+Love and scandal are the best sweeteners of tea.
+%
+Love is a many gendered thing.
+%
+Love is in the offing, said the homicidal maniac.
+%
+Love is only love, but money is forever.
+%
+Love the sea? I dote upon it - from the beach.
+%
+Love, and do what thou wilt.
+%
+Luke, don't give in to hate.  That leads to the dark side.
+%
+MOUNT TAPE U1439 ON B3, NO RING
+%
+Macro context switch under way, please do not log out!
+%
+Make War, not Love: killing is fun too. -Nicholas von Hoffman
+%
+Making outside money using our computers has resulted in suspension.
+%
+Making sense makes more sense than not making sense. -T. Duff
+%
+Male cadavers are incapable of yielding any testimony.
+%
+Man cannot live by bread alone: frequently, there must be beverage, too.
+%
+Man cannot live by bread alone; he needs a little peanut butter on it.
+%
+Man has created death.  -William Butler Yeats
+%
+Man is in doubt to deem himself a god or beast. -Alexander Pope
+%
+Man muss entweder der Hammer oder der Amboss sein.
+%
+Man who falls in vat of molten optical glass makes spectacle of self.
+%
+Man's horizons are bounded by his vision.
+%
+Many are called, few are chosen.  Fewer still get to do the choosing.
+%
+Many are called, few volunteer.
+%
+Many are cold, but few are frozen.
+%
+Many pages make a thick book.
+%
+Marriage is a ghastly public confession of a strictly private intention.
+%
+Marriage is an attempt to change a night owl into a homing pigeon.
+%
+Masterpieces make their own rules.
+%
+May the bluebird of happiness twiddle your bits.
+%
+May you live all the days of your life.
+%
+May your rolling stone always grow grass that is greener underneath.
+%
+Mcc may be slow and generate bad code, but it took a long time to develop.
+%
+Medeis ageometretos eisito mou ten stegen.  -Plato
+%
+Members of an avian species of identical plumage congregate.
+%
+Men seldom make passes at girls who wear glasses.  -Dorothy Parker.
+%
+Men seldom show dimples to girls who have pimples.
+%
+Message will arrive in the mail.  Destroy, before the FBI sees it.
+%
+Micronics makes it simple.
+%
+Might as well be frank, monsieur. It would take a miracle to get you out of Casablanca.
+%
+Military justice is to justice as military music is to music.  -Clemenceau
+%
+Military music is to music as military intelligence is to intelligence
+%
+Mind your own business, Spock. I'm sick of your halfbreed interference.
+%
+Misery loves company, but company does not reciprocate.
+%
+Misfortunes arrive on wings and leave on foot.
+%
+Mistakes are oft the stepping stones to failure.
+%
+Money is the root of all evil, and man needs roots.
+%
+Money may buy friendship but money can not buy love.
+%
+Money will say more in one moment than the most eloquent lover can in years.
+%
+Most sacrilegious murder hath broke ope/The Lord's anointed temple.  -MacBeth
+%
+Most users are within a 10 mile radius.
+%
+Multi sunt vocati, pauci vero electi.
+%
+My broker is E. F. Hutton, and E. F. Hutton says...
+%
+My karma just ran over your dogma.
+%
+My way of joking is to tell the truth; it's the funniest joke in the world.
+%
+Naked is the best disguise.
+%
+National security is the chief cause of national insecurity.
+%
+Neither a borrower nor a lender be/For loan oft loses both itself and friend.
+%
+Nembutal numbs it all, but I prefer alcohol.  -Strummer/Jones
+%
+Never argue with a fool -- people might not know the difference.
+%
+Never buy a case of wine with eleven bottles.
+%
+Never call a man a fool.  Borrow from him.
+%
+Never eat anything bigger than your head.
+%
+Never eat in a restaurant that rotates or is above the 10th floor.
+%
+Never eat rutabaga on any day of the week that has a "y" in it.
+%
+Never give a inch!
+%
+Never hatchet your Counts before they chicken.
+%
+Never lick a gift horse in the mouth.
+%
+Never play leapfrog with a unicorn.
+%
+Never put off till tomorrow what you can avoid altogether.
+%
+Never speak ill of yourself; your friends will always say enough on that subject.
+%
+Never stow away on a kamikaze plane.
+%
+New career ideas are worth pursuing.
+%
+New crypt. See /usr/news/crypt.
+%
+Nihilism should commence with oneself.
+%
+No amount of genius can overcome a preoccupation with detail.
+%
+No directory
+%
+No directory!  Logging in with home=/
+%
+No good deed goes unpunished.
+%
+No jaggies!
+%
+No man's life, liberty or property are safe while the legislature is in session.
+%
+No news is good news.
+%
+No one can feel as helpless as the owner of a sick goldfish.
+%
+No two ways about it, there are two sides to every story.
+%
+Nobody can be as agreeable as an uninvited guest.
+%
+Nobody expects the Spanish Inquisition!
+%
+Nobody is truly sane until he feels gratitude to the whole universe.
+%
+Nobody knows anything, or if they do, they are careful to hide the fact.
+%
+Nobody takes computer graphics seriously, even the guys that do it. -T. Duff
+%
+Non serviam.
+%
+Nostalgia isn't what it used to be.
+%
+Not all the water in a rough rude sea/Can wash the balm from an anointed king.
+%
+Not only is there no God, but try getting a plumber on Sundays.
+%
+Nothing astonishes men so much as common sense and plain dealing.
+%
+Nothing difficult is ever easy.  -Steve Falco
+%
+Nothing is as easy as it looks.
+%
+Nothing is impossible for the man who does not have to do it himself.
+%
+Nothing is impossible for the man who will not listen to reason.
+%
+Nothing is true.  Everything is permissible.  -Hassan i Sabbah
+%
+Nothing matters indeed, its all in your mind...
+%
+Now and then an innocent man is sent to the legislature.
+%
+Now is the winter of our discontent/Made glorious summer by this sun of York.
+%
+O brave new world,/That has such people in't!
+%
+O dear Ophelia! I am ill at these numbers: I have not art to reckon my groans.
+%
+O.T.O. wants you.
+%
+Of all forms of caution, caution in love is the most fatal.
+%
+Of all things man is the measure.  -Protagoras
+%
+Oh, don't the days seem lank and long, when all goes right and nothing goes wrong.
+%
+Oh, so there you are!
+%
+Old MacDonald had an agricultural real estate tax abatement.
+%
+Old age -- it's the only disease that you don't look forward to being cured of.
+%
+Omnibus ex nihil ducendis sufficit unum.  -Gottfried Wilhelm von Leibniz
+%
+On a clear disk you can seek forever.
+%
+One Bell System -- it sometimes works.
+%
+One Bell System -- it works.
+%
+One horse-laugh is worth ten thousand syllogisms.  -H. L. Mencken
+%
+One man tells a falsehood, a hundred repeat it as true.
+%
+One picture is worth 128k words.
+%
+Only %d shopping days until Christmas.
+%
+Only God can make a random selection.
+%
+Only someone with nothing to be sorry for smiles back at the rear of an elephant.
+%
+Only two things are infinite: the universe and human ignorance. -A. Einstein
+%
+Ontogeny recapitulates philogeny, or is that ontology recapitulates philology?
+%
+Ontogeny recapitulates phylogeny.  -Haeckel
+%
+Ontogeny rehashes phylogeny.
+%
+Order ignorant aliens.
+%
+Others will look to you for stability, so hide when you bite your nails.
+%
+Otto's too so-so to toss soot, too sot to toot SOSs. So?
+%
+Our sponsor thought it was for ADA. In fact it was for C.
+%
+Our vision will speed up time, eventually deleting it.  -Alexander Schure
+%
+Pack my box with five dozen liquor jugs.
+%
+Paranoia doesn't mean the whole world really isn't out to get you.
+%
+Password:
+%
+People get it into their heads that this is a democracy.  Well it isn't. -gwl
+%
+People really shouldn't spread gossip, but what else is it good for?
+%
+People tend to congregate in the back of the church and the front of the bus.
+%
+People usually do what other people have done before them.
+%
+People who take cat naps don't usually sleep in a cat's cradle.
+%
+People who think they know everything greatly annoy us who do.
+%
+People will buy anything that's one to a customer.
+%
+Perfect day for scrubbing the floor and other exciting things.
+%
+Perfect love casteth out fear.
+%
+Person who falls in blast furnace is certain to feel overwrought.
+%
+Personality is a flimsy thing on which to build an art. -John Cage
+%
+Philosophy is the Rule of Life.
+%
+Philosopy: unintelligible answers to insoluble problems.
+%
+Physician, bill thyself.
+%
+Please log off, the computer is out to lunch.
+%
+Please take note:
+%
+Pluralites non est punenda sine necessitate.  -Wm. of Occam
+%
+Plus ca change, plus c'est la meme chose.
+%
+Politicians, ugly buildings and whores all get respectable if they last long enough.
+%
+Populus vult decipi.
+%
+Pornography is in the groin of the beholder. -William F. Buckley
+%
+Post hoc, ergo propter hoc.
+%
+Post proelium, praemium.
+%
+Pregnant ropuli.
+%
+Premature optimization is the root of all evil.  -D. E. Knuth
+%
+Preserve wildlife -- pickle a squirrel today!
+%
+Prevention makes the heart grow fonder.
+%
+Primate behaviour only changes under the impact of new technology.
+%
+Pro is to con as progress is to Congress.
+%
+Progress is made on alternate Fridays.
+%
+Promptness is its own reward, if one lives by the clock instead of the sword.
+%
+Proofreading is more effective after publication.
+%
+Pulchritude possesses solely cutaneous profundity.
+%
+Put not your trust in money, but your money in trust.
+%
+Put your mouth where your mouth is.
+%
+Quantity is no substitute for quality, but its the only one we've got.
+%
+Quantum mechanics do it with uncertainty.
+%
+Questions are a burden for others; answers are a prison for oneself.
+%
+Rain before sunset, dark by midnight.
+%
+Rainy days and Mondays always get me down.
+%
+Reach out and grep someone.
+%
+Reading is thinking with someone else's head instead of one's own.
+%
+Real programs don't eat cache.
+%
+Reality is for those who can't handle drugs.
+%
+Reality is good for you...in small doses.
+%
+Reality is silly-putty.  -Paul Krassner
+%
+Reality seems harsher in the early morning.
+%
+Reason establishes the foundation of faith. Faith compensates the error of reason.
+%
+Reform always comes from below.  No man with four aces asks for a new deal.
+%
+Regnant populi.
+%
+Rei panta.
+%
+Religions revolve madly around sexual questions.
+%
+Remember the Unknown Buffalo.
+%
+Remember why the good Lord made your eyes -- Pla-gi-a-rize! -Tom Lehrer
+%
+Remember, UNIX spelled backwards is XINU.
+%
+Remember, even if you win the rat race -- you're still a rat.
+%
+Render unto Caesar if line 54 is larger than line 62.
+%
+Repetition is a form of change.  -B. Eno
+%
+Research is a great career: you get paid for looking, regardless of results.
+%
+Ring around the collar.
+%
+Ring the bell; close the book; quench the candle.
+%
+Ritual is to the inner sciences what experiment is to the outer sciences. -Leary
+%
+Rotten wood can not be carved  -Confucius (Analects, Book 5, Ch. 9)
+%
+Round numbers are always false.  -Samuel Johnson (c. 1750)
+%
+SCCS: the source-code motel -- your code checks in but it never checks out. Ken Thompson
+%
+I don't have a moral plan... I'm a Canadian. -- David Cronenberg.
+%
+I don't mind thinking slowly; I mind publishing faster than you think. - Pauli
+%
+It's not reality that's important, it's how you perceive things.
+%
+Sailors in ships, sail on! Even while we died, others rode out the storm.
+%
+Satire does not look pretty upon a tombstone.
+%
+Save a forest -- eat a beaver!
+%
+Save the dot files!
+%
+Save yourself!  Reboot in 5 seconds!
+%
+Say "no" to long-sleeved shirts!!  Support your right to bare arms!
+%
+Say your prayers, you're going to Zen heaven.
+%
+Schroedinger might have been here.
+%
+Scintillate, scintillate, aster minific.
+%
+Screw up your courage!  You've screwed up everything else.
+%
+Secrecy is the beginning of tyranny.
+%
+See that ocean -- that used to be some ocean. -Burt Lancaster in Atlantic City
+%
+Seek not to understand that you may believe, but believe that you may understand.
+%
+Self denial is better than self degradation.
+%
+Sell everything. Market top has been reached. -Joseph Granville
+%
+Send not to ask for whom the bell tolls; it tolls for thee.
+%
+Senor, if you hurry from here, you will wait longer there. -Mexico taxi driver
+%
+Share your happiness with others today.
+%
+She canna take much more o' this, Mr. Spock.
+%
+Shift to the left!  Shift to the right! Pop up! Push Down! Byte, byte, byte!
+%
+Show respect for age.  Drink good Scotch for a change.
+%
+Silver is pure. It's been a symbol of justice and purity since the year of the sun.
+%
+Sin has many tools, but a lie is the handle which fits them all.
+%
+Sink or Swim with Teddy!
+%
+Sleep is an excellent way of listening to an opera.
+%
+Smile ... tomorrow will be worse.
+%
+Smooth rotation butters no parsnips.  -J. W. Tukey
+%
+Snatch the pebble from my hand, Grasshopper.
+%
+Snob intellectual bachelors can't have fun in San Antonio.  -Ted Nelson
+%
+Snoopy has fleas.
+%
+Snow Day -- stay home.
+%
+Social innovations tend to the level of minimum tolerable well being.
+%
+Soft soap often has a high percentage of lye in it. -- Salada Tea
+%
+Solve et coagule.
+%
+Some day this war's gonna end.
+%
+Some days chicken salad -- some days chicken shit.
+%
+Some men are discovered; others are found out.
+%
+Some scholars are like donkeys, they merely carry a lot of books.
+%
+Some things are better left unsaid.
+%
+Sometimes a cigar is just a cigar. -Sigmund Freud
+%
+Sometimes you've gotta give it all you've got, because it just isn't enough.
+%
+Soon you will be sitting on top of the world.
+%
+Sooner or later everybody's gotta pay their tab.
+%
+Sorting on the part of mendicants must be interdicted.
+%
+Space travel is utter bilge.  -Sir Richard Van Der Riet Wolley
+%
+Spare no expense to save money on this one.  -Samuel Goldwyn
+%
+Speaking of poison, I'll see that you get some fresh breakfast immediately.
+%
+Specialization is for insects.  -Robt. A. Heinlein
+%
+Spend extra time on hobby.  Get plenty of rolling papers.
+%
+Split a stick of wood, and the Christ is there, too.
+%
+Spock: We suffered 23 casualties in that attack, Captain.
+%
+Standing on head makes smile of frown, but rest of face also upside down.
+%
+Stay away from flying saucers today.
+%
+Stay away from hurricanes for a while.
+%
+Stop searching forever. Happiness is just next to you.
+%
+Stop searching forever. Happiness is unattainable.
+%
+Stop searching.  Happiness is right next to you.
+%
+Succumb to natural tendencies.  Be hateful and boring.
+%
+Sum quod eris.
+%
+Surprise due today.  Also the rent.
+%
+Surprise your boss.  Get to work on time.
+%
+Surveillance should precede salientation.
+%
+System down Tues. am for COBOL compiler installation.
+%
+System going down at 1:45 this afternoon for disk crash.
+%
+System going down for 5 minutes -- back up in half an hour.
+%
+System going down in 5 minutes.
+%
+System might crash at any moment.
+%
+TSO -- it may be slow, but it's hard to use.
+%
+Tai Chi is self-defense for people on Quaaludes.
+%
+Take care of the luxuries and the necessities will take care of themselves.
+%
+Take care of your peonies and the dahlias will take care of themselves.
+%
+Teach it ... phenomenology.
+%
+Ten years of rejection slips is nature's way of telling you to stop writing.
+%
+Terminals at home are always in the bedroom.
+%
+Thank God I'm an atheist.  -Aleister Crowley
+%
+Thank you for choosing UNIX -- batteries not included, some assembly required.
+%
+That goes against the laws of Physics.
+%
+That must be wonderful! I don't understand it at all.
+%
+That we can comprehend the little we know already is mindboggling in itself.
+%
+That which does not kill me makes me stronger.
+%
+That which does not kill me missed.
+%
+That which is above is in that which is below.
+%
+That's as American as pie charts.
+%
+The Angels want to wear my red shoes.
+%
+The Constitution gives us freedom of religion, not freedom from religion -R Reagan
+%
+The Force is strong with this one.
+%
+The Force is with you, young Skywalker, but you are not a Jedi yet.
+%
+The Government urges you to remain calm.
+%
+The PIXAR -- it's not just a job, it's an adventure.
+%
+The Tree of Learning bears the noblest fruit, but noble fruit tastes bad.
+%
+The UFO and the BVM seem to be the same phenomenon.  -Jacques Vallee
+%
+The United States Army: 194 years of proud service, unhampered by progress.
+%
+The aim of existence is to offer resistance to the flow of time.
+%
+The attacker must vanquish; the defender need only survive.
+%
+The best prophet of the future is the past.
+%
+The better part of valour is discretion; in the which better part I have saved my life.
+%
+The churches must learn humility as well as teach it.
+%
+The coroner gave you a clean bill of health.
+%
+The darkest hour is just before the storm.
+%
+The decision doesn't have to be logical, it was unanimous.
+%
+The early bird gets the coffee left over from the night before.
+%
+The early worm gets the bird.
+%
+The earth is like a tiny grain of sand, only much, much heavier.
+%
+The empty fist always makes the deepest wound.
+%
+The end is closer than you think.
+%
+The enemy is ignorance [our own].  -Ezra Pound
+%
+The eyes believe themselves, the ears believe other people.
+%
+The first piece of luggage out of the chute doesn't belong to anyone, ever.
+%
+The first step in fixing something is getting it to break.
+%
+The fit between the world and the human symbols describing it is never perfect.
+%
+The fruits of impatience are bitter.
+%
+The further you get, the better it looks.
+%
+The future isn't what it used to be. (It never was.)
+%
+The future isn't what it used to be. -Arthur C. Clarke
+%
+The gods do not protect fools.  Fools are protected by more capable fools.
+%
+The hardest job kids face today is learning good manners without seeing any.
+%
+The hardest part of raising children is teaching them to ride bicycles.
+%
+The hippo has no sting, but the wise man would rather be sat upon by the bee.
+%
+The judge's jokes are always funny.
+%
+The ketchup of sorrow is better than the mustard of happiness.
+%
+The last twenty-nine days of the month are the worst. -Nicola Tesla
+%
+The love of money is the mucilage of many a tragic friendship -Stuart McMillan
+%
+The man of knowledge can see several things at once.
+%
+The measure of the rigor of a science is the index of its ability to predict.
+%
+The meek shall inherit the earth -- they are too weak to refuse.
+%
+The more complicated the mind, the more simple the play.
+%
+The more things change, the more they'll never be the same again.
+%
+The more you run over a dead cat, the flatter it gets.
+%
+The nervous system sees no color, feels no pain.  -T. Leary
+%
+The only imperfect thing in nature is the human race.
+%
+The only one who got everything done by Friday was Robinson Crusoe.
+%
+The only people who listen to both sides of an argument are the neighbors.
+%
+The only sure things in life are net.suicide and net.taxes.
+%
+The only thing cheaper than hardware is talk.
+%
+The opera isn't over until the fat lady sings.
+%
+The opposite of a trivial truth is false; the opposite of a great truth is also true.
+%
+The pearl the squirrel the girl hit bit split.
+%
+The play's the thing/Wherein I'll catch the conscience of the king.
+%
+The plural of spouse is spice.
+%
+The polhode rolls without slipping on the herpolhode lying in the invariant plane.
+%
+The policeman isn't there to create disorder, he's there to preserve disorder.
+%
+The prudent man does not hold his breath.
+%
+The reason Swedes put little o's over some A's is that they are pronounced "o".
+%
+The reason Swedes put little o's over some A's is that they are pronounced `o'.
+%
+The religion that is afraid of science dishonors God and commits suicide.
+%
+The shorter the line, the slower it moves.
+%
+The shortest distance between two points is off the wall.
+%
+The shortest distance between two points is under construction.  -Noelie Altito
+%
+The solution to the problem of life is seen in the vanishing of the problem.
+%
+The stapler runs out of staples only while you are trying to staple something.
+%
+The strength of a nation lies in the integrity of its homes.  -Confucius
+%
+The stylus is more potent than the claymore.
+%
+The sword he sang a song of death/But could not make the sickle yield.  -Blake
+%
+The thing about Chinatown is, you can never be sure of anything down there.
+%
+The three faithful things in life are money, a dog and an old woman.
+%
+The three laws of physics: f=ma; things fall down; you can't push a rope.
+%
+The time is right to make new friends.
+%
+The unexamined life is not worth examining.
+%
+The universe is laughing behind your back.
+%
+The vanity of teaching often tempteth a man to forget that he is a blockhead.
+%
+The wheels of justice grind slow but fine.
+%
+The whole UNIX operating system was ripped off electronically.
+%
+The wise shepherdess never trusts her flock to a smiling wolf.
+%
+The world cannot be understood from a single point of view.  -Eleanor Roosevelt
+%
+The world ended yesterday-this is only a dream!
+%
+The world ended yesterday-why are you still here?
+%
+The world is a conspiracy of the unthinking against the unwitting.
+%
+The world is all that is the case. -Wittgenstein
+%
+The world is coming to an end!  Repent and return those library books!
+%
+Them that dishes it out need not fall over every time someone blows hard.
+%
+There are more old drunkards than old doctors.
+%
+There are more things in heaven and earth, Horatio,/Than are dreamt of in your philosophy.
+%
+There are more ways of killing a cat than choking her with cream.
+%
+There are no color bars in Cuba.
+%
+There is a fly on your nose.
+%
+There is a person with a shovel behind you ready to crack open your skull!
+%
+There is a tide in the affairs of men/Which, taken at the flood, leads on to fortune;
+%
+There is a world in which this sentence ends with a different word.
+%
+There is no bottom to worse.
+%
+There is no fear in love; but perfect love casteth out fear.
+%
+There is no gift like the present.
+%
+There is no governor anywhere; you are absolutely free.
+%
+There is no present like the TIMES.
+%
+There is no present like time.
+%
+There is no time like the pleasant.
+%
+There is nothing more permanent than a temporary building.
+%
+There is nothing more permanent than a temporary tax.
+%
+There was a phone call for you.
+%
+There's a broken light for every heart on Broadway.
+%
+There's a divinity that shapes our ends,/Rough-hew them how we will.
+%
+There's a sucker reborn every minute.
+%
+There's a vas deferens between man and woman.
+%
+There's always one more bug.
+%
+There's got to be more to life than compile-and-go.
+%
+There's insanity in my family; starting with me, tonight.
+%
+There's no place like home.
+%
+There's no room in the drug world for amateurs.
+%
+There's something in this universe that I don't understand. -T. Duff
+%
+They live happiest who have forgiven most.
+%
+They're only trying to make me LOOK paranoid!
+%
+Things are more like they are now then they have ever been before. -Eisenhower
+%
+Things are more like they used to be than they are new.
+%
+Things that go without saying go even better if they are said.  -Talleyrand
+%
+Things will be bright in P.M.  A cop will shine a light in your face.
+%
+Think of your family tonight.  Try to crawl home after the computer crashes.
+%
+This *means* something.  -R. Neary
+%
+This fortune intentionally not included.
+%
+This fortune is inoperative.  Please try another.
+%
+This fortune is self-explanatory, once you understand it.
+%
+This fortune left blank intentionally.
+%
+This fortune was not meant for you.
+%
+This is Emmanuel. I got him from Emmanuel Training School. He's Emmanuel like.
+%
+This space available.  Call 686-7600 for details.
+%
+This statement is a lie.
+%
+This terminal is not for your use, please log off!
+%
+This will be a memorable month -- no matter how hard you try to forget it.
+%
+Thos who do not remember the past are condemned to repeat it.
+%
+Those who can't write, write manuals.
+%
+Those who can, do; those who can't, simulate.
+%
+Those who can, do; those who can't, write.
+%
+Those who can, do; those who can't, write.  Those who can't write work for the Bell Labs Record.
+%
+Those who in quarrels interpose must often wipe a bloody nose.
+%
+Those who talk don't know. Those who don't talk, know.
+%
+Thrashing is just virtual crashing.
+%
+Three shoes do not a hat make.
+%
+Thunder is impressive, but it is lightning that does the work. -Mark Twain
+%
+Time ends here, please go back the way you came.
+%
+Time flies like an arrow but fruit flies like a banana.
+%
+Time is nature's way of making sure that everything doesn't happen at once.
+%
+Time is three eyes and eight elbows.
+%
+Timesharing just doesn't work. -K. Thompson, 1982.
+%
+To be is to be related.
+%
+To be or not to be, those are the parameters.
+%
+To criticize the incompetent is easy; it is more difficult to criticize the competent.
+%
+To cross again is not to cross.
+%
+To err is human, to forgive is not libary [sic] policy. quoted by Herb Caen
+%
+To err is human, to really foul things up requires a computer!
+%
+To iterate is human, to recurse, divine.
+%
+To laugh at men of sense is the privilege of fools.
+%
+To live without clocks is to live forever. -RLS
+%
+To make an enemy, do someone a favor.
+%
+To play billiards well is a sign of an ill-spent youth.
+%
+To possess another language is to possess another soul.  -Charles V
+%
+Today is a good day to bribe a high-ranking public official.
+%
+Today is the first day of the rest of your miserable life.
+%
+Today is yesterday's tomorrow.
+%
+Today the pits, tomorrow the wrinkles -- Sunsweet marches on.
+%
+Together we must rise to higher and higher platitudes.  -Richard Daley
+%
+Together we will rule the galaxy, father and son.  Luke...it is your destiny.
+%
+Tonight's the night:  Sleep in a eucalyptus tree.
+%
+Too Much.
+%
+Too much of a good thing is WONDERFUL. -Mae West
+%
+Torque is cheap.
+%
+Toto, I've a feeling we're not in Kansas any more.
+%
+Travel important today;  Internal Revenue men arrive tomorrow.
+%
+Tres sabios hubo en el mundo, Adan, Solomom y Raymundo.
+%
+Troglodytism does not necessarily imply a low cultural level.
+%
+Troubles are like babies; they only grow by nursing.
+%
+Truth is only skin deep.
+%
+Truth will be out this morning.  (Which may really mess things up.)
+%
+Try `stty 0' -- it works much better.
+%
+Try again
+%
+Try the Moo Shu Pork.  It is especially good today.
+%
+Try to divide your time evenly to keep others happy.
+%
+Turning the other cheek merely ensures two bruised cheeks.
+%
+Two fish in the sky are worth more than a bird in the sea.
+%
+UFO's are for real: the Air Force doesn't exist.
+%
+Unbidden guests/Are often welcomest when they are gone.
+%
+Uneasy lies the head that wears a crown.
+%
+Unemployment is not a disease; so it has no `cure.'
+%
+Unix soit qui mal y pense.
+%
+Unknown Jerome's -- Dorothy's desk -- $.25 while they last!!
+%
+Usura contra naturum est.
+%
+Usus, Quen penes arbitrium est, et jus, et norma loquendi.  -Horace
+%
+VAX/VMS -- Software for the 60's.
+%
+VAX/VMS is like a nightmare about RSX.
+%
+Versatility is one of your outstanding traits.
+%
+Vests are to suits as seat-belts are to cars.
+%
+Vigilia pretium libertatis.
+%
+Violence is the last refuge of the incompetent.  -Salvador Hardin
+%
+Viva Nuestra Senora Guadalupe y jueron gubernacion mala.  -Father Hidalgo
+%
+Vote anarchist.
+%
+Warning: I brake for no apparent reason.
+%
+Warning: this fortune may change your life.
+%
+Waste not, get your budget cut next year.
+%
+Wasting time is an important part of living.
+%
+We aim to please, but our aim is bad.
+%
+We are faced with an insurmountable opportunity.  -- W. Kelley
+%
+We are not in any immediate danger of having solutions that exceed the needs.
+%
+We continue to overlook the fact that work has become a leisure activity.
+%
+We did it for nothing, we did it in an hour, and the whole thing worked.
+%
+We don't know half of what we know.
+%
+We haul ours to kick theirs.
+%
+We have met the enemy, and he is us.  -Walt Kelly
+%
+We have the finest politicians money can buy.
+%
+We learn from history that we do not learn anything from history.
+%
+We place no reliance/on Virgin or pigeon;/Our method is science,/Our aim is religion.  -Aleister Crowley
+%
+We regard matrimony as a sort of friendship recognized by the police.
+%
+We retard what we cannot repel, we palliate what we cannot cure. -Johnson
+%
+We seem to be made to suffer.  It's our lot in life.
+%
+We shall never get people whose time is money to take much interest in atoms. -S. Butler
+%
+We try harder, they do better.
+%
+We want no foreign rulers - fight the metric system.
+%
+We would like to apologize for the following announcement:
+%
+We've lost 4 crays to the open environment.
+%
+Welcome to the working week.
+%
+Well, the handwriting is on the floor. -Joe E. Lewis
+%
+Well, we had Chinese food again for lunch.
+%
+What I like about scientists is that they are a team, so that one need not know their names. -J Wilmot
+%
+What I tell you three times is true.  -The Hunting of the Snark.
+%
+What do you call a half-dozen Indians with Asian flu?  Six sick Sikhs (sic).
+%
+What does it mean if there is no fortune for you?
+%
+What garlic is to salad, insanity is to art.
+%
+What good are the games if you ain't got the power?
+%
+What have you done for Vic lately?
+%
+What if I go to New York and can't trust a menu?
+%
+What is mind? No matter.  What is matter? Never mind.  -Thomas Hewitt Key
+%
+What the hell, go ahead and put all your eggs in one basket.
+%
+What this country needs is a good five-cent nickel.
+%
+What use is magic if it can't save a unicorn?  -Peter S. Beagle
+%
+What's in a name? That which we call a rose/By any other name would smell as sweet.
+%
+What's it all about?  We're all tools.  Life's just a crock.
+%
+What's the point to combing your hair when it's grey and thinning?
+%
+When all else fails, read the instructions.
+%
+When all is said and done, a lot more is said than done.
+%
+When an owl comes to a mouse picnic, it's not there for the sack races.
+%
+When better machines are built, greg will break them.
+%
+When bigger machines are built, scj will saturate them.
+%
+When does later become never?
+%
+When everyone's out to get you, paranoia is just good thinking.
+%
+When faced with the obvious -- look elsewhere.
+%
+When four sit to conspire, three are government agents, and the other a fool.
+%
+When in doubt, lead trump.
+%
+When in trouble or in doubt, run in circles; scream and shout.
+%
+When marriage is outlawed, only outlaws will have inlaws.
+%
+When the Lord gets ready, you got to move.
+%
+When the going gets tough, the tough go shopping.
+%
+When the going gets tough, the tough hold meetings.
+%
+When the map and the terrain disagree, trust the terrain. -Swiss army aphorism
+%
+When the wind is great, bow before it; when the wind is heavy, yield to it.
+%
+When traveling with a herd of elephants, don't be first to lie down and rest.
+%
+When you are over the hill, you pick up speed.
+%
+When you need a sledgehammer, the finest scalpel just won't do.
+%
+Whenever I'm caught between two evils, I take the one I haven't tried before. -Mae West
+%
+Where do you think you are, Civilization?
+%
+Whereof one cannot speak, thereof one must be silent.  -Wittgenstein
+%
+Who can worry about a super-hero who vanishes when you change channels?
+%
+Who is W. O. Baker, and why is he saying those terrible things about me?
+%
+Who is the slayer, who the slain?  Speak...  -Sophocles, Oedipus Rex
+%
+Who knows if there are any answers? -Edmund G. Brown, Jr.
+%
+Who needs companionship when you can sit alone in your room and drink?
+%
+Who's afraid of Louisa May Alcott?
+%
+Whom the gods must destroy they first must drive insane.
+%
+Why do we have two eyes?  To watch 3D movies with.
+%
+Why isn't there a special name for the tops of your feet?  -Lily Tomlin
+%
+Why worry about tomorrow, when today is so far off?
+%
+Will nobody help the widow's son?
+%
+With clothes the new are best, with friends the old are best.
+%
+With redeeming social value like yours, no wonder you're obscene.
+%
+With/Without -- and who denies it's what the fighting's all about?
+%
+Women seldom show dimples to guys who have pimples.
+%
+Wonderful girl!  Either I'm going to kill her or I'm beginning to like her.
+%
+Words are the voice of the heart.
+%
+Words must be weighed, not counted.
+%
+Work expands to fill the time available for its completion. -C.N. Parkinson
+%
+Worth seeing? Yes, but not worth going to see.
+%
+Writing free verse is like playing tennis with the net down.
+%
+Yamata wasami shuza.
+%
+Yea, from the table of my memory/I'll wipe away all trivial fond records.
+%
+Yogsothoth Neblod Zin.
+%
+You always think you know what you're doing, but you're too slick for your own good.
+%
+You are going to have a new love affair.
+%
+You are in a maze of twisty little passages, all alike.
+%
+You are original and creative.
+%
+You attempt things that you do not even plan because of your extreme stupidity.
+%
+You auto buy now.
+%
+You can create your own opportunities this week.  Blackmail a senior executive.
+%
+You can lead a horticulture but you cannot make her think. - Dorothy Parker
+%
+You can't beat the bugs.
+%
+You can't build a bomb at 300 baud.
+%
+You can't capitalize your cake and expense it too.
+%
+You can't comb a hairy ball smooth.
+%
+You can't fall off the floor.
+%
+You can't go home again, unless you set $HOME
+%
+You can't have everything -- where would you put it?
+%
+You can't teach a dead dog new tricks.
+%
+You can't win, you can't break even, and you can't get out of the game.
+%
+You can't win.  But there are alternatives to fighting.
+%
+You cannot buy beer; you can only rent it.
+%
+You cannot cross a chasm in two steps.
+%
+You cannot kill time without injuring eternity.
+%
+You cook it, you sell it.
+%
+You display the wonderful traits of charm and courtesy.
+%
+You don't have to play tennis any more, or talk to anyone who does.
+%
+You don't really want to know what the future holds for you.
+%
+You had mail.
+%
+You have an ambitious nature and may make a name for yourself.
+%
+You have been selected for a secret mission.
+%
+You have been transfixed by the gaze of the Edlund.--More--
+%
+You have bills.
+%
+You have had a long-term stimulation relative to business.
+%
+You have made an excellent hit on the UNIX.--More--
+%
+You have mail.
+%
+You have personal talents that are attractive to others.  Be sure to use them.
+%
+You have plate mail.
+%
+You have slowmail.
+%
+You have snails.
+%
+You have splint mail.
+%
+You have taken yourself too seriously.
+%
+You have the capacity to learn from mistakes.  You'll learn a lot today.
+%
+You know, you never know.
+%
+You look strong enough to pull the ears off a Gundark!
+%
+You may be recognized soon.  Hide.
+%
+You may have a friend at the Chase Manhattan but at our bank you have meshpocheh!
+%
+You might have mail.
+%
+You never know what you don't know, you know?
+%
+You now have Asian Flu.
+%
+You remind me of a TV show, but that's all right: I watch it anyway.
+%
+You scream and you leap.
+%
+You seek to shield those you love and you like the role of the provider.
+%
+You should go home.
+%
+You tend to be shy when undressing outdoors.
+%
+You want it bad, you'll get it bad.
+%
+You weren't here so we did it anyway.
+%
+You will attend a party where strange customs prevail.
+%
+You will be Told about it Tomorrow.  Go Home and Prepare Thyself.
+%
+You will be a winner today.  Pick a fight with a four-year-old.
+%
+You will be surprised by a loud noise.
+%
+You will feel hungry again in another hour.
+%
+You will make a small sum by investing in a business project.
+%
+You will make a small sum disappear by investing in a business project.
+%
+You will never find a more wretched hive of scum and villainy.
+%
+You will step on the night soil of many countries.
+%
+You win some, you lose some, and some go into extra innings.
+%
+You worry too much about your job.  Stop it.  You are not paid enough to worry.
+%
+You'll just have to sleep faster tonight.
+%
+You're being followed.  Cut out the hanky-panky for a few days.
+%
+You're so bossy you ought to be milked before you come home at night.
+%
+You're so ugly you couldn't even get a date with an automated bank teller.
+%
+You've always got the option of having just committed suicide!
+%
+You've been leading a dog's life.  Stay off the furniture.
+%
+Your best dreams may not come true; but then neither will your worst dreams.
+%
+Your computer account is overdrawn.  Please reauthorize.
+%
+Your editor doesn't always know best.
+%
+Your emotional nature is strong and sensitive
+%
+Your empty file directory has been deleted.
+%
+Your login has been changed.
+%
+Your love life will be happy and harmonious.
+%
+Your mind understands what you have been taught; your heart, what is true.
+%
+Your password is pitifully obvious.
+%
+Your present plans are going to succeed.
+%
+Your supervisor is thinking about you.
+%
+Your theory is crazy, but not crazy enough to be true.
+%
+`By the way, microcode is no big deal.  You can emulate it in random logic.'
+%
+`Drawing on my fine command of language, I said nothing.'
+%
+`He was so narrow minded he could see through a keyhole with both eyes...'
+%
+`Otto' spelled inside out is `toot.'
+%
+`Qvid me anxivs svm?'
+%
+`The time (6:39 pm) has come,' the Walrus said, `to talk of many things...'
+%
+`The time has come,' the Walrus said, `to talk of many things...'
+%
+`We don't care.  We don't have to.  We're the Phone Company.'
+%
+`is false when preceded by its quotation' is false when preceded by its quotation.
+%
+`is not a sentence' is not a sentence.
+%
+chess tonight
+%
+f u cn rd ths u cn gt a gd jb n cmptr pgmng.
+%
+f u cn rd ths u cn gt a gd jb n tk wr
+%
+f u cn rd ths, itn tyg h myxbl cd.
+%
+fortune: Command not found.
+%
+fortune: not found
+%
+go suck on an infinite tube.
+%
+gt: warning -- bad idea to override alpha computation on matted-to-black target
+%
+hang in there, hammock-nose
+%
+no shell.
+%
+panic: trap
+%
+pm monday am
+%
+startup: system error -- directory deleted
+%
+too much.
+%
+Gallium Arsenide is the material of the future and it always will be.
+%
+Unix is the only significant operating system whose documentation fits in a student's briefcase. John Lions (Fixed in 4.1BSD)
+%
+Programming and puddings demand consistency.
+%
+`I saw it with my own eyes' means you wanted to see it.
+%
+There used to be men and women.  Now there are men and persons.
+%
+If some day it should happen that a victim must be found, I've got a little list, I've got a little list.
+%
+You cannot count friends that are all packed up in barrels.
+%
+If it ain't broke, don't fix it.
+%
+A mighty maze! but not without a plan. -Pope
+%
+Just because you're paranoid doesn't mean they're not out to get you.
+%
+Real programmers can't say `lint' without following it with `hbaxcu.' -Wm Leler
+%
+Once TOAD is operational, how frequently would you expect to access TOAD?
+%
+jim is a nice editor except that it runs on the Blit. -- W. Joy
+%
+The Blit is a nice terminal, but it runs emacs.
+%
+The number of UNIX installations has grown to 10, with more expected. - 2nd Edition UNIX manual
+%
+The number of approved [COBOL] subsets has been reduced from 104,976 to 54. - JM Triance
+%
+You can get HELP any time you are using TEACH by returning to the command state and typing "S 160".
+%
+Even if I could be Shakespeare, I think I should still choose to be Faraday. - A. Huxley
+%
+If I could remember the names of all these particles I'd be a botanist. - Fermi
+%
+The one interesting fact about the Diplodocus is that the accent is on the second syllable.
+%
+    ON ENDFILE(SYSIN)  GO TO ADATHIBA;  /* FILE-VEGE VIZSGALATA */
+%
+Hi, this is Ken. What's the root password?
+%
+Home is where / is.
+%
+If you want to go somewhere, goto is the best way to get there. K Thompson
+%
+Beauty is only sin deep. H H Munro
+%
+C'est CHouette.  Swiss bumper sticker
+%
+Y drag goch yr y gchwyn!
+%
+Absinthe makes the heart grow fonder.
+%
+The sterile pleasure of being right tends to get stale in the course of a lifetime.  EW Dijkstra
+%
+One scythe fits all.
+%
+Shadows slick as eels slither through.
+%
+Expected arrival date is presently unknown. Dave Kristol
+%
+A recently completed trial proved TOAD Generic 1 to be reliable, user-friendly, and convenient.
+%
+The 3B2 Model 100 - the first machine with cat -v in ROM!
+%
+awk: Usage: awk [-f source | 'cmds'] [files]; record number 3.55646e-311
+%
+You can't forward backward. - Dan Nowitz
+%
+It's time to gearshift up from the crawl we've been in to a full trot. - Jack Scanlon
+%
+The SUN really is a hunk of junk. - Tom Duff
+%
+Maybe I should have screwed up. - Ken Thompson
+%
+Die ich rief, die Geister, / Werd ich nun nicht los.
+%
+Don't rely on your nose -- TEST ATMOSPHERE!
+%
+Eileen L. Behr has translated her skill in public speaking into a successful career selling capacitors.
+%
+Restrain your octopus!  The canoes are going fishing tomorrow.
+%
+Whenever the Queen comes to New Zealand the Maori people suffer a disaster.
+%
+Have you hugged Joe Condon today?
+%
+4.2BSD may not be a complete disaster, but it does a good job of emulating one.
+%
+CB is a great place to work. There are so many good going away parties.
+%
+Why is it called a stream I/O system when the data flows both ways?
+%
+We never stand still longer than it takes to have an argument.
+%
+The screen rectangle must be charged with emotion.  Hitchcock
+%
+You may enjoy the infamous PEOPLExpress snack pack for one dollar.
+%
+Give me a rock, paper and scissors and I will move the world.  CCFestoon
+%
+Had Cleopatra's nose been shorter, the whole history of the world would have been different. - Pascal
+%
+I don't even know what street Canada is on. - Al Capone
+%
+Niagara Falls would be much more impressive if it flowed the other way. - Oscar Wilde
+%
+California is a fine place to live if you happen to be an orange. - Fred Allen
+%
+Ducking for apples.  Change one letter and it's the story of my life. _ Dorothy Parker
+%
+The first thing we do, let's kill all the lawyers. - Henry V, part II.
+%
+There is no sin except stupidity. - Oscar Wilde
+%
+An artist is never ahead of his time, but most people are far behind theirs. - Varese
+%
+awk: illegal statement 206620
+%
+All my men wear badges, or they wear nothing at all.
+%
+The sheep - symbolic creature of docility, sacrifice and stupidity.
+%
+We should acknowledge the 10000-year sheep heritage of mankind. - Judge Clyde Burch.
+%
+If we turn on the lights fast enough, we'll see what the dark looks like.
+%
+My program is so jammed with clever tricks - GJ Holzmann
+%
+"The Dresser," first a play, then a movie, then AT&T headquarters.
+%
+The null string has always been a productive source of off-by-0 errors.
+%
+The contrary of an aggregate is the compound of the contraries of the aggregates. - De Morgan
+%
+The contrary of a compound is the aggregate of the contraries of the components. - De Morgan
+%
+From EXPLMY: Serious internal error, check the error code in the documentation of VRFYMY.
+%
+"x.c", line 1: cannot recover from earlier errors: goodbye!
+%
+A Point is a pair of shorts.
+%
+	case '\7': *((char *)(384*1024L+062)) = 2;	/* beep */
+%
+I have NEVER written a program in C!  Narain Gehani
+%
+It's an empty head that wears a hairpiece. - Pauline Kael
+%
+"Analysis" is "design" spelled backwards.
+%
+"Sdrawkcab delleps esnes yna ekam t`nseod" doesn't make any sense spelled backwards.
+%
+"Sound advice" is usually mostly sound with not much advice.
+%
+%-W-NORML Normal Successful Completion
+%
+55mph -- It's not a good idea, it's just the law.
+%
+A consistent indentation style is the hobgoblin of little minds.
+%
+A fool and his money stabilize the economy.
+%
+A gentleman is one who is never rude unintentionally.  -Noel Coward
+%
+A hacker does for love what others would not do for money.
+%
+A hydrogen bomb doesn't care how brave you are.
+%
+A liberal is one who is too open-minded to take his own side in an argument.
+%
+A man does not attain the status of Galileo merely because he is persecuted;  he must also be right. -Stephen Jay Gould
+%
+A penny saved is a political breakthrough.
+%
+A penny saved kills your career in the Pentagon.
+%
+A rolling stone gathers momentum.
+%
+A rose by any other name would still have thorns.
+%
+A stitch in time keeps your tu-tu from becoming a four-four.
+%
+A578 Your FLP overflows into your KBUF.
+%
+Ablata at alba.
+%
+All the great men are dead and I'm not feeling too well myself.
+%
+All you need to know is in the manual.
+%
+Any clod can have the facts, but having opinions is an *art*. -Chas. McCabe
+%
+Any man's speeding ticket on the Interstate diminishes me, for I am involved in mankind.
+%
+Anyone's life is incomplete unless they are, in some smaller or larger way, saving the world.
+%
+Arabic is a language, Persian is a sweetmeat, and Turkish is an art.
+%
+Are you kidding?
+%
+Are you sure you want a two dimensional array?
+%
+Automating a mess yields an automated mess. -Michael Hammer
+%
+Ave discordia.
+%
+Better be right or your big venture goes wrong. -Resistor color code mnemonic
+%
+Bigamy is having one wife too many.  Monogamy is the same.
+%
+C'est magnifique, mais ce n'est pas Unix. -Henry Spencer
+%
+Can all this just be an accident?  Or could there be some alien intelligence behind it?
+%
+Capitalism is indeed obsessed with money, but Marxism is obsessed with Marxism.
+%
+Club sandwiches, not baby seals.
+%
+Cocaine is nature's way of telling you that you make too much money.
+%
+Constants aren't.  Variables don't.  LISP does.  Functions won't.  Bytes do.
+%
+Contains no kung fu, car chases or decapitations.
+%
+Core Error - Bus Dumped
+%
+Creativity is no substitute for knowing what you are doing.
+%
+Dames is like streetcars -- The oceans is full of 'em. -Archie Bunker
+%
+Dangerous knowledge is a little thing.
+%
+Data potato, du wop du wop.
+%
+Do not confuse boredom with security.
+%
+Do not confuse effort with work.
+%
+Does the early bird enjoy the worm as much as the late bird enjoys the sleep?
+%
+Don't get mad, make book.
+%
+Don't worry, it's not loaded.
+%
+Don't worry, they couldn't hit an elephant at this dist
+%
+Don't you feel more like you do now than you did when you came in?
+%
+ERROR CREEPOUT HAS BEGUN
+%
+Eat snart foobs.  -Unknown Jerome
+%
+Even the simplest solution is bound to have something wrong with it.
+%
+Ever wake up feeling like a null pointer? -Allan Pratt
+%
+Everything should be as simple as possible, but no simpler. - A. Einstein
+%
+Everything's been said before, but nobody's listening, so keep repeating.
+%
+Exhibition will continue to decline and  ultimately lead to other sources of entertainment.
+%
+Expected arrival date is presently unknown. Dave Kristol
+%
+FOR SALE: Schroedinger's cat.  Might be alive.  Might not.
+%
+Facta, non verba -- et verbum caro factus est.
+%
+Far too noisy, my dear Mozart.  Far too many notes. -Emperor Ferdinand.
+%
+Fill what's empty; empty what's full; scratch where it itches. -Alice Roosevelt Longworth
+%
+Find the enemy and shoot him down; everything else is rubbish. -M. von Richthofen
+%
+First things first.  Why not send for the Nazis right now.
+%
+Fortran est; non potest legi.
+%
+Generalizations are useful.  The work contained in them can be reckoned as labor and therefore can create value.  -G.W. Hegel
+%
+Go suck on an infinite tube.
+%
+Good Rule: Don't put anything in your mouth labeled "HARMFUL IF SWALLOWED"
+%
+Good day for flaming at floyd!trb.
+%
+Good day to do the unexpected:  write some documentation.
+%
+Good day to write a purchase requisition for a 747.
+%
+Good intentions don't mean anything unless they can deliver.
+%
+Graecum est; non potest legi.
+%
+Hang by your pseudopod, write if you find a warm rich planet ripe for conquest.
+%
+Hang in there, hammock-nose.
+%
+Have you hugged my T-shirt today?
+%
+He that laugheth in the face of death haveth the last laugh.
+%
+He who hesitates is scrap metal.
+%
+He who trains his tongue to quote from learned sages will be known far and wide as a smartass.
+%
+Hypothesize and test.
+%
+I don't like to walk, and I don't like to paddle. -James Watt
+%
+I don't mind thinking slowly; I mind publishing faster than you think. -Pauli
+%
+I have 36 rolls of 5247 for our use in the laser fridge...
+%
+I have everything we will need.
+%
+I haven't lost my mind.  I've got it backed up on tape somewhere.
+%
+I kissed my first lady and smoked my first cigarette on the same day.  I have never had time for tobacco since. -Arturo Toscanini
+%
+I like user-hostile ignorance-based amateur systems.
+%
+I love you.
+%
+I new it was coming and I still felt as if I'd swallowed a snowcone whole.
+%
+I regard an original error as better than a borrowed truth. -Merton.
+%
+I was just going to call you.
+%
+I wish I had time to explain dimensional transcendentalism -Dr. Who
+%
+I wonder what will happen if I touch these two wires together.
+%
+I'm from the government, and I'm here to help you.
+%
+I've done this before and never had any trouble.
+%
+If God had meant Texans to ski, he would have made bullshit white.
+%
+If I could remember the names of all these particles I would have been a botanist. -- Enrico Fermi
+%
+If Lincoln were alive today he would be spinning in his grave. -G. Ford
+%
+If a thousand people say a foolish thing, it remains a foolish thing.
+%
+If ignorance were cornflakes, you'd be General Mills.
+%
+If it were dangerous they would post a sign...
+%
+If the "medium is the message" then the message of low-bandwidth timesharing is "blah". -- Alan Kay
+%
+If there are any resources you need to get this job done, just let us know.
+%
+If you're not part of the solution, you're part of the precipitate.
+%
+Illegal Arbitrator - Line 23
+%
+In New York they signal the wrong way just to fuck you up.  -David Yost
+%
+In any society, the correct pronunciation is the dialect that has an army.
+%
+In case of fire, stand in the hall and shout "Fire!".
+%
+In communism Man exploits Man.  In capitalism it's the other way around.
+%
+In comparison with the ancients, we stand like dwarfs on the shoulders of giants. -Bernard of Chartres
+%
+In girum imus nocte et consumimur igni.
+%
+In order to make an omelette, you have to break a few cooks.
+%
+It is far better to vote for a loser than to elect one.
+%
+It is useless to put on your brakes when you're upside down. -Paul Newman
+%
+It would appear that even BTL employees put their pants on one leg at a time.
+%
+It's 5 o'clock.  Do you know where your files are?
+%
+It's Your Environment -- Use It Up!
+%
+It's a small world, but I'd hate to have to paint it.
+%
+It's hard to love someone who looks down on you because your hands get bloody protecting him.
+%
+It's just a silly native superstition.
+%
+It's lonely at the top, but it's lonelier at the bottom.
+%
+It's not reality that's important, but how you perceive things.
+%
+It's not the time between the takes that takes the time - it's changing your mind between the takes that takes the time. -Stage Dept.
+%
+It's not the time it takes to take the takes that takes the time, it's the time it takes between the takes that takes the time. -S. Spielberg
+%
+It's not the years, it's the mileage.
+%
+It's only a game!
+%
+Just because your paranoid doesn't mean they're not out to get you.
+%
+Justice for the poor is much less popular than revenge on the rich.
+%
+Ken Thompson can't beat Belle.  So what?  How fast can Seymour Cray add?
+%
+Let's just take this shortcut across this field.  That bull doesn't see us.
+%
+Life is a game:  whoever dies with the most toys wins.
+%
+Life is a mystery -- love is a dancer.
+%
+Lord?  We don't have no lord.  We're an anarcho-syndicalist commune.
+%
+Luchamos contra el Wombat, otra enemigo de la humanidad. -Frente Wombato de Liberacion Nacional
+%
+Machne oprating at olny tn prcnt eficientcy.
+%
+Money cannot buy happiness, but happiness will not buy groceries.
+%
+Money is a terrible thing to follow but a charming thing to meet.
+%
+Mr. President!  We cannot allow ... a MINE-SHAFT GAP!
+%
+NOT NOT NOT ALLOWED
+%
+Never worry the boss unnecessarily.  Don't tell him.
+%
+Niagara Falls is the second-biggest disappointment in a bride's life. -O. Wilde
+%
+Nihilism means nothing to the dancing peasants.
+%
+No good deed goes unpunished.  -Clare Booth Luce.
+%
+No mistake is too small to be fixed, but first make sure it's a mistake.
+%
+No note is too high to be taken down an octave.
+%
+No user jobs will be lost because of the crash.
+%
+Nobody can be as agreeable as an uninvited guest.
+%
+Nothing is impossible for the man who doesn't have to do it himself.
+%
+Nothing of interest ever happened on this day.
+%
+Nothing works.  No one knows why.  And some jerk is talking French. -Bob Lied
+%
+OK, I think I understand.
+%
+One bad apple can ruin a snake.
+%
+One starts life with a swelled head and ends with swelled feet. -Ezra Pound
+%
+Our ancestors may have been ignorant, but they were not stupid.
+%
+Out of the mouths of babes comes semi-digested Pablum.
+%
+Overall there is a smell of fried onions.  (fnord)
+%
+Panem et circenses, that's what the public wants.
+%
+Pardon me for breathing, which I never do anyway oh, God, I'm so depressed...
+%
+People never go there anymore; it's too crowded. -Yogi Berra
+%
+People who deal with bits should expect to get bitten. -Jon Bentley
+%
+Per omnia saecula vombatidae.
+%
+Procrastination is the art of keeping up with yesterday. -Don Marquis
+%
+Proper planning includes admitting that your plan may not work.
+%
+Real programmers can't say `lint' without adding `hbaxcu' -Wm Leler
+%
+Remember that "almost" means "not".
+%
+Remember when you asked me to tell you when you were being inconsiderate?
+%
+Rog-O-Matic callidus est.
+%
+Rog-O-Matic perditus est.
+%
+Rule 5 Violation
+%
+SYS ERROR 0 - no error detected
+%
+Schroedinger's cat is sitting on Heisenberg's shoulder and they are both laughing at you.
+%
+Secret mail has arrived.
+%
+Sex with someone you don't love is just gymnastics--and I hate exercise. -John Derek
+%
+Si nummi immunis.
+%
+So long as radicals honor theory over facts, they will continue to dismantle their successes.
+%
+Some books are to be tasted, others to be swallowed. -- Francis Bacon
+%
+Sometimes it seems to me that men are children grown incompetent. -Carl Whitaker
+%
+Stack overflow in crawlout.  User environment re-initialized.  (FATAL$)
+%
+Sticks and stones may break my bones, but a laser beam is another matter.
+%
+Stop worrying, you'll never get out of this world alive.
+%
+Subject: Re: Re: Clar ... HUMBUG! - Wrongthink st - (nf)
+%
+Sure [Somoza]'s a son-of-a-bitch, but he's OUR son-of-a-bitch.  -F.D. Roosevelt
+%
+TERROR IN THE OUTPUT FILE  A  A
+%
+Technological unemployment is total today -- 300 years ago we were all farmers.
+%
+Tell the girls to slice the ham thin.
+%
+That must be wonderful! I don't understand it at all.
+%
+The $SIGNON command is a risky practice.
+%
+The Beatles?  Isn't that Paul McCartney's old band?
+%
+The Emperor is not as forgiving as I am.
+%
+The Luddites always lose.  Always.
+%
+The Moral Majority are the people our ancestors came from Europe to escape.
+%
+The Tao which can be talked about is not the Tao.  -Lao Tzu
+%
+The UNIX system is harder to use than a toaster.  -Kaare Christian
+%
+The US Marines:  the Few, the Proud, the Dead on the Beach.
+%
+The average legislator is somewhere nearly all the time. -Herb Nore
+%
+The check is in the mail.
+%
+The common Welsh name Bzjxxllwcp is pronounced Jackson.
+%
+The difference between a thief and the IRS is that the thief doesn't audit you afterwards.
+%
+The difficult we gave up on yesterday, the impossible we are giving up on now.
+%
+The end justifies the meanness.
+%
+The human mind treats a new idea the way the body treats a strange protein - it rejects it.  -Peter Metawar
+%
+The map is not the territory. -A. E. Van Vogt, in World of Null-A
+%
+The official state animal of New York is the cabbie.
+%
+The official state tree of North Dakota is the telephone pole?
+%
+The only way out of a circle is through the center.
+%
+The planes in Spain fall mainly in the rain.
+%
+The problem with a just economy is, who runs the Bureau of Economic Justice?
+%
+The sooner you fall behind, the more time you have to catch up.
+%
+The voice of the people is odd,/It is, and it is not, the voice of God. -Pope
+%
+There are only three kinds of proof:  induction, exhaustion, and intimidation.
+%
+There is nothing more permanent than a temporary tax.
+%
+There used to be men and women, now there are men and persons.
+%
+There'll always be an England - if not it would be necessary to invent one.
+%
+There's a difference between ethical people and nice people.  You can't trust nice people.
+%
+They couldn't hit an elephant at this dist... -- last words of Gen. John Sedgewick
+%
+They laughed at Copernicus; they laughed at Galileo; they laughed at Bozo the Clown.
+%
+Things are more like they are today than they ever were before. -Dwight D Eisenhower
+%
+Things are more like they used to be than they are now.
+%
+This is a full standard Kernighan & Ritchie C compiler.
+%
+This machine does not exist!  Boy am I confused!
+%
+This system hasn't crashed in ages.
+%
+This time for sure!
+%
+This will hurt me more than it hurts you.
+%
+Those who do not remember the past are condemned to repeat it.
+%
+To be clear is professional; not to be clear is unprofessional. -- Sir Ernest Gowers
+%
+To err is human; that's why I'm comfortable around Gods.
+%
+Toutes choses sont dites deja, mais comme personne n'ecoute, il faut toujours recommencer.
+%
+Transformation is invested with the mysterious and the painful.
+%
+Trust Me.
+%
+Two heads are better than a bath and a half.
+%
+Two monologues do not make a dialogue.
+%
+Two wrongs don't make a right.  Two Wrights make airplanes.
+%
+Unix is the only significant operating system whose documentation fits in a student's briefcase. -John Lions (Fixed in 4.1BSD)
+%
+Vocatus atque non vocatus deus aderit.
+%
+Vox populi, vox Dei. -Alcuin
+%
+WAR IS PEACE.  INFORMATION IS SLAVERY.  OUR FUTURE IS IN OUR HANDS.
+%
+Watch out for quantum ducks:  Quark!  Quark!
+%
+We are experiencing network trouble -- do not adjust your illegal descrambler.
+%
+We are faced with an insurmountable opportunity.  -W. Kelley
+%
+We can lick gravity, but sometimes the paperwork is overwhelming. -von Braun
+%
+We don't need a standard; Kernighan & Ritchie completely defines the language.
+%
+We have a really challenging assignment for you.
+%
+We must all hang together, or assuredly we shall all hang separately. -Franklin
+%
+We offer every assistance short of actual help.
+%
+We shall never understand one another until we reduce the language to seven words. -K. Gibran
+%
+We won't need reservations.
+%
+We'll burn that bridge when we come to it...
+%
+We're scientists.  We have to do things we hate -- that even sicken us.
+%
+What did you throw that book I wanted to be read to out of out for?
+%
+What do you mean the 8080 & the 6502 are incompatible?  They're both NMOS!
+%
+What good is someone who can walk on water if you can't follow in his footsteps?
+%
+What is now proved was once only imagined. -William Blake
+%
+When an Okie moves to California, he raises the IQ of both states.  -Will Rogers
+%
+When better machines are built, jks will break them, and td will bitch about it.
+%
+When bigger machines are built, scj will saturate them.
+%
+When more and more people are out of work unemployment will result. -Calvin Coolidge.
+%
+When you're damned if you do and damned if you don't, then DO!
+%
+Whenever I'm caught between two evils, I take the one I haven't tried before. -Mae West
+%
+Who ordered that? -I.I. Rabi on the discovery of the muon
+%
+Why do they have this marked "Danger, do not touch"?
+%
+Why polish the corners off a sphere in a roomful of cubes?
+%
+With the wind in the east I can tell an eagle from a hammer.
+%
+Wombat omnia vincet.
+%
+Yes, the red switch.
+%
+You can tell a man by the company that keeps him.
+%
+You can't miss it.
+%
+You make the megabucks, I make the nanobucks...it's YOUR problem.
+%
+Your opponent wouldn't fight if he didn't think he had a chance.
+%
+Zero is greater than minus zero, but don't ask by how much. -6600 ref. manual
+%
+jim is a nice editor except that it runs on the Blit. -W. Joy
+%
+not not not Algol
+%
+uuxqt cmd (rnews ) status (ucsfcgl!uucp 256)
+%
+Smoked carp is terrible unless you're out of smoked salmon.
+%
+The move of bambam functionality to the new AP bugs is re-scheduled to Friday night
+%
+I am a high-pressure guy, and I didn't take this job to conduct a going-out-of-business sale. - A.A. Penzias
+%
+When faced with two evils, one asks why only two?
+%
+A bad workman quarrels with his tools.
+%
+I think that I shall never see a billboard as lovely as a tree. -Ogden Nash
+%
+UNIX acts as an equalizer of the hardware playing field.  J. Scanlon
+%
+During 1986, UNIX will dominate the low end.  J. Scanlon
+%
+What did you throw that book I wanted to be read to out of about Down Under out for?
+%
+After all, a murderer is only an extroverted suicide.
+%
+The dawning of the Information Age is bringing about dramatic changes in the fundamental fabric of our civilization. - AA Penzias
+%
+No branch is better than its trunk.
+%
+The connotation depends on the beacon. - Mark V. Shaney
+%
+I'll eat it if I'm wrong.  I mean a potato. - Danny Sleator
+%
+Need a personal problem? Get a personal computer. - C. P. Killian
+%
+The fear of the lord was discovered before vitamins.
+%
+unknown troff command: We will interpret typing statements A@imp#M:@gr(s)#
+%
+Netnews is someone yelling "Anybody wanna buy a used car?" in a crowded theater.
+%
+The reason Swedes put little o's over some A's is that ontology recapitulates philology.
+%
+The meek shall inherit the earth -- they are pronounced "o".
+%
+Toto, I've a feeling we're not in any immediate danger of having just committed suicide!
+%
+CB is a many gendered thing.
+%
+Niagara Falls is the wise bird who builds her nest in a chinese computer terminal!
+%
+I kissed my first cigarette on the stage unless someone intends to fire it.
+%
+I regard an original error as better than no Moon at all.
+%
+Do not meddle in the mouth.
+%
+Androgyny recapitulates philately.
+%
+A more wretched hive of scum and villainy: not found.
+%
+All the great men are dead and I'm not feeling too well myself.
+%
+Aren't you glad his name wasn't Alexander Graham Siren?
+%
+Bosses never realize that a bottle neck is always at the top.
+%
+C'est dommage, mais c'est vrai.
+%
+Espanol tiene demasiada mucha grammatica.
+%
+Every good subversive does it for fun.  -Rich Rosen
+%
+He who makes a beast of himself gets rid of the pain of being a man.  -H.S. Thompson
+%
+Hodie tempum scriptire in Latinum non habeo.  Cras epistlum submissibo.
+%
+How did the Universe manage to go bang in such an unreasonable way? -- PCW Davies
+%
+I have discovered the art of deceiving diplomats; I tell them the truth and they never believe me. -Cavour
+%
+I love Pascal ... I'm also into leather.
+%
+I never refuse. I never contradict. I sometimes forget. -Disraeli
+%
+I'm sorry, but I've made other plans.
+%
+I've got a ferret sticking up my nose.
+%
+If it's boring, turn it off.
+%
+If it's gratitude you want, get a dog. -P. T. Barnum
+%
+If you can't find enough radiation at Ralph's, you can probably do without it.
+%
+It takes approximately two minutes to reposition the continents from one geological era to another.
+%
+It's funny how they work so well, even when they're not appropriate.
+%
+It's hard to be mellow when you can't stand up.
+%
+It's not a car, it's a Volkswagen.
+%
+It's not the years, it's the mileage.
+%
+Jesus Rodrigues has a 9-inch duck.
+%
+Just be glad you don't get all the government you pay for.  -Will Rogers
+%
+Look on my works, oh ye mighty, and giggle.
+%
+Nobody can be as agreeable as an uninvited guest.
+%
+Now is the winter of our discontent, made glorious summer in Northern California.
+%
+One man's Mede is another man's Persian.
+%
+Ooh, Andy Tannenbaum?  His netnews is SO derivative.
+%
+Reason is a universal instrument which can serve on any kind of occasion. -Descartes
+%
+Respect you in the morning?!  Hell, I don't even respect you now.
+%
+So narrow minded is the boss that he has to stack his ideas vertically.
+%
+That must be wonderful! I dont understand it at all.
+%
+That's the nice thing about standards -- there's so many to choose from. -trb
+%
+The human brain is not a pretty sight.
+%
+The tree of research must from time to time be refreshed with the blood of bean counters. -Alan Kay
+%
+There are two kinds of people in the world -- those who are, and those who aren't.
+%
+They were easy to tell apart: the good Kirk was paid by William Shatner and the evil one by Gavin McLeod.
+%
+They were easy to tell apart: the good Kirk wore cottons and wools and the evil Kirk wore nylons and polyesters.
+%
+Things always look darkest just before they go totally black.  -Col. Hannibal Smith
+%
+U.S. out of OAKLAND!
+%
+Vivaldi did not write 600 concerti grossi.  He wrote the same one 600 times. -Stravinski
+%
+We are faced with an insurmountable opportunity.  -W. Kelley
+%
+We use it but we do not love it. -Goethe
+%
+Why be a second rate Ravel when you can be a first rate Gershwin?
+%
+Why don't we store the blank punch cards on disk, and get rid of all those boxes.
+%
+Without alkaloids, life itself would be impossible.
+%
+Yesterday's sensation is today's calibration and tomorrow's background. -Valentine Telegdi
+%
+You know, Louie, I think this is the beginning of a beautiful friendship.
+%
+You will get a better gorilla effect if you use as big a piece of paper as possible.
+%
+`Compared to academic politics, political politics is a nice, clean game.' -S. I. Hayakawa, SF Examiner 4/23/84
+%
+`She read her boyfriend's mind, and they're no longer going together,' Mrs. Resch added.
+%
+``I'm a hugger, I'm a tactile politician,'' Turner said.
+%
+ftp> Globbing off.
+%
+ftp> Globbing on.
+%
+Buick offers inbred american quality. -TV ad
+%
+We're too close to System Test.
+%
+A 6-char limit is like a 6-inch trout: throw it back.
+%
+I hope that there are sour apples in every bushel.
+%
+I hate programs that chdir - Boyd Roberts
+%
+Never attribute to malice what can be found in scientific american, under computer recreations.
+%
+A big book is a big nuisance. - Callimachus, librarian of Alexandria
+%
+4.2BSD is a nightmare about Tenex. - Ian Darwin
+%
+A liberal is one too open-minded to take his own side in an argument.
+%
+Basic is like doing arithmetic with Roman numerals. - MD McIlroy
+%
+ICIKL: DO I = 1 /* BY +1 FELTETELEZESEVEL */ TO 2*N;
+%
+A 10.0-szer 0.1 sohasem 1.0!
+%
+Don't forget to run "make depend"
+%
+2 is always smaller than 3, even for large values of 2.
+%
+These numbers DO NOT appear to belong to anybody: 315 323 372 375 602 765 772 903 914
+%
+If it isn't like TECO, it's not worth using. -Rae McLellan
+%
+Exercise is the Yuppie version of bulemia.
+%
+Your First Amendment ends where the next persons Bill of Rights begins. P. Michael Guba
+%
+Unix: from now on, consider it dead. -Mike O'Dell
+%
+"The more you drive ... the less intelligent you are." -- Miller, in Repo Man
+%
+Things are only as bad as they are and can only get worse if they do!
+%
+There is no language in our lungs.
+%
+We don't care, we don't have to-- we used to be the phone company.
+%
+If they gave me a goldfish, I would cook it. -Feng Jicai
+%
+These calculations even schoolchildren can master in three-four days. -Maimonides
+%
+Multilevel standards are like onions. They're smelly and make you cry a lot. -Ron Natalie
+%
+For me, UNIX is a way of being. -Armando P. Stettner
+%
+Plunk your magic twanger, froggy.
+%
+Some of us feel that there is a loss of scholarship here, and we're not too happy about it. -Irvin Lustig
+%
+What distinguishes good software from poor software is customer satisfaction. -Bob Yacobellis
+%
+itiprobe says hi
+%
+Options can cause undesirable operations, so it is important to ensure they are set up properly.
+%
+Warning: perch lorethylene may harm plastic
+%
+Male tyrannosaurs may have used their diminutive front legs to titillate female partners, but this will not explain why they got so small. - Gould and Lewontin
+%
+Rog-O-Matic's not expert enough. It could handle rogue, but it couldn't handle More.
+%
+Caught in --More-- loop.
+%
+You will make many changes before settling satisfactorily.
+%
+You need not worry about your future - it's going to be rotten.
+%
+Status: R
+%
+Stereotypes are one of the worst things in the world. -miteddie!nessus
+%
+It's the thought, if any, that counts! -Dick Grantges
+%
+Attend winter sheep meetings. Learning never ends!
+%
+If MS/DOS is the only operating system you're ever going to use, then the procedure is simple
+%
+A 6-char limit is like night.
+%
+A block grant is a nice terminal, but it will keep you awake until noon.
+%
+A duck with three wings and a loaf of bread is brother to the sun god.
+%
+About all some parents accomplish in life is either illegal, immoral or fattening.
+%
+Arabic is a mystery -- love is just a crock.
+%
+Every day, thousands of housewives pick up speed.
+%
+I kissed my first cigarette on the herpolhode lying in the invariant plane.
+%
+It's hard to be mellow when you bite your nails.
+%
+Man is in session.
+%
+OS 360 -- Not uranium.
+%
+Please log off, the computer is out to get in your room and drink?
+%
+System going down for 5 minutes -- back up in barrels.
+%
+The aim of existence is to have clean ideas, change them like shirts.
+%
+The meek shall inherit the earth -- they are careful to hide the fact.
+%
+The null string has always been a locksmith.  -Albert Einstein
+%
+The whole UNIX operating system whose documentation fits in a chinese computer terminal!
+%
+Thrashing is just before they go totally black.  -Col. Hannibal Smith
+%
+Time is nature's way of making more anarchy.
+%
+To make an omelette, you have to paint it.
+%
+Wars do not log out!
+%
+Well, the handwriting is on the Titanic, why not go gentle into that good night?
+%
+You're so ugly you couldn't even get a better mouse.
+%
+Economic analysts say that while the economy may be slowing, it is not fizzling out.
+%
+*** REPLACE THIS LINE WITH YOUR MESSAGE ***
+%
+he who lives by the nit dies by the pick.
+%
+A sharp tongue is the only edge tool that grows keener with constant use. -W. Irving
+%
+Critics are like eunuchs in a harem: they know how it's done, they've seen it done every day, but they're unable to do it themselves. -Brendan Behan
+%
+There is a 10% penalty for getting yourself killed.
+%
+#(cat probably won't work on 8 bit files, you  will have to use a simpler filter)
+%
+The barge was in my blind spot. - Peter Hobson, Cambridge cox
+%
+Passing over a black hole temporarily disables ship.
+%
+For forty days and forty nights you held the future of this country in the hollow of your head. - Australian backbencher
+%
+I would be perfectly happy being Kepler, [but] I have been Kepler many times over.-B. Mandelbrot
+%
+The lion will lie down with the lamb, but the lamb won't get much sleep.
+%
+uucp failed partially: 0 file(s) sent; 1 error(s)
+%
+uucp failed completely (11)
+%
+Trust him, but still keep your eyes open.
+%
+The Inuit have dozens of words for snow, so why do the Dutch only have one word for rain?
+%
+non-positive output count: .!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+%
+invalid control line !!!
+%
+unseal: invalid length
+%
+bad input char: .Ppm{=P!*@)Z9oFPp|*?)Z9pv9i%Su$^J)48%K_e239GM#ffoq!!!"!Mp#V6N\H8uEgdXbP\[7j1&PJz!X76!4BA}5!!!!!"syui!!!"!Mp#V6P\Scb?p8`;!4lf&
+%
+values of B will give rise to dom!
+%
+You dialed 5483
+%
+Florida is the "flea and tick capital of America."
+%
+"RULE 7: Option arguments cannot be optional." Sys V Interface p 343.
+%
+The Italians make money out of funding their own deficit.
+%
+May I have a large container of coffee?
+%
+How I want a drink, alcoholic of course, after the chapters involving quantum mechanics.
+%
+Tu aideras a rappeler ta quantite a beaucoup de docteurs amis.
+%
+To express e, remember to memorize a sentence to simplify this.
+%
+By omnibus I traveled to Brooklyn.
+%
+Te ayudare a recorder la cantidad a indoctos si releesme bien.
+%
+Gods!  A hideous beast, baying is pursuing us!
+%
+Dieux!  Un monstre hideux.  En hurlant.  Nous poursuit.
+%
+We're going up there this weekend and I'm gonna get so roaring, stinkin', no-good drunk I won't be able to see. - mechanic in "The Blob".
+%
+There is a tide in the affairs of men, which, taken at the flood, leads on to fortune. - Julius Caesar IV.iii.217
+%
+'Tis a gross error, held in schools, That Fortune always favours fools. - John Gay.
+%
+Fortis fortuna adiuvat. - Terence
+%
+Fortune, good night, smile once more, turn thy wheel! - King Lear II.ii.180
+%
+Nothing more certain than incertainties; Fortune is full of fresh variety: Constant in nothing but inconstancy. - Richard Barnfield.
+%
+Fortunes ... come tumbling into some men's laps. - Francis Bacon.
+%
+Distrust yourself, and sleep before you fight.  'Tis not too late tomorrow to be brave. - J. Armstrong.
+%
+The rich man has his motor car, His country and his town estate.  He smokes a fifty-cent cigar And jeers at Fate. - F. P. Adams
+%
+Nothing is capable of being well set to music that is not nonsense. - Joseph Addison.
+%
+Sunday clears away the rust of the whole week. - Joseph Addison.
+%
+These widows, sir, are the most perverse creatures in the world. - Joseph Addison.
+%
+We have lost our little Hanner in a very painful manner. - Max Adeler.
+%
+While I see many hoof-marks going in, I see none coming out. - Aesop.
+%
+You press the button, and we'll do the rest.
+%
+An Austrian army, awfully arrayed, Boldly by battery besieged Belgrade.
+%
+Please to remember the Fifth of November, Gunpowder Treason and Plot.
+%
+Good Americans, when they die, go to Paris. - Thomas Appleton.
+%
+usend: /usr/asp/spool filesystem is exhausted
+%
+If double-bubble inflation did occur, then the shadow world is exponentially uninteresting.
+%
+Edinburgh is the Reykjavik of the South.
+%
+The skeletons in the cupboard will all come out in the wash.
+%
+Nobody goes to the theatre unless suffering from acute bronchitis.
+%
+He cried at all his own weddings, and with reason.
+%
+Whenever I see his fingernails, I thank God I don't have to look at his feet.
+%
+It's deja vu all over again.
+%
+$! nulled, predecessor circle
+%
+Truth is the ultimate weapon; fortunately no one has perfected it yet. - Ken Ellis
+%
+Caution: Do not view laser light with remaining eye.
+%
+Using 4.2 in this hospital is a great idea.
+%
+Executive ability is in your make-up.
+%
+Every excess becomes a vice.
+%
+A philosopher does not need a torch to gather glow-worms by at mid-day. -- Earnest Bramah
+%
+Good fish get dull but sex is always fun. -- Mehinaku proverb
+%
+Accounting software is structured as a set of tools that can be used to build accounting systems.
+%
+dis: invalid general addressing mode (e8); notify disassembler implementor
+%
+Ignore the fatal errors. It's O.K.
+%
+grep: RE error 41: No remembered search string.
+%
+struct sleaziness { char *pleasure; int alchemically; };
+%
+Veni, vidi, maeni, mo, cacha tigrem baedas to, iffi hollers, ledem go, veni, vidi, maeni, mo.
+%
+cc: warning: -g disables -O
+%
+System went down at Fri Dec 13 21:54:56 1901
+%
+Dump time is unreasonable
+%
+Ever see what ratfor does on a syntax error in a for loop?
+%
+ucode rev x62
+%
+Make:  Don't know how to make love.  Stop.
+%
+A tree is best measured when it is down.
+%
+The pale companion is not for our pomp.
+%
+Make is like Pascal: everybody likes it, so they go in and change it. -DM Ritchie
+%
+beware of component 3730
+%
