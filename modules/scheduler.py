@@ -1144,7 +1144,11 @@ class MessageScheduler:
         import ssl as _ssl
         from email.message import EmailMessage
 
-        alert_enabled = self.bot.config.getboolean('Bot', 'radio_offline_alert_enabled', fallback=True)
+        alert_enabled = self.bot.config.getboolean(
+            'Connection',
+            'radio_offline_alert_enabled',
+            fallback=self.bot.config.getboolean('Bot', 'radio_offline_alert_enabled', fallback=False),
+        )
         if not alert_enabled:
             return
 
@@ -1155,7 +1159,11 @@ class MessageScheduler:
         from_name     = self._get_notif('from_name') or 'MeshCore Bot'
         from_email    = self._get_notif('from_email')
 
-        alert_email_cfg = self.bot.config.get('Bot', 'radio_offline_alert_email', fallback='').strip()
+        alert_email_cfg = self.bot.config.get(
+            'Connection',
+            'radio_offline_alert_email',
+            fallback=self.bot.config.get('Bot', 'radio_offline_alert_email', fallback=''),
+        ).strip()
         if alert_email_cfg:
             recipients = [r.strip() for r in alert_email_cfg.split(',') if r.strip()]
         else:

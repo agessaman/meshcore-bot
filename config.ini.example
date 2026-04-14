@@ -50,6 +50,15 @@ radio_zombie_alert_enabled = false
 # Optional zombie alert recipients (comma-separated; empty = nightly recipients)
 radio_zombie_alert_email =
 
+# Consecutive send timeouts before entering radio-offline state
+radio_offline_threshold = 3
+
+# Send immediate radio-offline alert email (uses Notifications SMTP settings)
+radio_offline_alert_enabled = false
+
+# Optional radio-offline alert recipients (comma-separated; empty = nightly recipients)
+radio_offline_alert_email =
+
 [Bot]
 # Bot name for identification and logging
 bot_name = MeshCoreBot
@@ -184,6 +193,13 @@ service_restart_backoff_seconds = 300
 
 # Max seconds to wait for a channel message send before timing out (default: 30)
 send_timeout_seconds = 30
+
+[Admin]
+# Local admin API (binds to 127.0.0.1)
+enabled = false
+port = 5001
+# Required when enabled
+token =
 
 [Channels]
 # Channels to monitor (comma-separated)
@@ -1718,7 +1734,7 @@ enabled = false
 
 # Channels to post alerts to (comma-separated).
 # Prefer this option if you want multiple channels.
-channels = #general
+channels = #mybotchannel
 
 # Fallback single channel option (used only when channels= is not set).
 # channel = #general

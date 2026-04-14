@@ -390,7 +390,11 @@ class MeshCoreBot:
         self._send_consecutive_failures: int = (
             getattr(self, '_send_consecutive_failures', 0) + 1
         )
-        threshold = self.config.getint('Bot', 'radio_offline_threshold', fallback=3)
+        threshold = self.config.getint(
+            'Connection',
+            'radio_offline_threshold',
+            fallback=self.config.getint('Bot', 'radio_offline_threshold', fallback=3),
+        )
         if self._send_consecutive_failures >= threshold and not self.is_radio_offline:
             self._radio_offline = True
             since = _dt.datetime.utcnow().isoformat()
