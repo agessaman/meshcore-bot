@@ -1198,9 +1198,8 @@ api_url = http://api.airplanes.live/v2/
 # Maximum: 250 nautical miles
 default_radius = 25
 
-# Maximum number of aircraft to return in results (0 = no limit, send all)
-# Set to a positive integer (max: 50) to cap results; use limit= arg per-query
-max_results = 0
+# Maximum number of aircraft to return in default list results (range: 1-10)
+max_results = 3
 
 # API request timeout in seconds
 url_timeout = 10

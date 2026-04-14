@@ -46,7 +46,9 @@ class AirplanesCommand(BaseCommand):
         self.airplanes_enabled = self.get_config_value('Airplanes_Command', 'enabled', fallback=True, value_type='bool')
         self.api_url = self.get_config_value('Airplanes_Command', 'api_url', fallback='http://api.airplanes.live/v2/', value_type='str')
         self.default_radius = self.get_config_value('Airplanes_Command', 'default_radius', fallback=25, value_type='float')
-        self.max_results = self.get_config_value('Airplanes_Command', 'max_results', fallback=0, value_type='int')
+        # Default chosen to fit single-message constraints on the smallest channel budget.
+        # Channel payload can be as low as 130 bytes; three compact lines are reliable.
+        self.max_results = self.get_config_value('Airplanes_Command', 'max_results', fallback=3, value_type='int')
         self.url_timeout = self.get_config_value('Airplanes_Command', 'url_timeout', fallback=10, value_type='int')
 
         # Ensure API URL ends with /
@@ -211,7 +213,7 @@ class AirplanesCommand(BaseCommand):
             'ladd': False,
             'pia': False,
             'squawk': None,
-            'limit': self.max_results,  # 0 = no limit (return all matching aircraft)
+            'limit': self.max_results,  # 0 = no configured cap (still single-message bounded at send time)
             'sort': 'distance'  # distance, altitude, speed
         }
 
@@ -540,7 +542,13 @@ class AirplanesCommand(BaseCommand):
 
         return response
 
-    def _format_aircraft_list(self, aircraft_list: list[dict[str, Any]], query_lat: float, query_lon: float) -> str:
+    def _format_aircraft_list(
+        self,
+        aircraft_list: list[dict[str, Any]],
+        query_lat: float,
+        query_lon: float,
+        max_length: Optional[int] = None,
+    ) -> str:
         """Format compact list for multiple aircraft.
 
         Args:
@@ -572,7 +580,32 @@ class AirplanesCommand(BaseCommand):
             line = f"{callsign} {alt_str} {speed_str} {distance_nm:.1f}nm {bearing_cardinal}"
             lines.append(line)
 
-        return '\n'.join(lines)
+        if max_length is None:
+            return '\n'.join(lines)
+
+        # Pack whole lines into the available single-message budget.
+        fitted_lines: list[str] = []
+        used = 0
+        for line in lines:
+            line_len = len(line)
+            projected = line_len if not fitted_lines else used + 1 + line_len
+            if projected > max_length:
+                break
+            fitted_lines.append(line)
+            used = projected
+
+        if not fitted_lines:
+            # Fall back to a hard-truncated first line for pathological edge cases.
+            first = lines[0] if lines else ""
+            return first[: max(0, max_length - 3)].rstrip() + "..." if len(first) > max_length else first
+
+        omitted = len(lines) - len(fitted_lines)
+        if omitted > 0:
+            suffix = f"\n...+{omitted} more"
+            if used + len(suffix) <= max_length:
+                return ''.join(['\n'.join(fitted_lines), suffix])
+
+        return '\n'.join(fitted_lines)
 
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the airplanes command.
@@ -733,9 +766,12 @@ class AirplanesCommand(BaseCommand):
                 await self.send_response(message, response)
             else:
                 # Keep list output to a single frame to avoid multi-message flood traffic.
-                response = self._format_aircraft_list(filtered, location[0], location[1])
-                if len(response) > max_length:
-                    response = response[:max_length - 3].rstrip() + "..."
+                response = self._format_aircraft_list(
+                    filtered,
+                    location[0],
+                    location[1],
+                    max_length=max_length,
+                )
                 await self.send_response(message, response)
 
             return True
