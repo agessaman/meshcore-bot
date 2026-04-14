@@ -1054,7 +1054,10 @@ class TestSendScheduledMessageWrapper:
         scheduler.bot.main_event_loop = mock_loop
         fake_future = Mock()
         fake_future.result.return_value = None
-        with patch("asyncio.run_coroutine_threadsafe", return_value=fake_future):
+        def _run_coro_threadsafe(coro, loop):
+            coro.close()
+            return fake_future
+        with patch("asyncio.run_coroutine_threadsafe", side_effect=_run_coro_threadsafe):
             scheduler.send_scheduled_message("general", "hi")
         scheduler.bot._record_send_success.assert_called_once()
 
@@ -1065,7 +1068,10 @@ class TestSendScheduledMessageWrapper:
         scheduler.bot.main_event_loop = mock_loop
         fake_future = Mock()
         fake_future.result.side_effect = Exception("bang")
-        with patch("asyncio.run_coroutine_threadsafe", return_value=fake_future):
+        def _run_coro_threadsafe(coro, loop):
+            coro.close()
+            return fake_future
+        with patch("asyncio.run_coroutine_threadsafe", side_effect=_run_coro_threadsafe):
             scheduler.send_scheduled_message("general", "hi")
         scheduler.bot._record_send_failure.assert_called_once()
 
@@ -1076,7 +1082,14 @@ class TestSendScheduledMessageWrapper:
 
 
 class TestSendIntervalAdvertOfflineGuard:
-    """Tests for send_interval_advert() radio-offline guard."""
+    """Tests for send_interval_advert() radio state suppression guards."""
+
+    def test_suppressed_when_radio_zombie(self):
+        scheduler = _make_scheduler()
+        scheduler.bot.is_radio_zombie = True
+        with patch("asyncio.run_coroutine_threadsafe") as mock_rct:
+            scheduler.send_interval_advert()
+        mock_rct.assert_not_called()
 
     def test_suppressed_when_radio_offline(self):
         scheduler = _make_scheduler()
@@ -1092,7 +1105,10 @@ class TestSendIntervalAdvertOfflineGuard:
         scheduler.bot.main_event_loop = mock_loop
         fake_future = Mock()
         fake_future.result.return_value = None
-        with patch("asyncio.run_coroutine_threadsafe", return_value=fake_future):
+        def _run_coro_threadsafe(coro, loop):
+            coro.close()
+            return fake_future
+        with patch("asyncio.run_coroutine_threadsafe", side_effect=_run_coro_threadsafe):
             scheduler.send_interval_advert()
         scheduler.bot._record_send_success.assert_called_once()
 
@@ -1104,7 +1120,10 @@ class TestSendIntervalAdvertOfflineGuard:
         scheduler.bot.main_event_loop = mock_loop
         fake_future = Mock()
         fake_future.result.side_effect = FuturesTimeoutError()
-        with patch("asyncio.run_coroutine_threadsafe", return_value=fake_future):
+        def _run_coro_threadsafe(coro, loop):
+            coro.close()
+            return fake_future
+        with patch("asyncio.run_coroutine_threadsafe", side_effect=_run_coro_threadsafe):
             scheduler.send_interval_advert()
         scheduler.bot._record_send_failure.assert_called_once()
 
@@ -1379,7 +1398,10 @@ class TestSendIntervalAdvertAsyncFixed:
         loop_mock.is_running.return_value = True
         sched.bot.main_event_loop = loop_mock
 
-        with patch("asyncio.run_coroutine_threadsafe", return_value=future_mock):
+        def _run_coro_threadsafe(coro, loop):
+            coro.close()
+            return future_mock
+        with patch("asyncio.run_coroutine_threadsafe", side_effect=_run_coro_threadsafe):
             sched.send_interval_advert()
 
         # The error log must include the class name, not just str(e) which
@@ -1453,7 +1475,10 @@ class TestSendScheduledMessageAsyncTimeout:
         loop_mock.is_running.return_value = True
         sched.bot.main_event_loop = loop_mock
 
-        with patch("asyncio.run_coroutine_threadsafe", return_value=future_mock):
+        def _run_coro_threadsafe(coro, loop):
+            coro.close()
+            return future_mock
+        with patch("asyncio.run_coroutine_threadsafe", side_effect=_run_coro_threadsafe):
             sched.send_scheduled_message("#general", "hello")
 
         call_args_list = mock_logger.error.call_args_list
@@ -1465,7 +1490,10 @@ class TestSendScheduledMessageAsyncTimeout:
 # ---------------------------------------------------------------------------
 
 
-def _make_smtp_scheduler(notif_overrides: dict) -> "MessageScheduler":
+def _make_smtp_scheduler(
+    notif_overrides: dict,
+    meta_overrides: dict | None = None,
+) -> "MessageScheduler":
     """Return a scheduler whose maintenance.get_notif returns values from notif_overrides."""
     bot = Mock()
     bot.logger = Mock()
@@ -1475,6 +1503,9 @@ def _make_smtp_scheduler(notif_overrides: dict) -> "MessageScheduler":
     bot.config.set("Bot", "radio_zombie_alert_email", "")
     bot.config.add_section("Connection")
     bot.config.set("Connection", "connection_type", "serial")
+    metadata = dict(meta_overrides or {})
+    bot.db_manager = Mock()
+    bot.db_manager.get_metadata = Mock(side_effect=lambda key: metadata.get(key, ""))
     sched = MessageScheduler(bot)
     defaults = {
         "nightly_enabled": "true",
@@ -1556,3 +1587,15 @@ class TestZombieAlertEmailSsrfGuard:
                 sched.send_zombie_alert_email(fail_count=5, threshold=3, interval=60)
         logged = str(sched.bot.logger.error.call_args_list)
         assert "private" not in logged.lower() and "reserved" not in logged.lower()
+
+    def test_metadata_alert_enabled_false_suppresses_zombie_alert(self):
+        """zombie.alert_enabled metadata should suppress alert sending immediately."""
+        sched = _make_smtp_scheduler(
+            {"smtp_host": "smtp.example.com", "from_email": "bot@example.com"},
+            {"zombie.alert_enabled": "false"},
+        )
+        with patch("smtplib.SMTP") as mock_smtp:
+            with patch("smtplib.SMTP_SSL") as mock_smtp_ssl:
+                sched.send_zombie_alert_email(fail_count=5, threshold=3, interval=60)
+        mock_smtp.assert_not_called()
+        mock_smtp_ssl.assert_not_called()

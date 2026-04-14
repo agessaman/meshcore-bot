@@ -580,7 +580,7 @@ class MessageScheduler:
             if hasattr(self.bot, 'mesh_graph') and self.bot.mesh_graph and hasattr(self.bot.mesh_graph, 'delete_expired_edges_from_db'):
                 self.bot.mesh_graph.delete_expired_edges_from_db(mesh_connections_days)
 
-            ran_at = datetime.datetime.utcnow().isoformat()
+            ran_at = datetime.datetime.now(datetime.UTC).isoformat()
             self._last_retention_stats['ran_at'] = ran_at
             try:
                 self.bot.db_manager.set_metadata('maint.status.data_retention_ran_at', ran_at)
@@ -592,7 +592,7 @@ class MessageScheduler:
             self.logger.exception(f"Error during data retention cleanup: {e}")
             self._last_retention_stats['error'] = str(e)
             try:
-                ran_at = datetime.datetime.utcnow().isoformat()
+                ran_at = datetime.datetime.now(datetime.UTC).isoformat()
                 self.bot.db_manager.set_metadata('maint.status.data_retention_ran_at', ran_at)
                 self.bot.db_manager.set_metadata('maint.status.data_retention_outcome', f'error: {e}')
             except Exception:
@@ -626,6 +626,9 @@ class MessageScheduler:
 
     def send_interval_advert(self):
         """Send an interval-based advert (synchronous wrapper)"""
+        if self.bot.is_radio_zombie:
+            self.logger.warning("send_interval_advert suppressed — radio is in zombie state")
+            return
         if self.bot.is_radio_offline:
             self.logger.warning("send_interval_advert suppressed — radio is offline (repeated send timeouts)")
             return
@@ -1004,6 +1007,20 @@ class MessageScheduler:
             'radio_zombie_alert_enabled',
             fallback=self.bot.config.getboolean('Bot', 'radio_zombie_alert_enabled', fallback=False),
         )
+        zombie_alert_email_cfg: str | None = None
+        db_manager = getattr(self.bot, 'db_manager', None)
+        if db_manager is not None and hasattr(db_manager, 'get_metadata'):
+            try:
+                meta_enabled = db_manager.get_metadata('zombie.alert_enabled')
+                if isinstance(meta_enabled, str) and meta_enabled.strip():
+                    zombie_alert_enabled = meta_enabled.strip().lower() in {
+                        '1', 'true', 'yes', 'on',
+                    }
+                meta_email = db_manager.get_metadata('zombie.alert_email')
+                if isinstance(meta_email, str) and meta_email.strip():
+                    zombie_alert_email_cfg = meta_email.strip()
+            except Exception:
+                pass
         if not zombie_alert_enabled:
             return
 
@@ -1015,7 +1032,7 @@ class MessageScheduler:
         from_email    = self._get_notif('from_email')
 
         # Alert recipients: dedicated config key, falls back to nightly recipients
-        alert_email_cfg = self.bot.config.get(
+        alert_email_cfg = zombie_alert_email_cfg or self.bot.config.get(
             'Connection',
             'radio_zombie_alert_email',
             fallback=self.bot.config.get('Bot', 'radio_zombie_alert_email', fallback=''),
@@ -1046,7 +1063,7 @@ class MessageScheduler:
         except ValueError:
             smtp_port = 587
 
-        now_utc         = datetime.datetime.utcnow()
+        now_utc         = datetime.datetime.now(datetime.UTC)
         connection_type = self.bot.config.get('Connection', 'connection_type', fallback='unknown')
         serial_port     = self.bot.config.get('Connection', 'serial_port', fallback='n/a')
         interval_min    = interval // 60
@@ -1190,7 +1207,7 @@ class MessageScheduler:
         except ValueError:
             smtp_port = 587
 
-        now_utc         = datetime.datetime.utcnow()
+        now_utc         = datetime.datetime.now(datetime.UTC)
         connection_type = self.bot.config.get('Connection', 'connection_type', fallback='unknown')
         serial_port     = self.bot.config.get('Connection', 'serial_port', fallback='n/a')
 

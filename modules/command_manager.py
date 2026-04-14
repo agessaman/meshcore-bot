@@ -943,6 +943,9 @@ class CommandManager:
         if self.bot.is_radio_zombie:
             self.bot.logger.warning("send_dm suppressed — radio is in zombie state; power cycle required")
             return False
+        if self.bot.is_radio_offline:
+            self.bot.logger.warning("send_dm suppressed — radio is offline (repeated send timeouts)")
+            return False
 
         # Check all rate limits
         can_send, reason = await self._check_rate_limits(
@@ -1044,6 +1047,11 @@ class CommandManager:
 
         if self.bot.is_radio_zombie:
             self.bot.logger.warning("send_channel_message suppressed — radio is in zombie state; power cycle required")
+            return False
+        if self.bot.is_radio_offline:
+            self.bot.logger.warning(
+                "send_channel_message suppressed — radio is offline (repeated send timeouts)"
+            )
             return False
 
         # Check all rate limits (including per-channel)

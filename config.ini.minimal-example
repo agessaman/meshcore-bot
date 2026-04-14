@@ -250,6 +250,8 @@ banned_users =
 [Feed_Manager]
 # Enable or disable RSS/API feed subscriptions (disabled by default)
 feed_manager_enabled = false
+# Allow private/internal feed URLs (default false for SSRF safety)
+allow_private_urls = false
 
 [Logging]
 # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
@@ -526,3 +528,5 @@ enabled = false
 [Feed_Command]
 # Enable or disable the feed command
 enabled = false
+# Allow private/internal feed URLs (default false for SSRF safety)
+allow_private_urls = false

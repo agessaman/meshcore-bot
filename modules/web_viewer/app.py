@@ -1368,7 +1368,7 @@ class BotDataViewer:
                 'smtp_host', 'smtp_port', 'smtp_security',
                 'smtp_user', 'smtp_password',
                 'from_name', 'from_email',
-                'recipients', 'nightly_enabled',
+                'recipients', 'nightly_enabled', 'allow_local_smtp',
             }
             saved = []
             for field in allowed:
@@ -3378,7 +3378,25 @@ class BotDataViewer:
                 url = data['url']
 
                 # Validate URL for SSRF protection
-                if not validate_external_url(url):
+                if self.config.has_section('Feed_Command'):
+                    try:
+                        feed_command_allow_private = self.config.getboolean(
+                            'Feed_Command', 'allow_private_urls', fallback=False
+                        )
+                    except ValueError:
+                        feed_command_allow_private = False
+                else:
+                    feed_command_allow_private = False
+                allow_private_feeds = (
+                    self.config.getboolean(
+                        'Feed_Manager',
+                        'allow_private_urls',
+                        fallback=feed_command_allow_private,
+                    )
+                    if self.config.has_section('Feed_Manager')
+                    else feed_command_allow_private
+                )
+                if not validate_external_url(url, allow_private=allow_private_feeds):
                     return jsonify({'error': 'Invalid or unsafe URL'}), 400
 
                 return jsonify({'success': True, 'message': 'URL validated'})
@@ -5972,7 +5990,25 @@ class BotDataViewer:
             items = []
 
             # Validate URL for SSRF protection
-            if not validate_external_url(feed_url):
+            if self.config.has_section('Feed_Command'):
+                try:
+                    feed_command_allow_private = self.config.getboolean(
+                        'Feed_Command', 'allow_private_urls', fallback=False
+                    )
+                except ValueError:
+                    feed_command_allow_private = False
+            else:
+                feed_command_allow_private = False
+            allow_private_feeds = (
+                self.config.getboolean(
+                    'Feed_Manager',
+                    'allow_private_urls',
+                    fallback=feed_command_allow_private,
+                )
+                if self.config.has_section('Feed_Manager')
+                else feed_command_allow_private
+            )
+            if not validate_external_url(feed_url, allow_private=allow_private_feeds):
                 raise ValueError("Invalid or unsafe feed URL")
 
             if feed_type == 'rss':

@@ -28,6 +28,23 @@ class FeedCommand(BaseCommand):
         super().__init__(bot)
         self.db_path = bot.db_manager.db_path
         self.feed_enabled = self.get_config_value('Feed_Command', 'enabled', fallback=True, value_type='bool')
+        if bot.config.has_section('Feed_Manager'):
+            try:
+                feed_manager_allow_private = bot.config.getboolean(
+                    'Feed_Manager',
+                    'allow_private_urls',
+                    fallback=False,
+                )
+            except ValueError:
+                feed_manager_allow_private = False
+        else:
+            feed_manager_allow_private = False
+        self.allow_private_urls = self.get_config_value(
+            'Feed_Command',
+            'allow_private_urls',
+            fallback=feed_manager_allow_private,
+            value_type='bool',
+        )
 
     def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Check if this command can be executed (enabled, admin only)"""
@@ -108,7 +125,7 @@ feed status 1"""
         api_config = args[4] if len(args) > 4 and feed_type == 'api' else None
 
         # Validate URL — full SSRF protection (IP range + DNS check)
-        if not validate_external_url(feed_url):
+        if not validate_external_url(feed_url, allow_private=self.allow_private_urls):
             return await self.send_response(message, "Invalid or unsafe URL")
 
         # Validate channel exists

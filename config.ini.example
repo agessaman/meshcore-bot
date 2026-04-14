@@ -1337,6 +1337,8 @@ update_graph_two_byte = true
 [Feed_Command]
 enabled = false
 # channels =
+# Allow private/internal feed URLs (default false for SSRF safety)
+allow_private_urls = false
 
 ####################################################################################################
 #                                                                                                  #

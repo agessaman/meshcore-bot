@@ -577,7 +577,7 @@ class TestConfigRoutes:
         assert "smtp_port" in data
         assert "smtp_security" in data
 
-    def test_api_config_notifications_post(self, client):
+    def test_api_config_notifications_post(self, client, viewer):
         payload = {
             "smtp_host": "smtp.example.com",
             "smtp_port": "587",
@@ -588,6 +588,7 @@ class TestConfigRoutes:
             "from_email": "bot@example.com",
             "recipients": "admin@example.com",
             "nightly_enabled": "true",
+            "allow_local_smtp": "true",
         }
         resp = client.post(
             "/api/config/notifications",
@@ -597,6 +598,9 @@ class TestConfigRoutes:
         assert resp.status_code == 200
         data = resp.get_json()
         assert data.get("success") is True
+        assert viewer.db_manager.get_metadata("notif.allow_local_smtp") == "true"
+        # Reset test state for subsequent notification-security tests.
+        viewer.db_manager.set_metadata("notif.allow_local_smtp", "")
 
     def test_api_config_logging_get(self, client):
         resp = client.get("/api/config/logging")
@@ -1146,6 +1150,28 @@ class TestFeedManagementRoutes:
                 content_type="application/json",
             )
         assert resp.status_code == 200
+
+    def test_post_feeds_test_honors_allow_private_urls_config(self, client, viewer):
+        if not viewer.config.has_section("Feed_Command"):
+            viewer.config.add_section("Feed_Command")
+        had_option = viewer.config.has_option("Feed_Command", "allow_private_urls")
+        previous = viewer.config.get("Feed_Command", "allow_private_urls", fallback=None)
+        viewer.config.set("Feed_Command", "allow_private_urls", "true")
+
+        with patch("modules.web_viewer.app.validate_external_url", return_value=True) as mock_validate:
+            resp = client.post(
+                "/api/feeds/test",
+                data=json.dumps({"url": "http://127.0.0.1/feed.rss"}),
+                content_type="application/json",
+            )
+
+        assert resp.status_code == 200
+        assert mock_validate.call_args.kwargs.get("allow_private") is True
+        # Reset test state for preview-security tests that expect strict default.
+        if had_option and previous is not None:
+            viewer.config.set("Feed_Command", "allow_private_urls", previous)
+        elif viewer.config.has_option("Feed_Command", "allow_private_urls"):
+            viewer.config.remove_option("Feed_Command", "allow_private_urls")
 
     def test_get_feed_activity(self, client):
         resp = client.get("/api/feeds/1/activity")
