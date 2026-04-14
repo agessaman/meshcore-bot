@@ -69,4 +69,27 @@ Base: `origin/dev`
   - `accept`: `6302b07` (targeted ruff/mypy compliance)
 
 ## Execution Records
-- Pending implementation.
+- Integrated (committed):
+  - PR #138 full chain (`aa94d23` through `f05d1d0`).
+  - PR #140 full chain (`38d040a`, `04eba0a`, `7af161e`) with manual conflict resolution.
+  - PR #145 targeted bugfix (`2272b86`).
+  - PR #155 delta compatibility (`2b896c6`).
+  - PR #156 delta compatibility (`5ac7ae0`).
+  - PR #139 admin server core feature (`7450ac3`).
+  - PR #154 fortune feature (`a02c15f`).
+  - PR #141 airplanes feature (`a8edb80`) plus local anti-flood guard patch to force single-message output.
+  - PR #159 follow-up lint/type fixes (`6302b07`) with conflict-resolution retention of local behavior.
+- Skipped / not integrated due high conflict or policy-risk:
+  - PR #147 main commits (`df66761`, `ca67ec4`) — high conflict against already integrated security/stability stack.
+  - PR #148 (`655da24`, `4a96f7f`) — high conflict; also coupled with explicitly excluded `!plugins`.
+  - PR #149 (`88e8fa4`, `f6e1924`) — high conflict in core/web viewer surfaces.
+  - PR #157 (`6eb8001`) and PR #158 (`b2dddc5`) — dependent follow-ups to skipped/high-conflict UX stack.
+  - PR #142 coverage expansion commits — conflicted with current branch state and deferred.
+
+### Validation Snapshot
+- `make lint`: passes (`ruff` + `mypy`).
+- `make test-no-cov`: failing (22 tests), concentrated in:
+  - `tests/test_fortune_command.py` (fortune parsing/selection behavior),
+  - `tests/test_randomline.py` (randomline matching behavior),
+  - `tests/test_scheduler_logic.py` (`TestZombieAlertEmailSsrfGuard` expectations),
+  - `tests/test_web_viewer.py` (`TestRestoreEndpointSecurity` expected status codes).
