@@ -203,11 +203,13 @@ def validate_safe_path(file_path: str, base_dir: str = '.', allow_absolute: bool
                 dangerous_prefixes = [
                     '/System',
                     '/Library',
-                    '/private',
                     '/usr/bin',
                     '/usr/sbin',
                     '/sbin',
                     '/bin',
+                    '/private/etc',
+                    '/private/var/root',
+                    '/private/var/db',
                 ]
                 target_str = str(target)
                 dangerous = any(target_str.startswith(prefix) for prefix in dangerous_prefixes)

@@ -1762,7 +1762,10 @@ class BotDataViewer:
 
                 # Check for dangerous system paths first (returns 400)
                 target_str = str(src).lower()
-                dangerous_prefixes = ['/etc', '/sys', '/proc', '/dev', '/bin', '/sbin', '/boot']
+                dangerous_prefixes = [
+                    '/etc', '/private/etc',
+                    '/sys', '/proc', '/dev', '/bin', '/sbin', '/boot',
+                ]
                 if any(target_str.startswith(prefix) for prefix in dangerous_prefixes):
                     return jsonify({'error': 'Access to system directory denied'}), 400
 

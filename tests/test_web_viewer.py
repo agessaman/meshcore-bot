@@ -1139,11 +1139,12 @@ class TestFeedManagementRoutes:
         assert resp.status_code == 400
 
     def test_post_feeds_test_valid_url_accepted(self, client):
-        resp = client.post(
-            "/api/feeds/test",
-            data=json.dumps({"url": "https://example.com/feed.rss"}),
-            content_type="application/json",
-        )
+        with patch("modules.web_viewer.app.validate_external_url", return_value=True):
+            resp = client.post(
+                "/api/feeds/test",
+                data=json.dumps({"url": "https://example.com/feed.rss"}),
+                content_type="application/json",
+            )
         assert resp.status_code == 200
 
     def test_get_feed_activity(self, client):
