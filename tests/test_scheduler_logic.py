@@ -1308,7 +1308,6 @@ class TestCollectEmailStats:
         assert result.get("contacts_24h") == 10
         assert result.get("contacts_new_24h") == 3
 
-<<<<<<< HEAD
 
 # ---------------------------------------------------------------------------
 # _send_interval_advert_async (PR2 fix — Event-based error detection)
@@ -1461,7 +1460,6 @@ class TestSendScheduledMessageAsyncTimeout:
         assert call_args_list, "logger.error was never called"
         logged = str(call_args_list[0])
         assert "TimeoutError" in logged
-=======
 # ---------------------------------------------------------------------------
 # SSRF guard — SMTP host validation in email-sending methods
 # ---------------------------------------------------------------------------
@@ -1558,4 +1556,3 @@ class TestZombieAlertEmailSsrfGuard:
                 sched.send_zombie_alert_email(fail_count=5, threshold=3, interval=60)
         logged = str(sched.bot.logger.error.call_args_list)
         assert "private" not in logged.lower() and "reserved" not in logged.lower()
->>>>>>> 38d040a (security: SSRF hardening, log injection sanitization, and allow_local_smtp)

@@ -2970,7 +2970,6 @@ class TestDbPathResolutionFromConfigDir:
         )
 
 
-<<<<<<< HEAD
 class TestRadioDebugConfig:
     """Tests for GET/POST /api/config/radio-debug endpoints."""
 
@@ -3040,7 +3039,6 @@ class TestRadioDebugConfig:
         data = resp.get_json()
         assert data["success"] is True
         assert data["op_id"] is None
-=======
 # ===========================================================================
 # Security: Restore endpoint path traversal prevention (GAP W1)
 # ===========================================================================
@@ -3188,4 +3186,3 @@ class TestFeedPreviewSecurity:
             )
         mock_veu.assert_called()
         assert resp.status_code == 400
->>>>>>> 38d040a (security: SSRF hardening, log injection sanitization, and allow_local_smtp)

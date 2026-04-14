@@ -256,13 +256,8 @@ class BotDataViewer:
             config.read(config_path)
         return config
 
-<<<<<<< HEAD
     def _get_version_info(self) -> dict[str, Optional[str]]:
         """Get version info for footer from shared runtime resolver."""
-=======
-    def _get_version_info(self) -> dict[str, str | None]:
-        """Get version info for footer via centralized version resolver. Never raises."""
->>>>>>> 5ac7ae0 (fix: post-rebase compatibility fixes for #147 (stability hardening))
         info = resolve_runtime_version(self.bot_root)
         return {
             "tag": info.get("tag"),
