@@ -1101,10 +1101,19 @@ class PacketCaptureService(BaseServicePlugin):
                 if username:
                     client.username_pw_set(username, password)
 
-                # Setup callbacks
+                # Setup callbacks (resolve broker from mqtt_clients — avoid late-bound loop vars)
                 def on_connect(client, userdata, flags, rc, properties=None):
+                    cfg = None
+                    for mqtt_info in self.mqtt_clients:
+                        if mqtt_info['client'] == client:
+                            cfg = mqtt_info['config']
+                            break
+                    if cfg is None:
+                        return
+                    tr = cfg.get('transport', 'tcp').lower()
+                    host, port = cfg['host'], cfg['port']
                     if rc == 0:
-                        self.logger.info(f"✓ Connected to MQTT broker: {broker_config['host']}:{broker_config['port']} ({transport})")
+                        self.logger.info(f"✓ Connected to MQTT broker: {host}:{port} ({tr})")
                         # Track connection per broker
                         for mqtt_info in self.mqtt_clients:
                             if mqtt_info['client'] == client:
@@ -1123,7 +1132,7 @@ class PacketCaptureService(BaseServicePlugin):
                         }
                         error_msg = error_messages.get(rc, f"unknown error ({rc})")
                         self.logger.error(
-                            f"✗ Failed to connect to MQTT broker {broker_config['host']}: {rc} ({error_msg})"
+                            f"✗ Failed to connect to MQTT broker {host}: {rc} ({error_msg})"
                         )
                         # Mark this broker as disconnected
                         for mqtt_info in self.mqtt_clients:
@@ -1138,10 +1147,12 @@ class PacketCaptureService(BaseServicePlugin):
                     for mqtt_info in self.mqtt_clients:
                         if mqtt_info['client'] == client:
                             mqtt_info['connected'] = False
+                            cfg = mqtt_info['config']
+                            host = cfg['host']
                             if rc != 0:
-                                self.logger.warning(f"Disconnected from MQTT broker {broker_config['host']} (rc={rc})")
+                                self.logger.warning(f"Disconnected from MQTT broker {host} (rc={rc})")
                             else:
-                                self.logger.debug(f"Disconnected from MQTT broker {broker_config['host']}")
+                                self.logger.debug(f"Disconnected from MQTT broker {host}")
                             break
                     # Update global flag
                     self.mqtt_connected = any(m.get('connected', False) for m in self.mqtt_clients)

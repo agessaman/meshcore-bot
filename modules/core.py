@@ -345,6 +345,10 @@ class MeshCoreBot:
         # Shutdown event for graceful shutdown
         self._shutdown_event = threading.Event()
 
+        # Idempotent async shutdown (see stop()); lock created when event loop is available
+        self._shutdown_lock: asyncio.Lock | None = None
+        self._shutdown_complete = False
+
         # Service plugin restart state (name -> timestamp of last failed restart)
         self._service_restart_failures: dict[str, float] = {}
         self._service_restarting: set = set()
@@ -1790,6 +1794,9 @@ long_jokes = false
 
         self.main_event_loop.set_exception_handler(_loop_exception_handler)
 
+        if self._shutdown_lock is None:
+            self._shutdown_lock = asyncio.Lock()
+
         # Connect to MeshCore node
         if not await self.connect():
             self.logger.error("Failed to connect to MeshCore node")
@@ -1849,8 +1856,13 @@ long_jokes = false
                         break
                     continue
 
-                # Monitor web viewer process and health
-                if self.web_viewer_integration and self.web_viewer_integration.enabled:
+                # Monitor web viewer process and health (never restart during shutdown)
+                if (
+                    self.web_viewer_integration
+                    and self.web_viewer_integration.enabled
+                    and self.connected
+                    and not self._shutdown_event.is_set()
+                ):
                     # Check if process died
                     if (self.web_viewer_integration and
                         self.web_viewer_integration.viewer_process and
@@ -1929,8 +1941,8 @@ long_jokes = false
                 await asyncio.sleep(5)  # Check every 5 seconds
         except KeyboardInterrupt:
             self.logger.info("Received interrupt signal")
-        finally:
-            await self.stop()
+        # Shutdown is owned by the entrypoint (e.g. meshcore_bot.run_bot finally)
+        # so stop() runs exactly once; see stop() idempotency guard.
 
     async def stop(self) -> None:
         """Stop the bot.
@@ -1938,62 +1950,88 @@ long_jokes = false
         Performs graceful shutdown by stopping services, scheduling, and
         disconnecting from the mesh node.
         """
+        if self._shutdown_lock is None:
+            try:
+                self._shutdown_lock = asyncio.Lock()
+            except RuntimeError:
+                self._shutdown_lock = None
+
+        if self._shutdown_lock is not None:
+            async with self._shutdown_lock:
+                if self._shutdown_complete:
+                    try:
+                        self.logger.debug("stop() skipped — shutdown already completed")
+                    except (AttributeError, TypeError):
+                        pass
+                    return
+                await self._stop_inner()
+        else:
+            if self._shutdown_complete:
+                return
+            await self._stop_inner()
+
+    async def _stop_inner(self) -> None:
+        """Run one full shutdown pass (caller holds _shutdown_lock when used)."""
         try:
-            self.logger.info("Stopping MeshCore Bot...")
-        except (AttributeError, TypeError):
-            print("Stopping MeshCore Bot...")
-
-        self.connected = False
-        self._update_radio_connected_metadata(False)
-
-        # Shutdown mesh graph first to flush pending writes
-        if hasattr(self, 'mesh_graph') and self.mesh_graph:
             try:
-                self.mesh_graph.shutdown()
-            except Exception as e:
-                self.logger.warning(f"Error shutting down mesh graph: {e}")
-
-        # Stop feed manager
-        if self.feed_manager:
-            await self.feed_manager.stop()
-
-        # Stop all loaded services
-        for service_name, service_instance in self.services.items():
-            try:
-                await service_instance.stop()
-                self.logger.info(f"Service '{service_name}' stopped")
-            except Exception as e:
-                self.logger.error(f"Failed to stop service '{service_name}': {e}")
-
-        # Stop web viewer with proper shutdown sequence
-        if self.web_viewer_integration:
-            # Web viewer has simpler shutdown
-            self.web_viewer_integration.stop_viewer()
-            try:
-                self.logger.info("Web viewer stopped")
+                self.logger.info("Stopping MeshCore Bot...")
             except (AttributeError, TypeError):
-                print("Web viewer stopped")
+                print("Stopping MeshCore Bot...")
 
-        # Wait for scheduler thread to exit (it checks self.connected)
-        if hasattr(self, 'scheduler') and self.scheduler and self.scheduler.scheduler_thread:
-            self.scheduler.join(timeout=5.0)
+            self._shutdown_event.set()
+            self.connected = False
+            self._update_radio_connected_metadata(False)
 
-        if self.meshcore:
-            disconnect_timeout = self.config.getfloat('Bot', 'disconnect_timeout_seconds', fallback=10.0)
+            # Shutdown mesh graph first to flush pending writes
+            if hasattr(self, 'mesh_graph') and self.mesh_graph:
+                try:
+                    self.mesh_graph.shutdown()
+                except Exception as e:
+                    self.logger.warning(f"Error shutting down mesh graph: {e}")
+
+            # Stop feed manager
+            if self.feed_manager:
+                await self.feed_manager.stop()
+
+            # Stop all loaded services
+            for service_name, service_instance in self.services.items():
+                try:
+                    await service_instance.stop()
+                    self.logger.info(f"Service '{service_name}' stopped")
+                except Exception as e:
+                    self.logger.error(f"Failed to stop service '{service_name}': {e}")
+
+            # Stop web viewer with proper shutdown sequence
+            if self.web_viewer_integration:
+                # Web viewer has simpler shutdown
+                self.web_viewer_integration.stop_viewer()
+                try:
+                    self.logger.info("Web viewer stopped")
+                except (AttributeError, TypeError):
+                    print("Web viewer stopped")
+
+            # Wait for scheduler thread to exit (it checks self.connected)
+            if hasattr(self, 'scheduler') and self.scheduler and self.scheduler.scheduler_thread:
+                self.scheduler.join(timeout=5.0)
+
+            if self.meshcore:
+                disconnect_timeout = self.config.getfloat('Bot', 'disconnect_timeout_seconds', fallback=10.0)
+                try:
+                    await asyncio.wait_for(self.meshcore.disconnect(), timeout=disconnect_timeout)
+                except asyncio.TimeoutError:
+                    self.logger.warning(
+                        "MeshCore disconnect timed out after %.1fs; continuing shutdown",
+                        disconnect_timeout,
+                    )
+                except Exception as e:
+                    self.logger.warning("Error during meshcore disconnect: %s", e)
+
             try:
-                await asyncio.wait_for(self.meshcore.disconnect(), timeout=disconnect_timeout)
-            except asyncio.TimeoutError:
-                self.logger.warning(
-                    "MeshCore disconnect timed out after %.1fs; continuing shutdown",
-                    disconnect_timeout,
-                )
-            except Exception as e:
-                self.logger.warning("Error during meshcore disconnect: %s", e)
-
-        try:
-            self.logger.info("Bot stopped")
-        except (AttributeError, TypeError):
-            print("Bot stopped")
+                self.logger.info("Bot stopped")
+            except (AttributeError, TypeError):
+                print("Bot stopped")
+        finally:
+            self._shutdown_complete = True
 
     async def _restart_service(self, service_name: str, service_instance: Any) -> bool:
         """Stop and start a service. Used when is_healthy() is False.

@@ -549,6 +549,8 @@ class WebViewerIntegration:
         self.restart_count = 0
         self.max_restarts = 5
         self.last_restart = 0
+        # True while stop_viewer() is tearing down; blocks accidental restart during bot shutdown
+        self.shutting_down = False
 
         # Initialize bot integration for compatibility
         self.bot_integration = BotIntegration(bot)
@@ -588,6 +590,9 @@ class WebViewerIntegration:
             self.logger.warning("Web viewer is already running")
             return
 
+        # Intentional (re)start after stop_viewer / restart_viewer — allow monitor thread to run
+        self.shutting_down = False
+
         try:
             # Start the web viewer
             self.viewer_thread = threading.Thread(target=self._run_viewer, daemon=True)
@@ -604,6 +609,7 @@ class WebViewerIntegration:
             return
 
         try:
+            self.shutting_down = True
             self.running = False
 
             if self.viewer_process and self.viewer_process.poll() is None:
@@ -776,6 +782,16 @@ class WebViewerIntegration:
 
             # Process exited unexpectedly — try to restart if we haven't been stopped
             if self.running and self.viewer_process and self.viewer_process.poll() is not None:
+                if (
+                    self.shutting_down
+                    or self.bot._shutdown_event.is_set()
+                    or not getattr(self.bot, "connected", True)
+                ):
+                    self.logger.debug(
+                        "Web viewer process exited (code %s) during bot shutdown; not restarting",
+                        self.viewer_process.returncode,
+                    )
+                    return
                 self.logger.warning(
                     "Web viewer process exited unexpectedly (code %s) — attempting restart",
                     self.viewer_process.returncode,
@@ -838,6 +854,13 @@ class WebViewerIntegration:
 
     def restart_viewer(self):
         """Restart the web viewer with rate limiting"""
+        if self.shutting_down:
+            return
+        if getattr(self.bot, "_shutdown_event", None) is not None and self.bot._shutdown_event.is_set():
+            return
+        if not getattr(self.bot, "connected", True):
+            return
+
         current_time = time.time()
 
         # Rate limit restarts to prevent restart loops

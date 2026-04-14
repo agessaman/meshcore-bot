@@ -49,14 +49,21 @@ class MessageScheduler:
         tz, _ = get_config_timezone(self.bot.config, self.logger)
         return datetime.datetime.now(tz)
 
+    def _shutdown_apscheduler_if_running(self) -> None:
+        """Stop APScheduler if it exists and is running (idempotent, no spurious errors)."""
+        if self._apscheduler is None:
+            return
+        if not getattr(self._apscheduler, "running", False):
+            return
+        try:
+            self._apscheduler.shutdown(wait=False)
+        except Exception as e:
+            self.logger.debug("Error shutting down scheduler: %s", e)
+
     def setup_scheduled_messages(self):
         """Setup scheduled messages from config using APScheduler."""
         # Stop and recreate the APScheduler to avoid duplicate jobs on reload
-        if self._apscheduler is not None:
-            try:
-                self._apscheduler.shutdown(wait=False)
-            except Exception as e:
-                self.logger.debug("Error shutting down scheduler: %s", e)
+        self._shutdown_apscheduler_if_running()
         tz, _ = get_config_timezone(self.bot.config, self.logger)
         self._apscheduler = BackgroundScheduler(timezone=tz)
         self.scheduled_messages.clear()
@@ -349,11 +356,7 @@ class MessageScheduler:
 
     def join(self, timeout: float = 5.0) -> None:
         """Wait for the scheduler thread to finish and stop APScheduler (e.g. during shutdown)."""
-        if self._apscheduler is not None:
-            try:
-                self._apscheduler.shutdown(wait=False)
-            except Exception as e:
-                self.logger.debug("Error shutting down scheduler: %s", e)
+        self._shutdown_apscheduler_if_running()
         if self.scheduler_thread and self.scheduler_thread.is_alive():
             self.scheduler_thread.join(timeout=timeout)
             if self.scheduler_thread.is_alive():
