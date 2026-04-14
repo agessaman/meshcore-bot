@@ -732,9 +732,11 @@ class AirplanesCommand(BaseCommand):
                 response = self._format_single_aircraft(filtered[0], location[0], location[1], max_length)
                 await self.send_response(message, response)
             else:
-                # Always split list results across multiple messages as needed
+                # Keep list output to a single frame to avoid multi-message flood traffic.
                 response = self._format_aircraft_list(filtered, location[0], location[1])
-                await self._send_split_response(message, response, max_length)
+                if len(response) > max_length:
+                    response = response[:max_length - 3].rstrip() + "..."
+                await self.send_response(message, response)
 
             return True
 
