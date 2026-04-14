@@ -999,7 +999,12 @@ class MessageScheduler:
         import ssl as _ssl
         from email.message import EmailMessage
 
-        if not self.bot.config.getboolean('Bot', 'radio_zombie_alert_enabled', fallback=True):
+        zombie_alert_enabled = self.bot.config.getboolean(
+            'Connection',
+            'radio_zombie_alert_enabled',
+            fallback=self.bot.config.getboolean('Bot', 'radio_zombie_alert_enabled', fallback=False),
+        )
+        if not zombie_alert_enabled:
             return
 
         smtp_host     = self._get_notif('smtp_host')
@@ -1010,7 +1015,11 @@ class MessageScheduler:
         from_email    = self._get_notif('from_email')
 
         # Alert recipients: dedicated config key, falls back to nightly recipients
-        alert_email_cfg = self.bot.config.get('Bot', 'radio_zombie_alert_email', fallback='').strip()
+        alert_email_cfg = self.bot.config.get(
+            'Connection',
+            'radio_zombie_alert_email',
+            fallback=self.bot.config.get('Bot', 'radio_zombie_alert_email', fallback=''),
+        ).strip()
         if alert_email_cfg:
             recipients = [r.strip() for r in alert_email_cfg.split(',') if r.strip()]
         else:

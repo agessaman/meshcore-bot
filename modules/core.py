@@ -1486,10 +1486,22 @@ long_jokes = false
             )
             if result.type == EventType.ERROR:
                 self._radio_fail_count = getattr(self, '_radio_fail_count', 0) + 1
-                threshold = self.config.getint('Bot', 'radio_probe_fail_threshold', fallback=3)
-                interval  = max(300, min(900, self.config.getint(
-                    'Bot', 'radio_probe_interval_seconds', fallback=300
-                )))
+                threshold = self.config.getint(
+                    'Connection',
+                    'radio_probe_fail_threshold',
+                    fallback=self.config.getint('Bot', 'radio_probe_fail_threshold', fallback=3),
+                )
+                interval = max(
+                    300,
+                    min(
+                        900,
+                        self.config.getint(
+                            'Connection',
+                            'radio_probe_interval_seconds',
+                            fallback=self.config.getint('Bot', 'radio_probe_interval_seconds', fallback=300),
+                        ),
+                    ),
+                )
                 self.logger.warning(
                     f"Radio health probe failed "
                     f"({self._radio_fail_count}/{threshold}): no response to get_time"
@@ -1860,9 +1872,17 @@ long_jokes = false
                 if not getattr(self, '_radio_zombie_detected', False):
                     if not hasattr(self, '_last_radio_probe'):
                         self._last_radio_probe = time.time()
-                    probe_interval = max(300, min(900, self.config.getint(
-                        'Bot', 'radio_probe_interval_seconds', fallback=300
-                    )))
+                    probe_interval = max(
+                        300,
+                        min(
+                            900,
+                            self.config.getint(
+                                'Connection',
+                                'radio_probe_interval_seconds',
+                                fallback=self.config.getint('Bot', 'radio_probe_interval_seconds', fallback=300),
+                            ),
+                        ),
+                    )
                     if time.time() - self._last_radio_probe >= probe_interval:
                         self._last_radio_probe = time.time()
                         asyncio.create_task(self._probe_radio_health())

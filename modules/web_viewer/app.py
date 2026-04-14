@@ -1549,10 +1549,18 @@ class BotDataViewer:
             ini: dict[str, str] = {
                 'alert_enabled': (
                     'true'
-                    if self.config.getboolean('Bot', 'radio_zombie_alert_enabled', fallback=False)
+                    if self.config.getboolean(
+                        'Connection',
+                        'radio_zombie_alert_enabled',
+                        fallback=self.config.getboolean('Bot', 'radio_zombie_alert_enabled', fallback=False),
+                    )
                     else 'false'
                 ),
-                'alert_email': self.config.get('Bot', 'radio_zombie_alert_email', fallback=''),
+                'alert_email': self.config.get(
+                    'Connection',
+                    'radio_zombie_alert_email',
+                    fallback=self.config.get('Bot', 'radio_zombie_alert_email', fallback=''),
+                ),
             }
             return jsonify({'meta': meta, 'config_ini': ini})
 
@@ -1561,7 +1569,7 @@ class BotDataViewer:
             """Save zombie alert settings to bot_metadata.
 
             If ``write_to_config`` is ``true`` in the request body, the values
-            are also written back to config.ini under ``[Bot]``.  The config
+            are also written back to config.ini under ``[Connection]``.  The config
             object in memory is updated immediately so the scheduler reads the
             new values without a restart.
             """
@@ -1578,15 +1586,15 @@ class BotDataViewer:
             config_saved = False
             if write_to_config:
                 try:
-                    if not self.config.has_section('Bot'):
-                        self.config.add_section('Bot')
+                    if not self.config.has_section('Connection'):
+                        self.config.add_section('Connection')
                     if 'alert_enabled' in data:
                         self.config.set(
-                            'Bot', 'radio_zombie_alert_enabled',
+                            'Connection', 'radio_zombie_alert_enabled',
                             'true' if str(data['alert_enabled']).lower() == 'true' else 'false',
                         )
                     if 'alert_email' in data:
-                        self.config.set('Bot', 'radio_zombie_alert_email', str(data['alert_email']))
+                        self.config.set('Connection', 'radio_zombie_alert_email', str(data['alert_email']))
                     with open(self.config_path, 'w') as fh:
                         self.config.write(fh)
                     config_saved = True

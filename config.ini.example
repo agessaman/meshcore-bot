@@ -35,11 +35,20 @@ reconnect_delay_seconds = 5
 # Maximum delay in seconds between reconnect attempts (cap on exponential backoff)
 reconnect_max_delay_seconds = 60
 
-# Enable radio debug logging (default: false)
-# When true, the meshcore library logs raw protocol data at DEBUG level.
-# Useful for diagnosing connection issues, unexpected packet types, or
-# protocol-level problems. Generates very verbose output — disable in production.
-#radio_debug = false
+# Enable verbose meshcore protocol logging (set true only when debugging)
+radio_debug = false
+
+# Radio health probe interval in seconds (clamped to 300-900)
+radio_probe_interval_seconds = 300
+
+# Consecutive failed probes before zombie state is declared
+radio_probe_fail_threshold = 3
+
+# Send immediate zombie alert email (uses Notifications SMTP settings)
+radio_zombie_alert_enabled = false
+
+# Optional zombie alert recipients (comma-separated; empty = nightly recipients)
+radio_zombie_alert_email =
 
 [Bot]
 # Bot name for identification and logging
@@ -175,40 +184,6 @@ service_restart_backoff_seconds = 300
 
 # Max seconds to wait for a channel message send before timing out (default: 30)
 send_timeout_seconds = 30
-
-# ── Radio health monitoring (zombie radio detection) ────────────────────────
-#
-# A zombie radio is one where the serial/BLE transport is still open and
-# incoming RF packets are still received, but the firmware is hung and stops
-# ACKing outgoing commands (all sends time out with no_event_received).
-# The ONLY recovery is a physical power cycle — disconnect/reconnect does nothing.
-#
-# Probe interval: how often to send a get_time() health check (seconds).
-# Valid range: 300–900 (5–15 minutes). Values outside this range are clamped.
-# Default: 300 (5 minutes)
-radio_probe_interval_seconds = 300
-
-# Number of consecutive failed probes before declaring zombie state.
-# At the default 300s interval: threshold 3 = ~15 min before zombie is logged.
-# Suggested values by interval:
-#   300s (5 min)  → threshold 3  (~15 min total)
-#   600s (10 min) → threshold 2  (~20 min total)
-#   900s (15 min) → threshold 2  (~30 min total)
-radio_probe_fail_threshold = 3
-
-# Send an immediate alert email when zombie state is confirmed.
-# Requires SMTP to be configured in the web viewer Notifications settings.
-# false: log CRITICAL only, no email (default)
-# true: send alert email in addition to logging
-radio_zombie_alert_enabled = false
-
-# SMTP hosts resolving to private/loopback/reserved ranges are blocked by default (SSRF guard).
-# If you intentionally use local SMTP, enable "Allow local SMTP host" in Notifications.
-# Alert email recipients for zombie detection (comma-separated addresses).
-# If empty, falls back to the nightly maintenance email recipients.
-# Set this to a separate on-call address if needed.
-# Example: oncall@example.com,admin@example.com
-radio_zombie_alert_email =
 
 [Channels]
 # Channels to monitor (comma-separated)
