@@ -371,17 +371,6 @@ pong = "Ping!"
 # Override 'cmd' command output
 # cmd = "Available commands: test (or t), ping, version, help, hello, cmd, advert, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats"
 
-[Fortune_Command]
-# Returns a random fortune from a BSD-format fortune file.
-# Fortunes in the file are separated by a line containing only '%'.
-enabled = true
-# Path to the fortune file (absolute or relative to the bot's working directory)
-file = data/fortune/fortunes.txt
-# Optional: per-user cooldown in seconds (default: 5)
-# cooldown_seconds = 5
-# Optional: restrict to specific channels (comma-separated; omit for all channels)
-# allowed_channels = general,bot
-
 [RandomLine]
 # Configurable command to act on a trigger word and respond with a random line from its file
 # triggers.<key> = csv list of trigger words
@@ -402,6 +391,11 @@ prefix.momjoke = 🥸
 triggers.funfact = funfact,funfacts,fun fact,fun facts,fun-fact,fun-facts
 file.funfact = data/randomlines/funfacts.txt
 prefix.funfact = 💡
+
+# Example: fortunes via RandomLine
+#triggers.fortune = fortune,fortunes
+#file.fortune = data/randomlines/fortunes.txt
+#prefix.fortune = 🥠
 
 [Scheduled_Messages]
 # Scheduled message format: HHMM = channel:message
