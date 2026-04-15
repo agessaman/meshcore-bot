@@ -393,6 +393,7 @@ pong = "Ping!"
 # file.<key> = path to text file
 # prefix.<key> = string prepended to the chosen line (often an emoji)
 # channel.<key> or channels.<key> = comma-separated channel names; if set, trigger only works in those channels (e.g. channel.momjoke = #jokes)
+# category.<key> = command reference category for website generation (default: fun/Fun Commands)
 
 # default prefix (blank = no prefix)
 prefix.default =
@@ -402,16 +403,19 @@ triggers.momjoke = momjoke,momjokes,mom joke,mom jokes,mom-joke,mom-jokes
 file.momjoke = data/randomlines/momjokes.txt
 prefix.momjoke = 🥸
 # channel.momjoke = #jokes
+# category.momjoke = fun
 
 # Fun Facts
 triggers.funfact = funfact,funfacts,fun fact,fun facts,fun-fact,fun-facts
 file.funfact = data/randomlines/funfacts.txt
 prefix.funfact = 💡
+category.funfact = fun
 
 # Example: fortunes via RandomLine
 #triggers.fortune = fortune,fortunes
 #file.fortune = data/randomlines/fortunes.txt
 #prefix.fortune = 🥠
+#category.fortune = fun
 
 [Scheduled_Messages]
 # Scheduled message format: HHMM = channel:message

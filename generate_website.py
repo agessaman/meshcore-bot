@@ -965,6 +965,85 @@ def get_website_title(config: configparser.ConfigParser) -> str:
     return f"{bot_name} - Command Reference"
 
 
+class WebsiteRandomLineCommand:
+    """Command-like object used to render RandomLine entries on the website."""
+
+    def __init__(
+        self,
+        key: str,
+        triggers: list[str],
+        category: str,
+        usage: str,
+        description: str,
+        allowed_channels: Optional[list[str]] = None
+    ):
+        self.name = key
+        self.keywords = triggers
+        self.category = category
+        self.description = description
+        self.allowed_channels = allowed_channels
+        self._usage = usage
+
+    def get_usage_info(self) -> dict[str, Any]:
+        return {
+            'usage': self._usage,
+            'short_description': self.description,
+            'description': self.description,
+            'examples': [],
+            'parameters': [],
+            'subcommands': [],
+        }
+
+
+def normalize_category_name(category_name: str) -> str:
+    """Normalize category names to lowercase underscore style."""
+    return category_name.strip().lower().replace('-', '_').replace(' ', '_')
+
+
+def get_randomline_commands(config: configparser.ConfigParser) -> dict[str, Any]:
+    """Build website command entries from [RandomLine] triggers."""
+    randomline_commands: dict[str, Any] = {}
+    if not config.has_section('RandomLine'):
+        return randomline_commands
+
+    command_prefix = config.get('Bot', 'command_prefix', fallback='').strip()
+
+    for option, value in config.items('RandomLine'):
+        if not option.startswith('triggers.'):
+            continue
+
+        key = option.split('.', 1)[1].strip()
+        if not key:
+            continue
+
+        triggers = [trigger.strip() for trigger in value.split(',') if trigger.strip()]
+        if not triggers:
+            continue
+
+        category_override = config.get('RandomLine', f'category.{key}', fallback='').strip()
+        category = normalize_category_name(category_override) if category_override else 'fun'
+
+        display_trigger = triggers[0]
+        usage = f"{command_prefix}{display_trigger}" if command_prefix else display_trigger
+
+        channel_opt = config.get('RandomLine', f'channel.{key}', fallback='').strip()
+        if not channel_opt:
+            channel_opt = config.get('RandomLine', f'channels.{key}', fallback='').strip()
+        allowed_channels = [ch.strip() for ch in channel_opt.split(',') if ch.strip()] if channel_opt else None
+
+        description = "Returns a random line from a configured text list."
+        randomline_commands[f"randomline.{key}"] = WebsiteRandomLineCommand(
+            key=key,
+            triggers=triggers,
+            category=category,
+            usage=usage,
+            description=description,
+            allowed_channels=allowed_channels,
+        )
+
+    return randomline_commands
+
+
 def load_channels_from_config(config: configparser.ConfigParser) -> dict[str, dict[str, str]]:
     """Load channels from Channels_List section, grouped by category
 
@@ -2479,6 +2558,7 @@ def generate_samples(config_file):
         name: cmd for name, cmd in commands.items()
         if name not in admin_commands and not getattr(cmd, 'hidden', False)
     }
+    public_commands.update(get_randomline_commands(config))
 
     # Sort commands
     sorted_commands = sorted(public_commands.items(), key=lambda x: x[0])
@@ -2714,6 +2794,7 @@ def main():
 
         # Filter out admin and hidden commands
         filtered_commands = filter_commands(commands, admin_commands)
+        filtered_commands.update(get_randomline_commands(config))
         logger.info(f"Filtered to {len(filtered_commands)} public commands")
 
         # Log which commands are included
