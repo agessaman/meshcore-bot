@@ -1288,6 +1288,8 @@ enabled = true
 
 [Cmd_Command]
 enabled = true
+# Optional: override `cmd` output with a link to your full docs page
+# cmd_reference_url = https://example.com/command-reference
 # channels =
 
 [Channels_Command]
