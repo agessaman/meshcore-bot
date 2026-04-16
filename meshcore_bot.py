@@ -16,6 +16,11 @@ def _configure_unix_signal_handlers(loop, bot, shutdown_event: asyncio.Event) ->
     def shutdown_handler():
         """Signal handler for graceful shutdown."""
         print("\nShutting down...")
+        # asyncio.add_signal_handler replaces SIGINT/SIGTERM handling for the loop; the
+        # bot's threading.Event + connected flag must be set here too or the main loop
+        # can run another iteration and restart the web viewer before stop() runs.
+        bot._shutdown_event.set()
+        bot.connected = False
         shutdown_event.set()
 
     def reload_handler():
@@ -56,7 +61,6 @@ def main():
     if args.validate_config:
         from modules.config_validation import (
             SEVERITY_ERROR,
-            SEVERITY_INFO,
             SEVERITY_WARNING,
             validate_config,
         )
@@ -74,7 +78,7 @@ def main():
 
     from modules.core import MeshCoreBot
     bot = MeshCoreBot(config_file=args.config)
-    
+
     # Use asyncio.run() which handles KeyboardInterrupt properly
     # For SIGTERM, we'll handle it in the async context
     async def run_bot():
@@ -126,6 +130,10 @@ def main():
                 # Handle bot task completion
                 if bot_task:
                     if shutdown_event.is_set() and not bot_task.done():
+                        # Ensure the bot loop sees shutdown even if the signal handler ordering
+                        # left a race before cancel.
+                        bot._shutdown_event.set()
+                        bot.connected = False
                         # Shutdown triggered: cancel if still running
                         bot_task.cancel()
 
@@ -149,7 +157,7 @@ def main():
                 await bot.start()
             finally:
                 await bot.stop()
-    
+
     try:
         asyncio.run(run_bot())
     except KeyboardInterrupt:

@@ -76,14 +76,56 @@ class TestValidateExternalUrl:
             assert validate_external_url("https://example.com/") is True
             assert validate_external_url("http://example.com/") is True
 
-    def test_localhost_rejected_by_default(self):
+    def test_loopback_rejected_by_default(self):
         with patch("socket.gethostbyname", return_value="127.0.0.1"):
             assert validate_external_url("http://localhost/") is False
+
+    def test_rfc1918_rejected_by_default(self):
+        for ip in ("10.0.0.1", "172.16.0.1", "192.168.1.1"):
+            with patch("socket.gethostbyname", return_value=ip):
+                assert validate_external_url("http://example.com/") is False, f"{ip} should be blocked"
+
+    def test_rfc6598_cgn_rejected_by_default(self):
+        with patch("socket.gethostbyname", return_value="100.64.0.1"):
             assert validate_external_url("http://example.com/") is False
 
-    def test_localhost_allowed_when_requested(self):
+    # --- allow_loopback: permits 127.x/::1 only, not RFC 1918 ---
+
+    def test_allow_loopback_permits_loopback(self):
         with patch("socket.gethostbyname", return_value="127.0.0.1"):
-            assert validate_external_url("http://localhost/", allow_localhost=True) is True
+            assert validate_external_url("http://localhost/", allow_loopback=True) is True
+
+    def test_allow_loopback_still_blocks_rfc1918(self):
+        for ip in ("10.0.0.1", "172.16.0.1", "192.168.1.1"):
+            with patch("socket.gethostbyname", return_value=ip):
+                assert validate_external_url(
+                    "http://example.com/", allow_loopback=True
+                ) is False, f"allow_loopback must not permit RFC 1918 addr {ip}"
+
+    def test_allow_loopback_still_blocks_cgn(self):
+        with patch("socket.gethostbyname", return_value="100.64.0.1"):
+            assert validate_external_url("http://example.com/", allow_loopback=True) is False
+
+    # --- allow_private: permits all internal ranges including loopback ---
+
+    def test_allow_private_permits_loopback(self):
+        with patch("socket.gethostbyname", return_value="127.0.0.1"):
+            assert validate_external_url("http://localhost/", allow_private=True) is True
+
+    def test_allow_private_permits_rfc1918(self):
+        for ip in ("10.0.0.1", "172.16.0.1", "192.168.1.1"):
+            with patch("socket.gethostbyname", return_value=ip):
+                assert validate_external_url(
+                    "http://example.com/", allow_private=True
+                ) is True, f"allow_private must permit RFC 1918 addr {ip}"
+
+    def test_allow_private_permits_cgn(self):
+        with patch("socket.gethostbyname", return_value="100.64.0.1"):
+            assert validate_external_url("http://example.com/", allow_private=True) is True
+
+    def test_allow_private_permits_link_local(self):
+        with patch("socket.gethostbyname", return_value="169.254.0.1"):
+            assert validate_external_url("http://example.com/", allow_private=True) is True
 
     def test_missing_netloc_rejected(self):
         assert validate_external_url("http://") is False
@@ -230,9 +272,9 @@ class TestValidateExternalUrlExtra:
         with patch("socket.gethostbyname", side_effect=socket.timeout("timeout")):
             assert validate_external_url("http://slow.example.com") is False
 
-    def test_allow_localhost_permits_loopback(self):
+    def test_allow_loopback_permits_loopback(self):
         with patch("socket.gethostbyname", return_value="127.0.0.1"):
-            result = validate_external_url("http://localhost", allow_localhost=True)
+            result = validate_external_url("http://localhost", allow_loopback=True)
             assert result is True
 
 
@@ -249,3 +291,45 @@ class TestValidateSafePathExtra:
         with patch("modules.security_utils.Path.resolve", side_effect=OSError("disk fail")):
             with pytest.raises(ValueError, match="Invalid or unsafe file path"):
                 validate_safe_path("some_file.db", base_dir=str(tmp_path))
+
+
+class TestSanitizeName:
+    """Tests for sanitize_name() — log-safe identifier sanitization."""
+
+    def test_newline_stripped(self):
+        from modules.security_utils import sanitize_name
+        assert "\n" not in sanitize_name("Evil\nNode")
+
+    def test_carriage_return_stripped(self):
+        from modules.security_utils import sanitize_name
+        assert "\r" not in sanitize_name("Evil\rNode")
+
+    def test_tab_stripped(self):
+        from modules.security_utils import sanitize_name
+        assert "\t" not in sanitize_name("Tab\tNode")
+
+    def test_null_byte_stripped(self):
+        from modules.security_utils import sanitize_name
+        assert "\x00" not in sanitize_name("Bad\x00Name")
+
+    def test_ansi_escape_stripped(self):
+        from modules.security_utils import sanitize_name
+        assert "\x1b" not in sanitize_name("\x1b[31mRed\x1b[0m")
+
+    def test_truncated_to_max_length(self):
+        from modules.security_utils import sanitize_name
+        result = sanitize_name("A" * 100, max_length=64)
+        assert len(result) <= 64
+
+    def test_normal_name_unchanged(self):
+        from modules.security_utils import sanitize_name
+        assert sanitize_name("Alice") == "Alice"
+
+    def test_non_string_coerced(self):
+        from modules.security_utils import sanitize_name
+        assert sanitize_name(42) == "42"
+
+    def test_negative_max_length_raises(self):
+        from modules.security_utils import sanitize_name
+        with pytest.raises(ValueError):
+            sanitize_name("test", max_length=-1)

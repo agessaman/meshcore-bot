@@ -11,6 +11,7 @@ import time
 from typing import Any, Callable, Optional
 
 from ..models import MeshMessage
+from ..security_utils import sanitize_name
 from ..utils import calculate_distance, parse_path_string
 from .base_command import BaseCommand
 
@@ -180,19 +181,13 @@ class PathCommand(BaseCommand):
 
     def matches_keyword(self, message: MeshMessage) -> bool:
         """Check if message starts with 'path' keyword or 'p' shortcut (if enabled)"""
-        content = message.content.strip()
-
-        # Handle exclamation prefix
-        if content.startswith('!'):
-            content = content[1:].strip()
-
-        content_lower = content.lower()
+        content_lower = self.cleanup_message_for_matching(message)
 
         # Handle "p" shortcut if enabled
         if self.enable_p_shortcut:
             if content_lower == "p":
                 return True  # Just "p" by itself
-            elif (content.startswith('p ') or content.startswith('P ')) and len(content) > 2:
+            elif content_lower.startswith('p ') and len(content_lower) > 2:
                 return True  # "p " followed by path data
 
         # Check if message starts with any of our keywords
@@ -775,7 +770,7 @@ class PathCommand(BaseCommand):
             # Apply star bias multiplier if repeater is starred
             if repeater.get('is_starred', False):
                 combined_score *= self.star_bias_multiplier
-                self.logger.debug(f"Applied star bias ({self.star_bias_multiplier}x) to {repeater.get('name', 'unknown')}")
+                self.logger.debug(f"Applied star bias ({self.star_bias_multiplier}x) to {sanitize_name(repeater.get('name', 'unknown'))}")
 
             # SNR bonus: If repeater has SNR data, it's a zero-hop repeater (direct neighbor)
             # This is strong evidence it's close and should be preferred
@@ -784,7 +779,7 @@ class PathCommand(BaseCommand):
                 # Add bonus proportional to zero-hop bonus (20% of combined score)
                 snr_bonus = combined_score * 0.2
                 combined_score += snr_bonus
-                self.logger.debug(f"SNR bonus for {repeater.get('name', 'unknown')}: +{snr_bonus:.3f} (has SNR data, confirmed zero-hop)")
+                self.logger.debug(f"SNR bonus for {sanitize_name(repeater.get('name', 'unknown'))}: +{snr_bonus:.3f} (has SNR data, confirmed zero-hop)")
 
             combined_scores.append((combined_score, distance, repeater))
 
@@ -1171,7 +1166,7 @@ class PathCommand(BaseCommand):
             # Apply star bias multiplier if repeater is starred
             if repeater.get('is_starred', False):
                 combined_score *= self.star_bias_multiplier
-                self.logger.debug(f"Applied star bias ({self.star_bias_multiplier}x) to {repeater.get('name', 'unknown')}")
+                self.logger.debug(f"Applied star bias ({self.star_bias_multiplier}x) to {sanitize_name(repeater.get('name', 'unknown'))}")
 
             # SNR bonus: If repeater has SNR data, it's a zero-hop repeater (direct neighbor)
             # This is strong evidence it's close and should be preferred
@@ -1180,7 +1175,7 @@ class PathCommand(BaseCommand):
                 # Add bonus proportional to zero-hop bonus (20% of combined score)
                 snr_bonus = combined_score * 0.2
                 combined_score += snr_bonus
-                self.logger.debug(f"SNR bonus for {repeater.get('name', 'unknown')}: +{snr_bonus:.3f} (has SNR data, confirmed zero-hop)")
+                self.logger.debug(f"SNR bonus for {sanitize_name(repeater.get('name', 'unknown'))}: +{snr_bonus:.3f} (has SNR data, confirmed zero-hop)")
 
             if combined_score > best_combined_score:
                 best_combined_score = combined_score
@@ -1254,7 +1249,7 @@ class PathCommand(BaseCommand):
             # Apply star bias multiplier if repeater is starred
             if repeater.get('is_starred', False):
                 combined_score *= self.star_bias_multiplier
-                self.logger.debug(f"Applied star bias ({self.star_bias_multiplier}x) to {repeater.get('name', 'unknown')}")
+                self.logger.debug(f"Applied star bias ({self.star_bias_multiplier}x) to {sanitize_name(repeater.get('name', 'unknown'))}")
 
             # SNR bonus: If repeater has SNR data, it's a zero-hop repeater (direct neighbor)
             # This is strong evidence it's close and should be preferred
@@ -1263,7 +1258,7 @@ class PathCommand(BaseCommand):
                 # Add bonus proportional to zero-hop bonus (20% of combined score)
                 snr_bonus = combined_score * 0.2
                 combined_score += snr_bonus
-                self.logger.debug(f"SNR bonus for {repeater.get('name', 'unknown')}: +{snr_bonus:.3f} (has SNR data, confirmed zero-hop)")
+                self.logger.debug(f"SNR bonus for {sanitize_name(repeater.get('name', 'unknown'))}: +{snr_bonus:.3f} (has SNR data, confirmed zero-hop)")
 
             all_scores.append((repeater.get('name', 'unknown'), distance, recency_score, proximity_score, combined_score))
 
@@ -1364,7 +1359,7 @@ class PathCommand(BaseCommand):
                         stored_to_key = prev_to_candidate_edge.get('to_public_key', '').lower() if prev_to_candidate_edge.get('to_public_key') else None
                         if stored_to_key and stored_to_key == candidate_public_key:
                             stored_key_bonus = max(stored_key_bonus, 0.4)  # Strong bonus for matching stored key
-                            self.logger.debug(f"Found stored public key match for {repeater.get('name', 'unknown')} in edge {prev_norm}->{candidate_norm}")
+                            self.logger.debug(f"Found stored public key match for {sanitize_name(repeater.get('name', 'unknown'))} in edge {prev_norm}->{candidate_norm}")
 
                 # Check edge from candidate to next node
                 if next_norm:
@@ -1373,7 +1368,7 @@ class PathCommand(BaseCommand):
                         stored_from_key = candidate_to_next_edge.get('from_public_key', '').lower() if candidate_to_next_edge.get('from_public_key') else None
                         if stored_from_key and stored_from_key == candidate_public_key:
                             stored_key_bonus = max(stored_key_bonus, 0.4)  # Strong bonus for matching stored key
-                            self.logger.debug(f"Found stored public key match for {repeater.get('name', 'unknown')} in edge {candidate_norm}->{next_norm}")
+                            self.logger.debug(f"Found stored public key match for {sanitize_name(repeater.get('name', 'unknown'))} in edge {candidate_norm}->{next_norm}")
 
             # Zero-hop bonus: If this repeater has been heard directly by the bot (zero-hop advert),
             # it's strong evidence it's close and should be preferred, even for intermediate hops.
@@ -1384,7 +1379,7 @@ class PathCommand(BaseCommand):
             if hop_count is not None and hop_count == 0 and graph_score > 0:
                 # This repeater has been heard directly - strong evidence it's close to bot
                 zero_hop_bonus = self.graph_zero_hop_bonus
-                self.logger.debug(f"Zero-hop bonus for {repeater.get('name', 'unknown')}: {zero_hop_bonus:.2%} (heard directly by bot)")
+                self.logger.debug(f"Zero-hop bonus for {sanitize_name(repeater.get('name', 'unknown'))}: {zero_hop_bonus:.2%} (heard directly by bot)")
 
             # SNR bonus: If this repeater has SNR data, it's a zero-hop repeater (direct neighbor)
             # This is even stronger evidence than just hop_count == 0, as it means we have actual signal quality data.
@@ -1395,7 +1390,7 @@ class PathCommand(BaseCommand):
                 # SNR presence indicates zero-hop connection with signal quality data
                 # Use same bonus as zero-hop, but this is more definitive
                 snr_bonus = self.graph_zero_hop_bonus * 1.2  # 20% stronger than zero-hop bonus alone
-                self.logger.debug(f"SNR bonus for {repeater.get('name', 'unknown')}: {snr_bonus:.2%} (has SNR data, confirmed zero-hop)")
+                self.logger.debug(f"SNR bonus for {sanitize_name(repeater.get('name', 'unknown'))}: {snr_bonus:.2%} (has SNR data, confirmed zero-hop)")
 
             # Add stored key bonus, zero-hop bonus, and SNR bonus to graph score
             graph_score_with_bonus = min(1.0, graph_score + stored_key_bonus + zero_hop_bonus + snr_bonus)
@@ -1460,7 +1455,7 @@ class PathCommand(BaseCommand):
                                     path_validation_bonus = max(path_validation_bonus, segment_bonus + obs_bonus)
                                     # Cap at max bonus
                                     path_validation_bonus = min(self.graph_path_validation_max_bonus, path_validation_bonus)
-                                    self.logger.debug(f"Path validation match for {repeater.get('name', 'unknown')}: {common_segments} common segments (obs: {obs_count})")
+                                    self.logger.debug(f"Path validation match for {sanitize_name(repeater.get('name', 'unknown'))}: {common_segments} common segments (obs: {obs_count})")
                                     if path_validation_bonus >= self.graph_path_validation_max_bonus * 0.9:
                                         break  # Strong match found
                 except Exception as e:
@@ -1527,7 +1522,7 @@ class PathCommand(BaseCommand):
                         # Apply penalty: up to penalty_strength reduction
                         penalty = normalized_excess * self.graph_distance_penalty_strength
                         candidate_score = candidate_score * (1.0 - penalty)
-                        self.logger.debug(f"Applied distance penalty to {repeater.get('name', 'unknown')}: {max_distance:.1f}km hop (penalty: {penalty:.2%}, score: {candidate_score:.3f})")
+                        self.logger.debug(f"Applied distance penalty to {sanitize_name(repeater.get('name', 'unknown'))}: {max_distance:.1f}km hop (penalty: {penalty:.2%}, score: {candidate_score:.3f})")
                     elif max_distance > 0:
                         # Even if under threshold, very long hops should get a small penalty
                         # This helps prefer shorter hops when graph evidence is similar
@@ -1555,7 +1550,7 @@ class PathCommand(BaseCommand):
                         # Apply max distance threshold if configured
                         if self.graph_final_hop_max_distance > 0 and distance > self.graph_final_hop_max_distance:
                             # Beyond max distance - skip proximity bonus
-                            self.logger.debug(f"Final hop candidate {repeater.get('name', 'unknown')} is {distance:.1f}km from bot, beyond max distance {self.graph_final_hop_max_distance:.1f}km")
+                            self.logger.debug(f"Final hop candidate {sanitize_name(repeater.get('name', 'unknown'))} is {distance:.1f}km from bot, beyond max distance {self.graph_final_hop_max_distance:.1f}km")
                         else:
                             # Normalize distance to 0-1 score (inverse: closer = higher score)
                             # Use configurable normalization distance (default 500km for more aggressive scoring)
@@ -1575,14 +1570,14 @@ class PathCommand(BaseCommand):
                             # Combine with graph score using effective weight
                             candidate_score = candidate_score * (1.0 - effective_weight) + proximity_score * effective_weight
 
-                            self.logger.debug(f"Final hop proximity for {repeater.get('name', 'unknown')}: distance={distance:.1f}km, proximity_score={proximity_score:.3f}, effective_weight={effective_weight:.3f}, combined_score={candidate_score:.3f}")
+                            self.logger.debug(f"Final hop proximity for {sanitize_name(repeater.get('name', 'unknown'))}: distance={distance:.1f}km, proximity_score={proximity_score:.3f}, effective_weight={effective_weight:.3f}, combined_score={candidate_score:.3f}")
                     else:
                         # Repeater without valid location data - apply significant penalty for final hop
                         # This ensures we prefer repeaters with known locations, especially direct neighbors
                         # Penalty: reduce score by 50% (repeaters with location data will have proximity bonus, so this creates strong preference)
                         location_penalty = 0.5
                         candidate_score = candidate_score * (1.0 - location_penalty)
-                        self.logger.debug(f"Final hop candidate {repeater.get('name', 'unknown')} has no valid location data - applying {location_penalty:.0%} penalty (score: {candidate_score:.3f})")
+                        self.logger.debug(f"Final hop candidate {sanitize_name(repeater.get('name', 'unknown'))} has no valid location data - applying {location_penalty:.0%} penalty (score: {candidate_score:.3f})")
 
             # Apply star bias multiplier if repeater is starred
             # Starred repeaters should get significant advantage in graph selection
@@ -1592,7 +1587,7 @@ class PathCommand(BaseCommand):
                 candidate_score *= self.star_bias_multiplier
                 # Cap at 1.0 but allow it to exceed temporarily for comparison
                 # We'll normalize later when converting to confidence
-                self.logger.debug(f"Applied star bias ({self.star_bias_multiplier}x) to {repeater.get('name', 'unknown')} in graph selection (score: {candidate_score:.3f})")
+                self.logger.debug(f"Applied star bias ({self.star_bias_multiplier}x) to {sanitize_name(repeater.get('name', 'unknown'))} in graph selection (score: {candidate_score:.3f})")
 
             if candidate_score > best_score:
                 best_score = candidate_score

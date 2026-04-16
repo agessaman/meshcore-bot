@@ -148,10 +148,7 @@ class GlobalWxCommand(BaseCommand):
         Returns:
             bool: True if message matches a keyword, False otherwise.
         """
-        content = message.content.strip()
-        if content.startswith('!'):
-            content = content[1:].strip()
-        content_lower = content.lower()
+        content_lower = self.cleanup_message_for_matching(message)
         return any(content_lower.startswith(keyword + ' ') or content_lower == keyword for keyword in self.keywords)
 
     def _get_companion_location(self, message: MeshMessage) -> Optional[tuple[float, float]]:

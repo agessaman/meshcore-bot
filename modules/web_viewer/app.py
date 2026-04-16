@@ -18,6 +18,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional, Union
 
+# When started as a script (`python modules/web_viewer/app.py`), Python puts the
+# script's directory on sys.path, not the repo root — import modules.* fails
+# unless we prepend the project root first.
+_project_root = str(Path(__file__).resolve().parent.parent.parent)
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
 from flask import (
     Flask,
     Response,
@@ -33,7 +40,11 @@ from flask import (
 )
 from flask_socketio import SocketIO, disconnect, emit
 
-from modules.security_utils import VALID_JOURNAL_MODES, validate_sql_identifier
+from modules.security_utils import (
+    VALID_JOURNAL_MODES,
+    validate_external_url,
+    validate_sql_identifier,
+)
 from modules.version_info import resolve_runtime_version
 
 
@@ -77,10 +88,6 @@ def _strip_ansi_codes(text: str) -> str:
     """Remove ANSI color and reset codes from log lines for SocketIO web clients."""
     return _ANSI_ESCAPE_RE.sub("", text)
 
-
-# Add the project root to the path so we can import bot components
-project_root = os.path.join(os.path.dirname(__file__), '..', '..')
-sys.path.insert(0, project_root)
 
 from modules.feed_manager import FeedManager
 from modules.repeater_manager import RepeaterManager
@@ -1337,6 +1344,7 @@ class BotDataViewer:
                 'notif.smtp_user', 'notif.smtp_password',
                 'notif.from_name', 'notif.from_email',
                 'notif.recipients', 'notif.nightly_enabled',
+                'notif.allow_local_smtp',
             ]
             settings = {}
             for k in keys:
@@ -1360,7 +1368,7 @@ class BotDataViewer:
                 'smtp_host', 'smtp_port', 'smtp_security',
                 'smtp_user', 'smtp_password',
                 'from_name', 'from_email',
-                'recipients', 'nightly_enabled',
+                'recipients', 'nightly_enabled', 'allow_local_smtp',
             }
             saved = []
             for field in allowed:
@@ -1395,6 +1403,14 @@ class BotDataViewer:
                 return jsonify({'error': 'Sender email is not configured'}), 400
             if not recipients:
                 return jsonify({'error': 'No recipients configured'}), 400
+
+            # Validate SMTP host for SSRF protection
+            # allow_local_smtp=true permits private/internal SMTP hosts (e.g., local Postfix)
+            allow_local_smtp = _get('allow_local_smtp').lower() == 'true'
+            if not validate_external_url(f'http://{smtp_host}', allow_private=allow_local_smtp):
+                if allow_local_smtp:
+                    return jsonify({'error': 'Invalid or unsafe SMTP host'}), 400
+                return jsonify({'error': 'Invalid or unsafe SMTP host (private/internal IP blocked)'}), 400
 
             try:
                 msg = EmailMessage()
@@ -1533,10 +1549,18 @@ class BotDataViewer:
             ini: dict[str, str] = {
                 'alert_enabled': (
                     'true'
-                    if self.config.getboolean('Bot', 'radio_zombie_alert_enabled', fallback=False)
+                    if self.config.getboolean(
+                        'Connection',
+                        'radio_zombie_alert_enabled',
+                        fallback=self.config.getboolean('Bot', 'radio_zombie_alert_enabled', fallback=False),
+                    )
                     else 'false'
                 ),
-                'alert_email': self.config.get('Bot', 'radio_zombie_alert_email', fallback=''),
+                'alert_email': self.config.get(
+                    'Connection',
+                    'radio_zombie_alert_email',
+                    fallback=self.config.get('Bot', 'radio_zombie_alert_email', fallback=''),
+                ),
             }
             return jsonify({'meta': meta, 'config_ini': ini})
 
@@ -1545,7 +1569,7 @@ class BotDataViewer:
             """Save zombie alert settings to bot_metadata.
 
             If ``write_to_config`` is ``true`` in the request body, the values
-            are also written back to config.ini under ``[Bot]``.  The config
+            are also written back to config.ini under ``[Connection]``.  The config
             object in memory is updated immediately so the scheduler reads the
             new values without a restart.
             """
@@ -1562,15 +1586,15 @@ class BotDataViewer:
             config_saved = False
             if write_to_config:
                 try:
-                    if not self.config.has_section('Bot'):
-                        self.config.add_section('Bot')
+                    if not self.config.has_section('Connection'):
+                        self.config.add_section('Connection')
                     if 'alert_enabled' in data:
                         self.config.set(
-                            'Bot', 'radio_zombie_alert_enabled',
+                            'Connection', 'radio_zombie_alert_enabled',
                             'true' if str(data['alert_enabled']).lower() == 'true' else 'false',
                         )
                     if 'alert_email' in data:
-                        self.config.set('Bot', 'radio_zombie_alert_email', str(data['alert_email']))
+                        self.config.set('Connection', 'radio_zombie_alert_email', str(data['alert_email']))
                     with open(self.config_path, 'w') as fh:
                         self.config.write(fh)
                     config_saved = True
@@ -1738,12 +1762,26 @@ class BotDataViewer:
                 backup_dir_str = self.db_manager.get_metadata('maint.db_backup_dir') or ''
                 if not backup_dir_str or not os.path.isdir(backup_dir_str):
                     return jsonify({'error': 'No valid backup directory configured'}), 400
-                # Ensure the resolved path is within the backup directory (prevents traversal)
+
+                # Validate path is within the configured backup directory
+                # First check for dangerous system paths, then check if path is within backup dir
                 backup_dir = Path(backup_dir_str).resolve()
                 src = Path(db_file).resolve()
+
+                # Check for dangerous system paths first (returns 400)
+                target_str = str(src).lower()
+                dangerous_prefixes = [
+                    '/etc', '/private/etc',
+                    '/sys', '/proc', '/dev', '/bin', '/sbin', '/boot',
+                ]
+                if any(target_str.startswith(prefix) for prefix in dangerous_prefixes):
+                    return jsonify({'error': 'Access to system directory denied'}), 400
+
+                # Check if path is within the backup directory (prevents traversal)
                 try:
                     src.relative_to(backup_dir)
                 except ValueError:
+                    # Path is outside backup directory - return 403
                     return jsonify({'error': 'Restore path must be within the configured backup directory'}), 403
 
                 if not src.exists():
@@ -3315,7 +3353,11 @@ class BotDataViewer:
                                                    fallback='{emoji} {body|truncate:100} - {date}\n{link|truncate:50}')
 
                 # Fetch and format feed items
-                preview_items = self._preview_feed_items(feed_url, feed_type, output_format, api_config, filter_config, sort_config)
+                try:
+                    preview_items = self._preview_feed_items(feed_url, feed_type, output_format, api_config, filter_config, sort_config)
+                except ValueError as e:
+                    # SSRF validation error - return 400
+                    return jsonify({'error': str(e)}), 400
 
                 return jsonify({
                     'success': True,
@@ -3333,14 +3375,31 @@ class BotDataViewer:
                 if not data or 'url' not in data:
                     return jsonify({'error': 'URL is required'}), 400
 
-                # This would require feed_manager - for now just validate URL
-                from urllib.parse import urlparse
                 url = data['url']
-                result = urlparse(url)
-                if not all([result.scheme in ['http', 'https'], result.netloc]):
-                    return jsonify({'error': 'Invalid URL format'}), 400
 
-                return jsonify({'success': True, 'message': 'URL validated (full test requires feed manager)'})
+                # Validate URL for SSRF protection
+                if self.config.has_section('Feed_Command'):
+                    try:
+                        feed_command_allow_private = self.config.getboolean(
+                            'Feed_Command', 'allow_private_urls', fallback=False
+                        )
+                    except ValueError:
+                        feed_command_allow_private = False
+                else:
+                    feed_command_allow_private = False
+                allow_private_feeds = (
+                    self.config.getboolean(
+                        'Feed_Manager',
+                        'allow_private_urls',
+                        fallback=feed_command_allow_private,
+                    )
+                    if self.config.has_section('Feed_Manager')
+                    else feed_command_allow_private
+                )
+                if not validate_external_url(url, allow_private=allow_private_feeds):
+                    return jsonify({'error': 'Invalid or unsafe URL'}), 400
+
+                return jsonify({'success': True, 'message': 'URL validated'})
             except Exception as e:
                 self.logger.error(f"Error testing feed: {e}")
                 return jsonify({'error': str(e)}), 500
@@ -5930,6 +5989,28 @@ class BotDataViewer:
         try:
             items = []
 
+            # Validate URL for SSRF protection
+            if self.config.has_section('Feed_Command'):
+                try:
+                    feed_command_allow_private = self.config.getboolean(
+                        'Feed_Command', 'allow_private_urls', fallback=False
+                    )
+                except ValueError:
+                    feed_command_allow_private = False
+            else:
+                feed_command_allow_private = False
+            allow_private_feeds = (
+                self.config.getboolean(
+                    'Feed_Manager',
+                    'allow_private_urls',
+                    fallback=feed_command_allow_private,
+                )
+                if self.config.has_section('Feed_Manager')
+                else feed_command_allow_private
+            )
+            if not validate_external_url(feed_url, allow_private=allow_private_feeds):
+                raise ValueError("Invalid or unsafe feed URL")
+
             if feed_type == 'rss':
                 # Fetch RSS feed
                 response = requests.get(feed_url, timeout=30, headers={'User-Agent': 'MeshCoreBot/1.0 FeedManager'})
@@ -6633,17 +6714,17 @@ class BotDataViewer:
                 return int(time.time() - start_time)
             else:
                 # Fallback: try to get earliest message timestamp
-                conn = self._get_db_connection()
-                cursor = conn.cursor()
+                with self._with_db_connection() as conn:
+                    cursor = conn.cursor()
 
-                # Try to get earliest message timestamp as fallback
-                cursor.execute("""
-                    SELECT MIN(timestamp) FROM message_stats
-                    WHERE timestamp IS NOT NULL
-                """)
-                result = cursor.fetchone()
-                if result and result[0]:
-                    return int(time.time() - result[0])
+                    # Try to get earliest message timestamp as fallback
+                    cursor.execute("""
+                        SELECT MIN(timestamp) FROM message_stats
+                        WHERE timestamp IS NOT NULL
+                    """)
+                    result = cursor.fetchone()
+                    if result and result[0]:
+                        return int(time.time() - result[0])
 
                 return 0
         except Exception as e:

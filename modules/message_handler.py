@@ -10,12 +10,12 @@ import hmac as hmac_mod
 import time
 from collections import OrderedDict
 from hashlib import sha256
-from typing import Any, Optional
+from typing import Any
 
 from .enums import AdvertFlags, DeviceRole, PayloadType, PayloadVersion, RouteType
 from .graph_trace_helper import update_mesh_graph_from_trace_data
 from .models import MeshMessage
-from .security_utils import sanitize_input
+from .security_utils import sanitize_input, sanitize_name
 from .utils import (
     calculate_packet_hash,
     decode_path_len_byte,
@@ -70,7 +70,7 @@ class MessageHandler:
 
     @staticmethod
     def _match_scope(transport_code: int, payload_type: int, pkt_payload: bytes,
-                     scope_keys: dict[str, bytes]) -> Optional[str]:
+                     scope_keys: dict[str, bytes]) -> str | None:
         """Return the scope name whose HMAC matches transport_code, or None.
 
         Mirrors the firmware's TransportKey::calcTransportCode: computes
@@ -147,7 +147,7 @@ class MessageHandler:
             self.logger.debug(f"Payload keys: {list(payload.keys())}")
             self.logger.debug(f"Event metadata: {event.metadata if hasattr(event, 'metadata') else 'None'}")
 
-            self.logger.info(f"Received DM from {payload.get('pubkey_prefix', 'unknown')}: {payload.get('text', '')}")
+            self.logger.info(f"Received DM from {sanitize_name(payload.get('pubkey_prefix', 'unknown'))}: {sanitize_name(payload.get('text', ''))}")
 
             # Extract path information from contacts using pubkey_prefix
             path_info = "Unknown"
@@ -341,13 +341,13 @@ class MessageHandler:
             timestamp = payload.get('sender_timestamp', 'unknown')
 
             # Look up contact name from pubkey prefix
-            sender_id = payload.get('pubkey_prefix', '')
+            sender_id = sanitize_name(payload.get('pubkey_prefix', ''))
             sender_name = sender_id  # Default to sender_id
             if hasattr(self.bot.meshcore, 'contacts') and self.bot.meshcore.contacts:
                 for _contact_key, contact_data in self.bot.meshcore.contacts.items():
                     if contact_data.get('public_key', '').startswith(sender_id):
                         # Use the contact name if available, otherwise use adv_name
-                        contact_name = contact_data.get('name', contact_data.get('adv_name', sender_id))
+                        contact_name = sanitize_name(contact_data.get('name', contact_data.get('adv_name', sender_id)))
                         sender_name = contact_name
                         break
 
@@ -510,7 +510,7 @@ class MessageHandler:
                         parsed_advert = self.parse_advert(payload_bytes)
                         if parsed_advert:
                             advert_data = parsed_advert
-                            self.logger.info(f"✅ Parsed ADVERT: {advert_data.get('mode', 'Unknown')} - {advert_data.get('name', 'No name')}")
+                            self.logger.info(f"✅ Parsed ADVERT: {sanitize_name(advert_data.get('mode', 'Unknown'))} - {sanitize_name(advert_data.get('name', 'No name'))}")
                     except Exception as e:
                         self.logger.warning(f"Failed to parse ADVERT payload: {e}")
 
@@ -640,7 +640,7 @@ class MessageHandler:
 
                         self.logger.info(f"📡 Tracked {mode}: {name}{location}{hop_info}")
                     else:
-                        self.logger.warning(f"Failed to track contact advertisement: {advert_data.get('name', 'Unknown')}")
+                        self.logger.warning(f"Failed to track contact advertisement: {sanitize_name(advert_data.get('name', 'Unknown'))}")
 
         except Exception as e:
             self.logger.error(f"Error processing advertisement packet: {e}")
@@ -996,7 +996,7 @@ class MessageHandler:
         except Exception as e:
             self.logger.error(f"Error handling RF log data: {e}")
 
-    def extract_path_from_raw_hex(self, raw_hex: str, expected_hops: int) -> Optional[str]:
+    def extract_path_from_raw_hex(self, raw_hex: str, expected_hops: int) -> str | None:
         """Extract path information directly from raw hex data.
 
         Attempts to find a sequence of node IDs in the raw packet data that matches
@@ -1068,7 +1068,7 @@ class MessageHandler:
             self.logger.debug(f"Error extracting path from raw hex: {e}")
             return None
 
-    def _cleanup_stale_cache_entries(self, current_time: Optional[float] = None) -> None:
+    def _cleanup_stale_cache_entries(self, current_time: float | None = None) -> None:
         """Remove stale entries from RF data caches and enforce maximum size limits.
 
         Args:
@@ -1271,7 +1271,7 @@ class MessageHandler:
 
 
 
-    def decode_meshcore_packet(self, raw_hex: str, payload_hex: Optional[str] = None) -> Optional[dict]:
+    def decode_meshcore_packet(self, raw_hex: str, payload_hex: str | None = None) -> dict | None:
         """
         Decode a MeshCore packet from raw hex data - matches Packet.cpp exactly
 
@@ -1505,7 +1505,7 @@ class MessageHandler:
             self.logger.error(f"Error parsing ADVERT payload: {e}", exc_info=True)
             return {}
 
-    def _path_bytes_to_nodes(self, path_bytes: bytes, prefix_hex_chars: Optional[int] = None) -> tuple:
+    def _path_bytes_to_nodes(self, path_bytes: bytes, prefix_hex_chars: int | None = None) -> tuple:
         """Chunk path bytes into hex node IDs using configured prefix length, with legacy 2-char fallback.
 
         Args:
@@ -1543,9 +1543,9 @@ class MessageHandler:
     def _get_path_from_rf_data(
         self,
         rf_data: dict[str, Any],
-        payload_hex: Optional[str] = None,
-        packet_info: Optional[dict[str, Any]] = None
-    ) -> tuple[Optional[str], Optional[list[str]], int]:
+        payload_hex: str | None = None,
+        packet_info: dict[str, Any] | None = None
+    ) -> tuple[str | None, list[str] | None, int]:
         """Get path string, path nodes, and hop count from RF data (single source for path extraction).
 
         Prefers routing_info.path_nodes when present (no re-decode; correct multi-byte).
@@ -1900,7 +1900,7 @@ class MessageHandler:
             # Scope matching: if the RF data is a TC_FLOOD, check whether its transport
             # code matches any configured flood_scopes entry. If so, the reply should
             # use the same scope so it reaches the same scoped network segment.
-            reply_scope: Optional[str] = None
+            reply_scope: str | None = None
             if recent_rf_data:
                 rt = recent_rf_data.get("route_type_int")
                 tc_code1 = recent_rf_data.get("transport_code1")
@@ -2161,7 +2161,7 @@ class MessageHandler:
                 geographic_distance=geographic_distance
             )
 
-    def _store_observed_path(self, advert_data: dict[str, Any], path_hex: str, path_length: int, packet_type: str, packet_hash: Optional[str] = None, bytes_per_hop: Optional[int] = None):
+    def _store_observed_path(self, advert_data: dict[str, Any], path_hex: str, path_length: int, packet_type: str, packet_hash: str | None = None, bytes_per_hop: int | None = None):
         """Store a complete path in the observed_paths table.
 
         Args:
@@ -2255,7 +2255,7 @@ class MessageHandler:
             import traceback
             self.logger.debug(traceback.format_exc())
 
-    def _get_bot_location_fallback(self) -> Optional[tuple[float, float]]:
+    def _get_bot_location_fallback(self) -> tuple[float, float] | None:
         """Get bot location from config to use as fallback reference for distance-based selection.
 
         Returns:
@@ -2274,7 +2274,7 @@ class MessageHandler:
             self.logger.debug(f"Error getting bot location fallback: {e}")
             return None
 
-    def _get_location_by_public_key(self, public_key: str) -> Optional[tuple[float, float]]:
+    def _get_location_by_public_key(self, public_key: str) -> tuple[float, float] | None:
         """Get location for a full public key (more accurate than prefix lookup).
 
         Prefers starred repeaters if there are somehow multiple entries (shouldn't happen with full key).
@@ -2404,7 +2404,7 @@ class MessageHandler:
                 # Use bot location as fallback reference to ensure distance-based selection
                 bot_location_ref = self._get_bot_location_fallback()
                 first_hop_temp_result = _get_node_location_from_db(self.bot, first_hop, bot_location_ref, recency_days)
-                first_hop_location_temp: Optional[tuple[float, float]]
+                first_hop_location_temp: tuple[float, float] | None
                 if first_hop_temp_result:
                     first_hop_location_temp, _ = first_hop_temp_result
                 else:
@@ -2756,7 +2756,7 @@ class MessageHandler:
         except Exception as e:
             self.logger.error(f"Error in debug packet decoding: {e}")
 
-    def _format_path_string(self, hex_path: str, bytes_per_hop: Optional[int] = None) -> str:
+    def _format_path_string(self, hex_path: str, bytes_per_hop: int | None = None) -> str:
         """
         Convert a hex path string to node prefix format.
 
@@ -2849,7 +2849,21 @@ class MessageHandler:
         if not self.should_process_message(message):
             return
 
-        self.logger.info(f"Processing message: {message.content}")
+        # Handle respond_to_mentions for channel messages
+        if not message.is_dm:
+            _mention_mode = self.bot.config.get('Bot', 'respond_to_mentions', fallback='also').strip().lower()
+            if _mention_mode in ('also', 'only'):
+                import re
+                _bot_name = self.bot.config.get('Bot', 'bot_name', fallback='Bot')
+                _mention = f'@[{_bot_name}]'
+                _has_mention = _mention.lower() in message.content.lower()
+                if _mention_mode == 'only' and not _has_mention:
+                    self.logger.debug(f"Ignoring channel message (respond_to_mentions=only, no mention of {_mention})")
+                    return
+                if _has_mention:
+                    message.content = re.sub(re.escape(_mention), '', message.content, flags=re.IGNORECASE).strip()
+
+        self.logger.info(f"Processing message: '{message.content}' from {message.sender_id} in {'DM' if message.is_dm else message.channel}")
 
         # Check for advert command (DM only)
         if message.is_dm and message.content.strip().lower() == "advert":
@@ -3032,7 +3046,7 @@ class MessageHandler:
         if hash_mode != -1:
             return
 
-        opl: Optional[int]
+        opl: int | None
         raw_opl = contact_data.get('out_path_len')
         try:
             opl = None if raw_opl is None else int(raw_opl)
@@ -3093,7 +3107,7 @@ class MessageHandler:
             self.logger.info(f"📦 Event payload: {contact_data}")
 
             # Get contact details
-            contact_name = contact_data.get('name', contact_data.get('adv_name', 'Unknown'))
+            contact_name = sanitize_name(contact_data.get('name', contact_data.get('adv_name', 'Unknown')))
             public_key = contact_data.get('public_key', '')
 
             self.logger.info(f"Processing new contact: {contact_name} (key: {public_key[:16]}...)")

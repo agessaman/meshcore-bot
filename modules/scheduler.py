@@ -49,14 +49,21 @@ class MessageScheduler:
         tz, _ = get_config_timezone(self.bot.config, self.logger)
         return datetime.datetime.now(tz)
 
+    def _shutdown_apscheduler_if_running(self) -> None:
+        """Stop APScheduler if it exists and is running (idempotent, no spurious errors)."""
+        if self._apscheduler is None:
+            return
+        if not getattr(self._apscheduler, "running", False):
+            return
+        try:
+            self._apscheduler.shutdown(wait=False)
+        except Exception as e:
+            self.logger.debug("Error shutting down scheduler: %s", e)
+
     def setup_scheduled_messages(self):
         """Setup scheduled messages from config using APScheduler."""
         # Stop and recreate the APScheduler to avoid duplicate jobs on reload
-        if self._apscheduler is not None:
-            try:
-                self._apscheduler.shutdown(wait=False)
-            except Exception as e:
-                self.logger.debug("Error shutting down scheduler: %s", e)
+        self._shutdown_apscheduler_if_running()
         tz, _ = get_config_timezone(self.bot.config, self.logger)
         self._apscheduler = BackgroundScheduler(timezone=tz)
         self.scheduled_messages.clear()
@@ -349,11 +356,7 @@ class MessageScheduler:
 
     def join(self, timeout: float = 5.0) -> None:
         """Wait for the scheduler thread to finish and stop APScheduler (e.g. during shutdown)."""
-        if self._apscheduler is not None:
-            try:
-                self._apscheduler.shutdown(wait=False)
-            except Exception as e:
-                self.logger.debug("Error shutting down scheduler: %s", e)
+        self._shutdown_apscheduler_if_running()
         if self.scheduler_thread and self.scheduler_thread.is_alive():
             self.scheduler_thread.join(timeout=timeout)
             if self.scheduler_thread.is_alive():
@@ -516,6 +519,88 @@ class MessageScheduler:
 
         self.logger.info("Scheduler thread stopped")
 
+    def _run_data_retention(self):
+        """Run data retention cleanup: packet_stream, repeater tables, stats, caches, mesh_connections."""
+        import asyncio
+
+        def get_retention_days(section: str, key: str, default: int) -> int:
+            try:
+                if self.bot.config.has_section(section) and self.bot.config.has_option(section, key):
+                    return self.bot.config.getint(section, key)
+            except Exception:
+                pass
+            return default
+
+        packet_stream_days = get_retention_days('Data_Retention', 'packet_stream_retention_days', 3)
+        purging_log_days = get_retention_days('Data_Retention', 'purging_log_retention_days', 90)
+        daily_stats_days = get_retention_days('Data_Retention', 'daily_stats_retention_days', 90)
+        observed_paths_days = get_retention_days('Data_Retention', 'observed_paths_retention_days', 90)
+        mesh_connections_days = get_retention_days('Data_Retention', 'mesh_connections_retention_days', 7)
+        stats_days = get_retention_days('Stats_Command', 'data_retention_days', 7)
+
+        try:
+            # Packet stream (web viewer integration)
+            if hasattr(self.bot, 'web_viewer_integration') and self.bot.web_viewer_integration:
+                bi = getattr(self.bot.web_viewer_integration, 'bot_integration', None)
+                if bi and hasattr(bi, 'cleanup_old_data'):
+                    bi.cleanup_old_data(packet_stream_days)
+
+            # Repeater manager: purging_log and optional daily_stats / unique_advert / observed_paths
+            if hasattr(self.bot, 'repeater_manager') and self.bot.repeater_manager:
+                if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
+                    future = asyncio.run_coroutine_threadsafe(
+                        self.bot.repeater_manager.cleanup_database(purging_log_days),
+                        self.bot.main_event_loop
+                    )
+                    try:
+                        future.result(timeout=60)
+                    except Exception as e:
+                        self.logger.error(f"Error in repeater_manager.cleanup_database: {type(e).__name__}: {e}")
+                else:
+                    try:
+                        loop = asyncio.get_event_loop()
+                    except RuntimeError:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                    loop.run_until_complete(self.bot.repeater_manager.cleanup_database(purging_log_days))
+                if hasattr(self.bot.repeater_manager, 'cleanup_repeater_retention'):
+                    self.bot.repeater_manager.cleanup_repeater_retention(
+                        daily_stats_days=daily_stats_days,
+                        observed_paths_days=observed_paths_days
+                    )
+
+            # Stats tables (message_stats, command_stats, path_stats)
+            if hasattr(self.bot, 'command_manager') and self.bot.command_manager:
+                stats_cmd = self.bot.command_manager.commands.get('stats') if getattr(self.bot.command_manager, 'commands', None) else None
+                if stats_cmd and hasattr(stats_cmd, 'cleanup_old_stats'):
+                    stats_cmd.cleanup_old_stats(stats_days)
+
+            # Expired caches (geocoding_cache, generic_cache)
+            if hasattr(self.bot, 'db_manager') and self.bot.db_manager and hasattr(self.bot.db_manager, 'cleanup_expired_cache'):
+                self.bot.db_manager.cleanup_expired_cache()
+
+            # Mesh connections (DB prune to match in-memory expiration)
+            if hasattr(self.bot, 'mesh_graph') and self.bot.mesh_graph and hasattr(self.bot.mesh_graph, 'delete_expired_edges_from_db'):
+                self.bot.mesh_graph.delete_expired_edges_from_db(mesh_connections_days)
+
+            ran_at = datetime.datetime.now(datetime.UTC).isoformat()
+            self._last_retention_stats['ran_at'] = ran_at
+            try:
+                self.bot.db_manager.set_metadata('maint.status.data_retention_ran_at', ran_at)
+                self.bot.db_manager.set_metadata('maint.status.data_retention_outcome', 'ok')
+            except Exception:
+                pass
+
+        except Exception as e:
+            self.logger.exception(f"Error during data retention cleanup: {e}")
+            self._last_retention_stats['error'] = str(e)
+            try:
+                ran_at = datetime.datetime.now(datetime.UTC).isoformat()
+                self.bot.db_manager.set_metadata('maint.status.data_retention_ran_at', ran_at)
+                self.bot.db_manager.set_metadata('maint.status.data_retention_outcome', f'error: {e}')
+            except Exception:
+                pass
+
     def check_interval_advertising(self):
         """Check if it's time to send an interval-based advert"""
         try:
@@ -544,6 +629,9 @@ class MessageScheduler:
 
     def send_interval_advert(self):
         """Send an interval-based advert (synchronous wrapper)"""
+        if self.bot.is_radio_zombie:
+            self.logger.warning("send_interval_advert suppressed — radio is in zombie state")
+            return
         if self.bot.is_radio_offline:
             self.logger.warning("send_interval_advert suppressed — radio is offline (repeated send timeouts)")
             return
@@ -901,20 +989,8 @@ class MessageScheduler:
     def _format_email_body(self, stats: dict[str, Any], period_start: str, period_end: str) -> str:
         return self.maintenance.format_email_body(stats, period_start, period_end)
 
-    def _send_nightly_email(self) -> None:
-        self.maintenance.send_nightly_email()
+    # ── Zombie radio alert email ─────────────────────────────────────────────
 
-    def _get_maint(self, key: str) -> str:
-        return self.maintenance.get_maint(key)
-
-    def _apply_log_rotation_config(self) -> None:
-        self.maintenance.apply_log_rotation_config()
-
-    def _maybe_run_db_backup(self) -> None:
-        self.maintenance.maybe_run_db_backup()
-
-    def _run_db_backup(self) -> None:
-        self.maintenance.run_db_backup()
     def send_zombie_alert_email(self, fail_count: int, threshold: int, interval: int) -> None:
         """Send an immediate alert email when a zombie radio is detected.
 
@@ -929,18 +1005,26 @@ class MessageScheduler:
         import ssl as _ssl
         from email.message import EmailMessage
 
-        # Prefer bot_metadata (set via web UI) over config.ini so the config page
-        # takes effect without requiring a config.ini edit or bot restart.
-        # Use isinstance(…, str) so a missing/mock value safely falls through.
-        try:
-            alert_enabled_meta = self.bot.db_manager.get_metadata('zombie.alert_enabled')
-        except Exception:
-            alert_enabled_meta = None
-        if isinstance(alert_enabled_meta, str) and alert_enabled_meta:
-            alert_enabled = alert_enabled_meta.lower() == 'true'
-        else:
-            alert_enabled = self.bot.config.getboolean('Bot', 'radio_zombie_alert_enabled', fallback=True)
-        if not alert_enabled:
+        zombie_alert_enabled = self.bot.config.getboolean(
+            'Connection',
+            'radio_zombie_alert_enabled',
+            fallback=self.bot.config.getboolean('Bot', 'radio_zombie_alert_enabled', fallback=False),
+        )
+        zombie_alert_email_cfg: str | None = None
+        db_manager = getattr(self.bot, 'db_manager', None)
+        if db_manager is not None and hasattr(db_manager, 'get_metadata'):
+            try:
+                meta_enabled = db_manager.get_metadata('zombie.alert_enabled')
+                if isinstance(meta_enabled, str) and meta_enabled.strip():
+                    zombie_alert_enabled = meta_enabled.strip().lower() in {
+                        '1', 'true', 'yes', 'on',
+                    }
+                meta_email = db_manager.get_metadata('zombie.alert_email')
+                if isinstance(meta_email, str) and meta_email.strip():
+                    zombie_alert_email_cfg = meta_email.strip()
+            except Exception:
+                pass
+        if not zombie_alert_enabled:
             return
 
         smtp_host     = self._get_notif('smtp_host')
@@ -950,16 +1034,12 @@ class MessageScheduler:
         from_name     = self._get_notif('from_name') or 'MeshCore Bot'
         from_email    = self._get_notif('from_email')
 
-        # Alert recipients: bot_metadata first, then config.ini, then nightly recipients
-        try:
-            _email_meta = self.bot.db_manager.get_metadata('zombie.alert_email')
-            alert_email_meta = _email_meta.strip() if isinstance(_email_meta, str) else ''
-        except Exception:
-            alert_email_meta = ''
-        alert_email_cfg = (
-            alert_email_meta
-            or self.bot.config.get('Bot', 'radio_zombie_alert_email', fallback='').strip()
-        )
+        # Alert recipients: dedicated config key, falls back to nightly recipients
+        alert_email_cfg = zombie_alert_email_cfg or self.bot.config.get(
+            'Connection',
+            'radio_zombie_alert_email',
+            fallback=self.bot.config.get('Bot', 'radio_zombie_alert_email', fallback=''),
+        ).strip()
         if alert_email_cfg:
             recipients = [r.strip() for r in alert_email_cfg.split(',') if r.strip()]
         else:
@@ -973,12 +1053,20 @@ class MessageScheduler:
             )
             return
 
+        allow_local = self._get_notif('allow_local_smtp').lower() == 'true'
+        if not validate_external_url(f'http://{smtp_host}', allow_private=allow_local):
+            self.bot.logger.error(
+                "Zombie alert email aborted: SMTP host %r resolves to a private or reserved address",
+                smtp_host,
+            )
+            return
+
         try:
             smtp_port = int(self._get_notif('smtp_port') or (465 if smtp_security == 'ssl' else 587))
         except ValueError:
             smtp_port = 587
 
-        now_utc         = datetime.datetime.utcnow()
+        now_utc         = datetime.datetime.now(datetime.UTC)
         connection_type = self.bot.config.get('Connection', 'connection_type', fallback='unknown')
         serial_port     = self.bot.config.get('Connection', 'serial_port', fallback='n/a')
         interval_min    = interval // 60
@@ -1047,6 +1135,20 @@ class MessageScheduler:
         except Exception as e:
             self.bot.logger.error(f"Failed to send zombie radio alert email: {e}")
 
+    # ── Maintenance helpers ──────────────────────────────────────────────────
+
+    def _get_maint(self, key: str) -> str:
+        return self.maintenance.get_maint(key)
+
+    def _apply_log_rotation_config(self) -> None:
+        self.maintenance.apply_log_rotation_config()
+
+    def _maybe_run_db_backup(self) -> None:
+        self.maintenance.maybe_run_db_backup()
+
+    def _run_db_backup(self) -> None:
+        self.maintenance.run_db_backup()
+
     # ── Radio offline alert email ────────────────────────────────────────────
 
     def send_radio_offline_alert_email(self, fail_count: int, threshold: int) -> None:
@@ -1062,7 +1164,11 @@ class MessageScheduler:
         import ssl as _ssl
         from email.message import EmailMessage
 
-        alert_enabled = self.bot.config.getboolean('Bot', 'radio_offline_alert_enabled', fallback=True)
+        alert_enabled = self.bot.config.getboolean(
+            'Connection',
+            'radio_offline_alert_enabled',
+            fallback=self.bot.config.getboolean('Bot', 'radio_offline_alert_enabled', fallback=False),
+        )
         if not alert_enabled:
             return
 
@@ -1073,7 +1179,11 @@ class MessageScheduler:
         from_name     = self._get_notif('from_name') or 'MeshCore Bot'
         from_email    = self._get_notif('from_email')
 
-        alert_email_cfg = self.bot.config.get('Bot', 'radio_offline_alert_email', fallback='').strip()
+        alert_email_cfg = self.bot.config.get(
+            'Connection',
+            'radio_offline_alert_email',
+            fallback=self.bot.config.get('Bot', 'radio_offline_alert_email', fallback=''),
+        ).strip()
         if alert_email_cfg:
             recipients = [r.strip() for r in alert_email_cfg.split(',') if r.strip()]
         else:
@@ -1100,7 +1210,7 @@ class MessageScheduler:
         except ValueError:
             smtp_port = 587
 
-        now_utc         = datetime.datetime.utcnow()
+        now_utc         = datetime.datetime.now(datetime.UTC)
         connection_type = self.bot.config.get('Connection', 'connection_type', fallback='unknown')
         serial_port     = self.bot.config.get('Connection', 'serial_port', fallback='n/a')
 

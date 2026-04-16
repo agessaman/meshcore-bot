@@ -41,6 +41,7 @@ def cm_bot(mock_logger):
     bot.bot_tx_rate_limiter = Mock()
     bot.bot_tx_rate_limiter.wait_for_tx = Mock()
     bot.tx_delay_ms = 0
+    bot.is_radio_zombie = False
     return bot
 
 
@@ -349,6 +350,35 @@ class TestSendChannelMessageListeners:
         assert received[0] == {"channel_idx": 3, "text": "TestBot: Hello mesh"}
 
     @pytest.mark.asyncio
+    async def test_send_channel_message_suppressed_when_radio_offline(self, cm_bot):
+        """Interactive channel sends should suppress while radio-offline is active."""
+        cm_bot.connected = True
+        cm_bot.is_radio_offline = True
+        cm_bot.meshcore = Mock()
+        cm_bot.channel_manager = Mock()
+        cm_bot.channel_manager.get_channel_number = Mock(return_value=3)
+        manager = make_manager(cm_bot)
+
+        result = await manager.send_channel_message("general", "Hello mesh")
+
+        assert result is False
+        cm_bot.channel_manager.get_channel_number.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_send_dm_suppressed_when_radio_offline(self, cm_bot):
+        """Interactive DM sends should suppress while radio-offline is active."""
+        cm_bot.connected = True
+        cm_bot.is_radio_offline = True
+        cm_bot.meshcore = Mock()
+        cm_bot.meshcore.get_contact_by_name = Mock(return_value={"name": "TestUser"})
+        manager = make_manager(cm_bot)
+
+        result = await manager.send_dm("TestUser", "Hello mesh")
+
+        assert result is False
+        cm_bot.meshcore.get_contact_by_name.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_failed_send_does_not_invoke_listeners(self, cm_bot):
         """When send_channel_message fails (e.g. channel not found), listeners are not called."""
         cm_bot.connected = True
@@ -553,6 +583,7 @@ class TestSendChannelMessageRetry:
 
     def _setup_bot(self, cm_bot):
         cm_bot.connected = True
+        cm_bot.is_radio_zombie = False
         cm_bot.channel_manager = Mock()
         cm_bot.channel_manager.get_channel_number = Mock(return_value=2)
         cm_bot.meshcore = Mock()
