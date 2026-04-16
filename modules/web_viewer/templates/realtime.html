@@ -818,8 +818,8 @@
         console.warn('MeshCore decoder unavailable:', e);
     });
 
-    // Initialize Socket.IO connection (plain io() with same defaults as base.html)
-    const socket = io();
+    // Reuse the shared socket from base.html's ModernConnectionManager
+    const socket = window.connectionManager.socket;
     
     // Connection status
     let commandConnected = false;

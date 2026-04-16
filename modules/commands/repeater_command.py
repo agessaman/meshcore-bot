@@ -65,14 +65,9 @@ class RepeaterCommand(BaseCommand):
         Returns:
             bool: True if the message starts with any of the command keywords.
         """
-        content = message.content.strip()
-
-        # Handle exclamation prefix
-        if content.startswith('!'):
-            content = content[1:].strip()
+        content_lower = self.cleanup_message_for_matching(message)
 
         # Check if message starts with any of our keywords
-        content_lower = content.lower()
         return any(content_lower.startswith(keyword + ' ') or content_lower == keyword for keyword in self.keywords)
 
     async def execute(self, message: MeshMessage) -> bool:

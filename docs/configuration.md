@@ -101,12 +101,14 @@ Examples of sections that configure specific commands or features:
 
 - **`[Path_Command]`** – Path decoding and repeater selection. See [Path Command](path-command-config.md) for all options.
 - **`[Prefix_Command]`** – Prefix lookup, prefix best, range limits.
+- **`[Cmd_Command]`** – `cmd` behavior. Set `cmd_reference_url` to return `Full command reference: <url>` instead of the generated compact command list.
 - **`[Weather]`** – Used by the `wx` / `gwx` commands and the Weather Service plugin (see [Weather Service](weather-service.md)).
 - **`[Airplanes_Command]`** – Aircraft/ADS-B command (API URL, radius, limits).
 - **`[Aurora_Command]`** – Aurora command (default coordinates).
 - **`[Alert_Command]`** – Emergency alerts (agency IDs, etc.).
 - **`[Sports_Command]`** – Sports scores (teams, leagues).
 - **`[Joke_Command]`**, **`[DadJoke_Command]`** – Joke sources and options.
+- **`[RandomLine]`** – Trigger-based random-line responses via `triggers.<key>`, `file.<key>`, optional `prefix.<key>`, optional channel restriction (`channel.<key>`/`channels.<key>`), and optional website category override (`category.<key>`). Website command reference groups RandomLine entries under **Fun Commands** by default unless `category.<key>` is set.
 
 Common per-command options (when supported by that command):
 

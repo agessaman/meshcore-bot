@@ -299,6 +299,8 @@ async def test_send_channel_message_normalizes_bare_scope():
     bot.config = make_config()
     bot.connected = True
     bot.meshcore = MagicMock()
+    bot.is_radio_zombie = False
+    bot.is_radio_offline = False
     bot.channel_manager = MagicMock()
     bot.channel_manager.get_channel_number = Mock(return_value=0)
 

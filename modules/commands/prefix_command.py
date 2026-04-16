@@ -134,14 +134,7 @@ class PrefixCommand(BaseCommand):
 
     def matches_keyword(self, message: MeshMessage) -> bool:
         """Check if message starts with 'prefix' keyword"""
-        content = message.content.strip()
-
-        # Handle exclamation prefix
-        if content.startswith('!'):
-            content = content[1:].strip()
-
-        # Check if message starts with 'prefix' (with or without space)
-        content_lower = content.lower()
+        content_lower = self.cleanup_message_for_matching(message)
         return content_lower == 'prefix' or content_lower.startswith('prefix ')
 
     async def _parse_location_to_lat_lon(self, location: str) -> tuple[Optional[float], Optional[float], Optional[str]]:

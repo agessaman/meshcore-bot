@@ -282,6 +282,248 @@ class TestLoopExceptionHandler:
         mock_loop.default_exception_handler.assert_called_once_with(ctx)
 
 
+# ---------------------------------------------------------------------------
+# _probe_radio_health (PR4 — zombie-connection detection)
+# ---------------------------------------------------------------------------
+
+
+class TestProbeRadioHealth:
+    """Tests for MeshCoreBot._probe_radio_health()."""
+
+    def _make_bot(self, tmp_path: Path) -> MeshCoreBot:
+        config_file = tmp_path / "config.ini"
+        db_path = tmp_path / "bot.db"
+        _write_config(config_file, db_path)
+        return MeshCoreBot(config_file=str(config_file))
+
+    def test_returns_false_when_meshcore_is_none(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        bot.meshcore = None
+        result = asyncio.run(bot._probe_radio_health())
+        assert result is False
+
+    def test_returns_false_when_not_connected(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        bot.meshcore = MagicMock()
+        bot.meshcore.is_connected = False
+        result = asyncio.run(bot._probe_radio_health())
+        assert result is False
+
+    def test_error_event_increments_fail_count(self, tmp_path):
+        from meshcore.events import EventType
+        bot = self._make_bot(tmp_path)
+        bot._radio_fail_count = 0
+
+        error_event = MagicMock()
+        error_event.type = EventType.ERROR
+        error_event.payload = {"reason": "no_event_received"}
+
+        bot.meshcore = MagicMock()
+        bot.meshcore.is_connected = True
+        bot.meshcore.commands.get_time = MagicMock(
+            return_value=_make_coro(error_event)
+        )
+
+        result = asyncio.run(bot._probe_radio_health())
+        assert result is False
+        assert bot._radio_fail_count == 1
+
+    def test_error_event_below_threshold_does_not_reconnect(self, tmp_path):
+        from meshcore.events import EventType
+        bot = self._make_bot(tmp_path)
+        bot._radio_fail_count = 0
+        bot.config.set("Bot", "radio_probe_fail_threshold", "3")
+
+        error_event = MagicMock()
+        error_event.type = EventType.ERROR
+        error_event.payload = {"reason": "no_event_received"}
+
+        bot.meshcore = MagicMock()
+        bot.meshcore.is_connected = True
+        bot.meshcore.commands.get_time = MagicMock(
+            return_value=_make_coro(error_event)
+        )
+
+        reconnect_called = []
+
+        async def fake_reconnect():
+            reconnect_called.append(True)
+            return True
+
+        bot.reconnect_radio = fake_reconnect
+
+        asyncio.run(bot._probe_radio_health())
+        assert not reconnect_called
+
+    def test_error_event_at_threshold_triggers_zombie_detection(self, tmp_path):
+        from meshcore.events import EventType
+        bot = self._make_bot(tmp_path)
+        bot._radio_fail_count = 2  # this probe makes it 3
+        bot.config.set("Bot", "radio_probe_fail_threshold", "3")
+
+        error_event = MagicMock()
+        error_event.type = EventType.ERROR
+        error_event.payload = {"reason": "no_event_received"}
+
+        bot.meshcore = MagicMock()
+        bot.meshcore.is_connected = True
+        bot.meshcore.commands.get_time = MagicMock(
+            return_value=_make_coro(error_event)
+        )
+
+        result = asyncio.run(bot._probe_radio_health())
+        assert result is False
+        assert bot._radio_fail_count == 0  # reset after trigger
+        assert bot._radio_zombie_detected is True
+
+    def test_success_resets_fail_count(self, tmp_path):
+        from meshcore.events import EventType
+        bot = self._make_bot(tmp_path)
+        bot._radio_fail_count = 2
+
+        ok_event = MagicMock()
+        ok_event.type = EventType.OK
+
+        bot.meshcore = MagicMock()
+        bot.meshcore.is_connected = True
+        bot.meshcore.commands.get_time = MagicMock(
+            return_value=_make_coro(ok_event)
+        )
+
+        result = asyncio.run(bot._probe_radio_health())
+        assert result is True
+        assert bot._radio_fail_count == 0
+
+    def test_success_logs_recovery_when_previously_failed(self, tmp_path):
+        from meshcore.events import EventType
+        bot = self._make_bot(tmp_path)
+        bot._radio_fail_count = 1
+
+        ok_event = MagicMock()
+        ok_event.type = EventType.OK
+
+        bot.meshcore = MagicMock()
+        bot.meshcore.is_connected = True
+        bot.meshcore.commands.get_time = MagicMock(
+            return_value=_make_coro(ok_event)
+        )
+
+        with patch.object(bot.logger, "info") as mock_info:
+            asyncio.run(bot._probe_radio_health())
+
+        logged_messages = [str(c) for c in mock_info.call_args_list]
+        assert any("recovered" in m for m in logged_messages)
+
+    def test_success_no_recovery_log_when_no_prior_failure(self, tmp_path):
+        from meshcore.events import EventType
+        bot = self._make_bot(tmp_path)
+        bot._radio_fail_count = 0
+
+        ok_event = MagicMock()
+        ok_event.type = EventType.OK
+
+        bot.meshcore = MagicMock()
+        bot.meshcore.is_connected = True
+        bot.meshcore.commands.get_time = MagicMock(
+            return_value=_make_coro(ok_event)
+        )
+
+        with patch.object(bot.logger, "info") as mock_info:
+            asyncio.run(bot._probe_radio_health())
+
+        logged_messages = [str(c) for c in mock_info.call_args_list]
+        assert not any("recovered" in m for m in logged_messages)
+
+    def test_asyncio_timeout_returns_false_and_warns(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        bot.meshcore = MagicMock()
+        bot.meshcore.is_connected = True
+
+        async def slow_get_time():
+            raise asyncio.TimeoutError()
+
+        bot.meshcore.commands.get_time = MagicMock(return_value=slow_get_time())
+
+        async def run():
+            async def fake_wait_for(coro, timeout):
+                raise asyncio.TimeoutError()
+
+            with patch("asyncio.wait_for", side_effect=fake_wait_for):
+                return await bot._probe_radio_health()
+
+        result = asyncio.run(run())
+        assert result is False
+
+    def test_generic_exception_returns_false_and_warns(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        bot.meshcore = MagicMock()
+        bot.meshcore.is_connected = True
+
+        async def failing_get_time():
+            raise RuntimeError("device exploded")
+
+        bot.meshcore.commands.get_time = MagicMock(
+            return_value=failing_get_time()
+        )
+
+        with patch.object(bot.logger, "warning") as mock_warn:
+            result = asyncio.run(bot._probe_radio_health())
+
+        assert result is False
+        assert mock_warn.called
+
+
+class TestRadioOfflineState:
+    """Tests for _record_send_failure / _record_send_success / is_radio_offline."""
+
+    def _make_bot(self, tmp_path: Path) -> "MeshCoreBot":
+        config_file = tmp_path / "config.ini"
+        db_path = tmp_path / "bot.db"
+        _write_config(config_file, db_path)
+        return MeshCoreBot(config_file=str(config_file))
+
+    def test_is_radio_offline_defaults_to_false(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        assert bot.is_radio_offline is False
+
+    def test_record_send_failure_increments_counter(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        bot._record_send_failure()
+        assert bot._send_consecutive_failures == 1
+
+    def test_record_send_failure_sets_offline_at_threshold(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        # Default threshold is 3
+        for _ in range(3):
+            bot._record_send_failure()
+        assert bot.is_radio_offline is True
+
+    def test_record_send_success_clears_offline_flag(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        bot._radio_offline = True
+        bot._send_consecutive_failures = 5
+        bot._record_send_success()
+        assert bot.is_radio_offline is False
+        assert bot._send_consecutive_failures == 0
+
+    def test_record_send_success_no_op_when_already_clean(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        bot._record_send_success()  # must not raise
+        assert bot.is_radio_offline is False
+
+    def test_offline_not_set_below_threshold(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        bot._record_send_failure()
+        bot._record_send_failure()
+        assert bot.is_radio_offline is False
+
+    def test_custom_threshold_from_config(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        bot.config.set('Bot', 'radio_offline_threshold', '2')
+        bot._record_send_failure()
+        assert bot.is_radio_offline is False
+        bot._record_send_failure()
+        assert bot.is_radio_offline is True
 class TestBotAdminServer:
     """Admin HTTP server: /api/admin/reload and /api/admin/health."""
 

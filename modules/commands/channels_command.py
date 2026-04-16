@@ -72,11 +72,7 @@ class ChannelsCommand(BaseCommand):
         if not self.keywords:
             return False
 
-        # Strip exclamation mark if present (for command-style messages)
-        content = message.content.strip()
-        if content.startswith('!'):
-            content = content[1:].strip()
-        content_lower = content.lower()
+        content_lower = self.cleanup_message_for_matching(message)
 
         # Don't match if this looks like a subcommand of another command
         # (e.g., "stats channels" should not match "channels" command)

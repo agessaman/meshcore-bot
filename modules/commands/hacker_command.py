@@ -484,10 +484,7 @@ class HackerCommand(BaseCommand):
         if not self.enabled:
             return False
 
-        content = message.content.strip()
-        if content.startswith('!'):
-            content = content[1:].strip()
-        content_lower = content.lower()
+        content_lower = self.cleanup_message_for_matching(message)
 
         # Commands that should match exactly (no arguments)
         exact_match_commands = ['ls -l', 'ls -la', 'echo $PATH', 'df -h', 'whoami', 'history',

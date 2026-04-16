@@ -46,7 +46,9 @@ class AirplanesCommand(BaseCommand):
         self.airplanes_enabled = self.get_config_value('Airplanes_Command', 'enabled', fallback=True, value_type='bool')
         self.api_url = self.get_config_value('Airplanes_Command', 'api_url', fallback='http://api.airplanes.live/v2/', value_type='str')
         self.default_radius = self.get_config_value('Airplanes_Command', 'default_radius', fallback=25, value_type='float')
-        self.max_results = self.get_config_value('Airplanes_Command', 'max_results', fallback=10, value_type='int')
+        # Default chosen to fit single-message constraints on the smallest channel budget.
+        # Channel payload can be as low as 130 bytes; three compact lines are reliable.
+        self.max_results = self.get_config_value('Airplanes_Command', 'max_results', fallback=3, value_type='int')
         self.url_timeout = self.get_config_value('Airplanes_Command', 'url_timeout', fallback=10, value_type='int')
 
         # Ensure API URL ends with /
@@ -211,7 +213,7 @@ class AirplanesCommand(BaseCommand):
             'ladd': False,
             'pia': False,
             'squawk': None,
-            'limit': self.max_results,
+            'limit': self.max_results,  # 0 = no configured cap (still single-message bounded at send time)
             'sort': 'distance'  # distance, altitude, speed
         }
 
@@ -420,8 +422,10 @@ class AirplanesCommand(BaseCommand):
         elif filters['sort'] == 'speed':
             filtered.sort(key=lambda x: (x.get('gs') or 0), reverse=True)
 
-        # Apply limit
-        return filtered[:filters['limit']]
+        # Apply limit (0 = no limit)
+        if filters['limit'] > 0:
+            return filtered[:filters['limit']]
+        return filtered
 
     def _format_single_aircraft(self, aircraft: dict[str, Any], query_lat: float, query_lon: float, max_length: int = 130) -> str:
         """Format detailed single aircraft response (~130 characters).
@@ -538,14 +542,19 @@ class AirplanesCommand(BaseCommand):
 
         return response
 
-    def _format_aircraft_list(self, aircraft_list: list[dict[str, Any]], query_lat: float, query_lon: float, max_length: int = 130) -> str:
+    def _format_aircraft_list(
+        self,
+        aircraft_list: list[dict[str, Any]],
+        query_lat: float,
+        query_lon: float,
+        max_length: Optional[int] = None,
+    ) -> str:
         """Format compact list for multiple aircraft.
 
         Args:
             aircraft_list: List of aircraft dictionaries.
             query_lat: Query latitude.
             query_lon: Query longitude.
-            max_length: Maximum message length (default 130).
 
         Returns:
             str: Formatted aircraft list.
@@ -571,23 +580,32 @@ class AirplanesCommand(BaseCommand):
             line = f"{callsign} {alt_str} {speed_str} {distance_nm:.1f}nm {bearing_cardinal}"
             lines.append(line)
 
-        # Build response, truncating if necessary
-        response_lines: list[str] = []
-        current_length = 0
+        if max_length is None:
+            return '\n'.join(lines)
 
+        # Pack whole lines into the available single-message budget.
+        fitted_lines: list[str] = []
+        used = 0
         for line in lines:
-            line_length = len(line) + 1  # +1 for newline
-            if current_length + line_length > max_length:
-                # Can't fit this line
-                if response_lines:
-                    remaining = len(lines) - len(response_lines)
-                    if remaining > 0:
-                        response_lines.append(f"({remaining} more)")
+            line_len = len(line)
+            projected = line_len if not fitted_lines else used + 1 + line_len
+            if projected > max_length:
                 break
-            response_lines.append(line)
-            current_length += line_length
+            fitted_lines.append(line)
+            used = projected
 
-        return '\n'.join(response_lines)
+        if not fitted_lines:
+            # Fall back to a hard-truncated first line for pathological edge cases.
+            first = lines[0] if lines else ""
+            return first[: max(0, max_length - 3)].rstrip() + "..." if len(first) > max_length else first
+
+        omitted = len(lines) - len(fitted_lines)
+        if omitted > 0:
+            suffix = f"\n...+{omitted} more"
+            if used + len(suffix) <= max_length:
+                return ''.join(['\n'.join(fitted_lines), suffix])
+
+        return '\n'.join(fitted_lines)
 
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the airplanes command.
@@ -741,19 +759,20 @@ class AirplanesCommand(BaseCommand):
             # Get max message length for this message type
             max_length = self.get_max_message_length(message)
 
-            # Format response
-            # For overhead command, always use single aircraft format
+            # Format and send response
+            # For overhead command or single result, send as one message
             if is_overhead_command or len(filtered) == 1:
                 response = self._format_single_aircraft(filtered[0], location[0], location[1], max_length)
-            else:
-                response = self._format_aircraft_list(filtered, location[0], location[1], max_length)
-
-            # Check if response needs to be split (for very long lists)
-            if len(response) <= max_length:
                 await self.send_response(message, response)
             else:
-                # Split into multiple messages if needed
-                await self._send_split_response(message, response, max_length)
+                # Keep list output to a single frame to avoid multi-message flood traffic.
+                response = self._format_aircraft_list(
+                    filtered,
+                    location[0],
+                    location[1],
+                    max_length=max_length,
+                )
+                await self.send_response(message, response)
 
             return True
 

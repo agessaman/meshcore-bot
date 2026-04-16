@@ -60,13 +60,10 @@ class TraceCommand(BaseCommand):
         )
 
     def matches_keyword(self, message: MeshMessage) -> bool:
-        content = message.content.strip()
-        if content.startswith("!"):
-            content = content[1:].strip()
-        c = content.lower()
-        if c == "trace" or c == "tracer":
+        content_lower = self.cleanup_message_for_matching(message)
+        if content_lower == "trace" or content_lower == "tracer":
             return True
-        return bool(c.startswith("trace ") or c.startswith("tracer "))
+        return bool(content_lower.startswith("trace ") or content_lower.startswith("tracer "))
 
     def _extract_path_from_message(self, message: MeshMessage) -> list[str]:
         """Extract path node IDs from message.path (supports 1-hop and multi-hop)."""

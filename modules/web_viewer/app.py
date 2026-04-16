@@ -18,6 +18,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional, Union
 
+# When started as a script (`python modules/web_viewer/app.py`), Python puts the
+# script's directory on sys.path, not the repo root — import modules.* fails
+# unless we prepend the project root first.
+_project_root = str(Path(__file__).resolve().parent.parent.parent)
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
 from flask import (
     Flask,
     Response,
@@ -33,7 +40,11 @@ from flask import (
 )
 from flask_socketio import SocketIO, disconnect, emit
 
-from modules.security_utils import VALID_JOURNAL_MODES, validate_sql_identifier
+from modules.security_utils import (
+    VALID_JOURNAL_MODES,
+    validate_external_url,
+    validate_sql_identifier,
+)
 from modules.version_info import resolve_runtime_version
 
 
@@ -77,10 +88,6 @@ def _strip_ansi_codes(text: str) -> str:
     """Remove ANSI color and reset codes from log lines for SocketIO web clients."""
     return _ANSI_ESCAPE_RE.sub("", text)
 
-
-# Add the project root to the path so we can import bot components
-project_root = os.path.join(os.path.dirname(__file__), '..', '..')
-sys.path.insert(0, project_root)
 
 from modules.feed_manager import FeedManager
 from modules.repeater_manager import RepeaterManager
@@ -143,6 +150,7 @@ class BotDataViewer:
 
         # Load configuration
         self.config = self._load_config(config_path)
+        self.config_path = config_path  # kept for config.ini write-back endpoints
 
         # Resolve db_path relative to the config file's directory — matches core.py's bot_root
         # property which is Path(config_file).parent.resolve().  Using self.bot_root (the project
@@ -278,15 +286,38 @@ class BotDataViewer:
                     bot_name = (self.config.get('Bot', 'bot_name', fallback='MeshCore Bot') or '').strip() or 'MeshCore Bot'
                 except (configparser.NoSectionError, configparser.NoOptionError):
                     bot_name = 'MeshCore Bot'
+                try:
+                    radio_zombie = self.db_manager.get_metadata('bot.radio_zombie') == 'true'
+                    radio_zombie_since = self.db_manager.get_metadata('bot.radio_zombie_since') or None
+                    radio_offline = self.db_manager.get_metadata('bot.radio_offline') == 'true'
+                    radio_offline_since = self.db_manager.get_metadata('bot.radio_offline_since') or None
+                except Exception:
+                    radio_zombie = False
+                    radio_zombie_since = None
+                    radio_offline = False
+                    radio_offline_since = None
                 return {
                     'greeter_enabled': greeter_enabled,
                     'feed_manager_enabled': feed_manager_enabled,
                     'bot_name': bot_name,
                     'version_info': version_info,
+                    'radio_zombie': radio_zombie,
+                    'radio_zombie_since': radio_zombie_since,
+                    'radio_offline': radio_offline,
+                    'radio_offline_since': radio_offline_since,
                 }
             except Exception as e:
                 self.logger.exception("Template context processor failed: %s", e)
-                return {'greeter_enabled': False, 'feed_manager_enabled': False, 'bot_name': 'MeshCore Bot', 'version_info': version_info}
+                return {
+                    'greeter_enabled': False,
+                    'feed_manager_enabled': False,
+                    'bot_name': 'MeshCore Bot',
+                    'version_info': version_info,
+                    'radio_zombie': False,
+                    'radio_zombie_since': None,
+                    'radio_offline': False,
+                    'radio_offline_since': None,
+                }
 
     def _init_databases(self):
         """Initialize database connections"""
@@ -1313,6 +1344,7 @@ class BotDataViewer:
                 'notif.smtp_user', 'notif.smtp_password',
                 'notif.from_name', 'notif.from_email',
                 'notif.recipients', 'notif.nightly_enabled',
+                'notif.allow_local_smtp',
             ]
             settings = {}
             for k in keys:
@@ -1336,7 +1368,7 @@ class BotDataViewer:
                 'smtp_host', 'smtp_port', 'smtp_security',
                 'smtp_user', 'smtp_password',
                 'from_name', 'from_email',
-                'recipients', 'nightly_enabled',
+                'recipients', 'nightly_enabled', 'allow_local_smtp',
             }
             saved = []
             for field in allowed:
@@ -1371,6 +1403,14 @@ class BotDataViewer:
                 return jsonify({'error': 'Sender email is not configured'}), 400
             if not recipients:
                 return jsonify({'error': 'No recipients configured'}), 400
+
+            # Validate SMTP host for SSRF protection
+            # allow_local_smtp=true permits private/internal SMTP hosts (e.g., local Postfix)
+            allow_local_smtp = _get('allow_local_smtp').lower() == 'true'
+            if not validate_external_url(f'http://{smtp_host}', allow_private=allow_local_smtp):
+                if allow_local_smtp:
+                    return jsonify({'error': 'Invalid or unsafe SMTP host'}), 400
+                return jsonify({'error': 'Invalid or unsafe SMTP host (private/internal IP blocked)'}), 400
 
             try:
                 msg = EmailMessage()
@@ -1489,6 +1529,201 @@ class BotDataViewer:
             self.logger.info(f"Maintenance config updated: {', '.join(saved)}")
             return jsonify({'success': True, 'saved': saved})
 
+        # ── Zombie radio alert config ────────────────────────────────────────
+
+        @self.app.route('/api/config/zombie-alert')
+        def api_config_zombie_alert_get() -> "Response":
+            """Return zombie alert settings.
+
+            Response includes both ``bot_metadata`` values (set via web UI) and
+            ``config_ini`` values (read from config.ini) so the browser can
+            show config.ini as the baseline defaults.
+            """
+            meta: dict[str, str] = {}
+            for key in ('zombie.alert_enabled', 'zombie.alert_email'):
+                short = key.split('.', 1)[1]
+                val = self.db_manager.get_metadata(key)
+                meta[short] = val if isinstance(val, str) else ''
+            if not meta.get('alert_enabled'):
+                meta['alert_enabled'] = 'false'
+            ini: dict[str, str] = {
+                'alert_enabled': (
+                    'true'
+                    if self.config.getboolean(
+                        'Connection',
+                        'radio_zombie_alert_enabled',
+                        fallback=self.config.getboolean('Bot', 'radio_zombie_alert_enabled', fallback=False),
+                    )
+                    else 'false'
+                ),
+                'alert_email': self.config.get(
+                    'Connection',
+                    'radio_zombie_alert_email',
+                    fallback=self.config.get('Bot', 'radio_zombie_alert_email', fallback=''),
+                ),
+            }
+            return jsonify({'meta': meta, 'config_ini': ini})
+
+        @self.app.route('/api/config/zombie-alert', methods=['POST'])
+        def api_config_zombie_alert_post() -> "Response":
+            """Save zombie alert settings to bot_metadata.
+
+            If ``write_to_config`` is ``true`` in the request body, the values
+            are also written back to config.ini under ``[Connection]``.  The config
+            object in memory is updated immediately so the scheduler reads the
+            new values without a restart.
+            """
+            data = request.get_json(silent=True) or {}
+            allowed = {'alert_enabled', 'alert_email'}
+            saved = []
+            for field in allowed:
+                if field in data:
+                    self.db_manager.set_metadata(f'zombie.{field}', str(data[field]))
+                    saved.append(field)
+            self.logger.info("Zombie alert config updated (metadata): %s", ', '.join(saved))
+
+            write_to_config = str(data.get('write_to_config', '')).lower() == 'true'
+            config_saved = False
+            if write_to_config:
+                try:
+                    if not self.config.has_section('Connection'):
+                        self.config.add_section('Connection')
+                    if 'alert_enabled' in data:
+                        self.config.set(
+                            'Connection', 'radio_zombie_alert_enabled',
+                            'true' if str(data['alert_enabled']).lower() == 'true' else 'false',
+                        )
+                    if 'alert_email' in data:
+                        self.config.set('Connection', 'radio_zombie_alert_email', str(data['alert_email']))
+                    with open(self.config_path, 'w') as fh:
+                        self.config.write(fh)
+                    config_saved = True
+                    self.logger.info("Zombie alert settings written to config.ini")
+                except OSError as exc:
+                    self.logger.error("Failed to write zombie alert settings to config.ini: %s", exc)
+                    return jsonify({
+                        'success': False,
+                        'error': 'Could not write config.ini — check file permissions',
+                    }), 500
+
+            return jsonify({'success': True, 'saved': saved, 'config_saved': config_saved})
+
+        # ── Zombie recover ───────────────────────────────────────────────────
+
+        @self.app.route('/api/admin/zombie-recover', methods=['POST'])
+        def api_admin_zombie_recover() -> "Response":
+            """Clear zombie state so bot resumes processing after a radio power cycle.
+
+            Clears the ``_radio_zombie_detected`` flag on the live bot object (if
+            accessible) and removes the persisted flag from bot_metadata so the
+            web-viewer banner disappears on the next page load.
+            """
+            try:
+                self.db_manager.set_metadata('bot.radio_zombie', 'false')
+                self.db_manager.set_metadata('bot.radio_zombie_since', '')
+                bot = getattr(self, 'bot', None)
+                if bot is not None:
+                    bot._radio_zombie_detected = False
+                    bot._radio_fail_count = 0
+                    bot._last_radio_probe = 0  # force probe on next cycle
+                self.logger.info("Zombie state cleared via web UI recover action")
+                return jsonify({'success': True, 'message': 'Zombie state cleared; bot will resume'})
+            except Exception:
+                self.logger.exception("Error clearing zombie state")
+                return jsonify({'success': False, 'error': 'Internal error — see server logs'}), 500
+
+        # ── Radio debug config ───────────────────────────────────────────────
+
+        @self.app.route('/api/config/radio-debug')
+        def api_config_radio_debug_get() -> "Response":
+            """Return current radio debug logging setting.
+
+            Response includes both ``bot_metadata`` value (set via web UI) and
+            ``config_ini`` value (read from config.ini) so the browser can show
+            which is the persistent baseline.
+            """
+            meta_val = self.db_manager.get_metadata('radio.debug')
+            meta_enabled = meta_val if isinstance(meta_val, str) else ''
+            ini_enabled = (
+                'true'
+                if self.config.getboolean('Connection', 'radio_debug', fallback=False)
+                else 'false'
+            )
+            return jsonify({'meta': {'enabled': meta_enabled}, 'config_ini': {'enabled': ini_enabled}})
+
+        @self.app.route('/api/config/radio-debug', methods=['POST'])
+        def api_config_radio_debug_post() -> "Response":
+            """Save radio debug logging setting.
+
+            Body fields:
+            - ``enabled``: ``'true'`` or ``'false'``
+            - ``write_to_config``: ``'true'`` to also write ``[Connection]
+              radio_debug`` to config.ini
+            - ``reconnect``: ``'true'`` to queue a radio reconnect so the
+              change takes effect immediately (the debug flag is only applied
+              at connection time)
+            """
+            try:
+                data = request.get_json(silent=True) or {}
+                enabled = str(data.get('enabled', 'false')).lower() == 'true'
+                write_to_config = str(data.get('write_to_config', 'false')).lower() == 'true'
+                do_reconnect = str(data.get('reconnect', 'false')).lower() == 'true'
+
+                self.db_manager.set_metadata('radio.debug', 'true' if enabled else 'false')
+                config_saved = False
+
+                if write_to_config:
+                    try:
+                        if not self.config.has_section('Connection'):
+                            self.config.add_section('Connection')
+                        self.config.set('Connection', 'radio_debug', 'true' if enabled else 'false')
+                        with open(self.config_path, 'w') as fh:
+                            self.config.write(fh)
+                        config_saved = True
+                        self.logger.info(
+                            "radio_debug=%s written to config.ini by web UI", 'true' if enabled else 'false'
+                        )
+                    except OSError as exc:
+                        self.logger.error("Failed to write radio_debug to config.ini: %s", exc)
+                        return jsonify({
+                            'success': False,
+                            'error': 'Could not write config.ini — check file permissions',
+                        }), 500
+
+                op_id = None
+                if do_reconnect:
+                    with self.db_manager.connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute(
+                            "INSERT INTO channel_operations (operation_type, status) VALUES ('radio_connect', 'pending')"
+                        )
+                        conn.commit()
+                        op_id = cursor.lastrowid
+                    self.logger.info("Radio reconnect queued (op_id=%s) to apply radio_debug=%s", op_id, enabled)
+
+                return jsonify({'success': True, 'config_saved': config_saved, 'op_id': op_id})
+            except Exception as exc:
+                self.logger.exception("Error saving radio debug config")
+                return jsonify({'success': False, 'error': str(exc)}), 500
+
+        # ── Radio offline clear ──────────────────────────────────────────────
+
+        @self.app.route('/api/admin/radio-offline-clear', methods=['POST'])
+        def api_admin_radio_offline_clear() -> "Response":
+            """Clear the radio-offline flag so the bot resumes outbound sends."""
+            try:
+                self.db_manager.set_metadata('bot.radio_offline', 'false')
+                self.db_manager.set_metadata('bot.radio_offline_since', '')
+                bot = getattr(self, 'bot', None)
+                if bot is not None:
+                    bot._radio_offline = False
+                    bot._send_consecutive_failures = 0
+                self.logger.info("Radio-offline state cleared via web UI action")
+                return jsonify({'success': True, 'message': 'Radio-offline flag cleared; sends will resume'})
+            except Exception:
+                self.logger.exception("Error clearing radio-offline state")
+                return jsonify({'success': False, 'error': 'Internal error — see server logs'}), 500
+
         # ── Maintenance status ───────────────────────────────────────────────
 
         @self.app.route('/api/maintenance/backup_now', methods=['POST'])
@@ -1527,12 +1762,26 @@ class BotDataViewer:
                 backup_dir_str = self.db_manager.get_metadata('maint.db_backup_dir') or ''
                 if not backup_dir_str or not os.path.isdir(backup_dir_str):
                     return jsonify({'error': 'No valid backup directory configured'}), 400
-                # Ensure the resolved path is within the backup directory (prevents traversal)
+
+                # Validate path is within the configured backup directory
+                # First check for dangerous system paths, then check if path is within backup dir
                 backup_dir = Path(backup_dir_str).resolve()
                 src = Path(db_file).resolve()
+
+                # Check for dangerous system paths first (returns 400)
+                target_str = str(src).lower()
+                dangerous_prefixes = [
+                    '/etc', '/private/etc',
+                    '/sys', '/proc', '/dev', '/bin', '/sbin', '/boot',
+                ]
+                if any(target_str.startswith(prefix) for prefix in dangerous_prefixes):
+                    return jsonify({'error': 'Access to system directory denied'}), 400
+
+                # Check if path is within the backup directory (prevents traversal)
                 try:
                     src.relative_to(backup_dir)
                 except ValueError:
+                    # Path is outside backup directory - return 403
                     return jsonify({'error': 'Restore path must be within the configured backup directory'}), 403
 
                 if not src.exists():
@@ -1796,13 +2045,18 @@ class BotDataViewer:
             with self._clients_lock:
                 client_count = len(self.connected_clients)
 
+            radio_zombie = self.db_manager.get_metadata('bot.radio_zombie') == 'true'
+            radio_zombie_since = self.db_manager.get_metadata('bot.radio_zombie_since') or None
+
             return jsonify({
-                'status': 'healthy',
+                'status': 'degraded' if radio_zombie else 'healthy',
                 'connected_clients': client_count,
                 'max_clients': self.max_clients,
                 'timestamp': time.time(),
                 'bot_uptime': bot_uptime,
-                'version': 'modern_2.0'
+                'version': 'modern_2.0',
+                'radio_zombie': radio_zombie,
+                'radio_zombie_since': radio_zombie_since,
             })
 
         @self.app.route('/api/system-health')
@@ -1828,6 +2082,15 @@ class BotDataViewer:
                 start_time = self.db_manager.get_bot_start_time()
                 if start_time:
                     health_data['uptime_seconds'] = time.time() - start_time
+
+                # Inject zombie radio state from shared metadata
+                radio_zombie = self.db_manager.get_metadata('bot.radio_zombie') == 'true'
+                health_data['radio_zombie'] = radio_zombie
+                health_data['radio_zombie_since'] = (
+                    self.db_manager.get_metadata('bot.radio_zombie_since') or None
+                )
+                if radio_zombie:
+                    health_data['status'] = 'degraded'
 
                 return jsonify(health_data)
 
@@ -3090,7 +3353,11 @@ class BotDataViewer:
                                                    fallback='{emoji} {body|truncate:100} - {date}\n{link|truncate:50}')
 
                 # Fetch and format feed items
-                preview_items = self._preview_feed_items(feed_url, feed_type, output_format, api_config, filter_config, sort_config)
+                try:
+                    preview_items = self._preview_feed_items(feed_url, feed_type, output_format, api_config, filter_config, sort_config)
+                except ValueError as e:
+                    # SSRF validation error - return 400
+                    return jsonify({'error': str(e)}), 400
 
                 return jsonify({
                     'success': True,
@@ -3108,14 +3375,31 @@ class BotDataViewer:
                 if not data or 'url' not in data:
                     return jsonify({'error': 'URL is required'}), 400
 
-                # This would require feed_manager - for now just validate URL
-                from urllib.parse import urlparse
                 url = data['url']
-                result = urlparse(url)
-                if not all([result.scheme in ['http', 'https'], result.netloc]):
-                    return jsonify({'error': 'Invalid URL format'}), 400
 
-                return jsonify({'success': True, 'message': 'URL validated (full test requires feed manager)'})
+                # Validate URL for SSRF protection
+                if self.config.has_section('Feed_Command'):
+                    try:
+                        feed_command_allow_private = self.config.getboolean(
+                            'Feed_Command', 'allow_private_urls', fallback=False
+                        )
+                    except ValueError:
+                        feed_command_allow_private = False
+                else:
+                    feed_command_allow_private = False
+                allow_private_feeds = (
+                    self.config.getboolean(
+                        'Feed_Manager',
+                        'allow_private_urls',
+                        fallback=feed_command_allow_private,
+                    )
+                    if self.config.has_section('Feed_Manager')
+                    else feed_command_allow_private
+                )
+                if not validate_external_url(url, allow_private=allow_private_feeds):
+                    return jsonify({'error': 'Invalid or unsafe URL'}), 400
+
+                return jsonify({'success': True, 'message': 'URL validated'})
             except Exception as e:
                 self.logger.error(f"Error testing feed: {e}")
                 return jsonify({'error': str(e)}), 500
@@ -5705,6 +5989,28 @@ class BotDataViewer:
         try:
             items = []
 
+            # Validate URL for SSRF protection
+            if self.config.has_section('Feed_Command'):
+                try:
+                    feed_command_allow_private = self.config.getboolean(
+                        'Feed_Command', 'allow_private_urls', fallback=False
+                    )
+                except ValueError:
+                    feed_command_allow_private = False
+            else:
+                feed_command_allow_private = False
+            allow_private_feeds = (
+                self.config.getboolean(
+                    'Feed_Manager',
+                    'allow_private_urls',
+                    fallback=feed_command_allow_private,
+                )
+                if self.config.has_section('Feed_Manager')
+                else feed_command_allow_private
+            )
+            if not validate_external_url(feed_url, allow_private=allow_private_feeds):
+                raise ValueError("Invalid or unsafe feed URL")
+
             if feed_type == 'rss':
                 # Fetch RSS feed
                 response = requests.get(feed_url, timeout=30, headers={'User-Agent': 'MeshCoreBot/1.0 FeedManager'})
@@ -6408,17 +6714,17 @@ class BotDataViewer:
                 return int(time.time() - start_time)
             else:
                 # Fallback: try to get earliest message timestamp
-                conn = self._get_db_connection()
-                cursor = conn.cursor()
+                with self._with_db_connection() as conn:
+                    cursor = conn.cursor()
 
-                # Try to get earliest message timestamp as fallback
-                cursor.execute("""
-                    SELECT MIN(timestamp) FROM message_stats
-                    WHERE timestamp IS NOT NULL
-                """)
-                result = cursor.fetchone()
-                if result and result[0]:
-                    return int(time.time() - result[0])
+                    # Try to get earliest message timestamp as fallback
+                    cursor.execute("""
+                        SELECT MIN(timestamp) FROM message_stats
+                        WHERE timestamp IS NOT NULL
+                    """)
+                    result = cursor.fetchone()
+                    if result and result[0]:
+                        return int(time.time() - result[0])
 
                 return 0
         except Exception as e:
@@ -7128,6 +7434,7 @@ class BotDataViewer:
     def run(self, host='127.0.0.1', port=8080, debug=False):
         """Run the modern web viewer"""
         self.logger.info(f"Starting modern web viewer on {host}:{port}")
+        self._suppress_werkzeug_headers_error()
         try:
             self.socketio.run(
                 self.app,
@@ -7139,6 +7446,26 @@ class BotDataViewer:
         except Exception as e:
             self.logger.error(f"Error running web viewer: {e}")
             raise
+
+    @staticmethod
+    def _suppress_werkzeug_headers_error() -> None:
+        """Install a log filter that silences the 'Headers already set' AssertionError.
+
+        Werkzeug's dev server catches this internally and continues serving, but it
+        logs a full traceback at ERROR level.  The underlying cause (concurrent
+        SocketIO polling requests racing through the WSGI layer) is reduced by the
+        single-socket-per-page fix, but may still occur occasionally.  The filter
+        downgrades these specific records to DEBUG so they don't alarm operators.
+        """
+        import logging
+
+        class _HeadersAlreadySetFilter(logging.Filter):
+            def filter(self, record: logging.LogRecord) -> bool:
+                msg = record.getMessage()
+                return "Headers already set" not in msg
+
+        for name in ("werkzeug", "werkzeug.serving"):
+            logging.getLogger(name).addFilter(_HeadersAlreadySetFilter())
 
 def main():
     """Entry point for the meshcore-viewer command"""

@@ -7,7 +7,7 @@ A Python bot that connects to MeshCore mesh networks via serial port, BLE, or TC
 - **Connection Methods**: Serial port, BLE (Bluetooth Low Energy), or TCP/IP
 - **Keyword Responses**: Configurable keyword-response pairs with template variables
 - **Command System**: Plugin-based command architecture with built-in commands
-- **Command Aliases**: Define shorthand aliases for any command via `[Aliases]` config section
+- **Command Aliases**: Define shorthand aliases for any command via `aliases =` key in each command's config section
 - **Rate Limiting**: Global, per-user (by pubkey or name), and per-channel rate limits to prevent spam
 - **User Management**: Ban/unban users with persistent storage
 - **Scheduled Messages**: Send messages at configured times
@@ -33,7 +33,7 @@ A Python bot that connects to MeshCore mesh networks via serial port, BLE, or TC
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.10+
 - MeshCore-compatible device (Heltec V3, RAK Wireless, etc.)
 - USB cable or BLE capability
 
@@ -317,6 +317,14 @@ bot_tx_rate_limit_seconds = 1.0   # Min seconds between bot transmissions
 per_user_rate_limit_seconds = 30  # Per-user: min seconds between replies to same user (pubkey or name)
 per_user_rate_limit_enabled = true
 startup_advert = flood            # Send advert on startup
+radio_probe_interval_seconds = 300   # probe interval in seconds (300–900 / 5–15 min)
+radio_probe_fail_threshold = 3       # consecutive failures before zombie is declared and logged
+send_timeout_seconds = 30            # max seconds to wait for a channel message send
+radio_zombie_alert_enabled = false   # send immediate alert email on zombie detection (default: log only)
+radio_zombie_alert_email =           # alert recipient(s); falls back to nightly email if blank
+radio_offline_threshold = 3          # consecutive send timeouts before radio-offline state is entered
+radio_offline_alert_enabled = true   # send alert email when radio-offline state is entered
+radio_offline_alert_email =          # alert recipient(s); falls back to nightly email if blank
 ```
 
 ### Keywords
@@ -349,12 +357,16 @@ channel.emergency_seconds = 0.0   # no rate limit on emergency channel
 ```
 
 ### Command Aliases
+
+Add an `aliases =` key to any command's config section. The value is a
+comma-separated list of extra keywords that trigger the same command.
+
 ```ini
-[Aliases]
-# Format: alias = target_command
-# Injects the alias string into the target command's keyword list.
-w = wx
-p = ping
+[Ping_Command]
+aliases = p,ping-test
+
+[WX_Command]
+aliases = w,weather
 ```
 
 ### Inbound Webhook

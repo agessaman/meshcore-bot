@@ -247,3 +247,194 @@ class TestCanExecute:
         cmd = PingCommand(command_mock_bot)
         msg = mock_message(content="ping", is_dm=True)
         assert cmd.can_execute(msg) is True
+
+
+class TestMentionHelpers:
+    """Tests for BaseCommand mention-detection helper methods."""
+
+    def _cmd(self, bot):
+        bot.meshcore = None  # force bot name from config ("TestBot")
+        return _TestCommand(bot)
+
+    # _extract_mentions
+    def test_extract_no_mentions(self, command_mock_bot):
+        assert self._cmd(command_mock_bot)._extract_mentions("hello world") == []
+
+    def test_extract_single_mention(self, command_mock_bot):
+        assert self._cmd(command_mock_bot)._extract_mentions("@[Alice] hi") == ["Alice"]
+
+    def test_extract_multiple_mentions(self, command_mock_bot):
+        assert self._cmd(command_mock_bot)._extract_mentions("@[Alice] and @[Bob]") == ["Alice", "Bob"]
+
+    def test_extract_mention_with_spaces_in_name(self, command_mock_bot):
+        assert self._cmd(command_mock_bot)._extract_mentions("@[First Last] go") == ["First Last"]
+
+    # _is_bot_mentioned
+    def test_bot_mentioned_exact(self, command_mock_bot):
+        assert self._cmd(command_mock_bot)._is_bot_mentioned("@[TestBot] ping") is True
+
+    def test_bot_mentioned_case_insensitive(self, command_mock_bot):
+        assert self._cmd(command_mock_bot)._is_bot_mentioned("@[testbot] ping") is True
+
+    def test_bot_not_mentioned_other_user(self, command_mock_bot):
+        assert self._cmd(command_mock_bot)._is_bot_mentioned("@[Alice] ping") is False
+
+    def test_bot_not_mentioned_no_mention(self, command_mock_bot):
+        assert self._cmd(command_mock_bot)._is_bot_mentioned("ping") is False
+
+    # _check_mentions_ok
+    def test_ok_no_mentions(self, command_mock_bot):
+        assert self._cmd(command_mock_bot)._check_mentions_ok("ping") is True
+
+    def test_ok_bot_mentioned(self, command_mock_bot):
+        assert self._cmd(command_mock_bot)._check_mentions_ok("@[TestBot] ping") is True
+
+    def test_not_ok_only_other_user(self, command_mock_bot):
+        assert self._cmd(command_mock_bot)._check_mentions_ok("@[Alice] ping") is False
+
+    def test_ok_bot_and_other_user(self, command_mock_bot):
+        # Bot is among mentions — should be OK
+        assert self._cmd(command_mock_bot)._check_mentions_ok("@[TestBot] @[Alice] ping") is True
+
+    # _strip_mentions
+    def test_strip_single_mention(self, command_mock_bot):
+        assert self._cmd(command_mock_bot)._strip_mentions("@[Alice] hello") == "hello"
+
+    def test_strip_multiple_mentions(self, command_mock_bot):
+        assert self._cmd(command_mock_bot)._strip_mentions("@[Alice] hello @[Bob]") == "hello"
+
+    def test_strip_normalizes_whitespace(self, command_mock_bot):
+        assert self._cmd(command_mock_bot)._strip_mentions("@[Alice]   ping") == "ping"
+
+    def test_strip_no_mention_unchanged(self, command_mock_bot):
+        assert self._cmd(command_mock_bot)._strip_mentions("ping") == "ping"
+
+
+class TestCleanupMessageForMatching:
+    """Tests for BaseCommand.cleanup_message_for_matching() across all respond_to_mentions modes."""
+
+    def _cmd(self, bot):
+        bot.meshcore = None  # force bot name from config ("TestBot")
+        return _TestCommand(bot)
+
+    # ------------------------------------------------------------------ also --
+    def test_also_no_mention_returns_content(self, command_mock_bot):
+        """'also' (default): command responds even without a mention."""
+        command_mock_bot.config.set("Bot", "respond_to_mentions", "also")
+        cmd = self._cmd(command_mock_bot)
+        msg = mock_message(content="testcmd")
+        assert cmd.cleanup_message_for_matching(msg) == "testcmd"
+        assert msg.content == "testcmd"
+
+    def test_also_strips_bot_mention(self, command_mock_bot):
+        """'also': @[bot] prefix is stripped before keyword matching."""
+        command_mock_bot.config.set("Bot", "respond_to_mentions", "also")
+        cmd = self._cmd(command_mock_bot)
+        msg = mock_message(content="@[TestBot] testcmd")
+        result = cmd.cleanup_message_for_matching(msg)
+        assert result == "testcmd"
+        assert msg.content == "testcmd"
+
+    def test_also_strips_bot_mention_case_insensitive(self, command_mock_bot):
+        """'also': bot mention matching is case-insensitive."""
+        command_mock_bot.config.set("Bot", "respond_to_mentions", "also")
+        cmd = self._cmd(command_mock_bot)
+        msg = mock_message(content="@[testbot] testcmd")
+        assert cmd.cleanup_message_for_matching(msg) == "testcmd"
+
+    def test_also_blocks_other_user_mention(self, command_mock_bot):
+        """'also': if only someone else is mentioned (not bot), return empty string."""
+        command_mock_bot.config.set("Bot", "respond_to_mentions", "also")
+        cmd = self._cmd(command_mock_bot)
+        msg = mock_message(content="@[Alice] testcmd")
+        assert cmd.cleanup_message_for_matching(msg) == ""
+
+    def test_also_updates_message_content_and_lower(self, command_mock_bot):
+        """'also': message.content and message.content_lower are updated after stripping."""
+        command_mock_bot.config.set("Bot", "respond_to_mentions", "also")
+        cmd = self._cmd(command_mock_bot)
+        msg = mock_message(content="@[TestBot] TESTCMD")
+        cmd.cleanup_message_for_matching(msg)
+        assert msg.content == "TESTCMD"
+        assert msg.content_lower == "testcmd"
+
+    # ------------------------------------------------------------------ only --
+    def test_only_with_mention_strips_and_returns(self, command_mock_bot):
+        """'only': responds when bot is mentioned; strips the mention."""
+        command_mock_bot.config.set("Bot", "respond_to_mentions", "only")
+        cmd = self._cmd(command_mock_bot)
+        msg = mock_message(content="@[TestBot] testcmd")
+        result = cmd.cleanup_message_for_matching(msg)
+        assert result == "testcmd"
+        assert msg.content == "testcmd"
+
+    def test_only_plain_message_not_gated_here(self, command_mock_bot):
+        """'only': cleanup_message_for_matching does NOT gate plain (unmention'd) messages —
+        the 'only' require-mention gate is enforced upstream in process_message."""
+        command_mock_bot.config.set("Bot", "respond_to_mentions", "only")
+        cmd = self._cmd(command_mock_bot)
+        msg = mock_message(content="testcmd")
+        # No mentions present → _check_mentions_ok returns True → content passes through
+        assert cmd.cleanup_message_for_matching(msg) == "testcmd"
+
+    def test_only_other_user_mention_returns_empty(self, command_mock_bot):
+        """'only': another user mentioned but not bot → blocked."""
+        command_mock_bot.config.set("Bot", "respond_to_mentions", "only")
+        cmd = self._cmd(command_mock_bot)
+        msg = mock_message(content="@[Alice] testcmd")
+        assert cmd.cleanup_message_for_matching(msg) == ""
+
+    # ------------------------------------------------------------------ false --
+    def test_false_mention_not_stripped(self, command_mock_bot):
+        """'false': no mention logic; mention is NOT stripped from content."""
+        command_mock_bot.config.set("Bot", "respond_to_mentions", "false")
+        cmd = self._cmd(command_mock_bot)
+        msg = mock_message(content="@[TestBot] testcmd")
+        result = cmd.cleanup_message_for_matching(msg)
+        assert "@[testbot]" in result
+
+    def test_false_other_user_mention_not_blocked(self, command_mock_bot):
+        """'false': another user mentioned — bot still processes (no filtering)."""
+        command_mock_bot.config.set("Bot", "respond_to_mentions", "false")
+        cmd = self._cmd(command_mock_bot)
+        msg = mock_message(content="@[Alice] testcmd")
+        result = cmd.cleanup_message_for_matching(msg)
+        assert "@[alice]" in result
+
+    def test_false_plain_message_works(self, command_mock_bot):
+        """'false': plain messages work normally."""
+        command_mock_bot.config.set("Bot", "respond_to_mentions", "false")
+        cmd = self._cmd(command_mock_bot)
+        msg = mock_message(content="testcmd")
+        assert cmd.cleanup_message_for_matching(msg) == "testcmd"
+
+    # ---------------------------------------------------------------- prefix -
+    def test_strips_legacy_bang_prefix(self, command_mock_bot):
+        """No command_prefix configured: legacy '!' is stripped."""
+        command_mock_bot.config.set("Bot", "respond_to_mentions", "false")
+        cmd = self._cmd(command_mock_bot)
+        msg = mock_message(content="!testcmd")
+        assert cmd.cleanup_message_for_matching(msg) == "testcmd"
+
+    def test_wrong_command_prefix_returns_empty(self, command_mock_bot):
+        """Configured command_prefix mismatch → empty string (no match)."""
+        command_mock_bot.config.set("Bot", "respond_to_mentions", "false")
+        command_mock_bot.config.set("Bot", "command_prefix", "!")
+        cmd = self._cmd(command_mock_bot)
+        msg = mock_message(content="testcmd")  # missing the ! prefix
+        assert cmd.cleanup_message_for_matching(msg) == ""
+
+    # ---------------------------------------------- matches_keyword integration
+    def test_matches_keyword_with_bot_mention(self, command_mock_bot):
+        """matches_keyword uses cleanup_message_for_matching — @[bot] ping matches 'testcmd'."""
+        command_mock_bot.config.set("Bot", "respond_to_mentions", "also")
+        cmd = self._cmd(command_mock_bot)
+        msg = mock_message(content="@[TestBot] testcmd")
+        assert cmd.matches_keyword(msg) is True
+
+    def test_matches_keyword_other_mention_blocked(self, command_mock_bot):
+        """matches_keyword returns False when only another user is mentioned."""
+        command_mock_bot.config.set("Bot", "respond_to_mentions", "also")
+        cmd = self._cmd(command_mock_bot)
+        msg = mock_message(content="@[Alice] testcmd")
+        assert cmd.matches_keyword(msg) is False

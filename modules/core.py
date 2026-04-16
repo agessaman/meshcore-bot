@@ -345,6 +345,10 @@ class MeshCoreBot:
         # Shutdown event for graceful shutdown
         self._shutdown_event = threading.Event()
 
+        # Idempotent async shutdown (see stop()); lock created when event loop is available
+        self._shutdown_lock: asyncio.Lock | None = None
+        self._shutdown_complete = False
+
         # Service plugin restart state (name -> timestamp of last failed restart)
         self._service_restart_failures: dict[str, float] = {}
         self._service_restarting: set = set()
@@ -353,6 +357,89 @@ class MeshCoreBot:
     def bot_root(self) -> Path:
         """Get bot root directory (where config.ini is located)"""
         return Path(self.config_file).parent.resolve()
+
+    @property
+    def is_radio_zombie(self) -> bool:
+        """True when the radio firmware has been confirmed unresponsive.
+
+        All outbound radio sends should check this flag and abort immediately.
+        Only a physical power cycle can recover the radio; the flag is cleared
+        automatically when connect() succeeds after a power cycle.
+        """
+        return bool(getattr(self, '_radio_zombie_detected', False))
+
+    @property
+    def is_radio_offline(self) -> bool:
+        """True when repeated outbound send timeouts have been detected.
+
+        Distinct from zombie state — the radio may still be forwarding received
+        packets but is not completing outbound sends.  Cleared automatically
+        when a send succeeds, so no manual intervention is required.
+        """
+        return bool(getattr(self, '_radio_offline', False))
+
+    def _record_send_failure(self, scheduler: "Any | None" = None) -> None:
+        """Increment the consecutive-send-failure counter.
+
+        Called by the scheduler when an outbound send times out at the
+        ``future.result()`` level (i.e. the outer 60-second wall-clock
+        timeout fired).  After ``radio_offline_threshold`` consecutive
+        failures the bot transitions to radio-offline state, persists it
+        to the DB for the web viewer banner, and optionally sends an alert
+        email.
+        """
+        import datetime as _dt
+        import threading as _threading
+
+        self._send_consecutive_failures: int = (
+            getattr(self, '_send_consecutive_failures', 0) + 1
+        )
+        threshold = self.config.getint(
+            'Connection',
+            'radio_offline_threshold',
+            fallback=self.config.getint('Bot', 'radio_offline_threshold', fallback=3),
+        )
+        if self._send_consecutive_failures >= threshold and not self.is_radio_offline:
+            self._radio_offline = True
+            since = _dt.datetime.now(_dt.UTC).isoformat()
+            self.logger.critical(
+                "RADIO OFFLINE: %d consecutive send timeouts (threshold %d). "
+                "Bot will suppress further outbound sends until one succeeds. "
+                "Check radio power and connection.",
+                self._send_consecutive_failures,
+                threshold,
+            )
+            try:
+                self.db_manager.set_metadata('bot.radio_offline', 'true')
+                self.db_manager.set_metadata('bot.radio_offline_since', since)
+            except Exception:
+                pass
+            if scheduler is not None:
+                _threading.Thread(
+                    target=scheduler.send_radio_offline_alert_email,
+                    args=(self._send_consecutive_failures, threshold),
+                    daemon=True,
+                ).start()
+
+    def _record_send_success(self) -> None:
+        """Clear the consecutive-send-failure counter after a successful send."""
+        failures = getattr(self, '_send_consecutive_failures', 0)
+        was_offline = self.is_radio_offline
+        if failures > 0 or was_offline:
+            self.logger.info(
+                "Outbound send succeeded — clearing radio-offline state "
+                "(was_offline=%s, failure_count=%d)",
+                was_offline,
+                failures,
+            )
+        self._send_consecutive_failures = 0
+        if was_offline:
+            self._radio_offline = False
+            try:
+                self.db_manager.set_metadata('bot.radio_offline', 'false')
+                self.db_manager.set_metadata('bot.radio_offline_since', '')
+            except Exception:
+                pass
 
     def load_config(self) -> None:
         """Load configuration from file.
@@ -390,6 +477,7 @@ class MeshCoreBot:
             'hostname': self.config.get('Connection', 'hostname', fallback=''),
             'tcp_port': self.config.getint('Connection', 'tcp_port', fallback=5000),
             'timeout': self.config.getint('Connection', 'timeout', fallback=30),
+            # radio_debug intentionally excluded — only needs a reconnect, not a full restart
         }
 
     def _load_channel_rate_limiter(self) -> ChannelRateLimiter:
@@ -437,6 +525,7 @@ class MeshCoreBot:
                 'hostname': new_config.get('Connection', 'hostname', fallback=''),
                 'tcp_port': new_config.getint('Connection', 'tcp_port', fallback=5000),
                 'timeout': new_config.getint('Connection', 'timeout', fallback=30),
+                # radio_debug excluded — only needs a reconnect, not a full restart
             }
 
             # Check if radio settings changed
@@ -1010,6 +1099,9 @@ long_jokes = false
         # Prevent propagation to root logger to avoid duplicate output
         self.logger.propagate = False
 
+        # Save formatter for reuse (e.g. _configure_meshcore_debug_logging)
+        self._log_formatter = formatter
+
         # Configure meshcore library logging (separate from bot logging)
         # Configure all possible meshcore-related loggers
         meshcore_loggers = [
@@ -1067,6 +1159,44 @@ long_jokes = false
 
         # Setup signal handlers for graceful shutdown
         self._setup_signal_handlers()
+
+    def _configure_meshcore_debug_logging(self, enable: bool) -> None:
+        """Route meshcore library output through the bot's handlers.
+
+        When *enable* is True the meshcore loggers are set to DEBUG and share
+        all of the bot's handlers (console + rotating file), so raw-protocol
+        lines appear in the log file tagged as DEBUG.
+
+        When *enable* is False the loggers revert to the ``meshcore_log_level``
+        from config with a console-only StreamHandler (same as setup_logging).
+        """
+        meshcore_log_level = getattr(
+            logging,
+            self.config.get('Logging', 'meshcore_log_level', fallback='INFO')
+            if self.config.has_section('Logging') else 'INFO',
+        )
+        level = logging.DEBUG if enable else meshcore_log_level
+        loggers_to_configure = [
+            'meshcore', 'meshcore_cli', 'meshcore.meshcore',
+            'meshcore_cli.meshcore_cli', 'meshcore_cli.commands',
+            'meshcore_cli.connection',
+        ]
+        formatter = getattr(self, '_log_formatter', None)
+        for name in loggers_to_configure:
+            mc_logger = logging.getLogger(name)
+            mc_logger.setLevel(level)
+            mc_logger.handlers.clear()
+            mc_logger.propagate = False
+            if enable:
+                # Share the bot's handlers so debug output goes to the log file too
+                for h in self.logger.handlers:
+                    mc_logger.addHandler(h)
+            else:
+                # Revert to console-only StreamHandler (same as setup_logging baseline)
+                h = logging.StreamHandler()
+                if formatter:
+                    h.setFormatter(formatter)
+                mc_logger.addHandler(h)
 
     def _setup_routing_capture(self) -> None:
         """Setup routing information capture for web viewer.
@@ -1169,13 +1299,25 @@ long_jokes = false
 
             # Get connection type from config
             connection_type = self.config.get('Connection', 'connection_type', fallback='ble').lower()
+            # radio_debug: config.ini baseline, overridden by bot_metadata (set via web UI)
+            radio_debug = self.config.getboolean('Connection', 'radio_debug', fallback=False)
+            try:
+                meta_val = self.db_manager.get_metadata('radio.debug')
+                if meta_val == 'true':
+                    radio_debug = True
+                elif meta_val == 'false':
+                    radio_debug = False
+            except Exception:
+                pass
             self.logger.info(f"Using connection type: {connection_type}")
+            if radio_debug:
+                self.logger.info("Radio debug logging enabled — meshcore library output will be at DEBUG level")
 
             if connection_type == 'serial':
                 # Create serial connection
                 serial_port = self.config.get('Connection', 'serial_port', fallback='/dev/ttyUSB0')
                 self.logger.info(f"Connecting via serial port: {serial_port}")
-                self.meshcore = await meshcore.MeshCore.create_serial(serial_port, debug=False)
+                self.meshcore = await meshcore.MeshCore.create_serial(serial_port, debug=radio_debug)
             elif connection_type == 'tcp':
                 # Create TCP connection
                 hostname = self.config.get('Connection', 'hostname', fallback=None)
@@ -1184,18 +1326,29 @@ long_jokes = false
                     self.logger.error("TCP connection requires 'hostname' to be set in config")
                     return False
                 self.logger.info(f"Connecting via TCP: {hostname}:{tcp_port}")
-                self.meshcore = await meshcore.MeshCore.create_tcp(hostname, tcp_port, debug=False)
+                self.meshcore = await meshcore.MeshCore.create_tcp(hostname, tcp_port, debug=radio_debug)
             else:
                 # Create BLE connection (default)
                 ble_device_name = self.config.get('Connection', 'ble_device_name', fallback=None)
                 self.logger.info("Connecting via BLE" + (f" to device: {ble_device_name}" if ble_device_name else ""))
-                self.meshcore = await meshcore.MeshCore.create_ble(ble_device_name, debug=False)
+                self.meshcore = await meshcore.MeshCore.create_ble(ble_device_name, debug=radio_debug)
+
+            # Route meshcore library output through the bot's handlers (including log file)
+            self._configure_meshcore_debug_logging(radio_debug)
 
             if self.meshcore.is_connected:
                 self.connected = True
                 self._update_radio_connected_metadata(True)
                 # Track connection time to skip processing old cached messages
                 self.connection_time = time.time()
+                # Clear zombie state — a successful connect means the radio is alive again
+                self._radio_zombie_detected = False
+                self._radio_fail_count = 0
+                try:
+                    self.db_manager.set_metadata('bot.radio_zombie', 'false')
+                    self.db_manager.set_metadata('bot.radio_zombie_since', '')
+                except Exception:
+                    pass
                 self.logger.info(f"Connected to: {self.meshcore.self_info} at {self.connection_time}")
 
                 # Wait for contacts to load
@@ -1309,6 +1462,99 @@ long_jokes = false
                         f"To override, add to [Bot]: {PUBLIC_CHANNEL_OVERRIDE_KEY} = true"
                     )
                     raise SystemExit(1)
+
+    async def _probe_radio_health(self) -> bool:
+        """Send a lightweight get_time() probe to verify the radio is responding.
+
+        A connected serial transport does not guarantee the firmware is alive and
+        processing commands.  This probe detects the 'zombie connection' state
+        where the port is open and messages are received but all outgoing commands
+        time out with no_event_received.
+
+        When the configured fail threshold is reached the bot logs a CRITICAL
+        message and sends an immediate alert email (if enabled).  It does NOT
+        attempt to reconnect — a zombie radio requires a physical power cycle;
+        disconnect/reconnect of the transport does nothing.  Probing stops once
+        a zombie is confirmed to avoid log spam; it resumes automatically after
+        the next successful connect() call.
+
+        Returns True if the device responded, False otherwise.
+        """
+        # Stop probing once a zombie has been confirmed — only a power cycle
+        # can recover it; further probes just generate noise.
+        if getattr(self, '_radio_zombie_detected', False):
+            return False
+
+        if not self.meshcore or not self.meshcore.is_connected:
+            return False
+        try:
+            from meshcore.events import EventType
+            result = await asyncio.wait_for(
+                self.meshcore.commands.get_time(), timeout=10.0
+            )
+            if result.type == EventType.ERROR:
+                self._radio_fail_count = getattr(self, '_radio_fail_count', 0) + 1
+                threshold = self.config.getint(
+                    'Connection',
+                    'radio_probe_fail_threshold',
+                    fallback=self.config.getint('Bot', 'radio_probe_fail_threshold', fallback=3),
+                )
+                interval = max(
+                    300,
+                    min(
+                        900,
+                        self.config.getint(
+                            'Connection',
+                            'radio_probe_interval_seconds',
+                            fallback=self.config.getint('Bot', 'radio_probe_interval_seconds', fallback=300),
+                        ),
+                    ),
+                )
+                self.logger.warning(
+                    f"Radio health probe failed "
+                    f"({self._radio_fail_count}/{threshold}): no response to get_time"
+                )
+                if self._radio_fail_count >= threshold:
+                    fail_count = self._radio_fail_count
+                    self._radio_fail_count = 0
+                    self._radio_zombie_detected = True
+                    self.logger.critical(
+                        "ZOMBIE RADIO DETECTED after %d consecutive failed probes "
+                        "(probe interval %ds). The radio firmware is unresponsive. "
+                        "A physical POWER CYCLE is required — disconnect/reconnect "
+                        "will NOT fix this. Probing suspended until next reconnect.",
+                        fail_count, interval,
+                    )
+                    # Persist zombie state to db so the web viewer health API reflects it
+                    try:
+                        import datetime as _dt
+                        self.db_manager.set_metadata('bot.radio_zombie', 'true')
+                        self.db_manager.set_metadata(
+                            'bot.radio_zombie_since',
+                            _dt.datetime.now(_dt.UTC).isoformat(),
+                        )
+                    except Exception:
+                        pass
+                    # Send immediate alert email via scheduler (non-blocking)
+                    scheduler = getattr(self, 'scheduler', None)
+                    if scheduler is not None:
+                        loop = asyncio.get_event_loop()
+                        loop.run_in_executor(
+                            None,
+                            scheduler.send_zombie_alert_email,
+                            fail_count, threshold, interval,
+                        )
+                return False
+            if getattr(self, '_radio_fail_count', 0) > 0:
+                self.logger.info("Radio health probe recovered — resetting fail counter")
+            self._radio_fail_count = 0
+            return True
+        except asyncio.TimeoutError:
+            self.logger.warning("Radio health probe timed out")
+            return False
+        except Exception as e:
+            self.logger.warning(f"Radio health probe error: {e}")
+            return False
 
     async def set_radio_clock(self) -> bool:
         """Set radio clock if device time is earlier than system time.
@@ -1548,6 +1794,9 @@ long_jokes = false
 
         self.main_event_loop.set_exception_handler(_loop_exception_handler)
 
+        if self._shutdown_lock is None:
+            self._shutdown_lock = asyncio.Lock()
+
         # Connect to MeshCore node
         if not await self.connect():
             self.logger.error("Failed to connect to MeshCore node")
@@ -1607,8 +1856,13 @@ long_jokes = false
                         break
                     continue
 
-                # Monitor web viewer process and health
-                if self.web_viewer_integration and self.web_viewer_integration.enabled:
+                # Monitor web viewer process and health (never restart during shutdown)
+                if (
+                    self.web_viewer_integration
+                    and self.web_viewer_integration.enabled
+                    and self.connected
+                    and not self._shutdown_event.is_set()
+                ):
                     # Check if process died
                     if (self.web_viewer_integration and
                         self.web_viewer_integration.viewer_process and
@@ -1627,6 +1881,27 @@ long_jokes = false
                             self.web_viewer_integration.restart_viewer()
                         except (AttributeError, TypeError) as e:
                             print(f"Web viewer health check failed: {e}")
+
+                # Periodically probe radio responsiveness
+                # Skip entirely once a zombie is confirmed — only a power cycle
+                # can recover the firmware; probing just generates log noise.
+                if not getattr(self, '_radio_zombie_detected', False):
+                    if not hasattr(self, '_last_radio_probe'):
+                        self._last_radio_probe = time.time()
+                    probe_interval = max(
+                        300,
+                        min(
+                            900,
+                            self.config.getint(
+                                'Connection',
+                                'radio_probe_interval_seconds',
+                                fallback=self.config.getint('Bot', 'radio_probe_interval_seconds', fallback=300),
+                            ),
+                        ),
+                    )
+                    if time.time() - self._last_radio_probe >= probe_interval:
+                        self._last_radio_probe = time.time()
+                        asyncio.create_task(self._probe_radio_health())
 
                 # Periodically update system health in database (every 30 seconds)
                 if not hasattr(self, '_last_health_update'):
@@ -1666,8 +1941,8 @@ long_jokes = false
                 await asyncio.sleep(5)  # Check every 5 seconds
         except KeyboardInterrupt:
             self.logger.info("Received interrupt signal")
-        finally:
-            await self.stop()
+        # Shutdown is owned by the entrypoint (e.g. meshcore_bot.run_bot finally)
+        # so stop() runs exactly once; see stop() idempotency guard.
 
     async def stop(self) -> None:
         """Stop the bot.
@@ -1675,62 +1950,88 @@ long_jokes = false
         Performs graceful shutdown by stopping services, scheduling, and
         disconnecting from the mesh node.
         """
+        if self._shutdown_lock is None:
+            try:
+                self._shutdown_lock = asyncio.Lock()
+            except RuntimeError:
+                self._shutdown_lock = None
+
+        if self._shutdown_lock is not None:
+            async with self._shutdown_lock:
+                if self._shutdown_complete:
+                    try:
+                        self.logger.debug("stop() skipped — shutdown already completed")
+                    except (AttributeError, TypeError):
+                        pass
+                    return
+                await self._stop_inner()
+        else:
+            if self._shutdown_complete:
+                return
+            await self._stop_inner()
+
+    async def _stop_inner(self) -> None:
+        """Run one full shutdown pass (caller holds _shutdown_lock when used)."""
         try:
-            self.logger.info("Stopping MeshCore Bot...")
-        except (AttributeError, TypeError):
-            print("Stopping MeshCore Bot...")
-
-        self.connected = False
-        self._update_radio_connected_metadata(False)
-
-        # Shutdown mesh graph first to flush pending writes
-        if hasattr(self, 'mesh_graph') and self.mesh_graph:
             try:
-                self.mesh_graph.shutdown()
-            except Exception as e:
-                self.logger.warning(f"Error shutting down mesh graph: {e}")
-
-        # Stop feed manager
-        if self.feed_manager:
-            await self.feed_manager.stop()
-
-        # Stop all loaded services
-        for service_name, service_instance in self.services.items():
-            try:
-                await service_instance.stop()
-                self.logger.info(f"Service '{service_name}' stopped")
-            except Exception as e:
-                self.logger.error(f"Failed to stop service '{service_name}': {e}")
-
-        # Stop web viewer with proper shutdown sequence
-        if self.web_viewer_integration:
-            # Web viewer has simpler shutdown
-            self.web_viewer_integration.stop_viewer()
-            try:
-                self.logger.info("Web viewer stopped")
+                self.logger.info("Stopping MeshCore Bot...")
             except (AttributeError, TypeError):
-                print("Web viewer stopped")
+                print("Stopping MeshCore Bot...")
 
-        # Wait for scheduler thread to exit (it checks self.connected)
-        if hasattr(self, 'scheduler') and self.scheduler and self.scheduler.scheduler_thread:
-            self.scheduler.join(timeout=5.0)
+            self._shutdown_event.set()
+            self.connected = False
+            self._update_radio_connected_metadata(False)
 
-        if self.meshcore:
-            disconnect_timeout = self.config.getfloat('Bot', 'disconnect_timeout_seconds', fallback=10.0)
+            # Shutdown mesh graph first to flush pending writes
+            if hasattr(self, 'mesh_graph') and self.mesh_graph:
+                try:
+                    self.mesh_graph.shutdown()
+                except Exception as e:
+                    self.logger.warning(f"Error shutting down mesh graph: {e}")
+
+            # Stop feed manager
+            if self.feed_manager:
+                await self.feed_manager.stop()
+
+            # Stop all loaded services
+            for service_name, service_instance in self.services.items():
+                try:
+                    await service_instance.stop()
+                    self.logger.info(f"Service '{service_name}' stopped")
+                except Exception as e:
+                    self.logger.error(f"Failed to stop service '{service_name}': {e}")
+
+            # Stop web viewer with proper shutdown sequence
+            if self.web_viewer_integration:
+                # Web viewer has simpler shutdown
+                self.web_viewer_integration.stop_viewer()
+                try:
+                    self.logger.info("Web viewer stopped")
+                except (AttributeError, TypeError):
+                    print("Web viewer stopped")
+
+            # Wait for scheduler thread to exit (it checks self.connected)
+            if hasattr(self, 'scheduler') and self.scheduler and self.scheduler.scheduler_thread:
+                self.scheduler.join(timeout=5.0)
+
+            if self.meshcore:
+                disconnect_timeout = self.config.getfloat('Bot', 'disconnect_timeout_seconds', fallback=10.0)
+                try:
+                    await asyncio.wait_for(self.meshcore.disconnect(), timeout=disconnect_timeout)
+                except asyncio.TimeoutError:
+                    self.logger.warning(
+                        "MeshCore disconnect timed out after %.1fs; continuing shutdown",
+                        disconnect_timeout,
+                    )
+                except Exception as e:
+                    self.logger.warning("Error during meshcore disconnect: %s", e)
+
             try:
-                await asyncio.wait_for(self.meshcore.disconnect(), timeout=disconnect_timeout)
-            except asyncio.TimeoutError:
-                self.logger.warning(
-                    "MeshCore disconnect timed out after %.1fs; continuing shutdown",
-                    disconnect_timeout,
-                )
-            except Exception as e:
-                self.logger.warning("Error during meshcore disconnect: %s", e)
-
-        try:
-            self.logger.info("Bot stopped")
-        except (AttributeError, TypeError):
-            print("Bot stopped")
+                self.logger.info("Bot stopped")
+            except (AttributeError, TypeError):
+                print("Bot stopped")
+        finally:
+            self._shutdown_complete = True
 
     async def _restart_service(self, service_name: str, service_instance: Any) -> bool:
         """Stop and start a service. Used when is_healthy() is False.

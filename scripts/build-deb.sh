@@ -18,6 +18,14 @@ if [[ -z "${VERSION}" ]]; then
                grep -Po '(?<=^version = ")([^"]+)' "${PROJECT_ROOT}/pyproject.toml" || echo "0.9.0")"
 fi
 
+# Validate VERSION: must be semver-like (digits and dots only) to prevent
+# shell injection via the unquoted <<EOF heredoc below.
+if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?([~+][A-Za-z0-9._-]+)?$ ]]; then
+    echo "ERROR: Invalid version string: '${VERSION}'" >&2
+    echo "       Must match semver format, e.g. 1.2.3 or 1.2.3~rc1" >&2
+    exit 1
+fi
+
 PACKAGE_NAME="meshcore-bot"
 ARCH="all"
 INSTALL_ROOT="/opt/meshcore-bot"

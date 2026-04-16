@@ -32,6 +32,9 @@ class CmdCommand(BaseCommand):
         """
         super().__init__(bot)
         self.cmd_enabled = self.get_config_value('Cmd_Command', 'enabled', fallback=True, value_type='bool')
+        self.cmd_reference_url = self.get_config_value(
+            'Cmd_Command', 'cmd_reference_url', fallback='', value_type='str'
+        ).strip()
 
     def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Check if this command can be executed with the given message.
@@ -171,6 +174,9 @@ class CmdCommand(BaseCommand):
             bool: True if executed successfully, False otherwise.
         """
         try:
+            if self.cmd_reference_url:
+                return await self.send_response(message, f"Full command reference: {self.cmd_reference_url}")
+
             # Check if user has defined a custom cmd keyword response in config
             # Use the already-loaded keywords dict (quotes are already stripped)
             cmd_keyword = self.bot.command_manager.keywords.get('cmd')
