@@ -116,6 +116,26 @@ def auth_client(auth_viewer):
         yield c
 
 
+@pytest.fixture(autouse=True)
+def cleanup_sqlite_connections(monkeypatch):
+    """Track and close SQLite connections opened during each test."""
+    tracked_connections = []
+    original_connect = sqlite3.connect
+
+    def _tracked_connect(*args, **kwargs):
+        conn = original_connect(*args, **kwargs)
+        tracked_connections.append(conn)
+        return conn
+
+    monkeypatch.setattr(sqlite3, "connect", _tracked_connect)
+    yield
+    for conn in tracked_connections:
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass
+
+
 # ---------------------------------------------------------------------------
 # Helper: insert a contact row so contact-related routes have data
 # ---------------------------------------------------------------------------
@@ -1660,9 +1680,37 @@ def socketio_viewer(tmp_path_factory):
 
     v.app.config["TESTING"] = True
     v.app.config["SECRET_KEY"] = "test-secret"
-    return v
+    yield v
+    with v._clients_lock:
+        v.connected_clients.clear()
 
 
+@pytest.fixture
+def managed_socketio_clients(monkeypatch, socketio_viewer):
+    """Track SocketIO test clients and always disconnect on teardown."""
+    import flask_socketio
+
+    created_clients = []
+    original_client_cls = flask_socketio.SocketIOTestClient
+
+    class ManagedSocketIOTestClient(original_client_cls):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            created_clients.append(self)
+
+    monkeypatch.setattr(flask_socketio, "SocketIOTestClient", ManagedSocketIOTestClient)
+    yield
+    for client in created_clients:
+        try:
+            if client.is_connected():
+                client.disconnect()
+        except Exception:
+            pass
+    with socketio_viewer._clients_lock:
+        assert not socketio_viewer.connected_clients
+
+
+@pytest.mark.usefixtures("managed_socketio_clients")
 class TestSubscribeCommandsHistoryReplay:
     """subscribe_commands must replay last 50 command rows on connect (TASK-02 / BUG-023)."""
 
@@ -2615,6 +2663,7 @@ class TestMaintenanceStatusFields:
 # T1-A: subscribe_packets and subscribe_messages history replay
 # ===========================================================================
 
+@pytest.mark.usefixtures("managed_socketio_clients")
 class TestSubscribePacketsHistoryReplay:
     """subscribe_packets must replay last 50 packet/command/routing rows on connect (T1-A)."""
 
@@ -2763,6 +2812,7 @@ class TestSubscribePacketsHistoryReplay:
         assert seq_values == [0, 1, 2]
 
 
+@pytest.mark.usefixtures("managed_socketio_clients")
 class TestSubscribeMessagesHistoryReplay:
     """subscribe_messages must replay last 50 message rows on connect (T1-A)."""
 

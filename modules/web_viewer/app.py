@@ -6714,17 +6714,17 @@ class BotDataViewer:
                 return int(time.time() - start_time)
             else:
                 # Fallback: try to get earliest message timestamp
-                conn = self._get_db_connection()
-                cursor = conn.cursor()
+                with self._with_db_connection() as conn:
+                    cursor = conn.cursor()
 
-                # Try to get earliest message timestamp as fallback
-                cursor.execute("""
-                    SELECT MIN(timestamp) FROM message_stats
-                    WHERE timestamp IS NOT NULL
-                """)
-                result = cursor.fetchone()
-                if result and result[0]:
-                    return int(time.time() - result[0])
+                    # Try to get earliest message timestamp as fallback
+                    cursor.execute("""
+                        SELECT MIN(timestamp) FROM message_stats
+                        WHERE timestamp IS NOT NULL
+                    """)
+                    result = cursor.fetchone()
+                    if result and result[0]:
+                        return int(time.time() - result[0])
 
                 return 0
         except Exception as e:

@@ -1,17 +1,39 @@
 """Tests for modules.commands.stats_command — pure logic functions."""
 
 import configparser
+import sqlite3
 from contextlib import contextmanager
 from unittest.mock import MagicMock, Mock, patch
+
+import pytest
 
 from modules.commands.stats_command import StatsCommand
 from tests.conftest import mock_message
 
+_TRACKED_CONNECTIONS = []
+
+
+def _create_tracked_connection():
+    conn = sqlite3.connect(":memory:")
+    _TRACKED_CONNECTIONS.append(conn)
+    return conn
+
+
+@pytest.fixture(autouse=True)
+def _close_tracked_connections():
+    """Ensure each test closes its sqlite connections."""
+    yield
+    while _TRACKED_CONNECTIONS:
+        conn = _TRACKED_CONNECTIONS.pop()
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass
+
 
 def _make_db_manager():
     """Create a mock db_manager with a working connection context manager."""
-    import sqlite3
-    conn = sqlite3.connect(":memory:")
+    conn = _create_tracked_connection()
     db = MagicMock()
 
     @contextmanager
