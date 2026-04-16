@@ -35,6 +35,30 @@ reconnect_delay_seconds = 5
 # Maximum delay in seconds between reconnect attempts (cap on exponential backoff)
 reconnect_max_delay_seconds = 60
 
+# Enable verbose meshcore protocol logging (set true only when debugging)
+radio_debug = false
+
+# Radio health probe interval in seconds (clamped to 300-900)
+radio_probe_interval_seconds = 300
+
+# Consecutive failed probes before zombie state is declared
+radio_probe_fail_threshold = 3
+
+# Send immediate zombie alert email (uses Notifications SMTP settings)
+radio_zombie_alert_enabled = false
+
+# Optional zombie alert recipients (comma-separated; empty = nightly recipients)
+radio_zombie_alert_email =
+
+# Consecutive send timeouts before entering radio-offline state
+radio_offline_threshold = 3
+
+# Send immediate radio-offline alert email (uses Notifications SMTP settings)
+radio_offline_alert_enabled = false
+
+# Optional radio-offline alert recipients (comma-separated; empty = nightly recipients)
+radio_offline_alert_email =
+
 [Bot]
 # Bot name for identification and logging
 bot_name = MeshCoreBot
@@ -166,6 +190,16 @@ db_path = meshcore_bot.db
 
 # Seconds to wait after a failed service restart before retrying (default: 300)
 service_restart_backoff_seconds = 300
+
+# Max seconds to wait for a channel message send before timing out (default: 30)
+send_timeout_seconds = 30
+
+[Admin]
+# Local admin API (binds to 127.0.0.1)
+enabled = false
+port = 5001
+# Required when enabled
+token =
 
 [Channels]
 # Channels to monitor (comma-separated)
@@ -359,6 +393,7 @@ pong = "Ping!"
 # file.<key> = path to text file
 # prefix.<key> = string prepended to the chosen line (often an emoji)
 # channel.<key> or channels.<key> = comma-separated channel names; if set, trigger only works in those channels (e.g. channel.momjoke = #jokes)
+# category.<key> = command reference category for website generation (default: fun/Fun Commands)
 
 # default prefix (blank = no prefix)
 prefix.default =
@@ -368,11 +403,19 @@ triggers.momjoke = momjoke,momjokes,mom joke,mom jokes,mom-joke,mom-jokes
 file.momjoke = data/randomlines/momjokes.txt
 prefix.momjoke = 🥸
 # channel.momjoke = #jokes
+# category.momjoke = fun
 
 # Fun Facts
 triggers.funfact = funfact,funfacts,fun fact,fun facts,fun-fact,fun-facts
 file.funfact = data/randomlines/funfacts.txt
 prefix.funfact = 💡
+category.funfact = fun
+
+# Example: fortunes via RandomLine
+#triggers.fortune = fortune,fortunes
+#file.fortune = data/randomlines/fortunes.txt
+#prefix.fortune = 🥠
+#category.fortune = fun
 
 [Scheduled_Messages]
 # Scheduled message format: HHMM = channel:message
@@ -1175,9 +1218,8 @@ api_url = http://api.airplanes.live/v2/
 # Maximum: 250 nautical miles
 default_radius = 25
 
-# Maximum number of aircraft to return in results
-# Maximum: 50
-max_results = 10
+# Maximum number of aircraft to return in default list results (range: 1-10)
+max_results = 3
 
 # API request timeout in seconds
 url_timeout = 10
@@ -1250,6 +1292,8 @@ enabled = true
 
 [Cmd_Command]
 enabled = true
+# Optional: override `cmd` output with a link to your full docs page
+# cmd_reference_url = https://example.com/command-reference
 # channels =
 
 [Channels_Command]
@@ -1299,6 +1343,8 @@ update_graph_two_byte = true
 [Feed_Command]
 enabled = false
 # channels =
+# Allow private/internal feed URLs (default false for SSRF safety)
+allow_private_urls = false
 
 ####################################################################################################
 #                                                                                                  #
@@ -1696,7 +1742,7 @@ enabled = false
 
 # Channels to post alerts to (comma-separated).
 # Prefer this option if you want multiple channels.
-channels = #general
+channels = #mybotchannel
 
 # Fallback single channel option (used only when channels= is not set).
 # channel = #general

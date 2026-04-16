@@ -22,6 +22,7 @@ import aiohttp
 import feedparser
 
 from modules.feed_filter_eval import item_passes_filter_config
+from modules.security_utils import sanitize_input, validate_external_url
 from modules.url_shortener import _coerce_url_string, shorten_url_sync
 
 
@@ -45,6 +46,17 @@ class FeedManager:
             self.default_output_format = '{emoji} {body|truncate:100} - {date}\n{link|truncate:50}'
             self.default_send_interval = 2.0
             self.shorten_feed_urls = False
+            if bot.config.has_section('Feed_Command'):
+                try:
+                    self.allow_private_urls = bot.config.getboolean(
+                        'Feed_Command',
+                        'allow_private_urls',
+                        fallback=False,
+                    )
+                except ValueError:
+                    self.allow_private_urls = False
+            else:
+                self.allow_private_urls = False
         else:
             self.enabled = bot.config.getboolean('Feed_Manager', 'feed_manager_enabled', fallback=False)
             self.default_check_interval = bot.config.getint('Feed_Manager', 'default_check_interval_seconds', fallback=300)
@@ -57,6 +69,22 @@ class FeedManager:
             self.default_send_interval = bot.config.getfloat('Feed_Manager', 'default_message_send_interval_seconds', fallback=2.0)
             self.shorten_feed_urls = bot.config.getboolean(
                 'Feed_Manager', 'shorten_urls', fallback=False
+            )
+            if bot.config.has_section('Feed_Command'):
+                try:
+                    feed_command_allow_private = bot.config.getboolean(
+                        'Feed_Command',
+                        'allow_private_urls',
+                        fallback=False,
+                    )
+                except ValueError:
+                    feed_command_allow_private = False
+            else:
+                feed_command_allow_private = False
+            self.allow_private_urls = bot.config.getboolean(
+                'Feed_Manager',
+                'allow_private_urls',
+                fallback=feed_command_allow_private,
             )
 
         # Rate limiting per domain
@@ -181,6 +209,12 @@ class FeedManager:
         feed['channel_name']
 
         try:
+            # Validate URL for SSRF protection
+            if not validate_external_url(feed_url, allow_private=self.allow_private_urls):
+                self.logger.error(f"Feed URL validation failed: {feed_url}")
+                self._record_feed_error(feed_id, 'security', 'Invalid or unsafe URL')
+                return
+
             self.logger.debug(f"Polling {feed_type} feed {feed_id}: {feed_url}")
 
             # Rate limit per domain
@@ -927,8 +961,10 @@ class FeedManager:
         format_str = feed.get('output_format') or self.default_output_format
 
         # Extract field values (DB/feed may store NULL; .get('k', default) still returns None if key present)
-        title = item.get('title') or 'Untitled'
-        body = item.get('description', '') or item.get('body', '')
+        # Use sanitize_input with max_length=None to only strip control characters without truncating
+        # Truncation happens later via _apply_shortening when needed
+        title = sanitize_input(item.get('title') or 'Untitled', max_length=None)
+        body = sanitize_input(item.get('description', '') or item.get('body', ''), max_length=None)
         # Clean HTML from body if present
         if body:
             body = html.unescape(body)

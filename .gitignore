@@ -156,6 +156,8 @@ config-pymc.ini
 # Ignore contents but keep directory structure
 data/*
 !data/.gitkeep
+!data/randomlines/
+!data/randomlines/fortunes.txt
 
 # Node.js / frontend test framework artifacts
 node_modules/

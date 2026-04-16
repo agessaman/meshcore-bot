@@ -48,6 +48,15 @@ serial_port = /dev/ttyUSB0
 # Connection timeout in seconds
 timeout = 30
 
+# Radio health / alert defaults
+radio_probe_interval_seconds = 300
+radio_probe_fail_threshold = 3
+radio_zombie_alert_enabled = false
+radio_zombie_alert_email =
+radio_offline_threshold = 3
+radio_offline_alert_enabled = false
+radio_offline_alert_email =
+
 [Bot]
 # Bot name for identification and logging
 bot_name = MeshCoreBot
@@ -157,6 +166,12 @@ db_path = meshcore_bot.db
 # Local plugins directory (optional). Default: local. See config.ini.example.
 #local_dir_path = local
 
+[Admin]
+# Local admin API (127.0.0.1 only)
+enabled = false
+port = 5001
+token =
+
 [Localization]
 # Language code for bot responses (en, es, es-MX, es-ES, fr, de, ja, etc.)
 # Default: en (English)
@@ -235,6 +250,8 @@ banned_users =
 [Feed_Manager]
 # Enable or disable RSS/API feed subscriptions (disabled by default)
 feed_manager_enabled = false
+# Allow private/internal feed URLs (default false for SSRF safety)
+allow_private_urls = false
 
 [Logging]
 # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
@@ -511,3 +528,5 @@ enabled = false
 [Feed_Command]
 # Enable or disable the feed command
 enabled = false
+# Allow private/internal feed URLs (default false for SSRF safety)
+allow_private_urls = false

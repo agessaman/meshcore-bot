@@ -1,8 +1,11 @@
 """Tests for modules.commands.help_command — pure logic and integration paths."""
 
 import configparser
+import sqlite3
 from contextlib import contextmanager
 from unittest.mock import MagicMock, Mock
+
+import pytest
 
 from modules.commands.help_command import HelpCommand
 from tests.conftest import mock_message
@@ -10,6 +13,27 @@ from tests.conftest import mock_message
 # ---------------------------------------------------------------------------
 # Bot factory
 # ---------------------------------------------------------------------------
+
+_TRACKED_CONNECTIONS = []
+
+
+def _create_tracked_connection():
+    conn = sqlite3.connect(":memory:")
+    _TRACKED_CONNECTIONS.append(conn)
+    return conn
+
+
+@pytest.fixture(autouse=True)
+def _close_tracked_connections():
+    """Ensure every test-created sqlite connection is closed."""
+    yield
+    while _TRACKED_CONNECTIONS:
+        conn = _TRACKED_CONNECTIONS.pop()
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass
+
 
 def _make_bot(enabled=True, commands=None):
     """Create a minimal mock bot for HelpCommand tests."""
@@ -46,8 +70,7 @@ def _make_bot(enabled=True, commands=None):
     bot.command_manager.plugin_loader.keyword_mappings = {}
 
     # DB manager with in-memory SQLite
-    import sqlite3
-    conn = sqlite3.connect(":memory:")
+    conn = _create_tracked_connection()
     db = MagicMock()
 
     @contextmanager
@@ -310,11 +333,10 @@ class TestGetAvailableCommandsListFiltered:
 
     def test_command_in_stats_not_in_keyword_mappings(self):
         """Commands returned from DB stats but not in keyword_mappings (lines 218-235)."""
-        import sqlite3
         from contextlib import contextmanager
 
         bot = _make_bot()
-        conn = sqlite3.connect(":memory:")
+        conn = _create_tracked_connection()
         conn.execute("""
             CREATE TABLE command_stats (
                 id INTEGER PRIMARY KEY,
@@ -422,11 +444,10 @@ class TestGetAvailableCommandsList:
 
     def test_with_stats_table_present(self):
         """When command_stats table exists, commands are sorted by usage count."""
-        import sqlite3
         from contextlib import contextmanager
 
         bot = _make_bot()
-        conn = sqlite3.connect(":memory:")
+        conn = _create_tracked_connection()
         conn.execute("""
             CREATE TABLE command_stats (
                 id INTEGER PRIMARY KEY,

@@ -7,6 +7,13 @@
 connection_type = serial
 serial_port = /dev/ttyUSB0
 timeout = 30
+radio_probe_interval_seconds = 300
+radio_probe_fail_threshold = 3
+radio_zombie_alert_enabled = false
+radio_zombie_alert_email =
+radio_offline_threshold = 3
+radio_offline_alert_enabled = false
+radio_offline_alert_email =
 
 [Bot]
 bot_name = MeshCoreBot
@@ -18,6 +25,11 @@ rate_limit_seconds = 10
 bot_tx_rate_limit_seconds = 1.0
 per_user_rate_limit_seconds = 30
 per_user_rate_limit_enabled = true
+
+[Admin]
+enabled = false
+port = 5001
+token =
 
 [Channels]
 monitor_channels = general,test,emergency

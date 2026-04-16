@@ -19,10 +19,10 @@ from meshcore import EventType
 
 # Import bot's enums
 from ..enums import PayloadType, PayloadVersion, RouteType
-from ..version_info import resolve_runtime_version
 
 # Import bot's utilities for packet hash
 from ..utils import calculate_packet_hash, decode_path_len_byte, parse_trace_payload_route_hashes
+from ..version_info import resolve_runtime_version
 
 # Import MQTT client
 try:
@@ -318,10 +318,11 @@ class PacketCaptureService(BaseServicePlugin):
         return self.bot.meshcore if self.bot else None
 
     def is_healthy(self) -> bool:
-        return (
-            self._running
-            and bool(self.meshcore and self.meshcore.is_connected)
-        )
+        # Only check internal running state, not radio connection.
+        # Radio disconnects are transient — the service resumes naturally
+        # when the radio reconnects. Checking meshcore.is_connected here
+        # causes a restart storm during every radio reconnect cycle.
+        return self._running
 
     async def start(self) -> None:
         """Start the packet capture service.
@@ -1100,10 +1101,19 @@ class PacketCaptureService(BaseServicePlugin):
                 if username:
                     client.username_pw_set(username, password)
 
-                # Setup callbacks
+                # Setup callbacks (resolve broker from mqtt_clients — avoid late-bound loop vars)
                 def on_connect(client, userdata, flags, rc, properties=None):
+                    cfg = None
+                    for mqtt_info in self.mqtt_clients:
+                        if mqtt_info['client'] == client:
+                            cfg = mqtt_info['config']
+                            break
+                    if cfg is None:
+                        return
+                    tr = cfg.get('transport', 'tcp').lower()
+                    host, port = cfg['host'], cfg['port']
                     if rc == 0:
-                        self.logger.info(f"✓ Connected to MQTT broker: {broker_config['host']}:{broker_config['port']} ({transport})")
+                        self.logger.info(f"✓ Connected to MQTT broker: {host}:{port} ({tr})")
                         # Track connection per broker
                         for mqtt_info in self.mqtt_clients:
                             if mqtt_info['client'] == client:
@@ -1122,7 +1132,7 @@ class PacketCaptureService(BaseServicePlugin):
                         }
                         error_msg = error_messages.get(rc, f"unknown error ({rc})")
                         self.logger.error(
-                            f"✗ Failed to connect to MQTT broker {broker_config['host']}: {rc} ({error_msg})"
+                            f"✗ Failed to connect to MQTT broker {host}: {rc} ({error_msg})"
                         )
                         # Mark this broker as disconnected
                         for mqtt_info in self.mqtt_clients:
@@ -1137,10 +1147,12 @@ class PacketCaptureService(BaseServicePlugin):
                     for mqtt_info in self.mqtt_clients:
                         if mqtt_info['client'] == client:
                             mqtt_info['connected'] = False
+                            cfg = mqtt_info['config']
+                            host = cfg['host']
                             if rc != 0:
-                                self.logger.warning(f"Disconnected from MQTT broker {broker_config['host']} (rc={rc})")
+                                self.logger.warning(f"Disconnected from MQTT broker {host} (rc={rc})")
                             else:
-                                self.logger.debug(f"Disconnected from MQTT broker {broker_config['host']}")
+                                self.logger.debug(f"Disconnected from MQTT broker {host}")
                             break
                     # Update global flag
                     self.mqtt_connected = any(m.get('connected', False) for m in self.mqtt_clients)
