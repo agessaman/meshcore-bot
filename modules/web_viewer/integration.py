@@ -52,14 +52,28 @@ class BotIntegration:
     # How often (seconds) the drain thread flushes the write queue
     DRAIN_INTERVAL = 0.5
 
+    # Bounded packet_stream write queue: producers block up to this long before drop/retry.
+    _WRITE_QUEUE_PUT_TIMEOUT_SEC = 5.0
+
     def __init__(self, bot):
         self.bot = bot
         self.circuit_breaker_open = False
         self.circuit_breaker_failures = 0
         self.circuit_breaker_last_failure_time = 0.0
         self.is_shutting_down = False
-        # Batched write queue: avoids a per-insert sqlite3.connect() round-trip
-        self._write_queue: queue.Queue = queue.Queue()
+        # Serialize flushes so drain thread, shutdown, and producer retry cannot interleave.
+        self._flush_lock = threading.Lock()
+        maxsize = 1000
+        if self.bot.config.has_section("Web_Viewer"):
+            try:
+                maxsize = self.bot.config.getint(
+                    "Web_Viewer", "packet_stream_write_queue_max", fallback=1000
+                )
+            except (ValueError, TypeError, OSError):
+                maxsize = 1000
+        self._write_queue_maxsize = max(1, int(maxsize))
+        # Batched write queue: avoids a per-insert sqlite3.connect() round-trip (bounded for RAM).
+        self._write_queue: queue.Queue = queue.Queue(maxsize=self._write_queue_maxsize)
         self._drain_stop = threading.Event()
         self._drain_thread: Optional[threading.Thread] = None
         # Initialize HTTP session with connection pooling for efficient reuse
@@ -229,44 +243,80 @@ class BotIntegration:
             self._drain_stop.wait(timeout=self.DRAIN_INTERVAL)
             self._flush_write_queue()
 
+    def _requeue_rows(self, rows: list[tuple[float, str, str]]) -> None:
+        """Restore rows to the queue after a failed flush (FIFO). Logs if the queue stays full."""
+        for i, row in enumerate(rows):
+            try:
+                self._write_queue.put(row, timeout=60.0)
+            except queue.Full:
+                remaining = len(rows) - i
+                self.bot.logger.error(
+                    "packet_stream: could not re-queue %d row(s) after flush failure; data may be lost",
+                    remaining,
+                )
+                break
+
     def _flush_write_queue(self) -> None:
         """Drain all queued rows and insert them in a single batched transaction."""
         import sqlite3
-        if self._write_queue.empty():
-            return
-        rows = []
-        while not self._write_queue.empty():
-            try:
-                rows.append(self._write_queue.get_nowait())
-            except queue.Empty:
-                break
-        if not rows:
-            return
-        db_path = self._get_web_viewer_db_path()
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                with closing(sqlite3.connect(str(db_path), timeout=60.0)) as conn:
-                    conn.executemany(
-                        'INSERT INTO packet_stream (timestamp, data, type) VALUES (?, ?, ?)',
-                        rows,
+
+        with self._flush_lock:
+            if self._write_queue.empty():
+                return
+            rows: list[tuple[float, str, str]] = []
+            while not self._write_queue.empty():
+                try:
+                    rows.append(self._write_queue.get_nowait())
+                except queue.Empty:
+                    break
+            if not rows:
+                return
+            db_path = self._get_web_viewer_db_path()
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    with closing(sqlite3.connect(str(db_path), timeout=60.0)) as conn:
+                        conn.executemany(
+                            'INSERT INTO packet_stream (timestamp, data, type) VALUES (?, ?, ?)',
+                            rows,
+                        )
+                        conn.commit()
+                    return
+                except sqlite3.OperationalError as e:
+                    if "locked" in str(e).lower() and attempt < max_retries - 1:
+                        time.sleep(0.15 * (attempt + 1))
+                        continue
+                    self.bot.logger.warning(
+                        f"Error flushing packet_stream queue ({len(rows)} rows): {e}"
                     )
-                    conn.commit()
-                return
-            except sqlite3.OperationalError as e:
-                if "locked" in str(e).lower() and attempt < max_retries - 1:
-                    time.sleep(0.15 * (attempt + 1))
-                    continue
-                self.bot.logger.warning(f"Error flushing packet_stream queue ({len(rows)} rows): {e}")
-                return
-            except Exception as e:
-                self.bot.logger.warning(f"Error flushing packet_stream queue ({len(rows)} rows): {e}")
-                return
+                    self._requeue_rows(rows)
+                    return
+                except Exception as e:
+                    self.bot.logger.warning(
+                        f"Error flushing packet_stream queue ({len(rows)} rows): {e}"
+                    )
+                    self._requeue_rows(rows)
+                    return
 
     def _insert_packet_stream_row(self, data_json: str, row_type: str, log_prefix: str = "packet data"):
         """Queue one row for batched insertion into packet_stream by the drain thread."""
+        item = (time.time(), data_json, row_type)
         try:
-            self._write_queue.put_nowait((time.time(), data_json, row_type))
+            self._write_queue.put(item, timeout=self._WRITE_QUEUE_PUT_TIMEOUT_SEC)
+        except queue.Full:
+            try:
+                self._flush_write_queue()
+            except Exception as e:
+                self.bot.logger.debug("packet_stream flush after full queue: %s", e)
+            try:
+                self._write_queue.put(item, timeout=self._WRITE_QUEUE_PUT_TIMEOUT_SEC)
+            except queue.Full:
+                self.bot.logger.warning(
+                    "packet_stream write queue full (%s/%s items) after flush retry; dropping %s",
+                    self._write_queue.qsize(),
+                    self._write_queue.maxsize,
+                    log_prefix,
+                )
         except Exception as e:
             self.bot.logger.warning(f"Error queuing {log_prefix} for web viewer: {e}")
 

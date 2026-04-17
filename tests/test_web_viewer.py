@@ -2340,6 +2340,42 @@ class TestBotIntegrationQueue:
         yield bi
         bi.shutdown()
 
+    @pytest.fixture()
+    def bot_integration_tiny_queue(self, tmp_path):
+        """BotIntegration with packet_stream_write_queue_max=2 for bounded-queue tests."""
+        import configparser as _cp
+        from unittest.mock import MagicMock
+
+        db_path = str(tmp_path / "test_tiny.db")
+        cfg = _cp.ConfigParser()
+        cfg["Connection"] = {"connection_type": "serial", "serial_port": "/dev/null"}
+        cfg["Bot"] = {"bot_name": "Test", "db_path": db_path, "prefix_bytes": "1"}
+        cfg["Web_Viewer"] = {"packet_stream_write_queue_max": "2"}
+
+        bot = MagicMock()
+        bot.logger = logging.getLogger("test_integration_tiny")
+        bot.logger.addHandler(logging.NullHandler())
+        bot.config = cfg
+        bot.bot_root = str(tmp_path)
+
+        from modules.db_manager import DBManager
+
+        class MinimalBot:
+            def __init__(self, logger, config):
+                self.logger = logger
+                self.config = config
+
+        bot.db_manager = DBManager(MinimalBot(bot.logger, cfg), db_path)
+
+        from modules.web_viewer.integration import BotIntegration
+        bi = BotIntegration(bot)
+        yield bi
+        bi.shutdown()
+
+    def test_default_write_queue_maxsize(self, bot_integration):
+        assert bot_integration._write_queue_maxsize == 1000
+        assert bot_integration._write_queue.maxsize == 1000
+
     def test_insert_queues_row_without_db_open(self, bot_integration):
         """_insert_packet_stream_row puts item in queue, does not open DB immediately."""
         # Queue should start empty
@@ -2403,6 +2439,36 @@ class TestBotIntegrationQueue:
         """Drain thread is alive after construction."""
         assert bot_integration._drain_thread is not None
         assert bot_integration._drain_thread.is_alive()
+
+    def test_bounded_queue_retry_flush_frees_space(self, bot_integration_tiny_queue, monkeypatch):
+        """When the queue is full, insert triggers a flush so the row can be queued."""
+        from modules.web_viewer.integration import BotIntegration
+
+        bi = bot_integration_tiny_queue
+        assert bi._write_queue_maxsize == 2
+        bi._drain_stop.set()
+        if bi._drain_thread:
+            bi._drain_thread.join(timeout=2.0)
+        monkeypatch.setattr(BotIntegration, "_WRITE_QUEUE_PUT_TIMEOUT_SEC", 0.15)
+        bi._insert_packet_stream_row('{"n":0}', 'packet')
+        bi._insert_packet_stream_row('{"n":1}', 'packet')
+        assert bi._write_queue.qsize() == 2
+        bi._insert_packet_stream_row('{"n":2}', 'packet')
+        assert bi._write_queue.qsize() == 1
+
+    def test_flush_failure_requeues_rows(self, bot_integration):
+        """Rows are put back on the queue if SQLite flush fails after retries."""
+        bot_integration._drain_stop.set()
+        if bot_integration._drain_thread:
+            bot_integration._drain_thread.join(timeout=2.0)
+        bot_integration._insert_packet_stream_row('{"x":1}', 'packet')
+        bot_integration._insert_packet_stream_row('{"x":2}', 'packet')
+        assert bot_integration._write_queue.qsize() == 2
+
+        with patch.object(sqlite3, "connect", side_effect=sqlite3.OperationalError("database is locked")):
+            bot_integration._flush_write_queue()
+
+        assert bot_integration._write_queue.qsize() == 2
 
 
 # ===========================================================================
