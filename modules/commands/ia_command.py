@@ -5,6 +5,7 @@ Sends a short prompt to a local llama.cpp OpenAI-compatible endpoint.
 """
 
 import re
+import asyncio
 from typing import Dict, Any
 import requests
 from .base_command import BaseCommand
@@ -124,12 +125,16 @@ class IaCommand(BaseCommand):
     def _clean_ai_response(self, content: str, max_length: int) -> str:
         cleaned = content or ""
         if self.strip_thinking_tags:
-            cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.IGNORECASE | re.DOTALL)
-            cleaned = re.sub(r"<thinking>.*?</thinking>", "", cleaned, flags=re.IGNORECASE | re.DOTALL)
+            cleaned = re.sub(
+                r"<(?:think|thinking)>.*?</(?:think|thinking)>",
+                "",
+                cleaned,
+                flags=re.IGNORECASE | re.DOTALL,
+            )
         cleaned = " ".join(cleaned.split()).strip()
 
         if not cleaned:
-            cleaned = "No response from IA."
+            cleaned = "No response from AI."
 
         if len(cleaned) > max_length:
             cleaned = cleaned[: max(0, max_length - 3)].rstrip()
@@ -143,7 +148,8 @@ class IaCommand(BaseCommand):
             return await self.send_response(message, "Usage: /ia <question>")
 
         try:
-            response = requests.post(
+            response = await asyncio.to_thread(
+                requests.post,
                 self.endpoint,
                 json=self._build_payload(prompt),
                 timeout=self.timeout_seconds,
@@ -158,7 +164,11 @@ class IaCommand(BaseCommand):
 
         try:
             data = response.json()
-            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            choices = data.get("choices")
+            if isinstance(choices, list) and choices:
+                content = choices[0].get("message", {}).get("content", "")
+            else:
+                content = ""
         except (ValueError, TypeError, IndexError, AttributeError) as e:
             self.logger.warning(f"IA command parse error: {e}")
             return await self.send_response(message, "IA error: could not parse response.")

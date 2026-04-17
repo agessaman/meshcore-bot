@@ -55,7 +55,11 @@ class TestIaCommand:
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "choices": [{"message": {"content": "<think>chain</think>Mesh is a decentralized radio network."}}]
+            "choices": [{
+                "message": {
+                    "content": "<think>chain</think><thinking>chain2</thinking>Mesh is a decentralized radio network."
+                }
+            }]
         }
 
         with patch("modules.commands.ia_command.requests.post", return_value=mock_response) as post_mock:
@@ -66,6 +70,7 @@ class TestIaCommand:
         sent_text = command_mock_bot.command_manager.send_response.call_args[0][1]
         assert "Mesh is a decentralized radio network." in sent_text
         assert "<think>" not in sent_text
+        assert "<thinking>" not in sent_text
 
     @pytest.mark.asyncio
     async def test_execute_handles_connection_errors(self, command_mock_bot):

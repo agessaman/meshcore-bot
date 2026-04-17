@@ -1143,7 +1143,7 @@ enabled = true
 # channels =
 
 [Ia_Command]
-# Local llama.cpp IA chat command
+# Local llama.cpp AI chat command
 enabled = true
 # OpenAI-compatible llama.cpp endpoint
 endpoint = http://127.0.0.1:8080/v1/chat/completions
