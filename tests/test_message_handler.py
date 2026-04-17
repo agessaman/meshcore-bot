@@ -342,18 +342,22 @@ class TestFindRecentRfData:
     """Tests for MessageHandler.find_recent_rf_data()."""
 
     def _rf_entry(self, age=0, packet_prefix="aabbccdd", pubkey_prefix="1122",
-                  packet_hash=None, path_length=None):
+                  packet_hash=None, path_length=None, snr=5, rssi=-80,
+                  path_hex=None):
         entry = {
             "timestamp": time.time() - age,
-            "snr": 5,
-            "rssi": -80,
+            "snr": snr,
+            "rssi": rssi,
             "packet_prefix": packet_prefix,
             "pubkey_prefix": pubkey_prefix,
         }
         if packet_hash is not None:
             entry["packet_hash"] = packet_hash
         if path_length is not None:
-            entry["routing_info"] = {"path_length": path_length}
+            routing: dict = {"path_length": path_length}
+            if path_hex is not None:
+                routing["path_hex"] = path_hex
+            entry["routing_info"] = routing
         return entry
 
     def test_returns_none_when_empty(self, handler):
@@ -430,21 +434,33 @@ class TestFindRecentRfData:
         result = handler.find_recent_rf_data("deadbeefdeadbeef1234567890abcdef")
         assert result is None
 
-    def test_flood_duplicate_prefers_longest_path(self, handler):
-        """Issue #80: when multiple RF samples share a packet_hash, prefer the
-        one with the longest observed path."""
+    def test_flood_duplicate_returns_exact_match_not_longer(self, handler):
+        """Issue #80 (option B): even when multiple RF samples share a
+        ``packet_hash`` via flood forwarding, ``find_recent_rf_data`` returns
+        the exact ``packet_prefix`` match verbatim — no cross-forward merging.
+        The matched sample's ``snr``/``rssi``/``routing_info`` all belong to the
+        same wire observation that was decoded."""
         handler.rf_data_timeout = 30
-        short = self._rf_entry(
+        matched = self._rf_entry(
             age=2, packet_prefix="aabb" * 8,
-            packet_hash="9D272188AB364743", path_length=4,
+            packet_hash="9D272188AB364743", path_length=4, path_hex="f230df22",
+            snr=3, rssi=-90,
         )
-        long = self._rf_entry(
+        longer = self._rf_entry(
             age=1, packet_prefix="ccdd" * 8,
-            packet_hash="9D272188AB364743", path_length=5,
+            packet_hash="9D272188AB364743", path_length=5, path_hex="f230df2279",
+            snr=12, rssi=-60,
         )
-        handler.recent_rf_data = [short, long]
-        result = handler.find_recent_rf_data(short["packet_prefix"])
-        assert result is long
+        handler.recent_rf_data = [matched, longer]
+        result = handler.find_recent_rf_data(matched["packet_prefix"])
+
+        assert result is matched
+        # Path and signal fields stay anchored to the matched observation — no
+        # enrichment from the longer forward.
+        assert result["routing_info"]["path_length"] == 4
+        assert result["routing_info"]["path_hex"] == "f230df22"
+        assert result["snr"] == 3
+        assert result["rssi"] == -90
 
     def test_narrow_fallback_window_rejects_stale(self, handler):
         """Issue #80: with no correlation_key, only very recent samples qualify

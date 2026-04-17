@@ -1178,7 +1178,7 @@ class MessageHandler:
     def find_recent_rf_data(
         self, correlation_key: str | None = None, max_age_seconds: float | None = None
     ) -> dict[str, Any] | None:
-        """Find recent RF data for SNR/RSSI and packet decoding with improved correlation
+        """Find recent RF data for SNR/RSSI and packet decoding.
 
         Args:
             correlation_key: Can be either:
@@ -1193,10 +1193,11 @@ class MessageHandler:
         the most recent sample within a narrow ``rf_fallback_window`` so unrelated
         flood-forwarded packets' routing info can't bleed into DMs.
 
-        When multiple samples share the same ``packet_hash`` as a matched sample, the
-        one with the largest ``routing_info.path_length`` is preferred — this handles
-        flood-forwarded duplicates where the final hop may arrive after the short
-        earlier snapshot (issue #80).
+        The returned sample is always a single wire observation — its ``snr``,
+        ``rssi``, ``raw_hex`` and ``routing_info`` all belong to the same decoded
+        copy. No cross-forward merging is performed (see TODO for option C,
+        which would enrich ``routing_info`` from longer-path forwards of the same
+        ``packet_hash`` while also syncing ``message.hops`` for consistency).
         """
         import time
         current_time = time.time()
@@ -1213,48 +1214,25 @@ class MessageHandler:
             self.logger.debug(f"No recent RF data found within {max_age_seconds}s window")
             return None
 
-        def _prefer_longest_path(match: dict[str, Any]) -> dict[str, Any]:
-            """Among samples sharing ``packet_hash`` with ``match``, pick the longest
-            observed path. Flood forwards of the same logical packet share a hash but
-            different path snapshots; we want the most complete route (issue #80)."""
-            target_hash = match.get('packet_hash')
-            if not target_hash:
-                return match
-            same_hash = [d for d in recent_data if d.get('packet_hash') == target_hash]
-            if len(same_hash) <= 1:
-                return match
-
-            def _path_length(d: dict[str, Any]) -> int:
-                routing = d.get('routing_info') or {}
-                try:
-                    return int(routing.get('path_length') or 0)
-                except (TypeError, ValueError):
-                    return 0
-
-            best = max(same_hash, key=_path_length)
-            if best is not match:
-                self.logger.debug(
-                    f"Promoting longer-path duplicate for packet_hash={target_hash}: "
-                    f"path_length {_path_length(match)} -> {_path_length(best)}"
-                )
-            return best
-
         if correlation_key:
-            # Strategy 1: exact packet prefix match
+            # Strategy 1: exact packet prefix match — observation-level identity.
+            # Both the message event and the RF-log event carry the same raw_hex for
+            # the specific wire copy that was decoded, so this is the authoritative
+            # match for SNR/RSSI/path attribution.
             for data in recent_data:
                 rf_packet_prefix = data.get('packet_prefix', '') or ''
                 if rf_packet_prefix == correlation_key:
                     self.logger.debug(f"Found exact packet prefix match: {rf_packet_prefix}")
-                    return _prefer_longest_path(data)
+                    return data
 
-            # Strategy 2: exact pubkey prefix match (for message correlation)
+            # Strategy 2: exact pubkey prefix match (for message correlation).
             for data in recent_data:
                 rf_pubkey_prefix = data.get('pubkey_prefix', '') or ''
                 if rf_pubkey_prefix == correlation_key:
                     self.logger.debug(f"Found exact pubkey prefix match: {rf_pubkey_prefix}")
-                    return _prefer_longest_path(data)
+                    return data
 
-            # Strategy 3: partial packet prefix match (≥ 16 chars)
+            # Strategy 3: partial packet prefix match (≥ 16 chars).
             for data in recent_data:
                 rf_packet_prefix = data.get('packet_prefix', '') or ''
                 min_length = min(len(rf_packet_prefix), len(correlation_key), 16)
@@ -1263,7 +1241,7 @@ class MessageHandler:
                         f"Found partial packet prefix match: {rf_packet_prefix[:16]}... "
                         f"matches {correlation_key[:16]}..."
                     )
-                    return _prefer_longest_path(data)
+                    return data
 
             # Issue #80: when a correlation_key was provided but nothing matched, do NOT
             # fall back to an arbitrary recent sample — that's how message_stats.path ends
@@ -1288,7 +1266,7 @@ class MessageHandler:
             f"Using most recent RF data (narrow fallback): {packet_prefix} "
             f"at {most_recent['timestamp']}"
         )
-        return _prefer_longest_path(most_recent)
+        return most_recent
 
     def store_message_for_correlation(self, message_id: str, message_data: dict[str, Any]) -> None:
         """Store a message temporarily to wait for RF data correlation"""

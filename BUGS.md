@@ -12,7 +12,7 @@ Issues closed in this release. See `CHANGELOG.md` for the full feature/infra lis
 
 | Reference | Summary |
 |-----------|---------|
-| Issue #80 | `find_recent_rf_data` no longer mis-correlates `message_stats.path` — when a `correlation_key` is supplied it returns `None` instead of falling back to an arbitrary recent sample, and among duplicates sharing a `packet_hash` it prefers the longest observed path. The no-key fallback is constrained to a narrow `rf_fallback_window` (2s default). Regression tests in `tests/test_message_handler.py::TestFindRecentRfData`. |
+| Issue #80 | `find_recent_rf_data` no longer mis-correlates `message_stats.path`. When a `correlation_key` is supplied it returns `None` instead of falling back to an arbitrary recent sample. Correlation stays strictly observation-level: the returned sample's `snr`, `rssi`, `raw_hex`, and `routing_info` all belong to the same decoded wire copy (no cross-forward merging). The no-key fallback is constrained to a narrow `rf_fallback_window` (2s default). Regression tests in `tests/test_message_handler.py::TestFindRecentRfData`. |
 | Issue #83 | `KeyError('msg_hash')` asyncio parser spam fixed upstream by `meshcore >= 2.3.6` (new `meshcore_parser.py` guards with `'msg_hash' in l`). |
 | Issue #91 | Bot `!version` command added and version string shown in the web-viewer footer (`883b67d`, `fbf3995`). |
 | Issue #126 | `can't convert negative int to unsigned` on flood contacts fixed upstream by `meshcore >= 2.3.6` (out_path_len `-1` → `255` before packing). Defensive wire-field rebuild in `_ensure_contact_meshcore_path_encoding` (`ba52c3b`). |

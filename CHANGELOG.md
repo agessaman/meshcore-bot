@@ -105,10 +105,13 @@ hardening fixes.
 ### Fixed
 
 - **#80**: `find_recent_rf_data` no longer falls back to an arbitrary recent RF
-  sample when a `correlation_key` is provided. When multiple RF samples share a
-  `packet_hash`, the one with the longest observed `path_length` is preferred. The
-  no-key fallback is constrained to a narrow `rf_fallback_window` (2 s default) to
-  prevent DMs from picking up unrelated flood-traffic routing info.
+  sample when a `correlation_key` is provided — it now returns `None` instead
+  of attaching `message_stats.path` to an unrelated flood packet. Correlation
+  stays strictly observation-level: the returned sample's `snr`, `rssi`,
+  `raw_hex`, and `routing_info` all belong to the same decoded wire copy.
+  The no-key fallback is also constrained to a narrow `rf_fallback_window`
+  (2 s default) to prevent DMs from picking up unrelated flood-traffic
+  routing info.
 - **#126** (negative `out_path_len`): fixed via `meshcore >= 2.3.6` dep bump plus
   defensive handling in `_ensure_contact_meshcore_path_encoding`.
 - **#83** (`KeyError('msg_hash')` asyncio spam): fixed via `meshcore >= 2.3.6` dep

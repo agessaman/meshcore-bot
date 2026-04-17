@@ -210,6 +210,7 @@ Dispositions recorded at v0.9.0 tagging. Revisit for v0.9.1.
 - Issue #160 — web viewer feed channel edit not persisting
 - Issue #137 — minimal-config install "not responding" (needs reporter repro with logs first)
 - TASK-00 — meshcore `IndexError` asyncio handler polish (BUG-022 base fix already shipped; revisit the paused refactor)
+- **Path enrichment from same-`packet_hash` flood forwards (option C)** — follow-up to #80. When `find_recent_rf_data` returns the exact `packet_prefix` match, enrich its `routing_info` with the longest observed path from any cached sample sharing the same `packet_hash`, and simultaneously sync `message.hops` to the enriched `path_length` so `message_stats` rows stay internally consistent. Gives the `!path` command and mesh-graph updates the most complete route evidence without the hops/path skew that the naive upgrade would introduce. Touch points: `MessageHandler.find_recent_rf_data`, plus the two sites that copy `recent_rf_data['routing_info']` onto `MeshMessage` (lines ~426 and ~2081 in `modules/message_handler.py`). Regression tests should cover: (a) SNR/RSSI stay pinned to the matched observation, (b) `message.hops` == upgraded `path_length`, (c) no enrichment when `packet_hash` is missing.
 
 ### Stale PR triage
 
