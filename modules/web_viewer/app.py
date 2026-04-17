@@ -2033,7 +2033,7 @@ class BotDataViewer:
             for section in self.config.sections():
                 sections[section] = {
                     k: '●●●●●●' if any(r in k for r in _REDACT_KEYS) else v
-                    for k, v in self.config.items(section)
+                    for k, v in self.config.items(section, raw=True)
                 }
             return render_template('admin_config.html', sections=sections, config_path=self.config_path)
 

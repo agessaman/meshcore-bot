@@ -829,6 +829,18 @@ class TestAdminConfig:
             assert 'web_viewer_password' in body
             assert '●●●●●●' in body
 
+    def test_percent_in_values_does_not_500(self, mock_viewer):
+        """Literal % in ini values (e.g. humidity % RH) must not use ConfigParser interpolation."""
+        # Values loaded from ini bypass set() interpolation checks; merge like a real config file.
+        mock_viewer.config.read_string(
+            '[Bot]\n'
+            'wx_status_template = {humidity_pct:.0f} % RH) | {pressure_hpa:.0f} hPa\n'
+        )
+        with mock_viewer.app.test_client() as client:
+            response = client.get('/admin/config')
+        assert response.status_code == 200
+        assert '% RH' in response.data.decode()
+
 
 # ---------------------------------------------------------------------------
 # error_handler
