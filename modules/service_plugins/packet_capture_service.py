@@ -12,7 +12,7 @@ import logging
 import os
 import time
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 # Import meshcore
 from meshcore import EventType
@@ -207,7 +207,7 @@ class PacketCaptureService(BaseServicePlugin):
             config: ConfigParser object containing the configuration.
 
         Returns:
-            List[Dict[str, Any]]: List of configured MQTT broker dictionaries.
+            list[dict[str, Any]]: List of configured MQTT broker dictionaries.
         """
         brokers = []
 
@@ -451,7 +451,7 @@ class PacketCaptureService(BaseServicePlugin):
 
         self.logger.info("Packet capture event handlers registered")
 
-    async def handle_rx_log_data(self, event: Any, metadata: Optional[dict[str, Any]] = None) -> None:
+    async def handle_rx_log_data(self, event: Any, metadata: dict[str, Any] | None = None) -> None:
         """Handle RX log data events (matches original script).
 
         Args:
@@ -489,7 +489,7 @@ class PacketCaptureService(BaseServicePlugin):
         except Exception as e:
             self.logger.error(f"Error handling RX log data: {e}")
 
-    async def handle_raw_data(self, event: Any, metadata: Optional[dict[str, Any]] = None) -> None:
+    async def handle_raw_data(self, event: Any, metadata: dict[str, Any] | None = None) -> None:
         """Handle raw data events.
 
         Args:
@@ -523,7 +523,7 @@ class PacketCaptureService(BaseServicePlugin):
         except Exception as e:
             self.logger.error(f"Error handling raw data: {e}")
 
-    def _format_packet_data(self, raw_hex: str, packet_info: dict[str, Any], payload: dict[str, Any], metadata: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    def _format_packet_data(self, raw_hex: str, packet_info: dict[str, Any], payload: dict[str, Any], metadata: dict[str, Any] | None = None) -> dict[str, Any]:
         """Format packet data to match original script's format_packet_data exactly.
 
         Args:
@@ -533,7 +533,7 @@ class PacketCaptureService(BaseServicePlugin):
             metadata: Optional metadata dictionary.
 
         Returns:
-            Dict[str, Any]: Formatted packet dictionary.
+            dict[str, Any]: Formatted packet dictionary.
         """
         current_time = datetime.now()
         timestamp = current_time.isoformat()
@@ -737,7 +737,7 @@ class PacketCaptureService(BaseServicePlugin):
 
         return packet_data
 
-    async def process_packet(self, raw_hex: str, payload: dict[str, Any], metadata: Optional[dict[str, Any]] = None) -> None:
+    async def process_packet(self, raw_hex: str, payload: dict[str, Any], metadata: dict[str, Any] | None = None) -> None:
         """Process a captured packet.
 
         Decodes the packet, formats it, writes to file, and publishes to MQTT.
@@ -815,7 +815,7 @@ class PacketCaptureService(BaseServicePlugin):
         except Exception as e:
             self.logger.error(f"Error processing packet: {e}")
 
-    def decode_packet(self, raw_hex: str, payload: dict[str, Any]) -> Optional[dict[str, Any]]:
+    def decode_packet(self, raw_hex: str, payload: dict[str, Any]) -> dict[str, Any] | None:
         """Decode a MeshCore packet - matches original packet_capture.py functionality.
 
         Args:
@@ -823,7 +823,7 @@ class PacketCaptureService(BaseServicePlugin):
             payload: Payload dictionary from the event (unused in this method but kept for compatibility).
 
         Returns:
-            Optional[Dict[str, Any]]: Decoded packet info, or None if decoding fails.
+            dict[str, Any] | None: Decoded packet info, or None if decoding fails.
         """
         try:
             # Remove 0x prefix if present
@@ -1254,7 +1254,7 @@ class PacketCaptureService(BaseServicePlugin):
         else:
             self.logger.warning("MQTT enabled but no brokers connected")
 
-    def _resolve_topic_template(self, template: str, packet_type: str = 'packet') -> Optional[str]:
+    def _resolve_topic_template(self, template: str, packet_type: str = 'packet') -> str | None:
         """Resolve topic template with placeholders.
 
         Args:
@@ -1262,7 +1262,7 @@ class PacketCaptureService(BaseServicePlugin):
             packet_type: Type of packet ('packet' or 'status').
 
         Returns:
-            Optional[str]: Resolved topic string, or None if template is empty.
+            str | None: Resolved topic string, or None if template is empty.
         """
         if not template:
             return None
@@ -1457,7 +1457,7 @@ class PacketCaptureService(BaseServicePlugin):
         """Get firmware information from meshcore device (matches original script).
 
         Returns:
-            Dict[str, str]: Dictionary containing 'model' and 'version'.
+            dict[str, str]: Dictionary containing 'model' and 'version'.
         """
         try:
             # During shutdown, always use cached info - don't query the device
@@ -1548,14 +1548,14 @@ class PacketCaptureService(BaseServicePlugin):
         self.stats_supported = available
         return available
 
-    async def refresh_stats(self, force: bool = False) -> Optional[dict[str, Any]]:
+    async def refresh_stats(self, force: bool = False) -> dict[str, Any] | None:
         """Fetch stats from the radio and cache them for status publishing (matches original script).
 
         Args:
             force: Force refresh even if cache is fresh.
 
         Returns:
-            Optional[Dict[str, Any]]: Dictionary of stats or None if unavailable.
+            dict[str, Any] | None: Dictionary of stats or None if unavailable.
         """
         if not self.stats_status_enabled:
             if self.debug:
