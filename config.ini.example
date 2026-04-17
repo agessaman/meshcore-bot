@@ -305,10 +305,10 @@ test = "ack @[{sender}]{phrase_part} | {connection_info} | Received at: {timesta
 ping = "Pong!"
 pong = "Ping!"
 # Override 'help' command output
-# help = "Bot Help: test (or t), ping, help, hello, cmd, advert, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats | More: 'help <command>'"
+# help = "Bot Help: test (or t), ping, help, hello, cmd, ia, advert, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats | More: 'help <command>'"
 
 # Override 'cmd' command output
-# cmd = "Available commands: test (or t), ping, help, hello, cmd, advert, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats"
+# cmd = "Available commands: test (or t), ping, help, hello, cmd, ia, advert, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats"
 
 [RandomLine]
 # Configurable command to act on a trigger word and respond with a random line from its file
@@ -1140,6 +1140,24 @@ enabled = true
 
 [Cmd_Command]
 enabled = true
+# channels =
+
+[Ia_Command]
+# Local llama.cpp IA chat command
+enabled = true
+# OpenAI-compatible llama.cpp endpoint
+endpoint = http://127.0.0.1:8080/v1/chat/completions
+# Optional model name (leave blank to use server default)
+model =
+# Keep this short for mesh bandwidth
+system_prompt = You are a helpful assistant on a low-bandwidth mesh network. Reply briefly in one short sentence.
+# Generation settings
+max_tokens = 80
+temperature = 0.4
+top_p = 0.9
+timeout_seconds = 20
+# Remove <think> blocks from some reasoning models
+strip_thinking_tags = true
 # channels =
 
 [Channels_Command]

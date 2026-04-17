@@ -97,6 +97,26 @@ cmd
 
 ---
 
+### `ia` / `/ia`
+
+Ask a local llama.cpp instance for a short AI response.
+
+**Usage:**
+```
+ia <question>
+/ia <question>
+```
+
+**Examples:**
+```
+/ia What is LoRa?
+ia summarize mesh routing in one sentence
+```
+
+**Response:** Short AI-generated response from your locally configured llama.cpp endpoint.
+
+---
+
 ## Information Commands
 
 ### `channels`
@@ -883,4 +903,3 @@ feed test https://example.com/feed.xml
 ---
 
 For more information about configuring the bot, see the main [README](https://github.com/agessaman/meshcore-bot/blob/main/README.md) file.
-
