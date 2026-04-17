@@ -8,7 +8,7 @@ name = "meshcore-bot"
 version = "0.9.0"
 description = "MeshCore Bot with commands for mesh testing, utilities, and service integration."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "pyserial>=3.5",
     "bleak>=0.20.0",
@@ -65,7 +65,7 @@ modules = [
 
 [tool.ruff]
 line-length = 120
-target-version = "py39"
+target-version = "py310"
 exclude = [".venv", "build", "dist"]
 
 [tool.ruff.lint]
@@ -86,6 +86,11 @@ ignore = [
     "B904",   # raise-without-from-in-except (legacy raise pattern)
     "C408",   # unnecessary-collection-call
     "C414",   # unnecessary-double-cast-or-process
+    # pyupgrade rules that would require a bulk typing rewrite — deferred to a code-quality PR:
+    "UP007",  # non-pep604-annotation-union (Union[X, Y] -> X | Y)
+    "UP035",  # deprecated-import (typing.List/Dict/... remain prevalent)
+    "UP041",  # timeout-error-alias (socket.timeout -> TimeoutError)
+    "UP045",  # non-pep604-annotation-optional (Optional[X] -> X | None)
     # Simplification suggestions — stylistic, not enforced on legacy code:
     "SIM102", # collapsible-if
     "SIM103", # needless-bool

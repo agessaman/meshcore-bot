@@ -34,7 +34,7 @@ token =
 [Channels]
 monitor_channels = general,test,emergency
 respond_to_dms = true
-max_response_hops = 10
+max_response_hops = 7
 
 [Banned_Users]
 banned_users = 

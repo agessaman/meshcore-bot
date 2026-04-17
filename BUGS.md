@@ -6,10 +6,19 @@ Tracking of known bugs, fixed issues, and outstanding defects in meshcore-bot.
 
 ## Fixed Bugs
 
-### v0.9.0 and recent history
+### v0.9.0 (2026-04-17)
 
-| Commit | Summary |
-|--------|---------|
+Issues closed in this release. See `CHANGELOG.md` for the full feature/infra list.
+
+| Reference | Summary |
+|-----------|---------|
+| Issue #80 | `find_recent_rf_data` no longer mis-correlates `message_stats.path` — when a `correlation_key` is supplied it returns `None` instead of falling back to an arbitrary recent sample, and among duplicates sharing a `packet_hash` it prefers the longest observed path. The no-key fallback is constrained to a narrow `rf_fallback_window` (2s default). Regression tests in `tests/test_message_handler.py::TestFindRecentRfData`. |
+| Issue #83 | `KeyError('msg_hash')` asyncio parser spam fixed upstream by `meshcore >= 2.3.6` (new `meshcore_parser.py` guards with `'msg_hash' in l`). |
+| Issue #91 | Bot `!version` command added and version string shown in the web-viewer footer (`883b67d`, `fbf3995`). |
+| Issue #126 | `can't convert negative int to unsigned` on flood contacts fixed upstream by `meshcore >= 2.3.6` (out_path_len `-1` → `255` before packing). Defensive wire-field rebuild in `_ensure_contact_meshcore_path_encoding` (`ba52c3b`). |
+| Issue #161 | Shipped config templates lowered `max_response_hops` default from 10 → 7 to reduce flood-response amplification. |
+| Tests regression | Rewrote `test_subscribe_packets_emits_status_ack` / `test_subscribe_messages_emits_status_ack` to match the silent-UX contract introduced in `1ee84f2`. |
+| Python version | `requires-python` raised to `>= 3.10` in `pyproject.toml`; ruff target-version `py310`; CI matrix adds `3.13`. |
 | `e0eae09` (PR #123) | Fixed CI failures introduced by v0.9.0 push: (1) ruff — fixed import order, `Dict`→`dict`, and unused variable in `discord_bridge_service.py`; (2) mypy — added `types-requests` stub package to test deps, added `ignore_errors = true` per-module overrides for 19 not-yet-annotated modules; (3) ShellCheck SC2034 (unused vars) in `install-service.sh` / `uninstall-service.sh`, SC2155 (declare+assign) in `install-service.sh` / `restart_viewer.sh`, SC2010 (`ls\|grep`) replaced with glob loops in `docker-setup.sh`, SC2320 (`$?` capture after heredoc) in `docker-setup.sh` |
 | `92c5910` (PR #122) | Removed Python 3.9 from CI test matrix — `meshcore >=2.2.31` requires Python >=3.10 and is not installable on 3.9 |
 | `164dbae` | Refactored command aliases from global `[Aliases]` config section to per-command `aliases =` key in each command's own config section; `BaseCommand._load_aliases_from_config()` reads and injects aliases at startup; `CommandManager.load_aliases()` and `_apply_aliases()` removed |
@@ -55,9 +64,7 @@ Tracking of known bugs, fixed issues, and outstanding defects in meshcore-bot.
 
 ### High Priority
 
-| ID | Task | Module | Description | Workaround |
-|----|------|--------|-------------|------------|
-| ~~BUG-025~~ | TASK-10 ✅ | Fixed — see Fixed section above |
+_No outstanding high-priority bugs at v0.9.0 release. See the v0.9.0 Fixed Bugs table above._
 
 ### Medium Priority
 
@@ -73,14 +80,8 @@ Tracking of known bugs, fixed issues, and outstanding defects in meshcore-bot.
 
 | ID | Module | Description | Notes |
 |----|--------|-------------|-------|
-| ~~BUG-029~~ | TASK-16/T1-A ✅ | Fixed (third pass) — see Fixed section above | |
-| ~~BUG-028~~ | `message_handler` | Fixed — see Fixed section above | |
 | BUG-026 | `message_handler` | Keyword-dispatched help/command responses are sent as a single message (no auto-chunking). Long responses may be truncated by transport limits to avoid sending extra multipart messages. | Design choice. Commands can explicitly use `send_response_chunked()` if they want multi-part replies. |
-| ~~BUG-009~~ | `discord_bridge_service` | Closed / won’t fix — no changes planned | Non-issue (intentionally excluded); DMs contain private communications |
-| ~~BUG-010~~ | `wx_command` | Closed / won’t fix — no changes planned | Non-issue; use `wx_international.py` alternative in `modules/commands/alternatives/` for non-US deployments |
 | BUG-011 | `repeater_manager` | MeshCore device hard-limits contacts to 300; auto-purge threshold is 280 — purging 20 contacts at a time may not be enough on very busy meshes | Tune `auto_purge_threshold` and ensure `auto_manage_contacts` is enabled |
-| ~~BUG-012~~ | `plugin_loader` | Closed / won’t fix — no changes planned | Non-issue; rename local plugin to a unique name |
-| ~~BUG-013~~ | `core.py` | Closed / won’t fix — no changes planned | Non-issue; upgrade firmware if you need those features |
 | BUG-014 | `packet_capture_service` | Packet hash calculation silently uses a default hash value on failure (`pass  # Use default hash if calculation fails`) | Low impact; affects deduplication accuracy only |
 
 ---

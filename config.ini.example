@@ -227,7 +227,7 @@ respond_to_dms = true
 # Messages received with a high number of hops are rarely intended for the local
 # mesh and are not likely to get recieve a response.
 # Default: 64 - to not change behavior on existing installations
-max_response_hops = 10
+max_response_hops = 7
 
 # Set a custom prefix length for the public keys to identify repeaters
 # 1 = 2 hex chars (e.g. 7E), 2 = 4 hex chars (e.g. 7E42). Also used as the mesh

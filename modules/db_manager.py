@@ -400,7 +400,7 @@ class DBManager:
         desc = cursor.description
         if not desc:
             return []
-        return [dict(zip([c[0] for c in desc], row)) for row in rows]
+        return [dict(zip([c[0] for c in desc], row, strict=False)) for row in rows]
 
     def execute_update_on_connection(self, conn: sqlite3.Connection, query: str, params: tuple = ()) -> int:
         """Execute an update/insert/delete on an existing connection. Caller must commit."""

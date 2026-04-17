@@ -2823,8 +2823,8 @@ class TestSubscribePacketsHistoryReplay:
             ]
         assert any(flags), "At least one client should have subscribed_packets=True"
 
-    def test_subscribe_packets_emits_status_ack(self, socketio_viewer):
-        """subscribe_packets always emits a status acknowledgement."""
+    def test_subscribe_packets_does_not_emit_status_ack(self, socketio_viewer):
+        """subscribe_packets is silent — the navbar indicator already reflects socket state."""
         from flask_socketio import SocketIOTestClient
 
         sio_client = SocketIOTestClient(socketio_viewer.app, socketio_viewer.socketio)
@@ -2832,7 +2832,7 @@ class TestSubscribePacketsHistoryReplay:
 
         received = sio_client.get_received()
         status_events = [e for e in received if e["name"] == "status"]
-        assert len(status_events) >= 1
+        assert status_events == []
 
     def test_subscribe_packets_routing_type_replayed(self, socketio_viewer):
         """Routing-type rows are replayed as packet_data events."""
@@ -2970,8 +2970,8 @@ class TestSubscribeMessagesHistoryReplay:
             ]
         assert any(flags), "At least one client should have subscribed_messages=True"
 
-    def test_subscribe_messages_emits_status_ack(self, socketio_viewer):
-        """subscribe_messages always emits a status acknowledgement."""
+    def test_subscribe_messages_does_not_emit_status_ack(self, socketio_viewer):
+        """subscribe_messages is silent — the navbar indicator already reflects socket state."""
         from flask_socketio import SocketIOTestClient
 
         sio_client = SocketIOTestClient(socketio_viewer.app, socketio_viewer.socketio)
@@ -2979,7 +2979,7 @@ class TestSubscribeMessagesHistoryReplay:
 
         received = sio_client.get_received()
         status_events = [e for e in received if e["name"] == "status"]
-        assert len(status_events) >= 1
+        assert status_events == []
 
     def test_subscribe_messages_chronological_order(self, socketio_viewer):
         """Replayed message rows are in chronological order."""

@@ -236,7 +236,7 @@ respond_to_dms = true
 # Maximum hops for a message to get a response
 # Default: 64 - for backwards compatibility
 # Suggested: 10
-max_response_hops = 10
+max_response_hops = 7
 
 # Optional: limit channel responses to certain keywords (e.g. help,ping,test).
 # When set, only these triggers work in channels; DMs get all triggers.

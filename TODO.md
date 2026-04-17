@@ -174,6 +174,51 @@ by running `python scripts/update_todos.py` (see [Auto-Update](#auto-update)).
 
 ---
 
+## Deferred from v0.9.0 — triage
+
+Dispositions recorded at v0.9.0 tagging. Revisit for v0.9.1.
+
+### Defer to v0.9.1+ (no release-blocking impact)
+
+**Test coverage (TASK-14 tail):**
+- T1-E — `feed_manager.py` polling-loop coverage
+- T1-F — `web_viewer/app.py` (~2,269 uncovered lines): greeter, bans, packets/messages endpoints, export, SocketIO, firmware routes
+- T2-A `utils.py`, T2-B `graph_trace_helper.py`, T2-C `db_manager.py` (async methods + write queue), T2-D `discord_bridge_service.py`, T2-E `telegram_bridge_service.py`, T2-F `greeter_command.py`
+- T3-C `channels_command.py`, T3-I `trace_runner.py`, T3-J `earthquake_service.py`, T3-L `hacker_command.py`, T3-M `sports_command.py`, T3-O `repeater_command.py`, T4-A `multitest_command.py`
+- Tier 4 API/hardware-heavy modules (`wx_command`, `weather_service`, `solar_conditions`, `solarforecast_command`, `packet_capture_service`, `map_uploader_service`, `airplanes_command`, `aqi_command`, `alert_command`, `prefix_command`, `packet_capture_utils`)
+- MQTT fixture parser tests (decode raw hex, validate payload types)
+
+**Planned features:**
+- Two-way Discord bridge
+- Two-way Telegram bridge
+- Telegram `message_thread_id` (forum topic) support
+- Bridge DM opt-in consent mechanism
+- `!wx` non-US default (promote `wx_international.py` with US fallback)
+- Mobile-responsive web-viewer layout improvements
+- Repeater auto-purge dry-run mode
+- Feed manager JSON API feed support
+
+**Outstanding BUGS.md rows:**
+- BUG-004 — extend `rf_data_timeout` default / evaluate dynamic window for late RF-log arrivals
+- BUG-008 — Telegram `message_thread_id` routing (tracked with Two-way Telegram bridge work)
+- BUG-011 — `auto_purge_threshold` batch-size tuning for high-traffic meshes
+- BUG-014 — `packet_capture_service` default-hash fallback (low-impact dedup accuracy)
+
+### Fast-follow (small v0.9.1 PRs after v0.9.0 tag)
+
+- Issue #89 + BUG-005 — scope a `[Data_Retention]` section with per-table `keep_days` and a nightly VACUUM hook; target the 708 MB `meshcore_bot.db` growth seen on long-running installs
+- Issue #160 — web viewer feed channel edit not persisting
+- Issue #137 — minimal-config install "not responding" (needs reporter repro with logs first)
+- TASK-00 — meshcore `IndexError` asyncio handler polish (BUG-022 base fix already shipped; revisit the paused refactor)
+
+### Stale PR triage
+
+- **PR #153** — "add the sender to the path response" — review on merit for v0.9.1
+- **PR #47** — "Feature/gwx international default city name" — close as superseded by `modules/commands/alternatives/wx_international.py`
+- **PR #25** — "Add Docker containerization support" — close as superseded by in-repo `Dockerfile` + `docker-compose.yml` + multi-arch build pipeline shipped in v0.9.0
+
+---
+
 ## Recently Completed
 
 - [x] (2026-03-17) **PR split** — 22 logical PR branches created from `dev-kg7qin-changes` commits and pushed to `KG7QIN/meshcore-bot`; stacked on `pr-base` (upstream/dev + 2 catch-up commits); each targets `agessaman/meshcore-bot:dev`

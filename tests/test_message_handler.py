@@ -341,14 +341,20 @@ class TestCleanupStaleCacheEntries:
 class TestFindRecentRfData:
     """Tests for MessageHandler.find_recent_rf_data()."""
 
-    def _rf_entry(self, age=0, packet_prefix="aabbccdd", pubkey_prefix="1122"):
-        return {
+    def _rf_entry(self, age=0, packet_prefix="aabbccdd", pubkey_prefix="1122",
+                  packet_hash=None, path_length=None):
+        entry = {
             "timestamp": time.time() - age,
             "snr": 5,
             "rssi": -80,
             "packet_prefix": packet_prefix,
             "pubkey_prefix": pubkey_prefix,
         }
+        if packet_hash is not None:
+            entry["packet_hash"] = packet_hash
+        if path_length is not None:
+            entry["routing_info"] = {"path_length": path_length}
+        return entry
 
     def test_returns_none_when_empty(self, handler):
         handler.recent_rf_data = []
@@ -405,8 +411,71 @@ class TestFindRecentRfData:
         handler.recent_rf_data = [entry]
         # With max_age=5, entry is too old
         assert handler.find_recent_rf_data(max_age_seconds=5) is None
-        # With max_age=30, entry is visible
+        # With no correlation_key, the narrow fallback window applies even if
+        # max_age is large — so a 20s-old entry is still rejected.
+        handler.rf_fallback_window = 2.0
+        assert handler.find_recent_rf_data(max_age_seconds=30) is None
+        # Expand the fallback window and the entry becomes visible again.
+        handler.rf_fallback_window = 30.0
         assert handler.find_recent_rf_data(max_age_seconds=30) is entry
+
+    # --- Issue #80 regression tests -----------------------------------------
+
+    def test_unmatched_correlation_key_returns_none(self, handler):
+        """Issue #80: when correlation_key is provided but nothing matches, return
+        None instead of silently attaching an unrelated recent packet."""
+        handler.rf_data_timeout = 30
+        unrelated = self._rf_entry(age=1, packet_prefix="ffffffff", pubkey_prefix="ffff")
+        handler.recent_rf_data = [unrelated]
+        result = handler.find_recent_rf_data("deadbeefdeadbeef1234567890abcdef")
+        assert result is None
+
+    def test_flood_duplicate_prefers_longest_path(self, handler):
+        """Issue #80: when multiple RF samples share a packet_hash, prefer the
+        one with the longest observed path."""
+        handler.rf_data_timeout = 30
+        short = self._rf_entry(
+            age=2, packet_prefix="aabb" * 8,
+            packet_hash="9D272188AB364743", path_length=4,
+        )
+        long = self._rf_entry(
+            age=1, packet_prefix="ccdd" * 8,
+            packet_hash="9D272188AB364743", path_length=5,
+        )
+        handler.recent_rf_data = [short, long]
+        result = handler.find_recent_rf_data(short["packet_prefix"])
+        assert result is long
+
+    def test_narrow_fallback_window_rejects_stale(self, handler):
+        """Issue #80: with no correlation_key, only very recent samples qualify
+        for the fallback — unrelated older flood traffic is ignored."""
+        handler.rf_data_timeout = 30
+        handler.rf_fallback_window = 2.0
+        stale = self._rf_entry(age=10)
+        handler.recent_rf_data = [stale]
+        assert handler.find_recent_rf_data() is None
+
+    def test_issue_80_sequence_does_not_mis_correlate(self, handler):
+        """Replay the #80 scenario: the decoded message's correlation_key does not
+        match any observed RF sample; a completely unrelated 1-hop packet arrived
+        most recently. We must NOT return that unrelated sample."""
+        handler.rf_data_timeout = 30
+        message_sample_short = self._rf_entry(
+            age=3, packet_prefix="aaaa" * 8,
+            packet_hash="9D272188AB364743", path_length=4,
+        )
+        message_sample_long = self._rf_entry(
+            age=2, packet_prefix="bbbb" * 8,
+            packet_hash="9D272188AB364743", path_length=5,
+        )
+        unrelated_recent = self._rf_entry(
+            age=1, packet_prefix="cccc" * 8,
+            packet_hash="60FA21CC81C77423", path_length=1,
+        )
+        handler.recent_rf_data = [message_sample_short, message_sample_long, unrelated_recent]
+        # The message's correlation_key doesn't match anything in our cache.
+        result = handler.find_recent_rf_data("ffffffffffffffffffffffffffffffff")
+        assert result is None, "Unmatched correlation_key must not fall back to an unrelated packet"
 
 
 # ---------------------------------------------------------------------------
