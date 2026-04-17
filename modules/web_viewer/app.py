@@ -3861,7 +3861,7 @@ class BotDataViewer:
                 with self._clients_lock:
                     if client_id and client_id in self.connected_clients:
                         self.connected_clients[client_id]['subscribed_commands'] = True
-                emit('status', {'message': 'Subscribed to command stream'})
+                # Keep connection/subscription success silent; navbar indicator already shows socket state.
                 self.logger.debug(f"Client {client_id} subscribed to commands")
                 # Replay recent command history so the page isn't blank on load (BUG-023 fix)
                 try:
@@ -3892,7 +3892,6 @@ class BotDataViewer:
                 with self._clients_lock:
                     if client_id and client_id in self.connected_clients:
                         self.connected_clients[client_id]['subscribed_packets'] = True
-                emit('status', {'message': 'Subscribed to packet stream'})
                 self.logger.debug(f"Client {client_id} subscribed to packets")
                 # Replay recent packet/command/routing history so the page isn't blank on load
                 try:
@@ -3925,7 +3924,6 @@ class BotDataViewer:
                 with self._clients_lock:
                     if client_id and client_id in self.connected_clients:
                         self.connected_clients[client_id]['subscribed_mesh'] = True
-                emit('status', {'message': 'Subscribed to mesh graph stream'})
                 self.logger.debug(f"Client {client_id} subscribed to mesh graph")
             except Exception as e:
                 self.logger.error(f"Error in handle_subscribe_mesh: {e}", exc_info=True)
@@ -3938,7 +3936,6 @@ class BotDataViewer:
                 with self._clients_lock:
                     if client_id and client_id in self.connected_clients:
                         self.connected_clients[client_id]['subscribed_messages'] = True
-                emit('status', {'message': 'Subscribed to message stream'})
                 self.logger.debug(f"Client {client_id} subscribed to messages")
                 # Replay recent channel messages so the page isn't blank on load
                 try:
@@ -3969,7 +3966,6 @@ class BotDataViewer:
                 with self._clients_lock:
                     if client_id and client_id in self.connected_clients:
                         self.connected_clients[client_id]['subscribed_logs'] = True
-                emit('status', {'message': 'Subscribed to log stream'})
                 self.logger.debug(f"Client {client_id} subscribed to logs")
                 # Send recent log history so the page isn't blank on load
                 log_file = ''
