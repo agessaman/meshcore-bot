@@ -812,6 +812,25 @@ class TestApiExplorer:
 
 
 # ---------------------------------------------------------------------------
+# admin_config (resolved config.ini viewer)
+# ---------------------------------------------------------------------------
+
+
+class TestAdminConfig:
+    def test_page_loads(self, mock_viewer):
+        with mock_viewer.app.test_client() as client:
+            response = client.get('/admin/config')
+            assert response.status_code == 200
+
+    def test_redacts_password_like_keys(self, mock_viewer):
+        with mock_viewer.app.test_client() as client:
+            response = client.get('/admin/config')
+            body = response.data.decode()
+            assert 'web_viewer_password' in body
+            assert '●●●●●●' in body
+
+
+# ---------------------------------------------------------------------------
 # error_handler
 # ---------------------------------------------------------------------------
 
