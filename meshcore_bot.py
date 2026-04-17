@@ -6,8 +6,12 @@ Uses a modular structure for command creation and organization
 
 import argparse
 import asyncio
+import configparser
+import json
 import signal
 import sys
+
+from modules.config_snapshot import config_to_redacted_sections, redacted_sections_to_ini_text
 
 
 def _configure_unix_signal_handlers(loop, bot, shutdown_event: asyncio.Event) -> None:
@@ -55,8 +59,41 @@ def main():
         action="store_true",
         help="Validate config section names and exit before starting the bot (exit 1 on errors)",
     )
+    parser.add_argument(
+        "--show-config",
+        action="store_true",
+        help="Print resolved config.ini with sensitive keys redacted and exit",
+    )
+    parser.add_argument(
+        "--show-config-json",
+        action="store_true",
+        help="Print resolved config.ini as redacted JSON and exit",
+    )
 
     args = parser.parse_args()
+
+    if args.show_config and args.show_config_json:
+        print("Error: --show-config and --show-config-json are mutually exclusive", file=sys.stderr)
+        sys.exit(1)
+
+    if args.show_config or args.show_config_json:
+        cfg = configparser.ConfigParser()
+        try:
+            loaded_paths = cfg.read(args.config, encoding="utf-8")
+        except configparser.Error as exc:
+            print(f"Error: Invalid config file '{args.config}': {exc}", file=sys.stderr)
+            sys.exit(1)
+
+        if not loaded_paths:
+            print(f"Error: Config file not found: {args.config}", file=sys.stderr)
+            sys.exit(1)
+
+        sections = config_to_redacted_sections(cfg)
+        if args.show_config_json:
+            print(json.dumps(sections, indent=2, sort_keys=True))
+        else:
+            print(redacted_sections_to_ini_text(sections))
+        sys.exit(0)
 
     if args.validate_config:
         from modules.config_validation import (

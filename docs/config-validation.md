@@ -16,6 +16,13 @@ python validate_config.py [--config config.ini]
 python meshcore_bot.py --validate-config [--config config.ini]
 ```
 
+**Inspect resolved config** (redacted, then exit):
+
+```bash
+python meshcore_bot.py --show-config [--config config.ini]
+python meshcore_bot.py --show-config-json [--config config.ini]
+```
+
 - **Exit 0** – No errors (warnings and info may still be printed).
 - **Exit 1** – One or more errors; fix them before starting the bot.
 

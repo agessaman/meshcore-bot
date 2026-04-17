@@ -39,6 +39,17 @@ Get meshcore-bot running on your machine in a few minutes.
    python3 meshcore_bot.py
    ```
 
+## Inspect effective config safely
+
+Use these commands to inspect the resolved config with sensitive keys redacted:
+
+```bash
+python3 meshcore_bot.py --show-config --config config.ini
+python3 meshcore_bot.py --show-config-json --config config.ini
+```
+
+Also available in the web UI at `/admin/config`.
+
 ## Production deployment
 
 ### Systemd service

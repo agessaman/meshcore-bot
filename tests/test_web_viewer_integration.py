@@ -211,7 +211,7 @@ class TestInsertPacketStreamRow:
     def test_queue_exception_logged(self):
         bi = _make_bot_integration()
         bi._write_queue = Mock()
-        bi._write_queue.put_nowait.side_effect = Exception("full")
+        bi._write_queue.put.side_effect = Exception("full")
         # Should not raise
         bi._insert_packet_stream_row("{}", "packet")
         bi.bot.logger.warning.assert_called_once()
@@ -491,3 +491,38 @@ class TestShutdown:
         bi._drain_thread.is_alive.return_value = True
         bi.shutdown()
         bi._drain_thread.join.assert_called_once()
+
+
+class TestIntegrationTimeoutConfig:
+    def test_bot_integration_loads_custom_timeouts(self):
+        bot = _make_bot()
+        bot.config.set("Web_Viewer", "edge_post_timeout_sec", "2.5")
+        bot.config.set("Web_Viewer", "node_post_timeout_sec", "1.25")
+        bot.config.set("Web_Viewer", "sqlite_connect_timeout_sec", "42")
+        bot.config.set("Web_Viewer", "requeue_put_timeout_sec", "7")
+        bot.config.set("Web_Viewer", "integration_shutdown_join_timeout_sec", "3")
+
+        bi = _make_bot_integration(bot)
+        assert bi.edge_post_timeout_sec == 2.5
+        assert bi.node_post_timeout_sec == 1.25
+        assert bi.sqlite_connect_timeout_sec == 42
+        assert bi.requeue_put_timeout_sec == 7
+        assert bi.shutdown_join_timeout_sec == 3
+
+    def test_web_viewer_integration_loads_custom_timeouts(self):
+        from modules.web_viewer.integration import WebViewerIntegration
+
+        bot = _make_bot()
+        bot.config.set("Web_Viewer", "viewer_stop_grace_timeout_sec", "9")
+        bot.config.set("Web_Viewer", "viewer_stop_force_timeout_sec", "4")
+        bot.config.set("Web_Viewer", "port_cleanup_lsof_timeout_sec", "8")
+        bot.config.set("Web_Viewer", "port_cleanup_kill_timeout_sec", "1")
+        with patch("modules.web_viewer.integration.BotIntegration._init_http_session"), \
+             patch("modules.web_viewer.integration.BotIntegration._init_packet_stream_table"), \
+             patch("modules.web_viewer.integration.BotIntegration._start_drain_thread"):
+            wvi = WebViewerIntegration(bot)
+
+        assert wvi.viewer_stop_grace_timeout_sec == 9
+        assert wvi.viewer_stop_force_timeout_sec == 4
+        assert wvi.port_cleanup_lsof_timeout_sec == 8
+        assert wvi.port_cleanup_kill_timeout_sec == 1

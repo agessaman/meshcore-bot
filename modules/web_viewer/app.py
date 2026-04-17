@@ -94,6 +94,7 @@ from modules.feed_manager import FeedManager
 from modules.repeater_manager import RepeaterManager
 from modules.url_shortener import _coerce_url_string
 from modules.utils import calculate_distance, resolve_path
+from modules.config_snapshot import config_to_redacted_sections
 from modules.web_viewer.config_panels import CONFIG_PANELS, PANEL_CATEGORIES
 from modules.web_viewer.integration import normalized_web_viewer_password
 
@@ -2028,13 +2029,7 @@ class BotDataViewer:
         @self.app.route('/admin/config')
         def admin_config():
             """Resolved config viewer — shows effective config.ini values with sensitive fields redacted."""
-            _REDACT_KEYS = {'password', 'smtp_password', 'api_key', 'token', 'secret', 'smtp_user'}
-            sections = {}
-            for section in self.config.sections():
-                sections[section] = {
-                    k: '●●●●●●' if any(r in k for r in _REDACT_KEYS) else v
-                    for k, v in self.config.items(section, raw=True)
-                }
+            sections = config_to_redacted_sections(self.config)
             return render_template('admin_config.html', sections=sections, config_path=self.config_path)
 
         @self.app.route('/mesh')

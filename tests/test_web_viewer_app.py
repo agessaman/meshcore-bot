@@ -13,6 +13,31 @@ import pytest
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def cleanup_sqlite_connections(monkeypatch):
+    """Track and close SQLite connections opened during each test.
+
+    Some app code paths intentionally create ad-hoc connections for request-style
+    operations; this fixture ensures any leaked handles are closed so Python 3.13
+    ResourceWarning checks stay clean.
+    """
+    tracked_connections = []
+    original_connect = sqlite3.connect
+
+    def _tracked_connect(*args, **kwargs):
+        conn = original_connect(*args, **kwargs)
+        tracked_connections.append(conn)
+        return conn
+
+    monkeypatch.setattr(sqlite3, "connect", _tracked_connect)
+    yield
+    for conn in tracked_connections:
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass
+
+
 @pytest.fixture
 def viewer_with_db(tmp_path):
     """Create a BotDataViewer instance with a test database.
