@@ -676,6 +676,7 @@ class MessageScheduler:
     async def _send_interval_advert_async(self):
         """Send an interval-based advert (async implementation)"""
         import asyncio
+
         from meshcore.events import EventType
         try:
             result = await asyncio.wait_for(

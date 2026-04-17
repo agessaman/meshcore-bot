@@ -10,7 +10,7 @@ import hmac as hmac_mod
 import time
 from collections import OrderedDict
 from hashlib import sha256
-from typing import Any
+from typing import Any, TypedDict
 
 from .enums import AdvertFlags, DeviceRole, PayloadType, PayloadVersion, RouteType
 from .graph_trace_helper import update_mesh_graph_from_trace_data
@@ -24,6 +24,12 @@ from .utils import (
 )
 
 
+class PendingMessageEntry(TypedDict):
+    data: dict[str, Any]
+    timestamp: float
+    processed: bool
+
+
 class MessageHandler:
     """Handles incoming messages and routes them to command processors.
 
@@ -33,7 +39,7 @@ class MessageHandler:
     messages with routing information.
     """
 
-    def __init__(self, bot):
+    def __init__(self, bot: Any) -> None:
         self.bot = bot
         self.logger = bot.logger
         # Cache for storing SNR and RSSI data from RF log events (bounded LRU)
@@ -46,14 +52,14 @@ class MessageHandler:
         self.enhanced_correlation = bot.config.getboolean('Bot', 'enable_enhanced_correlation', fallback=True)
 
         # Time-based cache for recent RF log data
-        self.recent_rf_data = []
+        self.recent_rf_data: list[dict[str, Any]] = []
 
         # Message correlation system to prevent race conditions
-        self.pending_messages = {}  # Store messages waiting for RF data
+        self.pending_messages: dict[str, PendingMessageEntry] = {}  # Store messages waiting for RF data
 
         # Enhanced RF data storage with better correlation
-        self.rf_data_by_timestamp = {}  # Index by timestamp for faster lookup
-        self.rf_data_by_pubkey = {}     # Index by pubkey for exact matches
+        self.rf_data_by_timestamp: dict[int | float, dict[str, Any]] = {}  # Index by timestamp for faster lookup
+        self.rf_data_by_pubkey: dict[str, list[dict[str, Any]]] = {}     # Index by pubkey for exact matches
 
         # Cache memory management
         self._max_rf_cache_size = 1000  # Maximum entries per cache
@@ -64,7 +70,7 @@ class MessageHandler:
         self._max_signal_cache_size = 1000
 
         # Multitest command listener (for collecting paths during listening window)
-        self.multitest_listener = None
+        self.multitest_listener: Any | None = None
 
         self.logger.info(f"RF Data Correlation: timeout={self.rf_data_timeout}s, enhanced={self.enhanced_correlation}")
 
@@ -124,7 +130,7 @@ class MessageHandler:
             # If we can't parse timestamp, process the message (safer to process than skip)
             return False
 
-    async def handle_contact_message(self, event, metadata=None):
+    async def handle_contact_message(self, event: Any, metadata: dict[str, Any] | None = None) -> None:
         """Handle incoming contact message (DM).
 
         Processes direct messages, extracts path information, correlates with
@@ -249,27 +255,33 @@ class MessageHandler:
                         self.logger.info(f"📡 DIRECT MESSAGE: {path_info}")
 
             # Get additional metadata - try multiple sources for SNR and RSSI
-            snr = 'unknown'
-            rssi = 'unknown'
+            snr: float | None = None
+            rssi: int | None = None
 
             # Try to get SNR from payload first - check multiple possible field names
             if 'SNR' in payload:
-                snr = payload.get('SNR')
+                _snr = payload.get('SNR')
+                snr = float(_snr) if _snr is not None else None
             elif 'snr' in payload:
-                snr = payload.get('snr')
+                _snr = payload.get('snr')
+                snr = float(_snr) if _snr is not None else None
             elif 'signal_to_noise' in payload:
-                snr = payload.get('signal_to_noise')
+                _snr = payload.get('signal_to_noise')
+                snr = float(_snr) if _snr is not None else None
             elif 'signal_noise_ratio' in payload:
-                snr = payload.get('signal_noise_ratio')
+                _snr = payload.get('signal_noise_ratio')
+                snr = float(_snr) if _snr is not None else None
             # Try to get SNR from event metadata if available
             elif metadata:
                 if 'snr' in metadata:
-                    snr = metadata.get('snr')
+                    _snr = metadata.get('snr')
+                    snr = float(_snr) if _snr is not None else None
                 elif 'SNR' in metadata:
-                    snr = metadata.get('SNR')
+                    _snr = metadata.get('SNR')
+                    snr = float(_snr) if _snr is not None else None
 
             # If still no SNR, try to get it from the cache using pubkey prefix from payload
-            if snr == 'unknown':
+            if snr is None:
                 pubkey_prefix = payload.get('pubkey_prefix', '')
                 if pubkey_prefix and pubkey_prefix in self.snr_cache:
                     snr = self.snr_cache[pubkey_prefix]
@@ -277,23 +289,28 @@ class MessageHandler:
 
             # Try to get RSSI from payload first
             if 'RSSI' in payload:
-                rssi = payload.get('RSSI')
+                _rssi = payload.get('RSSI')
+                rssi = int(_rssi) if _rssi is not None else None
             elif 'rssi' in payload:
-                rssi = payload.get('rssi')
+                _rssi = payload.get('rssi')
+                rssi = int(_rssi) if _rssi is not None else None
             elif 'signal_strength' in payload:
-                rssi = payload.get('signal_strength')
+                _rssi = payload.get('signal_strength')
+                rssi = int(_rssi) if _rssi is not None else None
             # Try to get RSSI from event metadata if available
             elif metadata:
                 if 'rssi' in metadata:
-                    rssi = metadata.get('rssi')
+                    _rssi = metadata.get('rssi')
+                    rssi = int(_rssi) if _rssi is not None else None
                 elif 'RSSI' in metadata:
-                    rssi = metadata.get('RSSI')
+                    _rssi = metadata.get('RSSI')
+                    rssi = int(_rssi) if _rssi is not None else None
 
             # If still no RSSI, try to get it from the cache using pubkey prefix from payload
-            if rssi == 'unknown':
+            if rssi is None:
                 pubkey_prefix = payload.get('pubkey_prefix', '')
                 if pubkey_prefix and pubkey_prefix in self.rssi_cache:
-                    rssi = self.rssi_cache[pubkey_prefix]
+                    rssi = int(self.rssi_cache[pubkey_prefix])
                     self.logger.debug(f"Retrieved cached RSSI {rssi} for pubkey {pubkey_prefix}")
 
             # For DMs, we can't decode the encrypted packet, but we can get SNR/RSSI from the payload
@@ -303,32 +320,36 @@ class MessageHandler:
             # DMs are encrypted with recipient's public key, so we can't decode the raw packet
             # But we can get SNR/RSSI from the message payload if available
             if 'SNR' in payload:
-                snr = payload.get('SNR')
+                _snr = payload.get('SNR')
+                snr = float(_snr) if _snr is not None else None
                 self.logger.debug(f"Using SNR from DM payload: {snr}")
             elif 'snr' in payload:
-                snr = payload.get('snr')
+                _snr = payload.get('snr')
+                snr = float(_snr) if _snr is not None else None
                 self.logger.debug(f"Using SNR from DM payload: {snr}")
 
             if 'RSSI' in payload:
-                rssi = payload.get('RSSI')
+                _rssi = payload.get('RSSI')
+                rssi = int(_rssi) if _rssi is not None else None
                 self.logger.debug(f"Using RSSI from DM payload: {rssi}")
             elif 'rssi' in payload:
-                rssi = payload.get('rssi')
+                _rssi = payload.get('rssi')
+                rssi = int(_rssi) if _rssi is not None else None
                 self.logger.debug(f"Using RSSI from DM payload: {rssi}")
 
             # Since DMs don't include SNR/RSSI in payload, try to get it from recent RF data
             # This is a fallback since RF data often comes right before/after the message
-            if snr == 'unknown' or rssi == 'unknown':
+            if snr is None or rssi is None:
                 recent_rf_data = self.find_recent_rf_data()
                 if recent_rf_data:
                     self.logger.debug(f"Found recent RF data for DM: {recent_rf_data}")
 
-                    if snr == 'unknown' and recent_rf_data.get('snr'):
-                        snr = recent_rf_data['snr']
+                    if snr is None and recent_rf_data.get('snr') is not None:
+                        snr = float(recent_rf_data['snr'])
                         self.logger.debug(f"Using SNR from recent RF data: {snr}")
 
-                    if rssi == 'unknown' and recent_rf_data.get('rssi'):
-                        rssi = recent_rf_data['rssi']
+                    if rssi is None and recent_rf_data.get('rssi') is not None:
+                        rssi = int(recent_rf_data['rssi'])
                         self.logger.debug(f"Using RSSI from recent RF data: {rssi}")
 
             # For DMs, we can't determine the actual routing path from encrypted data
@@ -428,7 +449,7 @@ class MessageHandler:
         except Exception as e:
             self.logger.error(f"Error handling contact message: {e}")
 
-    async def handle_raw_data(self, event, metadata=None):
+    async def handle_raw_data(self, event: Any, metadata: dict[str, Any] | None = None) -> None:
         """Handle raw data events (full packet data from debug mode).
 
         Processes raw packet data, attempts to decode it, and if successful,
@@ -485,7 +506,7 @@ class MessageHandler:
             import traceback
             self.logger.error(traceback.format_exc())
 
-    async def _process_advertisement_packet(self, packet_info: dict, metadata=None):
+    async def _process_advertisement_packet(self, packet_info: dict[str, Any], metadata: dict[str, Any] | None = None) -> None:
         """Process advertisement packets for complete repeater tracking.
 
         Extracts node information, location data, and routing path from
@@ -645,7 +666,7 @@ class MessageHandler:
         except Exception as e:
             self.logger.error(f"Error processing advertisement packet: {e}")
 
-    async def handle_rf_log_data(self, event, metadata=None):
+    async def handle_rf_log_data(self, event: Any, metadata: dict[str, Any] | None = None) -> None:
         """Handle RF log data events to cache SNR information and store raw packet data.
 
         Captures low-level RF information (SNR, RSSI) and raw packet data to
@@ -681,7 +702,8 @@ class MessageHandler:
                 pubkey_prefix = None
                 if metadata and 'pubkey_prefix' in metadata:
                     pubkey_prefix = metadata.get('pubkey_prefix')
-                    self.logger.debug(f"Got pubkey_prefix from metadata: {pubkey_prefix[:16]}...")
+                    if isinstance(pubkey_prefix, str):
+                        self.logger.debug(f"Got pubkey_prefix from metadata: {pubkey_prefix[:16]}...")
 
                 if packet_prefix and snr_value is not None:
                     # Cache the SNR value for this packet prefix (LRU-bounded)
@@ -1150,7 +1172,9 @@ class MessageHandler:
             self.recent_rf_data.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
             self.recent_rf_data = self.recent_rf_data[:self._max_rf_cache_size]
 
-    def find_recent_rf_data(self, correlation_key=None, max_age_seconds=None):
+    def find_recent_rf_data(
+        self, correlation_key: str | None = None, max_age_seconds: float | None = None
+    ) -> dict[str, Any] | None:
         """Find recent RF data for SNR/RSSI and packet decoding with improved correlation
 
         Args:
@@ -1208,7 +1232,7 @@ class MessageHandler:
 
         return None
 
-    def store_message_for_correlation(self, message_id, message_data):
+    def store_message_for_correlation(self, message_id: str, message_data: dict[str, Any]) -> None:
         """Store a message temporarily to wait for RF data correlation"""
         import time
         self.pending_messages[message_id] = {
@@ -1218,7 +1242,7 @@ class MessageHandler:
         }
         self.logger.debug(f"Stored message {message_id} for RF data correlation")
 
-    def correlate_message_with_rf_data(self, message_id):
+    def correlate_message_with_rf_data(self, message_id: str) -> dict[str, Any] | None:
         """Try to correlate a stored message with available RF data"""
         if message_id not in self.pending_messages:
             return None
@@ -1237,7 +1261,7 @@ class MessageHandler:
 
         return None
 
-    def cleanup_old_messages(self):
+    def cleanup_old_messages(self) -> None:
         """Clean up old pending messages that couldn't be correlated"""
         import time
         current_time = time.time()
@@ -1251,7 +1275,7 @@ class MessageHandler:
             del self.pending_messages[message_id]
             self.logger.debug(f"Cleaned up old pending message {message_id}")
 
-    def try_correlate_pending_messages(self, rf_data):
+    def try_correlate_pending_messages(self, rf_data: dict[str, Any]) -> None:
         """Try to correlate new RF data with any pending messages"""
         pubkey_prefix = rf_data.get('pubkey_prefix', '') or ''
 
@@ -1409,7 +1433,7 @@ class MessageHandler:
             self.logger.error(f"Failed packet hex: {hex_data}")
             return None
 
-    def parse_advert(self, payload):
+    def parse_advert(self, payload: bytes) -> dict[str, Any]:
         """Parse advert payload - matches C++ AdvertDataHelpers.h implementation"""
         try:
             # Validate minimum payload size
@@ -1682,7 +1706,7 @@ class MessageHandler:
                 'description': f"Path: {','.join(path_nodes)}"
             }
 
-    def _get_route_type_name(self, route_type):
+    def _get_route_type_name(self, route_type: int) -> str:
         """Get human-readable name for route type"""
         route_types = {
             0x00: "ROUTE_TYPE_TRANSPORT_FLOOD",
@@ -1715,7 +1739,7 @@ class MessageHandler:
         }
         return payload_types.get(payload_type, f"UNKNOWN_{payload_type:02x}")
 
-    async def handle_channel_message(self, event, metadata=None):
+    async def handle_channel_message(self, event: Any, metadata: dict[str, Any] | None = None) -> None:
         """Handle incoming channel message"""
         try:
             # Copy payload immediately to avoid segfault if event is freed
@@ -1754,23 +1778,27 @@ class MessageHandler:
             self.logger.info(f"Received channel message ({channel_name}) from {sender_id}: {text}")
 
             # Get SNR and RSSI using the same logic as contact messages
-            snr = 'unknown'
-            rssi = 'unknown'
+            snr: float | None = None
+            rssi: int | None = None
 
             # Try to get SNR from payload first
             if 'SNR' in payload:
-                snr = payload.get('SNR')
+                _snr = payload.get('SNR')
+                snr = float(_snr) if _snr is not None else None
             elif 'snr' in payload:
-                snr = payload.get('snr')
+                _snr = payload.get('snr')
+                snr = float(_snr) if _snr is not None else None
             # Try to get SNR from event metadata if available
             elif metadata:
                 if 'snr' in metadata:
-                    snr = metadata.get('snr')
+                    _snr = metadata.get('snr')
+                    snr = float(_snr) if _snr is not None else None
                 elif 'SNR' in metadata:
-                    snr = metadata.get('SNR')
+                    _snr = metadata.get('SNR')
+                    snr = float(_snr) if _snr is not None else None
 
             # If still no SNR, try to get it from the cache using pubkey prefix from payload
-            if snr == 'unknown':
+            if snr is None:
                 pubkey_prefix = payload.get('pubkey_prefix', '')
                 if pubkey_prefix and pubkey_prefix in self.snr_cache:
                     snr = self.snr_cache[pubkey_prefix]
@@ -1778,23 +1806,28 @@ class MessageHandler:
 
             # Try to get RSSI from payload first
             if 'RSSI' in payload:
-                rssi = payload.get('RSSI')
+                _rssi = payload.get('RSSI')
+                rssi = int(_rssi) if _rssi is not None else None
             elif 'rssi' in payload:
-                rssi = payload.get('rssi')
+                _rssi = payload.get('rssi')
+                rssi = int(_rssi) if _rssi is not None else None
             elif 'signal_strength' in payload:
-                rssi = payload.get('signal_strength')
+                _rssi = payload.get('signal_strength')
+                rssi = int(_rssi) if _rssi is not None else None
             # Try to get RSSI from event metadata if available
             elif metadata:
                 if 'rssi' in metadata:
-                    rssi = metadata.get('rssi')
+                    _rssi = metadata.get('rssi')
+                    rssi = int(_rssi) if _rssi is not None else None
                 elif 'RSSI' in metadata:
-                    rssi = metadata.get('RSSI')
+                    _rssi = metadata.get('RSSI')
+                    rssi = int(_rssi) if _rssi is not None else None
 
             # If still no RSSI, try to get it from the cache using pubkey prefix from payload
-            if rssi == 'unknown':
+            if rssi is None:
                 pubkey_prefix = payload.get('pubkey_prefix', '')
                 if pubkey_prefix and pubkey_prefix in self.rssi_cache:
-                    rssi = self.rssi_cache[pubkey_prefix]
+                    rssi = int(self.rssi_cache[pubkey_prefix])
                     self.logger.debug(f"Retrieved cached RSSI {rssi} for pubkey {pubkey_prefix}")
 
             # For channel messages, we can decode the packet since they use shared channel keys
@@ -2008,7 +2041,7 @@ class MessageHandler:
             import traceback
             self.logger.error(traceback.format_exc())
 
-    def _update_mesh_graph(self, path_nodes: list[str], packet_info: dict[str, Any]):
+    def _update_mesh_graph(self, path_nodes: list[str], packet_info: dict[str, Any]) -> None:
         """Update mesh graph with edges from a message path.
 
         path_nodes may be 2, 4, or 6 hex chars per node depending on the packet's
@@ -2161,7 +2194,15 @@ class MessageHandler:
                 geographic_distance=geographic_distance
             )
 
-    def _store_observed_path(self, advert_data: dict[str, Any], path_hex: str, path_length: int, packet_type: str, packet_hash: str | None = None, bytes_per_hop: int | None = None):
+    def _store_observed_path(
+        self,
+        advert_data: dict[str, Any],
+        path_hex: str,
+        path_length: int,
+        packet_type: str,
+        packet_hash: str | None = None,
+        bytes_per_hop: int | None = None,
+    ) -> None:
         """Store a complete path in the observed_paths table.
 
         Args:
@@ -2307,8 +2348,9 @@ class MessageHandler:
             self.logger.debug(f"Error getting location by public key {public_key[:16]}...: {e}")
         return None
 
-    def _update_mesh_graph_from_advert(self, advert_data: dict[str, Any], out_path: str,
-                                      out_path_len: int, packet_info: dict[str, Any]):
+    def _update_mesh_graph_from_advert(
+        self, advert_data: dict[str, Any], out_path: str, out_path_len: int, packet_info: dict[str, Any]
+    ) -> None:
         """Update mesh graph with edges from an advertisement's out_path.
 
         Creates an edge from the advertising device to the first hop in their out_path,
@@ -2591,7 +2633,7 @@ class MessageHandler:
                 geographic_distance=geographic_distance
             )
 
-    def _update_mesh_graph_from_trace(self, path_hashes: list[str], packet_info: dict[str, Any]):
+    def _update_mesh_graph_from_trace(self, path_hashes: list[str], packet_info: dict[str, Any]) -> None:
         """Update mesh graph with edges from a trace packet's pathHashes. Delegates to shared helper."""
         update_mesh_graph_from_trace_data(self.bot, path_hashes, packet_info)
 
@@ -2660,7 +2702,9 @@ class MessageHandler:
 
     # CLI path discovery removed - focusing only on packet decoding
 
-    async def _debug_decode_message_path(self, message: MeshMessage, sender_id: str, rf_data: dict):
+    async def _debug_decode_message_path(
+        self, message: MeshMessage, sender_id: str, rf_data: dict[str, Any] | None
+    ) -> None:
         """
         Debug method to decode and log path information for ALL incoming messages.
         This runs regardless of whether the message matches keywords, helping with
@@ -2722,7 +2766,9 @@ class MessageHandler:
         except Exception as e:
             self.logger.error(f"Error in debug path decoding: {e}")
 
-    async def _debug_decode_packet_for_message(self, message: MeshMessage, sender_id: str, rf_data: dict):
+    async def _debug_decode_packet_for_message(
+        self, message: MeshMessage, sender_id: str, rf_data: dict[str, Any] | None
+    ) -> None:
         """
         Debug method to decode and log packet information for ALL incoming messages.
         This provides comprehensive packet analysis for debugging purposes.
@@ -2797,7 +2843,7 @@ class MessageHandler:
             truncated = hex_path[:16] if len(hex_path) > 16 else hex_path
             return f"Raw: {truncated}{'...' if len(hex_path) > 16 else ''}"
 
-    async def process_message(self, message: MeshMessage):
+    async def process_message(self, message: MeshMessage) -> None:
         """Process a received message"""
         # Check if multitest is listening and notify it
         if self.multitest_listener:
@@ -3087,7 +3133,7 @@ class MessageHandler:
         contact_data['out_path_hash_mode'] = (pb >> 6) & 0x03
         contact_data['out_path_len'] = pb & 0x3F
 
-    async def handle_new_contact(self, event, metadata=None):
+    async def handle_new_contact(self, event: Any, metadata: dict[str, Any] | None = None) -> None:
         """Handle NEW_CONTACT events for automatic contact management"""
         try:
             # Copy payload immediately to avoid segfault if event is freed

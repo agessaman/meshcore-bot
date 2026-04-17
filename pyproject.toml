@@ -122,6 +122,7 @@ module = [
     "modules.commands.schedule_command",
     "modules.service_plugins.webhook_service",
     "modules.service_plugins.base_service",
+    "modules.message_handler",
     "modules.utils",
     "modules.plugin_loader",
     "modules.security_utils",

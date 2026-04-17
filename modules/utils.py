@@ -32,7 +32,7 @@ def is_valid_timezone(tz_str: str) -> bool:
         except ZoneInfoNotFoundError:
             return False
     try:
-        import pytz  # type: ignore[import-untyped]
+        import pytz
         pytz.timezone(tz_str.strip())
         return True
     except Exception:

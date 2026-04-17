@@ -90,11 +90,11 @@ def _strip_ansi_codes(text: str) -> str:
     return _ANSI_ESCAPE_RE.sub("", text)
 
 
+from modules.config_snapshot import config_to_redacted_sections
 from modules.feed_manager import FeedManager
 from modules.repeater_manager import RepeaterManager
 from modules.url_shortener import _coerce_url_string
 from modules.utils import calculate_distance, resolve_path
-from modules.config_snapshot import config_to_redacted_sections
 from modules.web_viewer.config_panels import CONFIG_PANELS, PANEL_CATEGORIES
 from modules.web_viewer.integration import normalized_web_viewer_password
 
