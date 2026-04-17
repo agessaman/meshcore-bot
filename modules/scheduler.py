@@ -155,6 +155,8 @@ class MessageScheduler:
             try:
                 future.result(timeout=60)  # 60 second timeout
                 self.bot._record_send_success()
+            except RuntimeError as e:
+                self.logger.warning("Event loop gone during scheduled message: %s", e)
             except Exception as e:
                 self.logger.error(f"Error sending scheduled message: {type(e).__name__}: {e}")
                 self.bot._record_send_failure(scheduler=self)
@@ -482,6 +484,8 @@ class MessageScheduler:
                                 "work may still be running on the main loop (per-feed send spacing).",
                                 _FEED_MESSAGE_QUEUE_FUTURE_TIMEOUT,
                             )
+                        except RuntimeError as e:
+                            self.logger.warning("Event loop gone during feed message queue: %s", e)
                         except Exception as e:
                             self.logger.exception(f"Error processing message queue: {e}")
                     else:
@@ -554,6 +558,8 @@ class MessageScheduler:
                     )
                     try:
                         future.result(timeout=60)
+                    except RuntimeError as e:
+                        self.logger.warning("Event loop gone during cleanup_database: %s", e)
                     except Exception as e:
                         self.logger.error(f"Error in repeater_manager.cleanup_database: {type(e).__name__}: {e}")
                 else:
