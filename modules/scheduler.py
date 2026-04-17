@@ -675,8 +675,22 @@ class MessageScheduler:
 
     async def _send_interval_advert_async(self):
         """Send an interval-based advert (async implementation)"""
+        import asyncio
         from meshcore.events import EventType
-        result = await self.bot.meshcore.commands.send_advert(flood=True)
+        try:
+            result = await asyncio.wait_for(
+                self.bot.meshcore.commands.send_advert(flood=True),
+                timeout=30.0,
+            )
+        except asyncio.TimeoutError:
+            # Feed interval advert timeouts into existing zombie-detection heuristics.
+            self.bot._radio_fail_count = getattr(self.bot, "_radio_fail_count", 0) + 1
+            self.logger.warning(
+                "send_interval_advert timed out after 30s; "
+                "_radio_fail_count=%d",
+                self.bot._radio_fail_count,
+            )
+            raise
         if hasattr(result, 'type') and result.type == EventType.ERROR:
             reason = (result.payload or {}).get('reason', 'unknown') if hasattr(result, 'payload') else 'unknown'
             raise RuntimeError(f"send_advert failed: {reason}")

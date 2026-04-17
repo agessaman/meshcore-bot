@@ -38,6 +38,14 @@ CONFIG_PANELS: list[ConfigPanel] = [
         "template": "config/panels/log_rotation.html",
     },
     {
+        "id": "radio-reliability",
+        "title": "Radio Reliability",
+        "category": "core",
+        "order": 25,
+        "icon": "fas fa-broadcast-tower",
+        "template": "config/panels/radio_reliability.html",
+    },
+    {
         "id": "maintenance-status",
         "title": "Maintenance Status",
         "category": "core",

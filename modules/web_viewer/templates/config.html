@@ -545,6 +545,156 @@ class ConfigManager {
     }
 }
 
+// ── Radio Reliability ────────────────────────────────────────────────────────
+class RadioReliabilityManager {
+    constructor() {
+        this.zombieEnabledEl = document.getElementById('zombie-alert-enabled-toggle');
+        this.zombieEmailEl = document.getElementById('zombie-alert-email');
+        this.zombieIniEl = document.getElementById('zombie-alert-ini-summary');
+        this.zombieSaveBtn = document.getElementById('save-zombie-alert-btn');
+        this.zombieSaveConfigBtn = document.getElementById('save-zombie-alert-config-btn');
+        this.zombieStatusEl = document.getElementById('zombie-alert-status');
+
+        this.debugEnabledEl = document.getElementById('radio-debug-enabled-toggle');
+        this.debugIniEl = document.getElementById('radio-debug-ini-summary');
+        this.debugSaveBtn = document.getElementById('save-radio-debug-btn');
+        this.debugSaveConfigBtn = document.getElementById('save-radio-debug-config-btn');
+        this.debugApplyBtn = document.getElementById('apply-radio-debug-btn');
+        this.debugStatusEl = document.getElementById('radio-debug-status');
+
+        if (!this.zombieEnabledEl || !this.debugEnabledEl) return;
+        this.initialize();
+    }
+
+    async initialize() {
+        await this.loadZombieAlertConfig();
+        await this.loadRadioDebugConfig();
+        this.setupEventHandlers();
+    }
+
+    setupEventHandlers() {
+        this.zombieSaveBtn.addEventListener('click', () => this.saveZombieAlert(false));
+        this.zombieSaveConfigBtn.addEventListener('click', () => this.saveZombieAlert(true));
+        this.debugSaveBtn.addEventListener('click', () => this.saveRadioDebug(false, false));
+        this.debugSaveConfigBtn.addEventListener('click', () => this.saveRadioDebug(true, false));
+        this.debugApplyBtn.addEventListener('click', () => this.saveRadioDebug(true, true));
+    }
+
+    async loadZombieAlertConfig() {
+        try {
+            const resp = await fetch('/api/config/zombie-alert');
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            const metaEnabled = String(data?.meta?.alert_enabled || '').toLowerCase();
+            const iniEnabled = String(data?.config_ini?.alert_enabled || 'false').toLowerCase();
+            const effectiveEnabled = metaEnabled ? metaEnabled === 'true' : iniEnabled === 'true';
+            const effectiveEmail = data?.meta?.alert_email || data?.config_ini?.alert_email || '';
+            this.zombieEnabledEl.checked = effectiveEnabled;
+            this.zombieEmailEl.value = effectiveEmail;
+            const iniEmail = data?.config_ini?.alert_email || '(blank)';
+            this.zombieIniEl.textContent = `enabled=${iniEnabled}, email=${iniEmail}`;
+        } catch (err) {
+            this.showStatus(this.zombieStatusEl, `Failed to load zombie alert config: ${err.message}`, 'danger');
+        }
+    }
+
+    async loadRadioDebugConfig() {
+        try {
+            const resp = await fetch('/api/config/radio-debug');
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            const metaEnabled = String(data?.meta?.enabled || '').toLowerCase();
+            const iniEnabled = String(data?.config_ini?.enabled || 'false').toLowerCase();
+            this.debugEnabledEl.checked = metaEnabled ? metaEnabled === 'true' : iniEnabled === 'true';
+            this.debugIniEl.textContent = `enabled=${iniEnabled}`;
+        } catch (err) {
+            this.showStatus(this.debugStatusEl, `Failed to load radio debug config: ${err.message}`, 'danger');
+        }
+    }
+
+    async saveZombieAlert(writeToConfig) {
+        this.setBusy([this.zombieSaveBtn, this.zombieSaveConfigBtn], true);
+        this.hideStatus(this.zombieStatusEl);
+        try {
+            const resp = await fetch('/api/config/zombie-alert', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({
+                    alert_enabled: this.zombieEnabledEl.checked ? 'true' : 'false',
+                    alert_email: this.zombieEmailEl.value.trim(),
+                    write_to_config: writeToConfig ? 'true' : 'false',
+                }),
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.success) throw new Error(data.error || 'Save failed');
+            this.showStatus(
+                this.zombieStatusEl,
+                writeToConfig ? 'Saved to metadata and config.ini.' : 'Saved to metadata.',
+                'success',
+            );
+            await this.loadZombieAlertConfig();
+        } catch (err) {
+            this.showStatus(this.zombieStatusEl, `Save failed: ${err.message}`, 'danger');
+        } finally {
+            this.setBusy([this.zombieSaveBtn, this.zombieSaveConfigBtn], false);
+        }
+    }
+
+    async saveRadioDebug(writeToConfig, reconnect) {
+        this.setBusy([this.debugSaveBtn, this.debugSaveConfigBtn, this.debugApplyBtn], true);
+        this.hideStatus(this.debugStatusEl);
+        try {
+            const resp = await fetch('/api/config/radio-debug', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({
+                    enabled: this.debugEnabledEl.checked ? 'true' : 'false',
+                    write_to_config: writeToConfig ? 'true' : 'false',
+                    reconnect: reconnect ? 'true' : 'false',
+                }),
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.success) throw new Error(data.error || 'Save failed');
+            const msg = reconnect
+                ? 'Saved and queued reconnect to apply now.'
+                : writeToConfig
+                    ? 'Saved to metadata and config.ini.'
+                    : 'Saved to metadata.';
+            this.showStatus(this.debugStatusEl, msg, 'success');
+            await this.loadRadioDebugConfig();
+        } catch (err) {
+            this.showStatus(this.debugStatusEl, `Save failed: ${err.message}`, 'danger');
+        } finally {
+            this.setBusy([this.debugSaveBtn, this.debugSaveConfigBtn, this.debugApplyBtn], false);
+        }
+    }
+
+    setBusy(buttons, busy) {
+        buttons.forEach(btn => {
+            if (btn) btn.disabled = busy;
+        });
+    }
+
+    showStatus(el, msg, type) {
+        if (!el) return;
+        el.textContent = msg;
+        el.className = `small text-${type}`;
+        el.style.display = 'inline';
+        if (type === 'success') setTimeout(() => this.hideStatus(el), 4500);
+    }
+
+    hideStatus(el) {
+        if (!el) return;
+        el.style.display = 'none';
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     new ConfigManager();
 });
@@ -1146,6 +1296,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     new LogRotationManager();
     new DbBackupManager();
+    new RadioReliabilityManager();
     new MaintenanceStatusManager();
     new RestoreManager();
     new PurgeManager();

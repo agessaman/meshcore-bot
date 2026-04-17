@@ -1007,7 +1007,7 @@ class MessageHandler:
             expected_hops: The expected number of hops in the path.
 
         Returns:
-            Optional[str]: Comma-separated path string if found, None otherwise.
+            str | None: Comma-separated path string if found, None otherwise.
         """
         try:
             if not raw_hex or len(raw_hex) < 20:

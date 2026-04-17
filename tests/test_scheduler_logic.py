@@ -1385,6 +1385,27 @@ class TestSendIntervalAdvertAsyncFixed:
             "Interval-based flood advert sent successfully"
         )
 
+    def test_timeout_increments_radio_fail_count_and_reraises(self, mock_logger):
+        sched = _make_sched_with_logger(mock_logger)
+        sched.bot._radio_fail_count = 2
+
+        async def run():
+            async def fake_wait_for(coro, timeout):
+                coro.close()
+                raise asyncio.TimeoutError()
+
+            with patch("asyncio.wait_for", side_effect=fake_wait_for):
+                await sched._send_interval_advert_async()
+
+        with pytest.raises(asyncio.TimeoutError):
+            asyncio.run(run())
+
+        assert sched.bot._radio_fail_count == 3
+        sched.bot.logger.warning.assert_called_with(
+            "send_interval_advert timed out after 30s; _radio_fail_count=%d",
+            3,
+        )
+
     def test_send_interval_advert_logs_exception_type_name(self, mock_logger):
         """Error log must include type(e).__name__ so blank TimeoutError is visible."""
         from concurrent.futures import TimeoutError as FuturesTimeoutError

@@ -535,6 +535,32 @@ class TestRadioOfflineState:
         bot._record_send_failure()
         assert bot.is_radio_offline is True
 
+
+class TestSendStartupAdvertTimeout:
+    """Coverage for startup advert timeout handling."""
+
+    def test_timeout_records_send_failure(self, tmp_path):
+        config_file = tmp_path / "config.ini"
+        db_path = tmp_path / "bot.db"
+        _write_config(config_file, db_path)
+        bot = MeshCoreBot(config_file=str(config_file))
+        bot.config.set("Bot", "startup_advert", "flood")
+        bot.meshcore = MagicMock()
+        bot.meshcore.commands.send_advert = MagicMock()
+        bot._record_send_failure = MagicMock()
+
+        async def run():
+            async def fake_wait_for(coro, timeout):
+                coro.close()
+                raise asyncio.TimeoutError()
+
+            with patch("asyncio.wait_for", side_effect=fake_wait_for):
+                await bot.send_startup_advert()
+
+        asyncio.run(run())
+
+        bot._record_send_failure.assert_called_once()
+
 # ---------------------------------------------------------------------------
 # _BotAdminServer — admin HTTP API
 # ---------------------------------------------------------------------------

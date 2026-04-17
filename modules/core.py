@@ -2251,10 +2251,16 @@ long_jokes = false
             # Send the appropriate type of advert using meshcore.commands
             if startup_advert == 'zero-hop':
                 self.logger.debug("Sending zero-hop advert")
-                await self.meshcore.commands.send_advert(flood=False)
+                await asyncio.wait_for(
+                    self.meshcore.commands.send_advert(flood=False),
+                    timeout=30.0,
+                )
             elif startup_advert == 'flood':
                 self.logger.debug("Sending flood advert")
-                await self.meshcore.commands.send_advert(flood=True)
+                await asyncio.wait_for(
+                    self.meshcore.commands.send_advert(flood=True),
+                    timeout=30.0,
+                )
             else:
                 self.logger.warning(f"Unknown startup_advert option: {startup_advert}")
                 return
@@ -2265,7 +2271,9 @@ long_jokes = false
 
             self.logger.info(f"Startup {startup_advert} advert sent successfully")
 
-        except (OSError, AttributeError, ValueError, RuntimeError) as e:
+        except (OSError, AttributeError, ValueError, RuntimeError, asyncio.TimeoutError) as e:
+            if isinstance(e, asyncio.TimeoutError):
+                self._record_send_failure()
             self.logger.error(f"Error sending startup advert: {e}")
             import traceback
             self.logger.error(traceback.format_exc())
