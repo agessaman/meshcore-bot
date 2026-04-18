@@ -50,9 +50,6 @@ class MessageHandler:
         self.rf_data_timeout = float(bot.config.get('Bot', 'rf_data_timeout', fallback='15.0'))
         self.message_timeout = float(bot.config.get('Bot', 'message_correlation_timeout', fallback='10.0'))
         self.enhanced_correlation = bot.config.getboolean('Bot', 'enable_enhanced_correlation', fallback=True)
-        # Narrow window for the "most recent" fallback when no correlation_key is provided
-        # (issue #80: prevents attaching unrelated flood packets' routing info to DMs).
-        self.rf_fallback_window = float(bot.config.get('Bot', 'rf_fallback_window', fallback='2.0'))
 
         # Time-based cache for recent RF log data
         self.recent_rf_data: list[dict[str, Any]] = []
@@ -1178,26 +1175,12 @@ class MessageHandler:
     def find_recent_rf_data(
         self, correlation_key: str | None = None, max_age_seconds: float | None = None
     ) -> dict[str, Any] | None:
-        """Find recent RF data for SNR/RSSI and packet decoding.
+        """Find recent RF data for SNR/RSSI and packet decoding with improved correlation
 
         Args:
             correlation_key: Can be either:
                 - packet_prefix (from raw_hex[:32]) for RF data correlation
                 - pubkey_prefix (from message payload) for message correlation
-                When provided but no match is found, this returns ``None`` instead of
-                falling back to an arbitrary recent sample (issue #80).
-            max_age_seconds: Maximum age of RF samples to consider. Defaults to
-                ``rf_data_timeout``.
-
-        When ``correlation_key`` is ``None`` (e.g. DM SNR/RSSI lookup), this returns
-        the most recent sample within a narrow ``rf_fallback_window`` so unrelated
-        flood-forwarded packets' routing info can't bleed into DMs.
-
-        The returned sample is always a single wire observation — its ``snr``,
-        ``rssi``, ``raw_hex`` and ``routing_info`` all belong to the same decoded
-        copy. No cross-forward merging is performed (see TODO for option C,
-        which would enrich ``routing_info`` from longer-path forwards of the same
-        ``packet_hash`` while also syncing ``message.hops`` for consistency).
         """
         import time
         current_time = time.time()
@@ -1214,59 +1197,40 @@ class MessageHandler:
             self.logger.debug(f"No recent RF data found within {max_age_seconds}s window")
             return None
 
+        # Strategy 1: Try exact packet prefix match first (for RF data correlation)
         if correlation_key:
-            # Strategy 1: exact packet prefix match — observation-level identity.
-            # Both the message event and the RF-log event carry the same raw_hex for
-            # the specific wire copy that was decoded, so this is the authoritative
-            # match for SNR/RSSI/path attribution.
             for data in recent_data:
                 rf_packet_prefix = data.get('packet_prefix', '') or ''
                 if rf_packet_prefix == correlation_key:
                     self.logger.debug(f"Found exact packet prefix match: {rf_packet_prefix}")
                     return data
 
-            # Strategy 2: exact pubkey prefix match (for message correlation).
+        # Strategy 2: Try pubkey prefix match (for message correlation)
+        if correlation_key:
             for data in recent_data:
                 rf_pubkey_prefix = data.get('pubkey_prefix', '') or ''
                 if rf_pubkey_prefix == correlation_key:
                     self.logger.debug(f"Found exact pubkey prefix match: {rf_pubkey_prefix}")
                     return data
 
-            # Strategy 3: partial packet prefix match (≥ 16 chars).
+        # Strategy 3: Try partial packet prefix matches
+        if correlation_key:
             for data in recent_data:
                 rf_packet_prefix = data.get('packet_prefix', '') or ''
+                # Check for partial match (at least 16 characters)
                 min_length = min(len(rf_packet_prefix), len(correlation_key), 16)
-                if min_length >= 16 and rf_packet_prefix[:min_length] == correlation_key[:min_length]:
-                    self.logger.debug(
-                        f"Found partial packet prefix match: {rf_packet_prefix[:16]}... "
-                        f"matches {correlation_key[:16]}..."
-                    )
+                if (rf_packet_prefix[:min_length] == correlation_key[:min_length] and min_length >= 16):
+                    self.logger.debug(f"Found partial packet prefix match: {rf_packet_prefix[:16]}... matches {correlation_key[:16]}...")
                     return data
 
-            # Issue #80: when a correlation_key was provided but nothing matched, do NOT
-            # fall back to an arbitrary recent sample — that's how message_stats.path ends
-            # up attached to unrelated flood packets.
-            self.logger.debug(
-                f"No RF match for correlation_key={correlation_key[:16]}...; returning None"
-            )
-            return None
+        # Strategy 4: Use most recent data (fallback for timing issues)
+        if recent_data:
+            most_recent = max(recent_data, key=lambda x: x['timestamp'])
+            packet_prefix = most_recent.get('packet_prefix', 'unknown')
+            self.logger.debug(f"Using most recent RF data (fallback): {packet_prefix} at {most_recent['timestamp']}")
+            return most_recent
 
-        # No correlation_key provided (e.g. DM SNR/RSSI lookup). Use a narrow window to
-        # minimise the chance of grabbing unrelated flood traffic.
-        fallback_cutoff = current_time - self.rf_fallback_window
-        narrow = [d for d in recent_data if d['timestamp'] >= fallback_cutoff]
-        if not narrow:
-            self.logger.debug(
-                f"No RF data within {self.rf_fallback_window}s fallback window"
-            )
-            return None
-        most_recent = max(narrow, key=lambda x: x['timestamp'])
-        packet_prefix = most_recent.get('packet_prefix', 'unknown')
-        self.logger.debug(
-            f"Using most recent RF data (narrow fallback): {packet_prefix} "
-            f"at {most_recent['timestamp']}"
-        )
-        return most_recent
+        return None
 
     def store_message_for_correlation(self, message_id: str, message_data: dict[str, Any]) -> None:
         """Store a message temporarily to wait for RF data correlation"""
