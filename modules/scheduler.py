@@ -709,6 +709,7 @@ class MessageScheduler:
                     SELECT id, operation_type, channel_idx, channel_name, channel_key_hex
                     FROM channel_operations
                     WHERE status = 'pending'
+                      AND operation_type IN ('add', 'remove')
                     ORDER BY created_at ASC
                     LIMIT 10
                 ''')
@@ -823,7 +824,8 @@ class MessageScheduler:
                     WHERE status = 'pending'
                       AND operation_type IN (
                           'radio_reboot', 'radio_connect', 'radio_disconnect',
-                          'firmware_read', 'firmware_write'
+                          'firmware_read', 'firmware_write',
+                          'radio_params_read', 'radio_params_write'
                       )
                     ORDER BY created_at ASC
                     LIMIT 1
@@ -850,6 +852,11 @@ class MessageScheduler:
                 elif op_type == 'firmware_write':
                     payload = json.loads(op['payload_data'] or '{}')
                     success, result_payload = await self._firmware_write_op(payload)
+                elif op_type == 'radio_params_read':
+                    success, result_payload = await self._radio_params_read_op()
+                elif op_type == 'radio_params_write':
+                    payload = json.loads(op['payload_data'] or '{}')
+                    success, result_payload = await self._radio_params_write_op(payload)
                 else:
                     success = False
 
@@ -963,6 +970,77 @@ class MessageScheduler:
             return success, response
         except Exception as e:
             self.logger.error(f"Firmware write failed: {e}")
+            return False, {'error': str(e)}
+
+    async def _radio_params_read_op(self):
+        """Read current radio parameters (freq, bw, sf, cr, tx_power) via SELF_INFO."""
+        import asyncio
+        from meshcore.events import EventType
+        try:
+            meshcore = getattr(self.bot, 'meshcore', None)
+            if not meshcore or not getattr(meshcore, 'is_connected', False):
+                return False, {'error': 'Radio not connected'}
+
+            event = await asyncio.wait_for(
+                meshcore.commands.send_appstart(), timeout=10
+            )
+            if event is None or event.type == EventType.ERROR:
+                return False, {'error': 'Failed to read radio parameters'}
+
+            p = event.payload or {}
+            return True, {
+                'freq': p.get('radio_freq'),
+                'bw': p.get('radio_bw'),
+                'sf': p.get('radio_sf'),
+                'cr': p.get('radio_cr'),
+                'tx_power': p.get('tx_power'),
+                'max_tx_power': p.get('max_tx_power'),
+            }
+        except Exception as e:
+            self.logger.error(f"Radio params read failed: {e}")
+            return False, {'error': str(e)}
+
+    async def _radio_params_write_op(self, payload: dict):
+        """Write radio parameters (freq, bw, sf, cr, tx_power) to device."""
+        import asyncio
+        from meshcore.events import EventType
+        try:
+            meshcore = getattr(self.bot, 'meshcore', None)
+            if not meshcore or not getattr(meshcore, 'is_connected', False):
+                return False, {'error': 'Radio not connected'}
+
+            results = {}
+            errors = []
+
+            if any(k in payload for k in ('freq', 'bw', 'sf', 'cr')):
+                freq = float(payload['freq'])
+                bw = float(payload['bw'])
+                sf = int(payload['sf'])
+                cr = int(payload['cr'])
+                result = await asyncio.wait_for(
+                    meshcore.commands.set_radio(freq, bw, sf, cr), timeout=10
+                )
+                ok = getattr(result, 'type', None) == EventType.OK
+                results['radio'] = ok
+                if not ok:
+                    errors.append(f"set_radio failed: {result}")
+
+            if 'tx_power' in payload:
+                result = await asyncio.wait_for(
+                    meshcore.commands.set_tx_power(int(payload['tx_power'])), timeout=10
+                )
+                ok = getattr(result, 'type', None) == EventType.OK
+                results['tx_power'] = ok
+                if not ok:
+                    errors.append(f"set_tx_power failed: {result}")
+
+            success = len(errors) == 0
+            response: dict = {'results': results}
+            if errors:
+                response['errors'] = errors
+            return success, response
+        except Exception as e:
+            self.logger.error(f"Radio params write failed: {e}")
             return False, {'error': str(e)}
 
     # ── Maintenance (delegates to MaintenanceRunner) ─────────────────────────

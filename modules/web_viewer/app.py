@@ -1746,6 +1746,122 @@ class BotDataViewer:
                 self.logger.exception("Error saving radio debug config")
                 return jsonify({'success': False, 'error': str(exc)}), 500
 
+        # ── Radio probe config ───────────────────────────────────────────────
+
+        @self.app.route('/api/config/radio-probe')
+        def api_config_radio_probe_get() -> "Response":
+            """Return radio probe settings."""
+            try:
+                return jsonify({
+                    'probe_interval_seconds': self.db_manager.get_metadata('radio.probe_interval_seconds') or
+                        self.config.getint('Connection', 'radio_probe_interval_seconds', fallback=300),
+                    'probe_fail_threshold': self.db_manager.get_metadata('radio.probe_fail_threshold') or
+                        self.config.getint('Connection', 'radio_probe_fail_threshold', fallback=3),
+                })
+            except Exception as exc:
+                self.logger.exception("Error getting radio probe config")
+                return jsonify({'success': False, 'error': str(exc)}), 500
+
+        @self.app.route('/api/config/radio-probe', methods=['POST'])
+        def api_config_radio_probe_post() -> "Response":
+            """Save radio probe settings to bot_metadata."""
+            try:
+                data = request.get_json(silent=True) or {}
+                probe_interval = int(data.get('probe_interval_seconds', 300))
+                probe_fail_threshold = int(data.get('probe_fail_threshold', 3))
+
+                # Validate ranges
+                if not (300 <= probe_interval <= 900):
+                    return jsonify({'success': False, 'error': 'probe_interval_seconds must be 300-900'}), 400
+                if not (1 <= probe_fail_threshold <= 10):
+                    return jsonify({'success': False, 'error': 'probe_fail_threshold must be 1-10'}), 400
+
+                saved = []
+                self.db_manager.set_metadata('radio.probe_interval_seconds', str(probe_interval))
+                saved.append('probe_interval_seconds')
+                self.db_manager.set_metadata('radio.probe_fail_threshold', str(probe_fail_threshold))
+                saved.append('probe_fail_threshold')
+
+                self.logger.info("Radio probe config updated (metadata): %s", ', '.join(saved))
+
+                # Optionally save to config.ini
+                config_saved = False
+                if data.get('save_to_config', False):
+                    try:
+                        self.config.set('Connection', 'radio_probe_interval_seconds', str(probe_interval))
+                        self.config.set('Connection', 'radio_probe_fail_threshold', str(probe_fail_threshold))
+                        with open(self.config_path, 'w') as f:
+                            self.config.write(f)
+                        config_saved = True
+                        self.logger.info("Radio probe settings written to config.ini")
+                    except Exception as exc:
+                        self.logger.error("Failed to write radio probe settings to config.ini: %s", exc)
+
+                return jsonify({'success': True, 'saved': saved, 'config_saved': config_saved})
+            except Exception as exc:
+                self.logger.exception("Error saving radio probe config")
+                return jsonify({'success': False, 'error': str(exc)}), 500
+
+        # ── Radio offline alert config ───────────────────────────────────────
+
+        @self.app.route('/api/config/radio-offline-alert')
+        def api_config_radio_offline_alert_get() -> "Response":
+            """Return radio offline alert settings."""
+            try:
+                return jsonify({
+                    'offline_threshold': self.db_manager.get_metadata('radio.offline_threshold') or
+                        self.config.getint('Connection', 'radio_offline_threshold', fallback=3),
+                    'alert_enabled': self.db_manager.get_metadata('radio.offline_alert_enabled') == 'true' or
+                        self.config.getboolean('Connection', 'radio_offline_alert_enabled', fallback=False),
+                    'alert_email': self.db_manager.get_metadata('radio.offline_alert_email') or
+                        self.config.get('Connection', 'radio_offline_alert_email', fallback=''),
+                })
+            except Exception as exc:
+                self.logger.exception("Error getting radio offline alert config")
+                return jsonify({'success': False, 'error': str(exc)}), 500
+
+        @self.app.route('/api/config/radio-offline-alert', methods=['POST'])
+        def api_config_radio_offline_alert_post() -> "Response":
+            """Save radio offline alert settings to bot_metadata."""
+            try:
+                data = request.get_json(silent=True) or {}
+                offline_threshold = int(data.get('offline_threshold', 3))
+                alert_enabled = bool(data.get('alert_enabled', False))
+                alert_email = str(data.get('alert_email', '')).strip()
+
+                # Validate ranges
+                if not (1 <= offline_threshold <= 10):
+                    return jsonify({'success': False, 'error': 'offline_threshold must be 1-10'}), 400
+
+                saved = []
+                self.db_manager.set_metadata('radio.offline_threshold', str(offline_threshold))
+                saved.append('offline_threshold')
+                self.db_manager.set_metadata('radio.offline_alert_enabled', 'true' if alert_enabled else 'false')
+                saved.append('alert_enabled')
+                self.db_manager.set_metadata('radio.offline_alert_email', alert_email)
+                saved.append('alert_email')
+
+                self.logger.info("Radio offline alert config updated (metadata): %s", ', '.join(saved))
+
+                # Optionally save to config.ini
+                config_saved = False
+                if data.get('save_to_config', False):
+                    try:
+                        self.config.set('Connection', 'radio_offline_threshold', str(offline_threshold))
+                        self.config.set('Connection', 'radio_offline_alert_enabled', 'true' if alert_enabled else 'false')
+                        self.config.set('Connection', 'radio_offline_alert_email', alert_email)
+                        with open(self.config_path, 'w') as f:
+                            self.config.write(f)
+                        config_saved = True
+                        self.logger.info("Radio offline alert settings written to config.ini")
+                    except Exception as exc:
+                        self.logger.error("Failed to write radio offline alert settings to config.ini: %s", exc)
+
+                return jsonify({'success': True, 'saved': saved, 'config_saved': config_saved})
+            except Exception as exc:
+                self.logger.exception("Error saving radio offline alert config")
+                return jsonify({'success': False, 'error': str(exc)}), 500
+
         # ── Radio offline clear ──────────────────────────────────────────────
 
         @self.app.route('/api/admin/radio-offline-clear', methods=['POST'])
@@ -3783,6 +3899,76 @@ class BotDataViewer:
                 return jsonify({'success': True, 'operation_id': op_id})
             except Exception as e:
                 self.logger.error(f"Error queuing firmware write: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/radio/params', methods=['GET'])
+        def api_radio_params_read():
+            """Queue a radio parameter read (freq, bw, sf, cr, tx_power). Poll /api/channel-operations/<id>."""
+            try:
+                with self.db_manager.connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "INSERT INTO channel_operations (operation_type, status) VALUES ('radio_params_read', 'pending')"
+                    )
+                    conn.commit()
+                    op_id = cursor.lastrowid
+                return jsonify({'success': True, 'operation_id': op_id})
+            except Exception as e:
+                self.logger.error(f"Error queuing radio params read: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/radio/params', methods=['POST'])
+        def api_radio_params_write():
+            """Queue a radio parameter write. Body: {freq, bw, sf, cr, tx_power}.
+            Poll /api/channel-operations/<id> for result."""
+            try:
+                data = request.get_json(silent=True) or {}
+                allowed = {'freq', 'bw', 'sf', 'cr', 'tx_power'}
+                payload = {k: v for k, v in data.items() if k in allowed}
+                if not payload:
+                    return jsonify({'error': 'No valid fields (freq, bw, sf, cr, tx_power)'}), 400
+
+                if 'freq' in payload:
+                    freq = float(payload['freq'])
+                    if not (100.0 <= freq <= 1700.0):
+                        return jsonify({'error': 'freq must be 100–1700 MHz'}), 400
+                    payload['freq'] = freq
+                if 'bw' in payload:
+                    bw = float(payload['bw'])
+                    if bw not in (62.5, 125.0, 250.0, 500.0):
+                        return jsonify({'error': 'bw must be 62.5, 125, 250, or 500 kHz'}), 400
+                    payload['bw'] = bw
+                if 'sf' in payload:
+                    sf = int(payload['sf'])
+                    if not (5 <= sf <= 12):
+                        return jsonify({'error': 'sf must be 5–12'}), 400
+                    payload['sf'] = sf
+                if 'cr' in payload:
+                    cr = int(payload['cr'])
+                    if not (5 <= cr <= 8):
+                        return jsonify({'error': 'cr must be 5–8'}), 400
+                    payload['cr'] = cr
+                if 'tx_power' in payload:
+                    tx = int(payload['tx_power'])
+                    if not (1 <= tx <= 30):
+                        return jsonify({'error': 'tx_power must be 1–30 dBm'}), 400
+                    payload['tx_power'] = tx
+
+                radio_fields = {'freq', 'bw', 'sf', 'cr'}
+                if radio_fields & set(payload) and not radio_fields <= set(payload):
+                    return jsonify({'error': 'freq, bw, sf, and cr must all be provided together'}), 400
+
+                with self.db_manager.connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "INSERT INTO channel_operations (operation_type, payload_data, status) VALUES ('radio_params_write', ?, 'pending')",
+                        (json.dumps(payload),)
+                    )
+                    conn.commit()
+                    op_id = cursor.lastrowid
+                return jsonify({'success': True, 'operation_id': op_id})
+            except Exception as e:
+                self.logger.error(f"Error queuing radio params write: {e}")
                 return jsonify({'error': str(e)}), 500
 
     def _setup_socketio_handlers(self):

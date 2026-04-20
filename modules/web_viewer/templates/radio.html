@@ -58,6 +58,80 @@
                 </div>
             </div>
             
+            <!-- Radio Parameters -->
+            <div class="card mb-4" id="radio-params-card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-sliders-h me-2"></i>Radio Parameters</h5>
+                    <button class="btn btn-sm btn-outline-secondary" id="readRadioParamsBtn">
+                        <span class="spinner-border spinner-border-sm me-1" id="readParamsSpinner" style="display:none" role="status"></span>
+                        <i class="fas fa-sync me-1" id="readParamsIcon"></i>Read from Device
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div id="radioParamsAlert" style="display:none"></div>
+                    <form id="radioParamsForm">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label" for="radioFreq">Frequency (MHz)</label>
+                                <input type="number" class="form-control" id="radioFreq" name="freq"
+                                    step="0.001" min="100" max="1700" placeholder="e.g. 915.0">
+                                <small class="form-text text-muted">100–1700 MHz</small>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" for="radioBw">Bandwidth (kHz)</label>
+                                <select class="form-select" id="radioBw" name="bw">
+                                    <option value="">—</option>
+                                    <option value="62.5">62.5</option>
+                                    <option value="125">125</option>
+                                    <option value="250">250</option>
+                                    <option value="500">500</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" for="radioSf">Spreading Factor</label>
+                                <select class="form-select" id="radioSf" name="sf">
+                                    <option value="">—</option>
+                                    <option value="5">SF5</option>
+                                    <option value="6">SF6</option>
+                                    <option value="7">SF7</option>
+                                    <option value="8">SF8</option>
+                                    <option value="9">SF9</option>
+                                    <option value="10">SF10</option>
+                                    <option value="11">SF11</option>
+                                    <option value="12">SF12</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" for="radioCr">Coding Rate</label>
+                                <select class="form-select" id="radioCr" name="cr">
+                                    <option value="">—</option>
+                                    <option value="5">4/5</option>
+                                    <option value="6">4/6</option>
+                                    <option value="7">4/7</option>
+                                    <option value="8">4/8</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" for="radioTxPower">TX Power (dBm)</label>
+                                <input type="number" class="form-control" id="radioTxPower" name="tx_power"
+                                    step="1" min="1" max="30" placeholder="e.g. 22">
+                                <small class="form-text text-muted" id="maxTxPowerHint"></small>
+                            </div>
+                        </div>
+                        <div class="mt-3 d-flex gap-2">
+                            <button type="button" class="btn btn-warning" id="writeRadioParamsBtn">
+                                <span class="spinner-border spinner-border-sm me-1" id="writeParamsSpinner" style="display:none" role="status"></span>
+                                <i class="fas fa-upload me-1"></i>Write to Device
+                            </button>
+                            <small class="text-muted align-self-center">
+                                <i class="fas fa-exclamation-triangle text-warning me-1"></i>
+                                Changing radio parameters affects all nodes on the same frequency.
+                            </small>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
             <!-- Channel Management -->
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
@@ -165,6 +239,8 @@ class RadioManager {
         await this.loadStatistics();
         await this.loadRadioStatus();
         this.setupEventHandlers();
+        this.setupRadioParamsHandlers();
+        this.readRadioParams({ silent: true });
 
         // Auto-refresh every 30 seconds
         setInterval(() => this.loadChannels(), 30000);
@@ -758,6 +834,142 @@ class RadioManager {
         await this.loadStatistics();
     }
     
+    setupRadioParamsHandlers() {
+        document.getElementById('readRadioParamsBtn').addEventListener('click', () => this.readRadioParams());
+        document.getElementById('writeRadioParamsBtn').addEventListener('click', () => this.writeRadioParams());
+    }
+
+    async readRadioParams({ silent = false } = {}) {
+        const btn = document.getElementById('readRadioParamsBtn');
+        const spinner = document.getElementById('readParamsSpinner');
+        const icon = document.getElementById('readParamsIcon');
+        btn.disabled = true;
+        spinner.style.display = 'inline-block';
+        icon.style.display = 'none';
+        if (!silent) this.setParamsAlert('', '');
+        try {
+            const resp = await fetch('/api/radio/params');
+            const data = await resp.json();
+            if (!resp.ok || !data.operation_id) {
+                if (!silent) this.setParamsAlert('danger', data.error || 'Failed to queue read');
+                return;
+            }
+            const result = await this.pollRadioParamsOp(data.operation_id);
+            if (result && result.status === 'completed' && result.result_data) {
+                this.fillRadioParamsForm(result.result_data);
+                if (!silent) this.setParamsAlert('success', 'Radio parameters read successfully.');
+            } else {
+                const msg = result?.error_message || 'Read failed';
+                if (silent && msg.toLowerCase().includes('not connected')) return;
+                this.setParamsAlert('danger', msg);
+            }
+        } catch (e) {
+            if (!silent) this.setParamsAlert('danger', 'Error: ' + e.message);
+        } finally {
+            btn.disabled = false;
+            spinner.style.display = 'none';
+            icon.style.display = 'inline';
+        }
+    }
+
+    async writeRadioParams() {
+        const freq = document.getElementById('radioFreq').value.trim();
+        const bw = document.getElementById('radioBw').value;
+        const sf = document.getElementById('radioSf').value;
+        const cr = document.getElementById('radioCr').value;
+        const txPower = document.getElementById('radioTxPower').value.trim();
+
+        const payload = {};
+        if (freq || bw || sf || cr) {
+            if (!freq || !bw || !sf || !cr) {
+                this.setParamsAlert('danger', 'Frequency, bandwidth, spreading factor, and coding rate must all be provided together.');
+                return;
+            }
+            payload.freq = parseFloat(freq);
+            payload.bw = parseFloat(bw);
+            payload.sf = parseInt(sf);
+            payload.cr = parseInt(cr);
+        }
+        if (txPower) {
+            payload.tx_power = parseInt(txPower);
+        }
+        if (!Object.keys(payload).length) {
+            this.setParamsAlert('danger', 'No parameters to write.');
+            return;
+        }
+
+        if (!confirm('Write these radio parameters to the device? This will affect communication with all other nodes on the same frequency.')) {
+            return;
+        }
+
+        const btn = document.getElementById('writeRadioParamsBtn');
+        const spinner = document.getElementById('writeParamsSpinner');
+        btn.disabled = true;
+        spinner.style.display = 'inline-block';
+        this.setParamsAlert('', '');
+        try {
+            const resp = await fetch('/api/radio/params', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body: JSON.stringify(payload)
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.operation_id) {
+                this.setParamsAlert('danger', data.error || 'Failed to queue write');
+                return;
+            }
+            const result = await this.pollRadioParamsOp(data.operation_id);
+            if (result && result.status === 'completed') {
+                this.setParamsAlert('success', 'Radio parameters written successfully.');
+            } else {
+                this.setParamsAlert('danger', result?.error_message || 'Write failed');
+            }
+        } catch (e) {
+            this.setParamsAlert('danger', 'Error: ' + e.message);
+        } finally {
+            btn.disabled = false;
+            spinner.style.display = 'none';
+        }
+    }
+
+    async pollRadioParamsOp(opId, maxAttempts = 30) {
+        for (let i = 0; i < maxAttempts; i++) {
+            await new Promise(r => setTimeout(r, 1000));
+            try {
+                const resp = await fetch(`/api/channel-operations/${opId}`);
+                const data = await resp.json();
+                if (data.status === 'completed' || data.status === 'failed') return data;
+            } catch (_) {}
+        }
+        return { status: 'failed', error_message: 'Timed out waiting for device response' };
+    }
+
+    fillRadioParamsForm(params) {
+        if (params.freq != null) document.getElementById('radioFreq').value = params.freq;
+        if (params.bw != null) {
+            const sel = document.getElementById('radioBw');
+            sel.value = String(params.bw);
+            if (!sel.value) sel.value = '';
+        }
+        if (params.sf != null) document.getElementById('radioSf').value = String(params.sf);
+        if (params.cr != null) document.getElementById('radioCr').value = String(params.cr);
+        if (params.tx_power != null) {
+            document.getElementById('radioTxPower').value = params.tx_power;
+            if (params.max_tx_power != null) {
+                document.getElementById('radioTxPower').max = params.max_tx_power;
+                document.getElementById('maxTxPowerHint').textContent = `Max: ${params.max_tx_power} dBm`;
+            }
+        }
+    }
+
+    setParamsAlert(type, message) {
+        const el = document.getElementById('radioParamsAlert');
+        if (!type || !message) { el.style.display = 'none'; return; }
+        el.className = `alert alert-${type}`;
+        el.textContent = message;
+        el.style.display = 'block';
+    }
+
     showError(message) {
         const alert = document.createElement('div');
         alert.className = 'alert alert-danger alert-dismissible fade show position-fixed';

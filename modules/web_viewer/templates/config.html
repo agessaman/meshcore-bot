@@ -562,13 +562,30 @@ class RadioReliabilityManager {
         this.debugApplyBtn = document.getElementById('apply-radio-debug-btn');
         this.debugStatusEl = document.getElementById('radio-debug-status');
 
-        if (!this.zombieEnabledEl || !this.debugEnabledEl) return;
+        this.probeIntervalEl = document.getElementById('radio-probe-interval');
+        this.probeFailThresholdEl = document.getElementById('radio-probe-fail-threshold');
+        this.probeIniEl = document.getElementById('radio-probe-ini-summary');
+        this.probeSaveBtn = document.getElementById('save-radio-probe-btn');
+        this.probeSaveConfigBtn = document.getElementById('save-radio-probe-config-btn');
+        this.probeStatusEl = document.getElementById('radio-probe-status');
+
+        this.offlineThresholdEl = document.getElementById('radio-offline-threshold');
+        this.offlineAlertEnabledEl = document.getElementById('radio-offline-alert-enabled-toggle');
+        this.offlineAlertEmailEl = document.getElementById('radio-offline-alert-email');
+        this.offlineIniEl = document.getElementById('radio-offline-ini-summary');
+        this.offlineSaveBtn = document.getElementById('save-radio-offline-btn');
+        this.offlineSaveConfigBtn = document.getElementById('save-radio-offline-config-btn');
+        this.offlineStatusEl = document.getElementById('radio-offline-status');
+
+        if (!this.zombieEnabledEl || !this.debugEnabledEl || !this.probeIntervalEl || !this.offlineThresholdEl) return;
         this.initialize();
     }
 
     async initialize() {
         await this.loadZombieAlertConfig();
         await this.loadRadioDebugConfig();
+        await this.loadRadioProbeConfig();
+        await this.loadRadioOfflineAlertConfig();
         this.setupEventHandlers();
     }
 
@@ -578,6 +595,10 @@ class RadioReliabilityManager {
         this.debugSaveBtn.addEventListener('click', () => this.saveRadioDebug(false, false));
         this.debugSaveConfigBtn.addEventListener('click', () => this.saveRadioDebug(true, false));
         this.debugApplyBtn.addEventListener('click', () => this.saveRadioDebug(true, true));
+        this.probeSaveBtn.addEventListener('click', () => this.saveRadioProbe(false));
+        this.probeSaveConfigBtn.addEventListener('click', () => this.saveRadioProbe(true));
+        this.offlineSaveBtn.addEventListener('click', () => this.saveRadioOfflineAlert(false));
+        this.offlineSaveConfigBtn.addEventListener('click', () => this.saveRadioOfflineAlert(true));
     }
 
     async loadZombieAlertConfig() {
@@ -672,6 +693,96 @@ class RadioReliabilityManager {
             this.showStatus(this.debugStatusEl, `Save failed: ${err.message}`, 'danger');
         } finally {
             this.setBusy([this.debugSaveBtn, this.debugSaveConfigBtn, this.debugApplyBtn], false);
+        }
+    }
+
+    async loadRadioProbeConfig() {
+        try {
+            const resp = await fetch('/api/config/radio-probe');
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            this.probeIntervalEl.value = data.probe_interval_seconds || 300;
+            this.probeFailThresholdEl.value = data.probe_fail_threshold || 3;
+            this.probeIniEl.textContent = `interval=${data.probe_interval_seconds || 300}s, threshold=${data.probe_fail_threshold || 3}`;
+        } catch (err) {
+            this.showStatus(this.probeStatusEl, `Failed to load radio probe config: ${err.message}`, 'danger');
+        }
+    }
+
+    async saveRadioProbe(writeToConfig) {
+        this.setBusy([this.probeSaveBtn, this.probeSaveConfigBtn], true);
+        this.hideStatus(this.probeStatusEl);
+        try {
+            const resp = await fetch('/api/config/radio-probe', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({
+                    probe_interval_seconds: parseInt(this.probeIntervalEl.value),
+                    probe_fail_threshold: parseInt(this.probeFailThresholdEl.value),
+                    save_to_config: writeToConfig,
+                }),
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.success) throw new Error(data.error || 'Save failed');
+            this.showStatus(
+                this.probeStatusEl,
+                writeToConfig ? 'Saved to metadata and config.ini.' : 'Saved to metadata.',
+                'success',
+            );
+            await this.loadRadioProbeConfig();
+        } catch (err) {
+            this.showStatus(this.probeStatusEl, `Save failed: ${err.message}`, 'danger');
+        } finally {
+            this.setBusy([this.probeSaveBtn, this.probeSaveConfigBtn], false);
+        }
+    }
+
+    async loadRadioOfflineAlertConfig() {
+        try {
+            const resp = await fetch('/api/config/radio-offline-alert');
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            this.offlineThresholdEl.value = data.offline_threshold || 3;
+            this.offlineAlertEnabledEl.checked = data.alert_enabled || false;
+            this.offlineAlertEmailEl.value = data.alert_email || '';
+            this.offlineIniEl.textContent = `threshold=${data.offline_threshold || 3}, enabled=${data.alert_enabled || false}, email=${data.alert_email || '(blank)'}`;
+        } catch (err) {
+            this.showStatus(this.offlineStatusEl, `Failed to load radio offline alert config: ${err.message}`, 'danger');
+        }
+    }
+
+    async saveRadioOfflineAlert(writeToConfig) {
+        this.setBusy([this.offlineSaveBtn, this.offlineSaveConfigBtn], true);
+        this.hideStatus(this.offlineStatusEl);
+        try {
+            const resp = await fetch('/api/config/radio-offline-alert', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({
+                    offline_threshold: parseInt(this.offlineThresholdEl.value),
+                    alert_enabled: this.offlineAlertEnabledEl.checked,
+                    alert_email: this.offlineAlertEmailEl.value.trim(),
+                    save_to_config: writeToConfig,
+                }),
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.success) throw new Error(data.error || 'Save failed');
+            this.showStatus(
+                this.offlineStatusEl,
+                writeToConfig ? 'Saved to metadata and config.ini.' : 'Saved to metadata.',
+                'success',
+            );
+            await this.loadRadioOfflineAlertConfig();
+        } catch (err) {
+            this.showStatus(this.offlineStatusEl, `Save failed: ${err.message}`, 'danger');
+        } finally {
+            this.setBusy([this.offlineSaveBtn, this.offlineSaveConfigBtn], false);
         }
     }
 

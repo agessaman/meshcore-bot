@@ -138,6 +138,12 @@
     ("POST", "/api/config/logging",            "Update log level configuration"),
     ("GET",  "/api/config/zombie-alert",       "Get zombie-alert thresholds"),
     ("POST", "/api/config/zombie-alert",       "Update zombie-alert thresholds"),
+    ("GET",  "/api/config/radio-debug",        "Get radio debug logging setting"),
+    ("POST", "/api/config/radio-debug",        "Update radio debug logging setting"),
+    ("GET",  "/api/config/radio-probe",        "Get radio probe settings"),
+    ("POST", "/api/config/radio-probe",        "Update radio probe settings"),
+    ("GET",  "/api/config/radio-offline-alert","Get radio offline alert settings"),
+    ("POST", "/api/config/radio-offline-alert","Update radio offline alert settings"),
   ]),
   ("Greeter", "fa-hand-sparkles", [
     ("GET",  "/api/greeter",                   "Greeter configuration and rollout state"),

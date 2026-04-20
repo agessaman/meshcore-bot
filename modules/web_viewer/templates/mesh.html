@@ -133,6 +133,9 @@
                             <button class="btn btn-outline-secondary btn-sm" onclick="exportView()">
                                 <i class="fas fa-download"></i>
                             </button>
+                            <button class="btn btn-outline-secondary btn-sm" id="btn-fullscreen" onclick="toggleFullscreen()">
+                                <i class="fas fa-expand"></i>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -355,6 +358,70 @@
         height: 3px;
         margin-right: 8px;
         display: inline-block;
+    }
+</style>
+
+<!-- Full screen styles -->
+<style>
+    .fullscreen-mode {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        z-index: 9999 !important;
+        background: white;
+    }
+    
+    .fullscreen-mode .leaflet-control-container {
+        z-index: 10000;
+    }
+    
+    body.fullscreen-active {
+        overflow: hidden;
+    }
+    
+    .fullscreen-mode #map-view {
+        height: 100vh !important;
+        width: 100vw !important;
+    }
+    
+    /* Hide other elements in fullscreen mode */
+    .fullscreen-mode ~ .row,
+    .fullscreen-mode ~ .visualization-row {
+        display: none !important;
+    }
+    
+    /* Show exit fullscreen button in fullscreen mode */
+    .fullscreen-mode .fullscreen-exit-btn {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 10001;
+        background: rgba(255, 255, 255, 0.9);
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        padding: 8px 12px;
+        cursor: pointer;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+    
+    .fullscreen-mode .fullscreen-exit-btn:hover {
+        background: rgba(255, 255, 255, 1);
+    }
+    
+    [data-theme="dark"] .fullscreen-mode {
+        background: var(--bg-color);
+    }
+    
+    [data-theme="dark"] .fullscreen-mode .fullscreen-exit-btn {
+        background: rgba(45, 45, 45, 0.9);
+        border-color: #555;
+        color: var(--text-color);
+    }
+    
+    [data-theme="dark"] .fullscreen-mode .fullscreen-exit-btn:hover {
+        background: rgba(45, 45, 45, 1);
     }
 </style>
 
@@ -1063,6 +1130,7 @@
             document.getElementById('btn-view-graph').classList.add('btn-outline-primary');
             document.getElementById('map-view').style.display = 'block';
             document.getElementById('graph-view').style.display = 'none';
+            document.getElementById('btn-fullscreen').style.display = 'inline-block';
             renderMap();
         } else {
             document.getElementById('btn-view-graph').classList.add('active');
@@ -1073,6 +1141,7 @@
             document.getElementById('btn-view-map').classList.add('btn-outline-primary');
             document.getElementById('map-view').style.display = 'none';
             document.getElementById('graph-view').style.display = 'block';
+            document.getElementById('btn-fullscreen').style.display = 'none';
             renderGraph();
         }
     }
@@ -2398,12 +2467,103 @@
         };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
         a.download = `mesh-graph-${new Date().toISOString().split('T')[0]}.json`;
         a.click();
         URL.revokeObjectURL(url);
     }
+    
+    function toggleFullscreen() {
+        const mapContainer = document.getElementById('map-view');
+        const btn = document.getElementById('btn-fullscreen');
+        const icon = btn.querySelector('i');
+        
+        if (!document.fullscreenElement) {
+            // Enter fullscreen
+            if (mapContainer.requestFullscreen) {
+                mapContainer.requestFullscreen();
+            } else if (mapContainer.webkitRequestFullscreen) { // Safari
+                mapContainer.webkitRequestFullscreen();
+            } else if (mapContainer.msRequestFullscreen) { // IE11
+                mapContainer.msRequestFullscreen();
+            }
+            
+            // Add fullscreen class for custom styling
+            mapContainer.classList.add('fullscreen-mode');
+            document.body.classList.add('fullscreen-active');
+            
+            // Change icon to exit fullscreen
+            icon.className = 'fas fa-compress';
+            
+            // Add exit button
+            const exitBtn = document.createElement('button');
+            exitBtn.className = 'fullscreen-exit-btn';
+            exitBtn.innerHTML = '<i class="fas fa-times"></i> Exit Fullscreen';
+            exitBtn.onclick = toggleFullscreen;
+            mapContainer.appendChild(exitBtn);
+            
+            // Invalidate map size after fullscreen transition
+            setTimeout(() => {
+                if (map) {
+                    map.invalidateSize();
+                }
+            }, 100);
+            
+        } else {
+            // Exit fullscreen
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) { // Safari
+                document.webkitExitFullscreen();
+            } else if (document.msExitFullscreen) { // IE11
+                document.msExitFullscreen();
+            }
+            
+            // Remove fullscreen class
+            mapContainer.classList.remove('fullscreen-mode');
+            document.body.classList.remove('fullscreen-active');
+            
+            // Change icon back to expand
+            icon.className = 'fas fa-expand';
+            
+            // Remove exit button
+            const exitBtn = mapContainer.querySelector('.fullscreen-exit-btn');
+            if (exitBtn) {
+                exitBtn.remove();
+            }
+            
+            // Invalidate map size after exiting fullscreen
+            setTimeout(() => {
+                if (map) {
+                    map.invalidateSize();
+                }
+            }, 100);
+        }
+    }
+    
+    // Handle fullscreen change events (ESC key, etc.)
+    document.addEventListener('fullscreenchange', function() {
+        if (!document.fullscreenElement) {
+            const mapContainer = document.getElementById('map-view');
+            const btn = document.getElementById('btn-fullscreen');
+            const icon = btn.querySelector('i');
+            
+            mapContainer.classList.remove('fullscreen-mode');
+            document.body.classList.remove('fullscreen-active');
+            icon.className = 'fas fa-expand';
+            
+            const exitBtn = mapContainer.querySelector('.fullscreen-exit-btn');
+            if (exitBtn) {
+                exitBtn.remove();
+            }
+            
+            // Invalidate map size after exiting fullscreen
+            setTimeout(() => {
+                if (map) {
+                    map.invalidateSize();
+                }
+            }, 100);
+        }
+    });
     
     // Socket.IO setup for real-time updates
     // Live updates are applied only when the map view is active. When the graph view is active,
