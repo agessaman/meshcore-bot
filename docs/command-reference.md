@@ -823,9 +823,9 @@ repeater stats
 - NEW_CONTACT events are automatically monitored
 - Repeaters are automatically cataloged when discovered
 - Contact list capacity is monitored in real-time
-- `auto_manage_contacts = device`: Device handles auto-addition, bot manages capacity
-- `auto_manage_contacts = bot`: Bot automatically adds companion contacts and manages capacity
-- `auto_manage_contacts = false`: Manual mode - use `!repeater` commands to manage contacts
+- `auto_manage_contacts = device`: Firmware auto-adds **chat (companion)** peers only, with **overwrite oldest non-favourite** when the contact table is full; the bot schedules delayed jobs to set that firmware policy and to **favourite** keys in `Admin_ACL` plus the effective announcements ACL (same rules as the announcements command), then clear **favourite** on other contacts. The bot still runs capacity management on NEW_CONTACT (near-limit `manage_contact_list`) and does **not** call `add_contact` for new companions itself. **Contact limit** for logging and capacity is taken from the radio’s `max_contacts` and, if the live table is larger (under-reported max), raised to match the mesh so counts are not shown as over-capacity. **Companion auto-purge** never runs on the radio in this mode. Count-based **repeater** auto-purge only runs if the table grows **strictly above** that synced limit (normally off while the firmware manages slots).
+- `auto_manage_contacts = bot`: Bot adds new companions via `add_contact` (full NEW_CONTACT payload), runs **manage-before-add** when the list is near limit, and **retries once** after `manage_contact_list` if the radio returns `TABLE_FULL`.
+- `auto_manage_contacts = false`: Manual mode - NEW_CONTACT companions are tracked in the database only; use `!repeater` commands to manage the device list.
 
 ---
 

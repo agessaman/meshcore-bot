@@ -1817,3 +1817,107 @@ class TestRespondToMentions:
         await mention_handler.process_message(msg)
         assert msg.content == "ping"
         mention_bot.command_manager.execute_commands.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# handle_new_contact — auto_manage_contacts (companion path)
+# ---------------------------------------------------------------------------
+
+
+class _NewContactEvent:
+    def __init__(self, payload: dict) -> None:
+        self.payload = payload
+
+
+def _companion_contact_payload() -> dict:
+    pk = "ab" * 32
+    return {
+        "public_key": pk,
+        "adv_name": "Alice",
+        "name": "Alice",
+        "type": 1,
+        "flags": 0,
+        "out_path": "",
+        "out_path_len": 0,
+        "out_path_hash_mode": 0,
+    }
+
+
+@pytest.fixture
+def new_contact_env(mock_logger):
+    """Bot + MessageHandler with mocked repeater_manager and meshcore for NEW_CONTACT tests."""
+    bot = Mock()
+    bot.logger = mock_logger
+    bot.config = configparser.ConfigParser()
+    bot.config.add_section("Bot")
+    bot.config.set("Bot", "enabled", "true")
+    bot.config.set("Bot", "rf_data_timeout", "15.0")
+    bot.config.set("Bot", "message_correlation_timeout", "10.0")
+    bot.config.set("Bot", "enable_enhanced_correlation", "true")
+    bot.config.add_section("Channels")
+    bot.config.set("Channels", "respond_to_dms", "true")
+    bot.connection_time = None
+    bot.prefix_hex_chars = 8
+    bot.command_manager = Mock()
+    bot.command_manager.monitor_channels = ["general"]
+    bot.command_manager.is_user_banned = Mock(return_value=False)
+    bot.command_manager.commands = {}
+
+    handler = MessageHandler(bot)
+    bot.message_handler = handler
+
+    rm = Mock()
+    rm.track_contact_advertisement = AsyncMock()
+    rm.check_and_auto_purge = AsyncMock()
+    rm.get_contact_list_status = AsyncMock(
+        return_value={
+            "is_near_limit": False,
+            "usage_percentage": 10.0,
+            "current_contacts": 5,
+            "estimated_limit": 300,
+        }
+    )
+    rm.manage_contact_list = AsyncMock(return_value={"success": True})
+    rm.add_companion_from_contact_data = AsyncMock(return_value=True)
+    rm.db_manager = Mock()
+    rm.db_manager.execute_update = Mock()
+    rm._is_repeater_device = Mock(return_value=False)
+    bot.repeater_manager = rm
+
+    mesh = Mock()
+    mesh.commands = Mock()
+    mesh.commands.add_contact = AsyncMock()
+    bot.meshcore = mesh
+
+    return bot, handler, rm, mesh
+
+
+@pytest.mark.asyncio
+class TestHandleNewContactAutoManage:
+    async def test_manual_mode_no_device_add(self, new_contact_env):
+        bot, handler, rm, mesh = new_contact_env
+        bot.config.set("Bot", "auto_manage_contacts", "false")
+        ev = _NewContactEvent(_companion_contact_payload())
+        await handler.handle_new_contact(ev, None)
+        rm.track_contact_advertisement.assert_awaited_once()
+        mesh.commands.add_contact.assert_not_called()
+        rm.add_companion_from_contact_data.assert_not_called()
+        rm.db_manager.execute_update.assert_called()
+
+    async def test_device_mode_no_bot_add_contact(self, new_contact_env):
+        bot, handler, rm, mesh = new_contact_env
+        bot.config.set("Bot", "auto_manage_contacts", "device")
+        ev = _NewContactEvent(_companion_contact_payload())
+        await handler.handle_new_contact(ev, None)
+        rm.track_contact_advertisement.assert_awaited_once()
+        mesh.commands.add_contact.assert_not_called()
+        rm.add_companion_from_contact_data.assert_not_called()
+        rm.get_contact_list_status.assert_awaited()
+
+    async def test_bot_mode_uses_add_companion_from_contact_data(self, new_contact_env):
+        bot, handler, rm, mesh = new_contact_env
+        bot.config.set("Bot", "auto_manage_contacts", "bot")
+        ev = _NewContactEvent(_companion_contact_payload())
+        await handler.handle_new_contact(ev, None)
+        rm.add_companion_from_contact_data.assert_awaited_once()
+        mesh.commands.add_contact.assert_not_called()

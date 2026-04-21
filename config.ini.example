@@ -178,6 +178,15 @@ startup_advert = false
 # false: Manual mode - no automatic actions, use !repeater commands to manage contacts (default)
 auto_manage_contacts = bot
 
+# When auto_manage_contacts = device, the bot schedules one-shot jobs after connect:
+#   - Firmware: manual per-type contact adds + overwrite oldest non-favourite on full + auto-add chat (companions) only (bitmask 0x03)
+#   - Favourite hygiene: Admin_ACL and announcements ACL pubkeys are favourited on the radio; other favourites are cleared so eviction can recycle slots
+# Delays (seconds) before each step so the radio is not flooded at boot (defaults shown)
+#device_mode_firmware_delay_seconds = 30
+#device_mode_favourite_pass1_delay_seconds = 90
+#device_mode_favourite_pass2_delay_seconds = 180
+#contact_flag_update_spacing_ms = 200
+
 # Database path for main bot database
 # Default: meshcore_bot.db
 db_path = meshcore_bot.db
@@ -313,6 +322,7 @@ admin_commands = repeater,webviewer,reload,channelpause
 # Enable companion contact purging
 # true: Purge inactive companions when contact list is full
 # false: Never purge companions (default: false for safety)
+# When [Bot] auto_manage_contacts=device, companion auto-purge from the radio is always skipped (firmware slot policy).
 companion_purge_enabled = false
 
 # Days since last DM to consider companion inactive

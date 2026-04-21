@@ -1620,3 +1620,72 @@ class TestZombieAlertEmailSsrfGuard:
                 sched.send_zombie_alert_email(fail_count=5, threshold=3, interval=60)
         mock_smtp.assert_not_called()
         mock_smtp_ssl.assert_not_called()
+
+
+class TestDeviceModeSchedulerJobs:
+    """_setup_device_mode_scheduler_jobs registers one-shot jobs when auto_manage_contacts=device."""
+
+    def test_registers_three_jobs_in_device_mode(self, scheduler):
+        scheduler.bot.config.set("Bot", "auto_manage_contacts", "device")
+        mock_ap = MagicMock()
+        scheduler._apscheduler = mock_ap
+        scheduler._setup_device_mode_scheduler_jobs()
+        assert mock_ap.add_job.call_count == 3
+        ids = {call.kwargs["id"] for call in mock_ap.add_job.call_args_list}
+        assert ids == {
+            "device_mode_firmware_autoadd",
+            "device_mode_favourite_pass1",
+            "device_mode_favourite_pass2",
+        }
+        for call in mock_ap.add_job.call_args_list:
+            assert call.kwargs.get("replace_existing") is True
+
+    def test_no_jobs_when_not_device_mode(self, scheduler):
+        scheduler.bot.config.set("Bot", "auto_manage_contacts", "bot")
+        mock_ap = MagicMock()
+        scheduler._apscheduler = mock_ap
+        scheduler._setup_device_mode_scheduler_jobs()
+        mock_ap.add_job.assert_not_called()
+
+    def test_firmware_job_sync_skips_when_not_device(self, scheduler):
+        scheduler.bot.config.set("Bot", "auto_manage_contacts", "bot")
+        with patch.object(scheduler, "_run_async_on_main_loop") as mock_run:
+            scheduler._device_mode_firmware_job_sync()
+        mock_run.assert_not_called()
+
+    def test_run_async_warns_without_running_loop(self, scheduler, mock_logger):
+        scheduler.bot.logger = mock_logger
+        scheduler.bot.main_event_loop = None
+
+        async def trivial():
+            pass
+
+        coro = trivial()
+        try:
+            scheduler._run_async_on_main_loop(coro, timeout=1.0)
+        finally:
+            coro.close()
+        mock_logger.warning.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_device_mode_firmware_coro_calls_repeater_manager(self, scheduler):
+        scheduler.bot.config.set("Bot", "auto_manage_contacts", "device")
+        scheduler.bot.repeater_manager = Mock()
+        scheduler.bot.repeater_manager.apply_device_mode_firmware_preferences = AsyncMock(return_value=True)
+
+        await scheduler._device_mode_firmware_coro()
+
+        scheduler.bot.repeater_manager.apply_device_mode_firmware_preferences.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_device_mode_favourite_coros_delegate(self, scheduler):
+        scheduler.bot.config.set("Bot", "auto_manage_contacts", "device")
+        scheduler.bot.repeater_manager = Mock()
+        scheduler.bot.repeater_manager.sync_device_mode_favourites_pass1 = AsyncMock()
+        scheduler.bot.repeater_manager.sync_device_mode_favourites_pass2 = AsyncMock()
+
+        await scheduler._device_mode_favourite_pass1_coro()
+        await scheduler._device_mode_favourite_pass2_coro()
+
+        scheduler.bot.repeater_manager.sync_device_mode_favourites_pass1.assert_awaited_once()
+        scheduler.bot.repeater_manager.sync_device_mode_favourites_pass2.assert_awaited_once()

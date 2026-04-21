@@ -9,7 +9,10 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from meshcore import EventType
 
-from modules.repeater_manager import RepeaterManager
+from modules.repeater_manager import (
+    RepeaterManager,
+    collect_protected_pubkeys_for_device_mode,
+)
 
 
 @pytest.fixture
@@ -496,6 +499,7 @@ class TestCheckAndAutoPurge:
         rm.auto_purge_enabled = True
         rm.auto_purge_threshold = 10
         rm.companion_purge_enabled = True
+        rm._auto_manage_contacts = 'bot'
         rm.bot.meshcore = Mock()
         rm.bot.meshcore.contacts = {str(i): {} for i in range(15)}
 
@@ -509,6 +513,59 @@ class TestCheckAndAutoPurge:
 
         mock_comp.assert_called_once()
         assert result is True
+
+    async def test_companion_purge_skipped_when_auto_manage_device(self, bot):
+        """Device mode: count-based purge is suppressed; companions never auto-purged from radio."""
+        bot.config.set("Bot", "auto_manage_contacts", "device")
+        rm = RepeaterManager(bot)
+        rm.companion_purge_enabled = True
+        rm.bot.meshcore = Mock()
+        rm.bot.meshcore.contacts = {str(i): {} for i in range(15)}
+        rm.bot.meshcore.commands = Mock()
+        rm.bot.meshcore.commands.send_device_query = AsyncMock(return_value=Mock(type=Mock()))
+
+        with patch.object(rm, "_auto_purge_repeaters", new_callable=AsyncMock) as mock_rep, \
+             patch.object(rm, "_auto_purge_companions", new_callable=AsyncMock) as mock_comp:
+            result = await rm.check_and_auto_purge()
+
+        mock_rep.assert_not_called()
+        mock_comp.assert_not_called()
+        assert result is False
+        assert rm.contact_limit >= 15
+        assert rm.auto_purge_threshold == rm.contact_limit + 1
+
+    async def test_device_mode_returns_true_when_still_full_no_repeaters(self, bot):
+        """Device mode: no repeater purge path when mesh is within synced limit (no false failure)."""
+        bot.config.set("Bot", "auto_manage_contacts", "device")
+        rm = RepeaterManager(bot)
+        rm.companion_purge_enabled = False
+        rm.bot.meshcore = Mock()
+        rm.bot.meshcore.contacts = {str(i): {} for i in range(15)}
+        rm.bot.meshcore.commands = Mock()
+        rm.bot.meshcore.commands.send_device_query = AsyncMock(return_value=Mock(type=Mock()))
+
+        with patch.object(rm, "_auto_purge_repeaters", new_callable=AsyncMock) as mock_rep, \
+             patch.object(rm, "_auto_purge_companions", new_callable=AsyncMock) as mock_comp:
+            result = await rm.check_and_auto_purge()
+
+        mock_rep.assert_not_called()
+        mock_comp.assert_not_called()
+        assert result is False
+
+    async def test_device_mode_floors_contact_limit_to_mesh_when_firmware_under_reports(self, bot):
+        """If live contact count exceeds DEVICE_INFO max_contacts, raise limit to match the radio."""
+        bot.config.set("Bot", "auto_manage_contacts", "device")
+        rm = RepeaterManager(bot)
+        rm.bot.meshcore = Mock()
+        rm.bot.meshcore.contacts = {str(i): {} for i in range(331)}
+        info = SimpleNamespace(type=EventType.DEVICE_INFO, payload={"max_contacts": 300})
+        rm.bot.meshcore.commands = Mock()
+        rm.bot.meshcore.commands.send_device_query = AsyncMock(return_value=info)
+
+        await rm._update_contact_limit_from_device()
+
+        assert rm.contact_limit == 331
+        assert rm.auto_purge_threshold == 332
 
     async def test_returns_false_when_purge_fails(self, rm):
         """When both purge counts succeed=False, check_and_auto_purge returns False."""
@@ -1302,3 +1359,240 @@ class TestPurgeDedupConcurrency:
         assert first_result is False
         assert second_result is True
         assert rm.bot.meshcore.commands.remove_contact.await_count == 2
+
+
+class TestCollectProtectedPubkeysForDeviceMode:
+    """collect_protected_pubkeys_for_device_mode matches Admin + announcements ACL union."""
+
+    def test_admin_and_announcements_merged(self, mock_logger):
+        cfg = configparser.ConfigParser()
+        pk_a = "aa" * 32
+        pk_b = "bb" * 32
+        cfg.add_section("Admin_ACL")
+        cfg.set("Admin_ACL", "admin_pubkeys", pk_a)
+        cfg.add_section("Announcements_Command")
+        cfg.set("Announcements_Command", "announcements_acl", pk_b)
+        keys = collect_protected_pubkeys_for_device_mode(cfg, mock_logger)
+        assert keys == {pk_a.lower(), pk_b.lower()}
+
+    def test_admin_only_when_no_announcements_acl(self, mock_logger):
+        cfg = configparser.ConfigParser()
+        pk_a = "cc" * 32
+        cfg.add_section("Admin_ACL")
+        cfg.set("Admin_ACL", "admin_pubkeys", pk_a)
+        cfg.add_section("Announcements_Command")
+        cfg.set("Announcements_Command", "announcements_acl", "")
+        keys = collect_protected_pubkeys_for_device_mode(cfg, mock_logger)
+        assert keys == {pk_a.lower()}
+
+
+class TestAddCompanionFromContactData:
+    """RepeaterManager.add_companion_from_contact_data TABLE_FULL retry."""
+
+    @pytest.mark.asyncio
+    async def test_retries_after_table_full(self, rm, bot):
+        pk = "dd" * 32
+        contact_data = {
+            "public_key": pk,
+            "adv_name": "Bob",
+            "type": 1,
+            "flags": 0,
+            "out_path": "",
+            "out_path_len": 0,
+            "out_path_hash_mode": 0,
+            "last_advert": 0,
+            "adv_lat": 0.0,
+            "adv_lon": 0.0,
+        }
+        bot.meshcore = Mock()
+        bot.meshcore.commands = Mock()
+        err = SimpleNamespace(type=EventType.ERROR, payload={"error_code": 3, "code_string": "ERR_CODE_TABLE_FULL"})
+        ok = SimpleNamespace(type=EventType.OK, payload={})
+        bot.meshcore.commands.add_contact = AsyncMock(side_effect=[err, ok])
+
+        rm.get_contact_list_status = AsyncMock(
+            return_value={
+                "is_near_limit": False,
+                "usage_percentage": 50.0,
+                "current_contacts": 100,
+                "estimated_limit": 300,
+            }
+        )
+        rm.manage_contact_list = AsyncMock(return_value={"success": True})
+
+        result = await rm.add_companion_from_contact_data(contact_data, "Bob", pk)
+        assert result is True
+        assert bot.meshcore.commands.add_contact.await_count == 2
+        rm.manage_contact_list.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_success_on_first_ok_without_retry(self, rm, bot):
+        pk = "ee" * 32
+        contact_data = {
+            "public_key": pk,
+            "adv_name": "Ann",
+            "type": 1,
+            "flags": 0,
+            "out_path": "",
+            "out_path_len": 0,
+            "out_path_hash_mode": 0,
+            "last_advert": 0,
+            "adv_lat": 0.0,
+            "adv_lon": 0.0,
+        }
+        bot.meshcore = Mock()
+        bot.meshcore.commands = Mock()
+        ok = SimpleNamespace(type=EventType.OK, payload={})
+        bot.meshcore.commands.add_contact = AsyncMock(return_value=ok)
+        rm.get_contact_list_status = AsyncMock(
+            return_value={"is_near_limit": False, "usage_percentage": 10.0}
+        )
+        rm.manage_contact_list = AsyncMock()
+
+        result = await rm.add_companion_from_contact_data(contact_data, "Ann", pk)
+        assert result is True
+        bot.meshcore.commands.add_contact.assert_awaited_once()
+        rm.manage_contact_list.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_near_limit_triggers_manage_before_add(self, rm, bot):
+        pk = "ff" * 32
+        contact_data = {
+            "public_key": pk,
+            "adv_name": "Near",
+            "type": 1,
+            "flags": 0,
+            "out_path": "",
+            "out_path_len": 0,
+            "out_path_hash_mode": 0,
+            "last_advert": 0,
+            "adv_lat": 0.0,
+            "adv_lon": 0.0,
+        }
+        bot.meshcore = Mock()
+        bot.meshcore.commands = Mock()
+        ok = SimpleNamespace(type=EventType.OK, payload={})
+        bot.meshcore.commands.add_contact = AsyncMock(return_value=ok)
+        rm.get_contact_list_status = AsyncMock(
+            return_value={"is_near_limit": True, "usage_percentage": 85.0}
+        )
+        rm.manage_contact_list = AsyncMock(return_value={"success": True})
+
+        result = await rm.add_companion_from_contact_data(contact_data, "Near", pk)
+        assert result is True
+        rm.manage_contact_list.assert_awaited_once()
+        bot.meshcore.commands.add_contact.assert_awaited_once()
+
+
+class TestApplyDeviceModeFirmwarePreferences:
+    @pytest.mark.asyncio
+    async def test_success_sets_manual_and_autoadd(self, bot):
+        bot.config.set("Bot", "auto_manage_contacts", "device")
+        rm = RepeaterManager(bot)
+        ok = SimpleNamespace(type=EventType.OK)
+        bot.meshcore = Mock()
+        bot.meshcore.commands = Mock()
+        bot.meshcore.commands.set_manual_add_contacts = AsyncMock(return_value=ok)
+        bot.meshcore.commands.set_autoadd_config = AsyncMock(return_value=ok)
+
+        assert await rm.apply_device_mode_firmware_preferences() is True
+        bot.meshcore.commands.set_autoadd_config.assert_awaited_once_with(0x03)
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_not_device_mode(self, bot):
+        bot.config.set("Bot", "auto_manage_contacts", "bot")
+        rm = RepeaterManager(bot)
+        bot.meshcore = Mock()
+        bot.meshcore.commands = Mock()
+
+        assert await rm.apply_device_mode_firmware_preferences() is False
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_autoadd_not_ok(self, bot):
+        bot.config.set("Bot", "auto_manage_contacts", "device")
+        rm = RepeaterManager(bot)
+        ok = SimpleNamespace(type=EventType.OK)
+        bad = SimpleNamespace(type=EventType.ERROR, payload={})
+        bot.meshcore = Mock()
+        bot.meshcore.commands = Mock()
+        bot.meshcore.commands.set_manual_add_contacts = AsyncMock(return_value=ok)
+        bot.meshcore.commands.set_autoadd_config = AsyncMock(return_value=bad)
+
+        assert await rm.apply_device_mode_firmware_preferences() is False
+
+
+class TestSyncDeviceModeFavourites:
+    @pytest.mark.asyncio
+    async def test_pass1_no_op_when_not_device(self, bot):
+        bot.config.set("Bot", "auto_manage_contacts", "bot")
+        rm = RepeaterManager(bot)
+        bot.meshcore = Mock()
+        bot.meshcore.commands = Mock()
+        bot.meshcore.commands.get_contacts = AsyncMock()
+        bot.meshcore.commands.change_contact_flags = AsyncMock()
+
+        await rm.sync_device_mode_favourites_pass1()
+
+        bot.meshcore.commands.get_contacts.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_pass1_favourites_protected_contact(self, bot):
+        bot.config.set("Bot", "auto_manage_contacts", "device")
+        bot.config.set("Bot", "contact_flag_update_spacing_ms", "0")
+        pk = "aa" * 32
+        bot.config.add_section("Admin_ACL")
+        bot.config.set("Admin_ACL", "admin_pubkeys", pk)
+        rm = RepeaterManager(bot)
+        ok = SimpleNamespace(type=EventType.OK)
+        bot.meshcore = Mock()
+        bot.meshcore.contacts = {pk: {"public_key": pk, "flags": 0, "adv_name": "A", "type": 1}}
+        bot.meshcore.commands = Mock()
+        bot.meshcore.commands.get_contacts = AsyncMock()
+        bot.meshcore.commands.change_contact_flags = AsyncMock(return_value=ok)
+
+        await rm.sync_device_mode_favourites_pass1()
+
+        bot.meshcore.commands.change_contact_flags.assert_awaited_once()
+        args, _kwargs = bot.meshcore.commands.change_contact_flags.await_args
+        assert args[1] == 1
+
+    @pytest.mark.asyncio
+    async def test_pass2_clears_favourite_for_non_protected(self, bot):
+        bot.config.set("Bot", "auto_manage_contacts", "device")
+        bot.config.set("Bot", "contact_flag_update_spacing_ms", "0")
+        pk_prot = "bb" * 32
+        pk_other = "cc" * 32
+        bot.config.add_section("Admin_ACL")
+        bot.config.set("Admin_ACL", "admin_pubkeys", pk_prot)
+        rm = RepeaterManager(bot)
+        ok = SimpleNamespace(type=EventType.OK)
+        bot.meshcore = Mock()
+        bot.meshcore.contacts = {
+            pk_other: {"public_key": pk_other, "flags": 1, "adv_name": "X", "type": 1},
+        }
+        bot.meshcore.commands = Mock()
+        bot.meshcore.commands.get_contacts = AsyncMock()
+        bot.meshcore.commands.change_contact_flags = AsyncMock(return_value=ok)
+
+        await rm.sync_device_mode_favourites_pass2()
+
+        bot.meshcore.commands.change_contact_flags.assert_awaited_once()
+        args, _kwargs = bot.meshcore.commands.change_contact_flags.await_args
+        assert args[1] == 0
+
+
+class TestUpdateContactLimitFromDevice:
+    @pytest.mark.asyncio
+    async def test_bot_mode_uses_firmware_max_and_threshold(self, bot):
+        bot.config.set("Bot", "auto_manage_contacts", "bot")
+        rm = RepeaterManager(bot)
+        info = SimpleNamespace(type=EventType.DEVICE_INFO, payload={"max_contacts": 300})
+        bot.meshcore = Mock()
+        bot.meshcore.contacts = {str(i): {} for i in range(10)}
+        bot.meshcore.commands = Mock()
+        bot.meshcore.commands.send_device_query = AsyncMock(return_value=info)
+
+        await rm._update_contact_limit_from_device()
+
+        assert rm.contact_limit == 300
+        assert rm.auto_purge_threshold == 280
