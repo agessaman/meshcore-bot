@@ -434,6 +434,7 @@
     // Global state
     let currentView = 'map';
     let map = null;
+    let isMapFullscreen = false;
     let graphNetwork = null;
     let allNodes = [];
     let allEdges = [];
@@ -2476,94 +2477,81 @@
         const mapContainer = document.getElementById('map-view');
         const btn = document.getElementById('btn-fullscreen');
         const icon = btn.querySelector('i');
-        
-        if (!document.fullscreenElement) {
+
+        if (!isMapFullscreen) {
             // Enter fullscreen
+            isMapFullscreen = true;
+
+            // Use native fullscreen API where available (not on iOS Safari)
             if (mapContainer.requestFullscreen) {
-                mapContainer.requestFullscreen();
-            } else if (mapContainer.webkitRequestFullscreen) { // Safari
+                mapContainer.requestFullscreen().catch(() => {});
+            } else if (mapContainer.webkitRequestFullscreen) {
                 mapContainer.webkitRequestFullscreen();
-            } else if (mapContainer.msRequestFullscreen) { // IE11
+            } else if (mapContainer.msRequestFullscreen) {
                 mapContainer.msRequestFullscreen();
             }
-            
-            // Add fullscreen class for custom styling
+
+            // CSS-based fullscreen (works on all platforms including mobile)
             mapContainer.classList.add('fullscreen-mode');
             document.body.classList.add('fullscreen-active');
-            
-            // Change icon to exit fullscreen
+
             icon.className = 'fas fa-compress';
-            
-            // Add exit button
+
+            // Add exit button overlay
             const exitBtn = document.createElement('button');
             exitBtn.className = 'fullscreen-exit-btn';
             exitBtn.innerHTML = '<i class="fas fa-times"></i> Exit Fullscreen';
             exitBtn.onclick = toggleFullscreen;
             mapContainer.appendChild(exitBtn);
-            
-            // Invalidate map size after fullscreen transition
-            setTimeout(() => {
-                if (map) {
-                    map.invalidateSize();
-                }
-            }, 100);
-            
+
+            setTimeout(() => { if (map) map.invalidateSize(); }, 100);
+
         } else {
             // Exit fullscreen
-            if (document.exitFullscreen) {
-                document.exitFullscreen();
-            } else if (document.webkitExitFullscreen) { // Safari
+            isMapFullscreen = false;
+
+            if (document.exitFullscreen && document.fullscreenElement) {
+                document.exitFullscreen().catch(() => {});
+            } else if (document.webkitExitFullscreen && document.webkitFullscreenElement) {
                 document.webkitExitFullscreen();
-            } else if (document.msExitFullscreen) { // IE11
+            } else if (document.msExitFullscreen && document.msFullscreenElement) {
                 document.msExitFullscreen();
             }
-            
-            // Remove fullscreen class
+
             mapContainer.classList.remove('fullscreen-mode');
             document.body.classList.remove('fullscreen-active');
-            
-            // Change icon back to expand
+
             icon.className = 'fas fa-expand';
-            
-            // Remove exit button
+
             const exitBtn = mapContainer.querySelector('.fullscreen-exit-btn');
-            if (exitBtn) {
-                exitBtn.remove();
-            }
-            
-            // Invalidate map size after exiting fullscreen
-            setTimeout(() => {
-                if (map) {
-                    map.invalidateSize();
-                }
-            }, 100);
+            if (exitBtn) exitBtn.remove();
+
+            setTimeout(() => { if (map) map.invalidateSize(); }, 100);
         }
     }
-    
-    // Handle fullscreen change events (ESC key, etc.)
-    document.addEventListener('fullscreenchange', function() {
-        if (!document.fullscreenElement) {
+
+    // Sync state when the native fullscreen API exits (e.g. ESC key on desktop)
+    function onNativeFullscreenExit() {
+        const nativeFullscreen = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
+        if (!nativeFullscreen && isMapFullscreen) {
+            isMapFullscreen = false;
             const mapContainer = document.getElementById('map-view');
             const btn = document.getElementById('btn-fullscreen');
             const icon = btn.querySelector('i');
-            
+
             mapContainer.classList.remove('fullscreen-mode');
             document.body.classList.remove('fullscreen-active');
             icon.className = 'fas fa-expand';
-            
+
             const exitBtn = mapContainer.querySelector('.fullscreen-exit-btn');
-            if (exitBtn) {
-                exitBtn.remove();
-            }
-            
-            // Invalidate map size after exiting fullscreen
-            setTimeout(() => {
-                if (map) {
-                    map.invalidateSize();
-                }
-            }, 100);
+            if (exitBtn) exitBtn.remove();
+
+            setTimeout(() => { if (map) map.invalidateSize(); }, 100);
         }
-    });
+    }
+    document.addEventListener('fullscreenchange', onNativeFullscreenExit);
+    document.addEventListener('webkitfullscreenchange', onNativeFullscreenExit);
+    document.addEventListener('msfullscreenchange', onNativeFullscreenExit);
     
     // Socket.IO setup for real-time updates
     // Live updates are applied only when the map view is active. When the graph view is active,
