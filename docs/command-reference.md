@@ -97,21 +97,23 @@ cmd
 
 ---
 
-### `ia`
+### `llm`
 
 Ask a local llama.cpp instance for a short AI response.
 
+**Aliases:** `ia`, `ai`, `chat`
+
 **Usage:**
 ```
-ia <question>
+llm <question>
 ```
 
-**Note:** If `command_prefix` is set in your `config.ini` (e.g. `command_prefix = /`), prefix the command accordingly (e.g. `/ia <question>`).
+**Note:** If `command_prefix` is set in your `config.ini` (e.g. `command_prefix = /`), prefix the command accordingly (e.g. `/llm <question>`). All aliases (`ia`, `ai`, `chat`) also work with the configured prefix.
 
 **Examples:**
 ```
-ia What is LoRa?
-ia summarize mesh routing in one sentence
+llm What is LoRa?
+llm summarize mesh routing in one sentence
 ```
 
 **Response:** Short AI-generated response from your locally configured llama.cpp endpoint.

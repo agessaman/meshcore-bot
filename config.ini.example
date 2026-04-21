@@ -305,10 +305,10 @@ test = "ack @[{sender}]{phrase_part} | {connection_info} | Received at: {timesta
 ping = "Pong!"
 pong = "Ping!"
 # Override 'help' command output
-# help = "Bot Help: test (or t), ping, help, hello, cmd, ia, advert, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats | More: 'help <command>'"
+# help = "Bot Help: test (or t), ping, help, hello, cmd, llm, advert, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats | More: 'help <command>'"
 
 # Override 'cmd' command output
-# cmd = "Available commands: test (or t), ping, help, hello, cmd, ia, advert, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats"
+# cmd = "Available commands: test (or t), ping, help, hello, cmd, llm, advert, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats"
 
 [RandomLine]
 # Configurable command to act on a trigger word and respond with a random line from its file
@@ -1142,8 +1142,8 @@ enabled = true
 enabled = true
 # channels =
 
-[Ia_Command]
-# Local llama.cpp AI chat command
+[Llm_Command]
+# Local llama.cpp AI chat command (aliases: llm, ia, ai, chat)
 enabled = true
 # OpenAI-compatible llama.cpp endpoint
 endpoint = http://127.0.0.1:8080/v1/chat/completions
