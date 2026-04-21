@@ -1819,6 +1819,37 @@ class TestRespondToMentions:
         mention_bot.command_manager.execute_commands.assert_called_once()
 
 
+class TestProcessMessageDmKeywordRouting:
+    """Regression tests for DM keyword reply routing."""
+
+    @pytest.mark.asyncio
+    async def test_keyword_reply_uses_prefix_sender_id_for_dm_send(self, handler):
+        """DM keyword flow should route reply using prefix sender identity."""
+        handler.should_process_message = Mock(return_value=True)
+        handler.bot.command_manager.check_keywords = Mock(return_value=[("test", "ack")])
+        handler.bot.command_manager.match_randomline = Mock(return_value=None)
+        handler.bot.command_manager.execute_commands = AsyncMock()
+        handler.bot.command_manager.get_rate_limit_key = Mock(return_value="ab12deadbeef")
+        handler.bot.command_manager.send_dm = AsyncMock(return_value=True)
+        handler.bot.command_manager.commands = {}
+
+        message = MeshMessage(
+            content="test",
+            sender_id="ab12",
+            sender_pubkey="ab12deadbeefcafebabe",
+            is_dm=True,
+        )
+
+        await handler.process_message(message)
+
+        handler.bot.command_manager.send_dm.assert_awaited_once()
+        args, kwargs = handler.bot.command_manager.send_dm.await_args
+        assert args[0] == "ab12"
+        assert args[1] == "ack"
+        assert args[2].startswith("keyword_test_ab12_")
+        assert kwargs["rate_limit_key"] == "ab12deadbeef"
+
+
 # ---------------------------------------------------------------------------
 # handle_new_contact — auto_manage_contacts (companion path)
 # ---------------------------------------------------------------------------

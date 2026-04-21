@@ -957,15 +957,42 @@ class CommandManager:
             return False
 
         try:
-            # Find the contact by name (since recipient_id is the contact name)
+            # Name lookup first (backward compatible), then fallback to pubkey/prefix.
             contact = self.bot.meshcore.get_contact_by_name(recipient_id)
+            lookup_type = "name"
+            if not contact and hasattr(self.bot.meshcore, "contacts"):
+                recipient_key = (recipient_id or "").strip()
+                contacts = self.bot.meshcore.contacts or {}
+                for contact_data in contacts.values():
+                    public_key = (contact_data.get("public_key", "") or "").strip()
+                    if not public_key:
+                        continue
+                    if public_key == recipient_key or public_key.startswith(recipient_key):
+                        contact = contact_data
+                        lookup_type = "pubkey_prefix"
+                        self.logger.debug(
+                            "Resolved DM recipient '%s' via public key prefix lookup",
+                            sanitize_name(recipient_key),
+                        )
+                        break
+
             if not contact:
-                self.logger.error(f"Contact not found for name: {recipient_id}")
+                self.logger.error(
+                    "Contact not found for DM recipient identifier: %s",
+                    sanitize_name(recipient_id),
+                )
                 return False
 
             # Use the contact name for logging
             contact_name = contact.get('name', contact.get('adv_name', recipient_id))
-            self.logger.info("Sending DM to %s", sanitize_name(contact_name))
+            if lookup_type != "name":
+                self.logger.info(
+                    "Sending DM to %s (resolved via %s)",
+                    sanitize_name(contact_name),
+                    lookup_type,
+                )
+            else:
+                self.logger.info("Sending DM to %s", sanitize_name(contact_name))
 
             # Record transmission for repeat tracking (don't let this block sending)
             try:
