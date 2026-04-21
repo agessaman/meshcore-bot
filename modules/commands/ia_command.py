@@ -16,14 +16,14 @@ class IaCommand(BaseCommand):
     """Handles ia command for local llama.cpp chat responses."""
 
     name = "ia"
-    keywords = ["ia", "/ia"]
-    description = "Chat with local llama.cpp (usage: /ia <question>)"
+    keywords = ["ia"]
+    description = "Chat with local llama.cpp AI (ask a short question)"
     category = "basic"
     cooldown_seconds = 5
 
     short_description = "Ask the local llama.cpp model a short question"
-    usage = "/ia <question>"
-    examples = ["/ia What is APRS?", "ia summarize LoRa in one sentence"]
+    usage = "ia <question>"
+    examples = ["ia What is APRS?", "ia summarize LoRa in one sentence"]
     parameters = [
         {"name": "question", "description": "Prompt to send to local llama.cpp"}
     ]
@@ -85,7 +85,8 @@ class IaCommand(BaseCommand):
         return super().can_execute(message)
 
     def get_help_text(self) -> str:
-        return "Usage: /ia <question> - Ask local llama.cpp for a short reply"
+        pfx = self._command_prefix
+        return f"Usage: {pfx}ia <question> - Ask local llama.cpp for a short reply"
 
     def _extract_prompt(self, message: MeshMessage) -> str:
         content = message.content.strip()
@@ -94,6 +95,8 @@ class IaCommand(BaseCommand):
             if content.startswith(self._command_prefix):
                 content = content[len(self._command_prefix):].strip()
         elif content.startswith("!"):
+            # Backward-compatibility: base_command.matches_keyword also strips a leading
+            # "!" when no command_prefix is configured, so we do the same here.
             content = content[1:].strip()
 
         content = self._strip_mentions(content)
@@ -145,7 +148,8 @@ class IaCommand(BaseCommand):
     async def execute(self, message: MeshMessage) -> bool:
         prompt = self._extract_prompt(message)
         if not prompt:
-            return await self.send_response(message, "Usage: /ia <question>")
+            pfx = self._command_prefix
+            return await self.send_response(message, f"Usage: {pfx}ia <question>")
 
         try:
             response = await asyncio.to_thread(

@@ -228,7 +228,7 @@ python meshcore_bot.py
 For a comprehensive list of all available commands with examples and detailed explanations, see [Command reference](docs/command-reference.md).
 
 Quick reference:
-- **Basic:** `test`, `ping`, `help`, `hello`, `cmd`, `ia` (or `/ia`)
+- **Basic:** `test`, `ping`, `help`, `hello`, `cmd`, `ia`
 - **Information:** `wx`, `gwx`, `aqi`, `sun`, `moon`, `solar`, `solarforecast`, `hfcond`, `satpass`, `channels`
 - **Emergency:** `alert`
 - **Gaming:** `dice`, `roll`, `magic8`

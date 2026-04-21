@@ -97,19 +97,20 @@ cmd
 
 ---
 
-### `ia` / `/ia`
+### `ia`
 
 Ask a local llama.cpp instance for a short AI response.
 
 **Usage:**
 ```
 ia <question>
-/ia <question>
 ```
+
+**Note:** If `command_prefix` is set in your `config.ini` (e.g. `command_prefix = /`), prefix the command accordingly (e.g. `/ia <question>`).
 
 **Examples:**
 ```
-/ia What is LoRa?
+ia What is LoRa?
 ia summarize mesh routing in one sentence
 ```
 
