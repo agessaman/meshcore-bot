@@ -1104,5 +1104,20 @@
     "analytics": "Analytics Commands",
     "meshcore_info": "MeshCore Info Commands",
     "management": "Management Commands"
+  },
+  "services": {
+    "darcmowas" : {
+      "messagetype": {
+        "eu-alert-level-1": "Emergency Alert",
+        "eu-alert-level-2": "Extreme Danger",
+        "eu-alert-level-3": "Significant Danger",
+        "eu-alert-level-4": "Danger Information",
+        "eu-test": "Test Warning"
+      },
+      "fields": {
+        "sender": "Sender: {sender}",
+        "area": "Area: {areas}"
+      }
+    }
   }
 }
