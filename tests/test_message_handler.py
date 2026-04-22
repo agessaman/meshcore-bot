@@ -1910,6 +1910,7 @@ def new_contact_env(mock_logger):
     )
     rm.manage_contact_list = AsyncMock(return_value={"success": True})
     rm.add_companion_from_contact_data = AsyncMock(return_value=True)
+    rm.log_purging_action = Mock()
     rm.db_manager = Mock()
     rm.db_manager.execute_update = Mock()
     rm._is_repeater_device = Mock(return_value=False)
@@ -1933,7 +1934,7 @@ class TestHandleNewContactAutoManage:
         rm.track_contact_advertisement.assert_awaited_once()
         mesh.commands.add_contact.assert_not_called()
         rm.add_companion_from_contact_data.assert_not_called()
-        rm.db_manager.execute_update.assert_called()
+        rm.log_purging_action.assert_called_once()
 
     async def test_device_mode_no_bot_add_contact(self, new_contact_env):
         bot, handler, rm, mesh = new_contact_env

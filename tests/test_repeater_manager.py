@@ -90,6 +90,30 @@ class TestDetermineContactRole:
         assert rm._determine_contact_role({}) == "companion"
 
 
+class TestPurgingLogCompatibility:
+    def test_log_purging_action_uses_details_when_available(self, rm):
+        rm._purging_log_has_details = True
+        rm.db_manager.execute_update = Mock()
+
+        rm.log_purging_action("contact_management", "managed contacts")
+
+        rm.db_manager.execute_update.assert_called_once_with(
+            "INSERT INTO purging_log (action, details) VALUES (?, ?)",
+            ("contact_management", "managed contacts"),
+        )
+
+    def test_log_purging_action_falls_back_to_legacy_columns(self, rm):
+        rm._purging_log_has_details = False
+        rm.db_manager.execute_update = Mock()
+
+        rm.log_purging_action("contact_management", "managed contacts")
+
+        rm.db_manager.execute_update.assert_called_once_with(
+            "INSERT INTO purging_log (action, public_key, name, reason) VALUES (?, ?, ?, ?)",
+            ("contact_management", "", "contact_management", "managed contacts"),
+        )
+
+
 # ---------------------------------------------------------------------------
 # _determine_device_type
 # ---------------------------------------------------------------------------

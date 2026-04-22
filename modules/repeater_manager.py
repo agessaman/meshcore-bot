@@ -88,6 +88,7 @@ class RepeaterManager:
         self._auto_purge_lock = asyncio.Lock()
         self._auto_purge_in_progress = False
         self._purge_inflight_keys = set()
+        self._purging_log_has_details: Optional[bool] = None
 
     def _start_purge_attempt(self, public_key: str, contact_type: str) -> bool:
         """Mark a purge as in-flight; return False when another attempt is already active."""
@@ -102,6 +103,43 @@ class RepeaterManager:
     def _finish_purge_attempt(self, public_key: str):
         """Clear in-flight marker for a purge attempt."""
         self._purge_inflight_keys.discard(public_key)
+
+    def _refresh_purging_log_details_capability(self) -> bool:
+        """Return True if purging_log.details exists."""
+        if self._purging_log_has_details is not None:
+            return self._purging_log_has_details
+        try:
+            with self.db_manager.connection() as conn:
+                rows = conn.execute("PRAGMA table_info(purging_log)").fetchall()
+            self._purging_log_has_details = any(row[1] == "details" for row in rows)
+        except Exception as e:
+            self.logger.debug(f"Unable to inspect purging_log schema: {e}")
+            self._purging_log_has_details = False
+        return self._purging_log_has_details
+
+    def log_purging_action(self, action: str, details: str) -> None:
+        """Insert purging log rows across both new and legacy schemas."""
+        try:
+            if self._refresh_purging_log_details_capability():
+                self.db_manager.execute_update(
+                    "INSERT INTO purging_log (action, details) VALUES (?, ?)",
+                    (action, details),
+                )
+                return
+            self.db_manager.execute_update(
+                "INSERT INTO purging_log (action, public_key, name, reason) VALUES (?, ?, ?, ?)",
+                (action, "", action, details),
+            )
+        except Exception as e:
+            err = str(e)
+            if "no column named details" in err:
+                self._purging_log_has_details = False
+                self.db_manager.execute_update(
+                    "INSERT INTO purging_log (action, public_key, name, reason) VALUES (?, ?, ?, ?)",
+                    (action, "", action, details),
+                )
+                return
+            self.logger.error(f"Failed to write purging log action '{action}': {e}")
 
     def _init_repeater_tables(self):
         """Ensure repeater-specific tables exist (created by migrations)."""
@@ -2538,9 +2576,9 @@ class RepeaterManager:
                 self.logger.error(f"Failed to discover companion contacts: {e}")
 
             # Step 3: Log the post-purge management action
-            self.db_manager.execute_update(
-                'INSERT INTO purging_log (action, details) VALUES (?, ?)',
-                ('post_purge_management', 'Enabled manual contact addition and initiated companion contact discovery')
+            self.log_purging_action(
+                "post_purge_management",
+                "Enabled manual contact addition and initiated companion contact discovery",
             )
 
             self.logger.info("Post-purge contact management completed")
@@ -2682,9 +2720,9 @@ class RepeaterManager:
 
             # Log the management action
             if actions_taken:
-                self.db_manager.execute_update(
-                    'INSERT INTO purging_log (action, details) VALUES (?, ?)',
-                    ('contact_management', f'Contact list management: {"; ".join(actions_taken)}')
+                self.log_purging_action(
+                    "contact_management",
+                    f'Contact list management: {"; ".join(actions_taken)}',
                 )
 
             return {
@@ -2725,9 +2763,9 @@ class RepeaterManager:
                         self.logger.info(f"✅ Successfully removed stale contact: {contact_name}")
 
                         # Log the removal
-                        self.db_manager.execute_update(
-                            'INSERT INTO purging_log (action, details) VALUES (?, ?)',
-                            ('stale_contact_removal', f'Removed stale contact: {contact_name} (last seen {contact["days_stale"]} days ago)')
+                        self.log_purging_action(
+                            "stale_contact_removal",
+                            f'Removed stale contact: {contact_name} (last seen {contact["days_stale"]} days ago)',
                         )
                     else:
                         error_code = result.payload.get('error_code', 'unknown') if hasattr(result, 'payload') else 'unknown'
@@ -3026,9 +3064,9 @@ class RepeaterManager:
 
             # Log the addition if successful
             if contact_addition_successful:
-                self.db_manager.execute_update(
-                    'INSERT INTO purging_log (action, details) VALUES (?, ?)',
-                    ('contact_addition', f'Added discovered contact: {contact_name} - {reason}')
+                self.log_purging_action(
+                    "contact_addition",
+                    f"Added discovered contact: {contact_name} - {reason}",
                 )
                 self.logger.info(f"Successfully added contact '{contact_name}': {reason}")
                 return True
@@ -3056,9 +3094,9 @@ class RepeaterManager:
             self.logger.debug(f"Manual contact addition toggle result: {result}")
 
             # Log the action
-            self.db_manager.execute_update(
-                'INSERT INTO purging_log (action, details) VALUES (?, ?)',
-                ('manual_add_toggle', f'{"Enabled" if enabled else "Disabled"} manual contact addition - {reason}')
+            self.log_purging_action(
+                "manual_add_toggle",
+                f'{"Enabled" if enabled else "Disabled"} manual contact addition - {reason}',
             )
 
             return True
@@ -3086,9 +3124,9 @@ class RepeaterManager:
             self.logger.debug(f"Discovery result: {result}")
 
             # Log the action
-            self.db_manager.execute_update(
-                'INSERT INTO purging_log (action, details) VALUES (?, ?)',
-                ('companion_discovery', f'Manual companion contact discovery - {reason}')
+            self.log_purging_action(
+                "companion_discovery",
+                f"Manual companion contact discovery - {reason}",
             )
 
             return True

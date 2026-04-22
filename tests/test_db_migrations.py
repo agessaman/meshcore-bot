@@ -286,3 +286,40 @@ class TestSchema:
                 (idx,),
             )
             assert cur.fetchone() is not None
+
+    def test_purging_log_has_details_column_after_full_migration(self, runner, conn):
+        runner.run()
+        cursor = conn.cursor()
+        assert _column_exists(cursor, "purging_log", "details") is True
+
+    def test_migration_adds_purging_log_details_for_legacy_schema(self, conn, logger):
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS schema_version (
+                version INTEGER NOT NULL,
+                description TEXT,
+                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        for version, description, _ in MIGRATIONS:
+            if version <= 11:
+                conn.execute(
+                    "INSERT INTO schema_version (version, description) VALUES (?, ?)",
+                    (version, description),
+                )
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS purging_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                action TEXT NOT NULL,
+                public_key TEXT NOT NULL,
+                name TEXT NOT NULL,
+                reason TEXT
+            )
+        """)
+        conn.commit()
+
+        runner = MigrationRunner(conn, logger)
+        runner.run()
+
+        cursor = conn.cursor()
+        assert _column_exists(cursor, "purging_log", "details") is True

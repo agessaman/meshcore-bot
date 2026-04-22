@@ -3346,12 +3346,9 @@ class MessageHandler:
 
                     await self.bot.repeater_manager.check_and_auto_purge()
 
-                    self.bot.repeater_manager.db_manager.execute_update(
-                        'INSERT INTO purging_log (action, details) VALUES (?, ?)',
-                        (
-                            'new_contact_discovered',
-                            f'New contact discovered: {contact_name} (key: {public_key[:16]}...)',
-                        ),
+                    self.bot.repeater_manager.log_purging_action(
+                        "new_contact_discovered",
+                        f"New contact discovered: {contact_name} (key: {public_key[:16]}...)",
                     )
                     return
 
@@ -3408,9 +3405,9 @@ class MessageHandler:
 
             # Log the new contact discovery
             if hasattr(self.bot, 'repeater_manager'):
-                self.bot.repeater_manager.db_manager.execute_update(
-                    'INSERT INTO purging_log (action, details) VALUES (?, ?)',
-                    ('new_contact_discovered', f'New contact discovered: {contact_name} (key: {public_key[:16]}...)')
+                self.bot.repeater_manager.log_purging_action(
+                    "new_contact_discovered",
+                    f"New contact discovered: {contact_name} (key: {public_key[:16]}...)",
                 )
 
         except Exception as e:
