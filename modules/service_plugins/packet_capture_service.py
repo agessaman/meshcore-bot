@@ -12,7 +12,7 @@ import logging
 import os
 import time
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 # Import meshcore
 from meshcore import EventType
@@ -152,6 +152,12 @@ class PacketCaptureService(BaseServicePlugin):
         # Event subscriptions (track for cleanup)
         self.event_subscriptions = []
 
+        # RF / RAW deduplication (aligns with meshcore-packet-capture: avoid double publish
+        # on packet topic when both RX_LOG_DATA and RAW_DATA fire for the same reception).
+        # Timeouts/window come from _load_config (raw_duplicate_window, rf_data_cache_timeout).
+        self.rf_data_cache: dict[str, dict[str, Any]] = {}
+        self.recent_rf_packets: dict[str, float] = {}
+
         self.logger.info("Packet capture service initialized")
 
     def _load_config(self) -> None:
@@ -196,9 +202,33 @@ class PacketCaptureService(BaseServicePlugin):
         # 'device' = try on-device signing first, fallback to Python
         # 'python' = use Python signing only
 
+        # RX_LOG vs RAW correlation (mirror meshcore-packet-capture RAW_DUPLICATE_WINDOW / RF_DATA_TIMEOUT)
+        self.raw_duplicate_window = config.getfloat(
+            'PacketCapture', 'raw_duplicate_window', fallback=2.0
+        )
+        self.rf_data_cache_timeout = config.getfloat(
+            'PacketCapture', 'rf_data_cache_timeout', fallback=15.0
+        )
+
         # Note: Python signing can fetch private key from device if not provided via file
         # The create_auth_token_async function will automatically try to export the key
         # from the device if private_key_hex is None and meshcore_instance is available
+
+    def _prune_correlation_caches(self, current_time: Optional[float] = None) -> None:
+        """Drop stale rf_data_cache and recent_rf_packets entries.
+
+        Matches meshcore-packet-capture cleanup in handle_rf_log_data / handle_raw_data.
+        """
+        if current_time is None:
+            current_time = time.time()
+        self.rf_data_cache = {
+            k: v for k, v in self.rf_data_cache.items()
+            if current_time - v['timestamp'] < self.rf_data_cache_timeout
+        }
+        self.recent_rf_packets = {
+            k: v for k, v in self.recent_rf_packets.items()
+            if current_time - v < self.raw_duplicate_window
+        }
 
     def _parse_mqtt_brokers(self, config) -> list[dict[str, Any]]:
         """Parse MQTT broker configuration (mqttN_* format).
@@ -481,6 +511,19 @@ class PacketCaptureService(BaseServicePlugin):
                     if self.debug:
                         self.logger.debug(f"Received RX_LOG_DATA: {raw_hex[:50]}...")
 
+                    # Correlate with RAW_DATA: cache SNR/RSSI for prefix; record hex for dedupe
+                    # (meshcore-packet-capture: recent_rf_packets + rf_data_cache)
+                    current_time = time.time()
+                    packet_prefix = raw_hex[:32] if len(raw_hex) >= 32 else raw_hex
+                    self.rf_data_cache[packet_prefix] = {
+                        'snr': payload.get('snr'),
+                        'rssi': payload.get('rssi'),
+                        'timestamp': current_time,
+                        'payload_length': payload.get('payload_length'),
+                    }
+                    self.recent_rf_packets[raw_hex.upper()] = current_time
+                    self._prune_correlation_caches(current_time)
+
                     # Process packet
                     await self.process_packet(raw_hex, payload, metadata)
                 else:
@@ -492,6 +535,9 @@ class PacketCaptureService(BaseServicePlugin):
     async def handle_raw_data(self, event: Any, metadata: dict[str, Any] | None = None) -> None:
         """Handle raw data events.
 
+        Aligns with meshcore-packet-capture: resolve data like reference, dedupe against
+        RX_LOG_DATA when the same hex was just processed, merge cached RF metadata by prefix.
+
         Args:
             event: The raw data event.
             metadata: Optional metadata dictionary.
@@ -502,23 +548,61 @@ class PacketCaptureService(BaseServicePlugin):
             if payload is None:
                 self.logger.warning("Raw data event has no payload")
                 return
-            raw_data = payload.get('data', '')
 
-            if not raw_data:
+            raw_hex_src = None
+            if hasattr(payload, 'data'):
+                raw_hex_src = payload.data
+            elif isinstance(payload, dict):
+                if 'data' in payload:
+                    raw_hex_src = payload['data']
+                elif 'raw_hex' in payload:
+                    raw_hex_src = payload['raw_hex']
+
+            if raw_hex_src is None:
                 return
 
-            # Convert to hex string if needed
-            if isinstance(raw_data, bytes):
-                raw_hex = raw_data.hex()
-            elif isinstance(raw_data, str):
-                raw_hex = raw_data
+            if isinstance(raw_hex_src, bytes):
+                raw_hex = raw_hex_src.hex()
+            elif isinstance(raw_hex_src, str):
+                raw_hex = raw_hex_src
                 if raw_hex.startswith('0x'):
                     raw_hex = raw_hex[2:]
             else:
                 return
 
-            # Process packet
-            await self.process_packet(raw_hex, payload, metadata)
+            raw_hex = raw_hex.upper()
+            current_time = time.time()
+
+            recent_rf_time = self.recent_rf_packets.get(raw_hex)
+            if recent_rf_time is not None and (current_time - recent_rf_time) < self.raw_duplicate_window:
+                if self.debug:
+                    self.logger.debug(
+                        "Skipping RAW_DATA packet already processed from RX_LOG_DATA (duplicate raw hex)"
+                    )
+                return
+
+            self.recent_rf_packets = {
+                k: v for k, v in self.recent_rf_packets.items()
+                if current_time - v < self.raw_duplicate_window
+            }
+
+            packet_prefix = raw_hex[:32] if len(raw_hex) >= 32 else raw_hex
+            rf_cached = self.rf_data_cache.get(packet_prefix)
+
+            merged_payload: dict[str, Any]
+            if isinstance(payload, dict):
+                merged_payload = dict(payload)
+            else:
+                merged_payload = {}
+
+            if rf_cached:
+                merged_payload.setdefault('snr', rf_cached.get('snr'))
+                merged_payload.setdefault('rssi', rf_cached.get('rssi'))
+                pl = merged_payload.get('payload_length')
+                if pl is None:
+                    merged_payload['payload_length'] = rf_cached.get('payload_length')
+
+            await self.process_packet(raw_hex, merged_payload, metadata)
 
         except Exception as e:
             self.logger.error(f"Error handling raw data: {e}")
@@ -574,16 +658,21 @@ class PacketCaptureService(BaseServicePlugin):
         }
         packet_type = payload_type_map.get(packet_info.get('payload_type', 'UNKNOWN'), "0")
 
-        # Calculate payload length (matches original script logic)
+        # MQTT payload_len: byte length of application payload after header/transport/path.
+        # Subtract path *bytes*, not hop count (multi-byte path IDs); prefer decoded size.
         firmware_payload_len = payload.get('payload_length')
-        if firmware_payload_len is not None:
+        decoded_ok = packet_info.get('payload_type', 'UNKNOWN') != 'UNKNOWN'
+        if decoded_ok and 'payload_bytes' in packet_info:
+            payload_len = str(packet_info['payload_bytes'])
+        elif firmware_payload_len is not None:
             payload_len = str(firmware_payload_len)
         else:
-            # Calculate from packet structure
-            path_len = packet_info.get('path_len', 0)
+            path_bytes = packet_info.get('path_byte_length')
+            if path_bytes is None:
+                path_bytes = packet_info.get('path_len', 0)
             has_transport = packet_info.get('has_transport_codes', False)
             transport_bytes = 4 if has_transport else 0
-            payload_len = str(max(0, packet_len - 1 - transport_bytes - 1 - path_len))
+            payload_len = str(max(0, packet_len - 1 - transport_bytes - 1 - path_bytes))
 
         # Get device name and public key
         device_name = self._get_bot_name()
@@ -777,6 +866,7 @@ class PacketCaptureService(BaseServicePlugin):
                     'payload_type_value': payload_type_value or 0,
                     'payload_version': 0,
                     'path_len': 0,
+                    'path_byte_length': 0,
                     'path_hex': '',
                     'path': [],
                     'payload_hex': raw_hex.replace('0x', ''),
