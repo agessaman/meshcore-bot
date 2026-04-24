@@ -1598,6 +1598,9 @@ enabled = false
 # Download warning messages from MoWaS in HAMNET instead of internet.
 # hamnet = false
 
+# Retry messages that are not acked by at least a single repeater after retry_timeout (in seconds)
+# retry_max = 2
+# retry_timeout = 15
 
 # -----------------------------------------------------------------------------
 # Check-in service (local plugin: local/service_plugins/checkin_service.py)

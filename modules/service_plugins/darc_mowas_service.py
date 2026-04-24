@@ -52,6 +52,12 @@ class DARC_MoWaS_Service(BaseServicePlugin):
         self.use_hamnet = self.bot.config.getboolean(
             self.config_section, "hamnet", fallback=False
         )
+        self.retry_max = self.bot.config.getint(
+            self.config_section, "retry_max", fallback=2
+        )
+        self.retry_timeout = self.bot.config.getint(
+            self.config_section, "retry_timeout", fallback=15
+        )
 
         self.translators = {
             "de": i18n.Translator("de"),
@@ -153,13 +159,90 @@ class DARC_MoWaS_Service(BaseServicePlugin):
             lang = info.language.lower()[:2] or "de"
             channel = self.channels.get(lang)
             message = self.make_cb_message(alert, info)
-            task = asyncio.create_task(
-                self.bot.command_manager.send_channel_messages_chunked(
-                    channel, self.chunk_message(message), scope=self.scope
-                )
-            )
+            chunks = self.chunk_message(message)
+            task = asyncio.create_task(self._send_chunks(channel, chunks))
             self._tasks.add(task)
             task.add_done_callback(self._tasks.discard)
+
+    async def _send_chunks(self, channel: str, chunks: list[str]) -> None:
+        """
+        Send all chunks, each with async retry if configured.
+        Note, that we cannot guarantee that the messages arrive in-order,
+        but as the chunks have a (x/n) identifier at the end, the user still
+        should be able to grasp the message correctly.
+
+        Ideally this chunking should be implemented at protocol level to
+        guarantee the atomicity and order of the full message.
+        """
+        for i, chunk in enumerate(chunks):
+            asyncio.create_task(
+                self._send_chunk_with_retry(
+                    channel,
+                    chunk,
+                    i,
+                    len(chunks),
+                )
+            )
+
+    async def _send_chunk_with_retry(
+        self,
+        channel: str,
+        chunk: str,
+        index: int,
+        total: int,
+    ) -> None:
+        """Send a chunk and retry until acked or retries exhausted."""
+        tracker = getattr(self.bot, "transmission_tracker", None)
+        cmd_ids: list[str] = []
+        retries_left = self.retry_max
+
+        while True:
+            cmd_id = f"mowas_{hash((channel, index, retries_left, chunk)):x}"
+            if not await self.bot.command_manager.send_channel_message(
+                channel,
+                chunk,
+                command_id=cmd_id,
+                skip_user_rate_limit=True,
+            ):
+                self.logger.warning("Send failed for '%s'", channel)
+                return
+            cmd_ids.append(cmd_id)
+
+            if retries_left <= 0 or tracker is None:
+                return
+
+            # As the TransmissionTracker does not provide a callback interface,
+            # we just wait up to the max duration and check then. To avoid failures
+            # due to synchronous patterns, we add some jitter.
+            await asyncio.sleep(
+                random.uniform(self.retry_timeout, 2 * self.retry_timeout)
+            )
+            if self._any_acked(tracker, cmd_ids):
+                self.logger.info(
+                    "Chunk %d/%d on '%s' acked, skip resend",
+                    index + 1,
+                    total,
+                    channel,
+                )
+                return
+            self.logger.warning(
+                "No repeater ack for '%s' chunk %d/%d "
+                "after %.0fs, resending (%d left)",
+                channel,
+                index + 1,
+                total,
+                self.retry_timeout,
+                retries_left,
+            )
+            retries_left -= 1
+
+    @staticmethod
+    def _any_acked(tracker: Any, cmd_ids: list[str]) -> bool:
+        """Return True if any of the command IDs was repeated."""
+        return any(
+            tracker.get_repeat_info(command_id=cid).get("repeat_count", 0) > 0
+            for cid in cmd_ids
+        )
 
     def make_cb_message(self, alert: "TRDECapAlert", info: "TRDECapAlertInfo") -> str:
         """
