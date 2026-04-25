@@ -919,6 +919,106 @@ class BaseCommand(ABC):
         """Check if this command can execute right now (permissions, cooldown, etc.)"""
         return self.can_execute(message)
 
+    def _get_required_path_bytes_setting(self, section: str) -> int:
+        """Return normalized path-byte requirement for a command section.
+
+        Supported values:
+        - 0/1: allow all
+        - 2: require >= 2 bytes
+        - 3: require exactly 3 bytes
+        """
+        required = self.get_config_value(
+            section,
+            'require_path_bytes_greater_or_equal_to',
+            fallback=0,
+            value_type='int',
+        )
+        if required in (0, 1, 2, 3):
+            return required
+        self.logger.warning(
+            f"Invalid {section}.require_path_bytes_greater_or_equal_to={required}; defaulting to 0"
+        )
+        return 0
+
+    def _path_bytes_match_requirement(self, path_byte_length: int, required_path_bytes: int) -> bool:
+        """Check whether path byte length satisfies configured requirement."""
+        if required_path_bytes in (0, 1):
+            return True
+        if required_path_bytes == 2:
+            return path_byte_length >= 2
+        if required_path_bytes == 3:
+            return path_byte_length == 3
+        return True
+
+    def _get_message_path_byte_length(self, message: MeshMessage) -> int:
+        """Best-effort extraction of message path byte length from routing/path data."""
+        routing_info = getattr(message, 'routing_info', None)
+        if routing_info:
+            raw_path_byte_length = routing_info.get('path_byte_length')
+            if isinstance(raw_path_byte_length, int) and raw_path_byte_length >= 0:
+                return raw_path_byte_length
+
+            bytes_per_hop = routing_info.get('bytes_per_hop')
+            path_length = routing_info.get('path_length')
+            if (
+                isinstance(bytes_per_hop, int)
+                and bytes_per_hop >= 0
+                and isinstance(path_length, int)
+                and path_length >= 0
+            ):
+                return bytes_per_hop * path_length
+
+            path_nodes = routing_info.get('path_nodes') or []
+            if path_nodes:
+                total = 0
+                for node in path_nodes:
+                    node_str = str(node).strip()
+                    if not node_str:
+                        continue
+                    total += len(node_str) // 2
+                return total
+
+        path_string = (getattr(message, 'path', None) or '').strip()
+        if not path_string:
+            return 0
+        if " via ROUTE_TYPE_" in path_string:
+            path_string = path_string.split(" via ROUTE_TYPE_")[0]
+        if "Direct" in path_string or "0 hops" in path_string:
+            return 0
+        path_string = re.sub(r'\s*\([^)]*hops?[^)]*\)', '', path_string, flags=re.IGNORECASE).strip()
+        if not path_string:
+            return 0
+        if ',' in path_string:
+            tokens = [t.strip() for t in path_string.split(',') if t.strip()]
+            if tokens:
+                return sum(len(t) // 2 for t in tokens)
+        return len(path_string) // 2
+
+    def _get_required_path_bytes_failure_response(self, section: str) -> Optional[str]:
+        """Get optional response text used when path-byte requirement fails."""
+        failure_response = self.get_config_value(
+            section,
+            'require_path_bytes_failure_response',
+            fallback='',
+            value_type='str',
+        )
+        if not failure_response:
+            return None
+        cleaned = self._strip_quotes_from_config(failure_response).strip()
+        return cleaned or None
+
+    async def enforce_path_byte_requirement(self, message: MeshMessage, section: str) -> bool:
+        """Apply path-byte requirement; optionally send configured failure response."""
+        required = self._get_required_path_bytes_setting(section)
+        path_byte_length = self._get_message_path_byte_length(message)
+        if self._path_bytes_match_requirement(path_byte_length, required):
+            return True
+
+        failure_response = self._get_required_path_bytes_failure_response(section)
+        if failure_response:
+            await self.send_response(message, failure_response)
+        return False
+
     def get_path_display_string(self, message: MeshMessage) -> str:
         """Get path string for display (test/ack placeholders). Prefers message.routing_info for multi-byte and direct."""
         routing_info = getattr(message, 'routing_info', None)

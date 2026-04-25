@@ -197,6 +197,9 @@ class PathCommand(BaseCommand):
         """Execute path decode command"""
         self.logger.info(f"Path command executed with content: {message.content}")
 
+        if not await self.enforce_path_byte_requirement(message, 'Path_Command'):
+            return True
+
         # Store the current message for use in _extract_path_from_recent_messages
         self._current_message = message
 

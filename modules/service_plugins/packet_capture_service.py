@@ -704,88 +704,15 @@ class PacketCaptureService(BaseServicePlugin):
         snr = str(payload.get('snr', 'Unknown'))
         rssi = str(payload.get('rssi', 'Unknown'))
 
-        # Get packet hash - check multiple sources in order of preference, then calculate if needed
-        # This matches the original script's approach: use hash from routing_info if available, otherwise calculate
-        packet_hash = '0000000000000000'
+        # Get packet hash from decoded packet_info — same clean bytes as the upload's "raw" field,
+        # so this is always the correct hash (matches what other observers compute).
+        packet_hash = packet_info.get('packet_hash', '0000000000000000')
 
-        # 1. Check if payload has packet_hash directly (from bot's processing)
-        if isinstance(payload, dict):
-            if 'packet_hash' in payload:
-                packet_hash = payload['packet_hash']
-            # 2. Check if payload has routing_info with packet_hash
-            elif 'routing_info' in payload:
-                routing_info = payload.get('routing_info', {})
-                if isinstance(routing_info, dict) and 'packet_hash' in routing_info:
-                    packet_hash = routing_info['packet_hash']
-
-        # 3. Check metadata if available
-        if packet_hash == '0000000000000000' and metadata and isinstance(metadata, dict):
-            if 'packet_hash' in metadata:
-                packet_hash = metadata['packet_hash']
-            elif 'routing_info' in metadata:
-                routing_info = metadata.get('routing_info', {})
-                if isinstance(routing_info, dict) and 'packet_hash' in routing_info:
-                    packet_hash = routing_info['packet_hash']
-
-        # 4. Try to get from bot's recent_rf_data cache (if message_handler has processed it)
-        # Note: The bot stores full raw_hex (with framing bytes) for packet_prefix, but we use stripped raw_hex
-        # So we need to use the full raw_hex from payload for prefix matching
-        # Optimized: Use indexed rf_data_by_pubkey for O(1) lookup instead of linear search
-        if packet_hash == '0000000000000000' and hasattr(self.bot, 'message_handler'):
-            try:
-                message_handler = self.bot.message_handler
-
-                # Get full raw_hex from payload for prefix matching (bot uses full raw_hex for packet_prefix)
-                full_raw_hex = payload.get('raw_hex', '')
-                if full_raw_hex:
-                    packet_prefix = full_raw_hex.replace('0x', '')[:32] if len(full_raw_hex.replace('0x', '')) >= 32 else full_raw_hex.replace('0x', '')
-                else:
-                    # Fallback: use stripped raw_hex (might not match, but worth trying)
-                    clean_raw_hex_for_lookup = raw_hex.replace('0x', '')
-                    packet_prefix = clean_raw_hex_for_lookup[:32] if len(clean_raw_hex_for_lookup) >= 32 else clean_raw_hex_for_lookup
-
-                # Use indexed lookup (O(1)) instead of linear search (O(n))
-                if hasattr(message_handler, 'rf_data_by_pubkey') and packet_prefix:
-                    rf_data_list = message_handler.rf_data_by_pubkey.get(packet_prefix, [])
-                    # Check most recent entries first (last in list, since they're appended in order)
-                    for rf_data in reversed(rf_data_list):
-                        if 'packet_hash' in rf_data:
-                            packet_hash = rf_data['packet_hash']
-                            break
-                        elif 'routing_info' in rf_data:
-                            routing_info = rf_data.get('routing_info', {})
-                            if isinstance(routing_info, dict) and 'packet_hash' in routing_info:
-                                packet_hash = routing_info['packet_hash']
-                                break
-
-                # Fallback to linear search only if indexed lookup not available (backward compatibility)
-                if packet_hash == '0000000000000000' and hasattr(message_handler, 'recent_rf_data'):
-                    for rf_data in message_handler.recent_rf_data:
-                        # Match by packet_prefix (bot uses full raw_hex for this)
-                        if rf_data.get('packet_prefix') == packet_prefix:
-                            if 'packet_hash' in rf_data:
-                                packet_hash = rf_data['packet_hash']
-                                break
-                            elif 'routing_info' in rf_data:
-                                routing_info = rf_data.get('routing_info', {})
-                                if isinstance(routing_info, dict) and 'packet_hash' in routing_info:
-                                    packet_hash = routing_info['packet_hash']
-                                    break
-            except Exception as e:
-                if self.debug:
-                    self.logger.debug(f"Error checking recent_rf_data for hash: {e}")
-
-        # 5. Fall back to hash from decoded packet_info (should be calculated correctly)
-        if packet_hash == '0000000000000000':
-            packet_hash = packet_info.get('packet_hash', '0000000000000000')
-
-        # 6. If still no hash, calculate it from raw_hex (matches original script's format_packet_data)
+        # Only fall back to direct calculation if decode_packet didn't produce a hash
         if packet_hash == '0000000000000000':
             try:
-                # Use payload_type_value from packet_info if available, otherwise None (will be extracted from header)
                 payload_type_value = packet_info.get('payload_type_value')
                 if payload_type_value is not None:
-                    # Ensure it's an integer (handle enum.value if passed)
                     if hasattr(payload_type_value, 'value'):
                         payload_type_value = payload_type_value.value
                     payload_type_value = int(payload_type_value) & 0x0F

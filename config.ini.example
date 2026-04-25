@@ -851,6 +851,15 @@ mesh_connections_retention_days = 7
 # Enable or disable the path command
 enabled = true
 
+# Require minimum path byte length before responding to this command
+# 0 = allow all (default)
+# 1 = allow all (compatibility alias for 0)
+# 2 = only respond when path has 2 bytes or more (e.g. 0101...)
+# 3 = only respond when path is exactly 3 bytes (e.g. 010101)
+require_path_bytes_greater_or_equal_to = 0
+# Optional response when rejected by path-byte requirement; leave empty for silent reject
+require_path_bytes_failure_response =
+
 # Enable "p" shortcut for path command (similar to "t" for test command)
 # true: Respond to just "p" or "p <path_data>" as a shortcut for "path"  (default)
 # false: Only respond to "path", "decode", or "route" keywords
@@ -1095,6 +1104,14 @@ enabled = false
 response_format = @[{sender}] found {path_count} unique path(s):\n{paths}
 # condense_paths: false = one full path per line; true = flat condensed tree (default); nested = indented ├/└ under ┐ sub-blocks (uses ASCII spaces, not U+2502, to save bytes vs old │).
 condense_paths = true
+# Require minimum path byte length for triggering and collected packets
+# 0 = allow all (default)
+# 1 = allow all (compatibility alias for 0)
+# 2 = only include paths with 2 bytes or more (e.g. 0101...)
+# 3 = only include paths with exactly 3 bytes (e.g. 010101)
+require_path_bytes_greater_or_equal_to = 0
+# Optional response when rejected by path-byte requirement; leave empty for silent reject
+require_path_bytes_failure_response =
 
 [Greeter_Command]
 # Enable greeter to greet users on first channel message (true/false)
@@ -1324,6 +1341,14 @@ enabled = true
 
 [Test_Command]
 enabled = true
+# Require minimum path byte length before responding to test/t
+# 0 = allow all (default)
+# 1 = allow all (compatibility alias for 0)
+# 2 = only respond when path has 2 bytes or more (e.g. 0101...)
+# 3 = only respond when path is exactly 3 bytes (e.g. 010101)
+require_path_bytes_greater_or_equal_to = 0
+# Optional response when rejected by path-byte requirement; leave empty for silent reject
+require_path_bytes_failure_response =
 # channels =
 
 [Trace_Command]

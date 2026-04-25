@@ -529,9 +529,8 @@ def calculate_packet_hash(raw_hex: str, payload_type: Optional[int] = None) -> s
 
         if payload_type == 9:  # PAYLOAD_TYPE_TRACE
             # C++ does: sha.update(&path_len, sizeof(path_len))
-            # path_len is uint16_t, so sizeof(path_len) = 2 bytes
-            # Convert path_len to 2-byte little-endian uint16_t
-            hash_obj.update(path_byte_length.to_bytes(2, byteorder='little'))
+            # path_len is the raw wire byte (uint16_t in firmware), not the decoded byte count
+            hash_obj.update(path_len_byte.to_bytes(2, byteorder='little'))
 
         hash_obj.update(payload_data)
 
