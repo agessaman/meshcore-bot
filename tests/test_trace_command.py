@@ -1,9 +1,12 @@
 """Tests for modules.commands.trace_command — pure logic functions."""
 
 import configparser
-from unittest.mock import MagicMock, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
+import pytest
 
 from modules.commands.trace_command import TraceCommand
+from modules.trace_runner import RunTraceResult
 from tests.conftest import mock_message
 
 
@@ -367,7 +370,6 @@ class TestTraceExecute:
 
     def test_execute_no_meshcore_commands(self):
         import asyncio
-        from unittest.mock import AsyncMock
         bot = _make_bot()
         bot.connected = True
         bot.meshcore = MagicMock()
@@ -377,3 +379,105 @@ class TestTraceExecute:
         msg = mock_message(content="trace 01,7a")
         result = asyncio.run(cmd.execute(msg))
         assert result is True
+
+
+class TestMultibyteParsePathArg:
+    """Multibyte path parsing: 2-byte (4-char) and 3-byte (6-char) nodes."""
+
+    def setup_method(self):
+        self.cmd = TraceCommand(_make_bot())
+
+    def test_two_byte_comma_separated(self):
+        result = self.cmd._parse_path_arg("trace feed,6ddf,feed")
+        assert result == ["feed", "6ddf", "feed"]
+
+    def test_two_byte_single_pair(self):
+        result = self.cmd._parse_path_arg("trace feed,6ddf")
+        assert result == ["feed", "6ddf"]
+
+    def test_two_byte_tracer_prefix(self):
+        result = self.cmd._parse_path_arg("tracer feed,6ddf")
+        assert result == ["feed", "6ddf"]
+
+    def test_mixed_length_returns_none(self):
+        result = self.cmd._parse_path_arg("trace feed,01")
+        assert result is None
+
+    def test_three_byte_comma_separated(self):
+        result = self.cmd._parse_path_arg("trace feedca,6ddf01")
+        assert result == ["feedca", "6ddf01"]
+
+    def test_contiguous_hex_still_splits_by_two(self):
+        result = self.cmd._parse_path_arg("trace feed6ddf")
+        assert result == ["fe", "ed", "6d", "df"]
+
+    def test_two_byte_bang_prefix(self):
+        result = self.cmd._parse_path_arg("!trace feed,6ddf")
+        assert result == ["feed", "6ddf"]
+
+
+class TestMultibyteExtractPathFromMessage:
+    """_extract_path_from_message handles 1-byte, 2-byte, and 3-byte path hashes."""
+
+    def setup_method(self):
+        self.cmd = TraceCommand(_make_bot())
+
+    def test_two_byte_multi_hop(self):
+        msg = mock_message(content="trace", path="feed,6ddf,feed (3 hops via FLOOD)")
+        assert self.cmd._extract_path_from_message(msg) == ["feed", "6ddf", "feed"]
+
+    def test_two_byte_single_node(self):
+        msg = mock_message(content="trace", path="feed (1 hop)")
+        assert self.cmd._extract_path_from_message(msg) == ["feed"]
+
+    def test_three_byte_multi_hop(self):
+        msg = mock_message(content="trace", path="feedca,6ddf01 (2 hops via FLOOD)")
+        assert self.cmd._extract_path_from_message(msg) == ["feedca", "6ddf01"]
+
+    def test_three_byte_single_node(self):
+        msg = mock_message(content="trace", path="feedca (1 hop)")
+        assert self.cmd._extract_path_from_message(msg) == ["feedca"]
+
+    def test_mixed_length_parts_skipped(self):
+        msg = mock_message(content="trace", path="feed,01,ab")
+        result = self.cmd._extract_path_from_message(msg)
+        assert len(set(len(p) for p in result)) <= 1
+
+
+class TestMultibyteReciprocalPath:
+    """_build_reciprocal_path works with multibyte nodes."""
+
+    def setup_method(self):
+        self.cmd = TraceCommand(_make_bot())
+
+    def test_two_byte_three_node_reciprocal(self):
+        result = self.cmd._build_reciprocal_path(["feed", "6ddf", "feed"])
+        assert result == ["feed", "6ddf", "feed", "6ddf", "feed"]
+
+
+class TestFlagsAutoDetection:
+    """execute() passes flags derived from path element length, not from trace_mode config."""
+
+    def setup_method(self):
+        self.bot = _make_bot()
+        self.bot.connected = True
+        self.bot.meshcore = MagicMock()
+        self.bot.meshcore.commands = MagicMock()
+        self.cmd = TraceCommand(self.bot)
+        self.cmd.send_response = AsyncMock(return_value=True)
+
+    @pytest.mark.asyncio
+    async def test_one_byte_path_uses_flags_zero(self):
+        with patch("modules.commands.trace_command.run_trace") as mock_run:
+            mock_run.return_value = RunTraceResult(success=False, tag=0, error_message="x")
+            await self.cmd.execute(mock_message(content="trace 01,7a,55"))
+        mock_run.assert_called_once()
+        assert mock_run.call_args.kwargs["flags"] == 0
+
+    @pytest.mark.asyncio
+    async def test_two_byte_path_uses_flags_one(self):
+        with patch("modules.commands.trace_command.run_trace") as mock_run:
+            mock_run.return_value = RunTraceResult(success=False, tag=0, error_message="x")
+            await self.cmd.execute(mock_message(content="trace feed,6ddf,feed"))
+        mock_run.assert_called_once()
+        assert mock_run.call_args.kwargs["flags"] == 1
