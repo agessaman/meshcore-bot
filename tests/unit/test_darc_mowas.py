@@ -4,14 +4,14 @@ Unit tests for DARC MoWaS CAP alert parsing
 """
 
 import xml.dom.minidom
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from modules.service_plugins.darc_mowas_service import (
     TRDECapAlert,
-    TRDECapAlertInfo,
     TRDECapAlertArea,
+    TRDECapAlertInfo,
 )
 
 DARC_MOWAS_EXAMPLE_CAP = """<?xml version="1.0" encoding="UTF-8"?>

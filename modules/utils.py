@@ -32,7 +32,7 @@ def is_valid_timezone(tz_str: str) -> bool:
         except ZoneInfoNotFoundError:
             return False
     try:
-        import pytz
+        pytz = __import__("pytz")
         pytz.timezone(tz_str.strip())
         return True
     except Exception:
@@ -48,7 +48,7 @@ def get_config_timezone(config: Any, logger: Optional[Any] = None) -> tuple[Any,
     """
     timezone_str = (config.get('Bot', 'timezone', fallback='') or '').strip()
     if timezone_str and is_valid_timezone(timezone_str):
-        import pytz
+        pytz = __import__("pytz")
         return (pytz.timezone(timezone_str), timezone_str)
     if timezone_str and logger:
         logger.warning("Invalid timezone '%s', using system timezone", timezone_str)

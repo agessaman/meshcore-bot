@@ -441,7 +441,7 @@ class TestMultibyteExtractPathFromMessage:
     def test_mixed_length_parts_skipped(self):
         msg = mock_message(content="trace", path="feed,01,ab")
         result = self.cmd._extract_path_from_message(msg)
-        assert len(set(len(p) for p in result)) <= 1
+        assert len({len(p) for p in result}) <= 1
 
 
 class TestMultibyteReciprocalPath:
