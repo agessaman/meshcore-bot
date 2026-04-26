@@ -608,6 +608,66 @@ class TestApiFeedCrud:
                 data = json.loads(response.data)
                 assert data.get('success') is True
 
+    def test_update_feed_channel_name_persists(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            create_response = client.post(
+                '/api/feeds',
+                data=json.dumps({
+                    'feed_type': 'rss',
+                    'feed_url': 'https://example.com/feed.xml',
+                    'channel_name': 'general',
+                    'feed_name': 'Test Feed',
+                    'check_interval_seconds': 300,
+                }),
+                content_type='application/json'
+            )
+            assert create_response.status_code == 200
+            create_data = json.loads(create_response.data)
+            feed_id = create_data.get('id')
+            assert feed_id is not None
+
+            update_response = client.put(
+                f'/api/feeds/{feed_id}',
+                data=json.dumps({
+                    'channel_name': 'alerts'
+                }),
+                content_type='application/json'
+            )
+            assert update_response.status_code == 200
+            update_data = json.loads(update_response.data)
+            assert update_data.get('success') is True
+
+            get_response = client.get(f'/api/feeds/{feed_id}')
+            assert get_response.status_code == 200
+            updated_feed = json.loads(get_response.data)
+            assert updated_feed.get('channel_name') == 'alerts'
+
+    def test_update_feed_channel_name_empty_rejected(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            create_response = client.post(
+                '/api/feeds',
+                data=json.dumps({
+                    'feed_type': 'rss',
+                    'feed_url': 'https://example.com/feed.xml',
+                    'channel_name': 'general',
+                    'feed_name': 'Test Feed',
+                    'check_interval_seconds': 300,
+                }),
+                content_type='application/json'
+            )
+            assert create_response.status_code == 200
+            feed_id = json.loads(create_response.data).get('id')
+            assert feed_id is not None
+
+            update_response = client.put(
+                f'/api/feeds/{feed_id}',
+                data=json.dumps({'channel_name': '   '}),
+                content_type='application/json'
+            )
+            assert update_response.status_code == 500
+            error_data = json.loads(update_response.data)
+            assert error_data.get('error') == 'An internal error occurred'
+
     def test_delete_feed_success(self, viewer_with_db):
         # First create a feed
         with viewer_with_db.app.test_client() as client:

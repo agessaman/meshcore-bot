@@ -5919,6 +5919,13 @@ class BotDataViewer:
             updates = []
             params = []
 
+            if 'channel_name' in data:
+                channel_name = str(data['channel_name']).strip() if data['channel_name'] is not None else ''
+                if not channel_name:
+                    raise ValueError("channel_name cannot be empty")
+                updates.append('channel_name = ?')
+                params.append(channel_name)
+
             if 'feed_name' in data:
                 updates.append('feed_name = ?')
                 params.append(data['feed_name'])
