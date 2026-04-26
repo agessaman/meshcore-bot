@@ -212,6 +212,9 @@ class PathCommand(BaseCommand):
             path_input = " ".join(parts[1:])
             response = await self._decode_path(path_input)
         
+        if not message.is_dm:
+          response = self.translate('commands.path.initial_source', node_id=message.sender_id) + "\n" + response
+        
         # Send the response (may be split into multiple messages if long)
         await self._send_path_response(message, response)
         return True
