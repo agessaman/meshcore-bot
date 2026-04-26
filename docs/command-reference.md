@@ -97,6 +97,32 @@ cmd
 
 ---
 
+### `version`
+
+Show the bot's current software version.
+
+**Usage:**
+```
+version
+```
+
+**Response:** Version string for the running MeshCore bot build.
+
+---
+
+### `status`
+
+Show current bot and radio status details.
+
+**Usage:**
+```
+status
+```
+
+**Response:** Runtime status summary (connection/health information).
+
+---
+
 ## Information Commands
 
 ### `channels`
@@ -302,6 +328,20 @@ sun
 
 ---
 
+### `aurora`
+
+Get aurora visibility/forecast conditions for configured or provided coordinates.
+
+**Usage:**
+```
+aurora
+aurora <lat>,<lon>
+```
+
+**Response:** Aurora activity and visibility guidance for the requested location.
+
+---
+
 ### `moon`
 
 Get moon phase information and moonrise/moonset times for the bot's configured location.
@@ -498,6 +538,25 @@ roll 1000
 
 ---
 
+### `magic8`
+
+Ask the Magic 8-Ball a yes/no question.
+
+**Usage:**
+```
+magic8 <question>
+```
+
+**Examples:**
+```
+magic8 will the mesh be busy tonight?
+magic8 should I deploy another node?
+```
+
+**Response:** A randomized Magic 8-Ball style answer.
+
+---
+
 ## Entertainment Commands
 
 ### `joke`
@@ -554,6 +613,19 @@ ls -l /secret/base
 ```
 
 **Response:** Humorous error messages in the style of a supervillain's mainframe system.
+
+---
+
+### `catfact`
+
+Get a random cat fact.
+
+**Usage:**
+```
+catfact
+```
+
+**Response:** A short random cat fact.
 
 ---
 
@@ -682,8 +754,6 @@ mt
 ```
 
 **Response:** List of all unique routing paths discovered during the 6-second listening period.
-
----
 
 ## Command Syntax
 
@@ -847,6 +917,50 @@ advert
 
 ---
 
+### `reload`
+
+Reload supported runtime configuration without restarting the bot.
+
+**Usage:**
+```
+reload
+```
+
+**Response:** Confirms reload success or reports validation/loading errors.
+
+**Note:** Admin DM command. Connection/radio settings still require a process restart.
+
+---
+
+### `channelpause` / `channelresume`
+
+Temporarily pause or resume bot reactions on public channels.
+
+**Usage:**
+```
+channelpause
+channelresume
+```
+
+**Response:** Confirms whether channel handling is paused or resumed.
+
+**Note:** Admin DM command. DMs continue to work while channel responses are paused.
+
+---
+
+### `greeter`
+
+Show greeter behavior and configuration guidance.
+
+**Usage:**
+```
+greeter
+```
+
+**Response:** Describes greeter mode and points to `[Greeter_Command]` settings in config.
+
+---
+
 ### `feed`
 
 Manage RSS feed and API feed subscriptions (Admin only).
@@ -879,6 +993,36 @@ feed test https://example.com/feed.xml
 **Response:** Confirmation of the action or list of subscriptions.
 
 **Note:** Admin access required. Feeds are automatically checked and posted to the specified channel.
+
+---
+
+### `announcements`
+
+Manage announcement ACL and related announcement settings.
+
+**Usage:**
+```
+announcements <subcommand> [args]
+```
+
+**Response:** Shows current announcement ACL or confirms changes.
+
+**Note:** Admin access required.
+
+---
+
+### `schedule`
+
+View configured scheduled messages and advert interval.
+
+**Usage:**
+```
+schedule
+```
+
+**Response:** Lists upcoming scheduled posts and current advert timing.
+
+**Note:** DM-only command by default.
 
 ---
 
