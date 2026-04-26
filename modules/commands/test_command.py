@@ -710,6 +710,9 @@ class TestCommand(BaseCommand):
         Returns:
             bool: True if execution was successful.
         """
+        if not await self.enforce_path_byte_requirement(message, 'Test_Command'):
+            return True
+
         # Store the current message for use in location lookups
         self._current_message = message
         return await self.handle_keyword_match(message)

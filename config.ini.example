@@ -178,6 +178,15 @@ startup_advert = false
 # false: Manual mode - no automatic actions, use !repeater commands to manage contacts (default)
 auto_manage_contacts = bot
 
+# When auto_manage_contacts = device, the bot schedules one-shot jobs after connect:
+#   - Firmware: manual per-type contact adds + overwrite oldest non-favourite on full + auto-add chat (companions) only (bitmask 0x03)
+#   - Favourite hygiene: Admin_ACL and announcements ACL pubkeys are favourited on the radio; other favourites are cleared so eviction can recycle slots
+# Delays (seconds) before each step so the radio is not flooded at boot (defaults shown)
+#device_mode_firmware_delay_seconds = 30
+#device_mode_favourite_pass1_delay_seconds = 90
+#device_mode_favourite_pass2_delay_seconds = 180
+#contact_flag_update_spacing_ms = 200
+
 # Database path for main bot database
 # Default: meshcore_bot.db
 db_path = meshcore_bot.db
@@ -313,6 +322,7 @@ admin_commands = repeater,webviewer,reload,channelpause
 # Enable companion contact purging
 # true: Purge inactive companions when contact list is full
 # false: Never purge companions (default: false for safety)
+# When [Bot] auto_manage_contacts=device, companion auto-purge from the radio is always skipped (firmware slot policy).
 companion_purge_enabled = false
 
 # Days since last DM to consider companion inactive
@@ -841,6 +851,15 @@ mesh_connections_retention_days = 7
 # Enable or disable the path command
 enabled = true
 
+# Require minimum path byte length before responding to this command
+# 0 = allow all (default)
+# 1 = allow all (compatibility alias for 0)
+# 2 = only respond when path has 2 bytes or more (e.g. 0101...)
+# 3 = only respond when path is exactly 3 bytes (e.g. 010101)
+require_path_bytes_greater_or_equal_to = 0
+# Optional response when rejected by path-byte requirement; leave empty for silent reject
+require_path_bytes_failure_response =
+
 # Enable "p" shortcut for path command (similar to "t" for test command)
 # true: Respond to just "p" or "p <path_data>" as a shortcut for "path"  (default)
 # false: Only respond to "path", "decode", or "route" keywords
@@ -1085,6 +1104,14 @@ enabled = false
 response_format = @[{sender}] found {path_count} unique path(s):\n{paths}
 # condense_paths: false = one full path per line; true = flat condensed tree (default); nested = indented ├/└ under ┐ sub-blocks (uses ASCII spaces, not U+2502, to save bytes vs old │).
 condense_paths = true
+# Require minimum path byte length for triggering and collected packets
+# 0 = allow all (default)
+# 1 = allow all (compatibility alias for 0)
+# 2 = only include paths with 2 bytes or more (e.g. 0101...)
+# 3 = only include paths with exactly 3 bytes (e.g. 010101)
+require_path_bytes_greater_or_equal_to = 0
+# Optional response when rejected by path-byte requirement; leave empty for silent reject
+require_path_bytes_failure_response =
 
 [Greeter_Command]
 # Enable greeter to greet users on first channel message (true/false)
@@ -1314,6 +1341,14 @@ enabled = true
 
 [Test_Command]
 enabled = true
+# Require minimum path byte length before responding to test/t
+# 0 = allow all (default)
+# 1 = allow all (compatibility alias for 0)
+# 2 = only respond when path has 2 bytes or more (e.g. 0101...)
+# 3 = only respond when path is exactly 3 bytes (e.g. 010101)
+require_path_bytes_greater_or_equal_to = 0
+# Optional response when rejected by path-byte requirement; leave empty for silent reject
+require_path_bytes_failure_response =
 # channels =
 
 [Trace_Command]
@@ -1447,6 +1482,12 @@ verbose = false
 # true: Show all debugging information
 # false: Standard logging
 debug = false
+
+# Skip RAW_DATA publish when the same hex was just handled from RX_LOG_DATA (seconds).
+raw_duplicate_window = 2.0
+
+# Keep RX_LOG SNR/RSSI keyed by packet prefix this long for RAW_DATA correlation (seconds).
+rf_data_cache_timeout = 15.0
 
 # Owner information (for packet analyzer registration)
 # Owner public key (64-character hex string)
@@ -1871,6 +1912,31 @@ enabled = false
 # See docs/telegram-bridge.md for setup
 # bridge.Public = @YourChannelName
 # bridge.emergency = -1001234567890
+
+[DARC_MoWaS_Service]
+# Enable DARC MoWaS (Mobile Warning System) integration for receiving and posting warnings
+# For legal requirements and backend configuration, please read https://www.darc.de/index.php?id=58435 before operating.
+# Please also ensure to limit the scope of the messages to the revelant region (via Channels.flood_scope).
+enabled = false
+
+# Listen address and port of webserver that receives the webhook POSTs from DARC MoWaS.
+# Must be accessible from the internet (or HAMNET) for MoWaS to reach it.
+# host = localhost
+# port = 8081
+
+# Language specific channel for redistribution of warnings received from MoWaS.
+# The non german channels are only served if a warning is available in that language
+# Only "de" and "en" are currently supported as language codes.
+# The channels are automatically created if they don't exist.
+# channel_de = #mowas
+# channel_en = #mowas-en
+
+# Download warning messages from MoWaS in HAMNET instead of internet.
+# hamnet = false
+
+# Retry messages that are not acked by at least a single repeater after retry_timeout (in seconds)
+# retry_max = 2
+# retry_timeout = 15
 
 # -----------------------------------------------------------------------------
 # Check-in service (local plugin: local/service_plugins/checkin_service.py)

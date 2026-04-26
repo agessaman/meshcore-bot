@@ -12,8 +12,45 @@ from typing import Any, Optional
 
 from meshcore import EventType
 
-from .security_utils import sanitize_name
+from .security_utils import sanitize_name, validate_pubkey_format
 from .utils import rate_limited_nominatim_reverse_sync
+
+
+def collect_protected_pubkeys_for_device_mode(config: Any, logger: Any) -> set[str]:
+    """Public keys that must stay favourited on the radio (admin + announcements ACL semantics).
+
+    Matches announcements_command._load_announcements_acl: explicit announcements_acl keys plus
+    all Admin_ACL admin_pubkeys (admins always included).
+    """
+    keys: list[str] = []
+    try:
+        if config.has_section('Announcements_Command'):
+            ann = config.get('Announcements_Command', 'announcements_acl', fallback='')
+            if ann and ann.strip():
+                for key in ann.split(','):
+                    key = key.strip()
+                    if not key:
+                        continue
+                    if validate_pubkey_format(key, expected_length=64):
+                        keys.append(key.lower())
+                    else:
+                        logger.warning('Invalid pubkey in announcements_acl: %s...', key[:16])
+        if config.has_section('Admin_ACL'):
+            admin_pubkeys = config.get('Admin_ACL', 'admin_pubkeys', fallback='')
+            if admin_pubkeys and admin_pubkeys.strip():
+                for key in admin_pubkeys.split(','):
+                    key = key.strip()
+                    if not key:
+                        continue
+                    if validate_pubkey_format(key, expected_length=64):
+                        nk = key.lower()
+                        if nk not in keys:
+                            keys.append(nk)
+                    else:
+                        logger.warning('Invalid pubkey in admin_pubkeys: %s...', key[:16])
+    except Exception as e:
+        logger.debug('collect_protected_pubkeys_for_device_mode: %s', e)
+    return set(keys)
 
 
 class RepeaterManager:
@@ -35,6 +72,7 @@ class RepeaterManager:
         self.auto_purge_threshold = 280  # Start purging when 280+ contacts
         # Respect auto_manage_contacts: manual mode (false) = no auto-purge; device/bot = auto-purge on
         auto_manage = bot.config.get('Bot', 'auto_manage_contacts', fallback='false').lower()
+        self._auto_manage_contacts = auto_manage
         self.auto_purge_enabled = (auto_manage != 'false')
 
         # Initialize companion purge settings
@@ -50,6 +88,7 @@ class RepeaterManager:
         self._auto_purge_lock = asyncio.Lock()
         self._auto_purge_in_progress = False
         self._purge_inflight_keys = set()
+        self._purging_log_has_details: Optional[bool] = None
 
     def _start_purge_attempt(self, public_key: str, contact_type: str) -> bool:
         """Mark a purge as in-flight; return False when another attempt is already active."""
@@ -64,6 +103,43 @@ class RepeaterManager:
     def _finish_purge_attempt(self, public_key: str):
         """Clear in-flight marker for a purge attempt."""
         self._purge_inflight_keys.discard(public_key)
+
+    def _refresh_purging_log_details_capability(self) -> bool:
+        """Return True if purging_log.details exists."""
+        if self._purging_log_has_details is not None:
+            return self._purging_log_has_details
+        try:
+            with self.db_manager.connection() as conn:
+                rows = conn.execute("PRAGMA table_info(purging_log)").fetchall()
+            self._purging_log_has_details = any(row[1] == "details" for row in rows)
+        except Exception as e:
+            self.logger.debug(f"Unable to inspect purging_log schema: {e}")
+            self._purging_log_has_details = False
+        return self._purging_log_has_details
+
+    def log_purging_action(self, action: str, details: str) -> None:
+        """Insert purging log rows across both new and legacy schemas."""
+        try:
+            if self._refresh_purging_log_details_capability():
+                self.db_manager.execute_update(
+                    "INSERT INTO purging_log (action, details) VALUES (?, ?)",
+                    (action, details),
+                )
+                return
+            self.db_manager.execute_update(
+                "INSERT INTO purging_log (action, public_key, name, reason) VALUES (?, ?, ?, ?)",
+                (action, "", action, details),
+            )
+        except Exception as e:
+            err = str(e)
+            if "no column named details" in err:
+                self._purging_log_has_details = False
+                self.db_manager.execute_update(
+                    "INSERT INTO purging_log (action, public_key, name, reason) VALUES (?, ?, ?, ?)",
+                    (action, "", action, details),
+                )
+                return
+            self.logger.error(f"Failed to write purging log action '{action}': {e}")
 
     def _init_repeater_tables(self):
         """Ensure repeater-specific tables exist (created by migrations)."""
@@ -648,11 +724,26 @@ class RepeaterManager:
                 if not self.auto_purge_enabled:
                     return False
 
+                if not getattr(self.bot, 'meshcore', None) or not hasattr(self.bot.meshcore, 'contacts'):
+                    return False
+
+                await self._update_contact_limit_from_device()
+
                 # Get current contact count
                 current_count = len(self.bot.meshcore.contacts)
 
                 if current_count >= self.auto_purge_threshold:
-                    self.logger.info(f"🔄 Auto-purge triggered: {current_count}/{self.contact_limit} contacts (threshold: {self.auto_purge_threshold})")
+                    if self._auto_manage_contacts == 'device':
+                        self.logger.info(
+                            "Repeater-only auto-purge check: %s/%s contacts (threshold %s)",
+                            current_count,
+                            self.contact_limit,
+                            self.auto_purge_threshold,
+                        )
+                    else:
+                        self.logger.info(
+                            f"🔄 Auto-purge triggered: {current_count}/{self.contact_limit} contacts (threshold: {self.auto_purge_threshold})"
+                        )
 
                     # Calculate how many to purge
                     target_count = self.auto_purge_threshold - 20  # Leave some buffer
@@ -663,18 +754,45 @@ class RepeaterManager:
                         repeater_success = await self._auto_purge_repeaters(purge_count)
                         remaining_count = len(self.bot.meshcore.contacts)
 
-                        # If still above threshold and companion purging is enabled, purge companions
-                        if remaining_count >= self.auto_purge_threshold and self.companion_purge_enabled:
+                        companion_success = False
+                        # If still above threshold and companion purging is enabled, purge companions.
+                        # Device mode: never auto-purge companions from the radio — firmware overwrite + favourite
+                        # hygiene own the contact table; repeater purge above may still free slots.
+                        if (
+                            remaining_count >= self.auto_purge_threshold
+                            and self.companion_purge_enabled
+                            and self._auto_manage_contacts != 'device'
+                        ):
                             remaining_purge_count = remaining_count - target_count
                             self.logger.info(f"Still above threshold after repeater purge, purging {remaining_purge_count} companions...")
                             companion_success = await self._auto_purge_companions(remaining_purge_count)
+                        elif (
+                            remaining_count >= self.auto_purge_threshold
+                            and self.companion_purge_enabled
+                            and self._auto_manage_contacts == 'device'
+                        ):
+                            self.logger.info(
+                                "Still above contact threshold after repeater purge; skipping companion auto-purge "
+                                "(auto_manage_contacts=device — firmware handles slot policy)"
+                            )
 
-                            if repeater_success or companion_success:
-                                final_count = len(self.bot.meshcore.contacts)
-                                self.logger.info(f"✅ Auto-purge completed, now at {final_count}/{self.contact_limit} contacts")
-                                return True
+                        if repeater_success or companion_success:
+                            final_count = len(self.bot.meshcore.contacts)
+                            self.logger.info(f"✅ Auto-purge completed, now at {final_count}/{self.contact_limit} contacts")
+                            return True
                         elif repeater_success:
                             self.logger.info(f"✅ Auto-purged {purge_count} repeaters, now at {remaining_count}/{self.contact_limit} contacts")
+                            return True
+                        elif (
+                            self._auto_manage_contacts == 'device'
+                            and remaining_count >= self.auto_purge_threshold
+                        ):
+                            # Not an error: we do not bulk-remove companions on the radio in device mode.
+                            self.logger.info(
+                                "Device mode: %s contacts still at/above threshold; no repeater slots freed. "
+                                "Companion list changes are left to firmware (overwrite non-favourite / favourites).",
+                                remaining_count,
+                            )
                             return True
                         else:
                             self.logger.warning(f"❌ Auto-purge failed to remove {purge_count} contacts")
@@ -695,7 +813,13 @@ class RepeaterManager:
             repeaters_to_purge = await self._get_repeaters_for_purging(count)
 
             if not repeaters_to_purge:
-                self.logger.warning("No repeaters available for auto-purge")
+                if self._auto_manage_contacts == 'device':
+                    self.logger.debug(
+                        "No repeaters on device for repeater-only auto-purge check (%s contacts)",
+                        len(self.bot.meshcore.contacts),
+                    )
+                else:
+                    self.logger.warning("No repeaters available for auto-purge")
                 # Log some debugging info
                 total_contacts = len(self.bot.meshcore.contacts)
                 repeater_count = sum(1 for contact_data in list(self.bot.meshcore.contacts.values()) if self._is_repeater_device(contact_data))
@@ -2452,9 +2576,9 @@ class RepeaterManager:
                 self.logger.error(f"Failed to discover companion contacts: {e}")
 
             # Step 3: Log the post-purge management action
-            self.db_manager.execute_update(
-                'INSERT INTO purging_log (action, details) VALUES (?, ?)',
-                ('post_purge_management', 'Enabled manual contact addition and initiated companion contact discovery')
+            self.log_purging_action(
+                "post_purge_management",
+                "Enabled manual contact addition and initiated companion contact discovery",
             )
 
             self.logger.info("Post-purge contact management completed")
@@ -2596,9 +2720,9 @@ class RepeaterManager:
 
             # Log the management action
             if actions_taken:
-                self.db_manager.execute_update(
-                    'INSERT INTO purging_log (action, details) VALUES (?, ?)',
-                    ('contact_management', f'Contact list management: {"; ".join(actions_taken)}')
+                self.log_purging_action(
+                    "contact_management",
+                    f'Contact list management: {"; ".join(actions_taken)}',
                 )
 
             return {
@@ -2639,9 +2763,9 @@ class RepeaterManager:
                         self.logger.info(f"✅ Successfully removed stale contact: {contact_name}")
 
                         # Log the removal
-                        self.db_manager.execute_update(
-                            'INSERT INTO purging_log (action, details) VALUES (?, ?)',
-                            ('stale_contact_removal', f'Removed stale contact: {contact_name} (last seen {contact["days_stale"]} days ago)')
+                        self.log_purging_action(
+                            "stale_contact_removal",
+                            f'Removed stale contact: {contact_name} (last seen {contact["days_stale"]} days ago)',
                         )
                     else:
                         error_code = result.payload.get('error_code', 'unknown') if hasattr(result, 'payload') else 'unknown'
@@ -2679,6 +2803,163 @@ class RepeaterManager:
         except Exception as e:
             self.logger.error(f"Error in aggressive contact cleanup: {e}")
             return 0
+
+    @staticmethod
+    def _is_meshcore_table_full(result: Any) -> bool:
+        if result is None or not hasattr(result, 'type'):
+            return False
+        if result.type != EventType.ERROR:
+            return False
+        payload = getattr(result, 'payload', None) or {}
+        if payload.get('error_code') == 3:
+            return True
+        code_str = str(payload.get('code_string', '') or '')
+        return 'TABLE_FULL' in code_str.upper()
+
+    async def add_companion_from_contact_data(
+        self,
+        contact_data: dict[str, Any],
+        contact_name: str,
+        public_key: str,
+    ) -> bool:
+        """Add companion using full contact_data (paths). Pre-manages when near limit; retries once on TABLE_FULL."""
+        try:
+            if not self.bot.meshcore or not hasattr(self.bot.meshcore, 'commands'):
+                self.logger.error('No meshcore commands — cannot add companion %s', contact_name)
+                return False
+
+            status = await self.get_contact_list_status()
+            if status and status.get('is_near_limit'):
+                self.logger.warning(
+                    'Contact list near limit (%.1f%%) before add — managing capacity for %s',
+                    status.get('usage_percentage', 0.0),
+                    contact_name,
+                )
+                await self.manage_contact_list(auto_cleanup=True)
+
+            result = await self.bot.meshcore.commands.add_contact(contact_data)
+            if hasattr(result, 'type') and result.type == EventType.OK:
+                self.logger.info("Companion %s added to device contacts", contact_name)
+                return True
+
+            if self._is_meshcore_table_full(result):
+                self.logger.warning(
+                    'TABLE_FULL adding companion %s — running manage_contact_list and retrying once',
+                    contact_name,
+                )
+                await self.manage_contact_list(auto_cleanup=True)
+                result = await self.bot.meshcore.commands.add_contact(contact_data)
+                if hasattr(result, 'type') and result.type == EventType.OK:
+                    self.logger.info('Companion %s added after retry', contact_name)
+                    return True
+
+            self.logger.warning('Failed to add companion %s to device: %s', contact_name, result)
+            return False
+        except Exception as e:
+            self.logger.error('Error adding companion %s: %s', contact_name, e)
+            return False
+
+    async def apply_device_mode_firmware_preferences(self) -> bool:
+        """Set companion-radio firmware: manual per-type adds + overwrite oldest non-favourite + chat-only (0x03)."""
+        if not self.bot.meshcore or not hasattr(self.bot.meshcore, 'commands'):
+            return False
+        if self.bot.config.get('Bot', 'auto_manage_contacts', fallback='false').lower() != 'device':
+            self.logger.info('Skipping firmware autoadd setup — auto_manage_contacts is not device')
+            return False
+        try:
+            cmds = self.bot.meshcore.commands
+            r_manual = await cmds.set_manual_add_contacts(True)
+            if hasattr(r_manual, 'type') and r_manual.type != EventType.OK:
+                self.logger.warning('set_manual_add_contacts(True) returned %s', r_manual)
+            r_auto = await cmds.set_autoadd_config(0x03)
+            if hasattr(r_auto, 'type') and r_auto.type != EventType.OK:
+                self.logger.warning('set_autoadd_config(0x03) returned %s', r_auto)
+                return False
+            self.logger.info('Device mode: firmware autoadd_config=0x03 (overwrite oldest + chat only), manual add on')
+            return True
+        except Exception as e:
+            self.logger.error('apply_device_mode_firmware_preferences failed: %s', e)
+            return False
+
+    async def sync_device_mode_favourites_pass1(self) -> None:
+        """Favourite all on-device contacts whose pubkey is in the protected set (admin + announcements ACL)."""
+        if self.bot.config.get('Bot', 'auto_manage_contacts', fallback='false').lower() != 'device':
+            return
+        if not self.bot.meshcore or not hasattr(self.bot.meshcore, 'commands'):
+            return
+        protected = collect_protected_pubkeys_for_device_mode(self.bot.config, self.logger)
+        if not protected:
+            self.logger.debug('sync_device_mode_favourites_pass1: no protected pubkeys configured')
+        spacing_ms = max(0, self.bot.config.getint('Bot', 'contact_flag_update_spacing_ms', fallback=200))
+        spacing = spacing_ms / 1000.0
+        try:
+            await self.bot.meshcore.commands.get_contacts()
+        except Exception as e:
+            self.logger.debug('get_contacts before favourite pass1: %s', e)
+        contacts = getattr(self.bot.meshcore, 'contacts', None) or {}
+        for pub_key, c in list(contacts.items()):
+            if self.bot.config.get('Bot', 'auto_manage_contacts', fallback='false').lower() != 'device':
+                return
+            pk = (pub_key or '').lower()
+            if pk not in protected:
+                continue
+            try:
+                flags = int(c.get('flags', 0))
+            except (TypeError, ValueError):
+                flags = 0
+            if flags & 1:
+                continue
+            contact_copy = dict(c)
+            new_flags = flags | 1
+            try:
+                res = await self.bot.meshcore.commands.change_contact_flags(contact_copy, new_flags)
+                if hasattr(res, 'type') and res.type == EventType.OK:
+                    self.logger.debug('Favourited protected contact %s', pk[:16])
+                else:
+                    self.logger.warning('change_contact_flags (favourite on) failed for %s: %s', pk[:16], res)
+            except Exception as e:
+                self.logger.warning('change_contact_flags error for %s: %s', pk[:16], e)
+            if spacing > 0:
+                await asyncio.sleep(spacing)
+
+    async def sync_device_mode_favourites_pass2(self) -> None:
+        """Clear favourite bit for contacts not in the protected set."""
+        if self.bot.config.get('Bot', 'auto_manage_contacts', fallback='false').lower() != 'device':
+            return
+        if not self.bot.meshcore or not hasattr(self.bot.meshcore, 'commands'):
+            return
+        protected = collect_protected_pubkeys_for_device_mode(self.bot.config, self.logger)
+        spacing_ms = max(0, self.bot.config.getint('Bot', 'contact_flag_update_spacing_ms', fallback=200))
+        spacing = spacing_ms / 1000.0
+        try:
+            await self.bot.meshcore.commands.get_contacts()
+        except Exception as e:
+            self.logger.debug('get_contacts before favourite pass2: %s', e)
+        contacts = getattr(self.bot.meshcore, 'contacts', None) or {}
+        for pub_key, c in list(contacts.items()):
+            if self.bot.config.get('Bot', 'auto_manage_contacts', fallback='false').lower() != 'device':
+                return
+            pk = (pub_key or '').lower()
+            if pk in protected:
+                continue
+            try:
+                flags = int(c.get('flags', 0))
+            except (TypeError, ValueError):
+                flags = 0
+            if not (flags & 1):
+                continue
+            contact_copy = dict(c)
+            new_flags = flags & ~1
+            try:
+                res = await self.bot.meshcore.commands.change_contact_flags(contact_copy, new_flags)
+                if hasattr(res, 'type') and res.type == EventType.OK:
+                    self.logger.debug('Cleared favourite for non-protected contact %s', pk[:16])
+                else:
+                    self.logger.warning('change_contact_flags (favourite off) failed for %s: %s', pk[:16], res)
+            except Exception as e:
+                self.logger.warning('change_contact_flags error for %s: %s', pk[:16], e)
+            if spacing > 0:
+                await asyncio.sleep(spacing)
 
     async def add_discovered_contact(self, contact_name: str, public_key: Optional[str] = None, reason: str = "Manual addition") -> bool:
         """Add a discovered contact to the contact list using multiple methods"""
@@ -2783,9 +3064,9 @@ class RepeaterManager:
 
             # Log the addition if successful
             if contact_addition_successful:
-                self.db_manager.execute_update(
-                    'INSERT INTO purging_log (action, details) VALUES (?, ?)',
-                    ('contact_addition', f'Added discovered contact: {contact_name} - {reason}')
+                self.log_purging_action(
+                    "contact_addition",
+                    f"Added discovered contact: {contact_name} - {reason}",
                 )
                 self.logger.info(f"Successfully added contact '{contact_name}': {reason}")
                 return True
@@ -2813,9 +3094,9 @@ class RepeaterManager:
             self.logger.debug(f"Manual contact addition toggle result: {result}")
 
             # Log the action
-            self.db_manager.execute_update(
-                'INSERT INTO purging_log (action, details) VALUES (?, ?)',
-                ('manual_add_toggle', f'{"Enabled" if enabled else "Disabled"} manual contact addition - {reason}')
+            self.log_purging_action(
+                "manual_add_toggle",
+                f'{"Enabled" if enabled else "Disabled"} manual contact addition - {reason}',
             )
 
             return True
@@ -2843,9 +3124,9 @@ class RepeaterManager:
             self.logger.debug(f"Discovery result: {result}")
 
             # Log the action
-            self.db_manager.execute_update(
-                'INSERT INTO purging_log (action, details) VALUES (?, ?)',
-                ('companion_discovery', f'Manual companion contact discovery - {reason}')
+            self.log_purging_action(
+                "companion_discovery",
+                f"Manual companion contact discovery - {reason}",
             )
 
             return True
@@ -3167,11 +3448,27 @@ class RepeaterManager:
             if not self.auto_purge_enabled:
                 return
 
+            if not getattr(self.bot, 'meshcore', None) or not hasattr(self.bot.meshcore, 'contacts'):
+                return
+
+            await self._update_contact_limit_from_device()
+
             current_count = len(self.bot.meshcore.contacts)
 
             # Log current status
             if current_count >= self.auto_purge_threshold:
-                self.logger.warning(f"⚠️ Contact limit monitoring: {current_count}/{self.contact_limit} contacts (threshold: {self.auto_purge_threshold})")
+                if self._auto_manage_contacts == 'device':
+                    self.logger.info(
+                        "📊 Contact list high (%s/%s, threshold %s); device mode — running repeater-only auto-purge check "
+                        "(companions not bulk-removed by bot)",
+                        current_count,
+                        self.contact_limit,
+                        self.auto_purge_threshold,
+                    )
+                else:
+                    self.logger.warning(
+                        f"⚠️ Contact limit monitoring: {current_count}/{self.contact_limit} contacts (threshold: {self.auto_purge_threshold})"
+                    )
 
                 # Trigger auto-purge
                 await self.check_and_auto_purge()
@@ -3266,31 +3563,76 @@ class RepeaterManager:
             self.logger.debug(f"Background geocoding error: {e}")
 
     async def _update_contact_limit_from_device(self):
-        """Update contact limit from device using proper MeshCore API"""
+        """Update contact limit from device using proper MeshCore API.
+
+        In ``auto_manage_contacts=device`` mode, the effective limit is at least the
+        number of contacts currently on the radio (firmware can report a lower
+        ``max_contacts`` than the live table). Count-based auto-purge uses
+        ``threshold = contact_limit + 1`` so routine companion-heavy meshes do not
+        loop through repeater-only purge when the firmware manages the table.
+        """
+        current_mesh = 0
         try:
+            if self.bot.meshcore and hasattr(self.bot.meshcore, 'contacts'):
+                current_mesh = len(self.bot.meshcore.contacts)
+        except Exception:
+            current_mesh = 0
+
+        try:
+            if not self.bot.meshcore or not hasattr(self.bot.meshcore, 'commands'):
+                if self._auto_manage_contacts == 'device':
+                    self.contact_limit = max(self.contact_limit, current_mesh)
+                    self.auto_purge_threshold = self.contact_limit + 1
+                    self.logger.debug(
+                        "Device mode contact limit from mesh only: %s (threshold %s)",
+                        self.contact_limit,
+                        self.auto_purge_threshold,
+                    )
+                return False
+
             # Use the correct MeshCore API to get device info
             device_info = await self.bot.meshcore.commands.send_device_query()
 
             # Check if the query was successful
-            if hasattr(device_info, 'type') and device_info.type.name == 'DEVICE_INFO':
-                max_contacts = device_info.payload.get("max_contacts")
+            if hasattr(device_info, 'type') and device_info.type == EventType.DEVICE_INFO:
+                raw_max = device_info.payload.get('max_contacts')
+                try:
+                    max_contacts = int(raw_max) if raw_max is not None else 0
+                except (TypeError, ValueError):
+                    max_contacts = 0
 
-                if max_contacts and max_contacts > 100:
+                if max_contacts > 100:
                     self.contact_limit = max_contacts
-                    # Update threshold to be 20 contacts below the limit
-                    self.auto_purge_threshold = max(200, max_contacts - 20)
-                    self.logger.debug(f"Updated contact limit from device query: {self.contact_limit} (threshold: {self.auto_purge_threshold})")
+                    if self._auto_manage_contacts == 'device':
+                        self.contact_limit = max(self.contact_limit, current_mesh)
+                        self.auto_purge_threshold = self.contact_limit + 1
+                    else:
+                        # Update threshold to be 20 contacts below the limit
+                        self.auto_purge_threshold = max(200, self.contact_limit - 20)
+                    self.logger.debug(
+                        "Updated contact limit from device query: %s (threshold: %s)",
+                        self.contact_limit,
+                        self.auto_purge_threshold,
+                    )
                     return True
-                else:
-                    self.logger.debug(f"Device returned invalid max_contacts: {max_contacts}")
+
+                self.logger.debug(f"Device returned invalid max_contacts: {raw_max}")
             else:
                 self.logger.debug(f"Device query failed: {device_info}")
 
         except Exception as e:
             self.logger.debug(f"Could not update contact limit from device: {e}")
 
-        # Keep default values if device query failed
-        self.logger.debug(f"Using default contact limit: {self.contact_limit}")
+        if self._auto_manage_contacts == 'device':
+            self.contact_limit = max(self.contact_limit, current_mesh)
+            self.auto_purge_threshold = self.contact_limit + 1
+            self.logger.debug(
+                "Device mode contact limit after failed query: %s (threshold %s)",
+                self.contact_limit,
+                self.auto_purge_threshold,
+            )
+        else:
+            self.logger.debug(f"Using default contact limit: {self.contact_limit}")
         return False
 
     async def get_auto_purge_status(self) -> dict:

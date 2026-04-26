@@ -542,6 +542,7 @@ class MultitestSession:
     listening_duration: float
     collected_paths: set[str]
     initial_path: Optional[str] = None
+    required_path_bytes_mode: int = 0
 
 
 class MultitestCommand(BaseCommand):
@@ -741,6 +742,34 @@ class MultitestCommand(BaseCommand):
             return ','.join(n.lower() for n in node_ids)
         return None
 
+    def _get_routing_info_path_byte_length(self, routing_info: dict) -> int:
+        """Best-effort extraction of path byte length from routing_info."""
+        if not routing_info:
+            return 0
+
+        raw_path_byte_length = routing_info.get('path_byte_length')
+        if isinstance(raw_path_byte_length, int) and raw_path_byte_length >= 0:
+            return raw_path_byte_length
+
+        bytes_per_hop = routing_info.get('bytes_per_hop')
+        path_length = routing_info.get('path_length')
+        if (
+            isinstance(bytes_per_hop, int)
+            and bytes_per_hop >= 0
+            and isinstance(path_length, int)
+            and path_length >= 0
+        ):
+            return bytes_per_hop * path_length
+
+        path_nodes = routing_info.get('path_nodes') or []
+        total = 0
+        for node in path_nodes:
+            node_str = str(node).strip()
+            if not node_str:
+                continue
+            total += len(node_str) // 2
+        return total
+
     def get_rf_data_for_message(self, message: MeshMessage) -> Optional[dict]:
         """Get RF data for a message by looking it up in recent RF data"""
         try:
@@ -831,6 +860,11 @@ class MultitestCommand(BaseCommand):
             # CRITICAL: Only collect paths if this message has the same hash as the target
             # This ensures we only track variations of the same original message
             if message_hash == session.target_packet_hash:
+                routing_info = rf_data.get('routing_info', {})
+                path_byte_length = self._get_routing_info_path_byte_length(routing_info)
+                if not self._path_bytes_match_requirement(path_byte_length, session.required_path_bytes_mode):
+                    continue
+
                 # Try to extract path from RF data first (more reliable)
                 path = self.extract_path_from_rf_data(rf_data)
 
@@ -843,7 +877,6 @@ class MultitestCommand(BaseCommand):
                     self.logger.info(f"✓ Collected path for user {user_id}: {path} (hash: {message_hash[:8]}...)")
                 else:
                     # Log when we have a matching hash but can't extract path
-                    routing_info = rf_data.get('routing_info', {})
                     path_length = routing_info.get('path_length', 0)
                     if path_length == 0:
                         self.logger.debug(f"Matched hash {message_hash[:8]}... but path is direct (0 hops) for user {user_id}")
@@ -880,6 +913,11 @@ class MultitestCommand(BaseCommand):
 
                     # CRITICAL: Only process if hash matches exactly and is not None/empty
                     if packet_hash and packet_hash == session.target_packet_hash:
+                        routing_info = rf_data.get('routing_info', {})
+                        path_byte_length = self._get_routing_info_path_byte_length(routing_info)
+                        if not self._path_bytes_match_requirement(path_byte_length, session.required_path_bytes_mode):
+                            continue
+
                         matching_count += 1
                         # Extract path from this RF data
                         path = self.extract_path_from_rf_data(rf_data)
@@ -902,6 +940,9 @@ class MultitestCommand(BaseCommand):
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the multitest command"""
         user_id = message.sender_id or "unknown"
+        required_path_bytes_mode = self._get_required_path_bytes_setting('Multitest_Command')
+        if not await self.enforce_path_byte_requirement(message, 'Multitest_Command'):
+            return True
 
         # Use lock to prevent concurrent execution from interfering
         async with self._get_execution_lock():
@@ -985,7 +1026,8 @@ class MultitestCommand(BaseCommand):
                 listening_start_time=time.time(),
                 listening_duration=listening_duration,
                 collected_paths=set(),
-                initial_path=initial_path
+                initial_path=initial_path,
+                required_path_bytes_mode=required_path_bytes_mode,
             )
 
             # Add initial path if available

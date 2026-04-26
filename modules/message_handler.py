@@ -373,9 +373,8 @@ class MessageHandler:
                         break
 
             # Get the full public key from contacts if available
-            sender_pubkey = payload.get('pubkey_prefix', '')
-            sender_pubkey = sender_id  # Default to sender_id
-            if hasattr(self.bot.meshcore, 'contacts') and self.bot.meshcore.contacts:
+            sender_pubkey = sender_id  # Default to pubkey prefix (same value as sender_id at this point)
+            if sender_id and hasattr(self.bot.meshcore, 'contacts') and self.bot.meshcore.contacts:
                 for _contact_key, contact_data in self.bot.meshcore.contacts.items():
                     if contact_data.get('public_key', '').startswith(sender_id):
                         # Use the full public key from the contact
@@ -1975,7 +1974,7 @@ class MessageHandler:
 
             # Get the full public key from contacts if available
             sender_pubkey = payload.get('pubkey_prefix', '')
-            if hasattr(self.bot.meshcore, 'contacts') and self.bot.meshcore.contacts:
+            if sender_pubkey and hasattr(self.bot.meshcore, 'contacts') and self.bot.meshcore.contacts:
                 for _contact_key, contact_data in self.bot.meshcore.contacts.items():
                     if contact_data.get('public_key', '').startswith(sender_pubkey):
                         # Use the full public key from the contact
@@ -3273,28 +3272,86 @@ class MessageHandler:
                     self.logger.info(f"✅ Repeater {contact_name} tracked in database - not added to device contacts")
                     return
                 else:
-                    # COMPANION: Track in database AND add to device contact list
-                    self.logger.info(f"👤 New companion discovered: {contact_name} - will be added to device contacts")
+                    # COMPANION: track in DB; device add behaviour depends on auto_manage_contacts
+                    auto_manage_setting = self.bot.config.get('Bot', 'auto_manage_contacts', fallback='false').lower()
+                    self.logger.info(
+                        "👤 New companion discovered: %s — auto_manage_contacts=%s",
+                        contact_name,
+                        auto_manage_setting,
+                    )
 
-                    # Track companion in complete database with signal info
-                    await self.bot.repeater_manager.track_contact_advertisement(contact_data, signal_info, packet_hash=packet_hash)
+                    await self.bot.repeater_manager.track_contact_advertisement(
+                        contact_data, signal_info, packet_hash=packet_hash
+                    )
 
-                    # Add companion to device contact list
-                    try:
-                        self._ensure_contact_meshcore_path_encoding(contact_data)
-                        result = await self.bot.meshcore.commands.add_contact(contact_data)
-                        if hasattr(result, 'type') and result.type.name == 'OK':
-                            self.logger.info(f"✅ Companion {contact_name} added to device contacts")
+                    if auto_manage_setting == 'false':
+                        self.logger.info(
+                            "Manual mode — companion %s tracked in database only (not added to device)",
+                            contact_name,
+                        )
+                    elif auto_manage_setting == 'device':
+                        self.logger.info(
+                            "Device mode — companion %s tracked; firmware handles addition; bot may manage capacity",
+                            contact_name,
+                        )
+                        status = await self.bot.repeater_manager.get_contact_list_status()
+                        if status and status.get('is_near_limit', False):
+                            self.logger.warning(
+                                "Contact list near limit (%.1f%%) — managing capacity",
+                                status['usage_percentage'],
+                            )
+                            await self.bot.repeater_manager.manage_contact_list(auto_cleanup=True)
                         else:
-                            self.logger.warning(f"❌ Failed to add companion {contact_name} to device: {result}")
-                    except Exception as e:
-                        self.logger.error(f"❌ Error adding companion {contact_name} to device: {e}")
+                            self.logger.info(
+                                "New companion %s — contact list has adequate space",
+                                contact_name,
+                            )
+                    elif auto_manage_setting == 'bot':
+                        self.logger.info(
+                            "Bot mode — adding companion %s to device with capacity management",
+                            contact_name,
+                        )
+                        try:
+                            self._ensure_contact_meshcore_path_encoding(contact_data)
+                            ok = await self.bot.repeater_manager.add_companion_from_contact_data(
+                                contact_data, contact_name, public_key
+                            )
+                            if not ok:
+                                self.logger.warning(
+                                    "Failed to add companion contact %s to device after managed add/retry",
+                                    contact_name,
+                                )
+                        except Exception as e:
+                            self.logger.error("Error adding companion %s to device: %s", contact_name, e)
 
-                    # Check if auto-purge is needed
+                        status = await self.bot.repeater_manager.get_contact_list_status()
+                        if status and status.get('is_near_limit', False):
+                            self.logger.warning(
+                                "Contact list near limit (%.1f%%) — managing capacity after add",
+                                status['usage_percentage'],
+                            )
+                            await self.bot.repeater_manager.manage_contact_list(auto_cleanup=True)
+                        else:
+                            self.logger.info(
+                                "Companion %s — contact list has adequate space after add attempt",
+                                contact_name,
+                            )
+                    else:
+                        self.logger.warning(
+                            "Unknown auto_manage_contacts value %r — treating as manual for %s",
+                            auto_manage_setting,
+                            contact_name,
+                        )
+
                     await self.bot.repeater_manager.check_and_auto_purge()
+
+                    self.bot.repeater_manager.log_purging_action(
+                        "new_contact_discovered",
+                        f"New contact discovered: {contact_name} (key: {public_key[:16]}...)",
+                    )
                     return
 
-            # Fallback: Track in database for unknown contact types
+            # Fallback: Track in database for unknown contact types (no repeater_manager)
             if hasattr(self.bot, 'repeater_manager'):
                 await self.bot.repeater_manager.track_contact_advertisement(contact_data, packet_hash=packet_hash)
                 await self.bot.repeater_manager.check_and_auto_purge()
@@ -3347,9 +3404,9 @@ class MessageHandler:
 
             # Log the new contact discovery
             if hasattr(self.bot, 'repeater_manager'):
-                self.bot.repeater_manager.db_manager.execute_update(
-                    'INSERT INTO purging_log (action, details) VALUES (?, ?)',
-                    ('new_contact_discovered', f'New contact discovered: {contact_name} (key: {public_key[:16]}...)')
+                self.bot.repeater_manager.log_purging_action(
+                    "new_contact_discovered",
+                    f"New contact discovered: {contact_name} (key: {public_key[:16]}...)",
                 )
 
         except Exception as e:

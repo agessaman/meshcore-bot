@@ -132,7 +132,7 @@ The Path command has many options (presets, proximity, graph validation, etc.). 
 
 ## Service plugin configuration
 
-Service plugins (Discord Bridge, Packet Capture, Map Uploader, Weather Service) each have their own section and are documented under [Service Plugins](service-plugins.md).
+Service plugins (Discord Bridge, Telegram Bridge, Packet Capture, Map Uploader, Weather Service, Earthquake Service, Repeater Prefix Collision Service, and Webhook Service) each have their own section and are documented under [Service Plugins](service-plugins.md). The MQTT weather relay uses the `MqttWeather` section plus custom topic keys under `[Weather]`.
 
 ## Config validation
 

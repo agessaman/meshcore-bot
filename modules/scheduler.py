@@ -16,6 +16,7 @@ from typing import Any, Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.date import DateTrigger
 from meshcore.events import EventType
 
 from .maintenance import MaintenanceRunner
@@ -103,6 +104,8 @@ class MessageScheduler:
         self._apscheduler.start()
         self.logger.info(f"APScheduler started with {len(self.scheduled_messages)} scheduled message(s)")
 
+        self._setup_device_mode_scheduler_jobs()
+
         # Setup interval-based advertising
         self.setup_interval_advertising()
 
@@ -119,6 +122,84 @@ class MessageScheduler:
                 self.logger.info("Interval-based advertising disabled (advert_interval_hours = 0)")
         except Exception as e:
             self.logger.warning(f"Error setting up interval advertising: {e}")
+
+    def _setup_device_mode_scheduler_jobs(self) -> None:
+        """One-shot jobs for auto_manage_contacts=device: firmware autoadd + favourite hygiene."""
+        if self._apscheduler is None:
+            return
+        if self.bot.config.get('Bot', 'auto_manage_contacts', fallback='false').lower() != 'device':
+            return
+        try:
+            delay_fw = max(0, self.bot.config.getint('Bot', 'device_mode_firmware_delay_seconds', fallback=30))
+            delay_p1 = max(0, self.bot.config.getint('Bot', 'device_mode_favourite_pass1_delay_seconds', fallback=90))
+            delay_p2 = max(0, self.bot.config.getint('Bot', 'device_mode_favourite_pass2_delay_seconds', fallback=180))
+            base = self.get_current_time()
+            self._apscheduler.add_job(
+                self._device_mode_firmware_job_sync,
+                trigger=DateTrigger(run_date=base + datetime.timedelta(seconds=delay_fw)),
+                id='device_mode_firmware_autoadd',
+                replace_existing=True,
+            )
+            self._apscheduler.add_job(
+                self._device_mode_favourite_pass1_job_sync,
+                trigger=DateTrigger(run_date=base + datetime.timedelta(seconds=delay_p1)),
+                id='device_mode_favourite_pass1',
+                replace_existing=True,
+            )
+            self._apscheduler.add_job(
+                self._device_mode_favourite_pass2_job_sync,
+                trigger=DateTrigger(run_date=base + datetime.timedelta(seconds=delay_p2)),
+                id='device_mode_favourite_pass2',
+                replace_existing=True,
+            )
+            self.logger.info(
+                'Scheduled device-mode jobs: firmware +%ss, favourite pass1 +%ss, pass2 +%ss',
+                delay_fw,
+                delay_p1,
+                delay_p2,
+            )
+        except Exception as e:
+            self.logger.warning('Could not schedule device-mode contact jobs: %s', e)
+
+    def _run_async_on_main_loop(self, coro: Any, timeout: float = 300.0) -> None:
+        """Run async coroutine on bot main loop from APScheduler thread (same pattern as send_scheduled_message)."""
+        import asyncio
+
+        if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
+            future = asyncio.run_coroutine_threadsafe(coro, self.bot.main_event_loop)
+            try:
+                future.result(timeout=timeout)
+            except RuntimeError as e:
+                self.logger.warning('Event loop gone during device-mode job: %s', e)
+            except Exception as e:
+                self.logger.error('Device-mode scheduled job failed: %s', e)
+        else:
+            self.logger.warning('No running main_event_loop — skipping device-mode scheduled job')
+
+    async def _device_mode_firmware_coro(self) -> None:
+        await self.bot.repeater_manager.apply_device_mode_firmware_preferences()
+
+    async def _device_mode_favourite_pass1_coro(self) -> None:
+        await self.bot.repeater_manager.sync_device_mode_favourites_pass1()
+
+    async def _device_mode_favourite_pass2_coro(self) -> None:
+        await self.bot.repeater_manager.sync_device_mode_favourites_pass2()
+
+    def _device_mode_firmware_job_sync(self) -> None:
+        if self.bot.config.get('Bot', 'auto_manage_contacts', fallback='false').lower() != 'device':
+            self.logger.debug('Skipping device_mode_firmware job — not device mode')
+            return
+        self._run_async_on_main_loop(self._device_mode_firmware_coro(), timeout=120.0)
+
+    def _device_mode_favourite_pass1_job_sync(self) -> None:
+        if self.bot.config.get('Bot', 'auto_manage_contacts', fallback='false').lower() != 'device':
+            return
+        self._run_async_on_main_loop(self._device_mode_favourite_pass1_coro(), timeout=600.0)
+
+    def _device_mode_favourite_pass2_job_sync(self) -> None:
+        if self.bot.config.get('Bot', 'auto_manage_contacts', fallback='false').lower() != 'device':
+            return
+        self._run_async_on_main_loop(self._device_mode_favourite_pass2_coro(), timeout=600.0)
 
     def _is_valid_time_format(self, time_str: str) -> bool:
         """Validate time format (HHMM)"""

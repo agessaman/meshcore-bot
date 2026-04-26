@@ -484,6 +484,12 @@ def _m0011_repeater_and_graph_indexes(cursor: sqlite3.Cursor) -> None:
     )
 
 
+def _m0012_purging_log_details_column(cursor: sqlite3.Cursor) -> None:
+    """Add details column for newer purging log entries."""
+    if _table_exists(cursor, "purging_log"):
+        _add_column(cursor, "purging_log", "details", "TEXT")
+
+
 # ---------------------------------------------------------------------------
 # Migration registry — append new entries here, never remove or reorder.
 # ---------------------------------------------------------------------------
@@ -502,6 +508,7 @@ MIGRATIONS: list[MigrationEntry] = [
     (9, "optional repeater/graph indexes", _m0009_repeater_optional_indexes),
     (10, "create repeater/graph tables", _m0010_create_repeater_and_graph_tables),
     (11, "repeater/graph indexes", _m0011_repeater_and_graph_indexes),
+    (12, "purging_log: add details column", _m0012_purging_log_details_column),
 ]
 
 

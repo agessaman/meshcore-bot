@@ -32,7 +32,7 @@ def is_valid_timezone(tz_str: str) -> bool:
         except ZoneInfoNotFoundError:
             return False
     try:
-        import pytz
+        pytz = __import__("pytz")
         pytz.timezone(tz_str.strip())
         return True
     except Exception:
@@ -48,7 +48,7 @@ def get_config_timezone(config: Any, logger: Optional[Any] = None) -> tuple[Any,
     """
     timezone_str = (config.get('Bot', 'timezone', fallback='') or '').strip()
     if timezone_str and is_valid_timezone(timezone_str):
-        import pytz
+        pytz = __import__("pytz")
         return (pytz.timezone(timezone_str), timezone_str)
     if timezone_str and logger:
         logger.warning("Invalid timezone '%s', using system timezone", timezone_str)
@@ -529,9 +529,8 @@ def calculate_packet_hash(raw_hex: str, payload_type: Optional[int] = None) -> s
 
         if payload_type == 9:  # PAYLOAD_TYPE_TRACE
             # C++ does: sha.update(&path_len, sizeof(path_len))
-            # path_len is uint16_t, so sizeof(path_len) = 2 bytes
-            # Convert path_len to 2-byte little-endian uint16_t
-            hash_obj.update(path_byte_length.to_bytes(2, byteorder='little'))
+            # path_len is the raw wire byte (uint16_t in firmware), not the decoded byte count
+            hash_obj.update(path_len_byte.to_bytes(2, byteorder='little'))
 
         hash_obj.update(payload_data)
 

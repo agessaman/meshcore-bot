@@ -378,6 +378,61 @@ class TestSendChannelMessageListeners:
         assert result is False
         cm_bot.meshcore.get_contact_by_name.assert_not_called()
 
+
+class TestSendDMRecipientResolution:
+    """Tests for recipient lookup in send_dm()."""
+
+    @pytest.mark.asyncio
+    async def test_send_dm_resolves_contact_by_pubkey_prefix(self, cm_bot):
+        """When name lookup fails, send_dm should resolve by public key prefix."""
+        from meshcore import EventType
+
+        cm_bot.connected = True
+        cm_bot.meshcore = Mock()
+        cm_bot.meshcore.get_contact_by_name = Mock(return_value=None)
+        cm_bot.meshcore.contacts = {
+            "contact1": {
+                "name": "Alice",
+                "adv_name": "AliceAdv",
+                "public_key": "ab12deadbeefcafebabe",
+            }
+        }
+        cm_bot.meshcore.commands = Mock(spec=["send_msg"])
+        cm_bot.meshcore.commands.send_msg = AsyncMock(return_value=Mock(type=EventType.MSG_SENT, payload=None))
+        cm_bot.bot_tx_rate_limiter.wait_for_tx = AsyncMock(return_value=None)
+        manager = make_manager(cm_bot)
+
+        result = await manager.send_dm("ab12", "Hello mesh")
+
+        assert result is True
+        cm_bot.meshcore.get_contact_by_name.assert_called_once_with("ab12")
+        cm_bot.meshcore.commands.send_msg.assert_awaited_once()
+        sent_contact = cm_bot.meshcore.commands.send_msg.await_args.args[0]
+        assert sent_contact["name"] == "Alice"
+        assert sent_contact["public_key"].startswith("ab12")
+
+    @pytest.mark.asyncio
+    async def test_send_dm_fails_when_name_and_prefix_lookup_miss(self, cm_bot):
+        """send_dm should fail when recipient cannot be resolved by name or prefix."""
+        cm_bot.connected = True
+        cm_bot.meshcore = Mock()
+        cm_bot.meshcore.get_contact_by_name = Mock(return_value=None)
+        cm_bot.meshcore.contacts = {
+            "contact1": {
+                "name": "Bob",
+                "public_key": "ffffdeadbeefcafebabe",
+            }
+        }
+        cm_bot.bot_tx_rate_limiter.wait_for_tx = AsyncMock(return_value=None)
+        manager = make_manager(cm_bot)
+
+        result = await manager.send_dm("ab12", "Hello mesh")
+
+        assert result is False
+        cm_bot.meshcore.get_contact_by_name.assert_called_once_with("ab12")
+        cm_bot.logger.error.assert_called()
+        assert "Contact not found for DM recipient identifier" in cm_bot.logger.error.call_args.args[0]
+
     @pytest.mark.asyncio
     async def test_failed_send_does_not_invoke_listeners(self, cm_bot):
         """When send_channel_message fails (e.g. channel not found), listeners are not called."""

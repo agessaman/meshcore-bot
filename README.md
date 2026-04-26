@@ -2,6 +2,14 @@
 
 A Python bot that connects to MeshCore mesh networks via serial port, BLE, or TCP/IP. The bot responds to messages containing configured keywords, executes commands, and provides various data services including weather, solar conditions, and satellite pass information. A web viewer provides a browser-based dashboard for monitoring and managing the bot.
 
+
+> [!CAUTION]
+> Before installing this bot, please take a moment to _truly_ consider if your mesh needs another bot. If there are already several bots on your mesh, it is likely that you are adding congestion without adding value.
+>
+> It is not recommended to run more than one bot on a single channel. Adding another bot to a channel already in use on your mesh may result in users unnecessarily receiving double responses, depleting mesh airtime for little additional value.
+>
+> If you decide to run the bot on your mesh, please take advantage of regions or hop limits to ensure that your bot is helping your neighbors not flooding the entire mesh.
+
 ## Features
 
 - **Connection Methods**: Serial port, BLE (Bluetooth Low Energy), or TCP/IP
@@ -28,6 +36,9 @@ A Python bot that connects to MeshCore mesh networks via serial port, BLE, or TC
 - **Packet Capture**: Capture and publish packets to MQTT brokers ([docs](docs/packet-capture.md))
 - **Map Uploader**: Upload node adverts to map.meshcore.dev ([docs](docs/map-uploader.md))
 - **Weather Service**: Scheduled forecasts, alerts, and lightning detection ([docs](docs/weather-service.md))
+- **Earthquake Service**: Scheduled USGS earthquake alerts for a configured region ([docs](docs/earthquake-service.md))
+- **Repeater Prefix Collision Service**: Detect and alert on repeater prefix collisions ([docs](docs/repeater-prefix-collision-service.md))
+- **MQTT Weather Relay**: Publish weather data from custom MQTT topics (configured via `MqttWeather` + `[Weather]`)
 - **Webhook Service**: Accept inbound HTTP POST payloads and relay to channels or DMs
 
 ## Requirements
