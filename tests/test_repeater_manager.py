@@ -98,8 +98,8 @@ class TestPurgingLogCompatibility:
         rm.log_purging_action("contact_management", "managed contacts")
 
         rm.db_manager.execute_update.assert_called_once_with(
-            "INSERT INTO purging_log (action, details) VALUES (?, ?)",
-            ("contact_management", "managed contacts"),
+            "INSERT INTO purging_log (action, public_key, name, reason, details) VALUES (?, '', ?, NULL, ?)",
+            ("contact_management", "contact_management", "managed contacts"),
         )
 
     def test_log_purging_action_falls_back_to_legacy_columns(self, rm):

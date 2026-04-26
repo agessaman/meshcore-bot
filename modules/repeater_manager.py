@@ -121,9 +121,10 @@ class RepeaterManager:
         """Insert purging log rows across both new and legacy schemas."""
         try:
             if self._refresh_purging_log_details_capability():
+                # public_key and name remain NOT NULL from the original schema; migration only adds details.
                 self.db_manager.execute_update(
-                    "INSERT INTO purging_log (action, details) VALUES (?, ?)",
-                    (action, details),
+                    "INSERT INTO purging_log (action, public_key, name, reason, details) VALUES (?, '', ?, NULL, ?)",
+                    (action, action, details),
                 )
                 return
             self.db_manager.execute_update(
