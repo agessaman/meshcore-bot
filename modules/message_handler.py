@@ -373,9 +373,8 @@ class MessageHandler:
                         break
 
             # Get the full public key from contacts if available
-            sender_pubkey = payload.get('pubkey_prefix', '')
-            sender_pubkey = sender_id  # Default to sender_id
-            if hasattr(self.bot.meshcore, 'contacts') and self.bot.meshcore.contacts:
+            sender_pubkey = sender_id  # Default to pubkey prefix (same value as sender_id at this point)
+            if sender_id and hasattr(self.bot.meshcore, 'contacts') and self.bot.meshcore.contacts:
                 for _contact_key, contact_data in self.bot.meshcore.contacts.items():
                     if contact_data.get('public_key', '').startswith(sender_id):
                         # Use the full public key from the contact
@@ -1975,7 +1974,7 @@ class MessageHandler:
 
             # Get the full public key from contacts if available
             sender_pubkey = payload.get('pubkey_prefix', '')
-            if hasattr(self.bot.meshcore, 'contacts') and self.bot.meshcore.contacts:
+            if sender_pubkey and hasattr(self.bot.meshcore, 'contacts') and self.bot.meshcore.contacts:
                 for _contact_key, contact_data in self.bot.meshcore.contacts.items():
                     if contact_data.get('public_key', '').startswith(sender_pubkey):
                         # Use the full public key from the contact
