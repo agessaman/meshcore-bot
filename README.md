@@ -31,7 +31,7 @@ A Python bot that connects to MeshCore mesh networks via serial port, BLE, or TC
 ### Quick Start (Development)
 1. Clone the repository:
 ```bash
-git clone <repository-url>
+git clone https://github.com/agessaman/meshcore-bot
 cd meshcore-bot
 ```
 
