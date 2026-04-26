@@ -4,6 +4,7 @@ Message scheduler functionality for the MeshCore Bot
 Handles scheduled messages and timing
 """
 
+import asyncio
 import datetime
 import json
 import os
@@ -15,6 +16,7 @@ from typing import Any, Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from meshcore.events import EventType
 
 from .maintenance import MaintenanceRunner
 from .security_utils import validate_external_url
@@ -974,8 +976,6 @@ class MessageScheduler:
 
     async def _radio_params_read_op(self):
         """Read current radio parameters (freq, bw, sf, cr, tx_power) via SELF_INFO."""
-        import asyncio
-        from meshcore.events import EventType
         try:
             meshcore = getattr(self.bot, 'meshcore', None)
             if not meshcore or not getattr(meshcore, 'is_connected', False):
@@ -1002,8 +1002,6 @@ class MessageScheduler:
 
     async def _radio_params_write_op(self, payload: dict):
         """Write radio parameters (freq, bw, sf, cr, tx_power) to device."""
-        import asyncio
-        from meshcore.events import EventType
         try:
             meshcore = getattr(self.bot, 'meshcore', None)
             if not meshcore or not getattr(meshcore, 'is_connected', False):
