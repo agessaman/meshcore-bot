@@ -181,3 +181,4 @@ local/commands/*
 local/service_plugins/*
 !local/service_plugins/.gitkeep
 
+.claude/settings.local.json
