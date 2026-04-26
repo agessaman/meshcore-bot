@@ -1913,6 +1913,31 @@ enabled = false
 # bridge.Public = @YourChannelName
 # bridge.emergency = -1001234567890
 
+[DARC_MoWaS_Service]
+# Enable DARC MoWaS (Mobile Warning System) integration for receiving and posting warnings
+# For legal requirements and backend configuration, please read https://www.darc.de/index.php?id=58435 before operating.
+# Please also ensure to limit the scope of the messages to the revelant region (via Channels.flood_scope).
+enabled = false
+
+# Listen address and port of webserver that receives the webhook POSTs from DARC MoWaS.
+# Must be accessible from the internet (or HAMNET) for MoWaS to reach it.
+# host = localhost
+# port = 8081
+
+# Language specific channel for redistribution of warnings received from MoWaS.
+# The non german channels are only served if a warning is available in that language
+# Only "de" and "en" are currently supported as language codes.
+# The channels are automatically created if they don't exist.
+# channel_de = #mowas
+# channel_en = #mowas-en
+
+# Download warning messages from MoWaS in HAMNET instead of internet.
+# hamnet = false
+
+# Retry messages that are not acked by at least a single repeater after retry_timeout (in seconds)
+# retry_max = 2
+# retry_timeout = 15
+
 # -----------------------------------------------------------------------------
 # Check-in service (local plugin: local/service_plugins/checkin_service.py)
 # Put [CheckIn] in local/config.ini to keep main config clean. See docs/checkin-api.md for API contract.
