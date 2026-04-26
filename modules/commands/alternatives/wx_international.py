@@ -80,7 +80,8 @@ class GlobalWxCommand(BaseCommand):
 
         self.weather_model = self._load_weather_model()
 
-        # Get default state and country from config for city disambiguation
+        # Get default location/state/country from config for fallback/disambiguation
+        self.default_city = self.bot.config.get('Weather', 'default_city', fallback='').strip()
         self.default_state = self.bot.config.get('Weather', 'default_state', fallback='')
         self.default_country = self.bot.config.get('Weather', 'default_country', fallback='US')
 
@@ -460,36 +461,47 @@ class GlobalWxCommand(BaseCommand):
                     parts = [parts[0], location_str]
                     self.logger.info(f"Using companion coordinates: {location_str}")
             else:
-                # No companion location: optionally use bot's configured coordinates
-                use_bot = self.get_config_value(
-                    'Wx_Command',
-                    'use_bot_location_when_no_location',
-                    fallback=False,
-                    value_type='bool',
-                )
-                bot_loc = self._get_bot_location() if use_bot else None
-                if bot_loc:
-                    location_str = self._coordinates_to_location_string(bot_loc[0], bot_loc[1])
-                    if location_str:
-                        parts = [parts[0], location_str]
-                        self.logger.info(
-                            f"Using bot location (no args): {location_str} "
-                            f"({bot_loc[0]}, {bot_loc[1]})"
-                        )
-                    else:
-                        location_str = f"{bot_loc[0]},{bot_loc[1]}"
-                        parts = [parts[0], location_str]
-                        self.logger.info(f"Using bot coordinates (no args): {location_str}")
+                # No companion location: use default city if configured, then bot location fallback
+                if self.default_city:
+                    location_parts = [self.default_city]
+                    if self.default_state:
+                        location_parts.append(self.default_state)
+                    if self.default_country:
+                        location_parts.append(self.default_country)
+                    location_str = ", ".join(location_parts)
+                    parts = [parts[0], location_str]
+                    self.logger.info(f"Using default city (no args): {location_str}")
                 else:
-                    if use_bot:
-                        self.logger.debug(
-                            "use_bot_location_when_no_location enabled but bot_latitude/bot_longitude "
-                            "not set; showing usage"
-                        )
+                    # No default city: optionally use bot's configured coordinates
+                    use_bot = self.get_config_value(
+                        'Wx_Command',
+                        'use_bot_location_when_no_location',
+                        fallback=False,
+                        value_type='bool',
+                    )
+                    bot_loc = self._get_bot_location() if use_bot else None
+                    if bot_loc:
+                        location_str = self._coordinates_to_location_string(bot_loc[0], bot_loc[1])
+                        if location_str:
+                            parts = [parts[0], location_str]
+                            self.logger.info(
+                                f"Using bot location (no args): {location_str} "
+                                f"({bot_loc[0]}, {bot_loc[1]})"
+                            )
+                        else:
+                            location_str = f"{bot_loc[0]},{bot_loc[1]}"
+                            parts = [parts[0], location_str]
+                            self.logger.info(f"Using bot coordinates (no args): {location_str}")
                     else:
-                        self.logger.debug("No companion location found, showing usage")
-                    await self.send_response(message, self.translate('commands.gwx.usage'))
-                    return True
+                        if use_bot:
+                            self.logger.debug(
+                                "use_bot_location_when_no_location enabled but bot_latitude/bot_longitude "
+                                "not set; showing usage"
+                            )
+                        else:
+                            self.logger.debug("No companion/default city location found, showing usage")
+                        await self.send_response(message, self.translate('commands.gwx.usage'))
+                        return True
 
         # Check for forecast type options: "tomorrow", Nd (7d, 10d), or plain digit days 2–GWX_MULTIDAY_MAX_DAYS
         forecast_type = "default"

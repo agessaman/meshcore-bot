@@ -656,6 +656,10 @@ weather_provider = noaa
 # Set to an empty value (weather_model =) to omit model selection and let Open-Meteo auto-select
 #weather_model =
 
+# Default city name for empty "wx" / "gwx" commands when companion location is unavailable
+# Use English city names (examples: Seattle or Seattle, WA)
+#default_city =
+
 # Default state for city name disambiguation
 # When users type "wx seattle", it will search for "seattle, WA, USA"
 # Use 2-letter state abbreviation (e.g., WA, CA, NY, TX)
