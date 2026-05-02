@@ -21,7 +21,12 @@ from meshcore import EventType
 from ..enums import PayloadType, PayloadVersion, RouteType
 
 # Import bot's utilities for packet hash
-from ..utils import calculate_packet_hash, decode_path_len_byte, parse_trace_payload_route_hashes
+from ..utils import (
+    calculate_packet_hash,
+    decode_path_len_byte,
+    parse_trace_payload_route_hashes,
+    verify_meshcore_advert_ed25519,
+)
 from ..version_info import resolve_runtime_version
 
 # Import MQTT client
@@ -208,6 +213,16 @@ class PacketCaptureService(BaseServicePlugin):
         )
         self.rf_data_cache_timeout = config.getfloat(
             'PacketCapture', 'rf_data_cache_timeout', fallback=15.0
+        )
+
+        # Do not publish to MQTT when content hash is unknown (zeros) — unparseable / strict path reject
+        self.mqtt_skip_unparseable_packets = config.getboolean(
+            'PacketCapture', 'mqtt_skip_unparseable_packets', fallback=True
+        )
+
+        # Skip MQTT for ADVERT packets that fail Ed25519 verify (mesh payload corruption)
+        self.advert_require_valid_signature = config.getboolean(
+            'PacketCapture', 'advert_require_valid_signature', fallback=False
         )
 
         # Note: Python signing can fetch private key from device if not provided via file
@@ -807,6 +822,22 @@ class PacketCaptureService(BaseServicePlugin):
             # Format packet data to match original script's format
             formatted_packet = self._format_packet_data(raw_hex, packet_info, payload, metadata)
 
+            skip_mqtt_unparseable = (
+                self.mqtt_skip_unparseable_packets
+                and formatted_packet.get('hash') == '0000000000000000'
+            )
+
+            skip_mqtt_invalid_advert_signature = False
+            if self.advert_require_valid_signature and packet_info.get('payload_type') == PayloadType.ADVERT.name:
+                try:
+                    mesh_payload = bytes.fromhex(packet_info.get('payload_hex', ''))
+                    if not verify_meshcore_advert_ed25519(mesh_payload):
+                        skip_mqtt_invalid_advert_signature = True
+                except Exception:
+                    skip_mqtt_invalid_advert_signature = True
+
+            skip_mqtt = skip_mqtt_unparseable or skip_mqtt_invalid_advert_signature
+
             # Write to file
             if self.output_handle:
                 self.output_handle.write(json.dumps(formatted_packet, default=str) + '\n')
@@ -814,14 +845,32 @@ class PacketCaptureService(BaseServicePlugin):
 
             # Publish to MQTT if enabled
             # The publish function will check per-broker connection status
-            publish_metrics = {"attempted": 0, "succeeded": 0}
-            if self.mqtt_enabled:
+            publish_metrics: dict[str, Any] = {
+                "attempted": 0,
+                "succeeded": 0,
+                "skipped_by_filter": False,
+                "skipped_unparseable": False,
+                "skipped_invalid_advert_signature": False,
+            }
+            if self.mqtt_enabled and not skip_mqtt:
                 if self.debug:
                     self.logger.debug(f"Calling publish_packet_mqtt for packet {self.packet_count}")
                 publish_metrics = await self.publish_packet_mqtt(formatted_packet)
+                publish_metrics.setdefault("skipped_unparseable", False)
+                publish_metrics.setdefault("skipped_invalid_advert_signature", False)
+            elif self.mqtt_enabled and skip_mqtt:
+                publish_metrics["skipped_unparseable"] = skip_mqtt_unparseable
+                publish_metrics["skipped_invalid_advert_signature"] = skip_mqtt_invalid_advert_signature
 
             # Log DEBUG level for each packet (verbose; use INFO only for service lifecycle)
-            action = "Skipping" if publish_metrics.get("skipped_by_filter") else "Captured"
+            if publish_metrics.get("skipped_unparseable"):
+                action = "Captured (MQTT skipped: zero hash / unparseable)"
+            elif publish_metrics.get("skipped_invalid_advert_signature"):
+                action = "Captured (MQTT skipped: invalid advert signature)"
+            elif publish_metrics.get("skipped_by_filter"):
+                action = "Skipping"
+            else:
+                action = "Captured"
             self.logger.debug(f"📦 {action} packet #{self.packet_count}: {formatted_packet['route']} type {formatted_packet['packet_type']}, {formatted_packet['len']} bytes, SNR: {formatted_packet['SNR']}, RSSI: {formatted_packet['RSSI']}, hash: {formatted_packet['hash']} (MQTT: {publish_metrics['succeeded']}/{publish_metrics['attempted']})")
 
             # Output full packet data structure in debug mode only (matches original script)
@@ -879,7 +928,14 @@ class PacketCaptureService(BaseServicePlugin):
 
             path_len_byte = byte_data[offset]
             offset += 1
-            path_byte_length, bytes_per_hop = decode_path_len_byte(path_len_byte)
+            path_parts = decode_path_len_byte(path_len_byte)
+            if path_parts is None:
+                if self.debug:
+                    self.logger.debug(
+                        "Packet invalid path_len encoding (not firmware-valid), cannot decode"
+                    )
+                return None
+            path_byte_length, bytes_per_hop = path_parts
 
             if len(byte_data) < offset + path_byte_length:
                 if self.debug:
@@ -890,7 +946,7 @@ class PacketCaptureService(BaseServicePlugin):
             path_bytes = byte_data[offset:offset + path_byte_length]
             offset += path_byte_length
 
-            # Chunk path by bytes_per_hop from packet (1, 2, or 3; legacy fallback uses 1)
+            # Chunk path by bytes_per_hop from packet (1, 2, or 3); odd remainder → 1-byte chunks
             hex_chars = bytes_per_hop * 2
             path_hex = path_bytes.hex()
             path_nodes = [path_hex[i:i + hex_chars].upper() for i in range(0, len(path_hex), hex_chars)]

@@ -1350,7 +1350,13 @@ class MessageHandler:
             path_len_byte = byte_data[offset]
             offset += 1
             # Decode per firmware: low 6 bits = hop count, high 2 bits = size code (bytes_per_hop = code+1)
-            path_byte_length, bytes_per_hop = decode_path_len_byte(path_len_byte)
+            path_parts = decode_path_len_byte(path_len_byte)
+            if path_parts is None:
+                self.logger.debug(
+                    "decode_meshcore_packet: invalid path_len byte (firmware would reject)"
+                )
+                return None
+            path_byte_length, bytes_per_hop = path_parts
 
             # Check if we have enough data for the full path
             if len(byte_data) < offset + path_byte_length:
@@ -1375,7 +1381,7 @@ class MessageHandler:
             # Extract payload type (bits 2-5)
             payload_type = PayloadType((header >> 2) & 0x0F)
 
-            # Chunk path by bytes_per_hop from packet (1, 2, or 3; legacy fallback uses 1)
+            # Chunk path by bytes_per_hop from packet (1, 2, or 3)
             path_hex, path_values = self._path_bytes_to_nodes(path_bytes, prefix_hex_chars=bytes_per_hop * 2)
 
             # Process path based on packet type

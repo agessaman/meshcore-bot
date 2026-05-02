@@ -529,7 +529,10 @@ class MapUploaderService(BaseServicePlugin):
 
             path_len_byte = byte_data[offset]
             offset += 1
-            path_byte_length, _ = decode_path_len_byte(path_len_byte)
+            path_parts = decode_path_len_byte(path_len_byte)
+            if path_parts is None:
+                return
+            path_byte_length, _ = path_parts
 
             # Skip path
             if path_byte_length > 0 and len(byte_data) > offset + path_byte_length:

@@ -28,6 +28,7 @@ from modules.utils import (
     parse_trace_payload_route_hashes,
     resolve_path,
     truncate_string,
+    verify_meshcore_advert_ed25519,
 )
 
 
@@ -185,50 +186,60 @@ class TestDecodePathLenByte:
 
     def test_single_byte_one_hop(self):
         # size_code=0 -> 1 byte/hop, hop_count=1 -> 1 path byte
-        path_byte_length, bytes_per_hop = decode_path_len_byte(0x01)
+        decoded = decode_path_len_byte(0x01)
+        assert decoded is not None
+        path_byte_length, bytes_per_hop = decoded
         assert path_byte_length == 1
         assert bytes_per_hop == 1
 
     def test_single_byte_three_hops(self):
-        path_byte_length, bytes_per_hop = decode_path_len_byte(0x03)
+        decoded = decode_path_len_byte(0x03)
+        assert decoded is not None
+        path_byte_length, bytes_per_hop = decoded
         assert path_byte_length == 3
         assert bytes_per_hop == 1
 
     def test_multi_byte_two_bytes_per_hop_one_hop(self):
         # size_code=1 -> 2 bytes/hop, hop_count=1 -> 2 path bytes
-        path_byte_length, bytes_per_hop = decode_path_len_byte(0x41)
+        decoded = decode_path_len_byte(0x41)
+        assert decoded is not None
+        path_byte_length, bytes_per_hop = decoded
         assert path_byte_length == 2
         assert bytes_per_hop == 2
 
     def test_multi_byte_two_bytes_per_hop_three_hops(self):
         # size_code=1, hop_count=3 -> 6 path bytes
-        path_byte_length, bytes_per_hop = decode_path_len_byte(0x43)
+        decoded = decode_path_len_byte(0x43)
+        assert decoded is not None
+        path_byte_length, bytes_per_hop = decoded
         assert path_byte_length == 6
         assert bytes_per_hop == 2
 
     def test_three_bytes_per_hop(self):
         # size_code=2 -> 3 bytes/hop, hop_count=2 -> 6 path bytes
-        path_byte_length, bytes_per_hop = decode_path_len_byte(0x82)
+        decoded = decode_path_len_byte(0x82)
+        assert decoded is not None
+        path_byte_length, bytes_per_hop = decoded
         assert path_byte_length == 6
         assert bytes_per_hop == 3
 
-    def test_reserved_size_code_fallback(self):
-        # size_code=3 (bytes_per_hop=4) is reserved -> legacy: path_len_byte as raw byte count, 1 byte/hop
-        path_byte_length, bytes_per_hop = decode_path_len_byte(0xC2)
-        assert path_byte_length == 0xC2  # raw byte value
-        assert bytes_per_hop == 1
+    def test_reserved_size_code_returns_none(self):
+        # size_code=3 (bytes_per_hop=4) is reserved — firmware rejects
+        assert decode_path_len_byte(0xC2) is None
 
-    def test_path_exceeds_max_fallback(self):
-        # 32 hops * 2 bytes = 64, max_path_size=64 is ok; 33*2=66 > 64 -> legacy
-        path_byte_length, bytes_per_hop = decode_path_len_byte(0x41, max_path_size=64)
+    def test_path_exceeds_max_returns_none(self):
+        # 32 hops * 2 bytes = 64, max_path_size=64 is ok; 33*2=66 > 64 — reject
+        decoded = decode_path_len_byte(0x41, max_path_size=64)
+        assert decoded is not None
+        path_byte_length, bytes_per_hop = decoded
         assert path_byte_length == 2
         assert bytes_per_hop == 2
-        path_byte_length, bytes_per_hop = decode_path_len_byte(0x61, max_path_size=64)  # 33 hops * 2
-        assert path_byte_length == 0x61
-        assert bytes_per_hop == 1
+        assert decode_path_len_byte(0x61, max_path_size=64) is None  # 33 hops * 2
 
     def test_zero_hops(self):
-        path_byte_length, bytes_per_hop = decode_path_len_byte(0x00)
+        decoded = decode_path_len_byte(0x00)
+        assert decoded is not None
+        path_byte_length, bytes_per_hop = decoded
         assert path_byte_length == 0
         assert bytes_per_hop == 1
 
@@ -258,15 +269,18 @@ class TestEncodePathLenByte:
 
     def test_three_hops_two_bytes_per_hop(self):
         assert encode_path_len_byte(3, 2) == 0x43
-        pbl, bph = decode_path_len_byte(0x43)
+        dec = decode_path_len_byte(0x43)
+        assert dec is not None
+        pbl, bph = dec
         assert pbl == 6
         assert bph == 2
 
     def test_roundtrip_with_decode(self):
         for pb in (0x01, 0x03, 0x41, 0x43, 0x82, 0x00):
-            pbl, bph = decode_path_len_byte(pb)
-            if bph == 1 and pbl == pb:
-                continue  # legacy fallback path
+            dec = decode_path_len_byte(pb)
+            if dec is None:
+                continue
+            pbl, bph = dec
             hop_count = pb & 0x3F
             assert encode_path_len_byte(hop_count, bph) == pb
 
@@ -703,6 +717,64 @@ class TestFormatKeywordResponseWithPlaceholders:
         assert "SNR" in result
         assert "RSSI" in result
 
+class TestVerifyMeshcoreAdvertEd25519:
+    """Tests for verify_meshcore_advert_ed25519() matching MeshCore createAdvert signing."""
+
+    def test_too_short_returns_false(self):
+        assert verify_meshcore_advert_ed25519(b"\x00" * 99) is False
+
+    def test_valid_signed_payload_verifies(self):
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+        priv = Ed25519PrivateKey.generate()
+        pub = priv.public_key().public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+        ts = (1718319158).to_bytes(4, "little")
+        app_data = b"\x92TestNode"  # flags + short name; total mesh payload > 100
+        msg = pub + ts + app_data
+        sig = priv.sign(msg)
+        mesh_payload = pub + ts + sig + app_data
+        assert len(mesh_payload) >= 100
+        assert verify_meshcore_advert_ed25519(mesh_payload) is True
+
+    def test_tampered_app_data_fails(self):
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+        priv = Ed25519PrivateKey.generate()
+        pub = priv.public_key().public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+        ts = (1).to_bytes(4, "little")
+        app_data = b"\x01" * 8
+        msg = pub + ts + app_data
+        sig = priv.sign(msg)
+        mesh_payload = bytearray(pub + ts + sig + app_data)
+        mesh_payload[-1] ^= 0xFF
+        assert verify_meshcore_advert_ed25519(bytes(mesh_payload)) is False
+
+    def test_tampered_signature_fails(self):
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+        priv = Ed25519PrivateKey.generate()
+        pub = priv.public_key().public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+        ts = (2).to_bytes(4, "little")
+        app_data = b"\x02" * 8
+        msg = pub + ts + app_data
+        sig = priv.sign(msg)
+        mesh_payload = bytearray(pub + ts + sig + app_data)
+        mesh_payload[40] ^= 0xFF
+        assert verify_meshcore_advert_ed25519(bytes(mesh_payload)) is False
+
+
 class TestCalculatePacketHashPathLength:
     """Tests that calculate_packet_hash uses decode_path_len_byte so multi-byte paths skip correctly."""
 
@@ -784,6 +856,12 @@ class TestCalculatePacketHashEdgeCases:
     def test_exception_in_packet_hash_returns_default(self):
         """Lines 427-429: exception during processing returns default hash."""
         h = calculate_packet_hash("not-valid-hex!!!")
+        assert h == "0000000000000000"
+
+    def test_invalid_path_len_encoding_returns_default_hash(self):
+        """Reserved path size class (hash_size==4) → strict decode fails → default hash."""
+        # FLOOD + TXT_MSG, path_len byte 0xF5 (size code 3 → bytes_per_hop=4 reserved)
+        h = calculate_packet_hash("09F500")
         assert h == "0000000000000000"
 
     def test_non_transport_type_skips_transport_bytes(self):

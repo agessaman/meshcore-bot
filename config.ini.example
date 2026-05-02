@@ -1493,6 +1493,14 @@ raw_duplicate_window = 2.0
 # Keep RX_LOG SNR/RSSI keyed by packet prefix this long for RAW_DATA correlation (seconds).
 rf_data_cache_timeout = 15.0
 
+# If true, do not publish packet JSON to MQTT when content hash is 0000000000000000
+# (strict path_len reject, too-short buffer, or other unparseable cases). File output is unchanged.
+mqtt_skip_unparseable_packets = true
+
+# If true, do not publish ADVERT packets to MQTT when mesh payload fails Ed25519 verification
+# (MeshCore createAdvert signature over pubkey || timestamp || app_data). File output is unchanged.
+advert_require_valid_signature = false
+
 # Owner information (for packet analyzer registration)
 # Owner public key (64-character hex string)
 owner_public_key = 
