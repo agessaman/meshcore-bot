@@ -1,7 +1,7 @@
 import asyncio
 import configparser
 from datetime import date, timedelta
-from unittest.mock import AsyncMock, MagicMock, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -279,3 +279,107 @@ async def test_on_new_contact_schedules_task_that_sends():
     await asyncio.sleep(0.05)
 
     assert bot.command_manager.send_channel_message.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_discovery_external_when_notify_all_true_and_webhook():
+    bot = _make_bot(
+        {
+            "notify_external_on_all_new_repeaters": "true",
+            "discord_webhook_urls": "https://discord.com/api/webhooks/123456789/abcdefghij",
+        }
+    )
+    db: _FakeDB = bot.db_manager
+    db.contact_row = _base_contact_row()
+    db.duplicate_count = 0
+
+    svc = RepeaterPrefixCollisionService(bot)
+    await svc.start()
+
+    with patch.object(svc, "send_external_notifications", new_callable=AsyncMock) as ext:
+        await svc._handle_new_contact_payload({"public_key": "01020304", "name": "Lonely"})
+
+    assert ext.await_count == 1
+    args = ext.await_args_list[0][0]
+    assert "New repeater heard" in args[0]
+    assert "NewRepeater" in args[0]
+    assert bot.command_manager.send_channel_message.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_discovery_skips_external_when_no_targets_configured():
+    bot = _make_bot({"notify_external_on_all_new_repeaters": "true"})
+    db: _FakeDB = bot.db_manager
+    db.contact_row = _base_contact_row()
+    db.duplicate_count = 0
+
+    svc = RepeaterPrefixCollisionService(bot)
+    await svc.start()
+
+    with patch.object(svc, "send_external_notifications", new_callable=AsyncMock) as ext:
+        await svc._handle_new_contact_payload({"public_key": "01020304", "name": "Lonely"})
+
+    assert ext.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_silence_mesh_skips_channel_but_sends_collision_external():
+    bot = _make_bot(
+        {
+            "silence_mesh_output": "true",
+            "notify_external_on_all_new_repeaters": "false",
+        }
+    )
+    db: _FakeDB = bot.db_manager
+    db.contact_row = _base_contact_row()
+    db.duplicate_count = 2
+
+    svc = RepeaterPrefixCollisionService(bot)
+    await svc.start()
+
+    with patch.object(svc, "send_external_notifications", new_callable=AsyncMock) as ext:
+        await svc._handle_new_contact_payload({"public_key": "01020304", "name": "NewRepeater"})
+
+    assert bot.command_manager.send_channel_message.await_count == 0
+    assert ext.await_count == 1
+    assert "Heard new repeater" in ext.await_args_list[0][0][0]
+
+
+@pytest.mark.asyncio
+async def test_collision_external_default_username_when_notify_all_false():
+    bot = _make_bot()
+    db: _FakeDB = bot.db_manager
+    db.contact_row = _base_contact_row()
+    db.duplicate_count = 2
+
+    svc = RepeaterPrefixCollisionService(bot)
+    await svc.start()
+
+    with patch.object(svc, "send_external_notifications", new_callable=AsyncMock) as ext:
+        await svc._handle_new_contact_payload({"public_key": "01020304", "name": "NewRepeater"})
+
+    kw = ext.await_args_list[0][1]
+    assert kw.get("discord_username") == "Repeater prefix collision"
+
+
+@pytest.mark.asyncio
+async def test_notify_all_true_collision_only_discovery_external_not_collision_copy():
+    bot = _make_bot(
+        {
+            "notify_external_on_all_new_repeaters": "true",
+            "discord_webhook_urls": "https://discord.com/api/webhooks/123456789/abcdefghij",
+        }
+    )
+    db: _FakeDB = bot.db_manager
+    db.contact_row = _base_contact_row()
+    db.duplicate_count = 2
+
+    svc = RepeaterPrefixCollisionService(bot)
+    await svc.start()
+
+    with patch.object(svc, "send_external_notifications", new_callable=AsyncMock) as ext:
+        await svc._handle_new_contact_payload({"public_key": "01020304", "name": "Dup"})
+
+    assert ext.await_count == 1
+    assert "New repeater heard" in ext.await_args_list[0][0][0]
+    assert "free prefixes remain" not in ext.await_args_list[0][0][0]

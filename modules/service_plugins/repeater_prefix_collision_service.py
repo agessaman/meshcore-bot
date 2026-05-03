@@ -4,6 +4,14 @@ Repeater Prefix Collision Service for MeshCore Bot
 
 Watches NEW_CONTACT events and notifies channels when a newly discovered repeater
 shares a prefix with an existing repeater (configurable: 1/2/3 bytes).
+
+Optional Discord/Telegram via ``send_external_notifications`` (see BaseServicePlugin):
+
+- ``notify_external_on_all_new_repeaters`` — when true, sends a discovery message to
+  webhook/Telegram for every qualified new repeater/roomserver; collision detail stays
+  on mesh only (unless ``silence_mesh_output``).
+- ``silence_mesh_output`` — when true, collision alerts are not sent on mesh channels;
+  discovery/collision externals follow ``notify_external_on_all_new_repeaters``.
 """
 
 import asyncio
@@ -64,9 +72,17 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
         )
         self._notified: dict[_NotifyKey, float] = {}  # key -> last_sent_epoch_seconds
         self._prefix_cooldown: dict[tuple[int, str], float] = {}  # (bytes, prefix_hex_lower) -> last_sent_epoch_seconds
+        self._discovery_notified: dict[str, float] = {}  # public_key -> last discovery external epoch
         self._dedupe_prune_max_age_seconds = max(
             3600.0,
             float(self.cooldown_minutes_per_prefix) * 120.0,
+        )
+
+        self.notify_external_on_all_new_repeaters = self.bot.config.getboolean(
+            section, "notify_external_on_all_new_repeaters", fallback=False
+        )
+        self.silence_mesh_output = self.bot.config.getboolean(
+            section, "silence_mesh_output", fallback=False
         )
 
         self._running = False
@@ -74,9 +90,12 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
         self._handler_lock = asyncio.Lock()
 
         self.logger.info(
-            "RepeaterPrefixCollision service initialized: channels=%s notify_on_prefix_bytes=%s",
+            "RepeaterPrefixCollision service initialized: channels=%s notify_on_prefix_bytes=%s "
+            "notify_external_on_all_new_repeaters=%s silence_mesh_output=%s",
             self.channels,
             self.notify_on_prefix_bytes,
+            self.notify_external_on_all_new_repeaters,
+            self.silence_mesh_output,
         )
 
     async def start(self) -> None:
@@ -184,6 +203,9 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
 
             self._prune_old_dedupe_state()
 
+            if self.notify_external_on_all_new_repeaters:
+                await self._maybe_send_discovery_external(public_key, name, location)
+
             for nbytes in self.notify_on_prefix_bytes:
                 await self._maybe_notify_for_prefix_bytes(
                     public_key=public_key,
@@ -260,6 +282,31 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
             stale_p = [k for k, ts in self._prefix_cooldown.items() if ts < cutoff]
             for prefix_key in stale_p:
                 del self._prefix_cooldown[prefix_key]
+        if self._discovery_notified:
+            stale_d = [k for k, ts in self._discovery_notified.items() if ts < cutoff]
+            for dk in stale_d:
+                del self._discovery_notified[dk]
+
+    async def _maybe_send_discovery_external(self, public_key: str, name: str, location: str) -> None:
+        """Webhook/Telegram discovery line; deduped per public_key (same cooldown window)."""
+        if not self.has_external_notification_targets():
+            return
+        if self._is_discovery_recently_notified(public_key):
+            return
+        text = self._format_discovery_message(public_key, name, location)
+        await self.send_external_notifications(text, discord_username="New repeater")
+        self._discovery_notified[public_key] = time.time()
+
+    def _format_discovery_message(self, public_key: str, name: str, location: str) -> str:
+        pk_short = f"{public_key[:16]}…" if len(public_key) > 16 else public_key
+        return f"New repeater heard: {name} near {location}. Key {pk_short}"
+
+    def _is_discovery_recently_notified(self, public_key: str) -> bool:
+        ts = self._discovery_notified.get(public_key)
+        if not ts:
+            return False
+        cooldown_s = max(0, int(self.cooldown_minutes_per_prefix)) * 60
+        return (time.time() - ts) < cooldown_s if cooldown_s else False
 
     async def _maybe_notify_for_prefix_bytes(
         self,
@@ -294,7 +341,12 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
             prefix_bytes=prefix_bytes,
         )
 
-        await self._send_to_channels(text)
+        if not self.notify_external_on_all_new_repeaters:
+            await self.send_external_notifications(
+                text, discord_username="Repeater prefix collision"
+            )
+        if not self.silence_mesh_output:
+            await self._send_to_channels(text)
 
         pk_short = f"{public_key[:16]}…" if len(public_key) > 16 else public_key
         self.logger.info(
