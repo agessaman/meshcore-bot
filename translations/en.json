@@ -59,8 +59,8 @@
           "description": "Get tomorrow's forecast"
         },
         {
-          "name": "7d",
-          "description": "Get 7-day forecast (also: 7-day, 2-7)"
+          "name": "Nd",
+          "description": "Get N-day forecast (e.g. 7d, 10d; also 7-day, 7, or 2–16)"
         },
         {
           "name": "hourly",
@@ -79,7 +79,12 @@
       "tomorrow_not_available": "Tomorrow's forecast not available",
       "tomorrow_error": "Error formatting tomorrow's forecast",
       "multiday_not_available": "{num_days}-day forecast not available",
-      "multiday_error": "Error formatting {num_days}-day forecast"
+      "multiday_error": "Error formatting {num_days}-day forecast",
+      "mqtt_forecast_not_supported": "Extended forecast is not available for MQTT weather sources",
+      "mqtt_weather_no_subscriber": "MQTT weather subscriber is not active (enable [MqttWeather] and custom.mqtt_weather.* topics)",
+      "mqtt_weather_no_data": "No MQTT weather message received for this topic yet",
+      "mqtt_weather_stale": "MQTT weather data is too old",
+      "mqtt_weather_payload_error": "MQTT weather payload error: {detail}"
     },
     "gwx": {
       "description": "Get weather information for any global location (usage: gwx Tokyo)",
@@ -93,6 +98,11 @@
       "tomorrow_error": "Error formatting tomorrow's forecast",
       "multiday_not_available": "{num_days}-day forecast not available",
       "multiday_error": "Error formatting {num_days}-day forecast",
+      "mqtt_forecast_not_supported": "Extended forecast is not available for MQTT weather sources",
+      "mqtt_weather_no_subscriber": "MQTT weather subscriber is not active (enable [MqttWeather] and custom.mqtt_weather.* topics)",
+      "mqtt_weather_no_data": "No MQTT weather message received for this topic yet",
+      "mqtt_weather_stale": "MQTT weather data is too old",
+      "mqtt_weather_payload_error": "MQTT weather payload error: {detail}",
       "periods": {
         "today": "Today",
         "tonight": "Tonight",
@@ -1104,5 +1114,20 @@
     "analytics": "Analytics Commands",
     "meshcore_info": "MeshCore Info Commands",
     "management": "Management Commands"
+  },
+  "services": {
+    "darcmowas" : {
+      "messagetype": {
+        "eu-alert-level-1": "Emergency Alert",
+        "eu-alert-level-2": "Extreme Danger",
+        "eu-alert-level-3": "Significant Danger",
+        "eu-alert-level-4": "Danger Information",
+        "eu-test": "Test Warning"
+      },
+      "fields": {
+        "sender": "Sender: {sender}",
+        "area": "Area: {areas}"
+      }
+    }
   }
 }

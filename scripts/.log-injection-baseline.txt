@@ -1,0 +1,4 @@
+# Known log-injection technical debt — do not add new entries without a
+# corresponding fix ticket.  Run scripts/check_log_injection.py --update
+# to regenerate after fixing existing violations.
+

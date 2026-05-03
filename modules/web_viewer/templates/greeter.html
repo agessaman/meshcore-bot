@@ -400,7 +400,8 @@ ${this.escapeHtml(this.greeterData.sample_greeting)}
             const response = await fetch('/api/greeter/end-rollout', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
                 }
             });
             
@@ -430,7 +431,8 @@ ${this.escapeHtml(this.greeterData.sample_greeting)}
             const response = await fetch('/api/greeter/ungreet', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
                 },
                 body: JSON.stringify({
                     sender_id: senderId,

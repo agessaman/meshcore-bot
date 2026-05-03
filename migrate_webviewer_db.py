@@ -57,7 +57,7 @@ def main() -> int:
             )
             if cur.fetchone() is None:
                 conn.execute("DETACH DATABASE src")
-                print(f"Source database has no packet_stream table; nothing to migrate.", file=sys.stderr)
+                print("Source database has no packet_stream table; nothing to migrate.", file=sys.stderr)
                 return 0
 
             # Copy rows from source; skip ids that already exist in target (INSERT OR IGNORE)

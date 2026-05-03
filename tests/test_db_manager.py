@@ -1,11 +1,10 @@
 """Tests for modules.db_manager."""
 
 import sqlite3
-import json
 from contextlib import closing
+from unittest.mock import Mock
 
 import pytest
-from unittest.mock import Mock
 
 from modules.db_manager import DBManager
 

@@ -25,10 +25,9 @@ IS_LINUX=false
 
 if [[ "$OS" == "Darwin" ]]; then
     IS_MACOS=true
-    SERVICE_TYPE="launchd"
+    _SERVICE_TYPE="launchd" # launchd (macOS); reserved for future diagnostics
 elif [[ "$OS" == "Linux" ]]; then
     IS_LINUX=true
-    SERVICE_TYPE="systemd"
 else
     echo "Error: Unsupported operating system: $OS"
     echo "This script supports Linux (systemd) and macOS (launchd)"
@@ -41,14 +40,13 @@ PLIST_NAME="com.meshcore.bot"
 
 if [[ "$IS_MACOS" == true ]]; then
     SERVICE_USER="$(whoami)"
-    SERVICE_GROUP="staff"
+    _SERVICE_GROUP="staff" # default macOS group; reserved for future ownership hints
     INSTALL_DIR="/usr/local/meshcore-bot"
     LOG_DIR="/usr/local/var/log/meshcore-bot"
     SERVICE_FILE="com.meshcore.bot.plist"
     LAUNCHD_DIR="/Library/LaunchDaemons"
 else
     SERVICE_USER="meshcore"
-    SERVICE_GROUP="meshcore"
     INSTALL_DIR="/opt/meshcore-bot"
     LOG_DIR="/var/log/meshcore-bot"
     SERVICE_FILE="meshcore-bot.service"
@@ -487,9 +485,14 @@ echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━�
 echo -e "${BLUE}ℹ️  Additional Notes${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-print_info "Python packages installed via pip are not automatically removed"
-print_info "If you want to remove them, run:"
-echo "  ${YELLOW}pip3 uninstall -r requirements.txt${NC}"
+if [[ "$INSTALL_EXISTS" == true ]] && [ ! -d "$INSTALL_DIR" ]; then
+    print_info "The virtual environment was removed with the installation directory"
+    print_info "All Python packages installed for this bot have been removed"
+else
+    print_info "Python packages are installed inside the virtual environment at:"
+    echo "  ${YELLOW}$INSTALL_DIR/venv${NC}"
+    print_info "Removing the installation directory above also removes all packages"
+fi
 echo ""
 
 if [[ "$INSTALL_EXISTS" == true ]] && [ -d "$INSTALL_DIR" ]; then

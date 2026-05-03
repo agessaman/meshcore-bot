@@ -14,7 +14,47 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
+  lint-frontend:
+    name: Lint Frontend (HTMLHint + ESLint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install frontend lint tools
+        run: npm ci
+
+      - name: HTMLHint — lint HTML templates
+        run: npm run lint:html
+
+      - name: ESLint — lint inline JavaScript
+        run: npm run lint:js
+
+  lint-shell:
+    name: Lint Shell Scripts (ShellCheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: ShellCheck — lint all .sh files
+        run: |
+          find . -name "*.sh" \
+            -not -path "./.git/*" \
+            -not -path "./node_modules/*" \
+            -not -path "./.venv/*" \
+            -not -path "./venv/*" \
+            -print0 | xargs -0 shellcheck --severity=warning
+
+  lint:
+    name: Lint (ruff)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,11 +63,58 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: ruff check — fail on any lint error
+        run: ruff check modules/ tests/
+
+      - name: Log injection check — fail on new unsanitized logger calls
+        run: python scripts/check_log_injection.py
+
+  typecheck:
+    name: Type check (mypy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          pip install --upgrade pip
+          pip install -e ".[test]"
+          pip install mypy
+
+      - name: mypy — strict overrides on typed modules
+        run: mypy modules/ --ignore-missing-imports
+
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
           pip install -e ".[test]"
 
-      - name: Run tests
+      - name: Run tests with coverage
         run: pytest tests/ -v --tb=short

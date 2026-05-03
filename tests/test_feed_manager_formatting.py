@@ -1,11 +1,11 @@
 """Tests for FeedManager pure formatting and filtering logic."""
 
 import json
-from datetime import datetime, timezone, timedelta
+from configparser import ConfigParser
+from datetime import datetime, timedelta, timezone
+from unittest.mock import Mock
 
 import pytest
-from configparser import ConfigParser
-from unittest.mock import Mock
 
 from modules.feed_manager import FeedManager
 
@@ -135,6 +135,32 @@ class TestShouldSendItem:
         }
         # First condition passes, second fails
         item = {"raw": {"Priority": "high", "Status": "closed"}}
+        assert fm._should_send_item(feed, item) is False
+
+    def test_within_days_passes_recent(self, fm):
+        now = datetime.now(timezone.utc)
+        feed = {
+            "id": 1,
+            "filter_config": json.dumps({
+                "conditions": [
+                    {"field": "published", "operator": "within_days", "days": 28},
+                ],
+            }),
+        }
+        item = {"published": now - timedelta(days=5)}
+        assert fm._should_send_item(feed, item) is True
+
+    def test_within_days_rejects_old(self, fm):
+        now = datetime.now(timezone.utc)
+        feed = {
+            "id": 1,
+            "filter_config": json.dumps({
+                "conditions": [
+                    {"field": "published", "operator": "within_days", "days": 7},
+                ],
+            }),
+        }
+        item = {"published": now - timedelta(days=30)}
         assert fm._should_send_item(feed, item) is False
 
 

@@ -6,6 +6,7 @@ Based on the meshcore protocol specifications
 
 from enum import Enum, Flag
 
+
 class AdvertFlags(Flag):
     """Advertisement flags for MeshCore packets - matches C++ AdvertDataHelpers.h"""
     # Type flags (bits 0-3)
@@ -14,13 +15,13 @@ class AdvertFlags(Flag):
     ADV_TYPE_REPEATER = 0x02
     ADV_TYPE_ROOM = 0x03
     ADV_TYPE_SENSOR = 0x04
-    
+
     # Feature flags (bits 4-7)
     ADV_LATLON_MASK = 0x10    # Bit 4 - Has location data
     ADV_FEAT1_MASK = 0x20     # Bit 5 - Future feature 1
     ADV_FEAT2_MASK = 0x40     # Bit 6 - Future feature 2
     ADV_NAME_MASK = 0x80      # Bit 7 - Has name data
-    
+
     # Legacy aliases for backward compatibility
     IsCompanion = ADV_TYPE_CHAT
     IsRepeater = ADV_TYPE_REPEATER
@@ -32,7 +33,7 @@ class AdvertFlags(Flag):
 class PayloadType(Enum):
     """Payload types for MeshCore packets - matches C++ definitions"""
     REQ = 0x00          # PAYLOAD_TYPE_REQ
-    RESPONSE = 0x01     # PAYLOAD_TYPE_RESPONSE  
+    RESPONSE = 0x01     # PAYLOAD_TYPE_RESPONSE
     TXT_MSG = 0x02      # PAYLOAD_TYPE_TXT_MSG
     ACK = 0x03          # PAYLOAD_TYPE_ACK
     ADVERT = 0x04       # PAYLOAD_TYPE_ADVERT

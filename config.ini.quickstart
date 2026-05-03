@@ -7,6 +7,13 @@
 connection_type = serial
 serial_port = /dev/ttyUSB0
 timeout = 30
+radio_probe_interval_seconds = 300
+radio_probe_fail_threshold = 3
+radio_zombie_alert_enabled = false
+radio_zombie_alert_email =
+radio_offline_threshold = 3
+radio_offline_alert_enabled = false
+radio_offline_alert_email =
 
 [Bot]
 bot_name = MeshCoreBot
@@ -14,10 +21,20 @@ enabled = true
 bot_latitude = 40.7128
 bot_longitude = -74.0060
 db_path = meshcore_bot.db
+rate_limit_seconds = 10
+bot_tx_rate_limit_seconds = 1.0
+per_user_rate_limit_seconds = 30
+per_user_rate_limit_enabled = true
+
+[Admin]
+enabled = false
+port = 5001
+token =
 
 [Channels]
 monitor_channels = general,test,emergency
 respond_to_dms = true
+max_response_hops = 7
 
 [Banned_Users]
 banned_users = 
@@ -25,13 +42,13 @@ banned_users =
 [Admin_ACL]
 # 64-char hex public keys (comma-separated). Leave blank to disable admin commands.
 admin_pubkeys = 
-admin_commands = repeater,webviewer,reload
+admin_commands = repeater,webviewer,reload,channelpause
 
 [Keywords]
 test = "ack @[{sender}]{phrase_part} | {connection_info} | Received at: {timestamp}"
 ping = "Pong!"
 pong = "Ping!"
-help = "Bot Help: test (or t), ping, help, hello, cmd, advert, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats | More: 'help <command>'"
+help = "Bot Help: test (or t), ping, version, help, hello, cmd, advert, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats | More: 'help <command>'"
 
 [Logging]
 log_level = INFO
@@ -46,6 +63,9 @@ default_country = US
 # Path command - "p" shortcut for quick path decoding
 [Path_Command]
 enable_p_shortcut = true
+
+[Version_Command]
+enabled = true
 
 # Sports - teams shown when user says "sports" with no args
 [Sports_Command]

@@ -16,6 +16,13 @@ python validate_config.py [--config config.ini]
 python meshcore_bot.py --validate-config [--config config.ini]
 ```
 
+**Inspect resolved config** (redacted, then exit):
+
+```bash
+python meshcore_bot.py --show-config [--config config.ini]
+python meshcore_bot.py --show-config-json [--config config.ini]
+```
+
 - **Exit 0** – No errors (warnings and info may still be printed).
 - **Exit 1** – One or more errors; fix them before starting the bot.
 
@@ -31,7 +38,7 @@ The bot will not start without these sections. The validator reports them as **e
 |----------------|----------------------------------------------|
 | `[Connection]` | Serial, BLE, or TCP connection parameters   |
 | `[Bot]`        | Database path, bot name, rate limits, etc.   |
-| `[Channels]`   | Monitor channels, DM behavior, optional flood_scope (scoped flooding) |
+| `[Channels]`   | Monitor channels, DM behavior, optional flood_scope / flood_scopes (scoped flooding) |
 
 ### Section names
 
@@ -46,9 +53,13 @@ The bot will not start without these sections. The validator reports them as **e
 
 If these are absent, the validator reports **info** (no error):
 
-- **`[Admin_ACL]`** – Absent means admin commands (repeater, webviewer, reload) are disabled.
+- **`[Admin_ACL]`** – Absent means admin commands (repeater, webviewer, reload, channelpause) are disabled.
 - **`[Banned_Users]`** – Absent means no users are banned.
 - **`[Localization]`** – Absent means defaults (e.g. `language=en`, `translation_path=translations/`) are used.
+
+### Public channel guard
+
+If `monitor_channels` includes the Public channel (matched by name — `Public`, `#public`, etc.), the validator reports an **error** unless the override key is present in `[Bot]`. See [Channels section — Public channel guard](configuration.md#public-channel-guard) for the override key and rationale.
 
 ### Path writability
 

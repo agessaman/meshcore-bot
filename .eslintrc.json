@@ -1,0 +1,27 @@
+{
+  "env": {
+    "browser": true,
+    "es2021": true
+  },
+  "plugins": ["html"],
+  "settings": {
+    "html/html-extensions": [".html"]
+  },
+  "rules": {
+    "no-undef": "warn",
+    "no-unused-vars": "warn",
+    "no-console": "off",
+    "semi": ["warn", "always"],
+    "eqeqeq": ["warn", "always"],
+    "no-eval": "error",
+    "no-implied-eval": "error"
+  },
+  "globals": {
+    "io": "readonly",
+    "bootstrap": "readonly",
+    "Chart": "readonly",
+    "L": "readonly",
+    "escapeHtml": "writable",
+    "socket": "writable"
+  }
+}

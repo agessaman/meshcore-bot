@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Raw Config — MeshCore Bot{% endblock %}
+
+{% block extra_css %}
+<style>
+    .admin-config-section.card {
+        overflow: hidden;
+    }
+    .admin-config-section .table-responsive {
+        border-radius: 0;
+        overflow-x: auto;
+        overflow-y: visible;
+        padding-right: 1rem;
+    }
+    .admin-config-table thead th,
+    .admin-config-table tbody td {
+        padding-top: 0.55rem;
+        padding-bottom: 0.55rem;
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+    .admin-config-table thead th:first-child,
+    .admin-config-table tbody th:first-child {
+        border-left: 3px solid #0d6efd;
+        padding-left: calc(1rem + 1em + 0.5rem - 3px);
+    }
+    [data-theme="dark"] .admin-config-table thead th:first-child,
+    [data-theme="dark"] .admin-config-table tbody th:first-child {
+        border-left-color: #6ea8fe;
+    }
+    .admin-config-table thead th {
+        background-color: var(--card-header-bg);
+        color: var(--text-color);
+        border-bottom: 1px solid var(--border-color);
+        font-weight: 600;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    .admin-config-table td code,
+    .admin-config-table th code {
+        color: var(--text-color);
+        background-color: transparent;
+        font-size: 0.9em;
+    }
+    .admin-config-value {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 0.9em;
+        word-break: break-word;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mb-3">
+                <i class="fas fa-file-code me-2"></i>Raw Config
+            </h1>
+            <p class="text-muted mb-3">
+                Effective values loaded by the bot (sensitive keys are redacted). This view is read-only.
+            </p>
+            <p class="small text-muted mb-4">
+                <i class="fas fa-folder-open me-1"></i><code>{{ config_path }}</code>
+            </p>
+
+            {% for section_name, options in sections.items() %}
+            <section class="card admin-config-section mb-4">
+                <div class="card-header">
+                    <h2 class="h5 mb-0"><i class="fas fa-layer-group me-2"></i><code>[{{ section_name }}]</code></h2>
+                </div>
+                <div class="card-body p-0">
+                    {% if options %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover admin-config-table mb-0">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Key</th>
+                                    <th scope="col">Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for key, val in options.items() %}
+                                <tr>
+                                    <th scope="row"><code>{{ key }}</code></th>
+                                    <td class="admin-config-value">{{ val }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted small px-3 py-3 mb-0">No keys in this section.</p>
+                    {% endif %}
+                </div>
+            </section>
+            {% endfor %}
+
+            {% if not sections %}
+            <p class="text-muted">No configuration sections to display.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

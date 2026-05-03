@@ -5,49 +5,53 @@ Lists available commands in a compact, comma-separated format for LoRa
 """
 
 from typing import Any, Optional
-from .base_command import BaseCommand
+
 from ..models import MeshMessage
+from .base_command import BaseCommand
 
 
 class CmdCommand(BaseCommand):
     """Handles the cmd command"""
-    
+
     # Plugin metadata
     name = "cmd"
     keywords = ['cmd', 'commands']
     description = "Lists available commands in compact format"
     category = "basic"
-    
+
     # Documentation
     short_description = "Lists available commands"
     usage = "cmd"
     examples = ["cmd"]
-    
+
     def __init__(self, bot):
         """Initialize the cmd command.
-        
+
         Args:
             bot: The bot instance.
         """
         super().__init__(bot)
         self.cmd_enabled = self.get_config_value('Cmd_Command', 'enabled', fallback=True, value_type='bool')
-    
-    def can_execute(self, message: MeshMessage) -> bool:
+        self.cmd_reference_url = self.get_config_value(
+            'Cmd_Command', 'cmd_reference_url', fallback='', value_type='str'
+        ).strip()
+
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Check if this command can be executed with the given message.
-        
+
         Args:
             message: The message triggering the command.
-            
+
         Returns:
             bool: True if command is enabled and checks pass, False otherwise.
         """
         if not self.cmd_enabled:
             return False
         return super().can_execute(message)
-    
+
     def get_help_text(self) -> str:
         """Get help text for the cmd command.
-        
+
         Returns:
             str: The help text for this command.
         """
@@ -98,7 +102,7 @@ class CmdCommand(BaseCommand):
                 all_commands.append(cmd_name)
 
         # Include config keywords that aren't handled by plugins (and are allowed in channel)
-        for keyword in self.bot.command_manager.keywords.keys():
+        for keyword in self.bot.command_manager.keywords:
             # Check if this keyword is already handled by a plugin
             is_plugin_keyword = any(
                 keyword.lower() in [k.lower() for k in cmd.keywords]
@@ -109,42 +113,39 @@ class CmdCommand(BaseCommand):
                     if not self.bot.command_manager._is_channel_trigger_allowed(keyword, message):
                         continue
                 all_commands.append(keyword)
-        
+
         # Remove duplicates and sort
         all_commands = sorted(set(all_commands))
-        
+
         # Prioritize: put priority commands first, then others
         prioritized = []
         remaining = []
-        
+
         for cmd in all_commands:
             if cmd in priority_commands:
                 prioritized.append(cmd)
             else:
                 remaining.append(cmd)
-        
+
         # Sort priority commands by their order in priority_commands list
         prioritized = sorted(prioritized, key=lambda x: priority_commands.index(x) if x in priority_commands else 999)
-        
+
         # Combine: priority first, then others
         command_names = prioritized + sorted(remaining)
-        
+
         # Build the list, respecting max_length if provided
         if max_length is None:
             return ', '.join(command_names)
-        
+
         # Build list within length limit
-        result = []
+        result: list[str] = []
         prefix = "Available commands: "
         current_length = len(prefix)
-        
+
         for cmd in command_names:
             # Calculate length if we add this command: ", cmd" or "cmd" (first one)
-            if result:
-                test_length = current_length + len(', ') + len(cmd)
-            else:
-                test_length = current_length + len(cmd)
-            
+            test_length = current_length + len(', ') + len(cmd) if result else current_length + len(cmd)
+
             if test_length <= max_length:
                 if result:
                     result.append(cmd)
@@ -160,19 +161,22 @@ class CmdCommand(BaseCommand):
                     if current_length + len(suffix) <= max_length:
                         result.append(suffix)
                 break
-        
+
         return prefix + ', '.join(result)
-    
+
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the cmd command.
-        
+
         Args:
             message: The message triggering the command.
-            
+
         Returns:
             bool: True if executed successfully, False otherwise.
         """
         try:
+            if self.cmd_reference_url:
+                return await self.send_response(message, f"Full command reference: {self.cmd_reference_url}")
+
             # Check if user has defined a custom cmd keyword response in config
             # Use the already-loaded keywords dict (quotes are already stripped)
             cmd_keyword = self.bot.command_manager.keywords.get('cmd')
@@ -180,7 +184,7 @@ class CmdCommand(BaseCommand):
                 # User has defined a custom response, use it with formatting
                 response = self.bot.command_manager.format_keyword_response(cmd_keyword, message)
                 return await self.send_response(message, response)
-            
+
             # Fallback to dynamic command list if no custom keyword is defined
             # Get max message length to ensure we fit within limits
             max_length = self.get_max_message_length(message)
