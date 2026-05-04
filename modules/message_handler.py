@@ -1533,8 +1533,12 @@ class MessageHandler:
             if hasattr(self, "debug") and self.debug:
                 self.logger.debug(f"ADVERT flags: 0x{flags_byte:02X} (binary: {flags_byte:08b})")
 
-            # Create flags object with the full byte value
-            flags = AdvertFlags(flags_byte)
+            # Bit tests match firmware AdvertDataParser (do not use AdvertFlags(flags_byte):
+            # enum.Flag rejects some valid uint8 values, e.g. corrupt wires or type nibble > 4).
+            has_latlon = (flags_byte & AdvertFlags.ADV_LATLON_MASK.value) != 0
+            has_feat1 = (flags_byte & AdvertFlags.ADV_FEAT1_MASK.value) != 0
+            has_feat2 = (flags_byte & AdvertFlags.ADV_FEAT2_MASK.value) != 0
+            has_name = (flags_byte & AdvertFlags.ADV_NAME_MASK.value) != 0
 
             advert = {
                 "public_key": pub_key.hex(),
@@ -1559,7 +1563,7 @@ class MessageHandler:
             i = 1  # Start after flags byte
 
             # Parse location data if present (matches C++ hasLatLon())
-            if AdvertFlags.ADV_LATLON_MASK in flags:
+            if has_latlon:
                 if len(app_data) < i + 8:
                     self.logger.error(f"ADVERT with location flag too short: {len(app_data)} bytes")
                     return advert
@@ -1570,7 +1574,7 @@ class MessageHandler:
                 i += 8
 
             # Parse feat1 data if present
-            if AdvertFlags.ADV_FEAT1_MASK in flags:
+            if has_feat1:
                 if len(app_data) < i + 2:
                     self.logger.error(f"ADVERT with feat1 flag too short: {len(app_data)} bytes")
                     return advert
@@ -1579,7 +1583,7 @@ class MessageHandler:
                 i += 2
 
             # Parse feat2 data if present
-            if AdvertFlags.ADV_FEAT2_MASK in flags:
+            if has_feat2:
                 if len(app_data) < i + 2:
                     self.logger.error(f"ADVERT with feat2 flag too short: {len(app_data)} bytes")
                     return advert
@@ -1588,7 +1592,7 @@ class MessageHandler:
                 i += 2
 
             # Parse name data if present (matches C++ hasName())
-            if AdvertFlags.ADV_NAME_MASK in flags and len(app_data) >= i:
+            if has_name and len(app_data) >= i:
                 name_len = len(app_data) - i
                 if name_len > 0:
                     try:
@@ -1601,7 +1605,7 @@ class MessageHandler:
             return advert
 
         except Exception as e:
-            self.logger.error(f"Error parsing ADVERT payload: {e}", exc_info=True)
+            self.logger.warning(f"Error parsing ADVERT payload: {e}")
             return {}
 
     def _path_bytes_to_nodes(self, path_bytes: bytes, prefix_hex_chars: int | None = None) -> tuple:

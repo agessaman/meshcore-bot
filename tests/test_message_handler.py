@@ -1213,6 +1213,32 @@ class TestParseAdvert:
         result = handler.parse_advert(payload)
         assert result["mode"] == "Type5"
 
+    def test_advert_flags_0xfd_invalid_for_python_flag_still_parses(self, handler):
+        """0xFD sets type nibble 0x0D; enum.Flag rejected this — parsing must match firmware bit tests."""
+        payload = _make_advert_payload(
+            0xFD,
+            location_lat_raw=1000000,
+            location_lon_raw=-2000000,
+            feat1=0x0001,
+            feat2=0x0002,
+            name="CorruptWire",
+        )
+        result = handler.parse_advert(payload)
+        assert result != {}
+        assert result["mode"] == "Type13"
+        assert result["lat"] == 1.0
+        assert result["lon"] == -2.0
+        assert result["feat1"] == 0x0001
+        assert result["feat2"] == 0x0002
+        assert result["name"] == "CorruptWire"
+
+    def test_advert_type_nibble_8_no_extra_flags(self, handler):
+        """Low nibble 8 sets bit 0x08 alone — must not raise."""
+        payload = _make_advert_payload(0x08)
+        result = handler.parse_advert(payload)
+        assert result["mode"] == "Type8"
+        assert "lat" not in result
+
     def test_companion_with_name(self, handler):
         # ADV_NAME_MASK=0x80 | ADV_TYPE_CHAT=0x01
         payload = _make_advert_payload(0x81, name="TestNode")
