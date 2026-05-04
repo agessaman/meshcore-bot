@@ -26,18 +26,18 @@ PYTHONPATH="${PYTHONPATH}:$(pwd)"
 export PYTHONPATH
 export FLASK_ENV=production
 
-# Kill any existing web viewer processes on port 8080
+# Kill any existing web viewer processes on port 8083
 echo "Checking for existing web viewer processes..."
-if lsof -ti:8080 >/dev/null 2>&1; then
-    echo "Found existing processes on port 8080, stopping them..."
-    lsof -ti:8080 | xargs kill -9 2>/dev/null || true
+if lsof -ti:8083 >/dev/null 2>&1; then
+    echo "Found existing processes on port 8083, stopping them..."
+    lsof -ti:8083 | xargs kill -9 2>/dev/null || true
     sleep 2
 fi
 
 # Start the web viewer in standalone mode
-echo "Starting web viewer in standalone mode on http://127.0.0.1:8080"
+echo "Starting web viewer in standalone mode on http://127.0.0.1:8083"
 echo "Note: This runs independently of the main bot"
 echo "Press Ctrl+C to stop"
 echo ""
 
-python3 modules/web_viewer/app.py --host 127.0.0.1 --port 8080
+python3 modules/web_viewer/app.py --host 0.0.0.0 --port 8083
