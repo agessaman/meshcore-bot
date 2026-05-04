@@ -97,6 +97,26 @@ cmd
 
 ---
 
+### `llm`
+
+Ask a local llama.cpp instance for a short AI response.
+
+**Aliases:** `ia`, `ai`, `chat`
+
+**Usage:**
+```
+llm <question>
+```
+
+**Note:** If `command_prefix` is set in your `config.ini` (e.g. `command_prefix = /`), prefix the command accordingly (e.g. `/llm <question>`). All aliases (`ia`, `ai`, `chat`) also work with the configured prefix.
+
+**Examples:**
+```
+llm What is LoRa?
+llm summarize mesh routing in one sentence
+```
+
+**Response:** Short AI-generated response from your locally configured llama.cpp endpoint.
 ### `version`
 
 Show the bot's current software version.
@@ -1027,4 +1047,3 @@ schedule
 ---
 
 For more information about configuring the bot, see the main [README](https://github.com/agessaman/meshcore-bot/blob/main/README.md) file.
-

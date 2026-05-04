@@ -85,7 +85,7 @@ class CmdCommand(BaseCommand):
         """
         # Define priority order - most important/commonly used commands first
         priority_commands = [
-            'test', 'ping', 'help', 'hello', 'cmd', 'advert',
+            'test', 'ping', 'help', 'hello', 'cmd', 'llm', 'advert',
             'wx', 'aqi', 'sun', 'moon', 'solar', 'hfcond', 'satpass',
             'prefix', 'path', 'sports', 'dice', 'roll', 'stats'
         ]
