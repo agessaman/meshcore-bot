@@ -1050,5 +1050,20 @@
         "analytics": "Analytik-Befehle",
         "meshcore_info": "MeshCore Info-Befehle",
         "management": "Verwaltungs-Befehle"
+    },
+    "services": {
+        "darcmowas" : {
+            "messagetype": {
+                "eu-alert-level-1": "Notfallalarm",
+                "eu-alert-level-2": "Extreme Gefahr",
+                "eu-alert-level-3": "Erhebliche Gefahr",
+                "eu-alert-level-4": "Gefahreninformation",
+                "eu-test": "Testwarnung"
+            },
+            "fields": {
+                "sender": "Herausgeber: {sender}",
+                "area": "Betr. Gebiete: {areas}"
+            }
+        }
     }
 }

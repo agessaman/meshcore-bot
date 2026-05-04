@@ -111,7 +111,13 @@ The bot configuration is located at `/opt/meshcore-bot/config.ini`. Edit it with
 sudo nano /opt/meshcore-bot/config.ini
 ```
 
-After changing configuration, restart the service:
+After changing configuration, you can reload in place (no process restart):
+
+```bash
+sudo systemctl reload meshcore-bot
+```
+
+Use restart when connection/radio settings changed (serial port, BLE target, TCP host/port, timeout):
 
 ```bash
 sudo systemctl restart meshcore-bot

@@ -24,12 +24,85 @@
         border-radius: 0.375rem;
         padding: 0.5rem;
     }
+
+    /* Dark mode: scrollbars for Command / Channel Messages / Packet streams (Firefox + WebKit) */
+    [data-theme="dark"] .stream-container {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.28) var(--bg-tertiary);
+    }
+
+    [data-theme="dark"] .stream-container::-webkit-scrollbar {
+        width: 10px;
+    }
+
+    [data-theme="dark"] .stream-container::-webkit-scrollbar-track {
+        background: var(--bg-tertiary);
+        border-radius: 0.25rem;
+    }
+
+    [data-theme="dark"] .stream-container::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.22);
+        border-radius: 0.25rem;
+        border: 2px solid var(--bg-tertiary);
+    }
+
+    [data-theme="dark"] .stream-container::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.35);
+    }
+
+    /* Packet stream: no horizontal scroll; long paths wrap within the card */
+    #packet-stream {
+        overflow-x: hidden;
+    }
+
+    #packet-stream .stream-entry > .d-flex {
+        min-width: 0;
+    }
+
+    #packet-stream .stream-entry .flex-grow-1 {
+        min-width: 0;
+    }
+
+    #packet-stream .packet-stream-path {
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
     
     .stream-entry {
         background-color: var(--card-bg);
         transition: all 0.3s ease;
         border-left: 3px solid #6c757d;
         color: var(--text-color);
+    }
+
+    /* SNR / hops: compact chips; colors match Packet Stream (bg-primary / bg-info). */
+    .live-msg-meta-badge {
+        font-size: 0.62rem;
+        font-weight: 500;
+        line-height: 1.15;
+        padding: 0.18em 0.42em;
+        vertical-align: middle;
+    }
+
+    .live-msg-meta-stack {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 0.2rem;
+        max-width: 100%;
+    }
+
+    .live-msg-meta-badges-row {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 0.25rem;
+    }
+
+    .live-msg-time {
+        font-size: 0.58rem;
+        line-height: 1.2;
+        opacity: 0.88;
     }
     
     .stream-entry:hover {
@@ -433,22 +506,48 @@
 
 {% block content %}
 <div class="row">
-    <div class="col-12">
-        <h1 class="mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-center mb-4">
+        <h1 class="mb-0">
             <i class="fas fa-broadcast-tower"></i> Real-time Monitoring
         </h1>
+        <a href="/logs" class="btn btn-outline-secondary">
+            <i class="fas fa-file-alt"></i> Live Log Viewer
+        </a>
     </div>
 </div>
 
-<!-- Stream Controls -->
-<div class="row mb-4">
-    <div class="col-md-6">
-        <div class="card">
+<!-- Stream Filters -->
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="d-flex align-items-center flex-wrap gap-2">
+            <small class="text-muted me-1">Show:</small>
+            <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input rt-filter-cb" type="checkbox" id="rt-filter-command" data-target="command-card" checked>
+                <label class="form-check-label" for="rt-filter-command" style="font-size:0.8rem;color:#6c757d">Commands</label>
+            </div>
+            <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input rt-filter-cb" type="checkbox" id="rt-filter-packet" data-target="packet-card" checked>
+                <label class="form-check-label" for="rt-filter-packet" style="font-size:0.8rem;color:#0dcaf0">Packets</label>
+            </div>
+            <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input rt-filter-cb" type="checkbox" id="rt-filter-message" data-target="message-card" checked>
+                <label class="form-check-label" for="rt-filter-message" style="font-size:0.8rem;color:#0d6efd">Messages</label>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Stream panels: XL = 3 columns; MD–LG = Command + Messages, then Packet; XS = Command, Packet, Messages -->
+<div class="row realtime-streams align-items-stretch g-3 mb-4">
+    <div class="col-12 col-md-6 col-xl-4 order-1 order-md-1 order-xl-1">
+        <div class="card h-100" id="command-card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h6><i class="fas fa-comments"></i> Command Stream</h6>
-                <div>
-                    <span class="badge bg-success" id="command-status">Connected</span>
-                    <button class="btn btn-sm btn-outline-secondary ms-2" onclick="clearCommands()">Clear</button>
+                <div class="d-flex align-items-center gap-1">
+                    <span class="badge bg-warning" id="command-status">Connecting…</span>
+                    <button class="btn btn-sm btn-outline-secondary ms-2" id="cmd-scroll-top" onclick="scrollStream('command-stream','top')" title="Scroll to newest"><i class="fas fa-arrow-up"></i></button>
+                    <button class="btn btn-sm btn-outline-secondary" id="cmd-scroll-bottom" onclick="scrollStream('command-stream','bottom')" title="Scroll to oldest"><i class="fas fa-arrow-down"></i></button>
+                    <button class="btn btn-sm btn-outline-secondary ms-1" onclick="clearCommands()">Clear</button>
                 </div>
             </div>
             <div class="card-body">
@@ -460,14 +559,40 @@
             </div>
         </div>
     </div>
-    
-    <div class="col-md-6">
-        <div class="card">
+
+    <div class="col-12 col-md-6 col-xl-4 order-3 order-md-2 order-xl-3">
+        <div class="card h-100" id="message-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6><i class="fas fa-comment-dots"></i> Live Channel Messages</h6>
+                <div class="d-flex align-items-center gap-1">
+                    <span class="badge bg-warning" id="message-status">Connecting…</span>
+                    <button class="btn btn-sm btn-outline-secondary ms-2" id="msg-scroll-top" onclick="scrollStream('message-stream','top')" title="Scroll to newest"><i class="fas fa-arrow-up"></i></button>
+                    <button class="btn btn-sm btn-outline-secondary" id="msg-scroll-bottom" onclick="scrollStream('message-stream','bottom')" title="Scroll to oldest"><i class="fas fa-arrow-down"></i></button>
+                    <button class="btn btn-sm btn-outline-secondary ms-1" onclick="clearMessages()">Clear</button>
+                    <button class="btn btn-sm btn-outline-secondary ms-1" id="msg-pause-btn" onclick="toggleMessagePause()">
+                        <i class="fas fa-pause" id="msg-pause-icon"></i> Pause
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div id="message-stream" class="stream-container">
+                    <div class="text-muted text-center py-3">
+                        <i class="fas fa-hourglass-half"></i> Waiting for channel messages…
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-md-12 col-xl-4 order-2 order-md-3 order-xl-2">
+        <div class="card h-100" id="packet-card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h6><i class="fas fa-route"></i> Packet Stream</h6>
-                <div>
-                    <span class="badge bg-success" id="packet-status">Active</span>
-                    <button class="btn btn-sm btn-outline-secondary ms-2" onclick="clearPackets()">Clear</button>
+                <div class="d-flex align-items-center gap-1">
+                    <span class="badge bg-warning" id="packet-status">Connecting…</span>
+                    <button class="btn btn-sm btn-outline-secondary ms-2" id="pkt-scroll-top" onclick="scrollStream('packet-stream','top')" title="Scroll to newest"><i class="fas fa-arrow-up"></i></button>
+                    <button class="btn btn-sm btn-outline-secondary" id="pkt-scroll-bottom" onclick="scrollStream('packet-stream','bottom')" title="Scroll to oldest"><i class="fas fa-arrow-down"></i></button>
+                    <button class="btn btn-sm btn-outline-secondary ms-1" onclick="clearPackets()">Clear</button>
                 </div>
             </div>
             <div class="card-body">
@@ -679,15 +804,22 @@
 {% endblock %}
 
 {% block extra_js %}
-<script type="module">
-    // Import meshcore-decoder for client-side packet decoding
-    import { decodePacket, MeshCoreKeyStore } from '/static/js/meshcore-browser.mjs';
-    
-    // Make decoder available globally for use in functions
-    window.meshCoreDecoder = { decodePacket, MeshCoreKeyStore };
-    
-    // Initialize Socket.IO connection
-    const socket = io();
+<script>
+    // Load meshcore-decoder asynchronously so it doesn't block socket init.
+    // Dynamic import() works in regular <script> tags on all modern browsers and
+    // avoids the <script type="module"> scope/timing issues that prevented
+    // socket.on('connect') from firing (the module deferred execution caused a
+    // race between two Socket.IO managers, with the module's socket never
+    // receiving its connect event).
+    import('/static/js/meshcore-browser.mjs').then(function(m) {
+        window.meshCoreDecoder = m;
+        window._MeshCoreKeyStore = m.MeshCoreKeyStore;
+    }).catch(function(e) {
+        console.warn('MeshCore decoder unavailable:', e);
+    });
+
+    // Reuse the shared socket from base.html's ModernConnectionManager
+    const socket = window.connectionManager.socket;
     
     // Connection status
     let commandConnected = false;
@@ -726,7 +858,7 @@
         for (const entry of channelEntries) {
             try {
                 // Create a key store with just this one secret
-                const testKeyStore = new MeshCoreKeyStore({
+                const testKeyStore = new (window._MeshCoreKeyStore || class { addChannelSecrets(){} })({
                     channelSecrets: [entry.secret]
                 });
                 
@@ -817,9 +949,9 @@
             }
 
             // Create the decoder key store with all channel secrets
-            decoderKeyStore = new MeshCoreKeyStore({
+            decoderKeyStore = window._MeshCoreKeyStore ? new window._MeshCoreKeyStore({
                 channelSecrets: channelSecrets
-            });
+            }) : null;
             window.decoderKeyStore = decoderKeyStore;
 
             let logMsg = `Initialized MeshCore decoder with ${channelSecrets.length} channel keys (Public`;
@@ -895,9 +1027,13 @@
     // Socket event handlers
     socket.on('connect', function() {
         console.log('Connected to server');
+        updateStatus('command-status', 'Connected', 'success');
+        updateStatus('packet-status', 'Connected', 'success');
+        updateStatus('message-status', 'Connected', 'success');
         socket.emit('subscribe_commands');
         socket.emit('subscribe_packets');
-        
+        socket.emit('subscribe_messages');
+
         // Load recent commands when connected
         loadRecentCommands();
         
@@ -912,6 +1048,7 @@
         console.log('Disconnected from server');
         updateStatus('command-status', 'Disconnected', 'danger');
         updateStatus('packet-status', 'Disconnected', 'danger');
+        updateStatus('message-status', 'Disconnected', 'danger');
         
         // Stop ping interval on disconnect
         stopPingInterval();
@@ -942,7 +1079,199 @@
     socket.on('packet_data', function(data) {
         addPacketEntry(data);
     });
-    
+
+    socket.on('message_data', function(data) {
+        addMessageEntry(data);
+    });
+
+    // ── Live Channel Messages ──────────────────────────────────────────────
+
+    let messagePaused = false;
+    const MAX_MESSAGES = 200;
+
+    function toggleMessagePause() {
+        messagePaused = !messagePaused;
+        const icon = document.getElementById('msg-pause-icon');
+        const btn  = document.getElementById('msg-pause-btn');
+        if (messagePaused) {
+            icon.className = 'fas fa-play';
+            btn.innerHTML  = '<i class="fas fa-play"></i> Resume';
+            updateStatus('message-status', 'Paused', 'warning');
+        } else {
+            icon.className = 'fas fa-pause';
+            btn.innerHTML  = '<i class="fas fa-pause"></i> Pause';
+            updateStatus('message-status', 'Active', 'success');
+        }
+    }
+
+    function clearMessages() {
+        document.getElementById('message-stream').innerHTML =
+            '<div class="text-muted text-center py-3"><i class="fas fa-hourglass-half"></i> Waiting for channel messages…</div>';
+    }
+
+    function normalizeChannelKeyForColor(channel) {
+        if (!channel) return '';
+        let s = String(channel).trim().toLowerCase();
+        if (s.startsWith('#')) s = s.slice(1);
+        return s;
+    }
+
+    function hashStringToUint(str) {
+        let h = 2166136261;
+        for (let i = 0; i < str.length; i++) {
+            h ^= str.charCodeAt(i);
+            h = Math.imul(h, 16777619);
+        }
+        return h >>> 0;
+    }
+
+    /** Hue 0–359: mix normalized + raw label so e.g. Public vs #testing rarely collide or look identical. */
+    function channelHueFromRaw(channelRaw) {
+        if (!channelRaw) return 200;
+        const s = String(channelRaw).trim();
+        const norm = normalizeChannelKeyForColor(s);
+        const mixed = norm + '\x1e' + s;
+        let h = hashStringToUint(mixed);
+        h ^= h >>> 16;
+        h = Math.imul(h, 2246822519);
+        h ^= h >>> 13;
+        h = Math.imul(h, 3266489917);
+        h ^= h >>> 16;
+        return (h >>> 0) % 360;
+    }
+
+    function isLightThemeActive() {
+        return document.documentElement.getAttribute('data-theme') === 'light';
+    }
+
+    /** Stable HSL per channel — saturated enough to feel lively, not maxed-out neon (DM uses fixed purple). */
+    function channelAccentStyles(channelRaw) {
+        const hue = channelHueFromRaw(channelRaw);
+        const h32 = hashStringToUint(normalizeChannelKeyForColor(String(channelRaw || '')) + '\x1e' + String(channelRaw || ''));
+        const t = (h32 >>> 8) % 11;
+        if (isLightThemeActive()) {
+            const borderSat = 42 + (t % 10);
+            const badgeSat = 34 + (t % 12);
+            return {
+                border: 'hsl(' + hue + ', ' + borderSat + '%, 42%)',
+                badgeBg: 'hsl(' + hue + ', ' + badgeSat + '%, 91%)',
+                badgeFg: 'hsl(' + hue + ', 45%, 20%)'
+            };
+        }
+        const borderSat = 48 + (t % 14);
+        const badgeSat = 42 + (t % 14);
+        return {
+            border: 'hsl(' + hue + ', ' + borderSat + '%, 56%)',
+            badgeBg: 'hsl(' + hue + ', ' + badgeSat + '%, 32%)',
+            badgeFg: 'hsl(' + hue + ', 15%, 97%)'
+        };
+    }
+
+    /** Remove redundant leading [#chan] / [##chan] already shown in the header badge. */
+    function stripLeadingChannelBracketTag(content, isDm) {
+        if (isDm || content == null || content === '') return content;
+        return String(content).replace(/^\s*\[[#]+[^\]]*\]\s*/u, '');
+    }
+
+    function addMessageEntry(data) {
+        if (messagePaused) return;
+        const container = document.getElementById('message-stream');
+
+        // Remove placeholder
+        const placeholder = container.querySelector('.text-muted.text-center');
+        if (placeholder) placeholder.remove();
+
+        const ts  = new Date(data.timestamp * 1000).toLocaleTimeString();
+        const isDm = !!data.is_dm;
+        const accent = isDm
+            ? { border: '#6f42c1', badgeBg: '#6f42c1', badgeFg: '#fff' }
+            : channelAccentStyles(data.channel || '');
+
+        let ch = '';
+        if (data.channel) {
+            ch = '<span class="badge live-msg-channel-badge me-1" style="background-color:' + accent.badgeBg + ';color:' + accent.badgeFg + ';">' +
+                escapeHtml(data.channel) + '</span>';
+        }
+        const dm = isDm ? '<span class="badge bg-secondary me-1">DM</span>' : '';
+
+        const snr = (data.snr && data.snr !== 'unknown')
+            ? '<span class="badge rounded-pill bg-primary live-msg-meta-badge">SNR ' + escapeHtml(String(data.snr)) + '</span>'
+            : '';
+
+        // 255 = unknown hop count from radio; omit badge (same as before).
+        let hopsHtml = '';
+        const h = data.hops;
+        if (h != null && h !== '' && h !== 255) {
+            if (h === 0) {
+                hopsHtml = '<span class="badge rounded-pill bg-info text-dark live-msg-meta-badge">Direct</span>';
+            } else {
+                hopsHtml = '<span class="badge rounded-pill bg-info text-dark live-msg-meta-badge">' +
+                    escapeHtml(String(h)) + ' hop' + (h !== 1 ? 's' : '') + '</span>';
+            }
+        }
+
+        const badgesRow = (snr || hopsHtml)
+            ? '<div class="live-msg-meta-badges-row">' + snr + hopsHtml + '</div>'
+            : '';
+
+        const bodyRaw = stripLeadingChannelBracketTag(data.content || '', isDm);
+
+        const entry = document.createElement('div');
+        entry.className = 'stream-entry p-2 mb-1 rounded';
+        entry.style.borderLeftColor = accent.border;
+        entry.style.borderLeftWidth = '3px';
+        entry.style.borderLeftStyle = 'solid';
+        entry.innerHTML = `
+            <div class="d-flex justify-content-between align-items-start mb-1 flex-wrap gap-2 w-100">
+                <span class="d-flex flex-wrap align-items-center gap-1 min-w-0">${ch}${dm}<strong>${escapeHtml(data.sender || '?')}</strong></span>
+                <div class="live-msg-meta-stack ms-auto flex-shrink-0 text-end">
+                    ${badgesRow}
+                    <small class="text-muted live-msg-time">${ts}</small>
+                </div>
+            </div>
+            <div class="text-break">${escapeHtml(bodyRaw)}</div>
+        `;
+
+        container.insertBefore(entry, container.firstChild);
+
+        // Trim old entries
+        const entries = container.querySelectorAll('.stream-entry');
+        if (entries.length > MAX_MESSAGES) {
+            entries[entries.length - 1].remove();
+        }
+    }
+
+    function escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    window.clearMessages = clearMessages;
+    window.toggleMessagePause = toggleMessagePause;
+
+    window.scrollStream = function(containerId, dir) {
+        const c = document.getElementById(containerId);
+        if (!c) return;
+        if (dir === 'top') {
+            c.scrollTop = 0;
+        } else {
+            c.scrollTop = c.scrollHeight;
+        }
+    };
+
+    // Stream panel visibility filters
+    document.querySelectorAll('.rt-filter-cb').forEach(function(cb) {
+        cb.addEventListener('change', function() {
+            const card = document.getElementById(this.dataset.target);
+            if (card) {
+                card.style.display = this.checked ? '' : 'none';
+            }
+        });
+    });
+
     // Ping mechanism to keep connection alive
     let pingInterval = null;
     
@@ -1156,8 +1485,10 @@
         // Format timestamp
         const timestamp = data.datetime ? new Date(data.datetime).toLocaleTimeString() : new Date().toLocaleTimeString();
         
-        // Format path display as comma-separated list
-        const pathDisplay = data.path ? data.path.join(',') : 'No path';
+        // Format path display as comma-separated list (path may be array or string)
+        const pathDisplay = data.path
+            ? (Array.isArray(data.path) ? data.path.join(',') : String(data.path))
+            : 'No path';
         
         // Format header with resolved components (human-readable with names and numbers)
         let headerInfo = '';
@@ -1247,7 +1578,7 @@
                         ${clickHint}
                     </div>
                     
-                    <div class="small text-muted mb-1">
+                    <div class="small text-muted mb-1 packet-stream-path">
                         <strong>Path:</strong> ${pathDisplay}
                         ${data.path_len > 0 ? ` (${data.path_len} bytes)` : ''}
                     </div>

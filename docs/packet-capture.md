@@ -45,6 +45,11 @@ enabled = true                    # Enable packet capture
 output_file = packets.json        # Optional: save to file
 verbose = false                   # Detailed packet logging
 debug = false                     # Debug mode
+mqtt_skip_unparseable_packets = true   # Skip MQTT when content hash is all zeros (strict path reject / short buffer)
+
+# Optional: skip MQTT for ADVERT packets whose Ed25519 signature does not verify (damaged or spoofed mesh payload).
+# Does not affect file/JSONL capture.
+advert_require_valid_signature = false
 ```
 
 ### Authentication

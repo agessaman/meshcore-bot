@@ -6,30 +6,31 @@ Responds to Linux commands with hilarious supervillain mainframe error messages
 
 import random
 from typing import Any
-from .base_command import BaseCommand
+
 from ..models import MeshMessage
+from .base_command import BaseCommand
 
 
 class HackerCommand(BaseCommand):
     """Handles hacker-style responses to Linux commands"""
-    
+
     # Plugin metadata
     name = "hacker"
-    keywords = ['sudo', 'ps aux', 'grep', 'ls -l', 'ls -la', 'echo $PATH', 'rm', 'rm -rf', 
+    keywords = ['sudo', 'ps aux', 'grep', 'ls -l', 'ls -la', 'echo $PATH', 'rm', 'rm -rf',
                 'cat', 'whoami', 'top', 'htop', 'netstat', 'ss', 'kill', 'killall', 'chmod',
                 'find', 'history', 'passwd', 'su', 'ssh', 'wget', 'curl', 'df -h', 'free',
                 'ifconfig', 'ip addr', 'uname -a']
     description = "Simulates hacking a supervillain's mainframe with hilarious error messages"
     category = "fun"
-    
+
     # Documentation
     short_description = "Try Linux commands and get supervillain mainframe errors"
     usage = "<linux_command>"
     examples = ["sudo make me a sandwich", "rm -rf /"]
-    
+
     def __init__(self, bot: Any):
         """Initialize the hacker command.
-        
+
         Args:
             bot: The bot instance.
         """
@@ -37,49 +38,49 @@ class HackerCommand(BaseCommand):
         self.enabled = self.get_config_value('Hacker_Command', 'enabled', fallback=None, value_type='bool')
         if self.enabled is None:
             self.enabled = self.get_config_value('Hacker_Command', 'hacker_enabled', fallback=False, value_type='bool')
-    
+
     def get_help_text(self) -> str:
         """Get help text for the hacker command.
-        
+
         Returns:
             str: The help text for this command.
         """
         return self.description
-    
+
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the hacker command.
-        
+
         Args:
             message: The message triggering the command.
-            
+
         Returns:
             bool: True if executed successfully, False otherwise.
         """
         if not self.enabled:
             return False
-        
+
         # Extract the command from the message
         content = message.content.strip()
         if content.startswith('!'):
             content = content[1:].strip()
-        
+
         # Get the appropriate error message
         error_msg = self.get_hacker_error(content)
-        
+
         # Send the response
         return await self.send_response(message, error_msg)
-    
+
     def get_hacker_error(self, command: str) -> str:
         """Get a hilarious error message for the given command.
-        
+
         Args:
             command: The command that triggered the error.
-            
+
         Returns:
             str: A randomized hacker-themed error message.
         """
         command_lower = command.lower()
-        
+
         # Try to get errors from translations, fallback to hardcoded if not available
         def get_random_error(error_key: str, fallback_list: list) -> str:
             """Get a random error from translations or fallback list"""
@@ -88,7 +89,7 @@ class HackerCommand(BaseCommand):
                 return random.choice(errors)
             # Fallback to hardcoded list if translation not available
             return random.choice(fallback_list)
-        
+
         # sudo command errors
         if command_lower.startswith('sudo'):
             fallback = [
@@ -104,7 +105,7 @@ class HackerCommand(BaseCommand):
                 "🎯 TARGET LOCKED: The evil corporation's security system has marked you as a threat."
             ]
             return get_random_error('commands.hacker.sudo_errors', fallback)
-        
+
         # ps aux command errors
         elif command_lower.startswith('ps aux'):
             fallback = [
@@ -120,7 +121,7 @@ class HackerCommand(BaseCommand):
                 "⚡ POWER SURGE: The supervillain's server farm has fried all running processes."
             ]
             return get_random_error('commands.hacker.ps_errors', fallback)
-        
+
         # grep command errors
         elif command_lower.startswith('grep'):
             fallback = [
@@ -136,7 +137,7 @@ class HackerCommand(BaseCommand):
                 "⚡ SEARCH FAILED: The pattern matching algorithm has been fried by a power surge."
             ]
             return get_random_error('commands.hacker.grep_errors', fallback)
-        
+
         # ls -l and ls -la command errors
         elif command_lower.startswith('ls -l') or command_lower.startswith('ls -la'):
             fallback = [
@@ -152,7 +153,7 @@ class HackerCommand(BaseCommand):
                 "⚡ STORAGE FRIED: The hard drive has been zapped by a power surge."
             ]
             return get_random_error('commands.hacker.ls_errors', fallback)
-        
+
         # echo $PATH command errors
         elif command_lower.startswith('echo $path'):
             fallback = [
@@ -168,7 +169,7 @@ class HackerCommand(BaseCommand):
                 "⚡ PATH FRIED: The system paths have been zapped by a power surge."
             ]
             return get_random_error('commands.hacker.echo_path_errors', fallback)
-        
+
         # rm and rm -rf command errors (dangerous deletion!)
         elif command_lower.startswith('rm -rf') or command_lower.startswith('rm -r'):
             fallback = [
@@ -198,7 +199,7 @@ class HackerCommand(BaseCommand):
                 "💀 FILE GHOST: The file has become a digital ghost and cannot be deleted."
             ]
             return get_random_error('commands.hacker.rm_errors', fallback)
-        
+
         # cat command errors
         elif command_lower.startswith('cat'):
             fallback = [
@@ -214,7 +215,7 @@ class HackerCommand(BaseCommand):
                 "💀 FILE GHOST: The file exists but its contents have been deleted by digital ghosts."
             ]
             return get_random_error('commands.hacker.cat_errors', fallback)
-        
+
         # whoami command errors
         elif command_lower.startswith('whoami'):
             fallback = [
@@ -230,7 +231,7 @@ class HackerCommand(BaseCommand):
                 "💀 USER DELETED: The Dark Overlord has deleted your user account."
             ]
             return get_random_error('commands.hacker.whoami_errors', fallback)
-        
+
         # top and htop command errors
         elif command_lower.startswith('htop') or command_lower.startswith('top'):
             fallback = [
@@ -246,7 +247,7 @@ class HackerCommand(BaseCommand):
                 "💀 SYSTEM DEAD: The mainframe is dead. No processes to monitor."
             ]
             return get_random_error('commands.hacker.top_errors', fallback)
-        
+
         # netstat and ss command errors
         elif command_lower.startswith('netstat') or command_lower.startswith('ss '):
             fallback = [
@@ -262,7 +263,7 @@ class HackerCommand(BaseCommand):
                 "💀 NO CONNECTIONS: The mainframe has no active network connections. It's dead, Jim."
             ]
             return get_random_error('commands.hacker.netstat_errors', fallback)
-        
+
         # kill and killall command errors
         elif command_lower.startswith('killall') or command_lower.startswith('kill'):
             fallback = [
@@ -278,7 +279,7 @@ class HackerCommand(BaseCommand):
                 "💀 PROCESS GHOST: The process has become a zombie process and cannot be killed."
             ]
             return get_random_error('commands.hacker.kill_errors', fallback)
-        
+
         # chmod command errors
         elif command_lower.startswith('chmod'):
             fallback = [
@@ -294,7 +295,7 @@ class HackerCommand(BaseCommand):
                 "💀 PERMISSIONS DEAD: The permission system is dead. No changes allowed."
             ]
             return get_random_error('commands.hacker.chmod_errors', fallback)
-        
+
         # find command errors
         elif command_lower.startswith('find'):
             fallback = [
@@ -310,7 +311,7 @@ class HackerCommand(BaseCommand):
                 "💀 NO FILES: The mainframe has no files. They've all been deleted."
             ]
             return get_random_error('commands.hacker.find_errors', fallback)
-        
+
         # history command errors
         elif command_lower.startswith('history'):
             fallback = [
@@ -326,7 +327,7 @@ class HackerCommand(BaseCommand):
                 "💀 NO HISTORY: You have no command history. You are a blank slate."
             ]
             return get_random_error('commands.hacker.history_errors', fallback)
-        
+
         # passwd command errors
         elif command_lower.startswith('passwd'):
             fallback = [
@@ -342,7 +343,7 @@ class HackerCommand(BaseCommand):
                 "💀 PASSWORD SYSTEM DEAD: The password system is dead. No changes allowed."
             ]
             return get_random_error('commands.hacker.passwd_errors', fallback)
-        
+
         # su command errors
         elif command_lower.startswith('su '):
             fallback = [
@@ -358,7 +359,7 @@ class HackerCommand(BaseCommand):
                 "💀 USER SYSTEM DEAD: The user system is dead. No switching allowed."
             ]
             return get_random_error('commands.hacker.su_errors', fallback)
-        
+
         # ssh command errors
         elif command_lower.startswith('ssh'):
             fallback = [
@@ -374,7 +375,7 @@ class HackerCommand(BaseCommand):
                 "💀 SSH DEAD: The SSH daemon is dead. No remote access allowed."
             ]
             return get_random_error('commands.hacker.ssh_errors', fallback)
-        
+
         # wget and curl command errors
         elif command_lower.startswith('wget') or command_lower.startswith('curl'):
             fallback = [
@@ -390,7 +391,7 @@ class HackerCommand(BaseCommand):
                 "💀 DOWNLOAD DEAD: The network interface is dead. No downloads allowed."
             ]
             return get_random_error('commands.hacker.download_errors', fallback)
-        
+
         # df -h command errors
         elif command_lower.startswith('df -h') or command_lower.startswith('df'):
             fallback = [
@@ -406,7 +407,7 @@ class HackerCommand(BaseCommand):
                 "🗄️ FILESYSTEM CORRUPTED: The file system superblock has been corrupted by ransomware."
             ]
             return get_random_error('commands.hacker.df_errors', fallback)
-        
+
         # free command errors
         elif command_lower.startswith('free'):
             fallback = [
@@ -422,7 +423,7 @@ class HackerCommand(BaseCommand):
                 "🧩 MEMORY CORRUPTED: The memory mapping has been corrupted by ransomware."
             ]
             return get_random_error('commands.hacker.free_errors', fallback)
-        
+
         # ifconfig and ip addr command errors
         elif command_lower.startswith('ifconfig') or command_lower.startswith('ip addr'):
             fallback = [
@@ -438,7 +439,7 @@ class HackerCommand(BaseCommand):
                 "🔌 CONNECTION BROKEN: All network interfaces have been disconnected by the Dark Overlord."
             ]
             return get_random_error('commands.hacker.ifconfig_errors', fallback)
-        
+
         # uname -a command errors
         elif command_lower.startswith('uname'):
             fallback = [
@@ -454,7 +455,7 @@ class HackerCommand(BaseCommand):
                 "🦹‍♂️ CLASSIFIED: Lex Luthor has classified all system information. Access denied."
             ]
             return get_random_error('commands.hacker.uname_errors', fallback)
-        
+
         # Generic hacker error for other commands
         else:
             fallback = [
@@ -470,44 +471,41 @@ class HackerCommand(BaseCommand):
                 "🎮 GAME CRASH: The mainframe has encountered a fatal error and needs to restart."
             ]
             return get_random_error('commands.hacker.generic_errors', fallback)
-    
+
     def matches_keyword(self, message: MeshMessage) -> bool:
         """Check if message matches any of the hacker keywords.
-        
+
         Args:
             message: The received message.
-            
+
         Returns:
             bool: True if it matches, False otherwise.
         """
         if not self.enabled:
             return False
-        
-        content = message.content.strip()
-        if content.startswith('!'):
-            content = content[1:].strip()
-        content_lower = content.lower()
-        
+
+        content_lower = self.cleanup_message_for_matching(message)
+
         # Commands that should match exactly (no arguments)
-        exact_match_commands = ['ls -l', 'ls -la', 'echo $PATH', 'df -h', 'whoami', 'history', 
+        exact_match_commands = ['ls -l', 'ls -la', 'echo $PATH', 'df -h', 'whoami', 'history',
                                 'top', 'htop', 'free', 'uname -a']
-        
+
         # Commands that should match as prefixes (can have arguments)
         # Note: Longer prefixes must come first (e.g., 'rm -rf' before 'rm')
-        prefix_match_commands = ['sudo', 'ps aux', 'grep', 'rm -rf', 'rm -r', 'rm', 'cat', 
+        prefix_match_commands = ['sudo', 'ps aux', 'grep', 'rm -rf', 'rm -r', 'rm', 'cat',
                                 'netstat', 'ss', 'killall', 'kill', 'chmod', 'find', 'passwd',
                                 'su', 'ssh', 'wget', 'curl', 'df', 'ifconfig', 'ip addr', 'uname']
-        
+
         # Check for exact matches first
         for keyword in exact_match_commands:
             if keyword.lower() == content_lower:
                 return True
-        
+
         # Check for prefix matches
         for keyword in prefix_match_commands:
             if content_lower.startswith(keyword.lower()):
                 # Check if it's followed by a space or is the end of the message
                 if len(content_lower) == len(keyword.lower()) or content_lower[len(keyword.lower())] == ' ':
                     return True
-        
+
         return False

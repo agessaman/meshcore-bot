@@ -6,8 +6,43 @@ Uses a modular structure for command creation and organization
 
 import argparse
 import asyncio
+import configparser
+import json
 import signal
 import sys
+
+from modules.config_snapshot import config_to_redacted_sections, redacted_sections_to_ini_text
+
+
+def _configure_unix_signal_handlers(loop, bot, shutdown_event: asyncio.Event) -> None:
+    """Register Unix signal handlers for shutdown and config reload."""
+
+    def shutdown_handler():
+        """Signal handler for graceful shutdown."""
+        print("\nShutting down...")
+        # asyncio.add_signal_handler replaces SIGINT/SIGTERM handling for the loop; the
+        # bot's threading.Event + connected flag must be set here too or the main loop
+        # can run another iteration and restart the web viewer before stop() runs.
+        bot._shutdown_event.set()
+        bot.connected = False
+        shutdown_event.set()
+
+    def reload_handler():
+        """Reload config on SIGHUP without exiting."""
+        bot.logger.info("Received SIGHUP, reloading configuration...")
+        success, msg = bot.reload_config()
+        if success:
+            bot.logger.info("SIGHUP config reload succeeded: %s", msg)
+        else:
+            bot.logger.warning("SIGHUP config reload failed: %s", msg)
+
+    # Register shutdown signals
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, shutdown_handler)
+
+    # Register config reload signal (Unix daemons convention)
+    if hasattr(signal, "SIGHUP"):
+        loop.add_signal_handler(signal.SIGHUP, reload_handler)
 
 
 def main():
@@ -24,13 +59,45 @@ def main():
         action="store_true",
         help="Validate config section names and exit before starting the bot (exit 1 on errors)",
     )
+    parser.add_argument(
+        "--show-config",
+        action="store_true",
+        help="Print resolved config.ini with sensitive keys redacted and exit",
+    )
+    parser.add_argument(
+        "--show-config-json",
+        action="store_true",
+        help="Print resolved config.ini as redacted JSON and exit",
+    )
 
     args = parser.parse_args()
+
+    if args.show_config and args.show_config_json:
+        print("Error: --show-config and --show-config-json are mutually exclusive", file=sys.stderr)
+        sys.exit(1)
+
+    if args.show_config or args.show_config_json:
+        cfg = configparser.ConfigParser()
+        try:
+            loaded_paths = cfg.read(args.config, encoding="utf-8")
+        except configparser.Error as exc:
+            print(f"Error: Invalid config file '{args.config}': {exc}", file=sys.stderr)
+            sys.exit(1)
+
+        if not loaded_paths:
+            print(f"Error: Config file not found: {args.config}", file=sys.stderr)
+            sys.exit(1)
+
+        sections = config_to_redacted_sections(cfg)
+        if args.show_config_json:
+            print(json.dumps(sections, indent=2, sort_keys=True))
+        else:
+            print(redacted_sections_to_ini_text(sections))
+        sys.exit(0)
 
     if args.validate_config:
         from modules.config_validation import (
             SEVERITY_ERROR,
-            SEVERITY_INFO,
             SEVERITY_WARNING,
             validate_config,
         )
@@ -48,7 +115,7 @@ def main():
 
     from modules.core import MeshCoreBot
     bot = MeshCoreBot(config_file=args.config)
-    
+
     # Use asyncio.run() which handles KeyboardInterrupt properly
     # For SIGTERM, we'll handle it in the async context
     async def run_bot():
@@ -75,26 +142,20 @@ def main():
         if sys.platform != 'win32':
             shutdown_event = asyncio.Event()
             bot_task = None
-            
-            def signal_handler():
-                """Signal handler for graceful shutdown"""
-                print("\nShutting down...")
-                shutdown_event.set()
-            
+
             try:
                 # Register signal handlers
-                for sig in (signal.SIGTERM, signal.SIGINT):
-                    loop.add_signal_handler(sig, signal_handler)
-                
+                _configure_unix_signal_handlers(loop, bot, shutdown_event)
+
                 # Start bot
                 bot_task = asyncio.create_task(bot.start())
-                
+
                 # Wait for shutdown or completion
                 done, pending = await asyncio.wait(
                     [bot_task, asyncio.create_task(shutdown_event.wait())],
                     return_when=asyncio.FIRST_COMPLETED
                 )
-                
+
                 # Cancel pending tasks
                 for task in pending:
                     task.cancel()
@@ -102,13 +163,17 @@ def main():
                         await task
                     except asyncio.CancelledError:
                         pass
-                
+
                 # Handle bot task completion
                 if bot_task:
                     if shutdown_event.is_set() and not bot_task.done():
+                        # Ensure the bot loop sees shutdown even if the signal handler ordering
+                        # left a race before cancel.
+                        bot._shutdown_event.set()
+                        bot.connected = False
                         # Shutdown triggered: cancel if still running
                         bot_task.cancel()
-                    
+
                     # Always await bot_task to ensure proper cleanup
                     # This is necessary because:
                     # 1. If the task completed normally, we need to await to surface exceptions
@@ -129,7 +194,7 @@ def main():
                 await bot.start()
             finally:
                 await bot.stop()
-    
+
     try:
         asyncio.run(run_bot())
     except KeyboardInterrupt:

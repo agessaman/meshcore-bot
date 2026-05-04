@@ -1,13 +1,12 @@
 """Tests for modules.service_plugin_loader."""
 
-import pytest
 import configparser
-from pathlib import Path
-from unittest.mock import Mock, MagicMock
+from unittest.mock import MagicMock, Mock
+
+import pytest
 
 from modules.service_plugin_loader import ServicePluginLoader
 from modules.service_plugins.base_service import BaseServicePlugin
-
 
 # Minimal local service source (valid BaseServicePlugin subclass)
 _LOCAL_SERVICE_SOURCE = '''

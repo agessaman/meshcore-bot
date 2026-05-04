@@ -1,11 +1,11 @@
 """Tests for modules.command_manager."""
 
 import time
-
-import pytest
 from configparser import ConfigParser
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
+import pytest
 
 from modules.command_manager import CommandManager, InternetStatusCache
 from modules.models import MeshMessage
@@ -34,11 +34,14 @@ def cm_bot(mock_logger):
         side_effect=lambda key, **kw: f"{key}: {' '.join(str(v) for v in kw.values())}"
     )
     bot.meshcore = None
+    bot.is_radio_zombie = False
+    bot.is_radio_offline = False
     bot.rate_limiter = Mock()
     bot.rate_limiter.can_send = Mock(return_value=True)
     bot.bot_tx_rate_limiter = Mock()
     bot.bot_tx_rate_limiter.wait_for_tx = Mock()
     bot.tx_delay_ms = 0
+    bot.is_radio_zombie = False
     return bot
 
 
@@ -256,12 +259,30 @@ class TestGetHelpForCommand:
 
     def test_unknown_command_returns_error(self, cm_bot):
         manager = make_manager(cm_bot)
-        result = manager.get_help_for_command("nonexistent")
+        manager.get_help_for_command("nonexistent")
         # Translator receives 'commands.help.unknown' key with command name
         cm_bot.translator.translate.assert_called()
         call_args = cm_bot.translator.translate.call_args
         assert call_args[0][0] == "commands.help.unknown"
         assert call_args[1]["command"] == "nonexistent"
+
+    def test_keyword_mapping_alias_resolves_command(self, cm_bot):
+        mock_cmd = MagicMock()
+        mock_cmd.keywords = ["schedule"]
+        mock_cmd.get_help_text = Mock(return_value="Schedule help")
+        manager = make_manager(cm_bot, commands={"schedule": mock_cmd})
+        manager.plugin_loader.keyword_mappings = {"sched": "schedule"}
+        result = manager.get_help_for_command("sched")
+        assert "Schedule help" in result
+
+    def test_runtime_alias_in_keywords_resolves_command(self, cm_bot):
+        mock_cmd = MagicMock()
+        mock_cmd.keywords = ["schedule", "sched"]
+        mock_cmd.get_help_text = Mock(return_value="Schedule help")
+        manager = make_manager(cm_bot, commands={"schedule": mock_cmd})
+        manager.plugin_loader.keyword_mappings = {}
+        result = manager.get_help_for_command("sched")
+        assert "Schedule help" in result
 
 
 class TestInternetStatusCache:
@@ -290,6 +311,7 @@ class TestSendChannelMessageListeners:
     async def test_successful_send_invokes_listeners_with_synthetic_event(self, cm_bot, mock_logger):
         """When send_channel_message succeeds, each channel_sent_listener is called with event.payload shape (channel_idx, text)."""
         import asyncio
+
         from meshcore import EventType
 
         cm_bot.connected = True
@@ -326,6 +348,90 @@ class TestSendChannelMessageListeners:
         assert result is True
         assert len(received) == 1
         assert received[0] == {"channel_idx": 3, "text": "TestBot: Hello mesh"}
+
+    @pytest.mark.asyncio
+    async def test_send_channel_message_suppressed_when_radio_offline(self, cm_bot):
+        """Interactive channel sends should suppress while radio-offline is active."""
+        cm_bot.connected = True
+        cm_bot.is_radio_offline = True
+        cm_bot.meshcore = Mock()
+        cm_bot.channel_manager = Mock()
+        cm_bot.channel_manager.get_channel_number = Mock(return_value=3)
+        manager = make_manager(cm_bot)
+
+        result = await manager.send_channel_message("general", "Hello mesh")
+
+        assert result is False
+        cm_bot.channel_manager.get_channel_number.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_send_dm_suppressed_when_radio_offline(self, cm_bot):
+        """Interactive DM sends should suppress while radio-offline is active."""
+        cm_bot.connected = True
+        cm_bot.is_radio_offline = True
+        cm_bot.meshcore = Mock()
+        cm_bot.meshcore.get_contact_by_name = Mock(return_value={"name": "TestUser"})
+        manager = make_manager(cm_bot)
+
+        result = await manager.send_dm("TestUser", "Hello mesh")
+
+        assert result is False
+        cm_bot.meshcore.get_contact_by_name.assert_not_called()
+
+
+class TestSendDMRecipientResolution:
+    """Tests for recipient lookup in send_dm()."""
+
+    @pytest.mark.asyncio
+    async def test_send_dm_resolves_contact_by_pubkey_prefix(self, cm_bot):
+        """When name lookup fails, send_dm should resolve by public key prefix."""
+        from meshcore import EventType
+
+        cm_bot.connected = True
+        cm_bot.meshcore = Mock()
+        cm_bot.meshcore.get_contact_by_name = Mock(return_value=None)
+        cm_bot.meshcore.contacts = {
+            "contact1": {
+                "name": "Alice",
+                "adv_name": "AliceAdv",
+                "public_key": "ab12deadbeefcafebabe",
+            }
+        }
+        cm_bot.meshcore.commands = Mock(spec=["send_msg"])
+        cm_bot.meshcore.commands.send_msg = AsyncMock(return_value=Mock(type=EventType.MSG_SENT, payload=None))
+        cm_bot.bot_tx_rate_limiter.wait_for_tx = AsyncMock(return_value=None)
+        manager = make_manager(cm_bot)
+
+        result = await manager.send_dm("ab12", "Hello mesh")
+
+        assert result is True
+        cm_bot.meshcore.get_contact_by_name.assert_called_once_with("ab12")
+        cm_bot.meshcore.commands.send_msg.assert_awaited_once()
+        sent_contact = cm_bot.meshcore.commands.send_msg.await_args.args[0]
+        assert sent_contact["name"] == "Alice"
+        assert sent_contact["public_key"].startswith("ab12")
+
+    @pytest.mark.asyncio
+    async def test_send_dm_fails_when_name_and_prefix_lookup_miss(self, cm_bot):
+        """send_dm should fail when recipient cannot be resolved by name or prefix."""
+        cm_bot.connected = True
+        cm_bot.meshcore = Mock()
+        cm_bot.meshcore.get_contact_by_name = Mock(return_value=None)
+        cm_bot.meshcore.contacts = {
+            "contact1": {
+                "name": "Bob",
+                "public_key": "ffffdeadbeefcafebabe",
+            }
+        }
+        cm_bot.bot_tx_rate_limiter.wait_for_tx = AsyncMock(return_value=None)
+        manager = make_manager(cm_bot)
+
+        result = await manager.send_dm("ab12", "Hello mesh")
+
+        assert result is False
+        cm_bot.meshcore.get_contact_by_name.assert_called_once_with("ab12")
+        cm_bot.logger.error.assert_called()
+        assert "Contact not found for DM recipient identifier" in cm_bot.logger.error.call_args.args[0]
 
     @pytest.mark.asyncio
     async def test_failed_send_does_not_invoke_listeners(self, cm_bot):
@@ -449,3 +555,314 @@ class TestSendChannelMessagesChunked:
 
         assert result is False
         manager.send_channel_message.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# TestCommandAliases (per-command config)
+# ---------------------------------------------------------------------------
+
+
+class TestCommandAliases:
+    """Tests for per-command aliases via BaseCommand._load_aliases_from_config()."""
+
+    def _make_command(self, bot, section, aliases_value=None):
+        """Create a minimal concrete BaseCommand subclass with aliases config."""
+        if not bot.config.has_section(section):
+            bot.config.add_section(section)
+        if aliases_value is not None:
+            bot.config.set(section, "aliases", aliases_value)
+
+        from modules.commands.base_command import BaseCommand
+
+        class _Cmd(BaseCommand):
+            name = section.lower().replace("_command", "")
+            keywords: list = [name]
+            description = "test"
+
+            async def execute(self, message):  # type: ignore[override]
+                return True
+
+        return _Cmd(bot)
+
+    def test_alias_added_to_keywords_without_legacy_prefix(self, cm_bot):
+        cmd = self._make_command(cm_bot, "Schedule_Command", "!s, !sched")
+        assert "s" in cmd.keywords
+        assert "sched" in cmd.keywords
+
+    def test_no_aliases_key_leaves_keywords_unchanged(self, cm_bot):
+        cmd = self._make_command(cm_bot, "Schedule_Command")
+        assert cmd.keywords == ["schedule"]
+
+    def test_empty_aliases_value_leaves_keywords_unchanged(self, cm_bot):
+        cmd = self._make_command(cm_bot, "Schedule_Command", "")
+        assert cmd.keywords == ["schedule"]
+
+    def test_alias_already_present_not_duplicated(self, cm_bot):
+        cmd = self._make_command(cm_bot, "Schedule_Command", "schedule, !s")
+        assert cmd.keywords.count("schedule") == 1
+        assert "s" in cmd.keywords
+
+    def test_aliases_lowercased(self, cm_bot):
+        cmd = self._make_command(cm_bot, "Schedule_Command", "!S, !Sched")
+        assert "s" in cmd.keywords
+        assert "sched" in cmd.keywords
+
+    def test_alias_with_configured_prefix_is_normalized(self, cm_bot):
+        cm_bot.config.set("Bot", "command_prefix", "!")
+        cmd = self._make_command(cm_bot, "Schedule_Command", "!S")
+        assert "s" in cmd.keywords
+
+    def test_decorative_dot_prefix_stripped_without_command_prefix(self, cm_bot):
+        cm_bot.config.set("Bot", "command_prefix", "")
+        cmd = self._make_command(cm_bot, "Schedule_Command", ".sched")
+        assert "sched" in cmd.keywords
+
+
+class TestSendChannelMessageRetry:
+    """Tests for no_event_received retry logic in send_channel_message (BUG-025)."""
+
+    def _make_no_event_result(self):
+        """Return a mock result that looks like EventType.ERROR / no_event_received."""
+        from meshcore import EventType
+        r = MagicMock()
+        r.type = EventType.ERROR
+        r.payload = {'reason': 'no_event_received'}
+        return r
+
+    def _make_success_result(self):
+        from meshcore import EventType
+        r = MagicMock()
+        r.type = EventType.MSG_SENT
+        r.payload = None
+        return r
+
+    def _setup_bot(self, cm_bot):
+        cm_bot.connected = True
+        cm_bot.is_radio_zombie = False
+        cm_bot.channel_manager = Mock()
+        cm_bot.channel_manager.get_channel_number = Mock(return_value=2)
+        cm_bot.meshcore = Mock()
+        cm_bot.meshcore.commands = Mock()
+        cm_bot.bot_tx_rate_limiter.wait_for_tx = AsyncMock(return_value=None)
+        cm_bot.channel_sent_listeners = []
+        return cm_bot
+
+    @pytest.mark.asyncio
+    async def test_success_on_first_attempt_no_retry(self, cm_bot):
+        """No retry when first attempt succeeds."""
+        self._setup_bot(cm_bot)
+        cm_bot.meshcore.commands.send_chan_msg = AsyncMock(
+            return_value=self._make_success_result()
+        )
+        manager = make_manager(cm_bot)
+        with patch("modules.command_manager.asyncio.sleep") as mock_sleep:
+            result = await manager.send_channel_message("general", "hi")
+        assert result is True
+        mock_sleep.assert_not_called()
+        assert cm_bot.meshcore.commands.send_chan_msg.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_retries_on_no_event_received_then_succeeds(self, cm_bot):
+        """Retries up to 2 times when no_event_received; succeeds on 3rd attempt."""
+        self._setup_bot(cm_bot)
+        cm_bot.meshcore.commands.send_chan_msg = AsyncMock(
+            side_effect=[
+                self._make_no_event_result(),
+                self._make_no_event_result(),
+                self._make_success_result(),
+            ]
+        )
+        manager = make_manager(cm_bot)
+        with patch("modules.command_manager.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            result = await manager.send_channel_message("testing", "hello")
+        assert result is True
+        assert cm_bot.meshcore.commands.send_chan_msg.call_count == 3
+        assert mock_sleep.call_count == 2
+        mock_sleep.assert_called_with(2)
+
+    @pytest.mark.asyncio
+    async def test_all_attempts_fail_returns_false(self, cm_bot):
+        """Returns False when all 3 attempts (initial + 2 retries) get no_event_received."""
+        self._setup_bot(cm_bot)
+        cm_bot.meshcore.commands.send_chan_msg = AsyncMock(
+            return_value=self._make_no_event_result()
+        )
+        manager = make_manager(cm_bot)
+        with patch("modules.command_manager.asyncio.sleep", new_callable=AsyncMock):
+            result = await manager.send_channel_message("testing", "hello")
+        assert result is False
+        assert cm_bot.meshcore.commands.send_chan_msg.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_is_no_event_received_helper(self, cm_bot):
+        """_is_no_event_received returns True only for ERROR/no_event_received."""
+        from meshcore import EventType
+        manager = make_manager(cm_bot)
+
+        no_event = self._make_no_event_result()
+        assert manager._is_no_event_received(no_event) is True
+
+        success = self._make_success_result()
+        assert manager._is_no_event_received(success) is False
+
+        assert manager._is_no_event_received(None) is False
+
+        other_error = MagicMock()
+        other_error.type = EventType.ERROR
+        other_error.payload = {'reason': 'timeout'}
+        assert manager._is_no_event_received(other_error) is False
+
+    @pytest.mark.asyncio
+    async def test_retry_only_fires_once_when_second_attempt_succeeds(self, cm_bot):
+        """Only one retry (sleep) when second attempt succeeds."""
+        self._setup_bot(cm_bot)
+        cm_bot.meshcore.commands.send_chan_msg = AsyncMock(
+            side_effect=[
+                self._make_no_event_result(),
+                self._make_success_result(),
+            ]
+        )
+        manager = make_manager(cm_bot)
+        with patch("modules.command_manager.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            result = await manager.send_channel_message("general", "msg")
+        assert result is True
+        assert cm_bot.meshcore.commands.send_chan_msg.call_count == 2
+        assert mock_sleep.call_count == 1
+
+
+class TestSplitTextIntoChunks:
+    """Tests for CommandManager.split_text_into_chunks."""
+
+    def test_short_text_single_chunk(self):
+        result = CommandManager.split_text_into_chunks("hello", 150)
+        assert result == ["hello"]
+
+    def test_empty_string(self):
+        result = CommandManager.split_text_into_chunks("", 150)
+        assert result == [""]
+
+    def test_exact_limit_single_chunk(self):
+        text = "a" * 150
+        result = CommandManager.split_text_into_chunks(text, 150)
+        assert result == [text]
+
+    def test_double_limit_two_chunks(self):
+        # 300 chars, limit 150 → 2 chunks
+        word = "word "  # 5 chars
+        text = word * 60  # 300 chars, space-separated
+        result = CommandManager.split_text_into_chunks(text.strip(), 150)
+        assert len(result) == 2
+        assert all(len(c) <= 150 for c in result)
+        assert " ".join(result) == text.strip()
+
+    def test_five_times_limit_five_chunks(self):
+        # Construct text that is ~750 chars worth of space-separated words
+        word = "xy "  # 3 chars
+        text = (word * 250).strip()  # 749 chars
+        result = CommandManager.split_text_into_chunks(text, 150)
+        assert len(result) == 5
+        assert all(len(c) <= 150 for c in result)
+        # Reassembling (space join) should equal original
+        assert " ".join(result) == text
+
+    def test_no_content_dropped(self):
+        # Every character in original text must appear in exactly one chunk
+        import random
+        import string
+        random.seed(42)
+        words = ["".join(random.choices(string.ascii_lowercase, k=random.randint(3, 12))) for _ in range(60)]
+        text = " ".join(words)
+        chunks = CommandManager.split_text_into_chunks(text, 50)
+        assert all(len(c) <= 50 for c in chunks)
+        reassembled = " ".join(chunks)
+        assert reassembled == text
+
+    def test_hard_split_no_spaces(self):
+        text = "a" * 300
+        result = CommandManager.split_text_into_chunks(text, 100)
+        assert len(result) == 3
+        assert all(len(c) == 100 for c in result)
+
+    def test_max_len_one(self):
+        result = CommandManager.split_text_into_chunks("abc", 1)
+        assert len(result) == 3
+        assert all(len(c) == 1 for c in result)
+
+
+class TestGetMaxMessageLength:
+    """Tests for CommandManager.get_max_message_length."""
+
+    def _make_manager(self, bot_name: str = "Bot", username: str | None = None) -> CommandManager:
+        bot = Mock()
+        bot.logger = Mock()
+        bot.bot_root = Path("/tmp")
+        bot._local_root = None
+        bot.config = ConfigParser()
+        bot.config.add_section("Bot")
+        bot.config.set("Bot", "bot_name", bot_name)
+        bot.config.add_section("Channels")
+        bot.config.set("Channels", "monitor_channels", "general")
+        bot.config.set("Channels", "respond_to_dms", "true")
+        bot.config.add_section("Keywords")
+        if username is not None:
+            self_info = {"name": username}
+            meshcore = Mock()
+            meshcore.self_info = self_info
+            bot.meshcore = meshcore
+        else:
+            bot.meshcore = None
+        bot.translator = Mock()
+        bot.translator.translate = Mock(return_value="")
+        return make_manager(bot)
+
+    def test_dm_returns_158_bytes(self):
+        mgr = self._make_manager()
+        msg = MeshMessage(content="x", is_dm=True)
+        assert mgr.get_max_message_length(msg) == 158
+
+    def test_channel_uses_bot_name_utf8_bytes(self):
+        mgr = self._make_manager(bot_name="LongBotName")
+        msg = MeshMessage(content="x", channel="general", is_dm=False)
+        # 160 - utf8("LongBotName") - 2 = 160 - 11 - 2 = 147
+        assert mgr.get_max_message_length(msg) == 147
+
+    def test_channel_uses_meshcore_username_utf8_bytes(self):
+        mgr = self._make_manager(bot_name="fallback", username="Radio")
+        msg = MeshMessage(content="x", channel="general", is_dm=False)
+        # 160 - utf8("Radio") - 2 = 160 - 5 - 2 = 153
+        assert mgr.get_max_message_length(msg) == 153
+
+    def test_channel_regional_reply_scope_reduces_budget_by_10_bytes(self):
+        mgr = self._make_manager(bot_name="LongBotName")
+        msg = MeshMessage(content="x", channel="general", is_dm=False, reply_scope="#west")
+        assert mgr.get_max_message_length(msg) == 137  # 147 - 10
+
+    def test_channel_outgoing_flood_scope_override_reduces_budget_by_10_bytes(self):
+        mgr = self._make_manager(bot_name="LongBotName")
+        mgr.bot.config.set("Channels", "outgoing_flood_scope_override", "#west")
+        msg = MeshMessage(content="x", channel="general", is_dm=False)
+        assert mgr.get_max_message_length(msg) == 137
+
+    def test_parity_with_base_command_get_max_message_length(self):
+        """CommandManager must mirror BaseCommand byte budgets (PR #128)."""
+        from tests.commands.test_base_command import _TestCommand
+
+        cases: list[tuple[str, str | None, bool, str | None]] = [
+            ("LongBotName", None, False, None),
+            ("Bot", None, True, None),
+            ("fallback", "Radio", False, None),
+            ("x", "😀😀", False, None),
+            ("LongBotName", None, False, "#west"),
+        ]
+        for bot_name, username, is_dm, reply_scope in cases:
+            mgr = self._make_manager(bot_name=bot_name, username=username)
+            cmd = _TestCommand(mgr.bot)
+            msg = MeshMessage(
+                content="x",
+                channel=None if is_dm else "general",
+                is_dm=is_dm,
+                reply_scope=reply_scope,
+            )
+            m_len = mgr.get_max_message_length(msg)
+            b_len = cmd.get_max_message_length(msg)
+            assert m_len == b_len, (bot_name, username, is_dm, reply_scope, m_len, b_len)

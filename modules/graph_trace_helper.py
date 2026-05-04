@@ -5,13 +5,13 @@ Shared by message_handler (on RX) and trace command (when TRACE_DATA is received
 """
 
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 
 def update_mesh_graph_from_trace_data(
     bot: Any,
-    path_hashes: List[str],
-    packet_info: Dict[str, Any],
+    path_hashes: list[str],
+    packet_info: dict[str, Any],
     *,
     is_our_trace: Optional[bool] = None,
 ) -> None:
@@ -25,7 +25,8 @@ def update_mesh_graph_from_trace_data(
 
     Args:
         bot: MeshCoreBot instance (mesh_graph, transmission_tracker, config, db_manager, meshcore).
-        path_hashes: List of node hash prefixes (1-byte each, as 2-char hex strings) from trace payload.
+        path_hashes: Per-hop hash strings from the trace payload (uppercase hex). Length in nibbles is
+            ``2 * (1 << (flags & 3))`` per hop (1, 2, 4, or 8 bytes), not always 2 hex chars.
         packet_info: Packet information dictionary (packet_hash optional; used when is_our_trace is None).
         is_our_trace: If None, derived from packet_info['packet_hash'] and transmission_tracker.
             If True/False, use that value (e.g. trace command sets True when TRACE_DATA matches our tag).
@@ -76,7 +77,7 @@ def update_mesh_graph_from_trace_data(
 
     recency_days = bot.config.getint("Path_Command", "graph_edge_expiration_days", fallback=7)
 
-    from .utils import calculate_distance, _get_node_location_from_db
+    from .utils import _get_node_location_from_db, calculate_distance
 
     bot_location = None
     try:

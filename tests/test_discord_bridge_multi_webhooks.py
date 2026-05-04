@@ -1,8 +1,7 @@
 """Tests for DiscordBridgeService multi-webhook channel fan-out."""
 
-import asyncio
 from configparser import ConfigParser
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -32,6 +31,7 @@ async def test_single_webhook_backward_compatible(multi_webhook_bot):
 
     service = DiscordBridgeService(multi_webhook_bot)
 
+    # ConfigParser lowercases keys; service title-cases alphabetic names ("public" → "Public").
     assert service.channel_webhooks == {"Public": [url]}
 
 

@@ -5,11 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}MeshCore Bot Data Viewer{% endblock %}</title>
     
-    <!-- Favicons -->
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
-    <link rel="manifest" href="/site.webmanifest">
+    <!-- Manifest served from Flask static folder -->
+    <link rel="manifest" href="{{ url_for('static', filename='ico/site.webmanifest') }}">
     
     <!-- Apply theme immediately to prevent flash -->
     <script>
@@ -313,6 +310,40 @@
             color: var(--text-color) !important;
         }
 
+        /* Dark mode dropdown menus */
+        [data-theme="dark"] .dropdown-menu {
+            background-color: var(--card-bg);
+            border-color: var(--border-color);
+            box-shadow: 0 0.5rem 1rem var(--shadow-color);
+        }
+
+        [data-theme="dark"] .dropdown-item {
+            color: var(--text-color);
+        }
+
+        [data-theme="dark"] .dropdown-item:hover,
+        [data-theme="dark"] .dropdown-item:focus {
+            background-color: var(--bg-tertiary);
+            color: var(--text-color);
+        }
+
+        [data-theme="dark"] .dropdown-item.text-danger {
+            color: #f5c2c7;
+        }
+
+        [data-theme="dark"] .dropdown-item.text-danger:hover,
+        [data-theme="dark"] .dropdown-item.text-danger:focus {
+            color: #f8d7da;
+        }
+
+        [data-theme="dark"] .dropdown-header {
+            color: var(--text-muted);
+        }
+
+        [data-theme="dark"] .dropdown-divider {
+            border-top-color: var(--border-color);
+        }
+
         /* Dark mode accordion styling */
         [data-theme="dark"] .accordion-item {
             background-color: var(--card-bg);
@@ -375,11 +406,6 @@
                             <i class="fas fa-project-diagram"></i> Mesh Graph
                         </a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/cache">
-                            <i class="fas fa-database"></i> Cache
-                        </a>
-                    </li>
                     {% if greeter_enabled %}
                     <li class="nav-item">
                         <a class="nav-link" href="/greeter">
@@ -397,6 +423,16 @@
                     <li class="nav-item">
                         <a class="nav-link" href="/radio">
                             <i class="fas fa-broadcast-tower"></i> Radio
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/config">
+                            <i class="fas fa-cog"></i> Config
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/logs">
+                            <i class="fas fa-file-alt"></i> Logs
                         </a>
                     </li>
                 </ul>
@@ -419,6 +455,166 @@
         </div>
     </nav>
     
+    <!-- Bot Initializing Banner (shown while bot is connecting to radio at startup) -->
+    <div id="init-banner" class="alert alert-info mb-0 rounded-0 border-0 border-bottom border-info{% if not bot_initializing %} d-none{% endif %}" role="alert" style="border-width: 2px !important;">
+        <div class="container-fluid">
+            <i class="fas fa-spinner fa-spin me-2"></i>
+            <strong>Bot Initializing</strong> — connecting to radio hardware. The web viewer is available but bot commands are not yet active.
+        </div>
+    </div>
+
+    <!-- Zombie Radio Banner (persistent — shown on all pages when radio is in zombie state) -->
+    <div id="zombie-banner" class="alert alert-danger mb-0 rounded-0 border-0 border-bottom border-danger{% if not radio_zombie %} d-none{% endif %}" role="alert" style="border-width: 2px !important;">
+        <div class="container-fluid">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <div>
+                    <i class="fas fa-skull-crossbones me-2"></i>
+                    <strong>Radio Zombie State Detected</strong> — The bot radio firmware is unresponsive.
+                    A physical <strong>power cycle</strong> of the radio hardware is required.
+                    Disconnect/reconnect will <em>not</em> fix this.
+                    <span id="zombie-since-span" class="ms-3 text-danger-emphasis small opacity-75{% if not radio_zombie_since %} d-none{% endif %}">
+                        <i class="fas fa-clock me-1"></i>Since: <span id="zombie-since-text">{{ radio_zombie_since or '' }}</span>
+                    </span>
+                </div>
+                <div class="d-flex gap-2 align-items-center flex-shrink-0">
+                    <span class="small opacity-75">After power cycling:</span>
+                    <button id="zombie-recover-btn" class="btn btn-warning btn-sm fw-semibold"
+                            onclick="zombieRecover()" type="button">
+                        <i class="fas fa-power-off me-1"></i>Restart Bot Processing
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Radio Offline Banner (shown when repeated send timeouts have entered the offline state) -->
+    <div id="offline-banner" class="alert alert-warning mb-0 rounded-0 border-0 border-bottom border-warning{% if not radio_offline %} d-none{% endif %}" role="alert" style="border-width: 2px !important;">
+        <div class="container-fluid">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <div>
+                    <i class="fas fa-plug me-2"></i>
+                    <strong>Radio Offline</strong> — the bot cannot send outbound messages to the mesh.
+                    Check radio power and connection. Inbound packets may still be arriving normally.
+                    <span id="offline-since-span" class="ms-3 text-warning-emphasis small opacity-75{% if not radio_offline_since %} d-none{% endif %}">
+                        <i class="fas fa-clock me-1"></i>Since: <span id="offline-since-text">{{ radio_offline_since or '' }}</span>
+                    </span>
+                </div>
+                <div class="d-flex gap-2 align-items-center flex-shrink-0">
+                    <span class="small opacity-75">Once radio is fixed:</span>
+                    <button id="offline-clear-btn" class="btn btn-dark btn-sm fw-semibold"
+                            onclick="radioOfflineClear()" type="button">
+                        <i class="fas fa-check me-1"></i>Clear Offline Flag
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // Global 401 interceptor: redirect to login when session expires mid-page.
+    // Wraps window.fetch so all AJAX calls in every template are covered.
+    (function() {
+        var _origFetch = window.fetch;
+        window.fetch = function(url, options) {
+            return _origFetch.apply(this, arguments).then(function(response) {
+                if (response.status === 401 && typeof url === 'string' && url.startsWith('/api/')) {
+                    var next = encodeURIComponent(window.location.pathname + window.location.search);
+                    window.location.href = '/login?next=' + next;
+                }
+                return response;
+            });
+        };
+    })();
+
+    // Banner action: zombie recover
+    function zombieRecover() {
+        var btn = document.getElementById('zombie-recover-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Restarting\u2026';
+        fetch('/api/admin/zombie-recover', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'}})
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                var b = document.getElementById('zombie-banner');
+                b.className = 'alert alert-success mb-0 rounded-0 border-0 border-bottom border-success';
+                b.innerHTML = '<div class="container-fluid"><i class="fas fa-check-circle me-2"></i>' +
+                    '<strong>Reconnect scheduled.</strong> Refresh this page in a few seconds to confirm the radio is back online.</div>';
+            } else {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-power-off me-1"></i>Restart Bot Processing';
+                alert('Error: ' + (data.error || 'Unknown error \u2014 check server logs'));
+            }
+        })
+        .catch(function() {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-power-off me-1"></i>Restart Bot Processing';
+            alert('Network error \u2014 could not reach the server.');
+        });
+    }
+
+    // Banner action: radio offline clear
+    function radioOfflineClear() {
+        var btn = document.getElementById('offline-clear-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Clearing\u2026';
+        fetch('/api/admin/radio-offline-clear', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'}})
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                var b = document.getElementById('offline-banner');
+                b.className = 'alert alert-success mb-0 rounded-0 border-0 border-bottom border-success';
+                b.innerHTML = '<div class="container-fluid"><i class="fas fa-check-circle me-2"></i>' +
+                    '<strong>Offline flag cleared.</strong> The bot will resume outbound sends. Refresh to confirm.</div>';
+            } else {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-check me-1"></i>Clear Offline Flag';
+                alert('Error: ' + (data.error || 'Unknown error \u2014 check server logs'));
+            }
+        })
+        .catch(function() {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-check me-1"></i>Clear Offline Flag';
+            alert('Network error \u2014 could not reach the server.');
+        });
+    }
+
+    // Live banner polling — updates all banners every 10s without a page reload
+    (function() {
+        function applyBannerStatus(d) {
+            var show = function(id) { var el = document.getElementById(id); if (el) el.classList.remove('d-none'); };
+            var hide = function(id) { var el = document.getElementById(id); if (el) el.classList.add('d-none'); };
+            var setText = function(id, v) { var el = document.getElementById(id); if (el) el.textContent = v || ''; };
+
+            d.bot_initializing ? show('init-banner') : hide('init-banner');
+
+            if (d.radio_zombie) {
+                show('zombie-banner');
+                if (d.radio_zombie_since) { setText('zombie-since-text', d.radio_zombie_since); show('zombie-since-span'); }
+                else { hide('zombie-since-span'); }
+            } else {
+                hide('zombie-banner');
+            }
+
+            if (d.radio_offline) {
+                show('offline-banner');
+                if (d.radio_offline_since) { setText('offline-since-text', d.radio_offline_since); show('offline-since-span'); }
+                else { hide('offline-since-span'); }
+            } else {
+                hide('offline-banner');
+            }
+        }
+
+        function pollBanners() {
+            fetch('/api/banner-status')
+            .then(function(r) { return r.json(); })
+            .then(applyBannerStatus)
+            .catch(function() {});  // silent — server may be restarting
+        }
+
+        setInterval(pollBanners, 10000);
+    })();
+    </script>
+
     <!-- Main Content -->
     <div class="container-fluid mt-4">
         {% block content %}{% endblock %}
@@ -470,10 +666,12 @@
             }
             
             initializeSocket() {
+                // Use io() without forceNew so that realtime.html's io() shares
+                // this same manager/socket.  forceNew created a second independent
+                // connection that interfered with the realtime-page socket.
                 this.socket = io({
                     transports: ['websocket', 'polling'],
-                    timeout: 5000,
-                    forceNew: true
+                    timeout: 5000
                 });
                 
                 this.setupSocketEvents();
@@ -644,19 +842,21 @@
             }
         }
 
-        // Initialize connection manager when page loads
+        // Create connection manager synchronously so page scripts in the extra_js
+        // block can share the same socket without calling io() a second time.
+        window.connectionManager = new ModernConnectionManager();
+
         document.addEventListener('DOMContentLoaded', () => {
             // Initialize dark mode manager first
             window.darkModeManager = new DarkModeManager();
-            
-            window.connectionManager = new ModernConnectionManager();
-            
+
             // Update timestamp immediately and every second
             updateTimestamp();
             setInterval(updateTimestamp, 1000);
         });
     </script>
     
+    <script src="{{ url_for('static', filename='js/channel_operations.js') }}"></script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>

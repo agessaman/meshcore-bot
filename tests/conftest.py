@@ -3,19 +3,20 @@
 Pytest fixtures for meshcore-bot tests
 """
 
-import pytest
-import sqlite3
 import configparser
+import sqlite3
 from contextlib import closing
-from pathlib import Path
-from unittest.mock import Mock, MagicMock, AsyncMock
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Optional
+from unittest.mock import AsyncMock, MagicMock, Mock
+
+import pytest
 
 from modules.db_manager import DBManager
 from modules.mesh_graph import MeshGraph
 from modules.models import MeshMessage
-from tests.helpers import create_test_repeater, create_test_edge, populate_test_graph
+from tests.helpers import create_test_edge, populate_test_graph
 
 
 def mock_message(
@@ -115,7 +116,7 @@ def mock_logger():
 def test_config():
     """Create a test configuration with Path_Command settings."""
     config = configparser.ConfigParser()
-    
+
     # Add Path_Command section with graph-related settings
     config.add_section('Path_Command')
     config.set('Path_Command', 'enabled', 'true')
@@ -135,12 +136,12 @@ def test_config():
     config.set('Path_Command', 'graph_geographic_weight', '0.7')
     config.set('Path_Command', 'graph_prefer_stored_keys', 'true')
     config.set('Path_Command', 'star_bias_multiplier', '2.5')
-    
+
     # Add Bot section (for location if needed)
     config.add_section('Bot')
     config.set('Bot', 'bot_latitude', '47.6062')
     config.set('Bot', 'bot_longitude', '-122.3321')
-    
+
     return config
 
 
@@ -152,14 +153,14 @@ def test_db(mock_logger, tmp_path):
     SQLite :memory: creates a new empty DB per connection, causing isolation issues.
     """
     db_path = str(tmp_path / "test.db")
-    
+
     # Create a minimal bot mock for DBManager
     mock_bot = Mock()
     mock_bot.logger = mock_logger
-    
+
     # Create DBManager with file-based database
     db_manager = DBManager(mock_bot, db_path)
-    
+
     # Initialize mesh_connections table schema
     db_manager.create_table('mesh_connections', '''
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -174,7 +175,7 @@ def test_db(mock_logger, tmp_path):
         geographic_distance REAL,
         UNIQUE(from_prefix, to_prefix)
     ''')
-    
+
     # Initialize complete_contact_tracking table schema (for repeater lookups)
     db_manager.create_table('complete_contact_tracking', '''
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -203,7 +204,7 @@ def test_db(mock_logger, tmp_path):
         out_bytes_per_hop INTEGER,
         is_starred INTEGER DEFAULT 0
     ''')
-    
+
     # Create indexes (after tables are created)
     # Create indexes (db_manager created tables in same db_path)
     try:
@@ -224,9 +225,9 @@ def test_db(mock_logger, tmp_path):
     except Exception:
         # Indexes are optional, continue if they fail
         pass
-    
+
     yield db_manager
-    
+
     # Cleanup (tmp_path is automatically cleaned up by pytest)
 
 
@@ -241,14 +242,14 @@ def mock_bot(mock_logger, test_config, test_db):
     bot._local_root = None  # Use bot_root / local / commands in CommandManager
     bot.prefix_hex_chars = 2  # For path/prefix logic (PR #77)
     bot.key_prefix = lambda pk: (pk or '')[: getattr(bot, 'prefix_hex_chars', 2)]  # For path_command graph selection
-    
+
     # Mock repeater_manager if needed
     bot.repeater_manager = Mock()
     bot.repeater_manager.get_repeater_devices = Mock(return_value=[])
-    
+
     # Mock web_viewer_integration (optional, for edge notifications)
     bot.web_viewer_integration = None
-    
+
     return bot
 
 

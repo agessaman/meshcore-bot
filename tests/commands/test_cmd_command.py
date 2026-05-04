@@ -3,7 +3,7 @@
 import pytest
 
 from modules.commands.cmd_command import CmdCommand
-from tests.conftest import command_mock_bot, mock_message
+from tests.conftest import mock_message
 
 
 class TestCmdCommand:
@@ -40,6 +40,40 @@ class TestCmdCommand:
         assert call_args is not None
         response = call_args[0][1]
         assert "ping" in response or "help" in response or "cmd" in response
+
+    @pytest.mark.asyncio
+    async def test_execute_returns_reference_url_when_configured(self, command_mock_bot):
+        command_mock_bot.config.add_section("Cmd_Command")
+        command_mock_bot.config.set("Cmd_Command", "enabled", "true")
+        command_mock_bot.config.set("Cmd_Command", "cmd_reference_url", "https://example.com/commands")
+        command_mock_bot.command_manager.keywords = {}
+        command_mock_bot.command_manager.commands = {"ping": type("MockCmd", (), {"keywords": ["ping"]})()}
+        cmd = CmdCommand(command_mock_bot)
+        msg = mock_message(content="cmd", is_dm=True)
+
+        result = await cmd.execute(msg)
+
+        assert result is True
+        call_args = command_mock_bot.command_manager.send_response.call_args
+        assert call_args is not None
+        assert call_args[0][1] == "Full command reference: https://example.com/commands"
+
+    @pytest.mark.asyncio
+    async def test_execute_reference_url_takes_precedence_over_custom_keyword(self, command_mock_bot):
+        command_mock_bot.config.add_section("Cmd_Command")
+        command_mock_bot.config.set("Cmd_Command", "enabled", "true")
+        command_mock_bot.config.set("Cmd_Command", "cmd_reference_url", "https://example.com/commands")
+        command_mock_bot.command_manager.keywords = {"cmd": "Custom cmd output"}
+        command_mock_bot.command_manager.commands = {"ping": type("MockCmd", (), {"keywords": ["ping"]})()}
+        cmd = CmdCommand(command_mock_bot)
+        msg = mock_message(content="cmd", is_dm=True)
+
+        result = await cmd.execute(msg)
+
+        assert result is True
+        call_args = command_mock_bot.command_manager.send_response.call_args
+        assert call_args is not None
+        assert call_args[0][1] == "Full command reference: https://example.com/commands"
 
     def test_get_commands_list_truncation(self, command_mock_bot):
         """Test that _get_commands_list truncates long lists with '(N more)' suffix."""

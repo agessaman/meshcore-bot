@@ -10,12 +10,30 @@ standalone via validate_config.py or at bot startup with --validate-config.
 import configparser
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Optional
 
 # Severity levels for validation results
 SEVERITY_ERROR = "error"
 SEVERITY_WARNING = "warning"
 SEVERITY_INFO = "info"
+
+# Public channel guard: first 16 bytes of SHA256("#public") as hex.
+# The Public channel always has this key regardless of display name.
+PUBLIC_CHANNEL_KEY_HEX = "8b3387e9c5cdea6ac9e5edbaa115cd72"
+PUBLIC_CHANNEL_OVERRIDE_KEY = (
+    "i_understand_that_running_the_bot_on_the_public_channel_is_potentially_"
+    "disruptive_to_other_users_enjoyment_of_the_mesh_and_i_would_like_to_do_it_anyway"
+)
+
+
+def _channel_name_is_public(name: str) -> bool:
+    """Return True if name matches the conventional 'Public' channel name.
+
+    Public is a special channel with a fixed key (not hashtag-derived).
+    This name check is used pre-connection as a heuristic; the authoritative
+    check is _check_public_channel_guard() which compares actual device keys.
+    """
+    return name.strip().lstrip("#").lower() == "public"
 
 # Canonical non-command section names (as used in config.ini.example and code)
 CANONICAL_NON_COMMAND_SECTIONS = frozenset({
@@ -80,13 +98,13 @@ SECTION_TYPO_MAP = {
 }
 
 
-def _get_command_prefix_to_section() -> Dict[str, str]:
+def _get_command_prefix_to_section() -> dict[str, str]:
     """Build map from command prefix (lowercase) to canonical section for similarity suggestions.
 
     Discovers command sections from config.ini.example in the project. Returns a dict
     mapping prefix.lower() -> "Prefix_Command" (e.g. "stats" -> "Stats_Command").
     """
-    result: Dict[str, str] = {}
+    result: dict[str, str] = {}
     base = Path(__file__).resolve().parent.parent  # project root
     example_paths = [base / "config.ini.example", base / "config.ini.minimal-example"]
     for path in example_paths:
@@ -104,7 +122,7 @@ def _get_command_prefix_to_section() -> Dict[str, str]:
     return result
 
 
-def _suggest_similar_command(section: str, prefix_to_section: Dict[str, str]) -> Optional[str]:
+def _suggest_similar_command(section: str, prefix_to_section: dict[str, str]) -> Optional[str]:
     """If section looks like a command name (e.g. Stats, Hacker), suggest the canonical section."""
     return prefix_to_section.get(section.strip().lower())
 
@@ -142,7 +160,7 @@ def _check_path_writable(
     return None
 
 
-def validate_config(config_path: str) -> List[Tuple[str, str]]:
+def validate_config(config_path: str) -> list[tuple[str, str]]:
     """
     Validate config file section names. Returns a list of (severity, message).
 
@@ -162,7 +180,7 @@ def validate_config(config_path: str) -> List[Tuple[str, str]]:
     except configparser.Error as e:
         return [(SEVERITY_ERROR, f"Failed to parse config: {e}")]
 
-    results: List[Tuple[str, str]] = []
+    results: list[tuple[str, str]] = []
 
     # Check required sections (bot fails to start without these)
     sections_present = frozenset(s.strip() for s in config.sections() if s.strip())
@@ -177,7 +195,7 @@ def validate_config(config_path: str) -> List[Tuple[str, str]]:
     if ADMIN_ACL_SECTION not in sections_present:
         results.append((
             SEVERITY_INFO,
-            f"Section [{ADMIN_ACL_SECTION}] absent; admin commands (repeater, webviewer, reload) disabled.",
+            f"Section [{ADMIN_ACL_SECTION}] absent; admin commands (repeater, webviewer, reload, channelpause) disabled.",
         ))
     if BANNED_USERS_SECTION not in sections_present:
         results.append((
@@ -231,7 +249,21 @@ def validate_config(config_path: str) -> List[Tuple[str, str]]:
             if msg:
                 results.append((SEVERITY_WARNING, msg))
 
-    prefix_to_section: Optional[Dict[str, str]] = None
+    # Public channel guard: refuse to run on the shared Public channel without explicit override
+    if config.has_section("Channels") and config.has_option("Channels", "monitor_channels"):
+        raw = strip_optional_quotes(config.get("Channels", "monitor_channels", fallback=""))
+        entries = [e.strip() for e in raw.split(",") if e.strip()]
+        if any(_channel_name_is_public(e) for e in entries):
+            override = config.get("Bot", PUBLIC_CHANNEL_OVERRIDE_KEY, fallback="").strip().lower()
+            if override != "true":
+                results.append((
+                    SEVERITY_ERROR,
+                    "monitor_channels includes the Public channel. Running a bot on Public "
+                    "is disruptive to other mesh users. To override, add to [Bot]:\n"
+                    f"  {PUBLIC_CHANNEL_OVERRIDE_KEY} = true",
+                ))
+
+    prefix_to_section: Optional[dict[str, str]] = None
 
     for section in config.sections():
         section_stripped = section.strip()

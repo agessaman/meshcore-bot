@@ -143,7 +143,7 @@ TEAM_MAPPINGS = {
     'vikings': {'sport': 'football', 'league': 'nfl', 'team_id': '16'},
     'minnesota': {'sport': 'football', 'league': 'nfl', 'team_id': '16'},
     'min': {'sport': 'football', 'league': 'nfl', 'team_id': '16'},
-    
+
     # CFL Teams (Canadian Football League)
     'bc lions': {'sport': 'football', 'league': 'cfl', 'team_id': '79'},
     'bcl': {'sport': 'football', 'league': 'cfl', 'team_id': '79'},
@@ -176,7 +176,7 @@ TEAM_MAPPINGS = {
     'blue bombers': {'sport': 'football', 'league': 'cfl', 'team_id': '86'},
     'bombers': {'sport': 'football', 'league': 'cfl', 'team_id': '86'},
     'wbb': {'sport': 'football', 'league': 'cfl', 'team_id': '86'},
-    
+
     # MLB Teams
     'mariners': {'sport': 'baseball', 'league': 'mlb', 'team_id': '12'},
     'seattle': {'sport': 'baseball', 'league': 'mlb', 'team_id': '12'},
@@ -265,7 +265,7 @@ TEAM_MAPPINGS = {
     'yankees': {'sport': 'baseball', 'league': 'mlb', 'team_id': '10'},
     'new york': {'sport': 'baseball', 'league': 'mlb', 'team_id': '10'},
     'nyy': {'sport': 'baseball', 'league': 'mlb', 'team_id': '10'},
-    
+
     # NBA Teams
     'hawks': {'sport': 'basketball', 'league': 'nba', 'team_id': '1'},
     'atlanta hawks': {'sport': 'basketball', 'league': 'nba', 'team_id': '1'},
@@ -334,7 +334,7 @@ TEAM_MAPPINGS = {
     'toronto raptors': {'sport': 'basketball', 'league': 'nba', 'team_id': '28'},
     'grizzlies': {'sport': 'basketball', 'league': 'nba', 'team_id': '29'},
     'memphis grizzlies': {'sport': 'basketball', 'league': 'nba', 'team_id': '29'},
-    
+
     # WNBA Teams
     'storm': {'sport': 'basketball', 'league': 'wnba', 'team_id': '14'},
     'seattle storm': {'sport': 'basketball', 'league': 'wnba', 'team_id': '14'},
@@ -362,7 +362,7 @@ TEAM_MAPPINGS = {
     'phoenix mercury': {'sport': 'basketball', 'league': 'wnba', 'team_id': '11'},
     'mystics': {'sport': 'basketball', 'league': 'wnba', 'team_id': '16'},
     'washington mystics': {'sport': 'basketball', 'league': 'wnba', 'team_id': '16'},
-    
+
     # NHL Teams
     'ducks': {'sport': 'hockey', 'league': 'nhl', 'team_id': '25'},
     'anaheim': {'sport': 'hockey', 'league': 'nhl', 'team_id': '25'},
@@ -460,7 +460,7 @@ TEAM_MAPPINGS = {
     'jets': {'sport': 'hockey', 'league': 'nhl', 'team_id': '28'},
     'winnipeg': {'sport': 'hockey', 'league': 'nhl', 'team_id': '28'},
     'wpg': {'sport': 'hockey', 'league': 'nhl', 'team_id': '28'},
-    
+
     # WHL Teams (Western Hockey League) - using TheSportsDB API
     'thunderbirds': {'sport': 'hockey', 'league': 'whl', 'team_id': '144380', 'api_source': 'thesportsdb'},
     'seattle thunderbirds': {'sport': 'hockey', 'league': 'whl', 'team_id': '144380', 'api_source': 'thesportsdb'},
@@ -515,11 +515,11 @@ TEAM_MAPPINGS = {
     'brandon wheat kings': {'sport': 'hockey', 'league': 'whl', 'team_id': '144367', 'api_source': 'thesportsdb'},
     'wheat kings': {'sport': 'hockey', 'league': 'whl', 'team_id': '144367', 'api_source': 'thesportsdb'},
     'brandon': {'sport': 'hockey', 'league': 'whl', 'team_id': '144367', 'api_source': 'thesportsdb'},
-    
+
     # MLS Teams
     'sounders': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '9726'},
     'seattle sounders': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '9726'},
-    
+
     # NWSL Teams
     'reign': {'sport': 'soccer', 'league': 'usa.nwsl', 'team_id': '15363'},
     'seattle reign': {'sport': 'soccer', 'league': 'usa.nwsl', 'team_id': '15363'},
@@ -605,7 +605,7 @@ TEAM_MAPPINGS = {
     'whitecaps': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '9727'},
     'vancouver': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '9727'},
     'van': {'sport': 'soccer', 'league': 'usa.1', 'team_id': '9727'},
-    
+
     # Premier League Teams
     'lfc': {'sport': 'soccer', 'league': 'eng.1', 'team_id': '364'},
     'liverpool': {'sport': 'soccer', 'league': 'eng.1', 'team_id': '364'},
@@ -629,39 +629,39 @@ LEAGUE_MAPPINGS = {
     # NFL
     'nfl': {'sport': 'football', 'league': 'nfl'},
     'football': {'sport': 'football', 'league': 'nfl'},
-    
+
     # CFL
     'cfl': {'sport': 'football', 'league': 'cfl'},
     'canadian football': {'sport': 'football', 'league': 'cfl'},
-    
+
     # MLB
     'mlb': {'sport': 'baseball', 'league': 'mlb'},
     'baseball': {'sport': 'baseball', 'league': 'mlb'},
-    
+
     # NBA
     'nba': {'sport': 'basketball', 'league': 'nba'},
     'basketball': {'sport': 'basketball', 'league': 'nba'},
-    
+
     # WNBA
     'wnba': {'sport': 'basketball', 'league': 'wnba'},
-    
+
     # NHL
     'nhl': {'sport': 'hockey', 'league': 'nhl'},
     'hockey': {'sport': 'hockey', 'league': 'nhl'},
-    
+
     # PWHL
     'pwhl': {'sport': 'hockey', 'league': 'pwhl'},
-    
+
     # WHL
     'whl': {'sport': 'hockey', 'league': 'whl', 'league_id': '5160', 'api_source': 'thesportsdb'},
-    
+
     # MLS
     'mls': {'sport': 'soccer', 'league': 'usa.1'},
     'soccer': {'sport': 'soccer', 'league': 'usa.1'},
-    
+
     # NWSL
     'nwsl': {'sport': 'soccer', 'league': 'usa.nwsl'},
-    
+
     # Premier League
     'epl': {'sport': 'soccer', 'league': 'eng.1'},
     'premier league': {'sport': 'soccer', 'league': 'eng.1'}
@@ -673,14 +673,14 @@ def format_clean_date_time(dt) -> str:
     day = dt.day
     minute = dt.minute
     ampm = dt.strftime("%p")
-    
+
     # Convert to 12-hour format
     hour_12 = dt.hour
     if hour_12 == 0:
         hour_12 = 12
     elif hour_12 > 12:
         hour_12 = hour_12 - 12
-    
+
     # Remove leading zeros
     time_str = f"{month}/{day} {hour_12}:{minute:02d} {ampm}"
     return time_str
@@ -693,12 +693,12 @@ def format_clean_date(dt) -> str:
 
 def get_team_abbreviation_from_name(team_name: str) -> str:
     """Extract a short abbreviation from a team name
-    
+
     Uses common city abbreviations for WHL teams.
     """
     if not team_name:
         return 'UNK'
-    
+
     # WHL team abbreviation mappings
     whl_abbreviations = {
         'seattle thunderbirds': 'SEA',
@@ -725,11 +725,11 @@ def get_team_abbreviation_from_name(team_name: str) -> str:
         'brandon wheat kings': 'BDN',
         'winnipeg ice': 'WPG',
     }
-    
+
     team_lower = team_name.lower()
     if team_lower in whl_abbreviations:
         return whl_abbreviations[team_lower]
-    
+
     # Try to extract from city name (first one or two words)
     words = team_name.lower().split()
     if len(words) >= 2:
@@ -763,19 +763,19 @@ def get_team_abbreviation_from_name(team_name: str) -> str:
             'brandon': 'BDN',
             'winnipeg': 'WPG',
         }
-        
+
         if two_word_city in city_abbr:
             return city_abbr[two_word_city]
-            
+
         # Then check for one-word cities
         city = words[0]
         if city in city_abbr:
             return city_abbr[city]
-        
+
         # Fallback for one-word city: use first 3 letters
         if len(city) >= 3:
             return city[:3].upper()
-    
+
     # Final fallback: use first 3 letters of team name
     return team_name[:3].upper() if len(team_name) >= 3 else team_name.upper()
 

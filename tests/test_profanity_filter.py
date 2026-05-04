@@ -60,10 +60,9 @@ class TestProfanityFilterWithLibrary:
     def _reset_module_state(self):
         """Ensure the profanity module is initialized for these tests."""
         import modules.profanity_filter as pf
-        if pf._profanity_available:
-            if not pf._profanity_initialized:
-                pf.profanity.load_censor_words()
-                pf._profanity_initialized = True
+        if pf._profanity_available and not pf._profanity_initialized:
+            pf.profanity.load_censor_words()
+            pf._profanity_initialized = True
         yield
 
     def test_censor_replaces_profanity_when_library_available(self):
@@ -136,11 +135,10 @@ class TestProfanityFilterFallbackWhenLibraryUnavailable:
     def test_censor_logs_warning_once_when_library_unavailable(self):
         import modules.profanity_filter as pf
         logger = Mock()
-        with patch.object(pf, "_profanity_available", False):
-            with patch.object(pf, "_warned_unavailable", False):
-                censor("hello", logger=logger)
-                logger.warning.assert_called_once()
-                assert "better-profanity" in logger.warning.call_args[0][0]
+        with patch.object(pf, "_profanity_available", False), patch.object(pf, "_warned_unavailable", False):
+            censor("hello", logger=logger)
+            logger.warning.assert_called_once()
+            assert "better-profanity" in logger.warning.call_args[0][0]
 
     def test_hate_symbol_still_detected_and_censored_when_library_unavailable(self):
         """Hate symbols (e.g. swastika) are detected and replaced even when better_profanity is not installed."""

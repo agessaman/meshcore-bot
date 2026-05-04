@@ -11,7 +11,6 @@ import sys
 
 from modules.config_validation import (
     SEVERITY_ERROR,
-    SEVERITY_INFO,
     SEVERITY_WARNING,
     validate_config,
 )
