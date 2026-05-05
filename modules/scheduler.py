@@ -6,6 +6,7 @@ Handles scheduled messages and timing
 
 import asyncio
 import datetime
+import hashlib
 import json
 import os
 import sqlite3
@@ -15,11 +16,11 @@ from pathlib import Path
 from typing import Any, Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from meshcore.events import EventType
 
 from .maintenance import MaintenanceRunner
+from .scheduled_message_cron import is_valid_legacy_hhmm, parse_schedule_key
 from .security_utils import validate_external_url
 from .utils import decode_escape_sequences, format_keyword_response_with_placeholders, get_config_timezone
 
@@ -73,33 +74,51 @@ class MessageScheduler:
 
         if self.bot.config.has_section('Scheduled_Messages'):
             self.logger.info("Found Scheduled_Messages section")
-            for time_str, message_info in self.bot.config.items('Scheduled_Messages'):
-                self.logger.info(f"Processing scheduled message: '{time_str}' -> '{message_info}'")
+            for schedule_key, message_info in self.bot.config.items('Scheduled_Messages'):
+                self.logger.info(f"Processing scheduled message: '{schedule_key}' -> '{message_info}'")
                 try:
-                    # Validate time format first
-                    if not self._is_valid_time_format(time_str):
-                        self.logger.warning(f"Invalid time format '{time_str}' for scheduled message: {message_info}")
+                    parsed = parse_schedule_key(schedule_key, tz)
+                    if parsed.trigger is None:
+                        self.logger.warning(
+                            f"Invalid schedule '{schedule_key}' for scheduled message: {message_info}"
+                        )
                         continue
+
+                    if parsed.is_deprecated_hhmm:
+                        hh = int(schedule_key[:2])
+                        mm = int(schedule_key[2:])
+                        cron_suggestion = f"{mm} {hh} * * *"
+                        self.logger.warning(
+                            "Scheduled_Messages key %r uses deprecated HHMM daily format; "
+                            "migrate to 5-field cron (minute hour dom mon dow), e.g. %r. "
+                            "HHMM support will be removed in a future release.",
+                            schedule_key,
+                            cron_suggestion,
+                        )
 
                     channel, message = message_info.split(':', 1)
                     channel = channel.strip()
                     message = decode_escape_sequences(message.strip())
-                    hour = int(time_str[:2])
-                    minute = int(time_str[2:])
+
+                    job_id = "schedmsg_" + hashlib.sha256(
+                        f"{schedule_key}\0{channel}\0{message}".encode()
+                    ).hexdigest()[:24]
 
                     self._apscheduler.add_job(
                         self.send_scheduled_message,
-                        CronTrigger(hour=hour, minute=minute),
+                        parsed.trigger,
                         args=[channel, message],
-                        id=f"msg_{time_str}_{channel}",
+                        id=job_id,
                         replace_existing=True,
                     )
-                    self.scheduled_messages[time_str] = (channel, message)
-                    self.logger.info(f"Scheduled message: {hour:02d}:{minute:02d} -> {channel}: {message}")
+                    self.scheduled_messages[schedule_key] = (channel, message, parsed.display_label)
+                    self.logger.info(
+                        f"Scheduled message: {parsed.display_label} -> {channel}: {message}"
+                    )
                 except ValueError:
                     self.logger.warning(f"Invalid scheduled message format: {message_info}")
                 except Exception as e:
-                    self.logger.warning(f"Error setting up scheduled message '{time_str}': {e}")
+                    self.logger.warning(f"Error setting up scheduled message '{schedule_key}': {e}")
 
         self._apscheduler.start()
         self.logger.info(f"APScheduler started with {len(self.scheduled_messages)} scheduled message(s)")
@@ -202,15 +221,8 @@ class MessageScheduler:
         self._run_async_on_main_loop(self._device_mode_favourite_pass2_coro(), timeout=600.0)
 
     def _is_valid_time_format(self, time_str: str) -> bool:
-        """Validate time format (HHMM)"""
-        try:
-            if len(time_str) != 4:
-                return False
-            hour = int(time_str[:2])
-            minute = int(time_str[2:])
-            return 0 <= hour <= 23 and 0 <= minute <= 59
-        except ValueError:
-            return False
+        """Validate deprecated legacy time format (HHMM). Prefer cron in config keys."""
+        return is_valid_legacy_hhmm(time_str)
 
     def send_scheduled_message(self, channel: str, message: str):
         """Send a scheduled message (synchronous wrapper for schedule library)"""

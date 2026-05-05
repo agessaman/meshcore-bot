@@ -2,11 +2,14 @@
 
 import datetime
 import time
+from zoneinfo import ZoneInfo
+
 from configparser import ConfigParser
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
+from modules.scheduled_message_cron import parse_schedule_key
 from modules.scheduler import MessageScheduler
 
 
@@ -18,6 +21,36 @@ def scheduler(mock_logger):
     bot.config = ConfigParser()
     bot.config.add_section("Bot")
     return MessageScheduler(bot)
+
+
+class TestParseScheduleKey:
+    """Tests for scheduled message cron / preset / legacy parsing."""
+
+    def test_five_field_cron(self):
+        tz = ZoneInfo("UTC")
+        r = parse_schedule_key("30 14 * * *", tz)
+        assert r.trigger is not None
+        assert r.display_label == "30 14 * * *"
+        assert r.is_deprecated_hhmm is False
+
+    def test_at_daily_preset(self):
+        tz = ZoneInfo("UTC")
+        r = parse_schedule_key("@daily", tz)
+        assert r.trigger is not None
+        assert r.display_label == "@daily"
+        assert r.is_deprecated_hhmm is False
+
+    def test_legacy_hhmm(self):
+        tz = ZoneInfo("UTC")
+        r = parse_schedule_key("0900", tz)
+        assert r.trigger is not None
+        assert r.display_label == "09:00"
+        assert r.is_deprecated_hhmm is True
+
+    def test_invalid_expression(self):
+        tz = ZoneInfo("UTC")
+        r = parse_schedule_key("not-a-valid-cron", tz)
+        assert r.trigger is None
 
 
 class TestIsValidTimeFormat:
@@ -106,10 +139,61 @@ class TestSetupScheduledMessages:
         scheduler.bot.config.set("Scheduled_Messages", "0900", "general: Good morning!")
         self._setup_and_call(scheduler)
         assert "0900" in scheduler.scheduled_messages
-        channel, message = scheduler.scheduled_messages["0900"]
+        channel, message, label = scheduler.scheduled_messages["0900"]
         assert channel == "general"
         assert "Good morning!" in message
+        assert label == "09:00"
         assert len(scheduler._apscheduler.get_jobs()) == 1
+        self._teardown(scheduler)
+
+    def test_deprecated_hhmm_logs_migration_warning(self, scheduler):
+        scheduler.bot.config.add_section("Scheduled_Messages")
+        scheduler.bot.config.set("Scheduled_Messages", "0900", "general: Hi")
+        self._setup_and_call(scheduler)
+        warns = [str(c) for c in scheduler.bot.logger.warning.call_args_list]
+        assert any("deprecated" in w.lower() for w in warns)
+        assert any("HHMM" in w for w in warns)
+        self._teardown(scheduler)
+
+    def test_five_field_cron_registered(self, scheduler):
+        scheduler.bot.config.add_section("Scheduled_Messages")
+        scheduler.bot.config.set(
+            "Scheduled_Messages", "0 9 * * *", "general: Morning cron"
+        )
+        self._setup_and_call(scheduler)
+        assert "0 9 * * *" in scheduler.scheduled_messages
+        ch, msg, label = scheduler.scheduled_messages["0 9 * * *"]
+        assert ch == "general"
+        assert "Morning cron" in msg
+        assert label == "0 9 * * *"
+        assert len(scheduler._apscheduler.get_jobs()) == 1
+        self._teardown(scheduler)
+
+    def test_at_weekly_preset_registered(self, scheduler):
+        scheduler.bot.config.add_section("Scheduled_Messages")
+        scheduler.bot.config.set(
+            "Scheduled_Messages", "@weekly", "alerts: Weekly digest"
+        )
+        self._setup_and_call(scheduler)
+        assert "@weekly" in scheduler.scheduled_messages
+        assert scheduler.scheduled_messages["@weekly"][2] == "@weekly"
+        assert len(scheduler._apscheduler.get_jobs()) == 1
+        self._teardown(scheduler)
+
+    def test_invalid_cron_skipped(self, scheduler):
+        scheduler.bot.config.add_section("Scheduled_Messages")
+        scheduler.bot.config.set(
+            "Scheduled_Messages", "not-a-cron", "general: should not run"
+        )
+        self._setup_and_call(scheduler)
+        assert "not-a-cron" not in scheduler.scheduled_messages
+        # Only non-message jobs (e.g. device-mode) could exist; no scheduled message job
+        msg_jobs = [
+            j
+            for j in scheduler._apscheduler.get_jobs()
+            if j.id.startswith("schedmsg_")
+        ]
+        assert len(msg_jobs) == 0
         self._teardown(scheduler)
 
     def test_invalid_time_format_is_skipped(self, scheduler):
@@ -147,8 +231,9 @@ class TestSetupScheduledMessages:
         scheduler.bot.config.add_section("Scheduled_Messages")
         scheduler.bot.config.set("Scheduled_Messages", "1000", r"general: Line1\nLine2")
         self._setup_and_call(scheduler)
-        _, message = scheduler.scheduled_messages["1000"]
+        _, message, label = scheduler.scheduled_messages["1000"]
         assert "\n" in message
+        assert label == "10:00"
         self._teardown(scheduler)
 
     def test_reload_replaces_existing_jobs(self, scheduler):
@@ -465,18 +550,31 @@ class TestAPSchedulerLifecycle:
         assert scheduler._apscheduler is None
         scheduler.join(timeout=0.1)  # must not raise
 
-    def test_cron_trigger_hour_minute(self, scheduler):
-        """Registered jobs get a CronTrigger with the correct hour/minute."""
+    def test_cron_trigger_hour_minute_legacy_hhmm(self, scheduler):
+        """Legacy HHMM keys produce a CronTrigger with the correct hour/minute."""
         scheduler.bot.config.add_section("Scheduled_Messages")
         scheduler.bot.config.set("Scheduled_Messages", "1430", "ch: hello")
         scheduler.setup_scheduled_messages()
-        jobs = scheduler._apscheduler.get_jobs()
-        assert len(jobs) == 1
-        trigger = jobs[0].trigger
+        msg_jobs = [j for j in scheduler._apscheduler.get_jobs() if j.id.startswith("schedmsg_")]
+        assert len(msg_jobs) == 1
+        trigger = msg_jobs[0].trigger
         # CronTrigger fields: hour=14, minute=30
         field_map = {f.name: f for f in trigger.fields}
         assert str(field_map["hour"]) == "14"
         assert str(field_map["minute"]) == "30"
+        scheduler.join(timeout=1)
+
+    def test_cron_trigger_from_five_field_expression(self, scheduler):
+        """5-field crontab keys produce the expected hour/minute fields."""
+        scheduler.bot.config.add_section("Scheduled_Messages")
+        scheduler.bot.config.set("Scheduled_Messages", "15 10 * * *", "ch: ping")
+        scheduler.setup_scheduled_messages()
+        msg_jobs = [j for j in scheduler._apscheduler.get_jobs() if j.id.startswith("schedmsg_")]
+        assert len(msg_jobs) == 1
+        trigger = msg_jobs[0].trigger
+        field_map = {f.name: f for f in trigger.fields}
+        assert str(field_map["hour"]) == "10"
+        assert str(field_map["minute"]) == "15"
         scheduler.join(timeout=1)
 
 

@@ -1020,7 +1020,7 @@ View configured scheduled messages and advert interval.
 schedule
 ```
 
-**Response:** Lists upcoming scheduled posts and current advert timing.
+**Response:** Lists configured scheduled posts (each line shows the cron or preset schedule, or legacy `HH:MM` if you still use deprecated HHMM keys) plus current advert timing.
 
 **Note:** DM-only command by default.
 

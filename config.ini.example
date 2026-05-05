@@ -428,10 +428,16 @@ category.funfact = fun
 #category.fortune = fun
 
 [Scheduled_Messages]
-# Scheduled message format: HHMM = channel:message
-# Time format: HHMM (24-hour, no colon)
-# Bot will send these messages at the specified times daily
-# Example: 0800 = general:Good morning! Weather update coming soon.
+# Scheduled message format: <schedule> = channel:message
+#
+# <schedule> is one of:
+#   - 5-field crontab (minute hour day-of-month month day-of-week), e.g.
+#       0 8 * * *     = every day at 08:00 (in [Bot] timezone)
+#       30 12 * * 1   = every Monday at 12:30
+#   - Preset aliases (same semantics as common cron @macros):
+#       @yearly @annually  @monthly  @weekly  @daily  @midnight  @hourly
+#   - Deprecated (still accepted, logs a warning): HHMM = daily at that 24h clock time
+#       0800          = same as 0 8 * * *   — migrate to cron; HHMM will be removed later.
 #
 # Newlines: use \n in the message for a line break (e.g. general:Line one\nLine two).
 # Literal backslash: use \\n for backslash+n; \\t for tab.
@@ -465,14 +471,15 @@ category.funfact = fun
 # {repeaters} - Same as {total_repeaters}
 # {companions} - Same as {total_companions}
 # 
-# Example with placeholders:
-# 0800 = Public:Good morning! Network: {total_contacts} total ({total_repeaters} repeaters, {total_companions} companions). {new_repeaters_7d} new repeaters, {new_companions_7d} new companions in last 7d. {recent_activity_24h} active in 24h.
+# Example with placeholders (cron):
+# 0 8 * * * = Public:Good morning! Network: {total_contacts} total ({total_repeaters} repeaters, {total_companions} companions). {new_repeaters_7d} new repeaters, {new_companions_7d} new companions in last 7d. {recent_activity_24h} active in 24h.
 # Example with 30-day active devices and new devices in 7d:
-# 0900 = Public:{total_contacts_30d} active in last 30d: ({total_repeaters_30d} repeaters, {total_companions_30d} companions). {new_repeaters_7d} new repeaters, {new_companions_7d} new companions in last 7d. {recent_activity_24h} users active in last 24h.
+# 0 9 * * * = Public:{total_contacts_30d} active in last 30d: ({total_repeaters_30d} repeaters, {total_companions_30d} companions). {new_repeaters_7d} new repeaters, {new_companions_7d} new companions in last 7d. {recent_activity_24h} users active in last 24h.
 
-#0800 = Public:Good morning! Bot is online and ready.
-#1200 = Public:Midday status check - all systems operational.
-#1800 = Public:Evening update - bot status: Good
+#0 8 * * * = Public:Good morning! Bot is online and ready.
+#0 12 * * * = Public:Midday status check - all systems operational.
+#0 18 * * * = Public:Evening update - bot status: Good
+# @hourly = Public:Hourly ping (preset example; comment out if unused)
 
 [Schedule_Command]
 # Show scheduled messages and advert interval via the 'schedule' command
