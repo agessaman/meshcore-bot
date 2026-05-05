@@ -670,8 +670,11 @@
                 // this same manager/socket.  forceNew created a second independent
                 // connection that interfered with the realtime-page socket.
                 this.socket = io({
-                    transports: ['websocket', 'polling'],
-                    timeout: 5000
+                    //transports: ['websocket', 'polling'],
+                    transports: ['polling'],
+                    upgrade: false,          // ← empêche toute tentative d'upgrade côté client
+                    timeout: 10000,
+                    reconnectionDelay: 2000,
                 });
                 
                 this.setupSocketEvents();

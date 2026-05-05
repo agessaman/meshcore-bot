@@ -161,6 +161,7 @@ class BotDataViewer:
             logger=False,                  # Disable verbose logging
             engineio_logger=False,        # Disable EngineIO logging
             async_mode='threading',       # Use threading for better stability
+            allow_upgrades=False,   # ← AJOUT : désactive l'upgrade WebSocket
         )
         self.socketio = SocketIO()
 
@@ -213,6 +214,16 @@ class BotDataViewer:
         if cors_raw:
             cors_origins = cors_raw if cors_raw == '*' else [o.strip() for o in cors_raw.split(',') if o.strip()]
             self._socketio_kwargs['cors_allowed_origins'] = cors_origins
+
+        # Configure CORS for SocketIO
+        cors_raw = self.config.get('Web_Viewer', 'cors_allowed_origins', fallback='').strip()
+        if cors_raw:
+            cors_origins = cors_raw if cors_raw == '*' else [o.strip() for o in cors_raw.split(',') if o.strip()]
+            self._socketio_kwargs['cors_allowed_origins'] = cors_origins
+        else:
+            # Derrière un proxy, l'Origin differ de l'adresse interne → autoriser explicitement
+            self._socketio_kwargs['cors_allowed_origins'] = '*'
+
         # Initialize SocketIO with Flask app now that config is loaded
         self.socketio.init_app(self.app, **self._socketio_kwargs)
 
