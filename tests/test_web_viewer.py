@@ -306,13 +306,16 @@ class TestPageRoutes:
             v = BotDataViewer(db_path=db_path, config_path=config_path)
 
         v.app.config["TESTING"] = True
+
+        # Verify at the data layer: _get_command_info() must not include 'ping'
+        command_names = [cmd['name'] for cmd in v._get_command_info()]
+        assert 'ping' not in command_names
+
+        # Verify at the page layer: the rendered HTML must not contain the ping entry
         with v.app.test_client() as c:
             resp = c.get("/infos")
         assert resp.status_code == 200
         html = resp.data.decode()
-        # "ping" command should not appear in the command table when disabled
-        # We check there is no badge with 'ping' as a trigger keyword
-        # The command name cell uses <strong>ping</strong>
         assert "<strong>ping</strong>" not in html
 
     def test_mesh(self, client):
