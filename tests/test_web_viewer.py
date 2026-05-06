@@ -263,6 +263,58 @@ class TestPageRoutes:
         assert "Monitored Channels" in html
         assert "Direct Messages" in html
 
+    def test_infos_uses_meshcore_io_url(self, client):
+        """The /infos page links to meshcore.io (not the old co.uk domain)."""
+        resp = client.get("/infos")
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert "meshcore.io" in html
+        assert "meshcore.co.uk" not in html
+
+    def test_base_footer_uses_meshcore_io_url(self, client):
+        """The base footer should link to meshcore.io on all pages."""
+        resp = client.get("/")
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert "meshcore.io" in html
+        assert "meshcore.co.uk" not in html
+
+    def test_infos_disabled_command_filtered(self, tmp_path_factory):
+        """A command disabled in config must not appear on the /infos page."""
+        from unittest.mock import patch  # noqa: PLC0415
+
+        tmp = tmp_path_factory.mktemp("infos_disabled")
+        db_path = str(tmp / "test.db")
+        config_path = str(tmp / "config.ini")
+
+        cfg = configparser.ConfigParser()
+        cfg["Connection"] = {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"}
+        cfg["Bot"] = {"bot_name": "TestBot", "db_path": db_path, "prefix_bytes": "1"}
+        cfg["Channels"] = {"monitor_channels": "general"}
+        cfg["Path_Command"] = {"graph_capture_enabled": "false", "graph_write_strategy": "immediate"}
+        # Disable the ping command
+        cfg["Ping_Command"] = {"enabled": "false"}
+        with open(config_path, "w") as f:
+            cfg.write(f)
+
+        with (
+            patch.object(BotDataViewer, "_setup_logging", _fake_setup_logging),
+            patch.object(BotDataViewer, "_start_database_polling", lambda self: None),
+            patch.object(BotDataViewer, "_start_log_tailing", lambda self: None),
+            patch.object(BotDataViewer, "_start_cleanup_scheduler", lambda self: None),
+        ):
+            v = BotDataViewer(db_path=db_path, config_path=config_path)
+
+        v.app.config["TESTING"] = True
+        with v.app.test_client() as c:
+            resp = c.get("/infos")
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        # "ping" command should not appear in the command table when disabled
+        # We check there is no badge with 'ping' as a trigger keyword
+        # The command name cell uses <strong>ping</strong>
+        assert "<strong>ping</strong>" not in html
+
     def test_mesh(self, client):
         resp = client.get("/mesh")
         assert resp.status_code == 200
