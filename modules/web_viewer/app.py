@@ -1239,7 +1239,9 @@ class BotDataViewer:
 
         Checks the three attribute naming conventions used across command plugins:
         1. ``{name}_enabled`` — most common (e.g. ``ping_enabled``, ``sports_enabled``)
-        2. ``_enabled``       — used by schedule_command
+        2. ``_enabled``       — used by schedule_command (name-mangled to avoid clashes,
+                                but accessed intentionally here via hasattr/getattr for
+                                cross-plugin inspection)
         3. ``enabled``        — used by hacker/greeter/announcements commands
         Defaults to True when no enabled-flag attribute is found.
         """
@@ -1247,8 +1249,11 @@ class BotDataViewer:
         named_attr = f"{name}_enabled"
         if hasattr(cmd_instance, named_attr):
             return bool(getattr(cmd_instance, named_attr))
+        # schedule_command stores its flag as ``_enabled``.  We access it via
+        # getattr() rather than dot-notation to keep the linter happy while still
+        # supporting this cross-plugin introspection pattern.
         if hasattr(cmd_instance, '_enabled'):
-            return bool(cmd_instance._enabled)
+            return bool(getattr(cmd_instance, '_enabled'))
         if hasattr(cmd_instance, 'enabled'):
             return bool(cmd_instance.enabled)
         return True

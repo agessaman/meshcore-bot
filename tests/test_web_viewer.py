@@ -268,7 +268,7 @@ class TestPageRoutes:
         resp = client.get("/infos")
         assert resp.status_code == 200
         html = resp.data.decode()
-        assert "meshcore.io" in html
+        assert 'href="https://meshcore.io"' in html
         assert "meshcore.co.uk" not in html
 
     def test_base_footer_uses_meshcore_io_url(self, client):
@@ -276,7 +276,7 @@ class TestPageRoutes:
         resp = client.get("/")
         assert resp.status_code == 200
         html = resp.data.decode()
-        assert "meshcore.io" in html
+        assert 'href="https://meshcore.io"' in html
         assert "meshcore.co.uk" not in html
 
     def test_infos_disabled_command_filtered(self, tmp_path_factory):
