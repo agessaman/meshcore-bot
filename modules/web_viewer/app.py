@@ -1215,6 +1215,94 @@ class BotDataViewer:
             'valid': True
         }
 
+    # Category display names (matching generate_website.py)
+    _CATEGORY_NAMES: dict[str, str] = {
+        'basic': 'Basic Commands',
+        'weather': 'Weather Commands',
+        'solar': 'Solar & Astronomical',
+        'sports': 'Sports',
+        'games': 'Games & Entertainment',
+        'fun': 'Fun Commands',
+        'entertainment': 'Entertainment',
+        'meshcore_info': 'Mesh Network Info',
+        'analytics': 'Analytics',
+        'emergency': 'Emergency',
+        'general': 'General Commands',
+    }
+
+    # Categories never shown on the public /infos page
+    _EXCLUDED_CATEGORIES: frozenset[str] = frozenset({'hidden', 'admin', 'system', 'management', 'special'})
+
+    def _get_command_info(self) -> list[dict]:
+        """Load and cache public command info using PluginLoader.
+
+        Returns a list of dicts (name, keywords, description, short_description,
+        usage, examples, category) sorted basic-first then alphabetically.
+        Returns an empty list on any failure so the page still renders.
+        """
+        if hasattr(self, '_command_info_cache'):
+            return self._command_info_cache
+
+        try:
+            from modules.plugin_loader import PluginLoader  # noqa: PLC0415
+
+            class _DummyTranslator:
+                def translate(self, key: str, **kwargs: Any) -> str:
+                    return key
+
+                def get_value(self, key: str) -> Any:
+                    return None
+
+            class _MinimalBot:
+                def __init__(self, config: Any, logger: Any, db_manager: Any = None) -> None:
+                    self.config = config
+                    self.logger = logger
+                    self.db_manager = db_manager
+                    self.translator = _DummyTranslator()
+                    self.command_manager = None
+
+            minimal_bot = _MinimalBot(self.config, self.logger, getattr(self, 'db_manager', None))
+            plugin_loader = PluginLoader(minimal_bot)
+            commands = plugin_loader.load_all_plugins()
+
+            admin_commands_str = self.config.get('Admin_ACL', 'admin_commands', fallback='')
+            admin_commands = {c.strip() for c in admin_commands_str.split(',') if c.strip()}
+
+            filtered: list[dict] = []
+            for cmd_name, cmd_instance in commands.items():
+                category = getattr(cmd_instance, 'category', 'general')
+                if category in self._EXCLUDED_CATEGORIES:
+                    continue
+                primary_name = getattr(cmd_instance, 'name', cmd_name)
+                if cmd_name in admin_commands or primary_name in admin_commands:
+                    continue
+                if hasattr(cmd_instance, 'requires_admin_access') and cmd_instance.requires_admin_access():
+                    continue
+                keywords = getattr(cmd_instance, 'keywords', [])
+                if not keywords:
+                    continue
+                filtered.append({
+                    'name': primary_name,
+                    'keywords': keywords,
+                    'description': getattr(cmd_instance, 'description', ''),
+                    'short_description': getattr(cmd_instance, 'short_description', ''),
+                    'usage': getattr(cmd_instance, 'usage', ''),
+                    'examples': getattr(cmd_instance, 'examples', []),
+                    'category': category,
+                    'category_label': self._CATEGORY_NAMES.get(category, category.replace('_', ' ').title()),
+                })
+
+            # Sort: basic first, then by category label, then by command name
+            _cat_order = {cat: i for i, cat in enumerate(self._CATEGORY_NAMES)}
+            filtered.sort(key=lambda c: (_cat_order.get(c['category'], 99), c['name']))
+
+            self._command_info_cache = filtered
+        except Exception as e:
+            self.logger.warning("Could not load command info for /infos page: %s", e)
+            self._command_info_cache = []
+
+        return self._command_info_cache
+
     def _setup_routes(self):
         """Setup all Flask routes - complete feature parity"""
         # Log full traceback for 500 errors so service logs show the real cause
@@ -1385,6 +1473,42 @@ class BotDataViewer:
                 'config.html',
                 config_panels=sorted(CONFIG_PANELS, key=lambda panel: panel['order']),
                 panel_categories=PANEL_CATEGORIES,
+            )
+
+        @self.app.route('/infos')
+        def infos():
+            """Bot info page — command summary and useful links"""
+            all_commands = self._get_command_info()
+            # Group by category preserving sort order
+            from collections import OrderedDict  # noqa: PLC0415
+            groups: OrderedDict = OrderedDict()
+            for cmd in all_commands:
+                cat = cmd['category']
+                if cat not in groups:
+                    groups[cat] = {'category_label': cmd['category_label'], 'commands': []}
+                groups[cat]['commands'].append(cmd)
+            command_groups = list(groups.values())
+
+            command_prefix = (self.config.get('Bot', 'command_prefix', fallback='') or '').strip()
+            monitor_channels_raw = self.config.get('Channels', 'monitor_channels', fallback='')
+            monitor_channels = [c.strip() for c in monitor_channels_raw.split(',') if c.strip()]
+            respond_to_dms = self.config.getboolean('Channels', 'respond_to_dms', fallback=True)
+            cmd_reference_url_raw = (self.config.get('Cmd_Command', 'cmd_reference_url', fallback='') or '').strip()
+            cmd_reference_url = ''
+            if cmd_reference_url_raw:
+                try:
+                    if validate_external_url(cmd_reference_url_raw):
+                        cmd_reference_url = cmd_reference_url_raw
+                except Exception:
+                    pass
+            return render_template(
+                'infos.html',
+                command_groups=command_groups,
+                total_commands=len(all_commands),
+                command_prefix=command_prefix,
+                monitor_channels=monitor_channels,
+                respond_to_dms=respond_to_dms,
+                cmd_reference_url=cmd_reference_url,
             )
 
         @self.app.route('/api/config/notifications')

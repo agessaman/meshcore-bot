@@ -243,6 +243,26 @@ class TestPageRoutes:
         resp = client.get("/config")
         assert resp.status_code == 200
 
+    def test_infos(self, client):
+        resp = client.get("/infos")
+        assert resp.status_code == 200
+
+    def test_infos_contains_nav_link(self, client):
+        """The /infos page renders and the navbar contains the Infos link."""
+        resp = client.get("/infos")
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert 'href="/infos"' in html
+
+    def test_infos_shows_bot_config(self, client):
+        """The /infos page shows at least the channels and DM configuration."""
+        resp = client.get("/infos")
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        # Config section should be rendered
+        assert "Canaux surveillés" in html
+        assert "Messages directs" in html
+
     def test_mesh(self, client):
         resp = client.get("/mesh")
         assert resp.status_code == 200
