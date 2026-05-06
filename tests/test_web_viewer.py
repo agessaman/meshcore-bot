@@ -260,8 +260,8 @@ class TestPageRoutes:
         assert resp.status_code == 200
         html = resp.data.decode()
         # Config section should be rendered
-        assert "Canaux surveillés" in html
-        assert "Messages directs" in html
+        assert "Monitored Channels" in html
+        assert "Direct Messages" in html
 
     def test_mesh(self, client):
         resp = client.get("/mesh")

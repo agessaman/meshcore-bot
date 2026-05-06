@@ -72,7 +72,7 @@
         <h1 class="mb-1">
             <i class="fas fa-info-circle me-2"></i>Infos
         </h1>
-        <p class="text-muted mb-0">Résumé des commandes disponibles et liens utiles pour <strong>{{ bot_name }}</strong>.</p>
+        <p class="text-muted mb-0">Summary of available commands and useful links for <strong>{{ bot_name }}</strong>.</p>
     </div>
 </div>
 
@@ -91,7 +91,7 @@
                     <dt class="text-muted">Bot</dt>
                     <dd class="mb-2 fw-semibold">{{ bot_name }}</dd>
 
-                    <dt class="text-muted">Canaux surveillés</dt>
+                    <dt class="text-muted">Monitored Channels</dt>
                     <dd class="mb-2">
                         {% if monitor_channels %}
                             {% for ch in monitor_channels %}
@@ -102,22 +102,22 @@
                         {% endif %}
                     </dd>
 
-                    <dt class="text-muted">Messages directs (DM)</dt>
+                    <dt class="text-muted">Direct Messages (DM)</dt>
                     <dd class="mb-2">
                         {% if respond_to_dms %}
-                            <span class="text-success"><i class="fas fa-check-circle me-1"></i>Activés</span>
+                            <span class="text-success"><i class="fas fa-check-circle me-1"></i>Enabled</span>
                         {% else %}
-                            <span class="text-danger"><i class="fas fa-times-circle me-1"></i>Désactivés</span>
+                            <span class="text-danger"><i class="fas fa-times-circle me-1"></i>Disabled</span>
                         {% endif %}
                     </dd>
 
-                    <dt class="text-muted">Préfixe de commande</dt>
+                    <dt class="text-muted">Command Prefix</dt>
                     <dd class="mb-0">
                         {% if command_prefix %}
                             <code class="usage">{{ command_prefix }}</code>
-                            <small class="text-muted ms-1">ex: <code>{{ command_prefix }}ping</code></small>
+                            <small class="text-muted ms-1">e.g. <code>{{ command_prefix }}ping</code></small>
                         {% else %}
-                            <span class="text-muted">Aucun (commandes sans préfixe)</span>
+                            <span class="text-muted">None (commands without prefix)</span>
                         {% endif %}
                     </dd>
                 </dl>
@@ -127,13 +127,13 @@
         <!-- Useful Links -->
         <div class="card info-card">
             <div class="card-header">
-                <i class="fas fa-external-link-alt me-2"></i>Liens utiles
+                <i class="fas fa-external-link-alt me-2"></i>Useful Links
             </div>
             <div class="card-body p-3">
                 {% if cmd_reference_url %}
                 <a class="link-item" href="{{ cmd_reference_url }}" target="_blank" rel="noopener noreferrer">
                     <i class="fas fa-book"></i>
-                    <span>Référence des commandes</span>
+                    <span>Command Reference</span>
                     <i class="fas fa-external-link-alt ms-auto" style="font-size:0.7rem;"></i>
                 </a>
                 {% endif %}
@@ -143,20 +143,20 @@
                 </a>
                 <a class="link-item" href="/admin/config">
                     <i class="fas fa-sliders-h"></i>
-                    <span>Config effective</span>
+                    <span>Effective Config</span>
                 </a>
                 <a class="link-item" href="/stats">
                     <i class="fas fa-chart-bar"></i>
-                    <span>Statistiques</span>
+                    <span>Statistics</span>
                 </a>
                 <a class="link-item" href="https://github.com/agessaman/meshcore-bot" target="_blank" rel="noopener noreferrer">
                     <i class="fab fa-github"></i>
-                    <span>Code source (GitHub)</span>
+                    <span>Source Code (GitHub)</span>
                     <i class="fas fa-external-link-alt ms-auto" style="font-size:0.7rem;"></i>
                 </a>
                 <a class="link-item" href="https://meshcore.co.uk/index.html" target="_blank" rel="noopener noreferrer">
                     <i class="fas fa-network-wired"></i>
-                    <span>Projet MeshCore</span>
+                    <span>MeshCore Project</span>
                     <i class="fas fa-external-link-alt ms-auto" style="font-size:0.7rem;"></i>
                 </a>
             </div>
@@ -168,7 +168,7 @@
     <div class="col-lg-9 col-md-8">
         <div class="card info-card">
             <div class="card-header d-flex align-items-center justify-content-between">
-                <span><i class="fas fa-terminal me-2"></i>Commandes disponibles</span>
+                <span><i class="fas fa-terminal me-2"></i>Available Commands</span>
                 <span class="badge bg-primary">{{ total_commands }}</span>
             </div>
             {% if command_groups %}
@@ -211,7 +211,7 @@
             {% else %}
             <div class="card-body text-muted">
                 <i class="fas fa-exclamation-triangle me-2"></i>
-                Aucune information de commande disponible. Vérifiez que le bot est correctement configuré.
+                No command information available. Please verify that the bot is correctly configured.
             </div>
             {% endif %}
         </div>
