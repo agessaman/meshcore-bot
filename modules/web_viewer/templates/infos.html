@@ -91,17 +91,6 @@
                     <dt class="text-muted">Bot</dt>
                     <dd class="mb-2 fw-semibold">{{ bot_name }}</dd>
 
-                    <dt class="text-muted">Monitored Channels</dt>
-                    <dd class="mb-2">
-                        {% if monitor_channels %}
-                            {% for ch in monitor_channels %}
-                                <span class="badge bg-secondary me-1 mb-1" style="font-size:0.78rem;">{{ ch }}</span>
-                            {% endfor %}
-                        {% else %}
-                            <span class="text-muted">—</span>
-                        {% endif %}
-                    </dd>
-
                     <dt class="text-muted">Direct Messages (DM)</dt>
                     <dd class="mb-2">
                         {% if respond_to_dms %}
@@ -119,6 +108,10 @@
                         {% else %}
                             <span class="text-muted">None (commands without prefix)</span>
                         {% endif %}
+                    </dd>
+                    <dt class="text-muted">TigroBot Hardware</dt>
+                    <dd class="mb-0">
+                            <span class="text-muted">TigroBot is a small Xiao Seeed nRF52 serially connected to a Raspberry Pi 5 16GB+NVMe that runs a Qwen3-30b-a3b-instruct-2507-q4_k_m LLM model fully powered by a 100W PV panel, a 40Ah 12V battery and a Victron MPPT. The setup also power the Repeater (MQTT observer Tigro G2PV) using a Station G2 and a Sysmocomm cafity filter, on a 8dBi colinear 75m ASL</span>
                     </dd>
                 </dl>
             </div>
