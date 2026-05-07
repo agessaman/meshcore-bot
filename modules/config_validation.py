@@ -59,6 +59,7 @@ CANONICAL_NON_COMMAND_SECTIONS = frozenset({
     "MapUploader",
     "Weather_Service",
     "DiscordBridge",
+    "WatchDuty",
 })
 
 # Sections required for the bot to start (accessed without has_section guards)

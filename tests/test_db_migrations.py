@@ -292,6 +292,19 @@ class TestSchema:
         cursor = conn.cursor()
         assert _column_exists(cursor, "purging_log", "details") is True
 
+    def test_watchduty_tables_created_by_migrations(self, runner, conn):
+        runner.run()
+        for table in [
+            "watchduty_sent_reports",
+            "watchduty_feed_state",
+            "watchduty_alert_suppression",
+        ]:
+            cur = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (table,),
+            )
+            assert cur.fetchone() is not None
+
     def test_migration_adds_purging_log_details_for_legacy_schema(self, conn, logger):
         conn.execute("""
             CREATE TABLE IF NOT EXISTS schema_version (
