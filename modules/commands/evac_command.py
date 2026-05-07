@@ -67,13 +67,6 @@ class EvacCommand(BaseCommand):
 
     async def execute(self, message: MeshMessage) -> bool:
         tail = self._args_tail(message)
-        event_query, item_n = self._parse_event_and_item_query(tail)
-        if not event_query:
-            return await self.send_response(
-                message,
-                "Usage: evac <list #|Watch Duty id|name> [item #] — same list as fires; id from app.watchduty.org/i/<id>",
-            )
-
         try:
             events = watchduty_poll.fetch_active_geo_events_for_user_query(
                 self.bot.config,
@@ -82,6 +75,28 @@ class EvacCommand(BaseCommand):
         except Exception as e:
             self.logger.error("evac command: fetch failed: %s", e)
             return await self.send_response(message, "Could not load fires (Watch Duty).")
+
+        event_query, item_n = self._parse_event_and_item_query(tail)
+        if not event_query:
+            evac_events = [e for e in events if watchduty_poll.incident_has_evac_info(e)]
+            max_len = self.get_max_message_length(message)
+            if not evac_events:
+                return await self.send_response(
+                    message,
+                    "No active fires with evacuation info right now.",
+                )
+            lines: List[str] = [f"Fires with evacuations ({len(evac_events)}):"]
+            for i, event in enumerate(evac_events, start=1):
+                name = (event.get("name") or f"Event {event.get('id')}").strip()
+                loc = watchduty_poll.format_location_short(event)
+                eid = event.get("id")
+                id_part = f" · {eid}" if eid is not None else ""
+                lines.append(f"{i}. {name} ({loc}){id_part}")
+            lines.append("Use: evac <fire> for snippets; evac <fire> <#> for full text.")
+            chunks = watchduty_poll.mesh_pack_lines(lines, max_len)
+            if len(chunks) == 1:
+                return await self.send_response(message, chunks[0])
+            return await self.send_response_chunked(message, chunks)
 
         event, err = watchduty_poll.resolve_active_event_by_query(
             events,
