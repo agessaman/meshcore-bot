@@ -306,8 +306,9 @@ class ChannelManager:
         Returns:
             Channel number if found, None if not found (to distinguish from channel 0)
         """
+        name_lower = channel_name.lstrip('#').lower()
         for num, channel_info in self._channels_cache.items():
-            if channel_info.get('channel_name', '').lower() == channel_name.lower():
+            if channel_info.get('channel_name', '').lstrip('#').lower() == name_lower:
                 return num
         
         self.logger.warning(f"Channel name '{channel_name}' not found in cached channels")
