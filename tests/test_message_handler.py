@@ -1824,7 +1824,8 @@ class TestProcessMessageDmKeywordRouting:
 
     @pytest.mark.asyncio
     async def test_keyword_reply_uses_prefix_sender_id_for_dm_send(self, handler):
-        """DM keyword flow should route reply using prefix sender identity."""
+        """DM keyword flow should route reply using pubkey (not display name) to avoid
+        misrouting when two contacts share a similar name."""
         handler.should_process_message = Mock(return_value=True)
         handler.bot.command_manager.check_keywords = Mock(return_value=[("test", "ack")])
         handler.bot.command_manager.match_randomline = Mock(return_value=None)
@@ -1844,7 +1845,8 @@ class TestProcessMessageDmKeywordRouting:
 
         handler.bot.command_manager.send_dm.assert_awaited_once()
         args, kwargs = handler.bot.command_manager.send_dm.await_args
-        assert args[0] == "ab12"
+        # Must use the pubkey (unique) rather than the display name to avoid misrouting
+        assert args[0] == "ab12deadbeefcafebabe"
         assert args[1] == "ack"
         assert args[2].startswith("keyword_test_ab12_")
         assert kwargs["rate_limit_key"] == "ab12deadbeef"
