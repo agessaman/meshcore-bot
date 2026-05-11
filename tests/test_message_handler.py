@@ -1856,7 +1856,7 @@ class TestProcessMessageDmKeywordRouting:
         handler.bot.command_manager.match_randomline = Mock(return_value=None)
         handler.bot.command_manager.execute_commands = AsyncMock()
         handler.bot.command_manager.get_rate_limit_key = Mock(return_value="ab12deadbeef")
-        handler.bot.command_manager.send_dm = AsyncMock(return_value=True)
+        handler.bot.command_manager.send_response = AsyncMock(return_value=True)
         handler.bot.command_manager.commands = {}
 
         message = MeshMessage(
@@ -1868,12 +1868,40 @@ class TestProcessMessageDmKeywordRouting:
 
         await handler.process_message(message)
 
-        handler.bot.command_manager.send_dm.assert_awaited_once()
-        args, kwargs = handler.bot.command_manager.send_dm.await_args
-        assert args[0] == "ab12"
-        assert args[1] == "ack"
-        assert args[2].startswith("keyword_test_ab12_")
-        assert kwargs["rate_limit_key"] == "ab12deadbeef"
+        handler.bot.command_manager.send_response.assert_awaited_once()
+        call = handler.bot.command_manager.send_response.await_args
+        assert call.args[0] is message
+        assert call.args[1] == "ack"
+        assert call.kwargs["command_id"].startswith("keyword_test_ab12_")
+
+
+class TestProcessMessageChannelKeywordFloodScope:
+    """Keyword channel replies must use send_response so flood scope is applied (#178)."""
+
+    @pytest.mark.asyncio
+    async def test_keyword_channel_reply_passes_message_with_reply_scope(self, handler, bot):
+        handler.should_process_message = Mock(return_value=True)
+        bot.command_manager.check_keywords = Mock(return_value=[("wx", "sunny")])
+        bot.command_manager.match_randomline = Mock(return_value=None)
+        bot.command_manager.execute_commands = AsyncMock()
+        bot.command_manager.send_response = AsyncMock(return_value=True)
+        bot.command_manager.commands = {}
+
+        message = MeshMessage(
+            content="wx",
+            channel="#bot",
+            is_dm=False,
+            sender_id="alice",
+            reply_scope="#pl-mz",
+        )
+
+        await handler.process_message(message)
+
+        bot.command_manager.send_response.assert_awaited_once()
+        call = bot.command_manager.send_response.await_args
+        assert call.args[0].reply_scope == "#pl-mz"
+        assert call.args[1] == "sunny"
+        assert call.kwargs["command_id"].startswith("keyword_wx_alice_")
 
 
 # ---------------------------------------------------------------------------

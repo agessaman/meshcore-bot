@@ -1418,7 +1418,14 @@ class CommandManager:
 
         return commands_list
 
-    async def send_response(self, message: MeshMessage, content: str, skip_user_rate_limit: bool = False) -> bool:
+    async def send_response(
+        self,
+        message: MeshMessage,
+        content: str,
+        skip_user_rate_limit: bool = False,
+        *,
+        command_id: str | None = None,
+    ) -> bool:
         """Unified method for sending responses to users.
 
         Automatically determines whether to send a DM or channel message based
@@ -1428,6 +1435,7 @@ class CommandManager:
             message: The original message being responded to.
             content: The response content.
             skip_user_rate_limit: If True, skip the user rate limiter check (for automated responses).
+            command_id: Optional id for repeat/transmission tracking (e.g. keyword or RandomLine flows).
 
         Returns:
             bool: True if response was sent successfully, False otherwise.
@@ -1442,13 +1450,17 @@ class CommandManager:
             rate_limit_key = self.get_rate_limit_key(message)
             if message.is_dm:
                 return await self.send_dm(
-                    message.sender_id or "", content,
+                    message.sender_id or "",
+                    content,
+                    command_id,
                     skip_user_rate_limit=skip_user_rate_limit,
                     rate_limit_key=rate_limit_key,
                 )
             else:
                 return await self.send_channel_message(
-                    message.channel or "", content,
+                    message.channel or "",
+                    content,
+                    command_id,
                     skip_user_rate_limit=skip_user_rate_limit,
                     rate_limit_key=rate_limit_key,
                     scope=getattr(message, 'reply_scope', None),

@@ -289,6 +289,53 @@ async def test_send_response_passes_none_scope_when_unset():
     assert kwargs.get("scope") is None
 
 
+@pytest.mark.asyncio
+async def test_send_response_forwards_command_id_to_channel_send():
+    """Optional command_id is passed to send_channel_message for repeat tracking."""
+    bot = MagicMock()
+    bot.logger = Mock()
+    bot.config = make_config()
+    bot.connected = True
+    bot.meshcore = MagicMock()
+
+    cm = object.__new__(CommandManager)
+    cm.bot = bot
+    cm.logger = bot.logger
+    cm.send_channel_message = AsyncMock(return_value=True)
+    cm.get_rate_limit_key = Mock(return_value="rk")
+
+    msg = MeshMessage(content="hello", channel="general", is_dm=False, sender_id="Alice")
+    await cm.send_response(msg, "reply text", command_id="keyword_foo_1")
+
+    cm.send_channel_message.assert_awaited_once()
+    args, kwargs = cm.send_channel_message.call_args
+    assert args[2] == "keyword_foo_1"
+    assert kwargs.get("scope") is None
+
+
+@pytest.mark.asyncio
+async def test_send_response_forwards_command_id_to_dm():
+    """Optional command_id is passed to send_dm for repeat tracking."""
+    bot = MagicMock()
+    bot.logger = Mock()
+    bot.config = make_config()
+    bot.connected = True
+    bot.meshcore = MagicMock()
+
+    cm = object.__new__(CommandManager)
+    cm.bot = bot
+    cm.logger = bot.logger
+    cm.send_dm = AsyncMock(return_value=True)
+    cm.get_rate_limit_key = Mock(return_value="rk")
+
+    msg = MeshMessage(content="hello", channel=None, is_dm=True, sender_id="Bob")
+    await cm.send_response(msg, "reply text", command_id="keyword_bar_2")
+
+    cm.send_dm.assert_awaited_once()
+    args, kwargs = cm.send_dm.call_args
+    assert args[2] == "keyword_bar_2"
+
+
 # ── scope normalization in send_channel_message ───────────────────────────────
 
 @pytest.mark.asyncio
