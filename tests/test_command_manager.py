@@ -434,6 +434,49 @@ class TestSendDMRecipientResolution:
         assert "Contact not found for DM recipient identifier" in cm_bot.logger.error.call_args.args[0]
 
     @pytest.mark.asyncio
+    async def test_send_response_dm_uses_sender_pubkey_over_name(self, cm_bot):
+        """send_response for a DM must use sender_pubkey (not sender_id/name) to avoid
+        misrouting when two nodes share a similar display name."""
+        from meshcore import EventType
+
+        cm_bot.connected = True
+        cm_bot.meshcore = Mock()
+        # Name lookup by display name would resolve the WRONG node (same name prefix)
+        cm_bot.meshcore.get_contact_by_name = Mock(return_value=None)
+        cm_bot.meshcore.contacts = {
+            "contact1": {
+                "name": "Alice",
+                "adv_name": "Alice",
+                "public_key": "aabbccddeeff001122",
+            },
+            "contact2": {
+                "name": "Alice-repeater",
+                "adv_name": "Alice-repeater",
+                "public_key": "ffeeddccbbaa998877",
+            },
+        }
+        cm_bot.meshcore.commands = Mock(spec=["send_msg"])
+        cm_bot.meshcore.commands.send_msg = AsyncMock(return_value=Mock(type=EventType.MSG_SENT, payload=None))
+        cm_bot.bot_tx_rate_limiter.wait_for_tx = AsyncMock(return_value=None)
+        manager = make_manager(cm_bot)
+
+        # Message with sender_id=display name but sender_pubkey=unique full pubkey
+        msg = MeshMessage(
+            content="hello",
+            sender_id="Alice",
+            sender_pubkey="aabbccddeeff001122",
+            is_dm=True,
+        )
+
+        result = await manager.send_response(msg, "Hi back")
+
+        assert result is True
+        # send_dm must have been called with the pubkey, not the name
+        cm_bot.meshcore.get_contact_by_name.assert_called_once_with("aabbccddeeff001122")
+        sent_contact = cm_bot.meshcore.commands.send_msg.await_args.args[0]
+        assert sent_contact["public_key"] == "aabbccddeeff001122"
+
+    @pytest.mark.asyncio
     async def test_failed_send_does_not_invoke_listeners(self, cm_bot):
         """When send_channel_message fails (e.g. channel not found), listeners are not called."""
         cm_bot.connected = True
