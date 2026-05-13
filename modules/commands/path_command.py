@@ -12,7 +12,7 @@ from typing import Any, Callable, Optional
 
 from ..models import MeshMessage
 from ..security_utils import sanitize_name
-from ..utils import calculate_distance, parse_path_string
+from ..utils import bytes_per_hop_from_routing_and_nodes, calculate_distance, parse_path_string
 from .base_command import BaseCommand
 
 
@@ -182,14 +182,7 @@ class PathCommand(BaseCommand):
         self, node_ids: list[str], routing_info: Optional[dict[str, Any]]
     ) -> int:
         """Bytes per hop from packet metadata or inferred from hex node width."""
-        if routing_info:
-            bph = routing_info.get('bytes_per_hop')
-            if isinstance(bph, int) and 1 <= bph <= 3:
-                return bph
-        if not node_ids:
-            return 1
-        widths = [len(n) // 2 for n in node_ids]
-        return min(widths)
+        return bytes_per_hop_from_routing_and_nodes(routing_info, node_ids)
 
     def _should_resolve_repeater_names(
         self, node_ids: list[str], routing_info: Optional[dict[str, Any]]

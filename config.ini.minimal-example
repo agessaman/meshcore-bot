@@ -308,6 +308,8 @@ enabled = true
 # true: Test command is available (responds to 'test' or 't')
 # false: Test command is disabled
 enabled = true
+# Optional: overrides [Keywords] test; supports {field|pathbytes_min:2|prefix_if_nonempty: | Path Dist: } style filters (see config.ini.example [Test_Command])
+# response_format =
 
 [Path_Command]
 # Enable or disable the path command

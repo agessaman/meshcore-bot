@@ -1372,6 +1372,13 @@ enabled = true
 require_path_bytes_greater_or_equal_to = 0
 # Optional response when rejected by path-byte requirement; leave empty for silent reject
 require_path_bytes_failure_response =
+
+# Optional: full ack template for test/t. When set, overrides [Keywords] test for this command only.
+# Same placeholders as Keywords (sender, phrase, phrase_part, connection_info, path, hops, hops_label,
+# timestamp, elapsed, snr, path_distance, firstlast_distance).
+# Pipe filters (feed-style), e.g. only show cumulative path distance when hops are multibyte (2+ bytes per hop):
+# response_format = ack @[{sender}]{phrase_part} | {connection_info}{path_distance|pathbytes_min:2|prefix_if_nonempty: | Path Dist: }| F/L Dist: {firstlast_distance} | {elapsed} | Rec: {timestamp}
+# Filters: pathbytes_min:N (alias pathbytes:N) clears the field unless bytes_per_hop >= N; prefix_if_nonempty:L prepends literal L when value non-empty after prior filters. If L contains |, put prefix_if_nonempty last in that placeholder (it consumes the rest of the chain as its literal).
 # channels =
 
 [Trace_Command]

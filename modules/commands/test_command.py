@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 from ..models import MeshMessage
+from ..response_template import format_piped_template
 from ..utils import calculate_distance, extract_path_node_ids_from_message
 from .base_command import BaseCommand
 
@@ -141,6 +142,12 @@ class TestCommand(BaseCommand):
         Returns:
             Optional[str]: The configured or default response format string.
         """
+        if self.bot.config.has_section('Test_Command'):
+            raw = self.bot.config.get('Test_Command', 'response_format', fallback='')
+            if raw:
+                cleaned = self._strip_quotes_from_config(raw).strip()
+                if cleaned:
+                    return cleaned
         if self.bot.config.has_section('Keywords'):
             format_str = self.bot.config.get('Keywords', 'test', fallback=None)
             if format_str:
@@ -683,19 +690,26 @@ class TestCommand(BaseCommand):
             path_distance = self._calculate_path_distance(message)
             firstlast_distance = self._calculate_firstlast_distance(message)
             phrase_part = f": {phrase}" if phrase else ""
-            return response_format.format(
-                sender=message.sender_id or self.translate('common.unknown_sender'),
-                phrase=phrase,
-                phrase_part=phrase_part,
-                connection_info=connection_info,
-                path=path_display,
-                hops=hops_str,
-                hops_label=hops_label,
-                timestamp=timestamp,
-                elapsed=elapsed,
-                snr=message.snr or self.translate('common.unknown'),
-                path_distance=path_distance or "",
-                firstlast_distance=firstlast_distance or ""
+            fields = {
+                'sender': message.sender_id or self.translate('common.unknown_sender'),
+                'phrase': phrase,
+                'phrase_part': phrase_part,
+                'connection_info': connection_info,
+                'path': path_display,
+                'hops': hops_str,
+                'hops_label': hops_label,
+                'timestamp': timestamp,
+                'elapsed': elapsed,
+                'snr': str(message.snr) if message.snr is not None else self.translate('common.unknown'),
+                'path_distance': path_distance or '',
+                'firstlast_distance': firstlast_distance or '',
+            }
+            return format_piped_template(
+                response_format,
+                fields,
+                message=message,
+                logger=self.logger,
+                prefix_hex_chars=getattr(self.bot, 'prefix_hex_chars', 2),
             )
         except (KeyError, ValueError) as e:
             self.logger.warning(f"Error formatting test response: {e}")

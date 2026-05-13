@@ -1818,6 +1818,55 @@ def extract_path_node_ids_from_message(message: Any) -> list[str]:
     return []
 
 
+def _normalized_message_path_string(message: Any) -> str:
+    """Strip route suffix and hop-count suffix from message.path for continuous-hex parsing."""
+    path_string = (getattr(message, 'path', None) or '').strip()
+    if not path_string or 'Direct' in path_string or '0 hops' in path_string:
+        return ''
+    if ' via ROUTE_TYPE_' in path_string:
+        path_string = path_string.split(' via ROUTE_TYPE_')[0]
+    path_string = re.sub(r'\s*\([^)]*hops?[^)]*\)', '', path_string, flags=re.IGNORECASE).strip()
+    return path_string
+
+
+def bytes_per_hop_from_routing_and_nodes(
+    routing_info: Optional[dict[str, Any]],
+    node_ids: list[str],
+) -> int:
+    """Bytes per hop from packet routing metadata, else inferred from hex node width.
+
+    When ``routing_info`` includes ``bytes_per_hop`` in 1..3, that value wins.
+    Otherwise uses minimum half-byte width among ``node_ids`` (comma or path_nodes).
+    Returns ``1`` when no nodes (direct / unknown).
+    """
+    if routing_info:
+        bph = routing_info.get('bytes_per_hop')
+        if isinstance(bph, int) and 1 <= bph <= 3:
+            return bph
+    if node_ids:
+        return min(len(n) // 2 for n in node_ids)
+    return 1
+
+
+def message_path_bytes_per_hop(message: Any, *, prefix_hex_chars: int = 2) -> int:
+    """Best-effort bytes per hop for the message path (RF metadata or inferred from path text).
+
+    Uses ``routing_info.bytes_per_hop`` when present (1..3). Otherwise prefers
+    :func:`extract_path_node_ids_from_message`, then comma/continuous hex via
+    :func:`node_ids_from_path_string` using ``prefix_hex_chars`` for legacy paths.
+
+    Returns ``1`` when no usable path (direct / unparseable) so conservative gates
+    (e.g. ``pathbytes_min:2``) do not treat unknown as multibyte.
+    """
+    routing_info = getattr(message, 'routing_info', None)
+    node_ids = extract_path_node_ids_from_message(message)
+    if not node_ids:
+        ps = _normalized_message_path_string(message)
+        if ps:
+            node_ids = node_ids_from_path_string(ps, prefix_hex_chars)
+    return bytes_per_hop_from_routing_and_nodes(routing_info, node_ids)
+
+
 def node_ids_from_path_string(path_str: str, prefix_hex_chars: int = 2) -> list[str]:
     """Parse path display string into node IDs: multi-byte comma tokens, else fixed-width scan.
 

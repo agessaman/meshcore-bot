@@ -100,6 +100,7 @@ Many commands and features have their own section. Options there control whether
 Examples of sections that configure specific commands or features:
 
 - **`[Path_Command]`** – Path decoding and repeater selection. See [Path Command](path-command-config.md) for all options.
+- **`[Test_Command]`** – `test` / `t` behavior. Optional **`response_format`** overrides the legacy **`[Keywords] test`** string. Templates support the same placeholders as Keywords, plus **feed-style pipe filters** on placeholders (e.g. `{path_distance|pathbytes_min:2}`) implemented in `modules/response_template.py`—see comments under `[Test_Command]` in `config.ini.example`.
 - **`[Prefix_Command]`** – Prefix lookup, prefix best, range limits.
 - **`[Cmd_Command]`** – `cmd` behavior. Set `cmd_reference_url` to return `Full command reference: <url>` instead of the generated compact command list.
 - **`[Weather]`** – Used by the `wx` / `gwx` commands and the Weather Service plugin (see [Weather Service](weather-service.md)).
