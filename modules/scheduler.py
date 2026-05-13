@@ -106,6 +106,7 @@ class MessageScheduler:
                         self.send_scheduled_message,
                         parsed.trigger,
                         args=[channel, message],
+                        kwargs={"schedule_key": schedule_key},
                         id=job_id,
                         replace_existing=True,
                     )
@@ -222,7 +223,18 @@ class MessageScheduler:
         """Validate deprecated legacy time format (HHMM). Prefer cron in config keys."""
         return is_valid_legacy_hhmm(time_str)
 
-    def send_scheduled_message(self, channel: str, message: str):
+    def _scheduled_message_stagger_seconds(self, schedule_key: str) -> float:
+        """Deterministic delay in [0, max) so simultaneous cron jobs do not stack on the radio."""
+        max_s = self.bot.config.getfloat(
+            "Bot", "scheduled_message_max_stagger_seconds", fallback=1.5
+        )
+        if max_s <= 0 or not (schedule_key or "").strip():
+            return 0.0
+        digest = hashlib.sha256(schedule_key.encode("utf-8")).digest()
+        slot = int.from_bytes(digest[:4], "big") / (2**32)
+        return float(slot * max_s)
+
+    def send_scheduled_message(self, channel: str, message: str, schedule_key: str = ""):
         """Send a scheduled message (synchronous wrapper for schedule library)"""
         if self.bot.is_radio_zombie:
             self.logger.warning("send_scheduled_message suppressed — radio is in zombie state")
@@ -241,7 +253,7 @@ class MessageScheduler:
         if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
             # Schedule coroutine in the running main event loop
             future = asyncio.run_coroutine_threadsafe(
-                self._send_scheduled_message_async(channel, message),
+                self._send_scheduled_message_async(channel, message, schedule_key=schedule_key),
                 self.bot.main_event_loop
             )
             # Wait for completion (with timeout to prevent indefinite blocking)
@@ -257,7 +269,9 @@ class MessageScheduler:
             # Fallback: create a temporary event loop and close it when done
             loop = asyncio.new_event_loop()
             try:
-                loop.run_until_complete(self._send_scheduled_message_async(channel, message))
+                loop.run_until_complete(
+                    self._send_scheduled_message_async(channel, message, schedule_key=schedule_key)
+                )
             finally:
                 loop.close()
 
@@ -417,8 +431,17 @@ class MessageScheduler:
         ]
         return any(placeholder in message for placeholder in placeholders)
 
-    async def _send_scheduled_message_async(self, channel: str, message: str):
+    async def _send_scheduled_message_async(
+        self, channel: str, message: str, *, schedule_key: str = ""
+    ):
         """Send a scheduled message (async implementation)"""
+        stagger = self._scheduled_message_stagger_seconds(schedule_key)
+        if stagger > 0:
+            self.logger.debug(
+                "Scheduled message stagger %.2fs (schedule_key=%r)", stagger, schedule_key
+            )
+            await asyncio.sleep(stagger)
+
         # Check if message contains mesh info placeholders
         if self._has_mesh_info_placeholders(message):
             try:
@@ -440,7 +463,9 @@ class MessageScheduler:
         import asyncio as _asyncio
         send_timeout = self.bot.config.getint('Bot', 'send_timeout_seconds', fallback=30)
         await _asyncio.wait_for(
-            self.bot.command_manager.send_channel_message(channel, message),
+            self.bot.command_manager.send_channel_message(
+                channel, message, skip_user_rate_limit=True
+            ),
             timeout=send_timeout,
         )
 

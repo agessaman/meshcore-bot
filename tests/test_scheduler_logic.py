@@ -20,6 +20,7 @@ def scheduler(mock_logger):
     bot.logger = mock_logger
     bot.config = ConfigParser()
     bot.config.add_section("Bot")
+    bot.config.set("Bot", "scheduled_message_max_stagger_seconds", "0")
     return MessageScheduler(bot)
 
 
@@ -167,6 +168,10 @@ class TestSetupScheduledMessages:
         assert "Morning cron" in msg
         assert label == "0 9 * * *"
         assert len(scheduler._apscheduler.get_jobs()) == 1
+        msg_jobs = [
+            j for j in scheduler._apscheduler.get_jobs() if j.id.startswith("schedmsg_")
+        ]
+        assert msg_jobs[0].kwargs == {"schedule_key": "0 9 * * *"}
         self._teardown(scheduler)
 
     def test_at_weekly_preset_registered(self, scheduler):
@@ -816,6 +821,7 @@ def _make_scheduler():
     config = _configparser.ConfigParser()
     config.add_section("Bot")
     config.set("Bot", "advert_interval_hours", "0")
+    config.set("Bot", "scheduled_message_max_stagger_seconds", "0")
     bot.config = config
     bot.main_event_loop = None
     bot.is_radio_zombie = False
@@ -981,7 +987,7 @@ class TestSendScheduledMessageAsync:
         scheduler.bot.command_manager.send_channel_message = AsyncMock()
         asyncio.run(scheduler._send_scheduled_message_async("general", "Hello world"))
         scheduler.bot.command_manager.send_channel_message.assert_called_once_with(
-            "general", "Hello world"
+            "general", "Hello world", skip_user_rate_limit=True
         )
 
     def test_with_placeholder_calls_get_mesh_info_and_formats(self):
@@ -1018,7 +1024,7 @@ class TestSendScheduledMessageAsync:
                 )
         mock_fmt.assert_called_once()
         scheduler.bot.command_manager.send_channel_message.assert_called_once_with(
-            "general", "Contacts: 42"
+            "general", "Contacts: 42", skip_user_rate_limit=True
         )
 
     def test_get_mesh_info_exception_sends_message_as_is(self):
@@ -1036,7 +1042,7 @@ class TestSendScheduledMessageAsync:
                 )
             )
         scheduler.bot.command_manager.send_channel_message.assert_called_once_with(
-            "general", "Active: {total_contacts}"
+            "general", "Active: {total_contacts}", skip_user_rate_limit=True
         )
 
     def test_format_placeholder_exception_sends_message_as_is(self):
@@ -1058,8 +1064,29 @@ class TestSendScheduledMessageAsync:
                     )
                 )
         scheduler.bot.command_manager.send_channel_message.assert_called_once_with(
-            "alerts", "Count: {total_contacts}"
+            "alerts", "Count: {total_contacts}", skip_user_rate_limit=True
         )
+
+    def test_stagger_invokes_sleep_when_configured(self):
+        """Nonzero scheduled_message_max_stagger_seconds yields await sleep in [0, max)."""
+        scheduler = _make_scheduler()
+        scheduler.bot.config.set("Bot", "scheduled_message_max_stagger_seconds", "100")
+        scheduler.bot.command_manager.send_channel_message = AsyncMock()
+        with patch("modules.scheduler.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            asyncio.run(
+                scheduler._send_scheduled_message_async("g", "m", schedule_key="0 8 * * *")
+            )
+        mock_sleep.assert_called_once()
+        delay = mock_sleep.call_args[0][0]
+        assert 0 <= delay < 100
+
+    def test_stagger_seconds_deterministic_for_same_key(self):
+        scheduler = _make_scheduler()
+        scheduler.bot.config.set("Bot", "scheduled_message_max_stagger_seconds", "10")
+        a = scheduler._scheduled_message_stagger_seconds("0 8 * * 2")
+        b = scheduler._scheduled_message_stagger_seconds("0 8 * * 2")
+        assert a == b
+        assert 0 <= a < 10
 
 
 # ---------------------------------------------------------------------------
@@ -1113,7 +1140,7 @@ class TestSendScheduledMessageWrapper:
 
         mock_loop = Mock()
 
-        async def _fake_send(channel: str, message: str) -> None:
+        async def _fake_send(channel: str, message: str, *, schedule_key: str = "") -> None:
             return None
 
         def _run_until_complete(coro):
@@ -1129,7 +1156,7 @@ class TestSendScheduledMessageWrapper:
 
         mock_loop.run_until_complete.assert_called_once()
         mock_loop.close.assert_called_once()
-        mock_send.assert_called_once_with("general", "test message")
+        mock_send.assert_called_once_with("general", "test message", schedule_key="")
 
     def test_suppressed_when_radio_zombie(self):
         scheduler = _make_scheduler()
@@ -1437,6 +1464,7 @@ def _make_sched_with_logger(mock_logger):
     bot.logger = mock_logger
     bot.config = ConfigParser()
     bot.config.add_section("Bot")
+    bot.config.set("Bot", "scheduled_message_max_stagger_seconds", "0")
     bot.is_radio_zombie = False   # ensure zombie guard does not suppress sends
     bot.is_radio_offline = False  # ensure offline guard does not suppress sends
     return MessageScheduler(bot)
@@ -1546,7 +1574,7 @@ class TestSendScheduledMessageAsyncTimeout:
         asyncio.run(sched._send_scheduled_message_async("#general", "hello"))
 
         sched.bot.command_manager.send_channel_message.assert_awaited_once_with(
-            "#general", "hello"
+            "#general", "hello", skip_user_rate_limit=True
         )
 
     def test_timeout_raises_asyncio_timeout_error(self, mock_logger):

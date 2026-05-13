@@ -115,6 +115,12 @@ passive_mode = false
 # Prevents spam by limiting how often the bot can send messages
 rate_limit_seconds = 10
 
+# Spread [Scheduled_Messages] jobs that fire at the same wall time over [0, N) seconds
+# (deterministic from the cron key) so they still air cleanly under bot_tx_rate_limit.
+# Set to 0 to disable stagger only. Scheduled sends skip global rate_limit_seconds;
+# per-channel limits and bot_tx_rate_limit_seconds still apply.
+scheduled_message_max_stagger_seconds = 1.5
+
 # Bot transmission rate limit in seconds between bot messages
 # Prevents bot from overwhelming the mesh network
 bot_tx_rate_limit_seconds = 1.0
