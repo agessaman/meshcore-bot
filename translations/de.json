@@ -357,7 +357,8 @@
             "continuation_start": "...\n{line}",
             "continuation_end": "\n...",
             "truncation": "...",
-            "unknown_name": "Unbekannt"
+            "unknown_name": "Unbekannt",
+            "repeater_resolution_deferred": "Pfad: {path}\n\n💡 Hinweis: Repeater-Erkennung erfordert Pfade mit {minimum_path_bytes} Byte(s) pro Hop."
         },
         "prefix": {
             "description": "Repeater nach zweistelligem Präfix suchen (z.B. 'prefix 1A')",

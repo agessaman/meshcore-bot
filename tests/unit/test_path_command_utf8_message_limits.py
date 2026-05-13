@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Unit tests for PathCommand UTF-8 byte truncation and multi-message splitting (PR #128)."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -94,6 +94,45 @@ class TestPathCommandSendPathResponseByteSplitting:
         with patch("modules.commands.path_command.asyncio.sleep", new_callable=AsyncMock):
             await path_cmd._send_path_response(msg, response)
         path_cmd.send_response.assert_awaited_once()
+
+
+@pytest.mark.unit
+class TestPathCommandReplyPrefix:
+    """reply_prefix prepended to first RF payload only; last_response includes prefix."""
+
+    @pytest.fixture
+    def path_cmd(self, mock_bot):
+        mock_bot.translator = MagicMock()
+        mock_bot.translator.translate = Mock(side_effect=lambda key, **kwargs: key)
+        cmd = PathCommand(mock_bot)
+        cmd.send_response = AsyncMock(return_value=True)
+        return cmd
+
+    @pytest.mark.asyncio
+    async def test_prepends_prefix_to_single_send(self, path_cmd, mock_bot):
+        path_cmd.path_reply_prefix = "[{sender}]"
+        path_cmd.get_max_message_length = lambda _msg: 200
+        msg = MeshMessage(content="path", channel="general", is_dm=False, sender_id="alice")
+        await path_cmd._send_path_response(msg, "line1")
+        path_cmd.send_response.assert_awaited_once()
+        payload = path_cmd.send_response.call_args[0][1]
+        assert payload == "[alice]\nline1"
+        assert path_cmd.last_response == "[alice]\nline1"
+
+    @pytest.mark.asyncio
+    async def test_prefix_only_on_first_split_message(self, path_cmd, mock_bot):
+        path_cmd.path_reply_prefix = "P:"
+        path_cmd.get_max_message_length = lambda _msg: 25
+        path_cmd.translate = MockTranslateForSend()
+        msg = MeshMessage(content="path", channel="general", is_dm=False)
+        response = "a" * 12 + "\n" + "b" * 13
+        with patch("modules.commands.path_command.asyncio.sleep", new_callable=AsyncMock):
+            await path_cmd._send_path_response(msg, response)
+        assert path_cmd.send_response.await_count >= 2
+        first = path_cmd.send_response.call_args_list[0][0][1]
+        assert first.startswith("P:\n")
+        second = path_cmd.send_response.call_args_list[1][0][1]
+        assert not second.startswith("P:\n")
 
 
 class MockTranslateForSend:

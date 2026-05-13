@@ -876,6 +876,18 @@ require_path_bytes_failure_response =
 # false: Only respond to "path", "decode", or "route" keywords
 enable_p_shortcut = true
 
+# Optional first line prepended to path command RF replies (Python str.format on the triggering message).
+# Placeholders match Multitest/Keywords-style responses: {sender}, {connection_info}, {path},
+# {timestamp}, {snr}, {rssi}. Only the first RF chunk includes the prefix when the reply is split.
+# Example: @[{sender}]
+reply_prefix =
+
+# Bytes per hop required before resolving repeater names from the database.
+# 0 or 1: always resolve names (default). 2: require 2-byte (or wider) hops. 3: require 3-byte hops.
+# If the packet path is shorter, the bot still responds with Path: … (hex) plus a short tip (no lookup).
+# Independent of require_path_bytes_greater_or_equal_to above, which can reject the command entirely.
+minimum_path_bytes = 0
+
 # Path Selection Preset
 # Choose a preset that configures multiple related settings:
 # - balanced: Balanced approach using both graph evidence and geographic proximity (default)

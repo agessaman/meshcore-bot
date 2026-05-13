@@ -337,7 +337,8 @@
             "continuation_start": "...\n{line}",
             "continuation_end": "\n...",
             "truncation": "...",
-            "unknown_name": "Inconnu"
+            "unknown_name": "Inconnu",
+            "repeater_resolution_deferred": "Chemin : {path}\n\n💡 Astuce : l'identification des répéteurs exige des chemins de {minimum_path_bytes} octet(s) par saut."
         },
         "prefix": {
             "description": "Recherche répéteurs par préfixe 2 caractères (ex: 'prefix 1A')",

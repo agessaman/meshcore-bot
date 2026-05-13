@@ -918,6 +918,10 @@ wind_speed_unit = mph
 precipitation_unit = inch
 
 [Path_Command]
+# Optional prefix on path command replies: {sender}, {connection_info}, {path}, {timestamp}, {snr}, {rssi}
+# reply_prefix =
+# Bytes per hop before repeater name lookup (0/1 = always; 2/3 = gate to hex + tip if shorter)
+# minimum_path_bytes = 0
 # Geographic proximity calculation method
 # simple: Use proximity to bot location (default)
 # path: Use proximity to previous/next nodes in the path for more realistic routing

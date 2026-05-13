@@ -214,7 +214,8 @@
       "continuation_start": "...\n{line}",
       "continuation_end": "\n...",
       "truncation": "...",
-      "unknown_name": "Nieznana"
+      "unknown_name": "Nieznana",
+      "repeater_resolution_deferred": "Ścieżka: {path}\n\n💡 Wskazówka: identyfikacja repeaterów wymaga ścieżek z {minimum_path_bytes} bajt(ami) na skok."
     },
     "multitest": {
       "description": "Nasłuchuje 6 sekund aby zebrać unikalne ścieżki z przychodzących wiadomości z tym samym hash'em pakietu",

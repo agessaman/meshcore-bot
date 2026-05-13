@@ -337,7 +337,8 @@
             "continuation_start": "...\n{line}",
             "continuation_end": "\n...",
             "truncation": "...",
-            "unknown_name": "Onbekend"
+            "unknown_name": "Onbekend",
+            "repeater_resolution_deferred": "Pad: {path}\n\n💡 Tip: repeateridentificatie vereist paden met {minimum_path_bytes} byte(s) per hop."
         },
         "prefix": {
             "description": "Zoek repeaters op twee-karakter prefix (bijv. 'prefix 1A')",

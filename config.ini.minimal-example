@@ -320,6 +320,12 @@ enabled = true
 # false: Only respond to "path", "decode", or "route" keywords (default)
 enable_p_shortcut = true
 
+# Optional prefix on path replies: {sender}, {connection_info}, {path}, {timestamp}, {snr}, {rssi}
+# reply_prefix = @[{sender}]
+
+# Bytes per hop before DB repeater lookup (0/1 = off; 2 or 3 = gate weak paths to hex-only + tip)
+# minimum_path_bytes = 0
+
 # Geographic proximity calculation method
 # simple: Use proximity to bot location (default)
 # path: Use proximity to previous/next nodes in the path for more realistic routing

@@ -271,7 +271,8 @@
       "continuation_start": "...\n{line}",
       "continuation_end": "\n...",
       "truncation": "...",
-      "unknown_name": "Unknown"
+      "unknown_name": "Unknown",
+      "repeater_resolution_deferred": "Path: {path}\n\n💡 Tip: Repeater identification requires {minimum_path_bytes}-byte paths."
     },
     "multitest": {
       "description": "Listens for 6 seconds and collects all unique paths from incoming messages with the same packet hash",

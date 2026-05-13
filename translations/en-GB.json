@@ -337,7 +337,8 @@
       "continuation_start": "...\n{line}",
       "continuation_end": "\n...",
       "truncation": "...",
-      "unknown_name": "Unknown"
+      "unknown_name": "Unknown",
+      "repeater_resolution_deferred": "Path: {path}\n\n💡 Tip: Repeater identification requires {minimum_path_bytes}-byte paths."
     },
     "prefix": {
       "description": "Look up repeaters by two-character prefix (e.g., 'prefix 1A')",

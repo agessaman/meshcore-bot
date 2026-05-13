@@ -63,6 +63,10 @@ default_country = US
 # Path command - "p" shortcut for quick path decoding
 [Path_Command]
 enable_p_shortcut = true
+# Optional reply prefix (same placeholders as Keywords: sender, connection_info, path, timestamp, snr, rssi)
+# reply_prefix = @[{sender}]
+# Require 2+ or 3 bytes per hop before naming repeaters; else hex + tip only (0/1 = always name)
+# minimum_path_bytes = 0
 
 [Version_Command]
 enabled = true
