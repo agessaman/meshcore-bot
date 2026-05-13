@@ -24,8 +24,6 @@ from .scheduled_message_cron import is_valid_legacy_hhmm, parse_schedule_key
 from .security_utils import validate_external_url
 from .utils import decode_escape_sequences, format_keyword_response_with_placeholders, get_config_timezone
 
-# process_message_queue may await long per-feed intervals across many queued items; 30s is too short.
-_FEED_MESSAGE_QUEUE_FUTURE_TIMEOUT = 600
 
 
 class MessageScheduler:
@@ -560,39 +558,23 @@ class MessageScheduler:
                     )
                 self.last_radio_ops_check_time = time.time()
 
-            # Process feed message queue (every 2 seconds)
-            if time.time() - self.last_message_queue_check_time >= 2:  # Every 2 seconds
+            # Process feed message queue (every 2 seconds, fire-and-forget)
+            # process_message_queue() returns immediately if a run is already in progress,
+            # so we never block this thread waiting for per-feed send intervals.
+            if time.time() - self.last_message_queue_check_time >= 2:
                 if (hasattr(self.bot, 'feed_manager') and self.bot.feed_manager and
                     hasattr(self.bot, 'connected') and self.bot.connected):
                     import asyncio
                     if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
-                        # Schedule coroutine in the running main event loop
                         future = asyncio.run_coroutine_threadsafe(
                             self.bot.feed_manager.process_message_queue(),
                             self.bot.main_event_loop
                         )
-                        try:
-                            future.result(timeout=_FEED_MESSAGE_QUEUE_FUTURE_TIMEOUT)
-                        except TimeoutError:
-                            self.logger.warning(
-                                "Timed out waiting for feed message queue after %ss; "
-                                "work may still be running on the main loop (per-feed send spacing).",
-                                _FEED_MESSAGE_QUEUE_FUTURE_TIMEOUT,
-                            )
-                        except RuntimeError as e:
-                            self.logger.warning("Event loop gone during feed message queue: %s", e)
-                        except Exception as e:
-                            self.logger.exception(f"Error processing message queue: {e}")
-                    else:
-                        # Fallback: create new event loop if main loop not available
-                        try:
-                            loop = asyncio.get_event_loop()
-                        except RuntimeError:
-                            loop = asyncio.new_event_loop()
-                            asyncio.set_event_loop(loop)
-
-                        loop.run_until_complete(self.bot.feed_manager.process_message_queue())
-                    self.last_message_queue_check_time = time.time()
+                        future.add_done_callback(
+                            lambda f: self.logger.exception("Error processing message queue: %s", f.exception())
+                            if not f.cancelled() and f.exception() else None
+                        )
+                self.last_message_queue_check_time = time.time()
 
             # Data retention: run daily (packet_stream, repeater tables, stats, caches, mesh_connections)
             if time.time() - self.last_data_retention_run >= self._data_retention_interval_seconds:
