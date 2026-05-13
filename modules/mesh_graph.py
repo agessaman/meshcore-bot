@@ -466,18 +466,24 @@ class MeshGraph:
         if self.write_strategy == 'immediate':
             self._write_edge_to_db(edge_key, is_new_edge)
         elif self.write_strategy == 'batched':
+            flush_needed = False
             with self.pending_lock:
                 self.pending_updates.add(edge_key)
                 if len(self.pending_updates) >= self.batch_max_pending:
-                    self._flush_pending_updates_sync()
+                    flush_needed = True
+            if flush_needed:
+                self._flush_pending_updates_sync()
         elif self.write_strategy == 'hybrid':
             if is_new_edge:
                 self._write_edge_to_db(edge_key, True)
             else:
+                flush_needed = False
                 with self.pending_lock:
                     self.pending_updates.add(edge_key)
                     if len(self.pending_updates) >= self.batch_max_pending:
-                        self._flush_pending_updates_sync()
+                        flush_needed = True
+                if flush_needed:
+                    self._flush_pending_updates_sync()
         self._notify_web_viewer_edge(edge_key, is_new_edge)
 
     def _notify_web_viewer_edge(self, edge_key: tuple[str, str], is_new: bool):
