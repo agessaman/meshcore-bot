@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""List Watch Duty evacuation orders for a fire."""
+"""List Watch Duty evacuation orders and warnings for a fire."""
 
 from typing import List, Optional, Tuple
 
@@ -11,13 +11,16 @@ from .. import watchduty_poll
 class EvacCommand(BaseCommand):
     name = "evac"
     keywords = ["evac", "evacs"]
-    description = "List evacuation info (usage: evac <list #|Watch Duty id|name> [item #])"
+    description = (
+        "List evacuation orders and warnings "
+        "(usage: evac [<# from evac list|Watch Duty id|name>] [item #])"
+    )
     category = "info"
     requires_internet = True
     cooldown_seconds = 5
 
-    short_description = "Show Watch Duty evacuation orders, warnings, notes, and zone status lines"
-    usage = "evac <list #|Watch Duty id|name> [item #]"
+    short_description = "Show Watch Duty evacuation orders and warnings"
+    usage = "evac [<# from evac list|Watch Duty id|name>] [item #]"
     examples = ["evac Woods Fire", "evac 1", "evac 93683", "evac 93817 2"]
 
     def __init__(self, bot):
@@ -76,9 +79,9 @@ class EvacCommand(BaseCommand):
             self.logger.error("evac command: fetch failed: %s", e)
             return await self.send_response(message, "Could not load fires (Watch Duty).")
 
+        evac_events = [e for e in events if watchduty_poll.incident_has_evac_info(e)]
         event_query, item_n = self._parse_event_and_item_query(tail)
         if not event_query:
-            evac_events = [e for e in events if watchduty_poll.incident_has_evac_info(e)]
             max_len = self.get_max_message_length(message)
             if not evac_events:
                 return await self.send_response(
@@ -92,7 +95,6 @@ class EvacCommand(BaseCommand):
                 eid = event.get("id")
                 id_part = f" · {eid}" if eid is not None else ""
                 lines.append(f"{i}. {name} ({loc}){id_part}")
-            lines.append("Use: evac <fire> for snippets; evac <fire> <#> for full text.")
             chunks = watchduty_poll.mesh_pack_lines(lines, max_len)
             if len(chunks) == 1:
                 return await self.send_response(message, chunks[0])
@@ -103,12 +105,14 @@ class EvacCommand(BaseCommand):
             event_query,
             config=self.bot.config,
             include_prescribed=self._include_prescribed,
+            numeric_index_list=evac_events,
         )
         if err:
             if err == "usage":
                 return await self.send_response(
                     message,
-                    "Usage: evac <list #|Watch Duty id|name> [item #] — same list as fires; id from app.watchduty.org/i/<id>",
+                    "Usage: evac [<# from evac list|Watch Duty id|name>] [item #] — "
+                    "list #s match evac with no args, not fires.",
                 )
             return await self.send_response(message, err)
 
@@ -145,7 +149,6 @@ class EvacCommand(BaseCommand):
                 if snippet != line and len(snippet) < len(line):
                     snippet = snippet.rstrip() + " [...]"
                 lines.append(f"{i}. {snippet}")
-            lines.append("Use: evac <fire> <#> for full text.")
 
         chunks = watchduty_poll.mesh_pack_lines(lines, max_len)
         if len(chunks) == 1:

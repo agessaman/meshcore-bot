@@ -356,16 +356,18 @@ def fetch_active_geo_events_for_user_query(
 
 def format_location_short(event: Dict[str, Any], max_len: int = 56) -> str:
     """
-    Short location for compact lists, e.g. last two comma-separated parts of address
-    (often city, state), else format_location truncated.
+    Short location for compact lists: last comma-separated segment of ``address`` (city name),
+    else ``format_location`` truncated.
     """
     addr = (event.get("address") or "").strip()
     if addr and "," in addr:
         parts = [p.strip() for p in addr.split(",") if p.strip()]
-        if len(parts) >= 2:
-            tail = ", ".join(parts[-2:])
-            if len(tail) <= max_len:
-                return tail
+        if parts:
+            tail = parts[-1]
+            if tail:
+                if len(tail) <= max_len:
+                    return tail
+                return tail[: max_len - 3].rstrip() + "..."
     loc = format_location(event)
     if len(loc) > max_len:
         return loc[: max_len - 3].rstrip() + "..."
@@ -392,28 +394,15 @@ def _evac_field_nonempty(data: Dict[str, Any], raw_key: str, has_custom_key: str
 
 
 def incident_has_evac_info(geo_event: Dict[str, Any]) -> bool:
-    """
-    True when the incident shows any evacuation-related messaging on Watch Duty.
-
-    Besides ``data.evacuation_orders``, the API often leaves structured lists null and
-    puts a Genasys (or other) map link in ``data.evacuation_notes`` as HTML or attaches ``evac_zone_statuses`` on the geo_event.
-    """
+    """True when the incident has structured evacuation orders or warnings on Watch Duty."""
     data = event_data(geo_event)
     pairs = (
         ("evacuation_orders", "has_custom_evacuation_orders"),
         ("evacuation_warnings", "has_custom_evacuation_warnings"),
-        ("evacuation_advisories", "has_custom_evacuation_advisories"),
-        ("evacuation_shelter_in_place", "has_custom_evacuation_shelter_in_place"),
     )
     for raw_key, has_key in pairs:
         if _evac_field_nonempty(data, raw_key, has_key):
             return True
-    notes = strip_html(str(data.get("evacuation_notes") or "")).strip()
-    if notes:
-        return True
-    ez = geo_event.get("evac_zone_statuses")
-    if isinstance(ez, list) and len(ez) > 0:
-        return True
     return False
 
 
@@ -462,42 +451,26 @@ def _evacuation_lines_for_data_key(data: Dict[str, Any], raw_key: str) -> List[s
 
 
 def evacuation_order_lines(data: Dict[str, Any]) -> List[str]:
-    """Lines from ``data.evacuation_orders`` only (see :func:`evacuation_display_lines` for full incident)."""
+    """Lines from ``data.evacuation_orders`` only (see :func:`evacuation_display_lines` for orders and warnings)."""
     return _evacuation_lines_for_data_key(data, "evacuation_orders")
 
 
 def evacuation_display_lines(geo_event: Dict[str, Any]) -> List[str]:
-    """
-    All evacuation-related lines for mesh display, in a stable order.
-
-    Watch Duty may use ``evacuation_notes`` (HTML) for third-party maps when structured
-    ``evacuation_orders`` / ``evacuation_warnings`` are null.
-    """
+    """Evacuation orders and warnings only (mesh display), in that order."""
     data = event_data(geo_event)
     out: List[str] = []
     labeled = (
         ("[Order] ", "evacuation_orders"),
         ("[Warn] ", "evacuation_warnings"),
-        ("[Advisory] ", "evacuation_advisories"),
-        ("[Shelter] ", "evacuation_shelter_in_place"),
     )
     for prefix, key in labeled:
         for line in _evacuation_lines_for_data_key(data, key):
             out.append(prefix + line)
-    notes = strip_html(str(data.get("evacuation_notes") or "")).strip()
-    if notes:
-        out.append("[Note] " + notes)
-    ez = geo_event.get("evac_zone_statuses")
-    if isinstance(ez, list):
-        for z in ez:
-            zline = _flatten_evac_item(z)
-            if zline:
-                out.append("[Zone] " + zline)
     return out
 
 
 def evacuation_display_count(geo_event: Dict[str, Any]) -> int:
-    """Number of evacuation-related items (orders, warnings, notes, zones, etc.); matches ``evac`` output rows."""
+    """Number of evacuation order and warning lines for mesh display."""
     return len(evacuation_display_lines(geo_event))
 
 
@@ -507,14 +480,16 @@ def resolve_active_event_by_query(
     *,
     config: Optional[Any] = None,
     include_prescribed: bool = False,
+    numeric_index_list: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     """
     Match a fire from the ``fires`` list or by Watch Duty geo_event id / name.
 
     Numeric ``query`` resolution order:
 
-    1. **Id in list** — any loaded event with ``id == n`` (same id as ``https://app.watchduty.org/i/<n>``).
-    2. **List index** — ``n`` from 1 … ``len(events)`` (same order as ``fires``).
+    1. **Id in list** — any loaded event in ``events`` with ``id == n`` (same id as ``https://app.watchduty.org/i/<n>``).
+    2. **List index** — if ``numeric_index_list`` is set, ``n`` from 1 … ``len(numeric_index_list)``
+       (e.g. evac's "fires with evacuations" list); otherwise ``n`` from 1 … ``len(events)`` (fires order).
     3. **Fetch by id** — when ``config`` is passed, ``GET /geo_events/<n>``; must be active;
        (bbox is not applied so a direct id still resolves outside the optional Watch Duty bbox filter).
     """
@@ -531,11 +506,19 @@ def resolve_active_event_by_query(
                         return e, None
                 except (TypeError, ValueError):
                     continue
-        if 1 <= n <= len(events):
+        if numeric_index_list is not None:
+            if 1 <= n <= len(numeric_index_list):
+                return numeric_index_list[n - 1], None
+        elif 1 <= n <= len(events):
             return events[n - 1], None
         if config is not None:
             detail = fetch_event_detail(n)
             if not detail:
+                if numeric_index_list is not None:
+                    return None, (
+                        f"No active fire id {n}. "
+                        f"Use evac for #1–{len(numeric_index_list)} or an id from app.watchduty.org/i/<id>"
+                    )
                 return None, (
                     f"No active fire id {n}. "
                     f"Use fires for #1–{len(events)} or an id from app.watchduty.org/i/<id>"
@@ -547,6 +530,11 @@ def resolve_active_event_by_query(
                     f"Fire id {n} is a prescribed burn."
                 )
             return detail, None
+        if numeric_index_list is not None:
+            return None, (
+                f"No evacuation list #{n} ({len(numeric_index_list)} with evacuations). "
+                "Run evac (no args) for the list."
+            )
         return None, f"No fire #{n} ({len(events)} active). Try fires."
     t_lower = t.lower()
     for e in events:
