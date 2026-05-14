@@ -87,22 +87,22 @@ class TestBuildResponseEmpty:
 class TestBuildResponseWithSchedules:
     def test_shows_scheduled_count(self, bot):
         bot.scheduler.scheduled_messages = {
-            "0900": ("general", "Good morning!", "09:00"),
-            "1800": ("general", "Good evening!", "18:00"),
+            "0900": ("general", "Good morning!", "09:00", None),
+            "1800": ("general", "Good evening!", "18:00", None),
         }
         cmd = make_cmd(bot)
         response = cmd._build_response()
         assert "Scheduled (2)" in response
 
     def test_formats_time_as_hhmm(self, bot):
-        bot.scheduler.scheduled_messages = {"0930": ("general", "Hello", "09:30")}
+        bot.scheduler.scheduled_messages = {"0930": ("general", "Hello", "09:30", None)}
         cmd = make_cmd(bot)
         response = cmd._build_response()
         assert "09:30" in response
 
     def test_shows_channel_and_message(self, bot):
         bot.scheduler.scheduled_messages = {
-            "1200": ("alerts", "Noon check-in", "12:00"),
+            "1200": ("alerts", "Noon check-in", "12:00", None),
         }
         cmd = make_cmd(bot)
         response = cmd._build_response()
@@ -111,7 +111,7 @@ class TestBuildResponseWithSchedules:
 
     def test_long_message_is_truncated(self, bot):
         long_msg = "A" * 100
-        bot.scheduler.scheduled_messages = {"0800": ("general", long_msg, "08:00")}
+        bot.scheduler.scheduled_messages = {"0800": ("general", long_msg, "08:00", None)}
         cmd = make_cmd(bot)
         response = cmd._build_response()
         # Preview should be ≤43 chars (40 + "...")
@@ -124,9 +124,9 @@ class TestBuildResponseWithSchedules:
 
     def test_entries_sorted_by_time(self, bot):
         bot.scheduler.scheduled_messages = {
-            "1800": ("general", "Evening", "18:00"),
-            "0600": ("general", "Morning", "06:00"),
-            "1200": ("general", "Noon", "12:00"),
+            "1800": ("general", "Evening", "18:00", None),
+            "0600": ("general", "Morning", "06:00", None),
+            "1200": ("general", "Noon", "12:00", None),
         }
         cmd = make_cmd(bot)
         response = cmd._build_response()
@@ -136,16 +136,26 @@ class TestBuildResponseWithSchedules:
 
     def test_shows_cron_schedule_string(self, bot):
         bot.scheduler.scheduled_messages = {
-            "0 9 * * *": ("general", "Cron hello", "0 9 * * *"),
+            "0 9 * * *": ("general", "Cron hello", "0 9 * * *", None),
         }
         cmd = make_cmd(bot)
         response = cmd._build_response()
         assert "0 9 * * *" in response
         assert "Cron hello" in response
 
+    def test_shows_flood_scope_when_set(self, bot):
+        bot.scheduler.scheduled_messages = {
+            "0 18 * * *": ("Public", "Hello mesh", "0 18 * * *", "#sea"),
+        }
+        cmd = make_cmd(bot)
+        response = cmd._build_response()
+        assert "(#sea)" in response
+        assert "#Public" in response
+        assert "Hello mesh" in response
+
     def test_shows_at_preset_label(self, bot):
         bot.scheduler.scheduled_messages = {
-            "@hourly": ("general", "tick", "@hourly"),
+            "@hourly": ("general", "tick", "@hourly", None),
         }
         cmd = make_cmd(bot)
         response = cmd._build_response()

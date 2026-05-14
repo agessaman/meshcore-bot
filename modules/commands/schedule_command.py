@@ -68,8 +68,9 @@ class ScheduleCommand(BaseCommand):
         scheduled = self._get_scheduled_messages()
         if scheduled:
             lines.append(f"Scheduled ({len(scheduled)}):")
-            for sched_display, channel, preview in scheduled:
-                lines.append(f"  {sched_display} #{channel}: {preview}")
+            for sched_display, channel, preview, scope in scheduled:
+                scope_part = f" ({scope})" if scope else ""
+                lines.append(f"  {sched_display} #{channel}{scope_part}: {preview}")
         else:
             lines.append("No scheduled messages configured.")
 
@@ -80,19 +81,28 @@ class ScheduleCommand(BaseCommand):
 
         return "\n".join(lines)
 
-    def _get_scheduled_messages(self) -> list[tuple[str, str, str]]:
-        """Return sorted list of (schedule_display, channel, preview) tuples."""
+    def _get_scheduled_messages(self) -> list[tuple[str, str, str, str | None]]:
+        """Return sorted list of (schedule_display, channel, preview, scope) tuples."""
         scheduler = getattr(self.bot, "scheduler", None)
         if scheduler is None:
             return []
 
         scheduled = getattr(scheduler, "scheduled_messages", {})
-        rows: list[tuple[str, str, str, str]] = []
+        rows: list[tuple[str, str, str, str, str | None]] = []
         for schedule_key, payload in scheduled.items():
-            if len(payload) == 3:
+            if len(payload) >= 4:
+                channel, message, display_label, scope = (
+                    payload[0],
+                    payload[1],
+                    payload[2],
+                    payload[3],
+                )
+            elif len(payload) == 3:
                 channel, message, display_label = payload
+                scope = None
             else:
                 channel, message = payload[0], payload[1]
+                scope = None
                 sk = schedule_key
                 display_label = (
                     f"{sk[:2]}:{sk[2:]}"
@@ -107,9 +117,9 @@ class ScheduleCommand(BaseCommand):
             preview = (
                 safe_message if len(safe_message) <= 40 else safe_message[:37] + "..."
             )
-            rows.append((display_label, schedule_key, channel, preview))
+            rows.append((display_label, schedule_key, channel, preview, scope))
         rows.sort(key=lambda r: (r[0].lower(), r[1]))
-        return [(r[0], r[2], r[3]) for r in rows]
+        return [(r[0], r[2], r[3], r[4]) for r in rows]
 
     def _get_advert_info(self) -> Optional[str]:
         """Return a one-line advert interval summary, or None if disabled."""

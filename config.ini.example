@@ -434,7 +434,13 @@ category.funfact = fun
 #category.fortune = fun
 
 [Scheduled_Messages]
-# Scheduled message format: <schedule> = channel:message
+# Scheduled message format:
+#   <schedule> = channel:message
+#   <schedule> = channel:#flood_scope:message   (regional flood — middle field must start with #)
+# The scoped form uses split(':', 2): the message body may contain additional colons.
+# Examples:
+#   0 18 * * * = Public:Hello! ...
+#   0 18 * * * = Public:#sea:Hello! ...   (same channel text, sent with #sea flood scope)
 #
 # <schedule> is one of:
 #   - 5-field crontab (minute hour day-of-month month day-of-week), e.g.

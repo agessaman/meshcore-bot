@@ -20,10 +20,13 @@ from apscheduler.triggers.date import DateTrigger
 from meshcore.events import EventType
 
 from .maintenance import MaintenanceRunner
-from .scheduled_message_cron import is_valid_legacy_hhmm, parse_schedule_key
+from .scheduled_message_cron import (
+    is_valid_legacy_hhmm,
+    parse_schedule_key,
+    parse_scheduled_message_value,
+)
 from .security_utils import validate_external_url
 from .utils import decode_escape_sequences, format_keyword_response_with_placeholders, get_config_timezone
-
 
 
 class MessageScheduler:
@@ -94,25 +97,30 @@ class MessageScheduler:
                             cron_suggestion,
                         )
 
-                    channel, message = message_info.split(':', 1)
-                    channel = channel.strip()
-                    message = decode_escape_sequences(message.strip())
+                    channel, message, scope = parse_scheduled_message_value(message_info)
+                    message = decode_escape_sequences(message)
 
                     job_id = "schedmsg_" + hashlib.sha256(
-                        f"{schedule_key}\0{channel}\0{message}".encode()
+                        f"{schedule_key}\0{channel}\0{scope or ''}\0{message}".encode()
                     ).hexdigest()[:24]
 
                     self._apscheduler.add_job(
                         self.send_scheduled_message,
                         parsed.trigger,
                         args=[channel, message],
-                        kwargs={"schedule_key": schedule_key},
+                        kwargs={"schedule_key": schedule_key, "scope": scope},
                         id=job_id,
                         replace_existing=True,
                     )
-                    self.scheduled_messages[schedule_key] = (channel, message, parsed.display_label)
+                    self.scheduled_messages[schedule_key] = (
+                        channel,
+                        message,
+                        parsed.display_label,
+                        scope,
+                    )
+                    scope_note = f" scope={scope}" if scope else ""
                     self.logger.info(
-                        f"Scheduled message: {parsed.display_label} -> {channel}: {message}"
+                        f"Scheduled message: {parsed.display_label} -> {channel}{scope_note}: {message}"
                     )
                 except ValueError:
                     self.logger.warning(f"Invalid scheduled message format: {message_info}")
@@ -234,7 +242,13 @@ class MessageScheduler:
         slot = int.from_bytes(digest[:4], "big") / (2**32)
         return float(slot * max_s)
 
-    def send_scheduled_message(self, channel: str, message: str, schedule_key: str = ""):
+    def send_scheduled_message(
+        self,
+        channel: str,
+        message: str,
+        schedule_key: str = "",
+        scope: str | None = None,
+    ):
         """Send a scheduled message (synchronous wrapper for schedule library)"""
         if self.bot.is_radio_zombie:
             self.logger.warning("send_scheduled_message suppressed — radio is in zombie state")
@@ -244,7 +258,11 @@ class MessageScheduler:
             return
 
         current_time = self.get_current_time()
-        self.logger.info(f"📅 Sending scheduled message at {current_time.strftime('%H:%M:%S')} to {channel}: {message}")
+        scope_note = f" [{scope}]" if scope else ""
+        self.logger.info(
+            f"📅 Sending scheduled message at {current_time.strftime('%H:%M:%S')} "
+            f"to {channel}{scope_note}: {message}"
+        )
 
         import asyncio
 
@@ -253,8 +271,10 @@ class MessageScheduler:
         if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
             # Schedule coroutine in the running main event loop
             future = asyncio.run_coroutine_threadsafe(
-                self._send_scheduled_message_async(channel, message, schedule_key=schedule_key),
-                self.bot.main_event_loop
+                self._send_scheduled_message_async(
+                    channel, message, schedule_key=schedule_key, scope=scope
+                ),
+                self.bot.main_event_loop,
             )
             # Wait for completion (with timeout to prevent indefinite blocking)
             try:
@@ -270,7 +290,9 @@ class MessageScheduler:
             loop = asyncio.new_event_loop()
             try:
                 loop.run_until_complete(
-                    self._send_scheduled_message_async(channel, message, schedule_key=schedule_key)
+                    self._send_scheduled_message_async(
+                        channel, message, schedule_key=schedule_key, scope=scope
+                    )
                 )
             finally:
                 loop.close()
@@ -432,7 +454,12 @@ class MessageScheduler:
         return any(placeholder in message for placeholder in placeholders)
 
     async def _send_scheduled_message_async(
-        self, channel: str, message: str, *, schedule_key: str = ""
+        self,
+        channel: str,
+        message: str,
+        *,
+        schedule_key: str = "",
+        scope: str | None = None,
     ):
         """Send a scheduled message (async implementation)"""
         stagger = self._scheduled_message_stagger_seconds(schedule_key)
@@ -464,7 +491,7 @@ class MessageScheduler:
         send_timeout = self.bot.config.getint('Bot', 'send_timeout_seconds', fallback=30)
         await _asyncio.wait_for(
             self.bot.command_manager.send_channel_message(
-                channel, message, skip_user_rate_limit=True
+                channel, message, skip_user_rate_limit=True, scope=scope
             ),
             timeout=send_timeout,
         )

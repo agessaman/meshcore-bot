@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-Parse [Scheduled_Messages] option keys into APScheduler CronTrigger instances.
+Parse ``[Scheduled_Messages]`` option keys into APScheduler CronTrigger instances,
+and option values into ``(channel, message, scope)`` for optional regional flood scope.
 
-Supports:
+Supports (schedule keys):
 - Standard 5-field crontab: minute hour day-of-month month day-of-week
 - Preset aliases: @yearly, @annually, @monthly, @weekly, @daily, @midnight, @hourly
 - Deprecated legacy HHMM (24-hour, no colon) for daily firing at that clock time
@@ -14,6 +15,38 @@ from dataclasses import dataclass
 from typing import Optional
 
 from apscheduler.triggers.cron import CronTrigger
+
+
+def parse_scheduled_message_value(raw: str) -> tuple[str, str, str | None]:
+    """Parse a ``[Scheduled_Messages]`` option value into ``(channel, message, scope)``.
+
+    **Legacy (unscoped):** ``channel:body`` — split on the first ``:`` only; ``scope`` is
+    ``None`` (global flood).
+
+    **Scoped:** ``channel:#region:body`` — exactly three segments from ``split(':', 2)``
+    where the middle segment starts with ``#`` after strip. The message body may contain
+    further colons. Scope must not contain ``:``.
+
+    Args:
+        raw: Config value, e.g. ``Public:Hello`` or ``Public:#sea:Hello: more``.
+
+    Returns:
+        ``(channel, message, scope)`` with ``scope`` set only for the scoped form.
+
+    Raises:
+        ValueError: If there is no ``:`` (cannot separate channel from body).
+    """
+    s = (raw or "").strip()
+    if ":" not in s:
+        raise ValueError("scheduled message value must be channel:message")
+    parts = s.split(":", 2)
+    if len(parts) == 3 and parts[1].strip().startswith("#"):
+        channel = parts[0].strip()
+        scope = parts[1].strip()
+        message = parts[2].strip()
+        return channel, message, scope
+    channel, message = s.split(":", 1)
+    return channel.strip(), message.strip(), None
 
 # Maps @preset (lowercase) -> 5-field crontab (APScheduler does not accept @syntax in from_crontab).
 _SPECIAL_PRESET_TO_CRON: dict[str, str] = {
