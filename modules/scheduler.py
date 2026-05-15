@@ -27,6 +27,7 @@ from .scheduled_message_cron import (
 )
 from .security_utils import validate_external_url
 from .utils import decode_escape_sequences, format_keyword_response_with_placeholders, get_config_timezone
+from . import watchduty_poll
 
 
 class MessageScheduler:
@@ -48,6 +49,7 @@ class MessageScheduler:
         self.last_db_backup_run = 0
         self.last_log_rotation_check_time = 0
         self.maintenance = MaintenanceRunner(bot, get_current_time=self.get_current_time)
+        self.last_watchduty_check_time = 0
 
     def get_current_time(self):
         """Get current time in configured timezone"""
@@ -538,6 +540,36 @@ class MessageScheduler:
             # Check for interval-based advertising
             self.check_interval_advertising()
 
+            # WatchDuty: file-based roundup and/or API poll for new fires/reports
+            if (self._watchduty_enabled() or self._watchduty_poll_api_enabled()) and time.time() - self.last_watchduty_check_time >= self._watchduty_interval():
+                if hasattr(self.bot, 'connected') and self.bot.connected:
+                    import asyncio
+                    async def _run_watchduty_tasks():
+                        if self._watchduty_enabled():
+                            await self._send_watchduty_if_updated_async()
+                        if self._watchduty_poll_api_enabled():
+                            await self._watchduty_poll_and_send_async()
+                    if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
+                        future = asyncio.run_coroutine_threadsafe(
+                            _run_watchduty_tasks(),
+                            self.bot.main_event_loop
+                        )
+                        try:
+                            future.result(timeout=120)
+                        except Exception as e:
+                            self.logger.error(f"WatchDuty error: {e}")
+                    else:
+                        try:
+                            loop = asyncio.get_event_loop()
+                        except RuntimeError:
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                        try:
+                            loop.run_until_complete(_run_watchduty_tasks())
+                        except Exception as e:
+                            self.logger.error(f"WatchDuty error: {e}")
+                self.last_watchduty_check_time = time.time()
+
             # Poll feeds every minute (but feeds themselves control their check intervals)
             if time.time() - last_feed_poll_time >= 60:  # Every 60 seconds
                 if (hasattr(self.bot, 'feed_manager') and self.bot.feed_manager and
@@ -825,6 +857,340 @@ class MessageScheduler:
             reason = (result.payload or {}).get('reason', 'unknown') if hasattr(result, 'payload') else 'unknown'
             raise RuntimeError(f"send_advert failed: {reason}")
         self.logger.info("Interval-based flood advert sent successfully")
+
+    def _watchduty_enabled(self):
+        """Return True if WatchDuty is enabled and configured."""
+        if not self.bot.config.has_section('WatchDuty'):
+            return False
+        if not self.bot.config.getboolean('WatchDuty', 'enabled', fallback=False):
+            return False
+        output_file = self.bot.config.get('WatchDuty', 'output_file', fallback='').strip()
+        channel = self.bot.config.get('WatchDuty', 'channel', fallback='').strip()
+        return bool(output_file and channel)
+
+    def _watchduty_interval(self):
+        """Return WatchDuty check interval in seconds."""
+        if not self.bot.config.has_section('WatchDuty'):
+            return 300
+        return self.bot.config.getint('WatchDuty', 'check_interval_seconds', fallback=300)
+
+    def _watchduty_min_acres(self) -> float:
+        """Return minimum acreage threshold for WatchDuty events."""
+        if not self.bot.config.has_section('WatchDuty'):
+            return 1.0
+        # Accept float values; fall back to 1.0 on any error
+        try:
+            return self.bot.config.getfloat('WatchDuty', 'min_acres', fallback=1.0)
+        except Exception:
+            return 1.0
+
+    def _watchduty_feed_channel(self) -> str:
+        """Channel for fire summary (name, acres, containment, location, link). Uses feed_channel, else channel."""
+        if not self.bot.config.has_section('WatchDuty'):
+            return ''
+        s = self.bot.config.get('WatchDuty', 'feed_channel', fallback='').strip()
+        if s:
+            return s
+        return self.bot.config.get('WatchDuty', 'channel', fallback='').strip()
+
+    def _watchduty_report_channel(self) -> str:
+        """Channel for approved report lines. Uses report_channel, else channel."""
+        if not self.bot.config.has_section('WatchDuty'):
+            return ''
+        s = self.bot.config.get('WatchDuty', 'report_channel', fallback='').strip()
+        if s:
+            return s
+        return self.bot.config.get('WatchDuty', 'channel', fallback='').strip()
+
+    async def _send_watchduty_if_updated_async(self):
+        """Read WatchDuty output file and send to channel if file was updated since last send."""
+        if not self._watchduty_enabled():
+            return
+        output_file = self.bot.config.get('WatchDuty', 'output_file', fallback='').strip()
+        channel = self.bot.config.get('WatchDuty', 'channel', fallback='').strip()
+        if not output_file or not channel:
+            return
+        base = getattr(self.bot, 'bot_root', os.getcwd())
+        path = Path(resolve_path(output_file, base))
+        sent_marker = path.with_suffix(path.suffix + '.last_sent')
+        try:
+            if not path.exists():
+                self.logger.debug("WatchDuty output file not found: %s", path)
+                return
+            mtime = path.stat().st_mtime
+            last_sent_mtime = 0.0
+            if sent_marker.exists():
+                try:
+                    last_sent_mtime = float(sent_marker.read_text(encoding='utf-8').strip())
+                except (ValueError, OSError):
+                    pass
+            if mtime <= last_sent_mtime:
+                return
+            content = path.read_text(encoding='utf-8', errors='replace').strip()
+            if not content:
+                return
+            # Mesh payload limit ~237 bytes; send in smaller chunks (break on newlines when possible)
+            # Use 136 chars to match WatchDuty API poll message formatting
+            max_chunk = 136
+            chunks = []
+            for line in content.split('\n'):
+                if not chunks:
+                    chunks.append(line)
+                elif len(chunks[-1]) + len(line) + 1 <= max_chunk:
+                    chunks[-1] += '\n' + line
+                else:
+                    chunks.append(line)
+            for i, chunk in enumerate(chunks):
+                if chunk.strip():
+                    success = await self.bot.command_manager.send_channel_message(
+                        channel, chunk, skip_user_rate_limit=True
+                    )
+                    if not success:
+                        self.logger.warning("WatchDuty: failed to send chunk %s to %s", i + 1, channel)
+                        return
+                    await asyncio.sleep(max(1.0, self.bot.bot_tx_rate_limiter.seconds))
+            sent_marker.write_text(str(mtime), encoding='utf-8')
+            self.logger.info("WatchDuty: sent %s chunk(s) to %s", len(chunks), channel)
+        except Exception as e:
+            self.logger.error("WatchDuty error: %s", e)
+
+    def _watchduty_poll_api_enabled(self):
+        """Return True if WatchDuty API polling is enabled (poll for new fires/reports)."""
+        if not self.bot.config.has_section('WatchDuty'):
+            return False
+        if not self.bot.config.getboolean('WatchDuty', 'enabled', fallback=False):
+            return False
+        if not self.bot.config.getboolean('WatchDuty', 'poll_api', fallback=False):
+            return False
+        return bool(self._watchduty_feed_channel() or self._watchduty_report_channel())
+
+    def _watchduty_bbox(self):
+        """Return optional (lat_min, lng_min, lat_max, lng_max) from config, or None."""
+        if not self.bot.config.has_section('WatchDuty'):
+            return None
+        bbox_str = self.bot.config.get('WatchDuty', 'bbox', fallback='').strip()
+        if not bbox_str:
+            return None
+        try:
+            parts = [float(x.strip()) for x in bbox_str.split(',')]
+            if len(parts) != 4:
+                return None
+            return tuple(parts)
+        except (ValueError, AttributeError):
+            return None
+
+    def _watchduty_stop_on_no_forward_progress(self) -> bool:
+        """When true, suppress WatchDuty alerts after reports indicate no forward progress."""
+        if not self.bot.config.has_section('WatchDuty'):
+            return True
+        return self.bot.config.getboolean(
+            'WatchDuty',
+            'stop_alerts_when_forward_progress_stops',
+            fallback=True,
+        )
+
+    def _watchduty_feed_initial_only(self) -> bool:
+        """When true, send only the initial feed summary per incident."""
+        if not self.bot.config.has_section('WatchDuty'):
+            return False
+        return self.bot.config.getboolean(
+            'WatchDuty',
+            'feed_initial_only',
+            fallback=False,
+        )
+
+    async def _watchduty_poll_and_send_async(self):
+        """Poll Watch Duty API: feed channel when acreage/containment change; report channel for new reports."""
+        if not self._watchduty_poll_api_enabled():
+            return
+        feed_channel = self._watchduty_feed_channel()
+        report_channel = self._watchduty_report_channel()
+        if not feed_channel and not report_channel:
+            return
+        db_path = str(self.bot.db_manager.db_path)
+        bbox = self._watchduty_bbox()
+        try:
+            events = watchduty_poll.fetch_geo_events(bbox=bbox)
+        except Exception as e:
+            self.logger.error("WatchDuty poll: fetch geo_events failed: %s", e)
+            return
+        # Exclude prescribed burns (comment out next line to exclude them for testing)
+        events = [e for e in events if not (e.get('data') or {}).get('is_prescribed')]
+        events = [e for e in events if watchduty_poll.geo_event_is_active(e)]
+        min_acres = self._watchduty_min_acres()
+        events = [e for e in events if watchduty_poll.event_meets_min_acres(e, min_acres=min_acres)]
+        tx_pause = max(1.0, self.bot.bot_tx_rate_limiter.seconds)
+        with sqlite3.connect(db_path, timeout=30.0) as conn:
+            cursor = conn.cursor()
+            for event in events:
+                event_id = event.get('id')
+                if event_id is None:
+                    continue
+                name = (event.get('name') or '').strip() or f"Event {event_id}"
+                acres = watchduty_poll.get_event_acres(event)
+                if acres is None:
+                    continue
+                containment_sig = watchduty_poll.containment_key(event)
+                containment_disp = watchduty_poll.format_containment_display(event)
+                location = watchduty_poll.format_location(event)
+
+                suppress_due_to_no_progress = False
+                if self._watchduty_stop_on_no_forward_progress():
+                    cursor.execute(
+                        'SELECT suppressed FROM watchduty_alert_suppression WHERE event_id = ?',
+                        (event_id,),
+                    )
+                    suppression_row = cursor.fetchone()
+                    is_suppressed = bool(suppression_row and int(suppression_row[0]) == 1)
+
+                    if report_channel:
+                        try:
+                            reports_for_progress = watchduty_poll.fetch_reports(event_id)
+                        except Exception as e:
+                            self.logger.warning(
+                                "WatchDuty poll: fetch reports for event %s failed: %s",
+                                event_id,
+                                e,
+                            )
+                            reports_for_progress = []
+                        if reports_for_progress:
+                            latest_plain = watchduty_poll.strip_html(
+                                reports_for_progress[-1].get('message') or ''
+                            )
+                            if watchduty_poll.indicates_forward_progress_stopped(latest_plain):
+                                if not is_suppressed:
+                                    cursor.execute(
+                                        '''
+                                        INSERT INTO watchduty_alert_suppression (event_id, suppressed, reason)
+                                        VALUES (?, 1, ?)
+                                        ON CONFLICT(event_id) DO UPDATE SET
+                                            suppressed = 1,
+                                            reason = excluded.reason,
+                                            updated_at = CURRENT_TIMESTAMP
+                                        ''',
+                                        (event_id, 'forward_progress_stopped'),
+                                    )
+                                    conn.commit()
+                                    self.logger.info(
+                                        "WatchDuty poll: suppressing alerts for %s (forward progress stopped)",
+                                        name,
+                                    )
+                                suppress_due_to_no_progress = True
+                            else:
+                                suppress_due_to_no_progress = is_suppressed
+                        else:
+                            suppress_due_to_no_progress = is_suppressed
+                    else:
+                        suppress_due_to_no_progress = is_suppressed
+
+                if suppress_due_to_no_progress:
+                    continue
+
+                if feed_channel:
+                    cursor.execute(
+                        'SELECT last_acres, last_containment FROM watchduty_feed_state WHERE event_id = ?',
+                        (event_id,),
+                    )
+                    feed_row = cursor.fetchone()
+                    feed_changed = watchduty_poll.feed_state_changed(feed_row, acres, containment_sig)
+                    should_send_feed = feed_changed
+                    if self._watchduty_feed_initial_only() and feed_row is not None:
+                        should_send_feed = False
+
+                    if should_send_feed:
+                        msg_feed = watchduty_poll.format_feed_summary_message(
+                            name, acres, containment_disp, location, event_id
+                        )
+                        ok = await self.bot.command_manager.send_channel_message(
+                            feed_channel, msg_feed, skip_user_rate_limit=True
+                        )
+                        if ok:
+                            cursor.execute(
+                                '''
+                                INSERT INTO watchduty_feed_state (event_id, last_acres, last_containment)
+                                VALUES (?, ?, ?)
+                                ON CONFLICT(event_id) DO UPDATE SET
+                                    last_acres = excluded.last_acres,
+                                    last_containment = excluded.last_containment,
+                                    updated_at = CURRENT_TIMESTAMP
+                                ''',
+                                (event_id, acres, containment_sig),
+                            )
+                            conn.commit()
+                        else:
+                            self.logger.warning(
+                                "WatchDuty poll: failed to send feed line for %s to %s", name, feed_channel
+                            )
+                        await asyncio.sleep(tx_pause)
+
+                if not report_channel:
+                    continue
+
+                cursor.execute(
+                    'SELECT report_id FROM watchduty_sent_reports WHERE event_id = ?',
+                    (event_id,),
+                )
+                sent_report_ids = {row[0] for row in cursor.fetchall()}
+                synced_reports = any((rid or 0) > 0 for rid in sent_report_ids)
+
+                if report_channel and self._watchduty_stop_on_no_forward_progress():
+                    reports = reports_for_progress
+                else:
+                    try:
+                        reports = watchduty_poll.fetch_reports(event_id)
+                    except Exception as e:
+                        self.logger.warning("WatchDuty poll: fetch reports for event %s failed: %s", event_id, e)
+                        continue
+
+                if not synced_reports:
+                    if not reports:
+                        continue
+                    latest_report = reports[-1]
+                    plain = watchduty_poll.strip_html(latest_report.get('message') or '')
+                    plain = watchduty_poll.first_sentence(plain)
+                    if plain:
+                        msg_r = watchduty_poll.format_report_message(name, plain, event_id=event_id)
+                        ok = await self.bot.command_manager.send_channel_message(
+                            report_channel, msg_r, skip_user_rate_limit=True
+                        )
+                        if ok:
+                            for r in reports:
+                                rid = r.get('id')
+                                if rid is not None:
+                                    cursor.execute(
+                                        'INSERT OR IGNORE INTO watchduty_sent_reports (event_id, report_id) VALUES (?, ?)',
+                                        (event_id, rid),
+                                    )
+                            conn.commit()
+                        else:
+                            self.logger.warning(
+                                "WatchDuty poll: failed to send first report for %s to %s", name, report_channel
+                            )
+                        await asyncio.sleep(tx_pause)
+                    continue
+
+                for report in reports:
+                    report_id = report.get('id')
+                    if report_id is None or report_id in sent_report_ids:
+                        continue
+                    plain = watchduty_poll.strip_html(report.get('message') or '')
+                    plain = watchduty_poll.first_sentence(plain)
+                    if not plain:
+                        continue
+                    msg = watchduty_poll.format_report_message(name, plain, event_id=event_id)
+                    ok = await self.bot.command_manager.send_channel_message(
+                        report_channel, msg, skip_user_rate_limit=True
+                    )
+                    if ok:
+                        cursor.execute(
+                            'INSERT OR IGNORE INTO watchduty_sent_reports (event_id, report_id) VALUES (?, ?)',
+                            (event_id, report_id),
+                        )
+                        conn.commit()
+                        sent_report_ids.add(report_id)
+                    await asyncio.sleep(tx_pause)
+        self.logger.debug("WatchDuty poll cycle completed")
+        return
 
     async def _process_channel_operations(self):
         """Process pending channel operations from the web viewer"""
@@ -1500,4 +1866,3 @@ class MessageScheduler:
             self.bot.logger.error(f"Failed to send radio-offline alert email: {e}")
 
     # ── Maintenance helpers ──────────────────────────────────────────────────
-

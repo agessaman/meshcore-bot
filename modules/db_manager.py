@@ -50,6 +50,9 @@ class DBManager:
         'purging_log',  # Repeater manager
         'mesh_connections',  # Mesh graph for path validation
         'observed_paths',  # Repeater manager - observed paths from adverts and messages
+        'watchduty_sent_reports',  # WatchDuty API poll - report IDs already sent to mesh
+        'watchduty_feed_state',  # WatchDuty last feed line (acreage/containment) per event
+        'watchduty_alert_suppression',  # WatchDuty per-event suppression state
     }
 
     def __init__(self, bot: Any, db_path: str = "meshcore_bot.db"):

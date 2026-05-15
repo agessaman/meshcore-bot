@@ -490,6 +490,37 @@ def _m0012_purging_log_details_column(cursor: sqlite3.Cursor) -> None:
         _add_column(cursor, "purging_log", "details", "TEXT")
 
 
+def _m0013_watchduty_tables(cursor: sqlite3.Cursor) -> None:
+    """Create WatchDuty state tables used by wildfire polling and alerts."""
+    cursor.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS watchduty_sent_reports (
+            event_id INTEGER NOT NULL,
+            report_id INTEGER NOT NULL,
+            sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (event_id, report_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_watchduty_sent_reports_event
+            ON watchduty_sent_reports(event_id);
+
+        CREATE TABLE IF NOT EXISTS watchduty_feed_state (
+            event_id INTEGER PRIMARY KEY,
+            last_acres REAL NOT NULL,
+            last_containment TEXT NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS watchduty_alert_suppression (
+            event_id INTEGER PRIMARY KEY,
+            suppressed INTEGER NOT NULL DEFAULT 0,
+            reason TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+    )
+
+
 # ---------------------------------------------------------------------------
 # Migration registry — append new entries here, never remove or reorder.
 # ---------------------------------------------------------------------------
@@ -509,6 +540,7 @@ MIGRATIONS: list[MigrationEntry] = [
     (10, "create repeater/graph tables", _m0010_create_repeater_and_graph_tables),
     (11, "repeater/graph indexes", _m0011_repeater_and_graph_indexes),
     (12, "purging_log: add details column", _m0012_purging_log_details_column),
+    (13, "watchduty tables", _m0013_watchduty_tables),
 ]
 
 
