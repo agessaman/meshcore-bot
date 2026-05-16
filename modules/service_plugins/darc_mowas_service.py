@@ -191,7 +191,7 @@ class DARC_MoWaS_Service(BaseServicePlugin):
                     chunk,
                     i,
                     len(chunks),
-                    ts_now + timedelta(seconds=1)
+                    ts_now + timedelta(seconds=i)
                 )
             )
 
@@ -215,7 +215,8 @@ class DARC_MoWaS_Service(BaseServicePlugin):
                 chunk,
                 command_id=cmd_id,
                 skip_user_rate_limit=True,
-                timestamp=timestamp
+                timestamp=timestamp,
+                scope=self.get_mesh_flood_scope(),
             ):
                 self.logger.warning("Send failed for '%s'", channel)
                 return
