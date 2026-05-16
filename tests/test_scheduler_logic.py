@@ -2,10 +2,9 @@
 
 import datetime
 import time
-from zoneinfo import ZoneInfo
-
 from configparser import ConfigParser
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from zoneinfo import ZoneInfo
 
 import pytest
 
