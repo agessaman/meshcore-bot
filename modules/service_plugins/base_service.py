@@ -234,7 +234,8 @@ class BaseServicePlugin(ABC):
         """
         class_name = self.__class__.__name__
         if class_name.endswith('Service'):
-            return class_name[:-7].lower()  # Remove 'Service' suffix and lowercase
+            # Remove 'Service' suffix and lowercase
+            return class_name[:-7].lower().strip('_')
         return class_name.lower()
 
     def _derive_config_section(self) -> str:
