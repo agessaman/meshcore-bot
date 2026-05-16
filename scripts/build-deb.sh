@@ -15,7 +15,7 @@ VERSION="${1:-}"
 if [[ -z "${VERSION}" ]]; then
     VERSION="$(python3 -c "import tomllib; d=tomllib.load(open('${PROJECT_ROOT}/pyproject.toml','rb')); print(d['project']['version'])" 2>/dev/null || \
                python3 -c "import tomli; d=tomli.load(open('${PROJECT_ROOT}/pyproject.toml','rb')); print(d['project']['version'])" 2>/dev/null || \
-               grep -Po '(?<=^version = ")([^"]+)' "${PROJECT_ROOT}/pyproject.toml" || echo "0.9.0")"
+               grep -Po '(?<=^version = ")([^"]+)' "${PROJECT_ROOT}/pyproject.toml" || echo "0.9.1")"
 fi
 
 # Validate VERSION: must be semver-like (digits and dots only) to prevent
