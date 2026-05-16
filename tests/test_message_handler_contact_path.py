@@ -6,7 +6,7 @@ import pytest
 from meshcore import EventType
 
 from modules.message_handler import MessageHandler
-from modules.repeater_manager import RepeaterManager
+from modules.repeater_manager import RepeaterManager, TrackAdvertResult
 
 
 def _make_config_get():
@@ -57,7 +57,9 @@ def companion_new_contact_setup():
     rm.bot = bot
     rm.logger = bot.logger
     rm._is_repeater_device = MagicMock(return_value=False)
-    rm.track_contact_advertisement = AsyncMock()
+    rm.track_contact_advertisement = AsyncMock(
+        return_value=TrackAdvertResult(ok=True, duplicate_packet=False)
+    )
     rm.check_and_auto_purge = AsyncMock()
     rm.get_contact_list_status = AsyncMock(
         return_value={"is_near_limit": False, "usage_percentage": 0.0}

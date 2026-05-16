@@ -1952,7 +1952,11 @@ def new_contact_env(mock_logger):
     bot.message_handler = handler
 
     rm = Mock()
-    rm.track_contact_advertisement = AsyncMock()
+    from modules.repeater_manager import TrackAdvertResult
+
+    rm.track_contact_advertisement = AsyncMock(
+        return_value=TrackAdvertResult(ok=True, duplicate_packet=False)
+    )
     rm.check_and_auto_purge = AsyncMock()
     rm.get_contact_list_status = AsyncMock(
         return_value={
@@ -2007,3 +2011,34 @@ class TestHandleNewContactAutoManage:
         await handler.handle_new_contact(ev, None)
         rm.add_companion_from_contact_data.assert_awaited_once()
         mesh.commands.add_contact.assert_not_called()
+
+    async def test_bot_mode_skips_add_when_duplicate_packet_hash(self, new_contact_env):
+        from modules.repeater_manager import TrackAdvertResult
+
+        bot, handler, rm, mesh = new_contact_env
+        bot.config.set("Bot", "auto_manage_contacts", "bot")
+        rm.track_contact_advertisement = AsyncMock(
+            return_value=TrackAdvertResult(ok=True, duplicate_packet=True)
+        )
+        ev = _NewContactEvent(_companion_contact_payload())
+        await handler.handle_new_contact(ev, None)
+        rm.track_contact_advertisement.assert_awaited_once()
+        rm.add_companion_from_contact_data.assert_not_called()
+        rm.get_contact_list_status.assert_not_awaited()
+
+    async def test_bot_mode_two_events_first_unique_then_duplicate_adds_once(self, new_contact_env):
+        from modules.repeater_manager import TrackAdvertResult
+
+        bot, handler, rm, mesh = new_contact_env
+        bot.config.set("Bot", "auto_manage_contacts", "bot")
+        rm.track_contact_advertisement = AsyncMock(
+            side_effect=[
+                TrackAdvertResult(ok=True, duplicate_packet=False),
+                TrackAdvertResult(ok=True, duplicate_packet=True),
+            ]
+        )
+        ev = _NewContactEvent(_companion_contact_payload())
+        await handler.handle_new_contact(ev, None)
+        await handler.handle_new_contact(ev, None)
+        assert rm.track_contact_advertisement.await_count == 2
+        rm.add_companion_from_contact_data.assert_awaited_once()

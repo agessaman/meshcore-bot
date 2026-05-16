@@ -8,12 +8,23 @@ import asyncio
 import json
 import time
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any, NamedTuple, Optional
 
 from meshcore import EventType
 
 from .security_utils import sanitize_name, validate_pubkey_format
 from .utils import rate_limited_nominatim_reverse_sync
+
+
+class TrackAdvertResult(NamedTuple):
+    """Result of track_contact_advertisement.
+
+    ok: tracking succeeded, or duplicate packet is OK (not an error).
+    duplicate_packet: same packet_hash already processed for this public_key — skip redundant radio work.
+    """
+
+    ok: bool
+    duplicate_packet: bool = False
 
 
 def collect_protected_pubkeys_for_device_mode(config: Any, logger: Any) -> set[str]:
@@ -179,8 +190,10 @@ class RepeaterManager:
             self.logger.error(f"Failed to initialize repeater database: {e}")
             raise
 
-    async def track_contact_advertisement(self, advert_data: dict, signal_info: Optional[dict] = None, packet_hash: Optional[str] = None) -> bool:
-        """Track any contact advertisement in the complete tracking database"""
+    async def track_contact_advertisement(
+        self, advert_data: dict, signal_info: Optional[dict] = None, packet_hash: Optional[str] = None
+    ) -> TrackAdvertResult:
+        """Track any contact advertisement in the complete tracking database."""
         try:
             # Extract basic information
             public_key = advert_data.get('public_key', '')
@@ -189,7 +202,7 @@ class RepeaterManager:
 
             if not public_key:
                 self.logger.warning("No public key in advertisement data")
-                return False
+                return TrackAdvertResult(ok=False, duplicate_packet=False)
 
             # Determine role and device type
             role = self._determine_contact_role(advert_data)
@@ -229,7 +242,7 @@ class RepeaterManager:
                     if existing_packet:
                         # This packet_hash was already processed - skip contact update
                         self.logger.debug(f"Skipping duplicate advert packet for {name}: {packet_hash[:8]}... (already processed)")
-                        return True  # Return True since packet was already tracked (not an error)
+                        return TrackAdvertResult(ok=True, duplicate_packet=True)
 
                 # Check if this contact is already in our complete tracking
                 existing = self.db_manager.execute_query_on_connection(
@@ -315,11 +328,11 @@ class RepeaterManager:
 
                 conn.commit()
 
-            return True
+            return TrackAdvertResult(ok=True, duplicate_packet=False)
 
         except Exception as e:
             self.logger.error(f"Error tracking contact advertisement: {e}")
-            return False
+            return TrackAdvertResult(ok=False, duplicate_packet=False)
 
     def _track_daily_advertisement_on_conn(self, conn, public_key: str, name: str, role: str, device_type: str,
                                             location_info: dict, signal_strength: Optional[float], snr: Optional[float],

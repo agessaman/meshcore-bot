@@ -639,10 +639,10 @@ class MessageHandler:
                 # Track this advertisement in the complete database
                 if hasattr(self.bot, "repeater_manager"):
                     # Track all advertisements regardless of type
-                    success = await self.bot.repeater_manager.track_contact_advertisement(
+                    track_result = await self.bot.repeater_manager.track_contact_advertisement(
                         advert_data, signal_info, packet_hash=packet_hash
                     )
-                    if success:
+                    if track_result.ok:
                         # Log rich advert information
                         mode = advert_data.get("mode", "Unknown")
                         name = advert_data.get("name", "No name")
@@ -3425,7 +3425,7 @@ class MessageHandler:
                         auto_manage_setting,
                     )
 
-                    await self.bot.repeater_manager.track_contact_advertisement(
+                    track_result = await self.bot.repeater_manager.track_contact_advertisement(
                         contact_data, signal_info, packet_hash=packet_hash
                     )
 
@@ -3452,35 +3452,42 @@ class MessageHandler:
                                 contact_name,
                             )
                     elif auto_manage_setting == "bot":
-                        self.logger.info(
-                            "Bot mode — adding companion %s to device with capacity management",
-                            contact_name,
-                        )
-                        try:
-                            self._ensure_contact_meshcore_path_encoding(contact_data)
-                            ok = await self.bot.repeater_manager.add_companion_from_contact_data(
-                                contact_data, contact_name, public_key
-                            )
-                            if not ok:
-                                self.logger.warning(
-                                    "Failed to add companion contact %s to device after managed add/retry",
-                                    contact_name,
-                                )
-                        except Exception as e:
-                            self.logger.error("Error adding companion %s to device: %s", contact_name, e)
-
-                        status = await self.bot.repeater_manager.get_contact_list_status()
-                        if status and status.get("is_near_limit", False):
-                            self.logger.warning(
-                                "Contact list near limit (%.1f%%) — managing capacity after add",
-                                status["usage_percentage"],
-                            )
-                            await self.bot.repeater_manager.manage_contact_list(auto_cleanup=True)
-                        else:
-                            self.logger.info(
-                                "Companion %s — contact list has adequate space after add attempt",
+                        # packet_hash dedupe: when absent, every NEW_CONTACT may still trigger add_contact.
+                        if track_result.duplicate_packet:
+                            self.logger.debug(
+                                "Skipping add_companion — duplicate packet_hash for %s (already tracked)",
                                 contact_name,
                             )
+                        else:
+                            self.logger.info(
+                                "Bot mode — adding companion %s to device with capacity management",
+                                contact_name,
+                            )
+                            try:
+                                self._ensure_contact_meshcore_path_encoding(contact_data)
+                                ok = await self.bot.repeater_manager.add_companion_from_contact_data(
+                                    contact_data, contact_name, public_key
+                                )
+                                if not ok:
+                                    self.logger.warning(
+                                        "Failed to add companion contact %s to device after managed add/retry",
+                                        contact_name,
+                                    )
+                            except Exception as e:
+                                self.logger.error("Error adding companion %s to device: %s", contact_name, e)
+
+                            status = await self.bot.repeater_manager.get_contact_list_status()
+                            if status and status.get("is_near_limit", False):
+                                self.logger.warning(
+                                    "Contact list near limit (%.1f%%) — managing capacity after add",
+                                    status["usage_percentage"],
+                                )
+                                await self.bot.repeater_manager.manage_contact_list(auto_cleanup=True)
+                            else:
+                                self.logger.info(
+                                    "Companion %s — contact list has adequate space after add attempt",
+                                    contact_name,
+                                )
                     else:
                         self.logger.warning(
                             "Unknown auto_manage_contacts value %r — treating as manual for %s",
