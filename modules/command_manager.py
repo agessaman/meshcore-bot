@@ -5,6 +5,7 @@ Handles all bot commands, keyword matching, and response generation
 """
 
 import asyncio
+from datetime import datetime
 import random
 import time
 from dataclasses import dataclass
@@ -1061,6 +1062,7 @@ class CommandManager:
         skip_user_rate_limit: bool = False,
         rate_limit_key: str | None = None,
         scope: str | None = None,
+        timestamp: datetime | None = None,
     ) -> bool:
         """Send a channel message using meshcore_py (optional flood scope).
 
@@ -1133,7 +1135,10 @@ class CommandManager:
             _max_retries = 2
             for _attempt in range(_max_retries + 1):
                 try:
-                    result = await self.bot.meshcore.commands.send_chan_msg(channel_num, content)
+                    result = await self.bot.meshcore.commands.send_chan_msg(
+                        channel_num, content,
+                        timestamp=int(timestamp.timestamp()) if timestamp else None,
+                    )
                 finally:
                     if not scope_is_global and hasattr(self.bot.meshcore.commands, "set_flood_scope"):
                         await self.bot.meshcore.commands.set_flood_scope("*")
