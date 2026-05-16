@@ -1605,6 +1605,9 @@ mqtt1_topic_packets = meshcore/{IATA}/{PUBLIC_KEY}/packets
 mqtt1_websocket_path = /mqtt
 mqtt1_client_id = 
 mqtt1_upload_packet_types = 
+# Optional per-broker JWT (inherit globals if omitted):
+# mqtt1_jwt_ttl_seconds = 3600           # JWT exp claim: iat + this many seconds
+# mqtt1_jwt_renewal_interval = 1800      # Refresh password this often; use < ttl; 0 = no renewal loop
 
 # MQTT Broker 2 - Let's Mesh Analyzer (EU)
 mqtt2_enabled = true
@@ -1627,7 +1630,12 @@ stats_in_status_enabled = true
 # Stats refresh interval (seconds)
 stats_refresh_interval = 300
 
-# JWT renewal interval (seconds, 0 = disabled)
+# JWT TTL in seconds: exp − iat in the MQTT auth token (default 86400 = 24 hours)
+jwt_ttl_seconds = 86400
+
+# JWT renewal interval (seconds): default cadence for proactive token refresh per broker.
+# 0 here makes the default broker renewal interval 0 (no renewal task unless a broker sets mqttN_jwt_renewal_interval > 0).
+# Tokens are still created at MQTT connect and on reconnect.
 jwt_renewal_interval = 86400
 
 # Health check interval (seconds, 0 = disabled)

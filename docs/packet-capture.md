@@ -129,12 +129,25 @@ Placeholders:
 - `{PUBLIC_KEY}` - Device public key (uppercase)
 - `{public_key}` - Device public key (lowercase)
 
-### Status Publishing
+### Status Publishing and MQTT auth (JWT)
+
+Two separate settings:
+
+- **`jwt_ttl_seconds`** (global) / **`mqttN_jwt_ttl_seconds`** (per broker): lifetime of the JWT in the `exp` claim (`exp = iat + ttl`). Use this when the broker enforces a maximum token lifetime (e.g. 60 minutes → `3600`).
+- **`jwt_renewal_interval`** (global) / **`mqttN_jwt_renewal_interval`** (per broker): how often the bot refreshes the MQTT password for that broker. Set **less than** the TTL (e.g. TTL 3600s and renewal every 1800s) so the connection does not outlive the token.
+
+Per-broker keys override the global values for that broker only. Omit them to inherit globals.
 
 ```ini
 stats_in_status_enabled = true    # Include device stats in status
 stats_refresh_interval = 300      # Publish status every 5 minutes
-jwt_renewal_interval = 86400      # Renew JWT every 24 hours
+
+jwt_ttl_seconds = 86400           # Default JWT exp − iat (24 hours) for all brokers unless overridden
+jwt_renewal_interval = 43200      # Default proactive refresh cadence (12 hours); 0 = no renewal task
+
+# Example on a broker that requires 60-minute tokens and refresh halfway through:
+# mqtt1_jwt_ttl_seconds = 3600
+# mqtt1_jwt_renewal_interval = 1800
 ```
 
 ---

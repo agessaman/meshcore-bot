@@ -50,7 +50,7 @@ class PacketCaptureService(BaseServicePlugin):
     Supports multiple MQTT brokers, auth tokens, and output to file.
     """
 
-    config_section = 'PacketCapture'  # Explicit config section
+    config_section = "PacketCapture"  # Explicit config section
     description = "Captures packets from MeshCore network and publishes to MQTT"
 
     def __init__(self, bot):
@@ -65,7 +65,7 @@ class PacketCaptureService(BaseServicePlugin):
         # Use self.meshcore property to get current connection
 
         # Setup logging (use bot's formatter and configuration)
-        self.logger = logging.getLogger('PacketCaptureService')
+        self.logger = logging.getLogger("PacketCaptureService")
         self.logger.setLevel(bot.logger.level)
 
         # Only setup handlers if none exist to prevent duplicates
@@ -82,30 +82,32 @@ class PacketCaptureService(BaseServicePlugin):
             if not bot_formatter:
                 try:
                     import colorlog
-                    colored = (bot.config.getboolean('Logging', 'colored_output', fallback=True)
-                               if bot.config.has_section('Logging') else True)
+
+                    colored = (
+                        bot.config.getboolean("Logging", "colored_output", fallback=True)
+                        if bot.config.has_section("Logging")
+                        else True
+                    )
                     if colored:
                         bot_formatter = colorlog.ColoredFormatter(
-                            '%(log_color)s%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                            datefmt='%Y-%m-%d %H:%M:%S',
+                            "%(log_color)s%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+                            datefmt="%Y-%m-%d %H:%M:%S",
                             log_colors={
-                                'DEBUG': 'cyan',
-                                'INFO': 'green',
-                                'WARNING': 'yellow',
-                                'ERROR': 'red',
-                                'CRITICAL': 'red,bg_white',
-                            }
+                                "DEBUG": "cyan",
+                                "INFO": "green",
+                                "WARNING": "yellow",
+                                "ERROR": "red",
+                                "CRITICAL": "red,bg_white",
+                            },
                         )
                     else:
                         bot_formatter = logging.Formatter(
-                            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                            datefmt='%Y-%m-%d %H:%M:%S'
+                            "%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
                         )
                 except ImportError:
                     # Fallback if colorlog not available
                     bot_formatter = logging.Formatter(
-                        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                        datefmt='%Y-%m-%d %H:%M:%S'
+                        "%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
                     )
 
             # Add console handler with bot's formatter
@@ -131,8 +133,8 @@ class PacketCaptureService(BaseServicePlugin):
         self.mqtt_connected = False
 
         # Stats/status publishing
-        self.stats_status_enabled = self.get_config_bool('stats_in_status_enabled', True)
-        self.stats_refresh_interval = self.get_config_int('stats_refresh_interval', 300)
+        self.stats_status_enabled = self.get_config_bool("stats_in_status_enabled", True)
+        self.stats_refresh_interval = self.get_config_int("stats_refresh_interval", 300)
         self.latest_stats = None
         self.last_stats_fetch = 0
         self.stats_supported = False
@@ -146,12 +148,13 @@ class PacketCaptureService(BaseServicePlugin):
         self.background_tasks: list[asyncio.Task] = []
         self.should_exit = False
 
-        # JWT renewal (default: 12 hours, tokens valid for 24 hours)
-        self.jwt_renewal_interval = self.get_config_int('jwt_renewal_interval', 43200)
+        # JWT renewal (default: 12 hours) and JWT exp TTL (default: 24 hours; see jwt_ttl_seconds)
+        self.jwt_renewal_interval = self.get_config_int("jwt_renewal_interval", 43200)
+        self.jwt_ttl_seconds = self.get_config_int("jwt_ttl_seconds", 86400)
 
         # Health check
-        self.health_check_interval = self.get_config_int('health_check_interval', 30)
-        self.health_check_grace_period = self.get_config_int('health_check_grace_period', 2)
+        self.health_check_interval = self.get_config_int("health_check_interval", 30)
+        self.health_check_grace_period = self.get_config_int("health_check_grace_period", 2)
         self.health_check_failure_count = 0
 
         # Event subscriptions (track for cleanup)
@@ -174,28 +177,28 @@ class PacketCaptureService(BaseServicePlugin):
         config = self.bot.config
 
         # Check if enabled
-        self.enabled = config.getboolean('PacketCapture', 'enabled', fallback=False)
+        self.enabled = config.getboolean("PacketCapture", "enabled", fallback=False)
 
         # Output file
-        self.output_file = config.get('PacketCapture', 'output_file', fallback=None)
+        self.output_file = config.get("PacketCapture", "output_file", fallback=None)
 
         # Verbose/debug
-        self.verbose = config.getboolean('PacketCapture', 'verbose', fallback=False)
-        self.debug = config.getboolean('PacketCapture', 'debug', fallback=False)
+        self.verbose = config.getboolean("PacketCapture", "verbose", fallback=False)
+        self.debug = config.getboolean("PacketCapture", "debug", fallback=False)
 
         # MQTT configuration
-        self.mqtt_enabled = config.getboolean('PacketCapture', 'mqtt_enabled', fallback=True)
+        self.mqtt_enabled = config.getboolean("PacketCapture", "mqtt_enabled", fallback=True)
         self.mqtt_brokers = self._parse_mqtt_brokers(config)
 
         # Global IATA
-        self.global_iata = config.get('PacketCapture', 'iata', fallback='XYZ').lower()
+        self.global_iata = config.get("PacketCapture", "iata", fallback="XYZ").lower()
 
         # Owner information
-        self.owner_public_key = config.get('PacketCapture', 'owner_public_key', fallback=None)
-        self.owner_email = config.get('PacketCapture', 'owner_email', fallback=None)
+        self.owner_public_key = config.get("PacketCapture", "owner_public_key", fallback=None)
+        self.owner_email = config.get("PacketCapture", "owner_email", fallback=None)
 
         # Private key for auth tokens (fallback if device signing not available)
-        self.private_key_path = config.get('PacketCapture', 'private_key_path', fallback=None)
+        self.private_key_path = config.get("PacketCapture", "private_key_path", fallback=None)
         self.private_key_hex = None
         if self.private_key_path:
             self.private_key_hex = read_private_key_file(self.private_key_path)
@@ -203,26 +206,22 @@ class PacketCaptureService(BaseServicePlugin):
                 self.logger.warning(f"Could not load private key from {self.private_key_path}")
 
         # Auth token method preference
-        self.auth_token_method = config.get('PacketCapture', 'auth_token_method', fallback='device').lower()
+        self.auth_token_method = config.get("PacketCapture", "auth_token_method", fallback="device").lower()
         # 'device' = try on-device signing first, fallback to Python
         # 'python' = use Python signing only
 
         # RX_LOG vs RAW correlation (mirror meshcore-packet-capture RAW_DUPLICATE_WINDOW / RF_DATA_TIMEOUT)
-        self.raw_duplicate_window = config.getfloat(
-            'PacketCapture', 'raw_duplicate_window', fallback=2.0
-        )
-        self.rf_data_cache_timeout = config.getfloat(
-            'PacketCapture', 'rf_data_cache_timeout', fallback=15.0
-        )
+        self.raw_duplicate_window = config.getfloat("PacketCapture", "raw_duplicate_window", fallback=2.0)
+        self.rf_data_cache_timeout = config.getfloat("PacketCapture", "rf_data_cache_timeout", fallback=15.0)
 
         # Do not publish to MQTT when content hash is unknown (zeros) — unparseable / strict path reject
         self.mqtt_skip_unparseable_packets = config.getboolean(
-            'PacketCapture', 'mqtt_skip_unparseable_packets', fallback=True
+            "PacketCapture", "mqtt_skip_unparseable_packets", fallback=True
         )
 
         # Skip MQTT for ADVERT packets that fail Ed25519 verify (mesh payload corruption)
         self.advert_require_valid_signature = config.getboolean(
-            'PacketCapture', 'advert_require_valid_signature', fallback=False
+            "PacketCapture", "advert_require_valid_signature", fallback=False
         )
 
         # Note: Python signing can fetch private key from device if not provided via file
@@ -237,12 +236,10 @@ class PacketCaptureService(BaseServicePlugin):
         if current_time is None:
             current_time = time.time()
         self.rf_data_cache = {
-            k: v for k, v in self.rf_data_cache.items()
-            if current_time - v['timestamp'] < self.rf_data_cache_timeout
+            k: v for k, v in self.rf_data_cache.items() if current_time - v["timestamp"] < self.rf_data_cache_timeout
         }
         self.recent_rf_packets = {
-            k: v for k, v in self.recent_rf_packets.items()
-            if current_time - v < self.raw_duplicate_window
+            k: v for k, v in self.recent_rf_packets.items() if current_time - v < self.raw_duplicate_window
         }
 
     def _parse_mqtt_brokers(self, config) -> list[dict[str, Any]]:
@@ -256,49 +253,68 @@ class PacketCaptureService(BaseServicePlugin):
         """
         brokers = []
 
+        global_jwt_renewal = config.getint("PacketCapture", "jwt_renewal_interval", fallback=43200)
+        global_jwt_ttl = config.getint("PacketCapture", "jwt_ttl_seconds", fallback=86400)
+
         # Parse multiple brokers (mqtt1_*, mqtt2_*, etc.)
         broker_num = 1
         while True:
-            enabled_key = f'mqtt{broker_num}_enabled'
-            server_key = f'mqtt{broker_num}_server'
+            enabled_key = f"mqtt{broker_num}_enabled"
+            server_key = f"mqtt{broker_num}_server"
 
-            if not config.has_option('PacketCapture', server_key):
+            if not config.has_option("PacketCapture", server_key):
                 break
 
-            enabled = config.getboolean('PacketCapture', enabled_key, fallback=True)
+            enabled = config.getboolean("PacketCapture", enabled_key, fallback=True)
             if not enabled:
                 broker_num += 1
                 continue
 
             # Parse upload_packet_types: comma-separated list (e.g. "2,4"); empty/unset = upload all
-            upload_types_raw = config.get('PacketCapture', f'mqtt{broker_num}_upload_packet_types', fallback='').strip()
+            upload_types_raw = config.get("PacketCapture", f"mqtt{broker_num}_upload_packet_types", fallback="").strip()
             upload_packet_types = None
             if upload_types_raw:
-                upload_packet_types = frozenset(t.strip() for t in upload_types_raw.split(',') if t.strip())
+                upload_packet_types = frozenset(t.strip() for t in upload_types_raw.split(",") if t.strip())
                 if not upload_packet_types:
                     upload_packet_types = None
 
+            renew_key = f"mqtt{broker_num}_jwt_renewal_interval"
+            if config.has_option("PacketCapture", renew_key):
+                jwt_renewal_interval = config.getint("PacketCapture", renew_key)
+            else:
+                jwt_renewal_interval = global_jwt_renewal
+
+            ttl_key = f"mqtt{broker_num}_jwt_ttl_seconds"
+            if config.has_option("PacketCapture", ttl_key):
+                jwt_ttl_seconds = config.getint("PacketCapture", ttl_key)
+            else:
+                jwt_ttl_seconds = global_jwt_ttl
+
             broker = {
-                'enabled': True,
-                'host': config.get('PacketCapture', server_key, fallback='localhost'),
-                'port': config.getint('PacketCapture', f'mqtt{broker_num}_port', fallback=1883),
-                'username': config.get('PacketCapture', f'mqtt{broker_num}_username', fallback=None),
-                'password': config.get('PacketCapture', f'mqtt{broker_num}_password', fallback=None),
-                'topic_prefix': config.get('PacketCapture', f'mqtt{broker_num}_topic_prefix', fallback=None),
-                'topic_status': config.get('PacketCapture', f'mqtt{broker_num}_topic_status', fallback=None),
-                'topic_packets': config.get('PacketCapture', f'mqtt{broker_num}_topic_packets', fallback=None),
-                'use_auth_token': config.getboolean('PacketCapture', f'mqtt{broker_num}_use_auth_token', fallback=False),
-                'token_audience': config.get('PacketCapture', f'mqtt{broker_num}_token_audience', fallback=None),
-                'transport': config.get('PacketCapture', f'mqtt{broker_num}_transport', fallback='tcp').lower(),
-                'use_tls': config.getboolean('PacketCapture', f'mqtt{broker_num}_use_tls', fallback=False),
-                'websocket_path': config.get('PacketCapture', f'mqtt{broker_num}_websocket_path', fallback='/mqtt'),
-                'client_id': config.get('PacketCapture', f'mqtt{broker_num}_client_id', fallback=None),
-                'upload_packet_types': upload_packet_types,
+                "enabled": True,
+                "host": config.get("PacketCapture", server_key, fallback="localhost"),
+                "port": config.getint("PacketCapture", f"mqtt{broker_num}_port", fallback=1883),
+                "username": config.get("PacketCapture", f"mqtt{broker_num}_username", fallback=None),
+                "password": config.get("PacketCapture", f"mqtt{broker_num}_password", fallback=None),
+                "topic_prefix": config.get("PacketCapture", f"mqtt{broker_num}_topic_prefix", fallback=None),
+                "topic_status": config.get("PacketCapture", f"mqtt{broker_num}_topic_status", fallback=None),
+                "topic_packets": config.get("PacketCapture", f"mqtt{broker_num}_topic_packets", fallback=None),
+                "use_auth_token": config.getboolean(
+                    "PacketCapture", f"mqtt{broker_num}_use_auth_token", fallback=False
+                ),
+                "token_audience": config.get("PacketCapture", f"mqtt{broker_num}_token_audience", fallback=None),
+                "transport": config.get("PacketCapture", f"mqtt{broker_num}_transport", fallback="tcp").lower(),
+                "use_tls": config.getboolean("PacketCapture", f"mqtt{broker_num}_use_tls", fallback=False),
+                "websocket_path": config.get("PacketCapture", f"mqtt{broker_num}_websocket_path", fallback="/mqtt"),
+                "client_id": config.get("PacketCapture", f"mqtt{broker_num}_client_id", fallback=None),
+                "upload_packet_types": upload_packet_types,
+                "jwt_renewal_interval": jwt_renewal_interval,
+                "jwt_ttl_seconds": jwt_ttl_seconds,
             }
 
             # Set default topic_prefix if not set
-            if not broker['topic_prefix']:
-                broker['topic_prefix'] = 'meshcore/packets'
+            if not broker["topic_prefix"]:
+                broker["topic_prefix"] = "meshcore/packets"
 
             brokers.append(broker)
             broker_num += 1
@@ -315,7 +331,7 @@ class PacketCaptureService(BaseServicePlugin):
         Returns:
             bool: Config value or fallback.
         """
-        return self.bot.config.getboolean('PacketCapture', key, fallback=fallback)
+        return self.bot.config.getboolean("PacketCapture", key, fallback=fallback)
 
     def get_config_int(self, key: str, fallback: int = 0) -> int:
         """Get integer config value.
@@ -327,7 +343,7 @@ class PacketCaptureService(BaseServicePlugin):
         Returns:
             int: Config value or fallback.
         """
-        return self.bot.config.getint('PacketCapture', key, fallback=fallback)
+        return self.bot.config.getint("PacketCapture", key, fallback=fallback)
 
     def get_config_float(self, key: str, fallback: float = 0.0) -> float:
         """Get float config value.
@@ -339,9 +355,9 @@ class PacketCaptureService(BaseServicePlugin):
         Returns:
             float: Config value or fallback.
         """
-        return self.bot.config.getfloat('PacketCapture', key, fallback=fallback)
+        return self.bot.config.getfloat("PacketCapture", key, fallback=fallback)
 
-    def get_config_str(self, key: str, fallback: str = '') -> str:
+    def get_config_str(self, key: str, fallback: str = "") -> str:
         """Get string config value.
 
         Args:
@@ -351,7 +367,26 @@ class PacketCaptureService(BaseServicePlugin):
         Returns:
             str: Config value or fallback.
         """
-        return self.bot.config.get('PacketCapture', key, fallback=fallback)
+        return self.bot.config.get("PacketCapture", key, fallback=fallback)
+
+    def _auth_token_iat_exp(self, broker_config: dict[str, Any]) -> tuple[int, int]:
+        """Unix iat/exp for JWT payload (exp = iat + ttl). Non-positive TTL uses 86400s."""
+        iat = int(time.time())
+        ttl = int(broker_config.get("jwt_ttl_seconds", self.jwt_ttl_seconds))
+        if ttl <= 0:
+            ttl = 86400
+        return iat, iat + ttl
+
+    @staticmethod
+    def _jwt_ttl_log_phrase(ttl_seconds: int) -> str:
+        """Short TTL description for log lines."""
+        if ttl_seconds >= 3600 and ttl_seconds % 3600 == 0:
+            h = ttl_seconds // 3600
+            return f"{h} hours" if h != 1 else "1 hour"
+        if ttl_seconds >= 60 and ttl_seconds % 60 == 0:
+            m = ttl_seconds // 60
+            return f"{m} minutes" if m != 1 else "1 minute"
+        return f"{ttl_seconds}s"
 
     @property
     def meshcore(self):
@@ -395,7 +430,7 @@ class PacketCaptureService(BaseServicePlugin):
         # Open output file if specified
         if self.output_file:
             try:
-                self.output_handle = open(self.output_file, 'a')
+                self.output_handle = open(self.output_file, "a")
                 self.logger.info(f"Writing packets to: {self.output_file}")
             except Exception as e:
                 self.logger.error(f"Failed to open output file: {e}")
@@ -418,7 +453,9 @@ class PacketCaptureService(BaseServicePlugin):
 
         self.connected = True
         self._running = True
-        self.logger.info(f"Packet capture service started (MQTT: {'connected' if self.mqtt_connected else 'not connected'})")
+        self.logger.info(
+            f"Packet capture service started (MQTT: {'connected' if self.mqtt_connected else 'not connected'})"
+        )
 
     async def stop(self) -> None:
         """Stop the packet capture service.
@@ -444,8 +481,8 @@ class PacketCaptureService(BaseServicePlugin):
         # Disconnect MQTT
         for mqtt_client_info in self.mqtt_clients:
             try:
-                mqtt_client_info['client'].disconnect()
-                mqtt_client_info['client'].loop_stop()
+                mqtt_client_info["client"].disconnect()
+                mqtt_client_info["client"].loop_stop()
             except (AttributeError, RuntimeError, OSError) as e:
                 # Silently ignore expected errors during cleanup (client already disconnected, etc.)
                 self.logger.debug(f"Error disconnecting MQTT client during cleanup: {e}")
@@ -489,10 +526,7 @@ class PacketCaptureService(BaseServicePlugin):
         self.meshcore.subscribe(EventType.RX_LOG_DATA, on_rx_log_data)
         self.meshcore.subscribe(EventType.RAW_DATA, on_raw_data)
 
-        self.event_subscriptions = [
-            (EventType.RX_LOG_DATA, on_rx_log_data),
-            (EventType.RAW_DATA, on_raw_data)
-        ]
+        self.event_subscriptions = [(EventType.RX_LOG_DATA, on_rx_log_data), (EventType.RAW_DATA, on_raw_data)]
 
         self.logger.info("Packet capture event handlers registered")
 
@@ -505,22 +539,22 @@ class PacketCaptureService(BaseServicePlugin):
         """
         try:
             # Copy payload immediately to avoid segfault if event is freed
-            payload = copy.deepcopy(event.payload) if hasattr(event, 'payload') else None
+            payload = copy.deepcopy(event.payload) if hasattr(event, "payload") else None
             if payload is None:
                 self.logger.warning("RX log data event has no payload")
                 return
 
-            if 'snr' in payload:
+            if "snr" in payload:
                 # Try to get packet data - prefer 'payload' field, fallback to 'raw_hex'
                 # This matches the original script's logic exactly
                 raw_hex = None
 
                 # First, try the 'payload' field (already stripped of framing bytes)
-                if 'payload' in payload and payload['payload']:
-                    raw_hex = payload['payload']
+                if "payload" in payload and payload["payload"]:
+                    raw_hex = payload["payload"]
                 # Fallback to raw_hex with first 2 bytes stripped
-                elif 'raw_hex' in payload and payload['raw_hex']:
-                    raw_hex = payload['raw_hex'][4:]  # Skip first 2 bytes (4 hex chars)
+                elif "raw_hex" in payload and payload["raw_hex"]:
+                    raw_hex = payload["raw_hex"][4:]  # Skip first 2 bytes (4 hex chars)
 
                 if raw_hex:
                     if self.debug:
@@ -531,10 +565,10 @@ class PacketCaptureService(BaseServicePlugin):
                     current_time = time.time()
                     packet_prefix = raw_hex[:32] if len(raw_hex) >= 32 else raw_hex
                     self.rf_data_cache[packet_prefix] = {
-                        'snr': payload.get('snr'),
-                        'rssi': payload.get('rssi'),
-                        'timestamp': current_time,
-                        'payload_length': payload.get('payload_length'),
+                        "snr": payload.get("snr"),
+                        "rssi": payload.get("rssi"),
+                        "timestamp": current_time,
+                        "payload_length": payload.get("payload_length"),
                     }
                     self.recent_rf_packets[raw_hex.upper()] = current_time
                     self._prune_correlation_caches(current_time)
@@ -542,7 +576,9 @@ class PacketCaptureService(BaseServicePlugin):
                     # Process packet
                     await self.process_packet(raw_hex, payload, metadata)
                 else:
-                    self.logger.warning(f"RF log data missing both 'payload' and 'raw_hex' fields: {list(payload.keys())}")
+                    self.logger.warning(
+                        f"RF log data missing both 'payload' and 'raw_hex' fields: {list(payload.keys())}"
+                    )
 
         except Exception as e:
             self.logger.error(f"Error handling RX log data: {e}")
@@ -559,19 +595,19 @@ class PacketCaptureService(BaseServicePlugin):
         """
         try:
             # Copy payload immediately to avoid segfault if event is freed
-            payload = copy.deepcopy(event.payload) if hasattr(event, 'payload') else None
+            payload = copy.deepcopy(event.payload) if hasattr(event, "payload") else None
             if payload is None:
                 self.logger.warning("Raw data event has no payload")
                 return
 
             raw_hex_src = None
-            if hasattr(payload, 'data'):
+            if hasattr(payload, "data"):
                 raw_hex_src = payload.data
             elif isinstance(payload, dict):
-                if 'data' in payload:
-                    raw_hex_src = payload['data']
-                elif 'raw_hex' in payload:
-                    raw_hex_src = payload['raw_hex']
+                if "data" in payload:
+                    raw_hex_src = payload["data"]
+                elif "raw_hex" in payload:
+                    raw_hex_src = payload["raw_hex"]
 
             if raw_hex_src is None:
                 return
@@ -580,7 +616,7 @@ class PacketCaptureService(BaseServicePlugin):
                 raw_hex = raw_hex_src.hex()
             elif isinstance(raw_hex_src, str):
                 raw_hex = raw_hex_src
-                if raw_hex.startswith('0x'):
+                if raw_hex.startswith("0x"):
                     raw_hex = raw_hex[2:]
             else:
                 return
@@ -591,14 +627,11 @@ class PacketCaptureService(BaseServicePlugin):
             recent_rf_time = self.recent_rf_packets.get(raw_hex)
             if recent_rf_time is not None and (current_time - recent_rf_time) < self.raw_duplicate_window:
                 if self.debug:
-                    self.logger.debug(
-                        "Skipping RAW_DATA packet already processed from RX_LOG_DATA (duplicate raw hex)"
-                    )
+                    self.logger.debug("Skipping RAW_DATA packet already processed from RX_LOG_DATA (duplicate raw hex)")
                 return
 
             self.recent_rf_packets = {
-                k: v for k, v in self.recent_rf_packets.items()
-                if current_time - v < self.raw_duplicate_window
+                k: v for k, v in self.recent_rf_packets.items() if current_time - v < self.raw_duplicate_window
             }
 
             packet_prefix = raw_hex[:32] if len(raw_hex) >= 32 else raw_hex
@@ -611,18 +644,20 @@ class PacketCaptureService(BaseServicePlugin):
                 merged_payload = {}
 
             if rf_cached:
-                merged_payload.setdefault('snr', rf_cached.get('snr'))
-                merged_payload.setdefault('rssi', rf_cached.get('rssi'))
-                pl = merged_payload.get('payload_length')
+                merged_payload.setdefault("snr", rf_cached.get("snr"))
+                merged_payload.setdefault("rssi", rf_cached.get("rssi"))
+                pl = merged_payload.get("payload_length")
                 if pl is None:
-                    merged_payload['payload_length'] = rf_cached.get('payload_length')
+                    merged_payload["payload_length"] = rf_cached.get("payload_length")
 
             await self.process_packet(raw_hex, merged_payload, metadata)
 
         except Exception as e:
             self.logger.error(f"Error handling raw data: {e}")
 
-    def _format_packet_data(self, raw_hex: str, packet_info: dict[str, Any], payload: dict[str, Any], metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _format_packet_data(
+        self, raw_hex: str, packet_info: dict[str, Any], payload: dict[str, Any], metadata: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Format packet data to match original script's format_packet_data exactly.
 
         Args:
@@ -638,18 +673,12 @@ class PacketCaptureService(BaseServicePlugin):
         timestamp = current_time.isoformat()
 
         # Remove 0x prefix if present
-        clean_raw_hex = raw_hex.replace('0x', '').upper()
+        clean_raw_hex = raw_hex.replace("0x", "").upper()
         packet_len = len(clean_raw_hex) // 2  # Convert hex string to byte count
 
         # Map route type to single letter (matches original script)
-        route_map = {
-            "TRANSPORT_FLOOD": "F",
-            "FLOOD": "F",
-            "DIRECT": "D",
-            "TRANSPORT_DIRECT": "T",
-            "UNKNOWN": "U"
-        }
-        route = route_map.get(packet_info.get('route_type', 'UNKNOWN'), "U")
+        route_map = {"TRANSPORT_FLOOD": "F", "FLOOD": "F", "DIRECT": "D", "TRANSPORT_DIRECT": "T", "UNKNOWN": "U"}
+        route = route_map.get(packet_info.get("route_type", "UNKNOWN"), "U")
 
         # Map payload type to string number (matches original script)
         payload_type_map = {
@@ -669,23 +698,23 @@ class PacketCaptureService(BaseServicePlugin):
             "Type13": "13",
             "Type14": "14",
             "RAW_CUSTOM": "15",
-            "UNKNOWN": "0"
+            "UNKNOWN": "0",
         }
-        packet_type = payload_type_map.get(packet_info.get('payload_type', 'UNKNOWN'), "0")
+        packet_type = payload_type_map.get(packet_info.get("payload_type", "UNKNOWN"), "0")
 
         # MQTT payload_len: byte length of application payload after header/transport/path.
         # Subtract path *bytes*, not hop count (multi-byte path IDs); prefer decoded size.
-        firmware_payload_len = payload.get('payload_length')
-        decoded_ok = packet_info.get('payload_type', 'UNKNOWN') != 'UNKNOWN'
-        if decoded_ok and 'payload_bytes' in packet_info:
-            payload_len = str(packet_info['payload_bytes'])
+        firmware_payload_len = payload.get("payload_length")
+        decoded_ok = packet_info.get("payload_type", "UNKNOWN") != "UNKNOWN"
+        if decoded_ok and "payload_bytes" in packet_info:
+            payload_len = str(packet_info["payload_bytes"])
         elif firmware_payload_len is not None:
             payload_len = str(firmware_payload_len)
         else:
-            path_bytes = packet_info.get('path_byte_length')
+            path_bytes = packet_info.get("path_byte_length")
             if path_bytes is None:
-                path_bytes = packet_info.get('path_len', 0)
-            has_transport = packet_info.get('has_transport_codes', False)
+                path_bytes = packet_info.get("path_len", 0)
+            has_transport = packet_info.get("has_transport_codes", False)
             transport_bytes = 4 if has_transport else 0
             payload_len = str(max(0, packet_len - 1 - transport_bytes - 1 - path_bytes))
 
@@ -696,12 +725,12 @@ class PacketCaptureService(BaseServicePlugin):
 
         # Get device public key for origin_id
         origin_id = None
-        if self.meshcore and hasattr(self.meshcore, 'self_info'):
+        if self.meshcore and hasattr(self.meshcore, "self_info"):
             try:
                 self_info = self.meshcore.self_info
                 if isinstance(self_info, dict):
-                    origin_id = self_info.get('public_key', '')
-                elif hasattr(self_info, 'public_key'):
+                    origin_id = self_info.get("public_key", "")
+                elif hasattr(self_info, "public_key"):
                     origin_id = self_info.public_key
 
                 # Convert to hex string if bytes
@@ -713,29 +742,29 @@ class PacketCaptureService(BaseServicePlugin):
                 pass
 
         # Normalize origin_id to uppercase
-        origin_id = origin_id.replace('0x', '').replace(' ', '').upper() if origin_id else 'UNKNOWN'
+        origin_id = origin_id.replace("0x", "").replace(" ", "").upper() if origin_id else "UNKNOWN"
 
         # Extract RF data
-        snr = str(payload.get('snr', 'Unknown'))
-        rssi = str(payload.get('rssi', 'Unknown'))
+        snr = str(payload.get("snr", "Unknown"))
+        rssi = str(payload.get("rssi", "Unknown"))
 
         # Get packet hash from decoded packet_info — same clean bytes as the upload's "raw" field,
         # so this is always the correct hash (matches what other observers compute).
-        packet_hash = packet_info.get('packet_hash', '0000000000000000')
+        packet_hash = packet_info.get("packet_hash", "0000000000000000")
 
         # Only fall back to direct calculation if decode_packet didn't produce a hash
-        if packet_hash == '0000000000000000':
+        if packet_hash == "0000000000000000":
             try:
-                payload_type_value = packet_info.get('payload_type_value')
+                payload_type_value = packet_info.get("payload_type_value")
                 if payload_type_value is not None:
-                    if hasattr(payload_type_value, 'value'):
+                    if hasattr(payload_type_value, "value"):
                         payload_type_value = payload_type_value.value
                     payload_type_value = int(payload_type_value) & 0x0F
                 packet_hash = calculate_packet_hash(clean_raw_hex, payload_type_value)
             except Exception as e:
                 if self.debug:
                     self.logger.debug(f"Error calculating packet hash: {e}")
-                packet_hash = '0000000000000000'
+                packet_hash = "0000000000000000"
 
         # Build packet data structure (matches original script exactly)
         packet_data = {
@@ -753,22 +782,24 @@ class PacketCaptureService(BaseServicePlugin):
             "raw": clean_raw_hex,
             "SNR": snr,
             "RSSI": rssi,
-            "hash": packet_hash
+            "hash": packet_hash,
         }
 
         # Add optional fields from payload if present (score, duration, etc.)
-        if 'score' in payload:
-            packet_data['score'] = str(payload['score'])
-        if 'duration' in payload:
-            packet_data['duration'] = str(payload['duration'])
+        if "score" in payload:
+            packet_data["score"] = str(payload["score"])
+        if "duration" in payload:
+            packet_data["duration"] = str(payload["duration"])
 
         # Add path for route=D (matches original script)
-        if route == "D" and packet_info.get('path'):
-            packet_data["path"] = ",".join(packet_info['path'])
+        if route == "D" and packet_info.get("path"):
+            packet_data["path"] = ",".join(packet_info["path"])
 
         return packet_data
 
-    async def process_packet(self, raw_hex: str, payload: dict[str, Any], metadata: dict[str, Any] | None = None) -> None:
+    async def process_packet(
+        self, raw_hex: str, payload: dict[str, Any], metadata: dict[str, Any] | None = None
+    ) -> None:
         """Process a captured packet.
 
         Decodes the packet, formats it, writes to file, and publishes to MQTT.
@@ -787,50 +818,51 @@ class PacketCaptureService(BaseServicePlugin):
             # If decode failed, create minimal packet_info with defaults (matches original script)
             if not packet_info:
                 if self.debug:
-                    self.logger.debug(f"Packet {self.packet_count} decode failed, using defaults (raw_hex: {raw_hex[:50]}...)")
+                    self.logger.debug(
+                        f"Packet {self.packet_count} decode failed, using defaults (raw_hex: {raw_hex[:50]}...)"
+                    )
                 # Try to calculate packet hash even if decode failed (extract payload_type from header if possible)
-                packet_hash = '0000000000000000'
+                packet_hash = "0000000000000000"
                 payload_type_value = None
                 try:
                     # Try to extract payload type from header for hash calculation
-                    byte_data = bytes.fromhex(raw_hex.replace('0x', ''))
+                    byte_data = bytes.fromhex(raw_hex.replace("0x", ""))
                     if len(byte_data) >= 1:
                         header = byte_data[0]
                         payload_type_value = (header >> 2) & 0x0F
-                        packet_hash = calculate_packet_hash(raw_hex.replace('0x', ''), payload_type_value)
+                        packet_hash = calculate_packet_hash(raw_hex.replace("0x", ""), payload_type_value)
                 except Exception:
                     pass  # Use default hash if calculation fails
 
                 # Create minimal packet info with defaults (matches original script's format_packet_data)
                 packet_info = {
-                    'route_type': 'UNKNOWN',
-                    'payload_type': 'UNKNOWN',
-                    'payload_type_value': payload_type_value or 0,
-                    'payload_version': 0,
-                    'path_len': 0,
-                    'path_byte_length': 0,
-                    'path_hex': '',
-                    'path': [],
-                    'payload_hex': raw_hex.replace('0x', ''),
-                    'payload_bytes': len(raw_hex.replace('0x', '')) // 2,
-                    'raw_hex': raw_hex.replace('0x', ''),
-                    'packet_hash': packet_hash,
-                    'has_transport_codes': False,
-                    'transport_codes': None
+                    "route_type": "UNKNOWN",
+                    "payload_type": "UNKNOWN",
+                    "payload_type_value": payload_type_value or 0,
+                    "payload_version": 0,
+                    "path_len": 0,
+                    "path_byte_length": 0,
+                    "path_hex": "",
+                    "path": [],
+                    "payload_hex": raw_hex.replace("0x", ""),
+                    "payload_bytes": len(raw_hex.replace("0x", "")) // 2,
+                    "raw_hex": raw_hex.replace("0x", ""),
+                    "packet_hash": packet_hash,
+                    "has_transport_codes": False,
+                    "transport_codes": None,
                 }
 
             # Format packet data to match original script's format
             formatted_packet = self._format_packet_data(raw_hex, packet_info, payload, metadata)
 
             skip_mqtt_unparseable = (
-                self.mqtt_skip_unparseable_packets
-                and formatted_packet.get('hash') == '0000000000000000'
+                self.mqtt_skip_unparseable_packets and formatted_packet.get("hash") == "0000000000000000"
             )
 
             skip_mqtt_invalid_advert_signature = False
-            if self.advert_require_valid_signature and packet_info.get('payload_type') == PayloadType.ADVERT.name:
+            if self.advert_require_valid_signature and packet_info.get("payload_type") == PayloadType.ADVERT.name:
                 try:
-                    mesh_payload = bytes.fromhex(packet_info.get('payload_hex', ''))
+                    mesh_payload = bytes.fromhex(packet_info.get("payload_hex", ""))
                     if not verify_meshcore_advert_ed25519(mesh_payload):
                         skip_mqtt_invalid_advert_signature = True
                 except Exception:
@@ -840,7 +872,7 @@ class PacketCaptureService(BaseServicePlugin):
 
             # Write to file
             if self.output_handle:
-                self.output_handle.write(json.dumps(formatted_packet, default=str) + '\n')
+                self.output_handle.write(json.dumps(formatted_packet, default=str) + "\n")
                 self.output_handle.flush()
 
             # Publish to MQTT if enabled
@@ -871,7 +903,9 @@ class PacketCaptureService(BaseServicePlugin):
                 action = "Skipping"
             else:
                 action = "Captured"
-            self.logger.debug(f"📦 {action} packet #{self.packet_count}: {formatted_packet['route']} type {formatted_packet['packet_type']}, {formatted_packet['len']} bytes, SNR: {formatted_packet['SNR']}, RSSI: {formatted_packet['RSSI']}, hash: {formatted_packet['hash']} (MQTT: {publish_metrics['succeeded']}/{publish_metrics['attempted']})")
+            self.logger.debug(
+                f"📦 {action} packet #{self.packet_count}: {formatted_packet['route']} type {formatted_packet['packet_type']}, {formatted_packet['len']} bytes, SNR: {formatted_packet['SNR']}, RSSI: {formatted_packet['RSSI']}, hash: {formatted_packet['hash']} (MQTT: {publish_metrics['succeeded']}/{publish_metrics['attempted']})"
+            )
 
             # Output full packet data structure in debug mode only (matches original script)
             if self.debug:
@@ -893,7 +927,7 @@ class PacketCaptureService(BaseServicePlugin):
         """
         try:
             # Remove 0x prefix if present
-            if raw_hex.startswith('0x'):
+            if raw_hex.startswith("0x"):
                 raw_hex = raw_hex[2:]
 
             byte_data = bytes.fromhex(raw_hex)
@@ -915,15 +949,17 @@ class PacketCaptureService(BaseServicePlugin):
             if has_transport and len(byte_data) >= 5:
                 transport_bytes = byte_data[1:5]
                 transport_codes = {
-                    'code1': int.from_bytes(transport_bytes[0:2], byteorder='little'),
-                    'code2': int.from_bytes(transport_bytes[2:4], byteorder='little'),
-                    'hex': transport_bytes.hex()
+                    "code1": int.from_bytes(transport_bytes[0:2], byteorder="little"),
+                    "code2": int.from_bytes(transport_bytes[2:4], byteorder="little"),
+                    "hex": transport_bytes.hex(),
                 }
                 offset = 5
 
             if len(byte_data) <= offset:
                 if self.debug:
-                    self.logger.debug(f"Packet too short after transport codes ({len(byte_data)} bytes, offset {offset}), cannot decode")
+                    self.logger.debug(
+                        f"Packet too short after transport codes ({len(byte_data)} bytes, offset {offset}), cannot decode"
+                    )
                 return None
 
             path_len_byte = byte_data[offset]
@@ -931,27 +967,27 @@ class PacketCaptureService(BaseServicePlugin):
             path_parts = decode_path_len_byte(path_len_byte)
             if path_parts is None:
                 if self.debug:
-                    self.logger.debug(
-                        "Packet invalid path_len encoding (not firmware-valid), cannot decode"
-                    )
+                    self.logger.debug("Packet invalid path_len encoding (not firmware-valid), cannot decode")
                 return None
             path_byte_length, bytes_per_hop = path_parts
 
             if len(byte_data) < offset + path_byte_length:
                 if self.debug:
-                    self.logger.debug(f"Packet too short for path ({len(byte_data)} bytes, need {offset + path_byte_length}), cannot decode")
+                    self.logger.debug(
+                        f"Packet too short for path ({len(byte_data)} bytes, need {offset + path_byte_length}), cannot decode"
+                    )
                 return None
 
             # Extract path
-            path_bytes = byte_data[offset:offset + path_byte_length]
+            path_bytes = byte_data[offset : offset + path_byte_length]
             offset += path_byte_length
 
             # Chunk path by bytes_per_hop from packet (1, 2, or 3); odd remainder → 1-byte chunks
             hex_chars = bytes_per_hop * 2
             path_hex = path_bytes.hex()
-            path_nodes = [path_hex[i:i + hex_chars].upper() for i in range(0, len(path_hex), hex_chars)]
+            path_nodes = [path_hex[i : i + hex_chars].upper() for i in range(0, len(path_hex), hex_chars)]
             if (len(path_hex) % hex_chars) != 0 or not path_nodes:
-                path_nodes = [path_hex[i:i + 2].upper() for i in range(0, len(path_hex), 2)]
+                path_nodes = [path_hex[i : i + 2].upper() for i in range(0, len(path_hex), 2)]
 
             # Remaining data is payload
             packet_payload = byte_data[offset:]
@@ -972,38 +1008,39 @@ class PacketCaptureService(BaseServicePlugin):
 
             # Build packet info (matching original format)
             packet_info = {
-                'header': f"0x{header:02x}",
-                'route_type': route_type.name,
-                'route_type_value': route_type.value,
-                'payload_type': payload_type.name,
-                'payload_type_value': payload_type.value,
-                'payload_version': payload_version.value,
-                'path_len': len(path_nodes),
-                'path_byte_length': path_byte_length,
-                'bytes_per_hop': bytes_per_hop,
-                'path_hex': path_hex,
-                'path': path_nodes,  # For TRACE, RF path is SNR×4 per hop — replaced below
-                'payload_hex': packet_payload.hex(),
-                'payload_bytes': len(packet_payload),
-                'raw_hex': raw_hex,
-                'packet_hash': packet_hash,
-                'has_transport_codes': has_transport,
-                'transport_codes': transport_codes
+                "header": f"0x{header:02x}",
+                "route_type": route_type.name,
+                "route_type_value": route_type.value,
+                "payload_type": payload_type.name,
+                "payload_type_value": payload_type.value,
+                "payload_version": payload_version.value,
+                "path_len": len(path_nodes),
+                "path_byte_length": path_byte_length,
+                "bytes_per_hop": bytes_per_hop,
+                "path_hex": path_hex,
+                "path": path_nodes,  # For TRACE, RF path is SNR×4 per hop — replaced below
+                "payload_hex": packet_payload.hex(),
+                "payload_bytes": len(packet_payload),
+                "raw_hex": raw_hex,
+                "packet_hash": packet_hash,
+                "has_transport_codes": has_transport,
+                "transport_codes": transport_codes,
             }
 
             # TRACE: RF path bytes are SNR samples; commanded route is in payload[9:]
             if payload_type == PayloadType.TRACE:
-                packet_info['trace_snr_path_hex'] = path_hex.upper()
+                packet_info["trace_snr_path_hex"] = path_hex.upper()
                 trace_route = parse_trace_payload_route_hashes(packet_payload)
                 if trace_route:
-                    packet_info['path'] = trace_route
-                    packet_info['path_len'] = len(trace_route)
+                    packet_info["path"] = trace_route
+                    packet_info["path_len"] = len(trace_route)
 
             return packet_info
 
         except Exception as e:
             self.logger.debug(f"Error decoding packet: {e} (raw_hex: {raw_hex[:50]}...)")
             import traceback
+
             if self.debug:
                 self.logger.debug(f"Decode error traceback: {traceback.format_exc()}")
             return None
@@ -1015,24 +1052,24 @@ class PacketCaptureService(BaseServicePlugin):
             str: The name of the bot/device.
         """
         # Try to get name from device first
-        if self.meshcore and hasattr(self.meshcore, 'self_info'):
+        if self.meshcore and hasattr(self.meshcore, "self_info"):
             try:
                 self_info = self.meshcore.self_info
                 if isinstance(self_info, dict):
-                    device_name = self_info.get('name') or self_info.get('adv_name')
+                    device_name = self_info.get("name") or self_info.get("adv_name")
                     if device_name:
                         return device_name
-                elif hasattr(self_info, 'name'):
+                elif hasattr(self_info, "name"):
                     if self_info.name:
                         return self_info.name
-                elif hasattr(self_info, 'adv_name'):
+                elif hasattr(self_info, "adv_name"):
                     if self_info.adv_name:
                         return self_info.adv_name
             except Exception as e:
                 self.logger.debug(f"Could not get name from device: {e}")
 
         # Fallback to config
-        bot_name = self.bot.config.get('Bot', 'bot_name', fallback='MeshCoreBot')
+        bot_name = self.bot.config.get("Bot", "bot_name", fallback="MeshCoreBot")
         return bot_name
 
     def _require_mqtt(self) -> bool:
@@ -1042,10 +1079,7 @@ class PacketCaptureService(BaseServicePlugin):
             bool: True if MQTT requirements are met, False otherwise.
         """
         if mqtt is None:
-            self.logger.warning(
-                "MQTT support not available. Install paho-mqtt: "
-                "pip install paho-mqtt"
-            )
+            self.logger.warning("MQTT support not available. Install paho-mqtt: pip install paho-mqtt")
             return False
         return True
 
@@ -1061,27 +1095,24 @@ class PacketCaptureService(BaseServicePlugin):
         bot_name = self._get_bot_name()
 
         for broker_config in self.mqtt_brokers:
-            if not broker_config.get('enabled', True):
+            if not broker_config.get("enabled", True):
                 continue
 
             try:
                 # Use configured client_id, or generate from bot name
-                client_id = broker_config.get('client_id')
+                client_id = broker_config.get("client_id")
                 if not client_id:
                     # Sanitize bot name for MQTT client ID (alphanumeric and hyphens only)
-                    safe_name = ''.join(c if c.isalnum() or c == '-' else '-' for c in bot_name)
+                    safe_name = "".join(c if c.isalnum() or c == "-" else "-" for c in bot_name)
                     client_id = f"{safe_name}-packet-capture-{os.getpid()}"
 
                 # Create client based on transport type
-                transport = broker_config.get('transport', 'tcp').lower()
-                if transport == 'websockets':
+                transport = broker_config.get("transport", "tcp").lower()
+                if transport == "websockets":
                     try:
-                        client = mqtt.Client(
-                            client_id=client_id,
-                            transport='websockets'
-                        )
+                        client = mqtt.Client(client_id=client_id, transport="websockets")
                         # Set WebSocket path (must be done before connect)
-                        ws_path = broker_config.get('websocket_path', '/mqtt')
+                        ws_path = broker_config.get("websocket_path", "/mqtt")
                         client.ws_set_options(path=ws_path, headers=None)
                     except Exception as e:
                         self.logger.error(f"WebSockets transport not available: {e}")
@@ -1093,9 +1124,10 @@ class PacketCaptureService(BaseServicePlugin):
                 client.reconnect_delay_set(min_delay=1, max_delay=120)
 
                 # Set TLS if enabled
-                if broker_config.get('use_tls', False):
+                if broker_config.get("use_tls", False):
                     try:
                         import ssl
+
                         # For WebSockets with TLS (WSS), we need to set TLS on the client
                         # The TLS handshake happens during the WebSocket upgrade
                         client.tls_set(cert_reqs=ssl.CERT_NONE)  # Allow self-signed certs
@@ -1105,22 +1137,22 @@ class PacketCaptureService(BaseServicePlugin):
                         self.logger.warning(f"TLS setup failed for {broker_config['host']}: {e}")
 
                 # Set username/password if provided
-                username = broker_config.get('username')
-                password = broker_config.get('password')
+                username = broker_config.get("username")
+                password = broker_config.get("password")
 
-                if broker_config.get('use_auth_token'):
+                if broker_config.get("use_auth_token"):
                     # Use auth token with audience if specified
-                    token_audience = broker_config.get('token_audience') or broker_config['host']
+                    token_audience = broker_config.get("token_audience") or broker_config["host"]
 
                     # Get device's public key (from self_info) - this is what we use for username and JWT publicKey
                     # The owner_public_key is ONLY for the 'owner' field in the JWT payload
                     device_public_key_hex = None
-                    if self.meshcore and hasattr(self.meshcore, 'self_info'):
+                    if self.meshcore and hasattr(self.meshcore, "self_info"):
                         try:
                             self_info = self.meshcore.self_info
                             if isinstance(self_info, dict):
-                                device_public_key_hex = self_info.get('public_key', '')
-                            elif hasattr(self_info, 'public_key'):
+                                device_public_key_hex = self_info.get("public_key", "")
+                            elif hasattr(self_info, "public_key"):
                                 device_public_key_hex = self_info.public_key
 
                             # Convert to hex string if bytes
@@ -1132,13 +1164,13 @@ class PacketCaptureService(BaseServicePlugin):
                             self.logger.debug(f"Could not get public key from device: {e}")
 
                     if not device_public_key_hex:
-                        self.logger.warning(f"No device public key available for auth token (broker: {broker_config['host']})")
+                        self.logger.warning(
+                            f"No device public key available for auth token (broker: {broker_config['host']})"
+                        )
                         continue
 
                     # Create auth token (tries on-device signing first if available)
-                    use_device = (self.auth_token_method == 'device' and
-                                 self.meshcore and
-                                 self.meshcore.is_connected)
+                    use_device = self.auth_token_method == "device" and self.meshcore and self.meshcore.is_connected
 
                     # For Python signing, we still need meshcore_instance to fetch the private key
                     # The use_device flag only controls whether we try on-device signing first
@@ -1149,21 +1181,26 @@ class PacketCaptureService(BaseServicePlugin):
                         if not username:
                             username = f"v1_{device_public_key_hex.upper()}"
 
+                        iat, exp = self._auth_token_iat_exp(broker_config)
+                        ttl_used = exp - iat
                         token = await create_auth_token_async(
                             meshcore_instance=meshcore_for_key_fetch,
                             public_key_hex=device_public_key_hex,  # Device's actual public key (for JWT publicKey field)
                             private_key_hex=self.private_key_hex,
                             iata=self.global_iata,
+                            timestamp=iat,
                             audience=token_audience,
+                            exp=exp,
                             owner_public_key=self.owner_public_key,  # Owner's key (only for 'owner' field in JWT)
                             owner_email=self.owner_email,
-                            use_device=use_device
+                            use_device=use_device,
                         )
                         if token:
                             password = token
+                            ttl_phrase = self._jwt_ttl_log_phrase(ttl_used)
                             self.logger.debug(
                                 f"Created auth token for {broker_config['host']} "
-                                f"(username: {username}, valid for 24 hours) "
+                                f"(username: {username}, TTL {ttl_phrase}) "
                                 f"using {'device' if use_device else 'Python'} signing"
                             )
                         else:
@@ -1178,22 +1215,22 @@ class PacketCaptureService(BaseServicePlugin):
                 def on_connect(client, userdata, flags, rc, properties=None):
                     cfg = None
                     for mqtt_info in self.mqtt_clients:
-                        if mqtt_info['client'] == client:
-                            cfg = mqtt_info['config']
+                        if mqtt_info["client"] == client:
+                            cfg = mqtt_info["config"]
                             break
                     if cfg is None:
                         return
-                    tr = cfg.get('transport', 'tcp').lower()
-                    host, port = cfg['host'], cfg['port']
+                    tr = cfg.get("transport", "tcp").lower()
+                    host, port = cfg["host"], cfg["port"]
                     if rc == 0:
                         self.logger.info(f"✓ Connected to MQTT broker: {host}:{port} ({tr})")
                         # Track connection per broker
                         for mqtt_info in self.mqtt_clients:
-                            if mqtt_info['client'] == client:
-                                mqtt_info['connected'] = True
+                            if mqtt_info["client"] == client:
+                                mqtt_info["connected"] = True
                                 break
                         # Set global connected flag if any broker is connected
-                        self.mqtt_connected = any(m.get('connected', False) for m in self.mqtt_clients)
+                        self.mqtt_connected = any(m.get("connected", False) for m in self.mqtt_clients)
                     else:
                         # MQTT error codes: 0=success, 1=protocol, 2=client, 3=network, 4=transport, 5=auth
                         error_messages = {
@@ -1201,42 +1238,40 @@ class PacketCaptureService(BaseServicePlugin):
                             2: "client identifier rejected",
                             3: "server unavailable",
                             4: "bad username or password",
-                            5: "not authorized"
+                            5: "not authorized",
                         }
                         error_msg = error_messages.get(rc, f"unknown error ({rc})")
-                        self.logger.error(
-                            f"✗ Failed to connect to MQTT broker {host}: {rc} ({error_msg})"
-                        )
+                        self.logger.error(f"✗ Failed to connect to MQTT broker {host}: {rc} ({error_msg})")
                         # Mark this broker as disconnected
                         for mqtt_info in self.mqtt_clients:
-                            if mqtt_info['client'] == client:
-                                mqtt_info['connected'] = False
+                            if mqtt_info["client"] == client:
+                                mqtt_info["connected"] = False
                                 break
                         # Update global flag
-                        self.mqtt_connected = any(m.get('connected', False) for m in self.mqtt_clients)
+                        self.mqtt_connected = any(m.get("connected", False) for m in self.mqtt_clients)
 
                 def on_disconnect(client, userdata, rc, properties=None):
                     # Mark this broker as disconnected
                     for mqtt_info in self.mqtt_clients:
-                        if mqtt_info['client'] == client:
-                            mqtt_info['connected'] = False
-                            cfg = mqtt_info['config']
-                            host = cfg['host']
+                        if mqtt_info["client"] == client:
+                            mqtt_info["connected"] = False
+                            cfg = mqtt_info["config"]
+                            host = cfg["host"]
                             if rc != 0:
                                 self.logger.warning(f"Disconnected from MQTT broker {host} (rc={rc})")
                             else:
                                 self.logger.debug(f"Disconnected from MQTT broker {host}")
                             break
                     # Update global flag
-                    self.mqtt_connected = any(m.get('connected', False) for m in self.mqtt_clients)
+                    self.mqtt_connected = any(m.get("connected", False) for m in self.mqtt_clients)
 
                 client.on_connect = on_connect
                 client.on_disconnect = on_disconnect
 
                 # Connect
                 try:
-                    host = broker_config['host']
-                    port = broker_config['port']
+                    host = broker_config["host"]
+                    port = broker_config["port"]
 
                     # Validate hostname (basic check)
                     if not host or not host.strip():
@@ -1246,6 +1281,7 @@ class PacketCaptureService(BaseServicePlugin):
                     # Try to resolve hostname first (for better error messages)
                     try:
                         import socket
+
                         socket.gethostbyname(host)
                     except socket.gaierror as dns_error:
                         # Only log DNS errors at debug level, not as errors
@@ -1257,16 +1293,20 @@ class PacketCaptureService(BaseServicePlugin):
                             self.logger.debug(f"Hostname resolution check for '{host}': {resolve_error}")
 
                     # Add client to list BEFORE starting the loop, so callbacks can find it
-                    self.mqtt_clients.append({
-                        'client': client,
-                        'config': broker_config,
-                        'connected': False  # Track connection status per broker
-                    })
+                    self.mqtt_clients.append(
+                        {
+                            "client": client,
+                            "config": broker_config,
+                            "connected": False,  # Track connection status per broker
+                        }
+                    )
 
-                    if transport == 'websockets':
+                    if transport == "websockets":
                         # WebSocket path already set via ws_set_options above
-                        ws_path = broker_config.get('websocket_path', '/mqtt')
-                        self.logger.debug(f"Connecting to MQTT broker {host}:{port} via WebSockets (path: {ws_path}, TLS: {broker_config.get('use_tls', False)})")
+                        ws_path = broker_config.get("websocket_path", "/mqtt")
+                        self.logger.debug(
+                            f"Connecting to MQTT broker {host}:{port} via WebSockets (path: {ws_path}, TLS: {broker_config.get('use_tls', False)})"
+                        )
                         # For WebSockets, connect without path parameter (path set via ws_set_options)
                         # Run connect in executor to avoid blocking the event loop
                         loop = asyncio.get_event_loop()
@@ -1276,7 +1316,9 @@ class PacketCaptureService(BaseServicePlugin):
                             # Connection failed, but don't block - let loop_start handle retries
                             self.logger.debug(f"Initial connect() call failed (non-blocking): {connect_error}")
                     else:
-                        self.logger.debug(f"Connecting to MQTT broker {host}:{port} via TCP (TLS: {broker_config.get('use_tls', False)})")
+                        self.logger.debug(
+                            f"Connecting to MQTT broker {host}:{port} via TCP (TLS: {broker_config.get('use_tls', False)})"
+                        )
                         # Run connect in executor to avoid blocking the event loop
                         loop = asyncio.get_event_loop()
                         try:
@@ -1299,12 +1341,18 @@ class PacketCaptureService(BaseServicePlugin):
                         if self.debug:
                             self.logger.debug(f"DNS/Connection error for '{broker_config['host']}': {error_msg}")
                         else:
-                            self.logger.warning(f"Could not connect to MQTT broker '{broker_config['host']}' (check network/DNS)")
+                            self.logger.warning(
+                                f"Could not connect to MQTT broker '{broker_config['host']}' (check network/DNS)"
+                            )
                     elif "Connection refused" in error_msg:
                         if self.debug:
-                            self.logger.debug(f"Connection refused by '{broker_config['host']}:{broker_config['port']}': {error_msg}")
+                            self.logger.debug(
+                                f"Connection refused by '{broker_config['host']}:{broker_config['port']}': {error_msg}"
+                            )
                         else:
-                            self.logger.warning(f"Connection refused by MQTT broker '{broker_config['host']}:{broker_config['port']}'")
+                            self.logger.warning(
+                                f"Connection refused by MQTT broker '{broker_config['host']}:{broker_config['port']}'"
+                            )
                     else:
                         if self.debug:
                             self.logger.debug(f"MQTT connection error for '{broker_config['host']}': {error_msg}")
@@ -1318,7 +1366,7 @@ class PacketCaptureService(BaseServicePlugin):
         await asyncio.sleep(2)
 
         # Log summary and publish initial status (matches original script)
-        connected_count = sum(1 for m in self.mqtt_clients if m.get('connected', False))
+        connected_count = sum(1 for m in self.mqtt_clients if m.get("connected", False))
         if connected_count > 0:
             self.logger.info(f"Connected to {connected_count} MQTT broker(s)")
             # Publish initial status with firmware version now that MQTT is connected (matches original script)
@@ -1327,7 +1375,7 @@ class PacketCaptureService(BaseServicePlugin):
         else:
             self.logger.warning("MQTT enabled but no brokers connected")
 
-    def _resolve_topic_template(self, template: str, packet_type: str = 'packet') -> str | None:
+    def _resolve_topic_template(self, template: str, packet_type: str = "packet") -> str | None:
         """Resolve topic template with placeholders.
 
         Args:
@@ -1343,12 +1391,12 @@ class PacketCaptureService(BaseServicePlugin):
         # Get device's public key (NOT owner's key - owner key is only for JWT 'owner' field)
         # This matches the original script which uses self.device_public_key from self_info
         device_public_key = None
-        if self.meshcore and hasattr(self.meshcore, 'self_info'):
+        if self.meshcore and hasattr(self.meshcore, "self_info"):
             try:
                 self_info = self.meshcore.self_info
                 if isinstance(self_info, dict):
-                    device_public_key = self_info.get('public_key', '')
-                elif hasattr(self_info, 'public_key'):
+                    device_public_key = self_info.get("public_key", "")
+                elif hasattr(self_info, "public_key"):
                     device_public_key = self_info.public_key
 
                 # Convert to hex string if bytes
@@ -1361,13 +1409,18 @@ class PacketCaptureService(BaseServicePlugin):
 
         # Normalize to uppercase (remove 0x prefix if present)
         if device_public_key:
-            device_public_key = device_public_key.replace('0x', '').replace(' ', '').upper()
+            device_public_key = device_public_key.replace("0x", "").replace(" ", "").upper()
 
         # Replace placeholders (matches original script's resolve_topic_template)
-        topic = template.replace('{IATA}', self.global_iata.upper())
-        topic = topic.replace('{iata}', self.global_iata.lower())
-        topic = topic.replace('{PUBLIC_KEY}', device_public_key if device_public_key and device_public_key != 'Unknown' else 'DEVICE')
-        topic = topic.replace('{public_key}', (device_public_key if device_public_key and device_public_key != 'Unknown' else 'DEVICE').lower())
+        topic = template.replace("{IATA}", self.global_iata.upper())
+        topic = topic.replace("{iata}", self.global_iata.lower())
+        topic = topic.replace(
+            "{PUBLIC_KEY}", device_public_key if device_public_key and device_public_key != "Unknown" else "DEVICE"
+        )
+        topic = topic.replace(
+            "{public_key}",
+            (device_public_key if device_public_key and device_public_key != "Unknown" else "DEVICE").lower(),
+        )
 
         return topic
 
@@ -1393,21 +1446,23 @@ class PacketCaptureService(BaseServicePlugin):
             self.logger.debug("No MQTT clients configured, skipping publish")
             return metrics
 
-        connected_count = sum(1 for m in self.mqtt_clients if m.get('connected', False))
+        connected_count = sum(1 for m in self.mqtt_clients if m.get("connected", False))
         self.logger.debug(f"Publishing packet to MQTT ({connected_count}/{len(self.mqtt_clients)} brokers connected)")
 
         for mqtt_client_info in self.mqtt_clients:
             # Only publish to connected brokers
-            if not mqtt_client_info.get('connected', False):
-                self.logger.debug(f"Skipping MQTT broker {mqtt_client_info['config'].get('host', 'unknown')} (not connected)")
+            if not mqtt_client_info.get("connected", False):
+                self.logger.debug(
+                    f"Skipping MQTT broker {mqtt_client_info['config'].get('host', 'unknown')} (not connected)"
+                )
                 continue
             try:
-                client = mqtt_client_info['client']
-                config = mqtt_client_info['config']
+                client = mqtt_client_info["client"]
+                config = mqtt_client_info["config"]
 
                 # Per-broker packet type filter: if set, only upload listed types (e.g. 2,4 = TXT_MSG, ADVERT)
-                upload_types = config.get('upload_packet_types')
-                if upload_types is not None and packet_info.get('packet_type', '') not in upload_types:
+                upload_types = config.get("upload_packet_types")
+                if upload_types is not None and packet_info.get("packet_type", "") not in upload_types:
                     metrics["skipped_by_filter"] = True
                     self.logger.debug(
                         f"Skipping MQTT broker {config.get('host', 'unknown')} (packet type {packet_info.get('packet_type')} not in {sorted(upload_types)})"
@@ -1416,12 +1471,12 @@ class PacketCaptureService(BaseServicePlugin):
 
                 # Determine topic
                 topic = None
-                if config.get('topic_packets'):
-                    topic = self._resolve_topic_template(config['topic_packets'], 'packet')
-                elif config.get('topic_prefix'):
+                if config.get("topic_packets"):
+                    topic = self._resolve_topic_template(config["topic_packets"], "packet")
+                elif config.get("topic_prefix"):
                     topic = f"{config['topic_prefix']}/packet"
                 else:
-                    topic = 'meshcore/packets/packet'
+                    topic = "meshcore/packets/packet"
 
                 if not topic:
                     continue
@@ -1440,7 +1495,9 @@ class PacketCaptureService(BaseServicePlugin):
                     metrics["succeeded"] += 1
                     self.logger.debug(f"Published packet to MQTT topic '{topic}' on {config['host']} (qos=0)")
                 else:
-                    self.logger.warning(f"Failed to publish packet to MQTT topic '{topic}' on {config['host']}: {result.rc} ({mqtt.error_string(result.rc)})")
+                    self.logger.warning(
+                        f"Failed to publish packet to MQTT topic '{topic}' on {config['host']}: {result.rc} ({mqtt.error_string(result.rc)})"
+                    )
 
             except Exception as e:
                 self.logger.error(f"Error publishing packet to MQTT on {config.get('host', 'unknown')}: {e}")
@@ -1456,7 +1513,7 @@ class PacketCaptureService(BaseServicePlugin):
     async def start_background_tasks(self) -> None:
         """Start background tasks.
 
-        Initializes scheduler for stats refresh, JWT renewal, health checks,
+        Initializes scheduler for stats refresh, per-broker JWT renewal, health checks,
         and MQTT reconnection monitor.
         """
         # Stats refresh scheduler (matches original script)
@@ -1464,10 +1521,12 @@ class PacketCaptureService(BaseServicePlugin):
             self.stats_update_task = asyncio.create_task(self.stats_refresh_scheduler())
             self.background_tasks.append(self.stats_update_task)
 
-        # JWT renewal scheduler
-        if self.jwt_renewal_interval > 0:
-            task = asyncio.create_task(self.jwt_renewal_scheduler())
-            self.background_tasks.append(task)
+        # Per-broker JWT renewal (only brokers with use_auth_token and jwt_renewal_interval > 0)
+        for mqtt_client_info in self.mqtt_clients:
+            cfg = mqtt_client_info["config"]
+            if cfg.get("use_auth_token") and cfg.get("jwt_renewal_interval", 0) > 0:
+                task = asyncio.create_task(self.jwt_renewal_scheduler_for_client(mqtt_client_info))
+                self.background_tasks.append(task)
 
         # Health check
         if self.health_check_interval > 0:
@@ -1491,7 +1550,7 @@ class PacketCaptureService(BaseServicePlugin):
             try:
                 # Only fetch stats when we're about to publish status
                 if self.mqtt_enabled:
-                    connected_count = sum(1 for m in self.mqtt_clients if m.get('connected', False))
+                    connected_count = sum(1 for m in self.mqtt_clients if m.get("connected", False))
                     if connected_count > 0:
                         await self.publish_status("online", refresh_stats=True)
             except asyncio.CancelledError:
@@ -1568,16 +1627,16 @@ class PacketCaptureService(BaseServicePlugin):
                 self.logger.debug(f"Device query payload: {payload}")
 
                 # Check firmware version format
-                fw_ver = payload.get('fw ver', 0)
+                fw_ver = payload.get("fw ver", 0)
                 self.logger.debug(f"Firmware version number: {fw_ver}")
 
                 if fw_ver >= 3:
                     # For newer firmware versions (v3+)
-                    model = payload.get('model', 'Unknown')
-                    version = payload.get('ver', 'Unknown')
-                    build_date = payload.get('fw_build', 'Unknown')
+                    model = payload.get("model", "Unknown")
+                    version = payload.get("ver", "Unknown")
+                    build_date = payload.get("fw_build", "Unknown")
                     # Remove 'v' prefix from version if it already has one
-                    if version.startswith('v'):
+                    if version.startswith("v"):
                         version = version[1:]
                     version_str = f"v{version} (Build: {build_date})"
                     self.logger.debug(f"New firmware format - Model: {model}, Version: {version_str}")
@@ -1710,12 +1769,12 @@ class PacketCaptureService(BaseServicePlugin):
 
         # Get device public key for origin_id
         device_public_key = None
-        if self.meshcore and hasattr(self.meshcore, 'self_info'):
+        if self.meshcore and hasattr(self.meshcore, "self_info"):
             try:
                 self_info = self.meshcore.self_info
                 if isinstance(self_info, dict):
-                    device_public_key = self_info.get('public_key', '')
-                elif hasattr(self_info, 'public_key'):
+                    device_public_key = self_info.get("public_key", "")
+                elif hasattr(self_info, "public_key"):
                     device_public_key = self_info.public_key
 
                 # Convert to hex string if bytes
@@ -1728,18 +1787,28 @@ class PacketCaptureService(BaseServicePlugin):
 
         # Normalize origin_id to uppercase
         if device_public_key:
-            device_public_key = device_public_key.replace('0x', '').replace(' ', '').upper()
+            device_public_key = device_public_key.replace("0x", "").replace(" ", "").upper()
         else:
-            device_public_key = 'DEVICE'
+            device_public_key = "DEVICE"
 
         # Get radio info if available
-        if not self.radio_info and self.meshcore and hasattr(self.meshcore, 'self_info'):
+        if not self.radio_info and self.meshcore and hasattr(self.meshcore, "self_info"):
             try:
                 self_info = self.meshcore.self_info
-                radio_freq = self_info.get('radio_freq', 0) if isinstance(self_info, dict) else getattr(self_info, 'radio_freq', 0)
-                radio_bw = self_info.get('radio_bw', 0) if isinstance(self_info, dict) else getattr(self_info, 'radio_bw', 0)
-                radio_sf = self_info.get('radio_sf', 0) if isinstance(self_info, dict) else getattr(self_info, 'radio_sf', 0)
-                radio_cr = self_info.get('radio_cr', 0) if isinstance(self_info, dict) else getattr(self_info, 'radio_cr', 0)
+                radio_freq = (
+                    self_info.get("radio_freq", 0)
+                    if isinstance(self_info, dict)
+                    else getattr(self_info, "radio_freq", 0)
+                )
+                radio_bw = (
+                    self_info.get("radio_bw", 0) if isinstance(self_info, dict) else getattr(self_info, "radio_bw", 0)
+                )
+                radio_sf = (
+                    self_info.get("radio_sf", 0) if isinstance(self_info, dict) else getattr(self_info, "radio_sf", 0)
+                )
+                radio_cr = (
+                    self_info.get("radio_cr", 0) if isinstance(self_info, dict) else getattr(self_info, "radio_cr", 0)
+                )
                 self.radio_info = f"{radio_freq},{radio_bw},{radio_sf},{radio_cr}"
             except Exception:
                 pass
@@ -1749,17 +1818,14 @@ class PacketCaptureService(BaseServicePlugin):
             "timestamp": datetime.now().isoformat(),
             "origin": device_name,
             "origin_id": device_public_key,
-            "model": firmware_info.get('model', 'unknown'),
-            "firmware_version": firmware_info.get('version', 'unknown'),
+            "model": firmware_info.get("model", "unknown"),
+            "firmware_version": firmware_info.get("version", "unknown"),
             "radio": self.radio_info or "unknown",
-            "client_version": self._load_client_version()
+            "client_version": self._load_client_version(),
         }
 
         # Attach stats (online status only) if supported and enabled
-        if (
-            status.lower() == "online"
-            and self.stats_status_enabled
-        ):
+        if status.lower() == "online" and self.stats_status_enabled:
             stats_payload = None
             if refresh_stats:
                 # Always force refresh stats right before publishing to ensure fresh data
@@ -1777,20 +1843,20 @@ class PacketCaptureService(BaseServicePlugin):
         # Publish status to all connected brokers
         for mqtt_client_info in self.mqtt_clients:
             # Only publish to connected brokers
-            if not mqtt_client_info.get('connected', False):
+            if not mqtt_client_info.get("connected", False):
                 continue
             try:
-                client = mqtt_client_info['client']
-                config = mqtt_client_info['config']
+                client = mqtt_client_info["client"]
+                config = mqtt_client_info["config"]
 
                 # Determine topic
                 topic = None
-                if config.get('topic_status'):
-                    topic = self._resolve_topic_template(config['topic_status'], 'status')
-                elif config.get('topic_prefix'):
+                if config.get("topic_status"):
+                    topic = self._resolve_topic_template(config["topic_status"], "status")
+                elif config.get("topic_prefix"):
                     topic = f"{config['topic_prefix']}/status"
                 else:
-                    topic = 'meshcore/status'
+                    topic = "meshcore/status"
 
                 if not topic:
                     continue
@@ -1808,93 +1874,90 @@ class PacketCaptureService(BaseServicePlugin):
             except Exception as e:
                 self.logger.error(f"Error publishing status to MQTT: {e}")
 
-    async def jwt_renewal_scheduler(self) -> None:
-        """Background task to proactively renew JWT tokens before expiration.
+    async def _renew_mqtt_auth_token(self, mqtt_client_info: dict[str, Any]) -> None:
+        """Mint a new auth token and apply it to one MQTT client (per-broker TTL)."""
+        config = mqtt_client_info["config"]
+        client = mqtt_client_info["client"]
+        broker_host = config.get("host", "unknown")
 
-        Renews auth tokens for all MQTT brokers that use token authentication.
-        Runs every jwt_renewal_interval seconds (default: 12 hours).
-        Tokens are valid for 24 hours, so this provides a 12-hour buffer.
-        """
-        if self.jwt_renewal_interval <= 0:
+        if not config.get("use_auth_token"):
+            return
+
+        self.logger.debug(f"Renewing auth token for MQTT broker {broker_host}...")
+
+        device_public_key_hex = None
+        if self.meshcore and hasattr(self.meshcore, "self_info"):
+            try:
+                self_info = self.meshcore.self_info
+                if isinstance(self_info, dict):
+                    device_public_key_hex = self_info.get("public_key", "")
+                elif hasattr(self_info, "public_key"):
+                    device_public_key_hex = self_info.public_key
+
+                if isinstance(device_public_key_hex, bytes):
+                    device_public_key_hex = device_public_key_hex.hex()
+                elif isinstance(device_public_key_hex, bytearray):
+                    device_public_key_hex = bytes(device_public_key_hex).hex()
+            except Exception as e:
+                self.logger.debug(f"Could not get public key from device: {e}")
+
+        if not device_public_key_hex:
+            self.logger.warning(f"No device public key available for token renewal (broker: {broker_host})")
+            return
+
+        token_audience = config.get("token_audience") or broker_host
+        username = f"v1_{device_public_key_hex.upper()}"
+
+        use_device = self.auth_token_method == "device" and self.meshcore and self.meshcore.is_connected
+        meshcore_for_key_fetch = self.meshcore if self.meshcore and self.meshcore.is_connected else None
+
+        try:
+            iat, exp = self._auth_token_iat_exp(config)
+            ttl_used = exp - iat
+            token = await create_auth_token_async(
+                meshcore_instance=meshcore_for_key_fetch,
+                public_key_hex=device_public_key_hex,
+                private_key_hex=self.private_key_hex,
+                iata=self.global_iata,
+                timestamp=iat,
+                audience=token_audience,
+                exp=exp,
+                owner_public_key=self.owner_public_key,
+                owner_email=self.owner_email,
+                use_device=use_device,
+            )
+
+            if token:
+                client.username_pw_set(username, token)
+                ttl_phrase = self._jwt_ttl_log_phrase(ttl_used)
+                self.logger.info(f"✓ Renewed auth token for MQTT broker {broker_host} (TTL {ttl_phrase})")
+            else:
+                self.logger.warning(f"Failed to renew auth token for MQTT broker {broker_host}")
+        except Exception as e:
+            self.logger.error(f"Error renewing token for MQTT broker {broker_host}: {e}")
+
+    async def jwt_renewal_scheduler_for_client(self, mqtt_client_info: dict[str, Any]) -> None:
+        """Background task: renew JWT on one broker every config jwt_renewal_interval seconds."""
+        config = mqtt_client_info["config"]
+        interval = int(config.get("jwt_renewal_interval", 0))
+        if interval <= 0:
             return
 
         while not self.should_exit:
             try:
-                await asyncio.sleep(self.jwt_renewal_interval)
-
+                if await self._wait_with_shutdown(float(interval)):
+                    break
                 if self.should_exit:
                     break
-
-                # Renew tokens for all MQTT brokers that use auth tokens
-                for mqtt_client_info in self.mqtt_clients:
-                    config = mqtt_client_info['config']
-                    client = mqtt_client_info['client']
-
-                    # Only renew for brokers that use auth tokens
-                    if not config.get('use_auth_token'):
-                        continue
-
-                    try:
-                        broker_host = config.get('host', 'unknown')
-                        self.logger.debug(f"Renewing auth token for MQTT broker {broker_host}...")
-
-                        # Get device's public key
-                        device_public_key_hex = None
-                        if self.meshcore and hasattr(self.meshcore, 'self_info'):
-                            try:
-                                self_info = self.meshcore.self_info
-                                if isinstance(self_info, dict):
-                                    device_public_key_hex = self_info.get('public_key', '')
-                                elif hasattr(self_info, 'public_key'):
-                                    device_public_key_hex = self_info.public_key
-
-                                # Convert to hex string if bytes
-                                if isinstance(device_public_key_hex, bytes):
-                                    device_public_key_hex = device_public_key_hex.hex()
-                                elif isinstance(device_public_key_hex, bytearray):
-                                    device_public_key_hex = bytes(device_public_key_hex).hex()
-                            except Exception as e:
-                                self.logger.debug(f"Could not get public key from device: {e}")
-
-                        if not device_public_key_hex:
-                            self.logger.warning(f"No device public key available for token renewal (broker: {broker_host})")
-                            continue
-
-                        # Create new auth token
-                        token_audience = config.get('token_audience') or broker_host
-                        username = f"v1_{device_public_key_hex.upper()}"
-
-                        use_device = (self.auth_token_method == 'device' and
-                                     self.meshcore and
-                                     self.meshcore.is_connected)
-                        meshcore_for_key_fetch = self.meshcore if self.meshcore and self.meshcore.is_connected else None
-
-                        token = await create_auth_token_async(
-                            meshcore_instance=meshcore_for_key_fetch,
-                            public_key_hex=device_public_key_hex,
-                            private_key_hex=self.private_key_hex,
-                            iata=self.global_iata,
-                            audience=token_audience,
-                            owner_public_key=self.owner_public_key,
-                            owner_email=self.owner_email,
-                            use_device=use_device
-                        )
-
-                        if token:
-                            # Update client credentials with new token
-                            client.username_pw_set(username, token)
-                            self.logger.info(f"✓ Renewed auth token for MQTT broker {broker_host} (valid for 24 hours)")
-                        else:
-                            self.logger.warning(f"Failed to renew auth token for MQTT broker {broker_host}")
-
-                    except Exception as e:
-                        self.logger.error(f"Error renewing token for MQTT broker {config.get('host', 'unknown')}: {e}")
-
+                if not config.get("use_auth_token"):
+                    continue
+                await self._renew_mqtt_auth_token(mqtt_client_info)
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                self.logger.error(f"Error in JWT renewal scheduler: {e}")
-                await asyncio.sleep(60)
+                self.logger.error(f"Error in JWT renewal scheduler ({config.get('host', 'unknown')}): {e}")
+                if await self._wait_with_shutdown(60):
+                    break
 
     async def health_check_loop(self) -> None:
         """Background task for health checks.
@@ -1942,9 +2005,9 @@ class PacketCaptureService(BaseServicePlugin):
 
                 # Check each broker's connection status
                 for mqtt_client_info in self.mqtt_clients:
-                    client = mqtt_client_info['client']
-                    config = mqtt_client_info['config']
-                    broker_host = config.get('host', 'unknown')
+                    client = mqtt_client_info["client"]
+                    config = mqtt_client_info["config"]
+                    broker_host = config.get("host", "unknown")
 
                     # Check if client is connected
                     if not client.is_connected():
@@ -1953,15 +2016,15 @@ class PacketCaptureService(BaseServicePlugin):
                             self.logger.info(f"MQTT broker {broker_host} is disconnected, attempting reconnection...")
 
                             # If using auth tokens, try to renew the token before reconnecting
-                            if config.get('use_auth_token'):
+                            if config.get("use_auth_token"):
                                 # Get device's public key for username
                                 device_public_key_hex = None
-                                if self.meshcore and hasattr(self.meshcore, 'self_info'):
+                                if self.meshcore and hasattr(self.meshcore, "self_info"):
                                     try:
                                         self_info = self.meshcore.self_info
                                         if isinstance(self_info, dict):
-                                            device_public_key_hex = self_info.get('public_key', '')
-                                        elif hasattr(self_info, 'public_key'):
+                                            device_public_key_hex = self_info.get("public_key", "")
+                                        elif hasattr(self_info, "public_key"):
                                             device_public_key_hex = self_info.public_key
 
                                         # Convert to hex string if bytes
@@ -1974,35 +2037,44 @@ class PacketCaptureService(BaseServicePlugin):
 
                                 if device_public_key_hex:
                                     # Create new auth token
-                                    token_audience = config.get('token_audience') or broker_host
+                                    token_audience = config.get("token_audience") or broker_host
                                     username = f"v1_{device_public_key_hex.upper()}"
 
-                                    use_device = (self.auth_token_method == 'device' and
-                                                 self.meshcore and
-                                                 self.meshcore.is_connected)
-                                    meshcore_for_key_fetch = self.meshcore if self.meshcore and self.meshcore.is_connected else None
+                                    use_device = (
+                                        self.auth_token_method == "device"
+                                        and self.meshcore
+                                        and self.meshcore.is_connected
+                                    )
+                                    meshcore_for_key_fetch = (
+                                        self.meshcore if self.meshcore and self.meshcore.is_connected else None
+                                    )
 
                                     try:
+                                        iat, exp = self._auth_token_iat_exp(config)
                                         token = await create_auth_token_async(
                                             meshcore_instance=meshcore_for_key_fetch,
                                             public_key_hex=device_public_key_hex,
                                             private_key_hex=self.private_key_hex,
                                             iata=self.global_iata,
+                                            timestamp=iat,
                                             audience=token_audience,
+                                            exp=exp,
                                             owner_public_key=self.owner_public_key,
                                             owner_email=self.owner_email,
-                                            use_device=use_device
+                                            use_device=use_device,
                                         )
                                         if token:
                                             # Update credentials
                                             client.username_pw_set(username, token)
-                                            self.logger.debug(f"Renewed auth token for {broker_host} before reconnection")
+                                            self.logger.debug(
+                                                f"Renewed auth token for {broker_host} before reconnection"
+                                            )
                                     except Exception as e:
                                         self.logger.debug(f"Error renewing auth token for {broker_host}: {e}")
 
                             # Attempt reconnection (non-blocking to avoid blocking event loop)
-                            config['host']
-                            config['port']
+                            config["host"]
+                            config["port"]
                             loop = asyncio.get_event_loop()
                             try:
                                 await loop.run_in_executor(None, client.reconnect)
@@ -2016,12 +2088,14 @@ class PacketCaptureService(BaseServicePlugin):
                             # Check if reconnection succeeded
                             if client.is_connected():
                                 self.logger.info(f"✓ Successfully reconnected to MQTT broker {broker_host}")
-                                mqtt_client_info['connected'] = True
+                                mqtt_client_info["connected"] = True
                                 # Update global flag
-                                self.mqtt_connected = any(m.get('connected', False) for m in self.mqtt_clients)
+                                self.mqtt_connected = any(m.get("connected", False) for m in self.mqtt_clients)
                             else:
                                 if self.debug:
-                                    self.logger.debug(f"Reconnection attempt to {broker_host} still in progress or failed")
+                                    self.logger.debug(
+                                        f"Reconnection attempt to {broker_host} still in progress or failed"
+                                    )
 
                         except Exception as e:
                             self.logger.debug(f"Error attempting MQTT reconnection to {broker_host}: {e}")
@@ -2031,4 +2105,3 @@ class PacketCaptureService(BaseServicePlugin):
             except Exception as e:
                 self.logger.error(f"Error in MQTT reconnection monitor: {e}")
                 await asyncio.sleep(60)
-
