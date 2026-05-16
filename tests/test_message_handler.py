@@ -1849,8 +1849,8 @@ class TestProcessMessageDmKeywordRouting:
     """Regression tests for DM keyword reply routing."""
 
     @pytest.mark.asyncio
-    async def test_keyword_reply_uses_prefix_sender_id_for_dm_send(self, handler):
-        """DM keyword flow should route reply using prefix sender identity."""
+    async def test_keyword_reply_uses_pubkey_for_dm_send(self, handler):
+        """DM keyword flow should route reply via send_response using pubkey identity."""
         handler.should_process_message = Mock(return_value=True)
         handler.bot.command_manager.check_keywords = Mock(return_value=[("test", "ack")])
         handler.bot.command_manager.match_randomline = Mock(return_value=None)

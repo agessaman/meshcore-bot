@@ -1455,7 +1455,7 @@ class CommandManager:
             rate_limit_key = self.get_rate_limit_key(message)
             if message.is_dm:
                 return await self.send_dm(
-                    message.sender_id or "",
+                    message.sender_pubkey or message.sender_id or "",
                     content,
                     command_id,
                     skip_user_rate_limit=skip_user_rate_limit,
@@ -1535,7 +1535,7 @@ class CommandManager:
                     await asyncio.sleep(sleep_time)
                 skip = skip_user_rate_limit_first if i == 0 else True
                 success = await self.send_dm(
-                    message.sender_id or "",
+                    message.sender_pubkey or message.sender_id or "",
                     chunk,
                     skip_user_rate_limit=skip,
                     rate_limit_key=rate_limit_key,
