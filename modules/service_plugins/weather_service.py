@@ -408,7 +408,8 @@ class WeatherService(BaseServicePlugin):
                 # Send to configured channel
                 await self.bot.command_manager.send_channel_message(
                     self.weather_channel,
-                    f"🌤️ Daily Weather: {forecast_text}"
+                    f"🌤️ Daily Weather: {forecast_text}",
+                    scope=self.get_mesh_flood_scope(),
                 )
                 self.logger.info(f"Daily weather forecast sent to {self.weather_channel}")
             else:
@@ -744,7 +745,8 @@ class WeatherService(BaseServicePlugin):
 
                     await self.bot.command_manager.send_channel_message(
                         self.alerts_channel,
-                        alert_text
+                        alert_text,
+                        scope=self.get_mesh_flood_scope(),
                     )
                     self.logger.info(f"Weather alert sent: {alert.get('title', 'Unknown')}")
 
@@ -973,7 +975,8 @@ class WeatherService(BaseServicePlugin):
 
                 await self.bot.command_manager.send_channel_message(
                     self.alerts_channel,
-                    message
+                    message,
+                    scope=self.get_mesh_flood_scope(),
                 )
                 self.logger.info(f"Lightning alert sent: {message}")
 

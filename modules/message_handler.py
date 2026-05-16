@@ -98,6 +98,120 @@ class MessageHandler:
                 return name
         return None
 
+    @staticmethod
+    def _scope_fields_from_packet_info(
+        packet_info: dict[str, Any] | None,
+    ) -> tuple[int | None, int | None, int | None, str]:
+        """Extract TC_FLOOD scope-match inputs from decode_meshcore_packet output."""
+        if not packet_info:
+            return None, None, None, ""
+        rt = packet_info.get("route_type")
+        if rt is not None and hasattr(rt, "value"):
+            rt = rt.value
+        pt = packet_info.get("payload_type")
+        if pt is not None and hasattr(pt, "value"):
+            pt = int(pt.value)
+        elif pt is not None:
+            pt = int(pt)
+        tc_code1 = None
+        transport_codes = packet_info.get("transport_codes")
+        if isinstance(transport_codes, dict):
+            tc_code1 = transport_codes.get("code1")
+        payload_hex = (packet_info.get("payload_hex") or "") or ""
+        return rt, tc_code1, pt, payload_hex
+
+    def _resolve_reply_scope_from_rf_data(
+        self,
+        recent_rf_data: dict[str, Any],
+        packet_info: dict[str, Any] | None,
+        scope_keys: dict[str, bytes],
+    ) -> str | None:
+        """Match incoming TC_FLOOD to flood_scopes, preferring decoded packet over stale cache."""
+        rt = recent_rf_data.get("route_type_int")
+        tc_code1 = recent_rf_data.get("transport_code1")
+        scope_payload_type = recent_rf_data.get("payload_type_int")
+        scope_payload_hex = recent_rf_data.get("scope_payload_hex") or ""
+
+        dec_rt, dec_tc, dec_pt, dec_hex = self._scope_fields_from_packet_info(packet_info)
+        used_decode_fallback = False
+        if dec_rt == 0:
+            if rt != 0:
+                used_decode_fallback = True
+            rt = 0
+            if dec_tc is not None:
+                if tc_code1 != dec_tc:
+                    used_decode_fallback = True
+                tc_code1 = dec_tc
+            if dec_pt is not None:
+                if scope_payload_type != dec_pt:
+                    used_decode_fallback = True
+                scope_payload_type = dec_pt
+            if dec_hex:
+                if scope_payload_hex != dec_hex:
+                    used_decode_fallback = True
+                scope_payload_hex = dec_hex
+
+        if used_decode_fallback:
+            self.logger.debug(
+                "TC_FLOOD scope fields from packet decode (cache had route_type=%s tc=%s)",
+                recent_rf_data.get("route_type_int"),
+                recent_rf_data.get("transport_code1"),
+            )
+
+        if not (
+            rt == 0
+            and tc_code1 is not None
+            and scope_payload_type is not None
+            and scope_payload_hex
+        ):
+            if scope_keys:
+                self.logger.debug(
+                    "Scope check: route_type=%s (need 0=TC_FLOOD), "
+                    "tc_code1=%s, payload_type=%s, payload_hex=%s",
+                    rt,
+                    "set" if tc_code1 is not None else "None",
+                    scope_payload_type,
+                    "set" if scope_payload_hex else "empty",
+                )
+            return None
+
+        try:
+            pkt_payload_bytes = bytes.fromhex(scope_payload_hex)
+        except ValueError:
+            self.logger.debug("Scope check: invalid scope_payload_hex on correlated RF data")
+            return None
+
+        reply_scope = self._match_scope(tc_code1, scope_payload_type, pkt_payload_bytes, scope_keys)
+        if reply_scope:
+            self.logger.info(
+                "Incoming TC_FLOOD matched scope '%s' (tc_code1=%s); reply will use same scope",
+                reply_scope,
+                tc_code1,
+            )
+        elif scope_keys:
+            self.logger.debug(
+                "TC_FLOOD scope not matched: tc_code1=%s payload_type=%s "
+                "(configured scopes: %s)",
+                tc_code1,
+                scope_payload_type,
+                ", ".join(sorted(scope_keys.keys())),
+            )
+        return reply_scope
+
+    def _effective_route_type_int(
+        self,
+        recent_rf_data: dict[str, Any] | None,
+        packet_info: dict[str, Any] | None,
+    ) -> int | None:
+        """Route type for allowlist gate, preferring decode when it indicates TC_FLOOD."""
+        if not recent_rf_data:
+            return None
+        rt = recent_rf_data.get("route_type_int")
+        dec_rt, _, _, _ = self._scope_fields_from_packet_info(packet_info)
+        if dec_rt == 0:
+            return 0
+        return rt
+
     def _is_old_cached_message(self, timestamp: Any) -> bool:
         """Check if a message timestamp indicates it's from before bot connection.
 
@@ -1949,6 +2063,7 @@ class MessageHandler:
                 extended_timeout = self.rf_data_timeout * 2  # Double the normal timeout
                 recent_rf_data = self.find_recent_rf_data(max_age_seconds=extended_timeout)
 
+            packet_info: dict[str, Any] | None = None
             if recent_rf_data and recent_rf_data.get("raw_hex"):
                 raw_hex = recent_rf_data["raw_hex"]
                 self.logger.info(f"🔍 FOUND RF DATA: {len(raw_hex)} chars, starts with: {raw_hex[:32]}...")
@@ -2026,27 +2141,10 @@ class MessageHandler:
             # use the same scope so it reaches the same scoped network segment.
             reply_scope: str | None = None
             if recent_rf_data:
-                rt = recent_rf_data.get("route_type_int")
-                tc_code1 = recent_rf_data.get("transport_code1")
-                scope_payload_type = recent_rf_data.get("payload_type_int")
-                scope_payload_hex = recent_rf_data.get("scope_payload_hex") or ""
                 scope_keys = getattr(getattr(self.bot, "command_manager", None), "flood_scope_keys", {})
-                if (
-                    rt == 0  # TRANSPORT_FLOOD (TC_FLOOD)
-                    and tc_code1 is not None
-                    and scope_payload_type is not None
-                    and scope_payload_hex
-                ):
-                    pkt_payload_bytes = bytes.fromhex(scope_payload_hex)
-                    reply_scope = self._match_scope(tc_code1, scope_payload_type, pkt_payload_bytes, scope_keys)
-                    if reply_scope:
-                        self.logger.info(f"Incoming TC_FLOOD matched scope '{reply_scope}'; reply will use same scope")
-                elif scope_keys:
-                    self.logger.debug(
-                        f"Scope check: route_type={rt} (need 0=TC_FLOOD), "
-                        f"tc_code1={'set' if tc_code1 is not None else 'None'}, "
-                        f"payload_type={scope_payload_type}"
-                    )
+                reply_scope = self._resolve_reply_scope_from_rf_data(
+                    recent_rf_data, packet_info, scope_keys
+                )
 
             # Allowlist enforcement: when flood_scopes is configured, only reply to
             # messages whose scope matched an entry.  Unscoped FLOOD is allowed only
@@ -2055,7 +2153,7 @@ class MessageHandler:
             scope_keys = getattr(cmd_mgr, "flood_scope_keys", {})
             if scope_keys and reply_scope is None:
                 allow_global = getattr(cmd_mgr, "flood_scope_allow_global", False)
-                rt_for_check = recent_rf_data.get("route_type_int") if recent_rf_data else None
+                rt_for_check = self._effective_route_type_int(recent_rf_data, packet_info)
                 if rt_for_check == 0:
                     self.logger.info("Ignoring TC_FLOOD: scope not in flood_scopes allowlist")
                     return

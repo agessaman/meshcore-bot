@@ -1677,6 +1677,10 @@ verbose = false
 # Enable weather service for scheduled forecasts and alert monitoring (true/false)
 enabled = false
 
+# Optional regional TC_FLOOD scope for mesh channel posts from this service.
+# Omit to use [Channels] outgoing_flood_scope_override, or global flood if neither is set.
+# flood_scope = #west
+
 # Daily weather forecast time
 # Format: HH:MM (24-hour format, e.g., "6:00" for 6 AM)
 # Or use "sunrise" or "sunset" for dynamic times based on your location
@@ -1764,6 +1768,9 @@ enabled = false
 # Polls USGS Earthquake API and posts alerts to a channel when quakes occur in the configured region
 enabled = false
 
+# Optional regional TC_FLOOD scope for mesh channel posts from this service.
+# flood_scope = #west
+
 # Channel to post earthquake alerts to
 channel = #general
 
@@ -1838,6 +1845,12 @@ port = 8765
 # Channel message:
 #   {"channel": "general", "message": "Hello from webhook!"}
 #
+# Optional per-request regional scope (overrides [Webhook] flood_scope below):
+#   {"channel": "general", "message": "Hello", "flood_scope": "#west"}
+#
+# Optional default regional scope for all webhook channel posts:
+# flood_scope = #west
+#
 # Direct message:
 #   {"dm_to": "SomeUser", "message": "Private message"}
 #
@@ -1849,6 +1862,9 @@ port = 8765
 # Watches NEW_CONTACT events; after the repeater is stored + geolocated in the database,
 # posts a message when a newly heard repeater shares a prefix with an existing repeater.
 enabled = false
+
+# Optional regional TC_FLOOD scope for mesh channel posts from this service.
+# flood_scope = #west
 
 # Channels to post alerts to (comma-separated).
 # Prefer this option if you want multiple channels.
@@ -1974,8 +1990,11 @@ enabled = false
 [DARC_MoWaS_Service]
 # Enable DARC MoWaS (Mobile Warning System) integration for receiving and posting warnings
 # For legal requirements and backend configuration, please read https://www.darc.de/index.php?id=58435 before operating.
-# Please also ensure to limit the scope of the messages to the revelant region (via Channels.flood_scope).
+# Limit mesh reach via flood_scope here or [Channels] outgoing_flood_scope_override / flood_scopes.
 enabled = false
+
+# Optional regional TC_FLOOD scope for mesh channel posts from this service.
+# flood_scope = #west
 
 # Listen address and port of webserver that receives the webhook POSTs from DARC MoWaS.
 # Must be accessible from the internet (or HAMNET) for MoWaS to reach it.

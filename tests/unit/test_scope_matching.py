@@ -85,3 +85,63 @@ def test_different_payload_type_does_not_match():
     tc = make_transport_code("#west", PAYLOAD_TYPE, PAYLOAD)
     result = MessageHandler._match_scope(tc, PAYLOAD_TYPE + 1, PAYLOAD, scope_keys)
     assert result is None
+
+
+def _make_handler_for_scope_resolve():
+    from unittest.mock import MagicMock
+
+    mh = object.__new__(MessageHandler)
+    mh.logger = MagicMock()
+    return mh
+
+
+def test_resolve_reply_scope_uses_decode_when_cache_route_type_wrong():
+    """Stale RF cache (FLOOD) + decoded TC_FLOOD still matches configured scope."""
+    scope_name = "#w-wa"
+    scope_keys = {scope_name: _scope_key(scope_name)}
+    tc = make_transport_code(scope_name, PAYLOAD_TYPE, PAYLOAD)
+    packet_info = {
+        "route_type": 0,
+        "transport_codes": {"code1": tc, "code2": 0},
+        "payload_type": PAYLOAD_TYPE,
+        "payload_hex": PAYLOAD.hex(),
+    }
+    recent_rf_data = {
+        "route_type_int": 1,
+        "transport_code1": None,
+        "payload_type_int": PAYLOAD_TYPE,
+        "scope_payload_hex": "",
+    }
+    mh = _make_handler_for_scope_resolve()
+    assert mh._resolve_reply_scope_from_rf_data(recent_rf_data, packet_info, scope_keys) == scope_name
+    mh.logger.debug.assert_any_call(
+        "TC_FLOOD scope fields from packet decode (cache had route_type=%s tc=%s)",
+        1,
+        None,
+    )
+
+
+def test_effective_route_type_prefers_decode_tc_flood():
+    mh = _make_handler_for_scope_resolve()
+    recent_rf_data = {"route_type_int": 1}
+    packet_info = {"route_type": 0, "transport_codes": {"code1": 1}}
+    assert mh._effective_route_type_int(recent_rf_data, packet_info) == 0
+
+
+def test_scope_fields_from_packet_info_enum_route_type():
+    class _EnumVal:
+        def __init__(self, value: int):
+            self.value = value
+
+    rt, tc, pt, hx = MessageHandler._scope_fields_from_packet_info(
+        {
+            "route_type": _EnumVal(0),
+            "payload_type": _EnumVal(PAYLOAD_TYPE),
+            "transport_codes": {"code1": 42},
+            "payload_hex": PAYLOAD.hex(),
+        }
+    )
+    assert rt == 0
+    assert tc == 42
+    assert pt == PAYLOAD_TYPE
+    assert hx == PAYLOAD.hex()

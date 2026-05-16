@@ -139,6 +139,25 @@ class TestFloodScopeKeysLoading:
         result = cm._load_flood_scope_keys()
         assert result == {}
 
+    def test_flood_scopes_in_bot_section_fallback(self):
+        config = configparser.ConfigParser()
+        config.add_section("Bot")
+        config.set("Bot", "bot_name", "TestBot")
+        config.set("Bot", "flood_scopes", "w-wa, *")
+        config.add_section("Channels")
+        config.set("Channels", "monitor_channels", "general")
+        bot = MagicMock()
+        bot.logger = Mock()
+        bot.config = config
+        cm = object.__new__(CommandManager)
+        cm.bot = bot
+        cm.logger = Mock()
+        cm.flood_scope_allow_global = False
+        result = cm._load_flood_scope_keys()
+        assert "#w-wa" in result
+        assert cm.flood_scope_allow_global is True
+        cm.logger.warning.assert_called_once()
+
     def test_star_excluded_from_scope_keys(self):
         bot = MagicMock()
         bot.logger = Mock()
@@ -371,3 +390,131 @@ async def test_send_channel_message_normalizes_bare_scope():
     calls = set_flood_scope.await_args_list
     scope_set = [c.args[0] for c in calls if c.args]
     assert "#west" in scope_set
+
+
+# ── Production #snoco scoped ping regression (2026-05-16) ─────────────────────
+
+# Captured from live TC_FLOOD channel ping on #bot: tc_code1=30332, GRP_TXT type 5.
+SNOCO_SCOPED_PING_PAYLOAD = bytes.fromhex(
+    "ca06625f8e52006332d36687f6499583e61e32753b17ade613e3a648adf8cbf7c1b03b"
+)
+SNOCO_SCOPED_PING_TC_CODE1 = 30332
+
+
+class TestSnocoScopedPingRegression:
+    """Regression for scoped ping → reply_scope #snoco → outbound send scope."""
+
+    def _load_user_style_scope_keys(self) -> dict[str, bytes]:
+        bot = MagicMock()
+        bot.logger = Mock()
+        bot.config = make_config(flood_scopes="*,wa,w-wa,sea,snoco,pnw,west")
+        cm = object.__new__(CommandManager)
+        cm.bot = bot
+        cm.logger = Mock()
+        cm.flood_scope_allow_global = False
+        return cm._load_flood_scope_keys()
+
+    def _production_rf_cache(self) -> dict:
+        return {
+            "route_type_int": 0,
+            "transport_code1": SNOCO_SCOPED_PING_TC_CODE1,
+            "payload_type_int": PAYLOAD_TYPE,
+            "scope_payload_hex": SNOCO_SCOPED_PING_PAYLOAD.hex(),
+            "raw_hex": (
+                "30dd147c76000040ca06625f8e52006332d36687f6499583e61e32753b17ade613e3a648adf8cbf7c1b03b"
+            ),
+        }
+
+    def _production_packet_info(self) -> dict:
+        return {
+            "route_type": 0,
+            "transport_codes": {"code1": SNOCO_SCOPED_PING_TC_CODE1, "code2": 0},
+            "payload_type": PAYLOAD_TYPE,
+            "payload_hex": SNOCO_SCOPED_PING_PAYLOAD.hex(),
+        }
+
+    def test_production_hmac_matches_snoco_not_w_wa(self):
+        scope_keys = self._load_user_style_scope_keys()
+        assert "#snoco" in scope_keys
+        assert MessageHandler._match_scope(
+            SNOCO_SCOPED_PING_TC_CODE1,
+            PAYLOAD_TYPE,
+            SNOCO_SCOPED_PING_PAYLOAD,
+            scope_keys,
+        ) == "#snoco"
+        assert MessageHandler._match_scope(
+            SNOCO_SCOPED_PING_TC_CODE1,
+            PAYLOAD_TYPE,
+            SNOCO_SCOPED_PING_PAYLOAD,
+            {"#w-wa": scope_keys["#w-wa"]},
+        ) is None
+
+    def test_rf_cache_resolves_reply_scope_snoco(self):
+        mh = object.__new__(MessageHandler)
+        mh.logger = Mock()
+        scope_keys = self._load_user_style_scope_keys()
+        reply_scope = mh._resolve_reply_scope_from_rf_data(
+            self._production_rf_cache(),
+            self._production_packet_info(),
+            scope_keys,
+        )
+        assert reply_scope == "#snoco"
+
+    def test_stale_flood_cache_plus_decode_still_resolves_snoco(self):
+        """Correlated RF row said FLOOD but decode says TC_FLOOD (pre-fix failure mode)."""
+        mh = object.__new__(MessageHandler)
+        mh.logger = Mock()
+        scope_keys = self._load_user_style_scope_keys()
+        stale_cache = {
+            "route_type_int": 1,
+            "transport_code1": None,
+            "payload_type_int": PAYLOAD_TYPE,
+            "scope_payload_hex": "",
+        }
+        assert (
+            mh._resolve_reply_scope_from_rf_data(
+                stale_cache,
+                self._production_packet_info(),
+                scope_keys,
+            )
+            == "#snoco"
+        )
+
+    @pytest.mark.asyncio
+    async def test_ping_reply_send_response_forwards_snoco_scope(self):
+        """MeshMessage built after scope match must pass scope=#snoco to send_channel_message."""
+        mh = object.__new__(MessageHandler)
+        mh.logger = Mock()
+        scope_keys = self._load_user_style_scope_keys()
+        reply_scope = mh._resolve_reply_scope_from_rf_data(
+            self._production_rf_cache(),
+            self._production_packet_info(),
+            scope_keys,
+        )
+        assert reply_scope == "#snoco"
+
+        bot = MagicMock()
+        bot.logger = Mock()
+        bot.config = make_config(flood_scopes="*,wa,w-wa,sea,snoco,pnw,west")
+        bot.connected = True
+        bot.meshcore = MagicMock()
+
+        cm = object.__new__(CommandManager)
+        cm.bot = bot
+        cm.logger = bot.logger
+        cm.flood_scope_keys = scope_keys
+        cm.flood_scope_allow_global = True
+        cm.send_channel_message = AsyncMock(return_value=True)
+
+        msg = MeshMessage(
+            content="Ping",
+            channel="#bot",
+            is_dm=False,
+            sender_id="HOWL",
+            reply_scope=reply_scope,
+        )
+        await cm.send_response(msg, "Pong!")
+
+        cm.send_channel_message.assert_awaited_once()
+        _, kwargs = cm.send_channel_message.call_args
+        assert kwargs.get("scope") == "#snoco"

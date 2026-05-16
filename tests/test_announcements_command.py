@@ -336,6 +336,23 @@ class TestExecute:
         assert result is True
         bot.command_manager.send_channel_message.assert_called_once()
 
+    def test_announcement_passes_reply_scope_to_channel_send(self):
+        from unittest.mock import AsyncMock
+        bot = _make_bot(acl_keys=[VALID_PUBKEY], triggers={"welcome": "Hello!"})
+        bot.command_manager.send_channel_message = AsyncMock(return_value=True)
+        cmd = AnnouncementsCommand(bot)
+        cmd.send_response = AsyncMock(return_value=True)
+        msg = mock_message(
+            content="announce welcome",
+            is_dm=True,
+            sender_pubkey=VALID_PUBKEY,
+            reply_scope="#west",
+        )
+        import asyncio
+        asyncio.run(cmd.execute(msg))
+        _, kwargs = bot.command_manager.send_channel_message.call_args
+        assert kwargs.get("scope") == "#west"
+
     def test_failed_announcement_send(self):
         from unittest.mock import AsyncMock
         bot = _make_bot(acl_keys=[VALID_PUBKEY], triggers={"welcome": "Hello!"})
