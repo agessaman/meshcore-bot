@@ -6,6 +6,7 @@ Handles scheduled messages and timing
 
 import asyncio
 import datetime
+import hashlib
 import json
 import os
 import sqlite3
@@ -15,16 +16,17 @@ from pathlib import Path
 from typing import Any, Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from meshcore.events import EventType
 
 from .maintenance import MaintenanceRunner
+from .scheduled_message_cron import (
+    is_valid_legacy_hhmm,
+    parse_schedule_key,
+    parse_scheduled_message_value,
+)
 from .security_utils import validate_external_url
 from .utils import decode_escape_sequences, format_keyword_response_with_placeholders, get_config_timezone
-
-# process_message_queue may await long per-feed intervals across many queued items; 30s is too short.
-_FEED_MESSAGE_QUEUE_FUTURE_TIMEOUT = 600
 
 
 class MessageScheduler:
@@ -73,33 +75,57 @@ class MessageScheduler:
 
         if self.bot.config.has_section('Scheduled_Messages'):
             self.logger.info("Found Scheduled_Messages section")
-            for time_str, message_info in self.bot.config.items('Scheduled_Messages'):
-                self.logger.info(f"Processing scheduled message: '{time_str}' -> '{message_info}'")
+            for schedule_key, message_info in self.bot.config.items('Scheduled_Messages'):
+                self.logger.info(f"Processing scheduled message: '{schedule_key}' -> '{message_info}'")
                 try:
-                    # Validate time format first
-                    if not self._is_valid_time_format(time_str):
-                        self.logger.warning(f"Invalid time format '{time_str}' for scheduled message: {message_info}")
+                    parsed = parse_schedule_key(schedule_key, tz)
+                    if parsed.trigger is None:
+                        self.logger.warning(
+                            f"Invalid schedule '{schedule_key}' for scheduled message: {message_info}"
+                        )
                         continue
 
-                    channel, message = message_info.split(':', 1)
-                    channel = channel.strip()
-                    message = decode_escape_sequences(message.strip())
-                    hour = int(time_str[:2])
-                    minute = int(time_str[2:])
+                    if parsed.is_deprecated_hhmm:
+                        hh = int(schedule_key[:2])
+                        mm = int(schedule_key[2:])
+                        cron_suggestion = f"{mm} {hh} * * *"
+                        self.logger.warning(
+                            "Scheduled_Messages key %r uses deprecated HHMM daily format; "
+                            "migrate to 5-field cron (minute hour dom mon dow), e.g. %r. "
+                            "HHMM support will be removed in a future release.",
+                            schedule_key,
+                            cron_suggestion,
+                        )
+
+                    channel, message, scope = parse_scheduled_message_value(message_info)
+                    message = decode_escape_sequences(message)
+
+                    job_id = "schedmsg_" + hashlib.sha256(
+                        f"{schedule_key}\0{channel}\0{scope or ''}\0{message}".encode()
+                    ).hexdigest()[:24]
 
                     self._apscheduler.add_job(
                         self.send_scheduled_message,
-                        CronTrigger(hour=hour, minute=minute),
+                        parsed.trigger,
                         args=[channel, message],
-                        id=f"msg_{time_str}_{channel}",
+                        kwargs={"schedule_key": schedule_key, "scope": scope},
+                        id=job_id,
                         replace_existing=True,
                     )
-                    self.scheduled_messages[time_str] = (channel, message)
-                    self.logger.info(f"Scheduled message: {hour:02d}:{minute:02d} -> {channel}: {message}")
+                    self.scheduled_messages[schedule_key] = (
+                        channel,
+                        message,
+                        parsed.display_label,
+                        scope,
+                    )
+                    scope_note = f" scope={scope}" if scope else ""
+                    self.logger.info(
+                        f"Scheduled message: {parsed.display_label} -> {channel}{scope_note}: {message}"
+                    )
                 except ValueError:
                     self.logger.warning(f"Invalid scheduled message format: {message_info}")
                 except Exception as e:
-                    self.logger.warning(f"Error setting up scheduled message '{time_str}': {e}")
+                    self.logger.warning(f"Error setting up scheduled message '{schedule_key}': {e}")
 
         self._apscheduler.start()
         self.logger.info(f"APScheduler started with {len(self.scheduled_messages)} scheduled message(s)")
@@ -202,17 +228,27 @@ class MessageScheduler:
         self._run_async_on_main_loop(self._device_mode_favourite_pass2_coro(), timeout=600.0)
 
     def _is_valid_time_format(self, time_str: str) -> bool:
-        """Validate time format (HHMM)"""
-        try:
-            if len(time_str) != 4:
-                return False
-            hour = int(time_str[:2])
-            minute = int(time_str[2:])
-            return 0 <= hour <= 23 and 0 <= minute <= 59
-        except ValueError:
-            return False
+        """Validate deprecated legacy time format (HHMM). Prefer cron in config keys."""
+        return is_valid_legacy_hhmm(time_str)
 
-    def send_scheduled_message(self, channel: str, message: str):
+    def _scheduled_message_stagger_seconds(self, schedule_key: str) -> float:
+        """Deterministic delay in [0, max) so simultaneous cron jobs do not stack on the radio."""
+        max_s = self.bot.config.getfloat(
+            "Bot", "scheduled_message_max_stagger_seconds", fallback=1.5
+        )
+        if max_s <= 0 or not (schedule_key or "").strip():
+            return 0.0
+        digest = hashlib.sha256(schedule_key.encode("utf-8")).digest()
+        slot = int.from_bytes(digest[:4], "big") / (2**32)
+        return float(slot * max_s)
+
+    def send_scheduled_message(
+        self,
+        channel: str,
+        message: str,
+        schedule_key: str = "",
+        scope: str | None = None,
+    ):
         """Send a scheduled message (synchronous wrapper for schedule library)"""
         if self.bot.is_radio_zombie:
             self.logger.warning("send_scheduled_message suppressed — radio is in zombie state")
@@ -222,7 +258,11 @@ class MessageScheduler:
             return
 
         current_time = self.get_current_time()
-        self.logger.info(f"📅 Sending scheduled message at {current_time.strftime('%H:%M:%S')} to {channel}: {message}")
+        scope_note = f" [{scope}]" if scope else ""
+        self.logger.info(
+            f"📅 Sending scheduled message at {current_time.strftime('%H:%M:%S')} "
+            f"to {channel}{scope_note}: {message}"
+        )
 
         import asyncio
 
@@ -231,8 +271,10 @@ class MessageScheduler:
         if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
             # Schedule coroutine in the running main event loop
             future = asyncio.run_coroutine_threadsafe(
-                self._send_scheduled_message_async(channel, message),
-                self.bot.main_event_loop
+                self._send_scheduled_message_async(
+                    channel, message, schedule_key=schedule_key, scope=scope
+                ),
+                self.bot.main_event_loop,
             )
             # Wait for completion (with timeout to prevent indefinite blocking)
             try:
@@ -247,7 +289,11 @@ class MessageScheduler:
             # Fallback: create a temporary event loop and close it when done
             loop = asyncio.new_event_loop()
             try:
-                loop.run_until_complete(self._send_scheduled_message_async(channel, message))
+                loop.run_until_complete(
+                    self._send_scheduled_message_async(
+                        channel, message, schedule_key=schedule_key, scope=scope
+                    )
+                )
             finally:
                 loop.close()
 
@@ -407,8 +453,22 @@ class MessageScheduler:
         ]
         return any(placeholder in message for placeholder in placeholders)
 
-    async def _send_scheduled_message_async(self, channel: str, message: str):
+    async def _send_scheduled_message_async(
+        self,
+        channel: str,
+        message: str,
+        *,
+        schedule_key: str = "",
+        scope: str | None = None,
+    ):
         """Send a scheduled message (async implementation)"""
+        stagger = self._scheduled_message_stagger_seconds(schedule_key)
+        if stagger > 0:
+            self.logger.debug(
+                "Scheduled message stagger %.2fs (schedule_key=%r)", stagger, schedule_key
+            )
+            await asyncio.sleep(stagger)
+
         # Check if message contains mesh info placeholders
         if self._has_mesh_info_placeholders(message):
             try:
@@ -430,7 +490,9 @@ class MessageScheduler:
         import asyncio as _asyncio
         send_timeout = self.bot.config.getint('Bot', 'send_timeout_seconds', fallback=30)
         await _asyncio.wait_for(
-            self.bot.command_manager.send_channel_message(channel, message),
+            self.bot.command_manager.send_channel_message(
+                channel, message, skip_user_rate_limit=True, scope=scope
+            ),
             timeout=send_timeout,
         )
 
@@ -548,39 +610,23 @@ class MessageScheduler:
                     )
                 self.last_radio_ops_check_time = time.time()
 
-            # Process feed message queue (every 2 seconds)
-            if time.time() - self.last_message_queue_check_time >= 2:  # Every 2 seconds
+            # Process feed message queue (every 2 seconds, fire-and-forget)
+            # process_message_queue() returns immediately if a run is already in progress,
+            # so we never block this thread waiting for per-feed send intervals.
+            if time.time() - self.last_message_queue_check_time >= 2:
                 if (hasattr(self.bot, 'feed_manager') and self.bot.feed_manager and
                     hasattr(self.bot, 'connected') and self.bot.connected):
                     import asyncio
                     if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
-                        # Schedule coroutine in the running main event loop
                         future = asyncio.run_coroutine_threadsafe(
                             self.bot.feed_manager.process_message_queue(),
                             self.bot.main_event_loop
                         )
-                        try:
-                            future.result(timeout=_FEED_MESSAGE_QUEUE_FUTURE_TIMEOUT)
-                        except TimeoutError:
-                            self.logger.warning(
-                                "Timed out waiting for feed message queue after %ss; "
-                                "work may still be running on the main loop (per-feed send spacing).",
-                                _FEED_MESSAGE_QUEUE_FUTURE_TIMEOUT,
-                            )
-                        except RuntimeError as e:
-                            self.logger.warning("Event loop gone during feed message queue: %s", e)
-                        except Exception as e:
-                            self.logger.exception(f"Error processing message queue: {e}")
-                    else:
-                        # Fallback: create new event loop if main loop not available
-                        try:
-                            loop = asyncio.get_event_loop()
-                        except RuntimeError:
-                            loop = asyncio.new_event_loop()
-                            asyncio.set_event_loop(loop)
-
-                        loop.run_until_complete(self.bot.feed_manager.process_message_queue())
-                    self.last_message_queue_check_time = time.time()
+                        future.add_done_callback(
+                            lambda f: self.logger.exception("Error processing message queue: %s", f.exception())
+                            if not f.cancelled() and f.exception() else None
+                        )
+                self.last_message_queue_check_time = time.time()
 
             # Data retention: run daily (packet_stream, repeater tables, stats, caches, mesh_connections)
             if time.time() - self.last_data_retention_run >= self._data_retention_interval_seconds:

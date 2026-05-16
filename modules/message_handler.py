@@ -98,6 +98,120 @@ class MessageHandler:
                 return name
         return None
 
+    @staticmethod
+    def _scope_fields_from_packet_info(
+        packet_info: dict[str, Any] | None,
+    ) -> tuple[int | None, int | None, int | None, str]:
+        """Extract TC_FLOOD scope-match inputs from decode_meshcore_packet output."""
+        if not packet_info:
+            return None, None, None, ""
+        rt = packet_info.get("route_type")
+        if rt is not None and hasattr(rt, "value"):
+            rt = rt.value
+        pt = packet_info.get("payload_type")
+        if pt is not None and hasattr(pt, "value"):
+            pt = int(pt.value)
+        elif pt is not None:
+            pt = int(pt)
+        tc_code1 = None
+        transport_codes = packet_info.get("transport_codes")
+        if isinstance(transport_codes, dict):
+            tc_code1 = transport_codes.get("code1")
+        payload_hex = (packet_info.get("payload_hex") or "") or ""
+        return rt, tc_code1, pt, payload_hex
+
+    def _resolve_reply_scope_from_rf_data(
+        self,
+        recent_rf_data: dict[str, Any],
+        packet_info: dict[str, Any] | None,
+        scope_keys: dict[str, bytes],
+    ) -> str | None:
+        """Match incoming TC_FLOOD to flood_scopes, preferring decoded packet over stale cache."""
+        rt = recent_rf_data.get("route_type_int")
+        tc_code1 = recent_rf_data.get("transport_code1")
+        scope_payload_type = recent_rf_data.get("payload_type_int")
+        scope_payload_hex = recent_rf_data.get("scope_payload_hex") or ""
+
+        dec_rt, dec_tc, dec_pt, dec_hex = self._scope_fields_from_packet_info(packet_info)
+        used_decode_fallback = False
+        if dec_rt == 0:
+            if rt != 0:
+                used_decode_fallback = True
+            rt = 0
+            if dec_tc is not None:
+                if tc_code1 != dec_tc:
+                    used_decode_fallback = True
+                tc_code1 = dec_tc
+            if dec_pt is not None:
+                if scope_payload_type != dec_pt:
+                    used_decode_fallback = True
+                scope_payload_type = dec_pt
+            if dec_hex:
+                if scope_payload_hex != dec_hex:
+                    used_decode_fallback = True
+                scope_payload_hex = dec_hex
+
+        if used_decode_fallback:
+            self.logger.debug(
+                "TC_FLOOD scope fields from packet decode (cache had route_type=%s tc=%s)",
+                recent_rf_data.get("route_type_int"),
+                recent_rf_data.get("transport_code1"),
+            )
+
+        if not (
+            rt == 0
+            and tc_code1 is not None
+            and scope_payload_type is not None
+            and scope_payload_hex
+        ):
+            if scope_keys:
+                self.logger.debug(
+                    "Scope check: route_type=%s (need 0=TC_FLOOD), "
+                    "tc_code1=%s, payload_type=%s, payload_hex=%s",
+                    rt,
+                    "set" if tc_code1 is not None else "None",
+                    scope_payload_type,
+                    "set" if scope_payload_hex else "empty",
+                )
+            return None
+
+        try:
+            pkt_payload_bytes = bytes.fromhex(scope_payload_hex)
+        except ValueError:
+            self.logger.debug("Scope check: invalid scope_payload_hex on correlated RF data")
+            return None
+
+        reply_scope = self._match_scope(tc_code1, scope_payload_type, pkt_payload_bytes, scope_keys)
+        if reply_scope:
+            self.logger.info(
+                "Incoming TC_FLOOD matched scope '%s' (tc_code1=%s); reply will use same scope",
+                reply_scope,
+                tc_code1,
+            )
+        elif scope_keys:
+            self.logger.debug(
+                "TC_FLOOD scope not matched: tc_code1=%s payload_type=%s "
+                "(configured scopes: %s)",
+                tc_code1,
+                scope_payload_type,
+                ", ".join(sorted(scope_keys.keys())),
+            )
+        return reply_scope
+
+    def _effective_route_type_int(
+        self,
+        recent_rf_data: dict[str, Any] | None,
+        packet_info: dict[str, Any] | None,
+    ) -> int | None:
+        """Route type for allowlist gate, preferring decode when it indicates TC_FLOOD."""
+        if not recent_rf_data:
+            return None
+        rt = recent_rf_data.get("route_type_int")
+        dec_rt, _, _, _ = self._scope_fields_from_packet_info(packet_info)
+        if dec_rt == 0:
+            return 0
+        return rt
+
     def _is_old_cached_message(self, timestamp: Any) -> bool:
         """Check if a message timestamp indicates it's from before bot connection.
 
@@ -639,10 +753,10 @@ class MessageHandler:
                 # Track this advertisement in the complete database
                 if hasattr(self.bot, "repeater_manager"):
                     # Track all advertisements regardless of type
-                    success = await self.bot.repeater_manager.track_contact_advertisement(
+                    track_result = await self.bot.repeater_manager.track_contact_advertisement(
                         advert_data, signal_info, packet_hash=packet_hash
                     )
-                    if success:
+                    if track_result.ok:
                         # Log rich advert information
                         mode = advert_data.get("mode", "Unknown")
                         name = advert_data.get("name", "No name")
@@ -1533,8 +1647,12 @@ class MessageHandler:
             if hasattr(self, "debug") and self.debug:
                 self.logger.debug(f"ADVERT flags: 0x{flags_byte:02X} (binary: {flags_byte:08b})")
 
-            # Create flags object with the full byte value
-            flags = AdvertFlags(flags_byte)
+            # Bit tests match firmware AdvertDataParser (do not use AdvertFlags(flags_byte):
+            # enum.Flag rejects some valid uint8 values, e.g. corrupt wires or type nibble > 4).
+            has_latlon = (flags_byte & AdvertFlags.ADV_LATLON_MASK.value) != 0
+            has_feat1 = (flags_byte & AdvertFlags.ADV_FEAT1_MASK.value) != 0
+            has_feat2 = (flags_byte & AdvertFlags.ADV_FEAT2_MASK.value) != 0
+            has_name = (flags_byte & AdvertFlags.ADV_NAME_MASK.value) != 0
 
             advert = {
                 "public_key": pub_key.hex(),
@@ -1559,7 +1677,7 @@ class MessageHandler:
             i = 1  # Start after flags byte
 
             # Parse location data if present (matches C++ hasLatLon())
-            if AdvertFlags.ADV_LATLON_MASK in flags:
+            if has_latlon:
                 if len(app_data) < i + 8:
                     self.logger.error(f"ADVERT with location flag too short: {len(app_data)} bytes")
                     return advert
@@ -1570,7 +1688,7 @@ class MessageHandler:
                 i += 8
 
             # Parse feat1 data if present
-            if AdvertFlags.ADV_FEAT1_MASK in flags:
+            if has_feat1:
                 if len(app_data) < i + 2:
                     self.logger.error(f"ADVERT with feat1 flag too short: {len(app_data)} bytes")
                     return advert
@@ -1579,7 +1697,7 @@ class MessageHandler:
                 i += 2
 
             # Parse feat2 data if present
-            if AdvertFlags.ADV_FEAT2_MASK in flags:
+            if has_feat2:
                 if len(app_data) < i + 2:
                     self.logger.error(f"ADVERT with feat2 flag too short: {len(app_data)} bytes")
                     return advert
@@ -1588,7 +1706,7 @@ class MessageHandler:
                 i += 2
 
             # Parse name data if present (matches C++ hasName())
-            if AdvertFlags.ADV_NAME_MASK in flags and len(app_data) >= i:
+            if has_name and len(app_data) >= i:
                 name_len = len(app_data) - i
                 if name_len > 0:
                     try:
@@ -1601,7 +1719,7 @@ class MessageHandler:
             return advert
 
         except Exception as e:
-            self.logger.error(f"Error parsing ADVERT payload: {e}", exc_info=True)
+            self.logger.warning(f"Error parsing ADVERT payload: {e}")
             return {}
 
     def _path_bytes_to_nodes(self, path_bytes: bytes, prefix_hex_chars: int | None = None) -> tuple:
@@ -1945,6 +2063,7 @@ class MessageHandler:
                 extended_timeout = self.rf_data_timeout * 2  # Double the normal timeout
                 recent_rf_data = self.find_recent_rf_data(max_age_seconds=extended_timeout)
 
+            packet_info: dict[str, Any] | None = None
             if recent_rf_data and recent_rf_data.get("raw_hex"):
                 raw_hex = recent_rf_data["raw_hex"]
                 self.logger.info(f"🔍 FOUND RF DATA: {len(raw_hex)} chars, starts with: {raw_hex[:32]}...")
@@ -2022,27 +2141,10 @@ class MessageHandler:
             # use the same scope so it reaches the same scoped network segment.
             reply_scope: str | None = None
             if recent_rf_data:
-                rt = recent_rf_data.get("route_type_int")
-                tc_code1 = recent_rf_data.get("transport_code1")
-                scope_payload_type = recent_rf_data.get("payload_type_int")
-                scope_payload_hex = recent_rf_data.get("scope_payload_hex") or ""
                 scope_keys = getattr(getattr(self.bot, "command_manager", None), "flood_scope_keys", {})
-                if (
-                    rt == 0  # TRANSPORT_FLOOD (TC_FLOOD)
-                    and tc_code1 is not None
-                    and scope_payload_type is not None
-                    and scope_payload_hex
-                ):
-                    pkt_payload_bytes = bytes.fromhex(scope_payload_hex)
-                    reply_scope = self._match_scope(tc_code1, scope_payload_type, pkt_payload_bytes, scope_keys)
-                    if reply_scope:
-                        self.logger.info(f"Incoming TC_FLOOD matched scope '{reply_scope}'; reply will use same scope")
-                elif scope_keys:
-                    self.logger.debug(
-                        f"Scope check: route_type={rt} (need 0=TC_FLOOD), "
-                        f"tc_code1={'set' if tc_code1 is not None else 'None'}, "
-                        f"payload_type={scope_payload_type}"
-                    )
+                reply_scope = self._resolve_reply_scope_from_rf_data(
+                    recent_rf_data, packet_info, scope_keys
+                )
 
             # Allowlist enforcement: when flood_scopes is configured, only reply to
             # messages whose scope matched an entry.  Unscoped FLOOD is allowed only
@@ -2051,7 +2153,7 @@ class MessageHandler:
             scope_keys = getattr(cmd_mgr, "flood_scope_keys", {})
             if scope_keys and reply_scope is None:
                 allow_global = getattr(cmd_mgr, "flood_scope_allow_global", False)
-                rt_for_check = recent_rf_data.get("route_type_int") if recent_rf_data else None
+                rt_for_check = self._effective_route_type_int(recent_rf_data, packet_info)
                 if rt_for_check == 0:
                     self.logger.info("Ignoring TC_FLOOD: scope not in flood_scopes allowlist")
                     return
@@ -3078,15 +3180,11 @@ class MessageHandler:
                 command_id = f"keyword_{keyword}_{message.sender_id}_{int(time.time())}"
 
                 try:
-                    rate_limit_key = self.bot.command_manager.get_rate_limit_key(message)
-                    if message.is_dm:
-                        success = await self.bot.command_manager.send_dm(
-                            message.sender_id, response, command_id, rate_limit_key=rate_limit_key
-                        )
-                    else:
-                        success = await self.bot.command_manager.send_channel_message(
-                            message.channel, response, command_id, rate_limit_key=rate_limit_key
-                        )
+                    success = await self.bot.command_manager.send_response(
+                        message,
+                        response,
+                        command_id=command_id,
+                    )
 
                     if not success:
                         self.logger.warning(
@@ -3123,15 +3221,11 @@ class MessageHandler:
                 command_id = f"randomline_{key}_{message.sender_id}_{int(time.time())}"
 
                 try:
-                    rate_limit_key = self.bot.command_manager.get_rate_limit_key(message)
-                    if message.is_dm:
-                        success = await self.bot.command_manager.send_dm(
-                            message.sender_id, response, command_id, rate_limit_key=rate_limit_key
-                        )
-                    else:
-                        success = await self.bot.command_manager.send_channel_message(
-                            message.channel, response, command_id, rate_limit_key=rate_limit_key
-                        )
+                    success = await self.bot.command_manager.send_response(
+                        message,
+                        response,
+                        command_id=command_id,
+                    )
 
                     if not success:
                         self.logger.warning(
@@ -3429,7 +3523,7 @@ class MessageHandler:
                         auto_manage_setting,
                     )
 
-                    await self.bot.repeater_manager.track_contact_advertisement(
+                    track_result = await self.bot.repeater_manager.track_contact_advertisement(
                         contact_data, signal_info, packet_hash=packet_hash
                     )
 
@@ -3456,35 +3550,42 @@ class MessageHandler:
                                 contact_name,
                             )
                     elif auto_manage_setting == "bot":
-                        self.logger.info(
-                            "Bot mode — adding companion %s to device with capacity management",
-                            contact_name,
-                        )
-                        try:
-                            self._ensure_contact_meshcore_path_encoding(contact_data)
-                            ok = await self.bot.repeater_manager.add_companion_from_contact_data(
-                                contact_data, contact_name, public_key
-                            )
-                            if not ok:
-                                self.logger.warning(
-                                    "Failed to add companion contact %s to device after managed add/retry",
-                                    contact_name,
-                                )
-                        except Exception as e:
-                            self.logger.error("Error adding companion %s to device: %s", contact_name, e)
-
-                        status = await self.bot.repeater_manager.get_contact_list_status()
-                        if status and status.get("is_near_limit", False):
-                            self.logger.warning(
-                                "Contact list near limit (%.1f%%) — managing capacity after add",
-                                status["usage_percentage"],
-                            )
-                            await self.bot.repeater_manager.manage_contact_list(auto_cleanup=True)
-                        else:
-                            self.logger.info(
-                                "Companion %s — contact list has adequate space after add attempt",
+                        # packet_hash dedupe: when absent, every NEW_CONTACT may still trigger add_contact.
+                        if track_result.duplicate_packet:
+                            self.logger.debug(
+                                "Skipping add_companion — duplicate packet_hash for %s (already tracked)",
                                 contact_name,
                             )
+                        else:
+                            self.logger.info(
+                                "Bot mode — adding companion %s to device with capacity management",
+                                contact_name,
+                            )
+                            try:
+                                self._ensure_contact_meshcore_path_encoding(contact_data)
+                                ok = await self.bot.repeater_manager.add_companion_from_contact_data(
+                                    contact_data, contact_name, public_key
+                                )
+                                if not ok:
+                                    self.logger.warning(
+                                        "Failed to add companion contact %s to device after managed add/retry",
+                                        contact_name,
+                                    )
+                            except Exception as e:
+                                self.logger.error("Error adding companion %s to device: %s", contact_name, e)
+
+                            status = await self.bot.repeater_manager.get_contact_list_status()
+                            if status and status.get("is_near_limit", False):
+                                self.logger.warning(
+                                    "Contact list near limit (%.1f%%) — managing capacity after add",
+                                    status["usage_percentage"],
+                                )
+                                await self.bot.repeater_manager.manage_contact_list(auto_cleanup=True)
+                            else:
+                                self.logger.info(
+                                    "Companion %s — contact list has adequate space after add attempt",
+                                    contact_name,
+                                )
                     else:
                         self.logger.warning(
                             "Unknown auto_manage_contacts value %r — treating as manual for %s",

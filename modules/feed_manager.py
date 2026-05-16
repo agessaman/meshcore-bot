@@ -96,8 +96,10 @@ class FeedManager:
         # Semaphore to limit concurrent requests
         self._request_semaphore = asyncio.Semaphore(5)
 
-        # Serialize process_message_queue (scheduler may schedule another run if result() times out)
+        # Serialize process_message_queue; lock is checked before acquiring to avoid coroutine pileup
         self._process_queue_lock: Optional[asyncio.Lock] = None
+        # Persisted across runs so per-feed send intervals are respected without sleeping under the lock
+        self._feed_last_send: dict[int, float] = {}
 
         self.logger.info("FeedManager initialized")
 
@@ -1252,6 +1254,8 @@ class FeedManager:
         """Process queued feed messages and send them at configured intervals"""
         if self._process_queue_lock is None:
             self._process_queue_lock = asyncio.Lock()
+        if self._process_queue_lock.locked():
+            return  # previous run still in progress; skip this tick
         async with self._process_queue_lock:
             await self._process_message_queue_inner()
 
@@ -1277,9 +1281,6 @@ class FeedManager:
             if not messages:
                 return
 
-            # Group messages by feed to respect per-feed send intervals
-            feed_last_send: dict[int, float] = {}
-
             for msg in messages:
                 feed_id = msg['feed_id']
                 channel_name = msg['channel_name']
@@ -1291,12 +1292,12 @@ class FeedManager:
                 # Get send interval for this feed (default if not set)
                 send_interval = msg['message_send_interval_seconds'] or self.default_send_interval
 
-                # Check if we need to wait before sending this feed's message
-                if feed_id in feed_last_send:
-                    elapsed = time.time() - feed_last_send[feed_id]
+                # Skip messages whose feed interval hasn't elapsed yet; the next
+                # scheduler tick (2 s) will retry without blocking under the lock.
+                if feed_id in self._feed_last_send:
+                    elapsed = time.time() - self._feed_last_send[feed_id]
                     if elapsed < send_interval:
-                        wait_time = send_interval - elapsed
-                        await asyncio.sleep(wait_time)
+                        continue
 
                 # Send the message
                 try:
@@ -1316,7 +1317,7 @@ class FeedManager:
                         # Record activity
                         self._record_feed_activity(feed_id, item_id, item_title)
                         self.logger.debug(f"Sent queued feed message to {channel_name}: {item_title[:50]}")
-                        feed_last_send[feed_id] = time.time()
+                        self._feed_last_send[feed_id] = time.time()
                     else:
                         self.logger.warning(f"Failed to send queued feed message to channel {channel_name}")
                         self._record_feed_error(feed_id, 'channel', f"Failed to send to channel {channel_name}")

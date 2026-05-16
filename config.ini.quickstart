@@ -46,6 +46,7 @@ admin_commands = repeater,webviewer,reload,channelpause
 
 [Keywords]
 test = "ack @[{sender}]{phrase_part} | {connection_info} | Received at: {timestamp}"
+# Optional: set [Test_Command] response_format to override this for test/t (see config.ini.example).
 ping = "Pong!"
 pong = "Ping!"
 help = "Bot Help: test (or t), ping, version, help, hello, cmd, advert, wx, aqi, sun, moon, solar, hfcond, satpass, prefix, path, sports, dice, roll, stats | More: 'help <command>'"
@@ -63,6 +64,10 @@ default_country = US
 # Path command - "p" shortcut for quick path decoding
 [Path_Command]
 enable_p_shortcut = true
+# Optional reply prefix (same placeholders as Keywords: sender, connection_info, path, timestamp, snr, rssi)
+# reply_prefix = @[{sender}]
+# Require 2+ or 3 bytes per hop before naming repeaters; else hex + tip only (0/1 = always name)
+# minimum_path_bytes = 0
 
 [Version_Command]
 enabled = true

@@ -439,7 +439,7 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
     async def _send_to_channels(self, text: str) -> None:
         for ch in self.channels:
             await self.bot.command_manager.send_channel_message(
-                ch, text, skip_user_rate_limit=True
+                ch, text, skip_user_rate_limit=True, scope=self.get_mesh_flood_scope()
             )
 
     def _format_location(self, row: dict[str, Any]) -> str:

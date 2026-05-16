@@ -24,6 +24,10 @@ POST /webhook
 
         {"channel": "general", "message": "Hello from webhook!"}
 
+    Optional regional TC_FLOOD scope (overrides [Webhook] flood_scope for this request)::
+
+        {"channel": "general", "message": "Hello", "flood_scope": "#west"}
+
     Body (DM)::
 
         {"dm_to": "SomeUser", "message": "Private message"}
@@ -230,7 +234,15 @@ class WebhookService(BaseServicePlugin):
         # --- Dispatch ---
         try:
             if channel:
-                await self._send_channel_message(channel, message_text)
+                from modules.command_manager import CommandManager
+
+                body_scope_raw = str(body.get("flood_scope") or "").strip()
+                mesh_scope: str | None = (
+                    CommandManager._normalize_scope_name(body_scope_raw)
+                    if body_scope_raw
+                    else self.get_mesh_flood_scope()
+                )
+                await self._send_channel_message(channel, message_text, scope=mesh_scope)
                 self.logger.info(
                     f"Webhook: sent to #{channel} from {request.remote}: "
                     f"{message_text[:60]}{'...' if len(message_text) > 60 else ''}"
@@ -275,7 +287,9 @@ class WebhookService(BaseServicePlugin):
     # Message dispatch
     # ------------------------------------------------------------------
 
-    async def _send_channel_message(self, channel: str, message: str) -> None:
+    async def _send_channel_message(
+        self, channel: str, message: str, *, scope: str | None = None
+    ) -> None:
         """Send a message to a MeshCore channel via command_manager."""
         cm = getattr(self.bot, "command_manager", None)
         if cm is None:
@@ -285,6 +299,7 @@ class WebhookService(BaseServicePlugin):
             message,
             skip_user_rate_limit=True,
             rate_limit_key=None,
+            scope=scope,
         )
 
     async def _send_dm(self, recipient: str, message: str) -> None:

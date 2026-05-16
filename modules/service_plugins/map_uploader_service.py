@@ -629,7 +629,10 @@ class MapUploaderService(BaseServicePlugin):
                 return None
 
             flags_byte = app_data[0]
-            flags = AdvertFlags(flags_byte)
+            has_latlon = (flags_byte & AdvertFlags.ADV_LATLON_MASK.value) != 0
+            has_feat1 = (flags_byte & AdvertFlags.ADV_FEAT1_MASK.value) != 0
+            has_feat2 = (flags_byte & AdvertFlags.ADV_FEAT2_MASK.value) != 0
+            has_name = (flags_byte & AdvertFlags.ADV_NAME_MASK.value) != 0
 
             # Extract type
             adv_type = flags_byte & 0x0F
@@ -651,7 +654,7 @@ class MapUploaderService(BaseServicePlugin):
 
             # Parse location data if present
             i = 1
-            if AdvertFlags.ADV_LATLON_MASK in flags and len(app_data) >= i + 8:
+            if has_latlon and len(app_data) >= i + 8:
                 lat = int.from_bytes(app_data[i:i+4], 'little', signed=True)
                 lon = int.from_bytes(app_data[i+4:i+8], 'little', signed=True)
                 advert['lat'] = round(lat / 1000000.0, 6)
@@ -659,15 +662,15 @@ class MapUploaderService(BaseServicePlugin):
                 i += 8
 
             # Parse feat1 data if present
-            if AdvertFlags.ADV_FEAT1_MASK in flags:
+            if has_feat1:
                 i += 2
 
             # Parse feat2 data if present
-            if AdvertFlags.ADV_FEAT2_MASK in flags:
+            if has_feat2:
                 i += 2
 
             # Parse name if present
-            if AdvertFlags.ADV_NAME_MASK in flags and len(app_data) >= i:
+            if has_name and len(app_data) >= i:
                 try:
                     name = app_data[i:].decode('utf-8', errors='ignore').rstrip('\x00')
                     advert['name'] = name
@@ -677,7 +680,7 @@ class MapUploaderService(BaseServicePlugin):
             return advert
 
         except Exception as e:
-            self.logger.error(f"Error parsing advert: {e}")
+            self.logger.warning(f"Error parsing advert: {e}")
             return None
 
     async def _verify_advert_signature(self, advert: dict[str, Any], payload: bytes) -> bool:

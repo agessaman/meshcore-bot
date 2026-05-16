@@ -51,6 +51,7 @@ jobs:
             -not -path "./node_modules/*" \
             -not -path "./.venv/*" \
             -not -path "./venv/*" \
+            -not -path "./dist/*" \
             -print0 | xargs -0 shellcheck --severity=warning
 
   lint:

@@ -4,6 +4,8 @@ Unit tests for PathCommand multi-byte path support: routing_info usage and comma
 """
 
 
+from unittest.mock import MagicMock, Mock
+
 import pytest
 
 from modules.commands.path_command import PathCommand
@@ -145,3 +147,78 @@ class TestPathCommandExtractPathUsesRoutingInfo:
         path_command.translate = lambda key, **kwargs: "Direct connection" if "direct" in key.lower() else key
         result = await path_command._extract_path_from_recent_messages()
         assert "direct" in result.lower()
+
+
+@pytest.mark.unit
+class TestPathCommandMinimumPathBytes:
+    """minimum_path_bytes gates repeater lookup (not command execution)."""
+
+    @pytest.fixture
+    def path_command(self, mock_bot):
+        mock_bot.translator = MagicMock()
+
+        def _translate(key, **kwargs):
+            if key == "commands.path.repeater_resolution_deferred":
+                return f"Path: {kwargs['path']}\n\nTip:{kwargs['minimum_path_bytes']}"
+            return key
+
+        mock_bot.translator.translate = Mock(side_effect=_translate)
+        return PathCommand(mock_bot)
+
+    @pytest.mark.asyncio
+    async def test_skips_lookup_when_hops_shorter_than_minimum(self, path_command, mock_bot):
+        path_command.minimum_path_bytes = 2
+        called = []
+
+        async def capture_lookup(node_ids, lookup_func=None):
+            called.append(node_ids)
+            return {}
+
+        path_command._lookup_repeater_names = capture_lookup
+        out = await path_command._decode_path("01,AB")
+        assert called == []
+        assert "01,AB" in out
+        assert "Tip:2" in out
+
+    @pytest.mark.asyncio
+    async def test_runs_lookup_when_hops_meet_minimum(self, path_command, mock_bot):
+        path_command.minimum_path_bytes = 2
+        called = []
+
+        async def capture_lookup(node_ids, lookup_func=None):
+            called.append(list(node_ids))
+            return {nid: {"found": True, "name": "R"} for nid in node_ids}
+
+        path_command._lookup_repeater_names = capture_lookup
+        mock_bot.translator.translate = Mock(
+            side_effect=lambda key, **kwargs: (
+                f"{kwargs['node_id']}: {kwargs['name']}" if key == "commands.path.node_format" else key
+            )
+        )
+        out = await path_command._decode_path("0102,ABCD")
+        assert called == [["0102", "ABCD"]]
+        assert "0102" in out
+
+    @pytest.mark.asyncio
+    async def test_routing_info_bytes_per_hop_authoritative(self, path_command, mock_bot):
+        """bytes_per_hop=1 in packet forces deferred even if node strings are wide (should not happen on wire)."""
+        path_command.minimum_path_bytes = 2
+        called = []
+
+        async def capture_lookup(node_ids, lookup_func=None):
+            called.append(True)
+            return {}
+
+        path_command._lookup_repeater_names = capture_lookup
+        path_command._current_message = MeshMessage(
+            content="path",
+            routing_info={
+                "path_length": 1,
+                "path_nodes": ["0102"],
+                "bytes_per_hop": 1,
+            },
+        )
+        out = await path_command._extract_path_from_recent_messages()
+        assert called == []
+        assert "0102" in out
+        assert "Tip:2" in out

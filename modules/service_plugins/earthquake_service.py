@@ -167,12 +167,12 @@ class EarthquakeService(BaseServicePlugin):
                 text = self._format_quake(quake)
                 if text:
                     await self.bot.command_manager.send_channel_message(
-                        self.channel, text
+                        self.channel, text, scope=self.get_mesh_flood_scope()
                     )
                     url_detail = props.get("url", "")
                     if self.send_link and url_detail:
                         await self.bot.command_manager.send_channel_message(
-                            self.channel, url_detail
+                            self.channel, url_detail, scope=self.get_mesh_flood_scope()
                         )
                     self.logger.info("Earthquake alert sent: %s", event_id)
                 self.seen_event_ids.add(event_id)

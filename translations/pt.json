@@ -333,7 +333,8 @@
             "continuation_start": "...\n{line}",
             "continuation_end": "\n...",
             "truncation": "...",
-            "unknown_name": "Desconhecido"
+            "unknown_name": "Desconhecido",
+            "repeater_resolution_deferred": "Caminho: {path}\n\n💡 Dica: a identificação de repetidores exige caminhos com {minimum_path_bytes} byte(s) por salto."
         },
         "prefix": {
             "description": "Pesquisar repetidores por prefixo de dois caracteres (ex: 'prefixo 1A')",

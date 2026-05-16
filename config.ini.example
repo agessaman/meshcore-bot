@@ -115,6 +115,12 @@ passive_mode = false
 # Prevents spam by limiting how often the bot can send messages
 rate_limit_seconds = 10
 
+# Spread [Scheduled_Messages] jobs that fire at the same wall time over [0, N) seconds
+# (deterministic from the cron key) so they still air cleanly under bot_tx_rate_limit.
+# Set to 0 to disable stagger only. Scheduled sends skip global rate_limit_seconds;
+# per-channel limits and bot_tx_rate_limit_seconds still apply.
+scheduled_message_max_stagger_seconds = 1.5
+
 # Bot transmission rate limit in seconds between bot messages
 # Prevents bot from overwhelming the mesh network
 bot_tx_rate_limit_seconds = 1.0
@@ -428,10 +434,22 @@ category.funfact = fun
 #category.fortune = fun
 
 [Scheduled_Messages]
-# Scheduled message format: HHMM = channel:message
-# Time format: HHMM (24-hour, no colon)
-# Bot will send these messages at the specified times daily
-# Example: 0800 = general:Good morning! Weather update coming soon.
+# Scheduled message format:
+#   <schedule> = channel:message
+#   <schedule> = channel:#flood_scope:message   (regional flood — middle field must start with #)
+# The scoped form uses split(':', 2): the message body may contain additional colons.
+# Examples:
+#   0 18 * * * = Public:Hello! ...
+#   0 18 * * * = Public:#sea:Hello! ...   (same channel text, sent with #sea flood scope)
+#
+# <schedule> is one of:
+#   - 5-field crontab (minute hour day-of-month month day-of-week), e.g.
+#       0 8 * * *     = every day at 08:00 (in [Bot] timezone)
+#       30 12 * * 1   = every Monday at 12:30
+#   - Preset aliases (same semantics as common cron @macros):
+#       @yearly @annually  @monthly  @weekly  @daily  @midnight  @hourly
+#   - Deprecated (still accepted, logs a warning): HHMM = daily at that 24h clock time
+#       0800          = same as 0 8 * * *   — migrate to cron; HHMM will be removed later.
 #
 # Newlines: use \n in the message for a line break (e.g. general:Line one\nLine two).
 # Literal backslash: use \\n for backslash+n; \\t for tab.
@@ -465,14 +483,15 @@ category.funfact = fun
 # {repeaters} - Same as {total_repeaters}
 # {companions} - Same as {total_companions}
 # 
-# Example with placeholders:
-# 0800 = Public:Good morning! Network: {total_contacts} total ({total_repeaters} repeaters, {total_companions} companions). {new_repeaters_7d} new repeaters, {new_companions_7d} new companions in last 7d. {recent_activity_24h} active in 24h.
+# Example with placeholders (cron):
+# 0 8 * * * = Public:Good morning! Network: {total_contacts} total ({total_repeaters} repeaters, {total_companions} companions). {new_repeaters_7d} new repeaters, {new_companions_7d} new companions in last 7d. {recent_activity_24h} active in 24h.
 # Example with 30-day active devices and new devices in 7d:
-# 0900 = Public:{total_contacts_30d} active in last 30d: ({total_repeaters_30d} repeaters, {total_companions_30d} companions). {new_repeaters_7d} new repeaters, {new_companions_7d} new companions in last 7d. {recent_activity_24h} users active in last 24h.
+# 0 9 * * * = Public:{total_contacts_30d} active in last 30d: ({total_repeaters_30d} repeaters, {total_companions_30d} companions). {new_repeaters_7d} new repeaters, {new_companions_7d} new companions in last 7d. {recent_activity_24h} users active in last 24h.
 
-#0800 = Public:Good morning! Bot is online and ready.
-#1200 = Public:Midday status check - all systems operational.
-#1800 = Public:Evening update - bot status: Good
+#0 8 * * * = Public:Good morning! Bot is online and ready.
+#0 12 * * * = Public:Midday status check - all systems operational.
+#0 18 * * * = Public:Evening update - bot status: Good
+# @hourly = Public:Hourly ping (preset example; comment out if unused)
 
 [Schedule_Command]
 # Show scheduled messages and advert interval via the 'schedule' command
@@ -868,6 +887,18 @@ require_path_bytes_failure_response =
 # true: Respond to just "p" or "p <path_data>" as a shortcut for "path"  (default)
 # false: Only respond to "path", "decode", or "route" keywords
 enable_p_shortcut = true
+
+# Optional first line prepended to path command RF replies (Python str.format on the triggering message).
+# Placeholders match Multitest/Keywords-style responses: {sender}, {connection_info}, {path},
+# {timestamp}, {snr}, {rssi}. Only the first RF chunk includes the prefix when the reply is split.
+# Example: @[{sender}]
+reply_prefix =
+
+# Bytes per hop required before resolving repeater names from the database.
+# 0 or 1: always resolve names (default). 2: require 2-byte (or wider) hops. 3: require 3-byte hops.
+# If the packet path is shorter, the bot still responds with Path: … (hex) plus a short tip (no lookup).
+# Independent of require_path_bytes_greater_or_equal_to above, which can reject the command entirely.
+minimum_path_bytes = 0
 
 # Path Selection Preset
 # Choose a preset that configures multiple related settings:
@@ -1353,6 +1384,13 @@ enabled = true
 require_path_bytes_greater_or_equal_to = 0
 # Optional response when rejected by path-byte requirement; leave empty for silent reject
 require_path_bytes_failure_response =
+
+# Optional: full ack template for test/t. When set, overrides [Keywords] test for this command only.
+# Same placeholders as Keywords (sender, phrase, phrase_part, connection_info, path, hops, hops_label,
+# timestamp, elapsed, snr, path_distance, firstlast_distance).
+# Pipe filters (feed-style), e.g. only show cumulative path distance when hops are multibyte (2+ bytes per hop):
+# response_format = ack @[{sender}]{phrase_part} | {connection_info}{path_distance|pathbytes_min:2|prefix_if_nonempty: | Path Dist: }| F/L Dist: {firstlast_distance} | {elapsed} | Rec: {timestamp}
+# Filters: pathbytes_min:N (alias pathbytes:N) clears the field unless bytes_per_hop >= N; prefix_if_nonempty:L prepends literal L when value non-empty after prior filters. If L contains |, put prefix_if_nonempty last in that placeholder (it consumes the rest of the chain as its literal).
 # channels =
 
 [Trace_Command]
@@ -1567,6 +1605,9 @@ mqtt1_topic_packets = meshcore/{IATA}/{PUBLIC_KEY}/packets
 mqtt1_websocket_path = /mqtt
 mqtt1_client_id = 
 mqtt1_upload_packet_types = 
+# Optional per-broker JWT (inherit globals if omitted):
+# mqtt1_jwt_ttl_seconds = 3600           # JWT exp claim: iat + this many seconds
+# mqtt1_jwt_renewal_interval = 1800      # Refresh password this often; use < ttl; 0 = no renewal loop
 
 # MQTT Broker 2 - Let's Mesh Analyzer (EU)
 mqtt2_enabled = true
@@ -1589,7 +1630,12 @@ stats_in_status_enabled = true
 # Stats refresh interval (seconds)
 stats_refresh_interval = 300
 
-# JWT renewal interval (seconds, 0 = disabled)
+# JWT TTL in seconds: exp − iat in the MQTT auth token (default 86400 = 24 hours)
+jwt_ttl_seconds = 86400
+
+# JWT renewal interval (seconds): default cadence for proactive token refresh per broker.
+# 0 here makes the default broker renewal interval 0 (no renewal task unless a broker sets mqttN_jwt_renewal_interval > 0).
+# Tokens are still created at MQTT connect and on reconnect.
 jwt_renewal_interval = 86400
 
 # Health check interval (seconds, 0 = disabled)
@@ -1630,6 +1676,10 @@ verbose = false
 [Weather_Service]
 # Enable weather service for scheduled forecasts and alert monitoring (true/false)
 enabled = false
+
+# Optional regional TC_FLOOD scope for mesh channel posts from this service.
+# Omit to use [Channels] outgoing_flood_scope_override, or global flood if neither is set.
+# flood_scope = #west
 
 # Daily weather forecast time
 # Format: HH:MM (24-hour format, e.g., "6:00" for 6 AM)
@@ -1718,6 +1768,9 @@ enabled = false
 # Polls USGS Earthquake API and posts alerts to a channel when quakes occur in the configured region
 enabled = false
 
+# Optional regional TC_FLOOD scope for mesh channel posts from this service.
+# flood_scope = #west
+
 # Channel to post earthquake alerts to
 channel = #general
 
@@ -1792,6 +1845,12 @@ port = 8765
 # Channel message:
 #   {"channel": "general", "message": "Hello from webhook!"}
 #
+# Optional per-request regional scope (overrides [Webhook] flood_scope below):
+#   {"channel": "general", "message": "Hello", "flood_scope": "#west"}
+#
+# Optional default regional scope for all webhook channel posts:
+# flood_scope = #west
+#
 # Direct message:
 #   {"dm_to": "SomeUser", "message": "Private message"}
 #
@@ -1803,6 +1862,9 @@ port = 8765
 # Watches NEW_CONTACT events; after the repeater is stored + geolocated in the database,
 # posts a message when a newly heard repeater shares a prefix with an existing repeater.
 enabled = false
+
+# Optional regional TC_FLOOD scope for mesh channel posts from this service.
+# flood_scope = #west
 
 # Channels to post alerts to (comma-separated).
 # Prefer this option if you want multiple channels.
@@ -1928,8 +1990,11 @@ enabled = false
 [DARC_MoWaS_Service]
 # Enable DARC MoWaS (Mobile Warning System) integration for receiving and posting warnings
 # For legal requirements and backend configuration, please read https://www.darc.de/index.php?id=58435 before operating.
-# Please also ensure to limit the scope of the messages to the revelant region (via Channels.flood_scope).
+# Limit mesh reach via flood_scope here or [Channels] outgoing_flood_scope_override / flood_scopes.
 enabled = false
+
+# Optional regional TC_FLOOD scope for mesh channel posts from this service.
+# flood_scope = #west
 
 # Listen address and port of webserver that receives the webhook POSTs from DARC MoWaS.
 # Must be accessible from the internet (or HAMNET) for MoWaS to reach it.

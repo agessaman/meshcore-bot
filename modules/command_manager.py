@@ -8,6 +8,7 @@ import asyncio
 import random
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from hashlib import sha256
 from typing import Any
 
@@ -120,6 +121,23 @@ class CommandManager:
 
         self.logger.info(f"CommandManager initialized with {len(self.commands)} plugins")
 
+    def _flood_scopes_config_raw(self) -> str:
+        """Raw flood_scopes value; [Channels] is canonical, [Bot] accepted with a warning."""
+        for section in ("Channels", "Bot"):
+            if self.bot.config.has_section(section) and self.bot.config.has_option(
+                section, "flood_scopes"
+            ):
+                raw = (self.bot.config.get(section, "flood_scopes") or "").strip()
+                if not raw:
+                    continue
+                if section != "Channels":
+                    self.logger.warning(
+                        "flood_scopes is set in [Bot]; move it to [Channels] "
+                        "(still loaded for this run)"
+                    )
+                return raw
+        return ""
+
     def _load_flood_scope_keys(self) -> dict[str, bytes]:
         """Load flood_scopes config into a name→16-byte-key dict for HMAC matching.
 
@@ -128,10 +146,9 @@ class CommandManager:
         FLOOD messages are still permitted through the allowlist check.
         """
         scope_keys: dict[str, bytes] = {}
-        if not (self.bot.config.has_section("Channels") and
-                self.bot.config.has_option("Channels", "flood_scopes")):
+        raw = self._flood_scopes_config_raw()
+        if not raw:
             return scope_keys
-        raw = (self.bot.config.get("Channels", "flood_scopes") or "").strip()
         for entry in (s.strip() for s in raw.split(",") if s.strip()):
             normalized = self._normalize_scope_name(entry)
             if normalized in ("", "*", "0", "None"):
@@ -153,6 +170,37 @@ class CommandManager:
         if not scope.startswith("#"):
             return "#" + scope
         return scope
+
+    def _outgoing_flood_scope_override(self) -> str:
+        """[Channels] outgoing_flood_scope_override when set, else empty string."""
+        if self.bot.config.has_section("Channels") and self.bot.config.has_option(
+            "Channels", "outgoing_flood_scope_override"
+        ):
+            return (self.bot.config.get("Channels", "outgoing_flood_scope_override") or "").strip()
+        return ""
+
+    def resolve_channel_send_scope(
+        self,
+        *,
+        scope: str | None = None,
+        message: MeshMessage | None = None,
+        config_section: str | None = None,
+    ) -> str | None:
+        """Resolve explicit regional scope before send_channel_message applies override.
+
+        Precedence: explicit ``scope`` arg → ``message.reply_scope`` (mirror incoming) →
+        ``flood_scope`` in ``config_section``. Returns ``None`` when unset so
+        ``send_channel_message`` falls back to ``outgoing_flood_scope_override``.
+        """
+        if scope is not None:
+            return scope
+        if message is not None and message.reply_scope is not None:
+            return message.reply_scope
+        if config_section and self.bot.config.has_section(config_section):
+            raw = (self.bot.config.get(config_section, "flood_scope", fallback="") or "").strip()
+            if raw:
+                return self._normalize_scope_name(raw)
+        return None
 
     def _should_queue_command(self, command: BaseCommand, message: MeshMessage) -> tuple[bool, float]:
         """Check if command should be queued instead of rejected.
@@ -1061,6 +1109,7 @@ class CommandManager:
         skip_user_rate_limit: bool = False,
         rate_limit_key: str | None = None,
         scope: str | None = None,
+        timestamp: datetime | None = None,
     ) -> bool:
         """Send a channel message using meshcore_py (optional flood scope).
 
@@ -1118,13 +1167,17 @@ class CommandManager:
                 # Don't fail the send if transmission tracking fails
 
             # Optional flood scope (region): set before send, restore after
-            scope_cfg = ""
-            if self.bot.config.has_section("Channels") and self.bot.config.has_option("Channels", "outgoing_flood_scope_override"):
-                scope_cfg = (self.bot.config.get("Channels", "outgoing_flood_scope_override") or "").strip()
-            scope_to_use = (scope if scope is not None else scope_cfg) or ""
+            resolved = self.resolve_channel_send_scope(scope=scope)
+            scope_to_use = (
+                resolved if resolved is not None else self._outgoing_flood_scope_override()
+            ) or ""
             scope_is_global = scope_to_use in ("", "*", "0", "None")
             if not scope_is_global:
                 scope_to_use = self._normalize_scope_name(scope_to_use)
+            if scope_is_global:
+                self.logger.debug("Outbound channel flood scope: global (no set_flood_scope)")
+            else:
+                self.logger.debug("Outbound channel flood scope: %s (set_flood_scope)", scope_to_use)
             if not scope_is_global and hasattr(self.bot.meshcore.commands, "set_flood_scope"):
                 await self.bot.meshcore.commands.set_flood_scope(scope_to_use)
 
@@ -1133,7 +1186,10 @@ class CommandManager:
             _max_retries = 2
             for _attempt in range(_max_retries + 1):
                 try:
-                    result = await self.bot.meshcore.commands.send_chan_msg(channel_num, content)
+                    result = await self.bot.meshcore.commands.send_chan_msg(
+                        channel_num, content,
+                        timestamp=int(timestamp.timestamp()) if timestamp else None,
+                    )
                 finally:
                     if not scope_is_global and hasattr(self.bot.meshcore.commands, "set_flood_scope"):
                         await self.bot.meshcore.commands.set_flood_scope("*")
@@ -1418,7 +1474,14 @@ class CommandManager:
 
         return commands_list
 
-    async def send_response(self, message: MeshMessage, content: str, skip_user_rate_limit: bool = False) -> bool:
+    async def send_response(
+        self,
+        message: MeshMessage,
+        content: str,
+        skip_user_rate_limit: bool = False,
+        *,
+        command_id: str | None = None,
+    ) -> bool:
         """Unified method for sending responses to users.
 
         Automatically determines whether to send a DM or channel message based
@@ -1428,6 +1491,7 @@ class CommandManager:
             message: The original message being responded to.
             content: The response content.
             skip_user_rate_limit: If True, skip the user rate limiter check (for automated responses).
+            command_id: Optional id for repeat/transmission tracking (e.g. keyword or RandomLine flows).
 
         Returns:
             bool: True if response was sent successfully, False otherwise.
@@ -1442,13 +1506,17 @@ class CommandManager:
             rate_limit_key = self.get_rate_limit_key(message)
             if message.is_dm:
                 return await self.send_dm(
-                    message.sender_id or "", content,
+                    message.sender_pubkey or message.sender_id or "",
+                    content,
+                    command_id,
                     skip_user_rate_limit=skip_user_rate_limit,
                     rate_limit_key=rate_limit_key,
                 )
             else:
                 return await self.send_channel_message(
-                    message.channel or "", content,
+                    message.channel or "",
+                    content,
+                    command_id,
                     skip_user_rate_limit=skip_user_rate_limit,
                     rate_limit_key=rate_limit_key,
                     scope=getattr(message, 'reply_scope', None),
@@ -1518,7 +1586,7 @@ class CommandManager:
                     await asyncio.sleep(sleep_time)
                 skip = skip_user_rate_limit_first if i == 0 else True
                 success = await self.send_dm(
-                    message.sender_id or "",
+                    message.sender_pubkey or message.sender_id or "",
                     chunk,
                     skip_user_rate_limit=skip,
                     rate_limit_key=rate_limit_key,

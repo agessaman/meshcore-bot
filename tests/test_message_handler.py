@@ -1213,6 +1213,32 @@ class TestParseAdvert:
         result = handler.parse_advert(payload)
         assert result["mode"] == "Type5"
 
+    def test_advert_flags_0xfd_invalid_for_python_flag_still_parses(self, handler):
+        """0xFD sets type nibble 0x0D; enum.Flag rejected this — parsing must match firmware bit tests."""
+        payload = _make_advert_payload(
+            0xFD,
+            location_lat_raw=1000000,
+            location_lon_raw=-2000000,
+            feat1=0x0001,
+            feat2=0x0002,
+            name="CorruptWire",
+        )
+        result = handler.parse_advert(payload)
+        assert result != {}
+        assert result["mode"] == "Type13"
+        assert result["lat"] == 1.0
+        assert result["lon"] == -2.0
+        assert result["feat1"] == 0x0001
+        assert result["feat2"] == 0x0002
+        assert result["name"] == "CorruptWire"
+
+    def test_advert_type_nibble_8_no_extra_flags(self, handler):
+        """Low nibble 8 sets bit 0x08 alone — must not raise."""
+        payload = _make_advert_payload(0x08)
+        result = handler.parse_advert(payload)
+        assert result["mode"] == "Type8"
+        assert "lat" not in result
+
     def test_companion_with_name(self, handler):
         # ADV_NAME_MASK=0x80 | ADV_TYPE_CHAT=0x01
         payload = _make_advert_payload(0x81, name="TestNode")
@@ -1823,14 +1849,14 @@ class TestProcessMessageDmKeywordRouting:
     """Regression tests for DM keyword reply routing."""
 
     @pytest.mark.asyncio
-    async def test_keyword_reply_uses_prefix_sender_id_for_dm_send(self, handler):
-        """DM keyword flow should route reply using prefix sender identity."""
+    async def test_keyword_reply_uses_pubkey_for_dm_send(self, handler):
+        """DM keyword flow should route reply via send_response using pubkey identity."""
         handler.should_process_message = Mock(return_value=True)
         handler.bot.command_manager.check_keywords = Mock(return_value=[("test", "ack")])
         handler.bot.command_manager.match_randomline = Mock(return_value=None)
         handler.bot.command_manager.execute_commands = AsyncMock()
         handler.bot.command_manager.get_rate_limit_key = Mock(return_value="ab12deadbeef")
-        handler.bot.command_manager.send_dm = AsyncMock(return_value=True)
+        handler.bot.command_manager.send_response = AsyncMock(return_value=True)
         handler.bot.command_manager.commands = {}
 
         message = MeshMessage(
@@ -1842,12 +1868,40 @@ class TestProcessMessageDmKeywordRouting:
 
         await handler.process_message(message)
 
-        handler.bot.command_manager.send_dm.assert_awaited_once()
-        args, kwargs = handler.bot.command_manager.send_dm.await_args
-        assert args[0] == "ab12"
-        assert args[1] == "ack"
-        assert args[2].startswith("keyword_test_ab12_")
-        assert kwargs["rate_limit_key"] == "ab12deadbeef"
+        handler.bot.command_manager.send_response.assert_awaited_once()
+        call = handler.bot.command_manager.send_response.await_args
+        assert call.args[0] is message
+        assert call.args[1] == "ack"
+        assert call.kwargs["command_id"].startswith("keyword_test_ab12_")
+
+
+class TestProcessMessageChannelKeywordFloodScope:
+    """Keyword channel replies must use send_response so flood scope is applied (#178)."""
+
+    @pytest.mark.asyncio
+    async def test_keyword_channel_reply_passes_message_with_reply_scope(self, handler, bot):
+        handler.should_process_message = Mock(return_value=True)
+        bot.command_manager.check_keywords = Mock(return_value=[("wx", "sunny")])
+        bot.command_manager.match_randomline = Mock(return_value=None)
+        bot.command_manager.execute_commands = AsyncMock()
+        bot.command_manager.send_response = AsyncMock(return_value=True)
+        bot.command_manager.commands = {}
+
+        message = MeshMessage(
+            content="wx",
+            channel="#bot",
+            is_dm=False,
+            sender_id="alice",
+            reply_scope="#pl-mz",
+        )
+
+        await handler.process_message(message)
+
+        bot.command_manager.send_response.assert_awaited_once()
+        call = bot.command_manager.send_response.await_args
+        assert call.args[0].reply_scope == "#pl-mz"
+        assert call.args[1] == "sunny"
+        assert call.kwargs["command_id"].startswith("keyword_wx_alice_")
 
 
 # ---------------------------------------------------------------------------
@@ -1898,7 +1952,11 @@ def new_contact_env(mock_logger):
     bot.message_handler = handler
 
     rm = Mock()
-    rm.track_contact_advertisement = AsyncMock()
+    from modules.repeater_manager import TrackAdvertResult
+
+    rm.track_contact_advertisement = AsyncMock(
+        return_value=TrackAdvertResult(ok=True, duplicate_packet=False)
+    )
     rm.check_and_auto_purge = AsyncMock()
     rm.get_contact_list_status = AsyncMock(
         return_value={
@@ -1953,3 +2011,34 @@ class TestHandleNewContactAutoManage:
         await handler.handle_new_contact(ev, None)
         rm.add_companion_from_contact_data.assert_awaited_once()
         mesh.commands.add_contact.assert_not_called()
+
+    async def test_bot_mode_skips_add_when_duplicate_packet_hash(self, new_contact_env):
+        from modules.repeater_manager import TrackAdvertResult
+
+        bot, handler, rm, mesh = new_contact_env
+        bot.config.set("Bot", "auto_manage_contacts", "bot")
+        rm.track_contact_advertisement = AsyncMock(
+            return_value=TrackAdvertResult(ok=True, duplicate_packet=True)
+        )
+        ev = _NewContactEvent(_companion_contact_payload())
+        await handler.handle_new_contact(ev, None)
+        rm.track_contact_advertisement.assert_awaited_once()
+        rm.add_companion_from_contact_data.assert_not_called()
+        rm.get_contact_list_status.assert_not_awaited()
+
+    async def test_bot_mode_two_events_first_unique_then_duplicate_adds_once(self, new_contact_env):
+        from modules.repeater_manager import TrackAdvertResult
+
+        bot, handler, rm, mesh = new_contact_env
+        bot.config.set("Bot", "auto_manage_contacts", "bot")
+        rm.track_contact_advertisement = AsyncMock(
+            side_effect=[
+                TrackAdvertResult(ok=True, duplicate_packet=False),
+                TrackAdvertResult(ok=True, duplicate_packet=True),
+            ]
+        )
+        ev = _NewContactEvent(_companion_contact_payload())
+        await handler.handle_new_contact(ev, None)
+        await handler.handle_new_contact(ev, None)
+        assert rm.track_contact_advertisement.await_count == 2
+        rm.add_companion_from_contact_data.assert_awaited_once()

@@ -347,8 +347,12 @@ class AnnouncementsCommand(BaseCommand):
             # Determine channel
             target_channel = channel_name if channel_name else self.default_channel
 
-            # Send announcement to channel
-            success = await self.bot.command_manager.send_channel_message(target_channel, announcement_text)
+            # Send announcement to channel (mirror incoming flood scope like send_response)
+            success = await self.bot.command_manager.send_channel_message(
+                target_channel,
+                announcement_text,
+                scope=getattr(message, "reply_scope", None),
+            )
 
             if success:
                 # Record execution (resets cooldown timer)

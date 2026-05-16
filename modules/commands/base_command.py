@@ -505,20 +505,33 @@ class BaseCommand(ABC):
             'module_name': self.__class__.__module__
         }
 
-    async def send_response(self, message: MeshMessage, content: str, skip_user_rate_limit: bool = False) -> bool:
+    async def send_response(
+        self,
+        message: MeshMessage,
+        content: str,
+        skip_user_rate_limit: bool = False,
+        *,
+        command_id: str | None = None,
+    ) -> bool:
         """Unified method for sending responses to users.
 
         Args:
             message: The message to respond to.
             content: The response content.
             skip_user_rate_limit: If True, skip the user rate limiter check (for automated responses).
+            command_id: Optional id for repeat/transmission tracking.
 
         Returns:
             bool: True if the response was sent successfully, False otherwise.
         """
         try:
             # Use the command manager's send_response method to ensure response capture
-            return await self.bot.command_manager.send_response(message, content, skip_user_rate_limit=skip_user_rate_limit)
+            return await self.bot.command_manager.send_response(
+                message,
+                content,
+                skip_user_rate_limit=skip_user_rate_limit,
+                command_id=command_id,
+            )
         except Exception as e:
             self.logger.error(f"Failed to send response: {e}")
             return False

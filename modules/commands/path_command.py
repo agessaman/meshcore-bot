@@ -12,7 +12,7 @@ from typing import Any, Callable, Optional
 
 from ..models import MeshMessage
 from ..security_utils import sanitize_name
-from ..utils import calculate_distance, parse_path_string
+from ..utils import bytes_per_hop_from_routing_and_nodes, calculate_distance, parse_path_string
 from .base_command import BaseCommand
 
 
@@ -139,6 +139,18 @@ class PathCommand(BaseCommand):
             if "p" not in self.keywords:
                 self.keywords.append("p")
 
+        reply_prefix_raw = bot.config.get('Path_Command', 'reply_prefix', fallback='')
+        self.path_reply_prefix = self._strip_quotes_from_config(reply_prefix_raw).strip()
+
+        minimum_path_bytes_raw = bot.config.getint('Path_Command', 'minimum_path_bytes', fallback=0)
+        if minimum_path_bytes_raw not in (0, 1, 2, 3):
+            self.logger.warning(
+                f"Invalid Path_Command.minimum_path_bytes={minimum_path_bytes_raw}; defaulting to 0"
+            )
+            self.minimum_path_bytes = 0
+        else:
+            self.minimum_path_bytes = minimum_path_bytes_raw
+
         try:
             # Try to get location from Bot section
             if bot.config.has_section('Bot'):
@@ -165,6 +177,45 @@ class PathCommand(BaseCommand):
                 self.logger.info("Bot section not found - geographic proximity guessing disabled")
         except Exception as e:
             self.logger.warning(f"Error reading bot location from config: {e} - geographic proximity guessing disabled")
+
+    def _bytes_per_hop_from_nodes_and_routing(
+        self, node_ids: list[str], routing_info: Optional[dict[str, Any]]
+    ) -> int:
+        """Bytes per hop from packet metadata or inferred from hex node width."""
+        return bytes_per_hop_from_routing_and_nodes(routing_info, node_ids)
+
+    def _should_resolve_repeater_names(
+        self, node_ids: list[str], routing_info: Optional[dict[str, Any]]
+    ) -> bool:
+        if self.minimum_path_bytes in (0, 1):
+            return True
+        bph = self._bytes_per_hop_from_nodes_and_routing(node_ids, routing_info)
+        return bph >= self.minimum_path_bytes
+
+    def _format_path_reply_prefix(self, message: MeshMessage) -> str:
+        if not self.path_reply_prefix:
+            return ''
+        formatted = self.format_response(message, self.path_reply_prefix).rstrip()
+        if not formatted:
+            return ''
+        return formatted + '\n'
+
+    def _format_repeater_resolution_deferred(self, node_ids: list[str]) -> str:
+        path_display = ','.join(node_ids)
+        return self.translate(
+            'commands.path.repeater_resolution_deferred',
+            path=path_display,
+            minimum_path_bytes=self.minimum_path_bytes,
+        )
+
+    async def _decode_node_ids(
+        self, node_ids: list[str], routing_info: Optional[dict[str, Any]] = None
+    ) -> str:
+        self.logger.info(f"Decoding path with {len(node_ids)} nodes: {','.join(node_ids)}")
+        if not self._should_resolve_repeater_names(node_ids, routing_info):
+            return self._format_repeater_resolution_deferred(node_ids)
+        repeater_info = await self._lookup_repeater_names(node_ids)
+        return self._format_path_response(node_ids, repeater_info)
 
     def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Check if this command can be executed with the given message.
@@ -219,7 +270,9 @@ class PathCommand(BaseCommand):
         await self._send_path_response(message, response)
         return True
 
-    async def _decode_path(self, path_input: str) -> str:
+    async def _decode_path(
+        self, path_input: str, routing_info: Optional[dict[str, Any]] = None
+    ) -> str:
         """Decode hex path data to repeater names.
         Comma-separated tokens infer hop size (2, 4, or 6 hex chars per node).
         Otherwise uses bot.prefix_hex_chars via parse_path_string().
@@ -249,9 +302,7 @@ class PathCommand(BaseCommand):
             if not node_ids:
                 return self.translate('commands.path.no_valid_hex')
 
-            self.logger.info(f"Decoding path with {len(node_ids)} nodes: {','.join(node_ids)}")
-            repeater_info = await self._lookup_repeater_names(node_ids)
-            return self._format_path_response(node_ids, repeater_info)
+            return await self._decode_node_ids(node_ids, routing_info)
 
         except Exception as e:
             self.logger.error(f"Error decoding path: {e}")
@@ -1663,55 +1714,50 @@ class PathCommand(BaseCommand):
 
     async def _send_path_response(self, message: MeshMessage, response: str):
         """Send path response, splitting into multiple messages if necessary"""
-        # Store the complete response for web viewer integration BEFORE splitting
-        # command_manager will prioritize command.last_response over _last_response
-        # This ensures capture_command gets the full response, not just the last split message
-        self.last_response = response
+        prefix = self._format_path_reply_prefix(message)
+        self.last_response = prefix + response if prefix else response
 
-        # Get dynamic max message length based on message type and bot username
         max_length = self.get_max_message_length(message)
+        prefix_len = self._count_byte_length(prefix)
+        first_segment_max = max_length - prefix_len
+        if first_segment_max < 1:
+            first_segment_max = 1
 
-        if self._count_byte_length(response) <= max_length:
-            # Single message is fine
-            await self.send_response(message, response)
-        else:
-            # Split into multiple messages for over-the-air transmission
-            # But keep the full response in last_response for web viewer
-            lines = response.split('\n')
-            current_message = ""
-            message_count = 0
+        if self._count_byte_length(response) + prefix_len <= max_length:
+            await self.send_response(message, prefix + response)
+            return
 
-            for i, line in enumerate(lines):
-                # Check if adding this line would exceed max_length display width
-                if self._count_byte_length(current_message) + self._count_byte_length(line) + 1 > max_length:  # +1 for newline
-                    # Send current message and start new one
-                    if current_message:
-                        # Add ellipsis on new line to end of continued message (if not the last message)
-                        if i < len(lines):
-                            current_message += self.translate('commands.path.continuation_end')
-                        # Per-user rate limit applies only to first message (trigger); skip for continuations
-                        await self.send_response(
-                            message, current_message.rstrip(),
-                            skip_user_rate_limit=(message_count > 0)
-                        )
-                        await asyncio.sleep(3.0)  # Delay between messages (same as other commands)
-                        message_count += 1
+        lines = response.split('\n')
+        current_message = ""
+        message_count = 0
 
-                    # Start new message with ellipsis on new line at beginning (if not first message)
-                    if message_count > 0:
-                        current_message = self.translate('commands.path.continuation_start', line=line)
-                    else:
-                        current_message = line
+        for i, line in enumerate(lines):
+            body_budget = first_segment_max if message_count == 0 else max_length
+            if self._count_byte_length(current_message) + self._count_byte_length(line) + 1 > body_budget:
+                if current_message:
+                    if i < len(lines):
+                        current_message += self.translate('commands.path.continuation_end')
+                    out = (prefix + current_message.rstrip()) if message_count == 0 else current_message.rstrip()
+                    await self.send_response(
+                        message, out,
+                        skip_user_rate_limit=(message_count > 0)
+                    )
+                    await asyncio.sleep(3.0)
+                    message_count += 1
+
+                if message_count > 0:
+                    current_message = self.translate('commands.path.continuation_start', line=line)
                 else:
-                    # Add line to current message
-                    if current_message:
-                        current_message += f"\n{line}"
-                    else:
-                        current_message = line
+                    current_message = line
+            else:
+                if current_message:
+                    current_message += f"\n{line}"
+                else:
+                    current_message = line
 
-            # Send the last message if there's content (continuation; skip per-user rate limit)
-            if current_message:
-                await self.send_response(message, current_message, skip_user_rate_limit=True)
+        if current_message:
+            out = (prefix + current_message.rstrip()) if message_count == 0 else current_message.rstrip()
+            await self.send_response(message, out, skip_user_rate_limit=True)
 
     async def _extract_path_from_recent_messages(self) -> str:
         """Extract path from the current message's path information (same as test command).
@@ -1732,9 +1778,7 @@ class PathCommand(BaseCommand):
                 path_nodes = routing_info.get('path_nodes', [])
                 if path_nodes:
                     node_ids = [n.upper() for n in path_nodes]
-                    self.logger.info(f"Decoding path from routing_info with {len(node_ids)} nodes: {','.join(node_ids)}")
-                    repeater_info = await self._lookup_repeater_names(node_ids)
-                    return self._format_path_response(node_ids, repeater_info)
+                    return await self._decode_node_ids(node_ids, routing_info)
 
             # Fallback: parse message.path string (e.g. no routing_info or legacy path)
             if not msg.path:
@@ -1747,10 +1791,10 @@ class PathCommand(BaseCommand):
             path_part = path_string.split(" via ROUTE_TYPE_")[0] if " via ROUTE_TYPE_" in path_string else path_string
 
             if ',' in path_part:
-                return await self._decode_path(path_part)
+                return await self._decode_path(path_part, routing_info)
             hex_pattern = rf'[0-9a-fA-F]{{{getattr(self.bot, "prefix_hex_chars", 2)}}}'
             if re.search(hex_pattern, path_part):
-                return await self._decode_path(path_part)
+                return await self._decode_path(path_part, routing_info)
             return self.translate('commands.path.path_prefix', path_string=path_string)
 
         except Exception as e:

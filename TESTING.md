@@ -219,7 +219,8 @@ Tests `modules.scheduler` — `MessageScheduler` pure logic (no threading/asynci
 
 | Class                                 | What it covers                                        |
 |---------------------------------------|-------------------------------------------------------|
-| `TestIsValidTimeFormat`               | Valid HHMM times, invalid hours/minutes/length/chars  |
+| `TestParseScheduleKey`                | 5-field cron, `@daily` preset, legacy HHMM, invalid expr |
+| `TestIsValidTimeFormat`               | Deprecated legacy HHMM validation (invalid h/m/len)   |
 | `TestGetCurrentTime`                  | Valid timezone, invalid fallback, empty timezone      |
 | `TestHasMeshInfoPlaceholders`         | Detects `{total_contacts}`, `{repeaters}`; false case |
 

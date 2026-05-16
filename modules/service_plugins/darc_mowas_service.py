@@ -19,7 +19,7 @@ import time
 import xml.dom.minidom
 from asyncio import AbstractEventLoop
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, cast
 
 import aiohttp
@@ -176,11 +176,14 @@ class DARC_MoWaS_Service(BaseServicePlugin):
         Send all chunks, each with async retry if configured.
         Note, that we cannot guarantee that the messages arrive in-order,
         but as the chunks have a (x/n) identifier at the end, the user still
-        should be able to grasp the message correctly.
+        should be able to grasp the message correctly. We further add
+        an ascending timestamp to each message (also used on re-transmission) to
+        let the client restore the order, as well as deduplicate retransmissions.
 
         Ideally this chunking should be implemented at protocol level to
         guarantee the atomicity and order of the full message.
         """
+        ts_now = datetime.now()
         for i, chunk in enumerate(chunks):
             asyncio.create_task(
                 self._send_chunk_with_retry(
@@ -188,6 +191,7 @@ class DARC_MoWaS_Service(BaseServicePlugin):
                     chunk,
                     i,
                     len(chunks),
+                    ts_now + timedelta(seconds=i)
                 )
             )
 
@@ -197,6 +201,7 @@ class DARC_MoWaS_Service(BaseServicePlugin):
         chunk: str,
         index: int,
         total: int,
+        timestamp: datetime,
     ) -> None:
         """Send a chunk and retry until acked or retries exhausted."""
         tracker = getattr(self.bot, "transmission_tracker", None)
@@ -210,6 +215,8 @@ class DARC_MoWaS_Service(BaseServicePlugin):
                 chunk,
                 command_id=cmd_id,
                 skip_user_rate_limit=True,
+                timestamp=timestamp,
+                scope=self.get_mesh_flood_scope(),
             ):
                 self.logger.warning("Send failed for '%s'", channel)
                 return
