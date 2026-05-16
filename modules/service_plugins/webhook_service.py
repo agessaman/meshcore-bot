@@ -237,10 +237,11 @@ class WebhookService(BaseServicePlugin):
                 from modules.command_manager import CommandManager
 
                 body_scope_raw = str(body.get("flood_scope") or "").strip()
-                if body_scope_raw:
-                    mesh_scope = CommandManager._normalize_scope_name(body_scope_raw)
-                else:
-                    mesh_scope = self.get_mesh_flood_scope()
+                mesh_scope: str | None = (
+                    CommandManager._normalize_scope_name(body_scope_raw)
+                    if body_scope_raw
+                    else self.get_mesh_flood_scope()
+                )
                 await self._send_channel_message(channel, message_text, scope=mesh_scope)
                 self.logger.info(
                     f"Webhook: sent to #{channel} from {request.remote}: "
