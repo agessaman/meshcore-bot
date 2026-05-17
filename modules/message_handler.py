@@ -212,6 +212,40 @@ class MessageHandler:
             return 0
         return rt
 
+    @staticmethod
+    def _grp_txt_payload_type_int() -> int:
+        """Payload type used for channel text on TC_FLOOD (GRP_TXT)."""
+        return int(PayloadType.GRP_TXT.value)
+
+    def _is_rf_data_scope_eligible(
+        self,
+        rf_data: dict[str, Any] | None,
+        packet_info: dict[str, Any] | None = None,
+    ) -> bool:
+        """True when RF row has fields needed for TC_FLOOD regional scope HMAC matching."""
+        if not rf_data:
+            return False
+        rt = rf_data.get("route_type_int")
+        tc_code1 = rf_data.get("transport_code1")
+        payload_type = rf_data.get("payload_type_int")
+        scope_payload_hex = rf_data.get("scope_payload_hex") or ""
+
+        dec_rt, dec_tc, dec_pt, dec_hex = self._scope_fields_from_packet_info(packet_info)
+        if dec_rt == 0:
+            rt = 0
+            if dec_tc is not None:
+                tc_code1 = dec_tc
+            if dec_pt is not None:
+                payload_type = dec_pt
+            if dec_hex:
+                scope_payload_hex = dec_hex
+
+        if rt != int(RouteType.TRANSPORT_FLOOD.value):
+            return False
+        if tc_code1 is None or payload_type is None or not scope_payload_hex:
+            return False
+        return int(payload_type) == self._grp_txt_payload_type_int()
+
     def _is_old_cached_message(self, timestamp: Any) -> bool:
         """Check if a message timestamp indicates it's from before bot connection.
 
@@ -1358,8 +1392,62 @@ class MessageHandler:
             self.recent_rf_data.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
             self.recent_rf_data = self.recent_rf_data[: self._max_rf_cache_size]
 
+    async def _correlate_channel_message_rf_data(
+        self,
+        message_packet_prefix: str | None,
+        message_pubkey: str,
+        payload: dict[str, Any],
+        *,
+        scope_eligible_only: bool,
+        extended_timeout: float,
+    ) -> dict[str, Any] | None:
+        """Correlate a channel message with cached RF log rows (strategies 1–4)."""
+        recent_rf_data: dict[str, Any] | None = None
+
+        if message_packet_prefix:
+            recent_rf_data = self.find_recent_rf_data(
+                message_packet_prefix, scope_eligible_only=scope_eligible_only
+            )
+        elif message_pubkey:
+            recent_rf_data = self.find_recent_rf_data(
+                message_pubkey, scope_eligible_only=scope_eligible_only
+            )
+
+        if not recent_rf_data and self.enhanced_correlation and not scope_eligible_only:
+            correlation_key = message_packet_prefix or message_pubkey
+            message_id = f"{correlation_key}_{int(time.time() * 1000)}"
+            self.store_message_for_correlation(message_id, payload)
+            await asyncio.sleep(0.1)
+            recent_rf_data = self.correlate_message_with_rf_data(message_id)
+
+        if not recent_rf_data:
+            if message_packet_prefix:
+                recent_rf_data = self.find_recent_rf_data(
+                    message_packet_prefix,
+                    max_age_seconds=extended_timeout,
+                    scope_eligible_only=scope_eligible_only,
+                )
+            elif message_pubkey:
+                recent_rf_data = self.find_recent_rf_data(
+                    message_pubkey,
+                    max_age_seconds=extended_timeout,
+                    scope_eligible_only=scope_eligible_only,
+                )
+
+        if not recent_rf_data:
+            recent_rf_data = self.find_recent_rf_data(
+                max_age_seconds=extended_timeout,
+                scope_eligible_only=scope_eligible_only,
+            )
+
+        return recent_rf_data
+
     def find_recent_rf_data(
-        self, correlation_key: str | None = None, max_age_seconds: float | None = None
+        self,
+        correlation_key: str | None = None,
+        max_age_seconds: float | None = None,
+        *,
+        scope_eligible_only: bool = False,
     ) -> dict[str, Any] | None:
         """Find recent RF data for SNR/RSSI and packet decoding with improved correlation
 
@@ -1367,6 +1455,10 @@ class MessageHandler:
             correlation_key: Can be either:
                 - packet_prefix (from raw_hex[:32]) for RF data correlation
                 - pubkey_prefix (from message payload) for message correlation
+            max_age_seconds: Maximum age of RF cache entries to consider.
+            scope_eligible_only: When True, only return TC_FLOOD / GRP_TXT rows suitable
+                for flood_scopes HMAC matching. Strategy 4 (most-recent fallback) skips
+                unrelated packets such as ADVERT.
         """
         import time
 
@@ -1383,21 +1475,30 @@ class MessageHandler:
             self.logger.debug(f"No recent RF data found within {max_age_seconds}s window")
             return None
 
+        def _accept(data: dict[str, Any]) -> dict[str, Any] | None:
+            if scope_eligible_only and not self._is_rf_data_scope_eligible(data):
+                return None
+            return data
+
         # Strategy 1: Try exact packet prefix match first (for RF data correlation)
         if correlation_key:
             for data in recent_data:
                 rf_packet_prefix = data.get("packet_prefix", "") or ""
                 if rf_packet_prefix == correlation_key:
-                    self.logger.debug(f"Found exact packet prefix match: {rf_packet_prefix}")
-                    return data
+                    accepted = _accept(data)
+                    if accepted:
+                        self.logger.debug(f"Found exact packet prefix match: {rf_packet_prefix}")
+                        return accepted
 
         # Strategy 2: Try pubkey prefix match (for message correlation)
         if correlation_key:
             for data in recent_data:
                 rf_pubkey_prefix = data.get("pubkey_prefix", "") or ""
                 if rf_pubkey_prefix == correlation_key:
-                    self.logger.debug(f"Found exact pubkey prefix match: {rf_pubkey_prefix}")
-                    return data
+                    accepted = _accept(data)
+                    if accepted:
+                        self.logger.debug(f"Found exact pubkey prefix match: {rf_pubkey_prefix}")
+                        return accepted
 
         # Strategy 3: Try partial packet prefix matches
         if correlation_key:
@@ -1406,16 +1507,37 @@ class MessageHandler:
                 # Check for partial match (at least 16 characters)
                 min_length = min(len(rf_packet_prefix), len(correlation_key), 16)
                 if rf_packet_prefix[:min_length] == correlation_key[:min_length] and min_length >= 16:
-                    self.logger.debug(
-                        f"Found partial packet prefix match: {rf_packet_prefix[:16]}... matches {correlation_key[:16]}..."
-                    )
-                    return data
+                    accepted = _accept(data)
+                    if accepted:
+                        self.logger.debug(
+                            f"Found partial packet prefix match: {rf_packet_prefix[:16]}... "
+                            f"matches {correlation_key[:16]}..."
+                        )
+                        return accepted
 
         # Strategy 4: Use most recent data (fallback for timing issues)
         if recent_data:
-            most_recent = max(recent_data, key=lambda x: x["timestamp"])
+            candidates = recent_data
+            if scope_eligible_only:
+                candidates = [d for d in recent_data if self._is_rf_data_scope_eligible(d)]
+                if not candidates:
+                    self.logger.debug(
+                        "No scope-eligible RF data in cache for fallback "
+                        "(need TC_FLOOD GRP_TXT with transport code)"
+                    )
+                    return None
+            most_recent = max(candidates, key=lambda x: x["timestamp"])
             packet_prefix = most_recent.get("packet_prefix", "unknown")
-            self.logger.debug(f"Using most recent RF data (fallback): {packet_prefix} at {most_recent['timestamp']}")
+            if scope_eligible_only:
+                self.logger.debug(
+                    "Using most recent scope-eligible RF data (fallback): %s at %s",
+                    packet_prefix,
+                    most_recent["timestamp"],
+                )
+            else:
+                self.logger.debug(
+                    f"Using most recent RF data (fallback): {packet_prefix} at {most_recent['timestamp']}"
+                )
             return most_recent
 
         return None
@@ -2028,42 +2150,28 @@ class MessageHandler:
                 f"Processing channel message from packet prefix: {message_packet_prefix}, pubkey: {message_pubkey}"
             )
 
-            # Enhanced RF data correlation with multiple strategies
-            recent_rf_data = None
-
-            # Strategy 1: Try immediate correlation using packet prefix
-            if message_packet_prefix:
-                recent_rf_data = self.find_recent_rf_data(message_packet_prefix)
-            elif message_pubkey:
-                # Fallback to pubkey correlation
-                recent_rf_data = self.find_recent_rf_data(message_pubkey)
-
-            # Strategy 2: If no immediate match and enhanced correlation is enabled, store message and wait briefly
-            if not recent_rf_data and self.enhanced_correlation:
-                import time
-
-                correlation_key = message_packet_prefix or message_pubkey
-                message_id = f"{correlation_key}_{int(time.time() * 1000)}"
-                self.store_message_for_correlation(message_id, payload)
-
-                # Wait a short time for RF data to arrive (non-blocking)
-                await asyncio.sleep(0.1)  # 100ms wait
-                recent_rf_data = self.correlate_message_with_rf_data(message_id)
-
-            # Strategy 3: Try with extended timeout if still no match
-            if not recent_rf_data:
-                extended_timeout = self.rf_data_timeout * 2  # Double the normal timeout
-                if message_packet_prefix:
-                    recent_rf_data = self.find_recent_rf_data(message_packet_prefix, max_age_seconds=extended_timeout)
-                elif message_pubkey:
-                    recent_rf_data = self.find_recent_rf_data(message_pubkey, max_age_seconds=extended_timeout)
-
-            # Strategy 4: Use most recent RF data as last resort
-            if not recent_rf_data:
-                extended_timeout = self.rf_data_timeout * 2  # Double the normal timeout
-                recent_rf_data = self.find_recent_rf_data(max_age_seconds=extended_timeout)
+            extended_timeout = self.rf_data_timeout * 2
+            recent_rf_data = await self._correlate_channel_message_rf_data(
+                message_packet_prefix,
+                message_pubkey,
+                payload,
+                scope_eligible_only=False,
+                extended_timeout=extended_timeout,
+            )
+            scope_rf_data = await self._correlate_channel_message_rf_data(
+                message_packet_prefix,
+                message_pubkey,
+                payload,
+                scope_eligible_only=True,
+                extended_timeout=extended_timeout,
+            )
+            if scope_rf_data and scope_rf_data is not recent_rf_data:
+                self.logger.debug(
+                    "Using separate scope-eligible RF correlation (path/SNR source differs)"
+                )
 
             packet_info: dict[str, Any] | None = None
+            scope_packet_info: dict[str, Any] | None = None
             if recent_rf_data and recent_rf_data.get("raw_hex"):
                 raw_hex = recent_rf_data["raw_hex"]
                 self.logger.info(f"🔍 FOUND RF DATA: {len(raw_hex)} chars, starts with: {raw_hex[:32]}...")
@@ -2136,29 +2244,44 @@ class MessageHandler:
                 hops = payload.get("path_len", 255)
                 path_string = None
 
-            # Scope matching: if the RF data is a TC_FLOOD, check whether its transport
-            # code matches any configured flood_scopes entry. If so, the reply should
-            # use the same scope so it reaches the same scoped network segment.
+            if scope_rf_data and scope_rf_data.get("raw_hex"):
+                # Decode the full inner MeshCore packet (header + path + ciphertext).
+                # scope_payload_hex is ciphertext-only for HMAC; do not pass it to decode_meshcore_packet.
+                inner_packet_hex = scope_rf_data.get("payload")
+                if inner_packet_hex:
+                    scope_packet_info = self.decode_meshcore_packet(inner_packet_hex)
+                if scope_rf_data.get("packet_hash") and scope_packet_info:
+                    scope_packet_info["packet_hash"] = scope_rf_data["packet_hash"]
+
+            # Scope matching: use scope-eligible RF only (never a stale ADVERT fallback).
             reply_scope: str | None = None
-            if recent_rf_data:
-                scope_keys = getattr(getattr(self.bot, "command_manager", None), "flood_scope_keys", {})
+            cmd_mgr = getattr(self.bot, "command_manager", None)
+            scope_keys = getattr(cmd_mgr, "flood_scope_keys", {})
+            if scope_rf_data and scope_keys:
                 reply_scope = self._resolve_reply_scope_from_rf_data(
-                    recent_rf_data, packet_info, scope_keys
+                    scope_rf_data, scope_packet_info, scope_keys
                 )
 
             # Allowlist enforcement: when flood_scopes is configured, only reply to
             # messages whose scope matched an entry.  Unscoped FLOOD is allowed only
             # when '*' (or equivalent) is explicitly listed.
-            cmd_mgr = getattr(self.bot, "command_manager", None)
-            scope_keys = getattr(cmd_mgr, "flood_scope_keys", {})
             if scope_keys and reply_scope is None:
                 allow_global = getattr(cmd_mgr, "flood_scope_allow_global", False)
-                rt_for_check = self._effective_route_type_int(recent_rf_data, packet_info)
-                if rt_for_check == 0:
+                if scope_rf_data and self._is_rf_data_scope_eligible(
+                    scope_rf_data, scope_packet_info
+                ):
                     self.logger.info("Ignoring TC_FLOOD: scope not in flood_scopes allowlist")
                     return
-                elif not allow_global:
-                    self.logger.debug("Ignoring FLOOD: unscoped messages not permitted (add '*' to flood_scopes)")
+                if not allow_global:
+                    if scope_rf_data is None:
+                        self.logger.info(
+                            "Ignoring channel message: no TC_FLOOD RF correlation for "
+                            "flood_scopes allowlist (avoid replying on wrong scope)"
+                        )
+                    else:
+                        self.logger.debug(
+                            "Ignoring FLOOD: unscoped messages not permitted (add '*' to flood_scopes)"
+                        )
                     return
 
             # Get the full public key from contacts if available

@@ -251,15 +251,17 @@ max_response_hops = 7
 prefix_bytes = 1
 
 # List of region scopes (comma-separated) that the bot will reply to when messages arrive on those scopes.
-# Responses will be sent with the same scope hash.
+# Replies mirror scope via RF correlation (TC_FLOOD / GRP_TXT); stale ADVERT/other packets are not used for scope.
+# Responses will be sent with the same scope hash when correlation succeeds.
 # Example: flood_scopes = *,#west,#east
 # Use * to allow replies to unscoped FLOOD messages.
 # Leave blank or commented to use the default (all).
 # flood_scopes = #region, #otherregion
 
 # Outgoing flood scope override (optional)
-# Set this to a region (e.g. #west) to always use that scope for all outgoing channel messages.
-# Leave commented or empty to let the bot automatically match the incoming message’s region.
+# Fixed scope for proactive sends and when reply_scope is unset (webhooks, scheduled messages).
+# Replies with matched reply_scope still use that scope; this does not override per-message mirror.
+# Leave commented or empty to rely on auto-mirror from flood_scopes correlation only.
 # You can use "region" or "#region" (the # is added if missing).
 # outgoing_flood_scope_override = #west
 
