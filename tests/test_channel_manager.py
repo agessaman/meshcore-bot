@@ -120,6 +120,11 @@ class TestGetChannelNumber:
         assert cm.get_channel_number("tacticalnet") == 2
         assert cm.get_channel_number("TACTICALNET") == 2
 
+    def test_hash_prefix_ignored(self):
+        cm = _seeded_manager({1: {"channel_name": "#alerts"}})
+        assert cm.get_channel_number("alerts") == 1
+        assert cm.get_channel_number("#alerts") == 1
+
     def test_returns_none_when_not_found(self):
         cm = _seeded_manager({0: {"channel_name": "general"}})
         assert cm.get_channel_number("nonexistent") is None
@@ -190,6 +195,12 @@ class TestGetChannelByName:
         entry = {"channel_name": "General"}
         cm = _seeded_manager({0: entry})
         assert cm.get_channel_by_name("GENERAL") == entry
+
+    def test_hash_prefix_ignored(self):
+        entry = {"channel_name": "#general"}
+        cm = _seeded_manager({0: entry})
+        assert cm.get_channel_by_name("general") == entry
+        assert cm.get_channel_by_name("#general") == entry
 
     def test_returns_none_when_not_found(self):
         cm = _seeded_manager({0: {"channel_name": "general"}})

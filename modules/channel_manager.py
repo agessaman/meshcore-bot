@@ -32,6 +32,11 @@ class ChannelManager:
         self._cache_valid = False
         self._fetch_timeout = 2.0  # Timeout for individual channel fetches
 
+    @staticmethod
+    def _normalize_channel_name_for_lookup(name: str) -> str:
+        """Lowercase channel name without a leading # for cache lookups."""
+        return name.removeprefix("#").lower()
+
     async def fetch_channels(self):
         """Fetch channels from the MeshCore node using enhanced concurrent fetching"""
         self.logger.info("Fetching channels from MeshCore node using enhanced concurrent method...")
@@ -308,8 +313,10 @@ class ChannelManager:
         Returns:
             Channel number if found, None if not found (to distinguish from channel 0)
         """
+        name_key = self._normalize_channel_name_for_lookup(channel_name)
         for num, channel_info in self._channels_cache.items():
-            if channel_info.get('channel_name', '').lower() == channel_name.lower():
+            cached_name = channel_info.get("channel_name", "")
+            if self._normalize_channel_name_for_lookup(cached_name) == name_key:
                 return num
 
         self.logger.warning(f"Channel name '{channel_name}' not found in cached channels")
@@ -347,9 +354,10 @@ class ChannelManager:
             self.logger.warning("Cache not valid, call fetch_all_channels() first")
             return None
 
-        name_lower = name.lower()
+        name_key = self._normalize_channel_name_for_lookup(name)
         for channel in self._channels_cache.values():
-            if channel.get("channel_name", "").lower() == name_lower:
+            cached_name = channel.get("channel_name", "")
+            if self._normalize_channel_name_for_lookup(cached_name) == name_key:
                 return channel
 
         return None

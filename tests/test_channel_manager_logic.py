@@ -70,6 +70,12 @@ class TestChannelNumberLookup:
         cm._cache_valid = True
         assert cm.get_channel_number("general") == 0
 
+    def test_hash_prefix_ignored(self, cm):
+        cm._channels_cache = {0: {"channel_name": "#kod-bot"}}
+        cm._cache_valid = True
+        assert cm.get_channel_number("kod-bot") == 0
+        assert cm.get_channel_number("#kod-bot") == 0
+
 
 class TestCacheManagement:
     """Tests for cache invalidation."""
@@ -196,8 +202,8 @@ class TestGetChannelByName:
         cm._cache_valid = True
         assert cm.get_channel_number("nonexistent") is None
 
-    def test_exact_name_lookup(self, cm):
-        """get_channel_number does a case-insensitive exact match (no # stripping)."""
+    def test_hash_prefixed_cache_matches_bare_name(self, cm):
         cm._channels_cache = {0: {"channel_name": "#general"}}
         cm._cache_valid = True
         assert cm.get_channel_number("#general") == 0
+        assert cm.get_channel_number("general") == 0
