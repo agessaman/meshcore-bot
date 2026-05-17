@@ -66,7 +66,6 @@ class PacketCaptureService(BaseServicePlugin):
 
         # Setup logging (use bot's formatter and configuration)
         self.logger = logging.getLogger("PacketCaptureService")
-        self.logger.setLevel(bot.logger.level)
 
         # Only setup handlers if none exist to prevent duplicates
         if not self.logger.handlers:
@@ -185,6 +184,7 @@ class PacketCaptureService(BaseServicePlugin):
         # Verbose/debug
         self.verbose = config.getboolean("PacketCapture", "verbose", fallback=False)
         self.debug = config.getboolean("PacketCapture", "debug", fallback=False)
+        self._apply_log_level()
 
         # MQTT configuration
         self.mqtt_enabled = config.getboolean("PacketCapture", "mqtt_enabled", fallback=True)
@@ -368,6 +368,22 @@ class PacketCaptureService(BaseServicePlugin):
             str: Config value or fallback.
         """
         return self.bot.config.get("PacketCapture", key, fallback=fallback)
+
+    def _apply_log_level(self) -> None:
+        """Set service logger level from PacketCapture verbose/debug, not global bot log_level."""
+        if self.debug:
+            self.logger.setLevel(logging.DEBUG)
+        else:
+            self.logger.setLevel(logging.INFO)
+
+    def _log_packet_summary(self, message: str) -> None:
+        """Log per-packet summary when verbose or debug is enabled."""
+        if not (self.verbose or self.debug):
+            return
+        if self.debug:
+            self.logger.debug(message)
+        else:
+            self.logger.info(message)
 
     def _auth_token_iat_exp(self, broker_config: dict[str, Any]) -> tuple[int, int]:
         """Unix iat/exp for JWT payload (exp = iat + ttl). Non-positive TTL uses 86400s."""
@@ -894,7 +910,7 @@ class PacketCaptureService(BaseServicePlugin):
                 publish_metrics["skipped_unparseable"] = skip_mqtt_unparseable
                 publish_metrics["skipped_invalid_advert_signature"] = skip_mqtt_invalid_advert_signature
 
-            # Log DEBUG level for each packet (verbose; use INFO only for service lifecycle)
+            # Per-packet summary: INFO when verbose, DEBUG when debug (lifecycle stays INFO)
             if publish_metrics.get("skipped_unparseable"):
                 action = "Captured (MQTT skipped: zero hash / unparseable)"
             elif publish_metrics.get("skipped_invalid_advert_signature"):
@@ -903,7 +919,7 @@ class PacketCaptureService(BaseServicePlugin):
                 action = "Skipping"
             else:
                 action = "Captured"
-            self.logger.debug(
+            self._log_packet_summary(
                 f"📦 {action} packet #{self.packet_count}: {formatted_packet['route']} type {formatted_packet['packet_type']}, {formatted_packet['len']} bytes, SNR: {formatted_packet['SNR']}, RSSI: {formatted_packet['RSSI']}, hash: {formatted_packet['hash']} (MQTT: {publish_metrics['succeeded']}/{publish_metrics['attempted']})"
             )
 
