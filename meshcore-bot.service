@@ -1,6 +1,6 @@
 [Unit]
 Description=MeshCore Bot - Mesh Network Bot Service
-Documentation=https://github.com/your-repo/meshcore-bot
+Documentation=https://github.com/agessaman/meshcore-bot
 After=network.target
 Wants=network.target
 

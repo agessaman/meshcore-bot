@@ -128,6 +128,45 @@ def test_effective_route_type_prefers_decode_tc_flood():
     assert mh._effective_route_type_int(recent_rf_data, packet_info) == 0
 
 
+def test_scope_eligible_ignores_bad_decode_when_not_tc_flood():
+    """RF-wrapper decode must not overwrite cache scope fields (wrong payload_type/path)."""
+    scope_name = "#snoco"
+    tc = make_transport_code(scope_name, PAYLOAD_TYPE, PAYLOAD)
+    rf_data = {
+        "route_type_int": 0,
+        "transport_code1": tc,
+        "payload_type_int": PAYLOAD_TYPE,
+        "scope_payload_hex": PAYLOAD.hex(),
+    }
+    bad_packet_info = {
+        "route_type": 3,
+        "transport_codes": {"code1": 5356},
+        "payload_type": 12,
+        "payload_hex": "0000" + PAYLOAD.hex(),
+    }
+    mh = _make_handler_for_scope_resolve()
+    assert mh._is_rf_data_scope_eligible(rf_data, bad_packet_info) is True
+
+
+def test_scope_eligible_uses_decode_when_tc_flood():
+    scope_name = "#snoco"
+    tc = make_transport_code(scope_name, PAYLOAD_TYPE, PAYLOAD)
+    rf_data = {
+        "route_type_int": 1,
+        "transport_code1": None,
+        "payload_type_int": 4,
+        "scope_payload_hex": "",
+    }
+    good_packet_info = {
+        "route_type": 0,
+        "transport_codes": {"code1": tc},
+        "payload_type": PAYLOAD_TYPE,
+        "payload_hex": PAYLOAD.hex(),
+    }
+    mh = _make_handler_for_scope_resolve()
+    assert mh._is_rf_data_scope_eligible(rf_data, good_packet_info) is True
+
+
 def test_scope_fields_from_packet_info_enum_route_type():
     class _EnumVal:
         def __init__(self, value: int):

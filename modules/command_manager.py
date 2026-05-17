@@ -1174,12 +1174,43 @@ class CommandManager:
             scope_is_global = scope_to_use in ("", "*", "0", "None")
             if not scope_is_global:
                 scope_to_use = self._normalize_scope_name(scope_to_use)
+            override_cfg = self._outgoing_flood_scope_override()
             if scope_is_global:
-                self.logger.debug("Outbound channel flood scope: global (no set_flood_scope)")
+                if override_cfg:
+                    self.logger.warning(
+                        "Outbound channel flood scope: global (no set_flood_scope); "
+                        "outgoing_flood_scope_override=%r was not applied "
+                        "(explicit scope=%r)",
+                        override_cfg,
+                        scope,
+                    )
+                else:
+                    self.logger.debug("Outbound channel flood scope: global (no set_flood_scope)")
             else:
-                self.logger.debug("Outbound channel flood scope: %s (set_flood_scope)", scope_to_use)
-            if not scope_is_global and hasattr(self.bot.meshcore.commands, "set_flood_scope"):
-                await self.bot.meshcore.commands.set_flood_scope(scope_to_use)
+                scope_source = "explicit argument" if scope is not None else (
+                    "outgoing_flood_scope_override"
+                    if resolved is None and override_cfg
+                    else "reply_scope or config"
+                )
+                self.logger.info(
+                    "Outbound channel flood scope: %s (%s; set_flood_scope)",
+                    scope_to_use,
+                    scope_source,
+                )
+            if not scope_is_global and not hasattr(self.bot.meshcore.commands, "set_flood_scope"):
+                self.logger.warning(
+                    "Regional flood scope %r requested but meshcore.commands.set_flood_scope "
+                    "is unavailable; channel message will use device default (often global flood)",
+                    scope_to_use,
+                )
+            elif not scope_is_global:
+                _scope_result = await self.bot.meshcore.commands.set_flood_scope(scope_to_use)
+                if _scope_result is None or getattr(_scope_result, "type", None) == "ERROR":
+                    self.logger.warning(
+                        "set_flood_scope(%s) failed (result=%s); "
+                        "message will be sent with current firmware scope",
+                        scope_to_use, _scope_result,
+                    )
 
             target = f"{channel} (channel {channel_num})"
             # Retry on no_event_received: max 2 extra attempts, 2s apart
@@ -1192,7 +1223,11 @@ class CommandManager:
                     )
                 finally:
                     if not scope_is_global and hasattr(self.bot.meshcore.commands, "set_flood_scope"):
-                        await self.bot.meshcore.commands.set_flood_scope("*")
+                        _restore_result = await self.bot.meshcore.commands.set_flood_scope("*")
+                        if _restore_result is None or getattr(_restore_result, "type", None) == "ERROR":
+                            self.logger.warning(
+                                "set_flood_scope('*') restore failed (result=%s)", _restore_result
+                            )
 
                 if self._is_no_event_received(result) and _attempt < _max_retries:
                     self.logger.warning(
@@ -1202,7 +1237,12 @@ class CommandManager:
                     await asyncio.sleep(2)
                     # Re-apply scope for next attempt
                     if not scope_is_global and hasattr(self.bot.meshcore.commands, "set_flood_scope"):
-                        await self.bot.meshcore.commands.set_flood_scope(scope_to_use)
+                        _scope_result = await self.bot.meshcore.commands.set_flood_scope(scope_to_use)
+                        if _scope_result is None or getattr(_scope_result, "type", None) == "ERROR":
+                            self.logger.warning(
+                                "set_flood_scope(%s) failed on retry re-apply (result=%s)",
+                                scope_to_use, _scope_result,
+                            )
                     continue
                 break
 

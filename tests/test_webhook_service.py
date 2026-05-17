@@ -269,3 +269,11 @@ class TestHandleWebhookDispatch:
         req = _make_request(body={"channel": "general", "message": "hi"})
         resp = await svc._handle_webhook(req)
         assert resp.status == 500
+
+    @pytest.mark.asyncio
+    async def test_send_returns_false_returns_500(self, mock_logger):
+        svc, bot = _make_service(mock_logger)
+        bot.command_manager.send_channel_message = AsyncMock(return_value=False)
+        req = _make_request(body={"channel": "general", "message": "hi"})
+        resp = await svc._handle_webhook(req)
+        assert resp.status == 500

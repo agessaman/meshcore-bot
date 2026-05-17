@@ -242,13 +242,33 @@ class WebhookService(BaseServicePlugin):
                     if body_scope_raw
                     else self.get_mesh_flood_scope()
                 )
-                await self._send_channel_message(channel, message_text, scope=mesh_scope)
+                sent = await self._send_channel_message(
+                    channel, message_text, scope=mesh_scope
+                )
+                if not sent:
+                    self.logger.error(
+                        f"Webhook: failed to send to channel '{channel}' from {request.remote}"
+                    )
+                    return aio_web.Response(
+                        status=500,
+                        content_type="application/json",
+                        text='{"error": "Failed to send message"}',
+                    )
                 self.logger.info(
                     f"Webhook: sent to #{channel} from {request.remote}: "
                     f"{message_text[:60]}{'...' if len(message_text) > 60 else ''}"
                 )
             else:
-                await self._send_dm(dm_to, message_text)
+                sent = await self._send_dm(dm_to, message_text)
+                if not sent:
+                    self.logger.error(
+                        f"Webhook: failed to send DM to '{dm_to}' from {request.remote}"
+                    )
+                    return aio_web.Response(
+                        status=500,
+                        content_type="application/json",
+                        text='{"error": "Failed to send message"}',
+                    )
                 self.logger.info(
                     f"Webhook: sent DM to {dm_to} from {request.remote}: "
                     f"{message_text[:60]}{'...' if len(message_text) > 60 else ''}"
@@ -289,12 +309,12 @@ class WebhookService(BaseServicePlugin):
 
     async def _send_channel_message(
         self, channel: str, message: str, *, scope: str | None = None
-    ) -> None:
+    ) -> bool:
         """Send a message to a MeshCore channel via command_manager."""
         cm = getattr(self.bot, "command_manager", None)
         if cm is None:
             raise RuntimeError("command_manager not available on bot")
-        await cm.send_channel_message(
+        return await cm.send_channel_message(
             channel,
             message,
             skip_user_rate_limit=True,
@@ -302,12 +322,12 @@ class WebhookService(BaseServicePlugin):
             scope=scope,
         )
 
-    async def _send_dm(self, recipient: str, message: str) -> None:
+    async def _send_dm(self, recipient: str, message: str) -> bool:
         """Send a direct message via command_manager."""
         cm = getattr(self.bot, "command_manager", None)
         if cm is None:
             raise RuntimeError("command_manager not available on bot")
-        await cm.send_dm(
+        return await cm.send_dm(
             recipient,
             message,
             skip_user_rate_limit=True,
