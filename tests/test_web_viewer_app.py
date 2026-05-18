@@ -753,6 +753,23 @@ class TestRouteDefinitions:
             response = client.get('/config')
             assert response.status_code == 200
 
+    def test_multibyte_routes_disabled_by_default(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.get('/multibyte-rollout')
+            assert response.status_code == 404
+
+            response = client.get('/api/multibyte-rollout')
+            assert response.status_code == 404
+
+    def test_multibyte_routes_enabled_via_flag(self, viewer_with_db):
+        viewer_with_db.multibyte_monitor_enabled = True
+        with viewer_with_db.app.test_client() as client:
+            response = client.get('/multibyte-rollout')
+            assert response.status_code == 200
+
+            response = client.get('/api/multibyte-rollout')
+            assert response.status_code == 200
+
 
 # ---------------------------------------------------------------------------
 # api_config_notifications

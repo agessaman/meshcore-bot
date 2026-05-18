@@ -1,0 +1,751 @@
+{% extends "base.html" %}
+
+{% block title %}Multibyte Hash Rollout - MeshCore Bot Data Viewer{% endblock %}
+
+{% block content %}
+<style>
+    /* Dark-mode table hover: keep text readable */
+    [data-theme="dark"] .table-hover > tbody > tr:hover > * {
+        color: var(--text-color);
+        background-color: var(--bg-tertiary);
+    }
+</style>
+
+<div class="container-fluid">
+
+    <!-- Header -->
+    <div class="row mb-3">
+        <div class="col-12 d-flex justify-content-between align-items-start flex-wrap gap-2">
+            <div>
+                <h1 class="mb-1">
+                    <i class="fas fa-code-branch"></i> Multibyte Hash Rollout
+                </h1>
+                <p class="text-muted mb-0">
+                    Adoption analytics for multibyte path hashes (MeshCore 1.14.0+) across repeaters and room servers.
+                </p>
+            </div>
+            <div class="d-flex gap-2 align-items-center flex-wrap">
+                <!-- Node type toggle -->
+                <div class="btn-group btn-group-sm" id="node-type-group" role="group">
+                    <button class="btn btn-primary active" data-node-type="all">All Relays</button>
+                    <button class="btn btn-outline-primary" data-node-type="repeater">Repeaters</button>
+                    <button class="btn btn-outline-primary" data-node-type="roomserver">Room Servers</button>
+                </div>
+                <!-- Timespan -->
+                <select id="timespan-select" class="form-select form-select-sm" style="width: auto;">
+                    <option value="24h">Last 24 hours</option>
+                    <option value="7d">Last 7 days</option>
+                    <option value="30d" selected>Last 30 days</option>
+                    <option value="90d">Last 90 days</option>
+                    <option value="all">All time</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading -->
+    <div id="loading-state" class="text-center py-5">
+        <div class="spinner-border text-primary" role="status"></div>
+        <p class="mt-2 text-muted">Loading rollout analytics&hellip;</p>
+    </div>
+
+    <!-- Error -->
+    <div id="error-state" class="alert alert-danger" style="display:none;">
+        <i class="fas fa-exclamation-triangle"></i>
+        Failed to load rollout data. <span id="error-message"></span>
+    </div>
+
+    <!-- Main content -->
+    <div id="main-content" style="display:none;">
+
+        <!-- KPI cards -->
+        <div class="row mb-4 g-3">
+            <div class="col-6 col-md-3">
+                <div class="card h-100">
+                    <div class="card-body text-center py-3">
+                        <div class="fw-bold mb-1" style="font-size:2rem; color:var(--text-color);" id="kpi-total">0</div>
+                        <div class="text-muted small" id="kpi-total-label">Total Relay Nodes</div>
+                        <div class="text-muted" style="font-size:0.75rem;" id="kpi-total-sub">Repeaters &amp; Room Servers</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card h-100">
+                    <div class="card-body text-center py-3">
+                        <div class="fw-bold mb-1 text-success" style="font-size:2rem;" id="kpi-multibyte">0</div>
+                        <div class="text-muted small">Multibyte Active</div>
+                        <div class="fw-semibold text-success" style="font-size:0.85rem;" id="kpi-adoption-pct">0%</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card h-100">
+                    <div class="card-body text-center py-3">
+                        <div class="fw-bold mb-1 text-warning" style="font-size:2rem;" id="kpi-single">0</div>
+                        <div class="text-muted small">No MB Observed</div>
+                        <div class="fw-semibold text-warning" style="font-size:0.85rem;" id="kpi-single-pct">0%</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card h-100">
+                    <div class="card-body text-center py-3">
+                        <div class="fw-bold mb-1" style="font-size:2rem; color:var(--text-muted);" id="kpi-traffic-pct">0%</div>
+                        <div class="text-muted small">Path Obs. Multibyte</div>
+                        <div class="text-muted" style="font-size:0.75rem;">by observation count</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts row -->
+        <div class="row mb-4 g-3">
+            <div class="col-md-5">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <i class="fas fa-chart-pie"></i> Relay Node Status
+                    </div>
+                    <div class="card-body d-flex align-items-center justify-content-center" style="min-height:300px;">
+                        <div style="width:100%; max-width:320px;">
+                            <canvas id="statusDonutChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-7">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <i class="fas fa-chart-area"></i> Path Observation Trend <span class="text-muted small">(last 30 days)</span>
+                    </div>
+                    <div class="card-body" style="min-height:300px; position:relative;">
+                        <canvas id="trendChart"></canvas>
+                        <div id="trend-empty" class="text-center py-4 text-muted" style="display:none;">
+                            <i class="fas fa-chart-area fa-2x mb-2 d-block"></i>
+                            No path observation data available yet.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Priority list -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <span>
+                            <i class="fas fa-arrow-up-right-dots text-warning"></i>
+                            Priority Upgrade Targets
+                            <span class="badge bg-warning text-dark ms-1" id="priority-count">0</span>
+                        </span>
+                        <div class="btn-group btn-group-sm" id="priority-sort-group" role="group" aria-label="Sort strategy">
+                            <button class="btn btn-warning" data-psort="relay_score">Relay Traffic</button>
+                            <button class="btn btn-outline-warning" data-psort="unique_sources">Sources</button>
+                            <button class="btn btn-outline-warning" data-psort="unique_dests">Destinations</button>
+                            <button class="btn btn-outline-warning" data-psort="legacy_degree">Legacy Degree</button>
+                        </div>
+                    </div>
+                    <div class="card-body pb-2">
+                        <p class="text-muted small mb-2">
+                            Relay nodes with observed traffic but <strong>zero multibyte path involvement</strong> in the selected window.
+                            Because pre-1.14.0 firmware <strong>drops</strong> packets it cannot parse, relay-hop prefix matching is
+                            definitive evidence of capability — nodes here had no multibyte involvement across all three evidence sources
+                            (own advert encoding, stored path history, and relay-hop prefix matching).
+                        </p>
+                        <div id="priority-strategy-desc" class="small border-start border-warning ps-3 mb-2" style="border-width:3px !important;"></div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0" id="priority-table">
+                            <thead>
+                                <tr>
+                                    <th style="width:2.5rem;">#</th>
+                                    <th>Name</th>
+                                    <th>Role</th>
+                                    <th class="text-end" title="Single-byte relay path observations (excludes senders who also use multibyte)">Relay Traffic</th>
+                                    <th class="text-end" title="Distinct nodes whose single-byte paths route through this relay">Sources</th>
+                                    <th class="text-end" title="Distinct destinations served by single-byte paths through this relay">Destinations</th>
+                                    <th class="text-end" title="Edges in mesh graph connecting this node to other unupgraded nodes">Legacy Degree</th>
+                                    <th>Last Seen</th>
+                                    <th>Location</th>
+                                </tr>
+                            </thead>
+                            <tbody id="priority-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div id="priority-empty" class="text-center py-4 text-muted" style="display:none;">
+                        <i class="fas fa-check-circle text-success fa-2x mb-2 d-block"></i>
+                        All active relay nodes have been observed with multibyte path activity.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- All repeaters table -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fas fa-list"></i> All Relay Nodes
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
+                            <div class="btn-group btn-group-sm" id="status-filter-group" role="group">
+                                <button class="btn btn-primary active" data-filter="all">All</button>
+                                <button class="btn btn-outline-success" data-filter="multibyte_direct">Direct MB</button>
+                                <button class="btn btn-outline-info" data-filter="multibyte_relayed">MB Relay</button>
+                                <button class="btn btn-outline-warning" data-filter="single_byte">No MB</button>
+                                <button class="btn btn-outline-secondary" data-filter="unknown">Unknown</button>
+                            </div>
+                            <input type="text" id="repeater-search" class="form-control form-control-sm"
+                                   placeholder="Search name or location&hellip;" style="max-width:240px;">
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-hover table-sm mb-0">
+                                <thead>
+                                    <tr>
+                                        <th class="sortable" data-sort="name" style="cursor:pointer;">Name <i class="fas fa-sort text-muted"></i></th>
+                                        <th class="sortable" data-sort="role" style="cursor:pointer;">Role <i class="fas fa-sort text-muted"></i></th>
+                                        <th>Status</th>
+                                        <th class="sortable" data-sort="out_bytes_per_hop" style="cursor:pointer;">Own Path Enc. <i class="fas fa-sort text-muted"></i></th>
+                                        <th class="sortable" data-sort="advert_count" style="cursor:pointer;">Adverts <i class="fas fa-sort text-muted"></i></th>
+                                        <th class="sortable" data-sort="last_seen" style="cursor:pointer;">Last Seen <i class="fas fa-sort text-muted"></i></th>
+                                        <th>Location</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="all-tbody"></tbody>
+                            </table>
+                        </div>
+                        <div id="all-empty" class="text-center py-4 text-muted" style="display:none;">
+                            <i class="fas fa-satellite-dish fa-2x mb-2 d-block"></i>
+                            No relay nodes found for the selected window and filter.
+                        </div>
+                        <div class="mt-2 text-muted small" id="all-count"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /main-content -->
+</div><!-- /container-fluid -->
+
+<script>
+(function () {
+    'use strict';
+
+    /* ── constants ─────────────────────────────────────────────────── */
+    const STATUS_LABEL = {
+        multibyte_direct:  'Multibyte (Own Advert)',
+        multibyte_relayed: 'Multibyte (Confirmed Relay)',
+        single_byte:       'No Multibyte Observed',
+        unknown:           'Unknown',
+    };
+
+    const STATUS_COLOR = {
+        multibyte_direct:  '#198754',
+        multibyte_relayed: '#0dcaf0',
+        single_byte:       '#ffc107',
+        unknown:           '#6c757d',
+    };
+
+    const STATUS_BADGE = {
+        multibyte_direct:  '<span class="badge" style="background:#198754;">Multibyte (Advert)</span>',
+        multibyte_relayed: '<span class="badge" style="background:#0dcaf0;color:#000;">Multibyte (Relay)</span>',
+        single_byte:       '<span class="badge" style="background:#ffc107;color:#000;">No MB</span>',
+        unknown:           '<span class="badge bg-secondary">Unknown</span>',
+    };
+
+    const NODE_TYPE_LABELS = {
+        all:        { total: 'Total Relay Nodes',  sub: 'Repeaters &amp; Room Servers' },
+        repeater:   { total: 'Total Repeaters',    sub: 'Repeater role only' },
+        roomserver: { total: 'Total Room Servers', sub: 'Room Server role only' },
+    };
+
+    /* ── state ──────────────────────────────────────────────────────── */
+    let allRepeaters    = [];
+    let priorityList    = [];
+    let donutChart      = null;
+    let trendChartInst  = null;
+    let activeFilter    = 'all';
+    let activeNodeType  = 'all';
+    let sortState       = { col: 'advert_count', dir: 'desc' };
+    let prioritySortKey = localStorage.getItem('rollout_priority_sort') || 'relay_score';
+
+    /* ── helpers ────────────────────────────────────────────────────── */
+    function esc(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+            .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function fmtDate(ts) {
+        if (!ts) return '—';
+        try {
+            const s = String(ts).trim();
+            const d = new Date(s.includes('T') ? s : s.replace(' ', 'T'));
+            if (isNaN(d)) {
+                const n = parseFloat(s);
+                if (!isNaN(n)) return new Date(n * 1000).toLocaleDateString(undefined,
+                    {month:'short', day:'numeric', year:'numeric'});
+                return s;
+            }
+            return d.toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'});
+        } catch { return String(ts); }
+    }
+
+    function bphLabel(v) {
+        if (v === null || v === undefined) return '<span class="text-muted small">—</span>';
+        if (v === 1) return '<span class="text-warning small">1-byte</span>';
+        if (v === 2) return '<span class="text-success small">2-byte</span>';
+        if (v === 3) return '<span class="text-success small">3-byte</span>';
+        return esc(String(v));
+    }
+
+    function isDark() {
+        return document.documentElement.getAttribute('data-theme') === 'dark';
+    }
+
+    /* ── render charts ──────────────────────────────────────────────── */
+    function renderDonut(s) {
+        const ctx = document.getElementById('statusDonutChart').getContext('2d');
+        if (donutChart) donutChart.destroy();
+
+        const dark = isDark();
+        const pctText = s.adoption_pct + '%';
+        const labelClr = dark ? '#e9ecef' : '#212529';
+
+        const centerTextPlugin = {
+            id: 'centerText',
+            afterDraw(chart) {
+                const { ctx: c, chartArea: { top, bottom, left, right } } = chart;
+                const cx = (left + right) / 2;
+                const cy = (top + bottom) / 2;
+                c.save();
+                c.textAlign = 'center';
+                c.textBaseline = 'middle';
+                c.font = 'bold 26px sans-serif';
+                c.fillStyle = '#198754';
+                c.fillText(pctText, cx, cy - 10);
+                c.font = '13px sans-serif';
+                c.fillStyle = dark ? '#adb5bd' : '#6c757d';
+                c.fillText('confirmed', cx, cy + 16);
+                c.restore();
+            },
+        };
+
+        donutChart = new Chart(ctx, {
+            type: 'doughnut',
+            plugins: [centerTextPlugin],
+            data: {
+                labels: [
+                    STATUS_LABEL.multibyte_direct,
+                    STATUS_LABEL.multibyte_relayed,
+                    STATUS_LABEL.single_byte,
+                    STATUS_LABEL.unknown,
+                ],
+                datasets: [{
+                    data: [s.multibyte_direct, s.multibyte_relayed, s.single_byte, s.unknown],
+                    backgroundColor: [
+                        STATUS_COLOR.multibyte_direct,
+                        STATUS_COLOR.multibyte_relayed,
+                        STATUS_COLOR.single_byte,
+                        STATUS_COLOR.unknown,
+                    ],
+                    borderWidth: 2,
+                    borderColor: dark ? '#2d2d2d' : '#ffffff',
+                }],
+            },
+            options: {
+                cutout: '62%',
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            color: labelClr,
+                            padding: 10,
+                            font: { size: 11 },
+                            boxWidth: 12,
+                        },
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label(ctx) {
+                                const tot = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                                const pct = tot > 0 ? Math.round(ctx.parsed / tot * 100) : 0;
+                                return ` ${ctx.label}: ${ctx.parsed} (${pct}%)`;
+                            },
+                        },
+                    },
+                },
+            },
+        });
+    }
+
+    function renderTrend(trend) {
+        const ctx   = document.getElementById('trendChart').getContext('2d');
+        const empty = document.getElementById('trend-empty');
+        if (trendChartInst) trendChartInst.destroy();
+
+        if (!trend || trend.length === 0) {
+            ctx.canvas.style.display = 'none';
+            empty.style.display = 'block';
+            return;
+        }
+        ctx.canvas.style.display = '';
+        empty.style.display = 'none';
+
+        const dark     = isDark();
+        const labelClr = dark ? '#e9ecef' : '#212529';
+        const gridClr  = dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)';
+
+        trendChartInst = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: trend.map(d => d.date),
+                datasets: [
+                    {
+                        label: 'Multibyte',
+                        data: trend.map(d => d.multibyte),
+                        borderColor: STATUS_COLOR.multibyte_direct,
+                        backgroundColor: STATUS_COLOR.multibyte_direct + '44',
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                    },
+                    {
+                        label: 'Single-byte',
+                        data: trend.map(d => d.single_byte),
+                        borderColor: STATUS_COLOR.single_byte,
+                        backgroundColor: STATUS_COLOR.single_byte + '44',
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    x: {
+                        ticks: { color: labelClr, maxTicksLimit: 10 },
+                        grid:  { color: gridClr },
+                    },
+                    y: {
+                        ticks: { color: labelClr },
+                        grid:  { color: gridClr },
+                        beginAtZero: true,
+                    },
+                },
+                plugins: {
+                    legend: { labels: { color: labelClr } },
+                },
+            },
+        });
+    }
+
+    /* ── render tables ──────────────────────────────────────────────── */
+    const PSORT_COLS = ['relay_score', 'unique_sources', 'unique_dests', 'legacy_degree'];
+
+    const STRATEGY_DESC = {
+        relay_score: `
+            <strong>Relay Traffic</strong> — sum of single-byte path observation counts for paths
+            whose route contains this node's 1-byte public key prefix. Senders who have also been
+            seen using multibyte paths are excluded, so the score reflects purely legacy traffic
+            that depends on this relay. The 1-byte prefix space has only 256 values, so occasionally
+            two unupgraded nodes share a prefix and their scores overlap — the <strong>ⓘ</strong>
+            icon on affected rows lists the other matches.`,
+        unique_sources: `
+            <strong>Unique Sources</strong> — count of distinct sending nodes whose single-byte
+            advert paths route through this relay (same sender filter as Relay Traffic). Where
+            Relay Traffic can be dominated by a few high-volume senders, this metric rewards
+            nodes that serve many independent clients — each is a potential beneficiary of
+            the upgrade.`,
+        unique_dests: `
+            <strong>Unique Destinations</strong> — count of distinct path endpoints reachable
+            via single-byte paths through this relay. A node that is the only route to many
+            unique destinations is a higher-leverage upgrade target than one that is one of
+            several redundant relays to the same small set of nodes.`,
+        legacy_degree: `
+            <strong>Legacy Graph Degree</strong> — count of mesh graph edges connecting this
+            node to other confirmed-unupgraded nodes, using precise public key matching
+            (no prefix collision ambiguity). A high-degree node is a hub in the remaining
+            legacy subgraph — upgrading it expands multibyte connectivity to the most
+            adjacent unupgraded nodes at once.`,
+    };
+
+    function applyPrioritySortButtons() {
+        document.querySelectorAll('#priority-sort-group [data-psort]').forEach(btn => {
+            const active = btn.dataset.psort === prioritySortKey;
+            btn.className = active ? 'btn btn-sm btn-warning' : 'btn btn-sm btn-outline-warning';
+        });
+        const desc = document.getElementById('priority-strategy-desc');
+        if (desc) desc.innerHTML = STRATEGY_DESC[prioritySortKey] || '';
+    }
+
+    function renderPriority() {
+        const list = priorityList.slice().sort(
+            (a, b) => (b[prioritySortKey] || 0) - (a[prioritySortKey] || 0)
+        );
+
+        const tbody = document.getElementById('priority-tbody');
+        const empty = document.getElementById('priority-empty');
+        document.getElementById('priority-count').textContent = list.length;
+
+        if (list.length === 0) {
+            tbody.innerHTML = '';
+            empty.style.display = 'block';
+            return;
+        }
+        empty.style.display = 'none';
+
+        tbody.innerHTML = list.map((r, i) => {
+            const peers = r.prefix_peers || [];
+            let relayCell;
+            if (peers.length > 0) {
+                const mbPeers  = peers.filter(p => p.status === 'multibyte_direct' || p.status === 'multibyte_relayed');
+                const sbPeers  = peers.filter(p => p.status === 'single_byte');
+                const parts = [];
+                if (mbPeers.length)  parts.push('Confirmed multibyte: ' + mbPeers.map(p => esc(p.name)).join(', '));
+                if (sbPeers.length)  parts.push('Also unconfirmed: '    + sbPeers.map(p => esc(p.name)).join(', '));
+                const tipText = 'Shared 1-byte prefix — score may overlap with: ' + parts.join(' · ');
+                const iconColor = mbPeers.length ? '#0dcaf0' : '#adb5bd';
+                relayCell = `${(r.relay_score || 0).toLocaleString()} <span
+                       style="cursor:default; color:${iconColor};"
+                       data-bs-toggle="tooltip"
+                       data-bs-placement="top"
+                       title="${tipText}"
+                   >ⓘ</span>`;
+            } else {
+                relayCell = (r.relay_score || 0).toLocaleString();
+            }
+
+            return `
+            <tr>
+                <td class="text-muted">${i + 1}</td>
+                <td class="fw-semibold">${esc(r.name)}</td>
+                <td><span class="badge bg-secondary">${esc(r.role)}</span></td>
+                <td class="text-end">${relayCell}</td>
+                <td class="text-end">${(r.unique_sources || 0).toLocaleString()}</td>
+                <td class="text-end">${(r.unique_dests || 0).toLocaleString()}</td>
+                <td class="text-end">${(r.legacy_degree || 0).toLocaleString()}</td>
+                <td>${fmtDate(r.last_seen)}</td>
+                <td>${r.location ? esc(r.location) : '<span class="text-muted">—</span>'}</td>
+            </tr>`;
+        }).join('');
+
+        /* activate Bootstrap tooltips on new elements */
+        tbody.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+            new bootstrap.Tooltip(el, { trigger: 'hover' });
+        });
+    }
+
+    function renderAll() {
+        let rows = allRepeaters.slice();
+
+        if (activeFilter !== 'all') {
+            rows = rows.filter(r => r.status === activeFilter);
+        }
+
+        const q = (document.getElementById('repeater-search').value || '').toLowerCase().trim();
+        if (q) {
+            rows = rows.filter(r =>
+                (r.name     || '').toLowerCase().includes(q) ||
+                (r.location || '').toLowerCase().includes(q)
+            );
+        }
+
+        const { col, dir } = sortState;
+        rows.sort((a, b) => {
+            let av = a[col] == null ? '' : a[col];
+            let bv = b[col] == null ? '' : b[col];
+            if (typeof av === 'number' || typeof bv === 'number') {
+                av = Number(av) || 0;
+                bv = Number(bv) || 0;
+            } else {
+                av = String(av).toLowerCase();
+                bv = String(bv).toLowerCase();
+            }
+            if (av < bv) return dir === 'asc' ? -1 :  1;
+            if (av > bv) return dir === 'asc' ?  1 : -1;
+            return 0;
+        });
+
+        const tbody = document.getElementById('all-tbody');
+        const empty = document.getElementById('all-empty');
+        const count = document.getElementById('all-count');
+
+        if (rows.length === 0) {
+            tbody.innerHTML = '';
+            empty.style.display = 'block';
+            count.textContent = '';
+            return;
+        }
+        empty.style.display = 'none';
+        count.textContent = `Showing ${rows.length.toLocaleString()} of ${allRepeaters.length.toLocaleString()} relay nodes`;
+
+        tbody.innerHTML = rows.map(r => `
+            <tr>
+                <td>${esc(r.name)}</td>
+                <td><span class="badge bg-secondary">${esc(r.role)}</span></td>
+                <td>${STATUS_BADGE[r.status] || ''}</td>
+                <td>${bphLabel(r.out_bytes_per_hop)}</td>
+                <td>${(r.advert_count || 0).toLocaleString()}</td>
+                <td>${fmtDate(r.last_seen)}</td>
+                <td>${r.location ? esc(r.location) : '<span class="text-muted">—</span>'}</td>
+            </tr>
+        `).join('');
+    }
+
+    /* ── main render ─────────────────────────────────────────────────── */
+    function renderDashboard(data) {
+        const s = data.summary;
+        allRepeaters = data.all_repeaters || [];
+        priorityList = data.priority_list || [];
+
+        /* KPI labels for node_type */
+        const lbl = NODE_TYPE_LABELS[data.node_type] || NODE_TYPE_LABELS.all;
+        document.getElementById('kpi-total-label').textContent = lbl.total;
+        document.getElementById('kpi-total-sub').innerHTML    = lbl.sub;
+
+        /* KPI values */
+        const mbTotal   = s.multibyte_direct + s.multibyte_relayed;
+        const singlePct = s.total_repeaters > 0
+            ? Math.round(s.single_byte / s.total_repeaters * 100) : 0;
+
+        document.getElementById('kpi-total').textContent        = s.total_repeaters.toLocaleString();
+        document.getElementById('kpi-multibyte').textContent    = mbTotal.toLocaleString();
+        document.getElementById('kpi-adoption-pct').textContent = s.adoption_pct + '%';
+        document.getElementById('kpi-single').textContent       = s.single_byte.toLocaleString();
+        document.getElementById('kpi-single-pct').textContent   = singlePct + '%';
+        document.getElementById('kpi-traffic-pct').textContent  = s.traffic_multibyte_pct + '%';
+
+        renderDonut(s);
+        renderTrend(data.daily_trend || []);
+        renderPriority();
+        renderAll();
+
+        document.getElementById('loading-state').style.display = 'none';
+        document.getElementById('main-content').style.display  = '';
+    }
+
+    /* ── data fetch ─────────────────────────────────────────────────── */
+    async function loadData() {
+        const since    = document.getElementById('timespan-select').value;
+        const nodeType = activeNodeType;
+
+        document.getElementById('loading-state').style.display = '';
+        document.getElementById('main-content').style.display  = 'none';
+        document.getElementById('error-state').style.display   = 'none';
+
+        try {
+            const resp = await fetch(`/api/multibyte-rollout?since=${since}&node_type=${nodeType}`);
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const data = await resp.json();
+            if (data.error) throw new Error(data.error);
+            renderDashboard(data);
+        } catch (e) {
+            document.getElementById('loading-state').style.display = 'none';
+            document.getElementById('error-state').style.display   = '';
+            document.getElementById('error-message').textContent   = ' ' + e.message;
+        }
+    }
+
+    /* ── event wiring ───────────────────────────────────────────────── */
+    document.getElementById('timespan-select').addEventListener('change', function () {
+        localStorage.setItem('rollout_since', this.value);
+        loadData();
+    });
+
+    document.getElementById('node-type-group').addEventListener('click', function (e) {
+        const btn = e.target.closest('[data-node-type]');
+        if (!btn) return;
+        activeNodeType = btn.dataset.nodeType;
+        localStorage.setItem('rollout_node_type', activeNodeType);
+
+        this.querySelectorAll('[data-node-type]').forEach(b => {
+            b.className = 'btn btn-sm btn-outline-primary';
+        });
+        btn.className = 'btn btn-sm btn-primary';
+
+        loadData();
+    });
+
+    document.getElementById('status-filter-group').addEventListener('click', function (e) {
+        const btn = e.target.closest('[data-filter]');
+        if (!btn) return;
+        activeFilter = btn.dataset.filter;
+
+        this.querySelectorAll('[data-filter]').forEach(b => {
+            const f = b.dataset.filter;
+            const variant = f === 'multibyte_direct' ? 'success'
+                          : f === 'multibyte_relayed' ? 'info'
+                          : f === 'single_byte'       ? 'warning'
+                          : f === 'unknown'           ? 'secondary'
+                          :                             'primary';
+            b.className = `btn btn-sm btn-outline-${variant}`;
+        });
+        const af = btn.dataset.filter;
+        const activeVariant = af === 'multibyte_direct' ? 'success'
+                            : af === 'multibyte_relayed' ? 'info'
+                            : af === 'single_byte'       ? 'warning'
+                            : af === 'unknown'           ? 'secondary'
+                            :                              'primary';
+        btn.className = `btn btn-sm btn-${activeVariant}`;
+
+        renderAll();
+    });
+
+    document.getElementById('priority-sort-group').addEventListener('click', function (e) {
+        const btn = e.target.closest('[data-psort]');
+        if (!btn) return;
+        prioritySortKey = btn.dataset.psort;
+        localStorage.setItem('rollout_priority_sort', prioritySortKey);
+        applyPrioritySortButtons();
+        renderPriority();
+    });
+
+    document.getElementById('repeater-search').addEventListener('input', renderAll);
+
+    document.querySelectorAll('.sortable[data-sort]').forEach(th => {
+        th.addEventListener('click', function () {
+            const col = this.dataset.sort;
+            if (sortState.col === col) {
+                sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortState.col = col;
+                sortState.dir = 'asc';
+            }
+            renderAll();
+        });
+    });
+
+    /* Re-render charts when theme toggles */
+    new MutationObserver(function () {
+        if (donutChart || trendChartInst) loadData();
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+    /* ── init ───────────────────────────────────────────────────────── */
+    applyPrioritySortButtons();
+    const storedSince = localStorage.getItem('rollout_since');
+    if (storedSince && ['24h','7d','30d','90d','all'].includes(storedSince)) {
+        document.getElementById('timespan-select').value = storedSince;
+    }
+    const storedNodeType = localStorage.getItem('rollout_node_type');
+    if (storedNodeType && ['all','repeater','roomserver'].includes(storedNodeType)) {
+        activeNodeType = storedNodeType;
+        document.querySelectorAll('#node-type-group [data-node-type]').forEach(b => {
+            b.className = b.dataset.nodeType === storedNodeType
+                ? 'btn btn-sm btn-primary'
+                : 'btn btn-sm btn-outline-primary';
+        });
+    }
+    loadData();
+
+}());
+</script>
+{% endblock %}

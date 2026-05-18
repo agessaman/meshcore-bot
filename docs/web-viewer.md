@@ -63,6 +63,9 @@ debug = false
 
 # Auto-start web viewer with bot
 auto_start = false
+
+# Optional: enable the multibyte monitor page and API
+multibyte_monitor_enabled = false
 ```
 
 ## Accessing the Viewer

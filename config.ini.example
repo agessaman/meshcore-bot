@@ -1471,6 +1471,11 @@ debug = false
 # false: Start web viewer manually (recommended)
 auto_start = false
 
+# Enable multibyte monitor page (/multibyte-rollout)
+# false: hide page/nav/API endpoint
+# true: expose page/nav/API endpoint
+multibyte_monitor_enabled = false
+
 # Optional timeout overrides for web viewer integration (seconds)
 # edge_post_timeout_sec = 1.0
 # node_post_timeout_sec = 0.5
