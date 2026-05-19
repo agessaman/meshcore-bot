@@ -4,9 +4,10 @@ Web Viewer Integration for MeshCore Bot
 Provides integration between the main bot and the web viewer
 """
 
-import multiprocessing
 import queue
 import secrets
+import subprocess
+import sys
 import threading
 import time
 from contextlib import closing, suppress
@@ -14,13 +15,6 @@ from pathlib import Path
 from typing import Optional
 
 from modules.utils import resolve_path
-
-
-def _run_viewer_process(config: str, host: str, port: int, debug: bool) -> None:
-    """Target for multiprocessing.Process — must live at module level to be picklable."""
-    from web_viewer.app import BotDataViewer
-    viewer = BotDataViewer(config_path=config)
-    viewer.run(host=host, port=port, debug=debug)
 
 
 def normalized_web_viewer_password(config) -> str:
@@ -713,15 +707,17 @@ class WebViewerIntegration:
             self.shutting_down = True
             self.running = False
 
-            if self.viewer_process and self.viewer_process.is_alive():
+            if self.viewer_process and self.viewer_process.poll() is None:
                 self.logger.info("Stopping web viewer...")
                 self.viewer_process.terminate()
-                self.viewer_process.join(timeout=self.viewer_stop_grace_timeout_sec)
-                if self.viewer_process.is_alive():
+                try:
+                    self.viewer_process.wait(timeout=self.viewer_stop_grace_timeout_sec)
+                    self.logger.info("Web viewer stopped")
+                except subprocess.TimeoutExpired:
                     self.logger.warning("Web viewer did not stop gracefully, forcing termination")
                     self.viewer_process.kill()
-                    self.viewer_process.join(timeout=self.viewer_stop_force_timeout_sec)
-                self.logger.info("Web viewer stopped")
+                    with suppress(subprocess.TimeoutExpired):
+                        self.viewer_process.wait(timeout=self.viewer_stop_force_timeout_sec)
             else:
                 self.logger.info("Web viewer already stopped")
 
@@ -731,35 +727,37 @@ class WebViewerIntegration:
             self.logger.error(f"Error stopping web viewer: {e}")
 
     def _run_viewer(self):
-        """Run the web viewer as a child process via multiprocessing."""
+        """Run the web viewer via subprocess using the eventlet launcher."""
         try:
             config_path = getattr(self.bot, 'config_file', 'config.ini')
             config_path = str(Path(config_path).resolve()) if config_path else 'config.ini'
 
-            self.viewer_process = multiprocessing.Process(
-                target=_run_viewer_process,
-                kwargs={'config': config_path, 'host': self.host, 'port': self.port, 'debug': self.debug},
-                name='web-viewer',
-                daemon=True,
-            )
-            self.viewer_process.start()
+            launcher = Path(__file__).parent / '_launcher.py'
+            cmd = [sys.executable, str(launcher),
+                   '--config', config_path,
+                   '--host', self.host,
+                   '--port', str(self.port)]
+            if self.debug:
+                cmd.append('--debug')
+
+            self.viewer_process = subprocess.Popen(cmd)
 
             # Brief pause to detect immediate startup failures
             time.sleep(2)
 
-            if not self.viewer_process.is_alive():
+            if self.viewer_process.poll() is not None:
                 self.logger.error(
-                    "Web viewer failed to start (exit code %s)", self.viewer_process.exitcode
+                    "Web viewer failed to start (exit code %s)", self.viewer_process.returncode
                 )
                 self.viewer_process = None
                 return
 
             self.logger.info("Web viewer integration ready for data streaming")
 
-            while self.running and self.viewer_process and self.viewer_process.is_alive():
+            while self.running and self.viewer_process and self.viewer_process.poll() is None:
                 time.sleep(1)
 
-            if self.running and self.viewer_process and not self.viewer_process.is_alive():
+            if self.running and self.viewer_process and self.viewer_process.poll() is not None:
                 if (
                     self.shutting_down
                     or self.bot._shutdown_event.is_set()
@@ -767,12 +765,12 @@ class WebViewerIntegration:
                 ):
                     self.logger.debug(
                         "Web viewer process exited (code %s) during bot shutdown; not restarting",
-                        self.viewer_process.exitcode,
+                        self.viewer_process.returncode,
                     )
                     return
                 self.logger.warning(
                     "Web viewer process exited unexpectedly (code %s) — attempting restart",
-                    self.viewer_process.exitcode,
+                    self.viewer_process.returncode,
                 )
                 self.restart_viewer()
 
@@ -827,4 +825,4 @@ class WebViewerIntegration:
         """Check if the web viewer process is healthy"""
         if not self.viewer_process:
             return False
-        return self.viewer_process.is_alive()
+        return self.viewer_process.poll() is None

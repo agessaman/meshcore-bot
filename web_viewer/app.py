@@ -51,38 +51,6 @@ from shared.security_utils import (
 from modules.version_info import resolve_runtime_version
 
 
-def _apply_werkzeug_websocket_fix() -> None:
-    """Patch SimpleWebSocketWSGI to call start_response after WebSocket teardown.
-
-    python-engineio's SimpleWebSocketWSGI.__call__ handles the WebSocket
-    session directly on the raw socket and returns [] without ever calling
-    start_response.  Werkzeug then calls write(b"") to flush an empty body,
-    which triggers ``AssertionError: write() before start_response``.
-
-    The fix calls start_response after the handler returns so that status_set
-    is not None when write(b"") runs.  The subsequent attempt to write HTTP
-    headers to the already-closed socket raises BrokenPipeError, which Werkzeug
-    classifies as a dropped connection and silently ignores.
-    """
-    try:
-        from engineio.async_drivers import _websocket_wsgi  # noqa: PLC0415
-        _orig_call = _websocket_wsgi.SimpleWebSocketWSGI.__call__
-
-        def _patched_call(self, environ, start_response):  # noqa: ANN001
-            result = _orig_call(self, environ, start_response)
-            try:
-                start_response('200 OK', [('Content-Length', '0')])
-            except Exception:  # noqa: BLE001
-                pass
-            return result
-
-        _websocket_wsgi.SimpleWebSocketWSGI.__call__ = _patched_call
-    except (ImportError, AttributeError):
-        pass
-
-
-_apply_werkzeug_websocket_fix()
-
 # colorlog and other handlers write ANSI SGR sequences; strip for web /logs display
 _ANSI_ESCAPE_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
@@ -163,7 +131,7 @@ class BotDataViewer:
             ping_interval=25,             # 25 second ping interval (Flask-SocketIO 5.x default)
             logger=False,                  # Disable verbose logging
             engineio_logger=False,        # Disable EngineIO logging
-            async_mode='threading',       # Use threading for better stability
+            async_mode='gevent',
         )
         self.socketio = SocketIO()
 
@@ -287,6 +255,9 @@ class BotDataViewer:
 
         # Prevent propagation to root logger to avoid duplicate messages
         self.logger.propagate = False
+
+        # Suppress gevent WSGI access logs (one line per request at INFO level)
+        logging.getLogger('gevent.pywsgi').setLevel(logging.WARNING)
 
         self.logger.info("Web viewer logging initialized with rotation (5MB max, 3 backups)")
 
@@ -8241,38 +8212,11 @@ class BotDataViewer:
     def run(self, host='127.0.0.1', port=8080, debug=False):
         """Run the modern web viewer"""
         self.logger.info(f"Starting modern web viewer on {host}:{port}")
-        self._suppress_werkzeug_headers_error()
         try:
-            self.socketio.run(
-                self.app,
-                host=host,
-                port=port,
-                debug=debug,
-                allow_unsafe_werkzeug=True
-            )
+            self.socketio.run(self.app, host=host, port=port, debug=debug)
         except Exception as e:
             self.logger.error(f"Error running web viewer: {e}")
             raise
-
-    @staticmethod
-    def _suppress_werkzeug_headers_error() -> None:
-        """Install a log filter that silences the 'Headers already set' AssertionError.
-
-        Werkzeug's dev server catches this internally and continues serving, but it
-        logs a full traceback at ERROR level.  The underlying cause (concurrent
-        SocketIO polling requests racing through the WSGI layer) is reduced by the
-        single-socket-per-page fix, but may still occur occasionally.  The filter
-        downgrades these specific records to DEBUG so they don't alarm operators.
-        """
-        import logging
-
-        class _HeadersAlreadySetFilter(logging.Filter):
-            def filter(self, record: logging.LogRecord) -> bool:
-                msg = record.getMessage()
-                return "Headers already set" not in msg
-
-        for name in ("werkzeug", "werkzeug.serving"):
-            logging.getLogger(name).addFilter(_HeadersAlreadySetFilter())
 
 def main():
     """Entry point for the meshcore-viewer command"""
