@@ -1,4 +1,4 @@
-"""Tests for modules.web_viewer.app — BotDataViewer Flask app."""
+"""Tests for web_viewer.app — BotDataViewer Flask app."""
 
 import json
 import sqlite3
@@ -45,7 +45,7 @@ def viewer_with_db(tmp_path):
     The database starts empty so migrations create all tables with the correct schema.
     This ensures tests match production behavior where BotDataViewer runs migrations.
     """
-    from modules.web_viewer.app import BotDataViewer
+    from web_viewer.app import BotDataViewer
 
     config = ConfigParser()
     config.add_section("Bot")
@@ -70,7 +70,7 @@ def viewer_with_db(tmp_path):
          patch.object(BotDataViewer, "_start_log_tailing"), \
          patch.object(BotDataViewer, "_start_cleanup_scheduler"), \
          patch.object(BotDataViewer, "_setup_socketio_handlers"), \
-         patch("modules.web_viewer.app.RepeaterManager"):
+         patch("web_viewer.app.RepeaterManager"):
         viewer = BotDataViewer(db_path=db_path, config_path=config_path)
 
     viewer.db_path = db_path
@@ -82,7 +82,7 @@ def viewer_with_db(tmp_path):
 @pytest.fixture
 def mock_viewer(tmp_path):
     """Create a minimal BotDataViewer with mock bot."""
-    from modules.web_viewer.app import BotDataViewer
+    from web_viewer.app import BotDataViewer
 
     config = ConfigParser()
     config.add_section("Bot")
@@ -124,7 +124,7 @@ def mock_viewer(tmp_path):
          patch.object(BotDataViewer, "_start_log_tailing"), \
          patch.object(BotDataViewer, "_start_cleanup_scheduler"), \
          patch.object(BotDataViewer, "_setup_socketio_handlers"), \
-         patch("modules.web_viewer.app.RepeaterManager"):
+         patch("web_viewer.app.RepeaterManager"):
         viewer = BotDataViewer(db_path=db_path, config_path=config_path)
 
     viewer.db_path = db_path
@@ -140,7 +140,7 @@ def mock_viewer(tmp_path):
 
 class TestAllowedTables:
     def test_whitelist_contains_expected_tables(self):
-        from modules.web_viewer.app import BotDataViewer
+        from web_viewer.app import BotDataViewer
 
         expected_tables = {
             'geocoding_cache', 'generic_cache', 'bot_metadata',
@@ -1123,7 +1123,7 @@ class TestFaviconRoutes:
     def _check_route(self, viewer_with_db, path):
         from unittest.mock import patch as _patch
         with viewer_with_db.app.test_client() as client:
-            with _patch("modules.web_viewer.app.send_from_directory",
+            with _patch("web_viewer.app.send_from_directory",
                         return_value=viewer_with_db.app.response_class("ok", status=200)):
                 response = client.get(path)
         assert response.status_code == 200

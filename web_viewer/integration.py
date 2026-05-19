@@ -16,7 +16,7 @@ from contextlib import closing, suppress
 from pathlib import Path
 from typing import Optional
 
-from ..utils import resolve_path
+from modules.utils import resolve_path
 
 
 def normalized_web_viewer_password(config) -> str:

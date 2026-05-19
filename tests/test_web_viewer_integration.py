@@ -1,4 +1,4 @@
-"""Tests for modules.web_viewer.integration — BotIntegration pure logic."""
+"""Tests for web_viewer.integration — BotIntegration pure logic."""
 
 import json
 import queue
@@ -37,7 +37,7 @@ def _make_bot_integration(bot=None):
     """Create BotIntegration with all I/O patched out."""
     if bot is None:
         bot = _make_bot()
-    from modules.web_viewer.integration import BotIntegration
+    from web_viewer.integration import BotIntegration
     with patch.object(BotIntegration, "_init_http_session"), \
          patch.object(BotIntegration, "_init_packet_stream_table"), \
          patch.object(BotIntegration, "_start_drain_thread"):
@@ -382,47 +382,47 @@ class TestGetWebViewerDbPath:
 
 class TestWebViewerIntegrationValidation:
     def test_invalid_host_raises(self):
-        from modules.web_viewer.integration import WebViewerIntegration
+        from web_viewer.integration import WebViewerIntegration
         bot = _make_bot()
         bot.config.set("Web_Viewer", "host", "evil.host")
         bot.config.set("Web_Viewer", "enabled", "false")
         with patch.object(WebViewerIntegration, "start_viewer"):
-            with patch("modules.web_viewer.integration.BotIntegration._init_http_session"), \
-                 patch("modules.web_viewer.integration.BotIntegration._init_packet_stream_table"), \
-                 patch("modules.web_viewer.integration.BotIntegration._start_drain_thread"):
+            with patch("web_viewer.integration.BotIntegration._init_http_session"), \
+                 patch("web_viewer.integration.BotIntegration._init_packet_stream_table"), \
+                 patch("web_viewer.integration.BotIntegration._start_drain_thread"):
                 with pytest.raises(ValueError, match="Invalid host"):
                     WebViewerIntegration(bot)
 
     def test_invalid_port_raises(self):
-        from modules.web_viewer.integration import WebViewerIntegration
+        from web_viewer.integration import WebViewerIntegration
         bot = _make_bot()
         bot.config.set("Web_Viewer", "port", "80")  # privileged port
-        with patch("modules.web_viewer.integration.BotIntegration._init_http_session"), \
-             patch("modules.web_viewer.integration.BotIntegration._init_packet_stream_table"), \
-             patch("modules.web_viewer.integration.BotIntegration._start_drain_thread"):
+        with patch("web_viewer.integration.BotIntegration._init_http_session"), \
+             patch("web_viewer.integration.BotIntegration._init_packet_stream_table"), \
+             patch("web_viewer.integration.BotIntegration._start_drain_thread"):
             with pytest.raises(ValueError, match="Port must be"):
                 WebViewerIntegration(bot)
 
     def test_valid_config_no_error(self):
-        from modules.web_viewer.integration import WebViewerIntegration
+        from web_viewer.integration import WebViewerIntegration
         bot = _make_bot()
-        with patch("modules.web_viewer.integration.BotIntegration._init_http_session"), \
-             patch("modules.web_viewer.integration.BotIntegration._init_packet_stream_table"), \
-             patch("modules.web_viewer.integration.BotIntegration._start_drain_thread"):
+        with patch("web_viewer.integration.BotIntegration._init_http_session"), \
+             patch("web_viewer.integration.BotIntegration._init_packet_stream_table"), \
+             patch("web_viewer.integration.BotIntegration._start_drain_thread"):
             wvi = WebViewerIntegration(bot)
         assert wvi.host == "127.0.0.1"
         assert wvi.port == 8080
 
     def test_zero_host_without_password_logs_error_does_not_raise(self):
-        from modules.web_viewer.integration import WebViewerIntegration
+        from web_viewer.integration import WebViewerIntegration
         bot = _make_bot()
         bot.config.set("Web_Viewer", "enabled", "true")
         bot.config.set("Web_Viewer", "host", "0.0.0.0")
         bot.config.set("Web_Viewer", "web_viewer_password", "")
         with patch.object(WebViewerIntegration, "start_viewer"):
-            with patch("modules.web_viewer.integration.BotIntegration._init_http_session"), \
-                 patch("modules.web_viewer.integration.BotIntegration._init_packet_stream_table"), \
-                 patch("modules.web_viewer.integration.BotIntegration._start_drain_thread"):
+            with patch("web_viewer.integration.BotIntegration._init_http_session"), \
+                 patch("web_viewer.integration.BotIntegration._init_packet_stream_table"), \
+                 patch("web_viewer.integration.BotIntegration._start_drain_thread"):
                 WebViewerIntegration(bot)
         bot.logger.error.assert_called()
         msg = bot.logger.error.call_args[0][0]
@@ -430,22 +430,22 @@ class TestWebViewerIntegrationValidation:
         assert "web_viewer_password" in msg
 
     def test_zero_host_without_password_does_not_log_when_disabled(self):
-        from modules.web_viewer.integration import WebViewerIntegration
+        from web_viewer.integration import WebViewerIntegration
         bot = _make_bot()
         bot.config.set("Web_Viewer", "enabled", "false")
         bot.config.set("Web_Viewer", "host", "0.0.0.0")
         bot.config.set("Web_Viewer", "web_viewer_password", "")
         with patch.object(WebViewerIntegration, "start_viewer"):
-            with patch("modules.web_viewer.integration.BotIntegration._init_http_session"), \
-                 patch("modules.web_viewer.integration.BotIntegration._init_packet_stream_table"), \
-                 patch("modules.web_viewer.integration.BotIntegration._start_drain_thread"):
+            with patch("web_viewer.integration.BotIntegration._init_http_session"), \
+                 patch("web_viewer.integration.BotIntegration._init_packet_stream_table"), \
+                 patch("web_viewer.integration.BotIntegration._start_drain_thread"):
                 WebViewerIntegration(bot)
         bot.logger.error.assert_not_called()
 
 
 class TestNormalizedWebViewerPassword:
     def test_blank_and_null_placeholders(self):
-        from modules.web_viewer.integration import normalized_web_viewer_password
+        from web_viewer.integration import normalized_web_viewer_password
 
         c = ConfigParser()
         c.add_section("Web_Viewer")
@@ -462,7 +462,7 @@ class TestNormalizedWebViewerPassword:
         assert normalized_web_viewer_password(c) == ""
 
     def test_real_password_preserved(self):
-        from modules.web_viewer.integration import normalized_web_viewer_password
+        from web_viewer.integration import normalized_web_viewer_password
 
         c = ConfigParser()
         c.add_section("Web_Viewer")
@@ -510,16 +510,16 @@ class TestIntegrationTimeoutConfig:
         assert bi.shutdown_join_timeout_sec == 3
 
     def test_web_viewer_integration_loads_custom_timeouts(self):
-        from modules.web_viewer.integration import WebViewerIntegration
+        from web_viewer.integration import WebViewerIntegration
 
         bot = _make_bot()
         bot.config.set("Web_Viewer", "viewer_stop_grace_timeout_sec", "9")
         bot.config.set("Web_Viewer", "viewer_stop_force_timeout_sec", "4")
         bot.config.set("Web_Viewer", "port_cleanup_lsof_timeout_sec", "8")
         bot.config.set("Web_Viewer", "port_cleanup_kill_timeout_sec", "1")
-        with patch("modules.web_viewer.integration.BotIntegration._init_http_session"), \
-             patch("modules.web_viewer.integration.BotIntegration._init_packet_stream_table"), \
-             patch("modules.web_viewer.integration.BotIntegration._start_drain_thread"):
+        with patch("web_viewer.integration.BotIntegration._init_http_session"), \
+             patch("web_viewer.integration.BotIntegration._init_packet_stream_table"), \
+             patch("web_viewer.integration.BotIntegration._start_drain_thread"):
             wvi = WebViewerIntegration(bot)
 
         assert wvi.viewer_stop_grace_timeout_sec == 9

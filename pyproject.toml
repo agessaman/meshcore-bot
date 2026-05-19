@@ -46,22 +46,23 @@ docs = ["mkdocs-material>=9.0.0", "mkdocs-exclude>=1.0.0"]
 
 [project.scripts]
 meshcore-bot = "meshcore_bot:main"
-meshcore-viewer = "modules.web_viewer.app:main"
+meshcore-viewer = "web_viewer.app:main"
 
 [tool.setuptools]
 # Include both the main module and the modules package
 py-modules = ["meshcore_bot"]
 packages = ["shared", "shared.parsers",
             "modules", "modules.commands", "modules.commands.alternatives",
-            "modules.commands.alternatives.inactive", "modules.service_plugins", "modules.web_viewer"]
+            "modules.commands.alternatives.inactive", "modules.service_plugins",
+            "web_viewer"]
 
 [tool.setuptools.package-data]
 "*" = ["*.json"]
-modules = [
-    "web_viewer/templates/*.html",
-    "web_viewer/static/*",
-    "web_viewer/static/*/*",
-    "web_viewer/static/*/*/*",
+web_viewer = [
+    "templates/*.html",
+    "static/*",
+    "static/*/*",
+    "static/*/*/*",
 ]
 
 [tool.ruff]
@@ -171,8 +172,8 @@ module = [
     "modules.service_plugins.discord_bridge_service",
     "modules.service_plugins.packet_capture_service",
     "modules.service_plugins.weather_service",
-    "modules.web_viewer.app",
-    "modules.web_viewer.integration",
+    "web_viewer.app",
+    "web_viewer.integration",
 ]
 ignore_errors = true
 

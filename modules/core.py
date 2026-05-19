@@ -42,7 +42,7 @@ from .service_plugin_loader import ServicePluginLoader
 from .solar_conditions import set_config
 from .transmission_tracker import TransmissionTracker
 from .utils import resolve_path
-from .web_viewer.integration import WebViewerIntegration
+from web_viewer.integration import WebViewerIntegration
 
 
 class _JsonFormatter(logging.Formatter):

@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 import pytest
 
-from modules.web_viewer.app import BotDataViewer
+from web_viewer.app import BotDataViewer
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1163,7 +1163,7 @@ class TestFeedManagementRoutes:
         assert resp.status_code == 400
 
     def test_post_feeds_test_valid_url_accepted(self, client):
-        with patch("modules.web_viewer.app.validate_external_url", return_value=True):
+        with patch("web_viewer.app.validate_external_url", return_value=True):
             resp = client.post(
                 "/api/feeds/test",
                 data=json.dumps({"url": "https://example.com/feed.rss"}),
@@ -1178,7 +1178,7 @@ class TestFeedManagementRoutes:
         previous = viewer.config.get("Feed_Command", "allow_private_urls", fallback=None)
         viewer.config.set("Feed_Command", "allow_private_urls", "true")
 
-        with patch("modules.web_viewer.app.validate_external_url", return_value=True) as mock_validate:
+        with patch("web_viewer.app.validate_external_url", return_value=True) as mock_validate:
             resp = client.post(
                 "/api/feeds/test",
                 data=json.dumps({"url": "http://127.0.0.1/feed.rss"}),
@@ -1494,7 +1494,7 @@ class TestWerkzeugWebSocketFix:
         ):
             # The real patched __call__ is already in place; call it with a
             # mock "inner" that returns [] without calling start_response.
-            from modules.web_viewer.app import _apply_werkzeug_websocket_fix
+            from web_viewer.app import _apply_werkzeug_websocket_fix
 
             captured = {}
 
@@ -1524,7 +1524,7 @@ class TestWerkzeugWebSocketFix:
 
         from engineio.async_drivers import _websocket_wsgi
 
-        from modules.web_viewer.app import _apply_werkzeug_websocket_fix
+        from web_viewer.app import _apply_werkzeug_websocket_fix
 
         call_count = [0]
 
@@ -1558,7 +1558,7 @@ class TestWerkzeugWebSocketFix:
         and must leave the patched callable working correctly."""
         from engineio.async_drivers import _websocket_wsgi
 
-        from modules.web_viewer.app import _apply_werkzeug_websocket_fix
+        from web_viewer.app import _apply_werkzeug_websocket_fix
 
         sr_calls = []
 
@@ -1594,7 +1594,7 @@ class TestWerkzeugWebSocketFix:
         import sys
         from unittest.mock import patch as mock_patch
 
-        from modules.web_viewer.app import _apply_werkzeug_websocket_fix
+        from web_viewer.app import _apply_werkzeug_websocket_fix
 
         with mock_patch.dict(sys.modules, {'engineio.async_drivers._websocket_wsgi': None}):
             # Should be a no-op, not raise
@@ -2335,7 +2335,7 @@ class TestBotIntegrationQueue:
 
         bot.db_manager = DBManager(MinimalBot(bot.logger, cfg), db_path)
 
-        from modules.web_viewer.integration import BotIntegration
+        from web_viewer.integration import BotIntegration
         bi = BotIntegration(bot)
         yield bi
         bi.shutdown()
@@ -2367,7 +2367,7 @@ class TestBotIntegrationQueue:
 
         bot.db_manager = DBManager(MinimalBot(bot.logger, cfg), db_path)
 
-        from modules.web_viewer.integration import BotIntegration
+        from web_viewer.integration import BotIntegration
         bi = BotIntegration(bot)
         yield bi
         bi.shutdown()
@@ -2442,7 +2442,7 @@ class TestBotIntegrationQueue:
 
     def test_bounded_queue_retry_flush_frees_space(self, bot_integration_tiny_queue, monkeypatch):
         """When the queue is full, insert triggers a flush so the row can be queued."""
-        from modules.web_viewer.integration import BotIntegration
+        from web_viewer.integration import BotIntegration
 
         bi = bot_integration_tiny_queue
         assert bi._write_queue_maxsize == 2
@@ -3321,7 +3321,7 @@ class TestFeedPreviewSecurity:
 
     def test_validate_external_url_called_for_preview(self, client):
         """validate_external_url is invoked — not bypassed — in the preview handler."""
-        with patch("modules.web_viewer.app.validate_external_url", return_value=False) as mock_veu:
+        with patch("web_viewer.app.validate_external_url", return_value=False) as mock_veu:
             resp = client.post(
                 "/api/feeds/preview",
                 json={"feed_url": "http://192.168.1.1/feed.rss", "feed_type": "rss"},

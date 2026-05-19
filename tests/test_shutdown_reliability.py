@@ -77,7 +77,7 @@ class TestWebViewerRestartGating:
     """restart_viewer must not run during bot shutdown."""
 
     def test_restart_viewer_noop_when_shutdown_event_set(self):
-        from modules.web_viewer.integration import WebViewerIntegration
+        from web_viewer.integration import WebViewerIntegration
 
         bot = MagicMock()
         bot.logger = MagicMock()
@@ -95,7 +95,7 @@ class TestWebViewerRestartGating:
         bot.config = cfg
 
         with patch.object(WebViewerIntegration, "_validate_config"), patch(
-            "modules.web_viewer.integration.BotIntegration", MagicMock()
+            "web_viewer.integration.BotIntegration", MagicMock()
         ):
             wvi = WebViewerIntegration(bot)
 

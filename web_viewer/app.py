@@ -97,8 +97,8 @@ from modules.repeater_manager import RepeaterManager
 from modules.url_shortener import _coerce_url_string
 from shared.geocoding import calculate_distance
 from modules.utils import resolve_path
-from modules.web_viewer.config_panels import CONFIG_PANELS, PANEL_CATEGORIES
-from modules.web_viewer.integration import normalized_web_viewer_password
+from web_viewer.config_panels import CONFIG_PANELS, PANEL_CATEGORIES
+from web_viewer.integration import normalized_web_viewer_password
 
 
 class BotDataViewer:
@@ -137,7 +137,7 @@ class BotDataViewer:
 
         # Set bot root directory (project root) for path validation
         # This is the directory containing the modules folder
-        self.bot_root = Path(os.path.join(os.path.dirname(__file__), '..', '..')).resolve()
+        self.bot_root = Path(os.path.dirname(__file__)).resolve().parent
         # Resolve relative config path so viewer finds config when started as subprocess (cwd may differ)
         if not os.path.isabs(config_path):
             config_path = str(self.bot_root / config_path)
