@@ -19,9 +19,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-# When started as a subprocess (`python web_viewer/app.py`), Python puts the
-# script's directory on sys.path, not the repo root — imports of shared.* and
-# modules.* fail unless we prepend the project root first.
+# When invoked directly as a script (`python web_viewer/app.py`), Python puts
+# the script's directory on sys.path instead of the project root.  The
+# multiprocessing and entry-point paths don't need this, but it makes
+# `python web_viewer/app.py` work without installing the package.
 _project_root = str(Path(__file__).resolve().parent.parent)
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
@@ -258,11 +259,14 @@ class BotDataViewer:
         os.makedirs('logs', exist_ok=True)
 
         # Get or create logger (don't use basicConfig as it may conflict with existing logging)
-        self.logger = logging.getLogger('modern_web_viewer')
+        self.logger = logging.getLogger('WebViewer')
         self.logger.setLevel(logging.DEBUG)
 
         # Remove existing handlers to avoid duplicates
         self.logger.handlers.clear()
+
+        log_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        date_fmt = '%Y-%m-%d %H:%M:%S'
 
         # Create rotating file handler (max 5MB per file, keep 3 backups)
         file_handler = RotatingFileHandler(
@@ -272,15 +276,13 @@ class BotDataViewer:
             encoding='utf-8'
         )
         file_handler.setLevel(logging.DEBUG)
-        file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        file_handler.setFormatter(file_formatter)
+        file_handler.setFormatter(logging.Formatter(log_fmt, datefmt=date_fmt))
         self.logger.addHandler(file_handler)
 
         # Create console handler
         console_handler = logging.StreamHandler()
         console_handler.setLevel(logging.INFO)
-        console_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        console_handler.setFormatter(console_formatter)
+        console_handler.setFormatter(logging.Formatter(log_fmt, datefmt=date_fmt))
         self.logger.addHandler(console_handler)
 
         # Prevent propagation to root logger to avoid duplicate messages

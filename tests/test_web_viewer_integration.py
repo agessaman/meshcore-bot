@@ -515,8 +515,6 @@ class TestIntegrationTimeoutConfig:
         bot = _make_bot()
         bot.config.set("Web_Viewer", "viewer_stop_grace_timeout_sec", "9")
         bot.config.set("Web_Viewer", "viewer_stop_force_timeout_sec", "4")
-        bot.config.set("Web_Viewer", "port_cleanup_lsof_timeout_sec", "8")
-        bot.config.set("Web_Viewer", "port_cleanup_kill_timeout_sec", "1")
         with patch("web_viewer.integration.BotIntegration._init_http_session"), \
              patch("web_viewer.integration.BotIntegration._init_packet_stream_table"), \
              patch("web_viewer.integration.BotIntegration._start_drain_thread"):
@@ -524,5 +522,3 @@ class TestIntegrationTimeoutConfig:
 
         assert wvi.viewer_stop_grace_timeout_sec == 9
         assert wvi.viewer_stop_force_timeout_sec == 4
-        assert wvi.port_cleanup_lsof_timeout_sec == 8
-        assert wvi.port_cleanup_kill_timeout_sec == 1

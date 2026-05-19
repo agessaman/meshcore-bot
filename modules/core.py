@@ -1517,7 +1517,7 @@ class MeshCoreBot:
                     # Check if process died
                     if (self.web_viewer_integration and
                         self.web_viewer_integration.viewer_process and
-                        self.web_viewer_integration.viewer_process.poll() is not None):
+                        not self.web_viewer_integration.viewer_process.is_alive()):
                         try:
                             self.logger.warning("Web viewer process died, restarting...")
                         except (AttributeError, TypeError):

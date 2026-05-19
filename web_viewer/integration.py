@@ -4,12 +4,9 @@ Web Viewer Integration for MeshCore Bot
 Provides integration between the main bot and the web viewer
 """
 
-import os
+import multiprocessing
 import queue
-import re
 import secrets
-import subprocess
-import sys
 import threading
 import time
 from contextlib import closing, suppress
@@ -17,6 +14,13 @@ from pathlib import Path
 from typing import Optional
 
 from modules.utils import resolve_path
+
+
+def _run_viewer_process(config: str, host: str, port: int, debug: bool) -> None:
+    """Target for multiprocessing.Process — must live at module level to be picklable."""
+    from web_viewer.app import BotDataViewer
+    viewer = BotDataViewer(config_path=config)
+    viewer.run(host=host, port=port, debug=debug)
 
 
 def normalized_web_viewer_password(config) -> str:
@@ -608,8 +612,6 @@ class WebViewerIntegration:
     ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '0.0.0.0']
     VIEWER_STOP_GRACE_TIMEOUT_SEC = 5.0
     VIEWER_STOP_FORCE_TIMEOUT_SEC = 2.0
-    PORT_CLEANUP_LSOF_TIMEOUT_SEC = 5.0
-    PORT_CLEANUP_KILL_TIMEOUT_SEC = 2.0
 
     def __init__(self, bot):
         self.bot = bot
@@ -617,10 +619,6 @@ class WebViewerIntegration:
         self.viewer_process = None
         self.viewer_thread = None
         self.running = False
-
-        # File handles for subprocess stdout/stderr (for proper cleanup)
-        self._viewer_stdout_file = None
-        self._viewer_stderr_file = None
 
         # Get web viewer settings from config
         self.enabled = bot.config.getboolean('Web_Viewer', 'enabled', fallback=False)
@@ -635,14 +633,6 @@ class WebViewerIntegration:
         self.viewer_stop_force_timeout_sec = self._get_float_config(
             "viewer_stop_force_timeout_sec",
             self.VIEWER_STOP_FORCE_TIMEOUT_SEC,
-        )
-        self.port_cleanup_lsof_timeout_sec = self._get_float_config(
-            "port_cleanup_lsof_timeout_sec",
-            self.PORT_CLEANUP_LSOF_TIMEOUT_SEC,
-        )
-        self.port_cleanup_kill_timeout_sec = self._get_float_config(
-            "port_cleanup_kill_timeout_sec",
-            self.PORT_CLEANUP_KILL_TIMEOUT_SEC,
         )
 
         # Validate configuration for security
@@ -715,7 +705,7 @@ class WebViewerIntegration:
             self.logger.error(f"Failed to start web viewer: {e}")
 
     def stop_viewer(self):
-        """Stop the web viewer"""
+        """Stop the web viewer process."""
         if not self.running and not self.viewer_process:
             return
 
@@ -723,176 +713,53 @@ class WebViewerIntegration:
             self.shutting_down = True
             self.running = False
 
-            if self.viewer_process and self.viewer_process.poll() is None:
+            if self.viewer_process and self.viewer_process.is_alive():
                 self.logger.info("Stopping web viewer...")
-                try:
-                    # First try graceful termination
-                    self.viewer_process.terminate()
-                    self.viewer_process.wait(timeout=self.viewer_stop_grace_timeout_sec)
-                    self.logger.info("Web viewer stopped gracefully")
-                except subprocess.TimeoutExpired:
+                self.viewer_process.terminate()
+                self.viewer_process.join(timeout=self.viewer_stop_grace_timeout_sec)
+                if self.viewer_process.is_alive():
                     self.logger.warning("Web viewer did not stop gracefully, forcing termination")
-                    try:
-                        self.viewer_process.kill()
-                        self.viewer_process.wait(timeout=self.viewer_stop_force_timeout_sec)
-                    except subprocess.TimeoutExpired:
-                        self.logger.error("Failed to kill web viewer process")
-                    except Exception as e:
-                        self.logger.warning(f"Error during forced termination: {e}")
-                except Exception as e:
-                    self.logger.warning(f"Error during web viewer shutdown: {e}")
-                finally:
-                    self.viewer_process = None
-
-            # Close log file handles
-            if self._viewer_stdout_file:
-                try:
-                    self._viewer_stdout_file.close()
-                except Exception as e:
-                    self.logger.debug(f"Error closing stdout file: {e}")
-                finally:
-                    self._viewer_stdout_file = None
-
-            if self._viewer_stderr_file:
-                try:
-                    self._viewer_stderr_file.close()
-                except Exception as e:
-                    self.logger.debug(f"Error closing stderr file: {e}")
-                finally:
-                    self._viewer_stderr_file = None
-
-            if not self.viewer_process:
+                    self.viewer_process.kill()
+                    self.viewer_process.join(timeout=self.viewer_stop_force_timeout_sec)
+                self.logger.info("Web viewer stopped")
+            else:
                 self.logger.info("Web viewer already stopped")
 
-            # Additional cleanup: kill any remaining processes on the port
-            try:
-                result = subprocess.run(['lsof', '-ti', f':{self.port}'],
-                                      capture_output=True, text=True, timeout=self.port_cleanup_lsof_timeout_sec)
-                if result.returncode == 0 and result.stdout.strip():
-                    pids = result.stdout.strip().split('\n')
-                    for pid in pids:
-                        pid = pid.strip()
-                        if not pid:
-                            continue
-
-                        # Validate PID is numeric only (prevent injection)
-                        if not re.match(r'^\d+$', pid):
-                            self.logger.warning(f"Invalid PID format: {pid}, skipping")
-                            continue
-
-                        try:
-                            pid_int = int(pid)
-                            # Safety check: never kill system PIDs
-                            if pid_int < 2:
-                                self.logger.warning(f"Refusing to kill system PID: {pid}")
-                                continue
-
-                            subprocess.run(['kill', '-9', str(pid_int)], timeout=self.port_cleanup_kill_timeout_sec)
-                            self.logger.info(f"Killed remaining process {pid} on port {self.port}")
-                        except (ValueError, subprocess.TimeoutExpired) as e:
-                            self.logger.warning(f"Failed to kill process {pid}: {e}")
-            except Exception as e:
-                self.logger.debug(f"Port cleanup check failed: {e}")
+            self.viewer_process = None
 
         except Exception as e:
             self.logger.error(f"Error stopping web viewer: {e}")
 
     def _run_viewer(self):
-        """Run the web viewer in a separate process"""
-        stdout_file = None
-        stderr_file = None
-
+        """Run the web viewer as a child process via multiprocessing."""
         try:
-            # Get the path to the web viewer script
-            viewer_script = Path(__file__).parent / "app.py"
-            # Use same config as bot so viewer finds db_path, Greeter_Command, etc.
             config_path = getattr(self.bot, 'config_file', 'config.ini')
             config_path = str(Path(config_path).resolve()) if config_path else 'config.ini'
 
-            # Build command
-            cmd = [
-                sys.executable,
-                str(viewer_script),
-                "--config", config_path,
-                "--host", self.host,
-                "--port", str(self.port)
-            ]
-
-            if self.debug:
-                cmd.append("--debug")
-
-            # Ensure logs directory exists
-            os.makedirs('logs', exist_ok=True)
-
-            # Open log files in write mode to prevent buffer blocking
-            # This fixes the issue where subprocess.PIPE buffers (~64KB) fill up
-            # after ~5 minutes and cause the subprocess to hang.
-            # Using 'w' mode (overwrite) instead of 'a' (append) since:
-            # - The web viewer already has proper logging to web_viewer_modern.log
-            # - stdout/stderr are mainly for immediate debugging
-            # - Prevents unbounded log file growth
-            stdout_file = open('logs/web_viewer_stdout.log', 'w')
-            stderr_file = open('logs/web_viewer_stderr.log', 'w')
-
-            # Store file handles for proper cleanup
-            self._viewer_stdout_file = stdout_file
-            self._viewer_stderr_file = stderr_file
-
-            # Start the viewer process with log file redirection
-            self.viewer_process = subprocess.Popen(
-                cmd,
-                stdout=stdout_file,
-                stderr=stderr_file,
-                text=True
+            self.viewer_process = multiprocessing.Process(
+                target=_run_viewer_process,
+                kwargs={'config': config_path, 'host': self.host, 'port': self.port, 'debug': self.debug},
+                name='web-viewer',
+                daemon=True,
             )
+            self.viewer_process.start()
 
-            # Give it a moment to start up
+            # Brief pause to detect immediate startup failures
             time.sleep(2)
 
-            # Check if it started successfully
-            if self.viewer_process and self.viewer_process.poll() is not None:
-                # Process failed immediately - read from log files for error reporting
-                stdout_file.flush()
-                stderr_file.flush()
-
-                # Read last few lines from stderr for error reporting
-                try:
-                    stderr_file.close()
-                    with open('logs/web_viewer_stderr.log') as f:
-                        stderr_lines = f.readlines()[-20:]  # Last 20 lines
-                        stderr = ''.join(stderr_lines)
-                except Exception:
-                    stderr = "Could not read stderr log"
-
-                # Read last few lines from stdout for error reporting
-                try:
-                    stdout_file.close()
-                    with open('logs/web_viewer_stdout.log') as f:
-                        stdout_lines = f.readlines()[-20:]  # Last 20 lines
-                        stdout = ''.join(stdout_lines)
-                except Exception:
-                    stdout = "Could not read stdout log"
-
-                self.logger.error(f"Web viewer failed to start. Return code: {self.viewer_process.returncode}")
-                if stderr and stderr.strip():
-                    self.logger.error(f"Web viewer startup error: {stderr}")
-                if stdout and stdout.strip():
-                    self.logger.error(f"Web viewer startup output: {stdout}")
-
+            if not self.viewer_process.is_alive():
+                self.logger.error(
+                    "Web viewer failed to start (exit code %s)", self.viewer_process.exitcode
+                )
                 self.viewer_process = None
-                self._viewer_stdout_file = None
-                self._viewer_stderr_file = None
                 return
 
-            # Web viewer is ready
             self.logger.info("Web viewer integration ready for data streaming")
 
-            # Monitor the process
-            while self.running and self.viewer_process and self.viewer_process.poll() is None:
+            while self.running and self.viewer_process and self.viewer_process.is_alive():
                 time.sleep(1)
 
-            # Process exited unexpectedly — try to restart if we haven't been stopped
-            if self.running and self.viewer_process and self.viewer_process.poll() is not None:
+            if self.running and self.viewer_process and not self.viewer_process.is_alive():
                 if (
                     self.shutting_down
                     or self.bot._shutdown_event.is_set()
@@ -900,54 +767,17 @@ class WebViewerIntegration:
                 ):
                     self.logger.debug(
                         "Web viewer process exited (code %s) during bot shutdown; not restarting",
-                        self.viewer_process.returncode,
+                        self.viewer_process.exitcode,
                     )
                     return
                 self.logger.warning(
                     "Web viewer process exited unexpectedly (code %s) — attempting restart",
-                    self.viewer_process.returncode,
+                    self.viewer_process.exitcode,
                 )
                 self.restart_viewer()
-                return
-
-            # Process exited - read from log files for error reporting if needed
-            if self.viewer_process and self.viewer_process.returncode != 0:
-                stdout_file.flush()
-                stderr_file.flush()
-
-                # Read last few lines from stderr for error reporting
-                try:
-                    stderr_file.close()
-                    with open('logs/web_viewer_stderr.log') as f:
-                        stderr_lines = f.readlines()[-20:]  # Last 20 lines
-                        stderr = ''.join(stderr_lines)
-                except Exception:
-                    stderr = "Could not read stderr log"
-
-                # Close stdout file as well
-                with suppress(Exception):
-                    stdout_file.close()
-
-                self.logger.error(f"Web viewer process exited with code {self.viewer_process.returncode}")
-                if stderr and stderr.strip():
-                    self.logger.error(f"Web viewer stderr: {stderr}")
-
-                self._viewer_stdout_file = None
-                self._viewer_stderr_file = None
-            elif self.viewer_process and self.viewer_process.returncode == 0:
-                self.logger.info("Web viewer process exited normally")
 
         except Exception as e:
             self.logger.error(f"Error running web viewer: {e}")
-            # Close file handles on error
-            if stdout_file:
-                with suppress(Exception):
-                    stdout_file.close()
-            if stderr_file:
-                with suppress(Exception):
-                    stderr_file.close()
-            self._viewer_stdout_file = None
-            self._viewer_stderr_file = None
         finally:
             self.running = False
 
@@ -997,6 +827,4 @@ class WebViewerIntegration:
         """Check if the web viewer process is healthy"""
         if not self.viewer_process:
             return False
-
-        # Check if process is still running
-        return self.viewer_process.poll() is None
+        return self.viewer_process.is_alive()
