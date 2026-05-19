@@ -19,10 +19,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-# When started as a script (`python modules/web_viewer/app.py`), Python puts the
-# script's directory on sys.path, not the repo root — import modules.* fails
-# unless we prepend the project root first.
-_project_root = str(Path(__file__).resolve().parent.parent.parent)
+# When started as a subprocess (`python web_viewer/app.py`), Python puts the
+# script's directory on sys.path, not the repo root — imports of shared.* and
+# modules.* fail unless we prepend the project root first.
+_project_root = str(Path(__file__).resolve().parent.parent)
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
