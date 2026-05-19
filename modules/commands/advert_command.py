@@ -8,7 +8,7 @@ import asyncio
 import time
 from typing import Any
 
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from .base_command import BaseCommand
 
 

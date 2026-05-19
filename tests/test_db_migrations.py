@@ -5,7 +5,7 @@ import sqlite3
 
 import pytest
 
-from modules.db_migrations import (
+from shared.db_migrations import (
     MIGRATIONS,
     MigrationRunner,
     _add_column,

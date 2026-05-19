@@ -6,7 +6,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from modules.db_manager import DBManager
+from shared.db_manager import DBManager
 
 
 @pytest.fixture

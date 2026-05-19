@@ -7,7 +7,7 @@ Handles random number generation between 1 and X (default 100)
 import random
 from typing import Optional
 
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from .base_command import BaseCommand
 
 

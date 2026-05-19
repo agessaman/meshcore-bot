@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from ..clients.noaa_aurora_client import NOAAAuroraClient
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from ..utils import geocode_city_sync, geocode_zipcode_sync, get_config_timezone
 from .base_command import BaseCommand
 

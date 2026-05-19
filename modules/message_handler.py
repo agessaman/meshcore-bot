@@ -14,8 +14,8 @@ from typing import Any, TypedDict
 
 from .enums import AdvertFlags, DeviceRole, PayloadType, PayloadVersion, RouteType
 from .graph_trace_helper import update_mesh_graph_from_trace_data
-from .models import MeshMessage
-from .security_utils import sanitize_input, sanitize_name
+from shared.models import MeshMessage
+from shared.security_utils import sanitize_input, sanitize_name
 from .utils import (
     calculate_packet_hash,
     decode_path_len_byte,

@@ -167,7 +167,7 @@ class TestCategoryAndFailed:
 # Minimal local plugin source (valid BaseCommand subclass)
 _LOCAL_PLUGIN_SOURCE = '''
 from modules.commands.base_command import BaseCommand
-from modules.models import MeshMessage
+from shared.models import MeshMessage
 
 
 class HelloLocalCommand(BaseCommand):

@@ -11,7 +11,7 @@ from typing import Any, Optional
 
 import requests
 
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from ..utils import calculate_distance
 from .base_command import BaseCommand
 

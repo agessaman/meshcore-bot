@@ -13,7 +13,7 @@ from typing import Literal, Optional
 
 CondensePathsMode = Literal["off", "flat", "nested"]
 
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from ..utils import calculate_packet_hash, parse_path_string
 from .base_command import BaseCommand
 

@@ -14,7 +14,7 @@ from typing import Any, Optional
 
 import aiohttp
 
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from ..utils import abbreviate_location, calculate_distance, format_location_for_display, geocode_city, geocode_zipcode
 from .base_command import BaseCommand
 

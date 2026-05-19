@@ -10,7 +10,7 @@ from typing import Any, Optional, Union
 
 import requests
 
-from ...models import MeshMessage
+from shared.models import MeshMessage
 from ...utils import (
     format_temperature_high_low,
     geocode_city_sync,

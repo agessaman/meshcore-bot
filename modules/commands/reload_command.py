@@ -4,7 +4,7 @@ Reload Command
 Allows admin users to reload the bot configuration without restarting
 """
 
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from .base_command import BaseCommand
 
 

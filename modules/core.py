@@ -27,7 +27,7 @@ from meshcore import EventType
 
 from .channel_manager import ChannelManager
 from .command_manager import CommandManager
-from .db_manager import AsyncDBManager, DBManager
+from shared.db_manager import AsyncDBManager, DBManager
 from .feed_manager import FeedManager
 from .i18n import Translator
 from .message_handler import MessageHandler

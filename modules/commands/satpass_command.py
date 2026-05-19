@@ -3,7 +3,7 @@
 Satellite Pass Command - Provides satellite pass information
 """
 
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from ..solar_conditions import get_next_satellite_pass
 from .base_command import BaseCommand
 

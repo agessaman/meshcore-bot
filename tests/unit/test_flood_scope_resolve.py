@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 import pytest
 
 from modules.command_manager import CommandManager
-from modules.models import MeshMessage
+from shared.models import MeshMessage
 from modules.service_plugins.base_service import BaseServicePlugin
 
 

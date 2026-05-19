@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from modules.security_utils import (
+from shared.security_utils import (
     sanitize_input,
     validate_api_key_format,
     validate_external_url,
@@ -43,7 +43,7 @@ class TestValidatePubkeyFormat:
 class TestValidateSafePath:
     """Tests for validate_safe_path()."""
 
-    @patch("modules.security_utils._is_nix_environment", return_value=True)
+    @patch("shared.security_utils._is_nix_environment", return_value=True)
     def test_relative_path_resolution(self, mock_nix, tmp_path):
         # Patch Nix check so tmp_path (under /private on macOS) doesn't trigger dangerous path
         result = validate_safe_path("subdir/file.db", base_dir=str(tmp_path), allow_absolute=False)
@@ -57,7 +57,7 @@ class TestValidateSafePath:
         with pytest.raises(ValueError, match="Path traversal"):
             validate_safe_path("/etc/passwd", base_dir=str(tmp_path), allow_absolute=False)
 
-    @patch("modules.security_utils._is_nix_environment", return_value=True)
+    @patch("shared.security_utils._is_nix_environment", return_value=True)
     def test_absolute_path_when_allowed(self, mock_nix, tmp_path):
         target = tmp_path / "data" / "file.db"
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -233,26 +233,26 @@ class TestIsNixEnvironment:
 
     def test_nix_env_var_enables_dangerous_path_access(self, tmp_path):
         # When NIX_STORE is set, system-path check is skipped
-        import modules.security_utils as su
+        import shared.security_utils as su
         with patch.object(su, "_is_nix_environment", return_value=True):
             # /proc is dangerous on Linux, but Nix mode should allow it via allow_absolute
             result = validate_safe_path(str(tmp_path), base_dir=str(tmp_path), allow_absolute=True)
             assert result is not None
 
     def test_non_nix_env_detects_nix_store_var(self):
-        import modules.security_utils as su
+        import shared.security_utils as su
         with patch.dict(os.environ, {"NIX_STORE": "/nix/store"}, clear=False):
             assert su._is_nix_environment() is True
 
     def test_non_nix_env_detects_nix_path_var(self):
-        import modules.security_utils as su
+        import shared.security_utils as su
         env = {k: v for k, v in os.environ.items()
                if k not in ("NIX_STORE", "NIX_PATH", "NIX_REMOTE", "IN_NIX_SHELL")}
         with patch.dict(os.environ, {**env, "NIX_PATH": "/nix"}, clear=True):
             assert su._is_nix_environment() is True
 
     def test_no_nix_vars_returns_false(self):
-        import modules.security_utils as su
+        import shared.security_utils as su
         env = {k: v for k, v in os.environ.items()
                if k not in ("NIX_STORE", "NIX_PATH", "NIX_REMOTE", "IN_NIX_SHELL")}
         with patch.dict(os.environ, env, clear=True):
@@ -282,13 +282,13 @@ class TestValidateSafePathExtra:
     """Additional coverage for validate_safe_path() exception paths."""
 
     def test_dangerous_system_path_rejected_on_linux(self, tmp_path):
-        import modules.security_utils as su
+        import shared.security_utils as su
         with patch.object(su, "_is_nix_environment", return_value=False):
             with pytest.raises(ValueError, match="system directory"):
                 validate_safe_path("/etc/passwd", allow_absolute=True)
 
     def test_unexpected_exception_wrapped_as_value_error(self, tmp_path):
-        with patch("modules.security_utils.Path.resolve", side_effect=OSError("disk fail")):
+        with patch("shared.security_utils.Path.resolve", side_effect=OSError("disk fail")):
             with pytest.raises(ValueError, match="Invalid or unsafe file path"):
                 validate_safe_path("some_file.db", base_dir=str(tmp_path))
 
@@ -297,39 +297,39 @@ class TestSanitizeName:
     """Tests for sanitize_name() — log-safe identifier sanitization."""
 
     def test_newline_stripped(self):
-        from modules.security_utils import sanitize_name
+        from shared.security_utils import sanitize_name
         assert "\n" not in sanitize_name("Evil\nNode")
 
     def test_carriage_return_stripped(self):
-        from modules.security_utils import sanitize_name
+        from shared.security_utils import sanitize_name
         assert "\r" not in sanitize_name("Evil\rNode")
 
     def test_tab_stripped(self):
-        from modules.security_utils import sanitize_name
+        from shared.security_utils import sanitize_name
         assert "\t" not in sanitize_name("Tab\tNode")
 
     def test_null_byte_stripped(self):
-        from modules.security_utils import sanitize_name
+        from shared.security_utils import sanitize_name
         assert "\x00" not in sanitize_name("Bad\x00Name")
 
     def test_ansi_escape_stripped(self):
-        from modules.security_utils import sanitize_name
+        from shared.security_utils import sanitize_name
         assert "\x1b" not in sanitize_name("\x1b[31mRed\x1b[0m")
 
     def test_truncated_to_max_length(self):
-        from modules.security_utils import sanitize_name
+        from shared.security_utils import sanitize_name
         result = sanitize_name("A" * 100, max_length=64)
         assert len(result) <= 64
 
     def test_normal_name_unchanged(self):
-        from modules.security_utils import sanitize_name
+        from shared.security_utils import sanitize_name
         assert sanitize_name("Alice") == "Alice"
 
     def test_non_string_coerced(self):
-        from modules.security_utils import sanitize_name
+        from shared.security_utils import sanitize_name
         assert sanitize_name(42) == "42"
 
     def test_negative_max_length_raises(self):
-        from modules.security_utils import sanitize_name
+        from shared.security_utils import sanitize_name
         with pytest.raises(ValueError):
             sanitize_name("test", max_length=-1)

@@ -25,7 +25,7 @@ from .scheduled_message_cron import (
     parse_schedule_key,
     parse_scheduled_message_value,
 )
-from .security_utils import validate_external_url
+from shared.security_utils import validate_external_url
 from .utils import decode_escape_sequences, format_keyword_response_with_placeholders, get_config_timezone
 
 

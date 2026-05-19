@@ -7,7 +7,7 @@ Responds to Linux commands with hilarious supervillain mainframe error messages
 import random
 from typing import Any
 
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from .base_command import BaseCommand
 
 

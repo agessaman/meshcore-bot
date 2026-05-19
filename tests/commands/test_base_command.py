@@ -10,7 +10,7 @@ from modules.commands.joke_command import JokeCommand
 from modules.commands.ping_command import PingCommand
 from modules.commands.sports_command import SportsCommand
 from modules.commands.stats_command import StatsCommand
-from modules.models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, MeshMessage
+from shared.models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, MeshMessage
 from tests.conftest import mock_message
 
 

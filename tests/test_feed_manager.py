@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, Mock
 
 import pytest
 
-from modules.db_manager import DBManager
+from shared.db_manager import DBManager
 from modules.feed_manager import FeedManager
 
 

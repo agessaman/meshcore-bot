@@ -22,7 +22,7 @@ import aiohttp
 import feedparser
 
 from modules.feed_filter_eval import item_passes_filter_config
-from modules.security_utils import sanitize_input, validate_external_url
+from shared.security_utils import sanitize_input, validate_external_url
 from modules.url_shortener import _coerce_url_string, shorten_url_sync
 
 

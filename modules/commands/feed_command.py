@@ -7,8 +7,8 @@ Handles RSS and API feed subscription management
 import json
 from typing import Optional
 
-from ..models import MeshMessage
-from ..security_utils import sanitize_input, sanitize_name, validate_external_url
+from shared.models import MeshMessage
+from shared.security_utils import sanitize_input, sanitize_name, validate_external_url
 from .base_command import BaseCommand
 
 

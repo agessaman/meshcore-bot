@@ -36,7 +36,7 @@ except ImportError:
 import contextlib
 
 from ..profanity_filter import censor, contains_profanity
-from ..security_utils import sanitize_name
+from shared.security_utils import sanitize_name
 from .base_service import BaseServicePlugin
 
 

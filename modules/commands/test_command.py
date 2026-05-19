@@ -9,7 +9,7 @@ import re
 from datetime import datetime
 from typing import Any, Optional
 
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from ..response_template import format_piped_template
 from ..utils import calculate_distance, extract_path_node_ids_from_message
 from .base_command import BaseCommand

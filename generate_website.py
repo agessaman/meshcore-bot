@@ -21,7 +21,7 @@ try:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
     from modules.config_validation import strip_optional_quotes
-    from modules.db_manager import DBManager
+    from shared.db_manager import DBManager
     from modules.plugin_loader import PluginLoader
     from modules.utils import resolve_path
 except ImportError as e:

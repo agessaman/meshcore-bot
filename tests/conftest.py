@@ -13,9 +13,9 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 
-from modules.db_manager import DBManager
+from shared.db_manager import DBManager
 from modules.mesh_graph import MeshGraph
-from modules.models import MeshMessage
+from shared.models import MeshMessage
 from tests.helpers import create_test_edge, populate_test_graph
 
 

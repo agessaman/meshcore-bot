@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, Mock
 import pytest
 
 from modules.commands.path_command import PathCommand
-from modules.models import MeshMessage
+from shared.models import MeshMessage
 
 
 @pytest.mark.unit

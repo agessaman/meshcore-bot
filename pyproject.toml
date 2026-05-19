@@ -51,7 +51,8 @@ meshcore-viewer = "modules.web_viewer.app:main"
 [tool.setuptools]
 # Include both the main module and the modules package
 py-modules = ["meshcore_bot"]
-packages = ["modules", "modules.commands", "modules.commands.alternatives", 
+packages = ["shared", "shared.parsers",
+            "modules", "modules.commands", "modules.commands.alternatives",
             "modules.commands.alternatives.inactive", "modules.service_plugins", "modules.web_viewer"]
 
 [tool.setuptools.package-data]
@@ -130,7 +131,7 @@ module = [
     "modules.message_handler",
     "modules.utils",
     "modules.plugin_loader",
-    "modules.security_utils",
+    "shared.security_utils",
     "modules.commands.base_command",
 ]
 disallow_untyped_defs = true

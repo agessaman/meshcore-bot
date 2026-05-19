@@ -6,7 +6,7 @@ Returns the currently running bot version string.
 
 from typing import Any
 
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from ..version_info import resolve_runtime_version
 from .base_command import BaseCommand
 

@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 import pytest
 
 from modules.command_manager import CommandManager, InternetStatusCache
-from modules.models import MeshMessage
+from shared.models import MeshMessage
 from tests.conftest import mock_message
 
 

@@ -6,7 +6,7 @@ Handles dice rolling for D&D and other tabletop games
 
 import random
 
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from .base_command import BaseCommand
 
 

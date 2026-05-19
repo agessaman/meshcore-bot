@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from modules.message_handler import MessageHandler
-from modules.models import MeshMessage
+from shared.models import MeshMessage
 from tests.conftest import mock_message as make_message
 
 

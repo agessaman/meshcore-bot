@@ -7,7 +7,7 @@ Provides help information for commands and general usage
 from collections import defaultdict
 from typing import Any, Optional
 
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from .base_command import BaseCommand
 
 

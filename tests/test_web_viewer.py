@@ -2326,7 +2326,7 @@ class TestBotIntegrationQueue:
         bot.bot_root = str(tmp_path)
 
         # Ensure schema exists (packet_stream is migration-owned).
-        from modules.db_manager import DBManager
+        from shared.db_manager import DBManager
 
         class MinimalBot:
             def __init__(self, logger, config):
@@ -2358,7 +2358,7 @@ class TestBotIntegrationQueue:
         bot.config = cfg
         bot.bot_root = str(tmp_path)
 
-        from modules.db_manager import DBManager
+        from shared.db_manager import DBManager
 
         class MinimalBot:
             def __init__(self, logger, config):

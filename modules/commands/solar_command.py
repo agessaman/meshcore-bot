@@ -3,7 +3,7 @@
 Solar Command - Provides solar conditions and HF band information
 """
 
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from ..solar_conditions import solar_conditions
 from .base_command import BaseCommand
 

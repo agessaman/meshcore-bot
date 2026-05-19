@@ -12,8 +12,8 @@ from typing import Optional
 
 import requests
 
-from ..models import MeshMessage
-from ..security_utils import sanitize_name
+from shared.models import MeshMessage
+from shared.security_utils import sanitize_name
 from ..utils import (
     abbreviate_location,
     geocode_city,

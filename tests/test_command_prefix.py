@@ -14,7 +14,7 @@ from modules.command_manager import CommandManager
 from modules.commands.base_command import BaseCommand
 from modules.commands.hello_command import HelloCommand
 from modules.commands.ping_command import PingCommand
-from modules.models import MeshMessage
+from shared.models import MeshMessage
 
 
 class MockTestCommand(BaseCommand):

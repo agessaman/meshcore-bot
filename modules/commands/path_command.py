@@ -10,8 +10,8 @@ import re
 import time
 from typing import Any, Callable, Optional
 
-from ..models import MeshMessage
-from ..security_utils import sanitize_name
+from shared.models import MeshMessage
+from shared.security_utils import sanitize_name
 from ..utils import bytes_per_hop_from_routing_and_nodes, calculate_distance, parse_path_string
 from .base_command import BaseCommand
 

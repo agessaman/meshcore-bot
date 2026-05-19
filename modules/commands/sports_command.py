@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Optional
 from ..clients.espn_client import ESPNClient
 from ..clients.sports_mappings import LEAGUE_MAPPINGS, SPORT_EMOJIS, TEAM_MAPPINGS
 from ..clients.thesportsdb_client import TheSportsDBClient
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from .base_command import BaseCommand
 
 if TYPE_CHECKING:

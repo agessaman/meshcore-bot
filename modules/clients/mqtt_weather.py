@@ -16,7 +16,7 @@ from configparser import ConfigParser
 from dataclasses import dataclass
 from typing import Any
 
-from ..security_utils import sanitize_input
+from shared.security_utils import sanitize_input
 
 MQTT_WEATHER_PREFIX = "custom.mqtt_weather."
 

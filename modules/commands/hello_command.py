@@ -9,7 +9,7 @@ import random
 import re
 from typing import Any
 
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from ..utils import get_config_timezone
 from .base_command import BaseCommand
 

@@ -42,7 +42,7 @@ from flask import (
 )
 from flask_socketio import SocketIO, disconnect, emit
 
-from modules.security_utils import (
+from shared.security_utils import (
     VALID_JOURNAL_MODES,
     validate_external_url,
     validate_sql_identifier,
@@ -367,7 +367,7 @@ class BotDataViewer:
         """Initialize database connections"""
         try:
             # Initialize database manager for metadata access
-            from modules.db_manager import DBManager
+            from shared.db_manager import DBManager
             # Create a minimal bot object for DBManager
             class MinimalBot:
                 def __init__(self, logger, config, db_manager=None):

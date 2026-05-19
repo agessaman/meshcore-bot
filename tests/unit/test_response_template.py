@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, Mock
 import pytest
 
 from modules.commands.test_command import TestCommand as MeshTestCommand
-from modules.models import MeshMessage
+from shared.models import MeshMessage
 from modules.response_template import format_piped_template
 from modules.utils import message_path_bytes_per_hop
 

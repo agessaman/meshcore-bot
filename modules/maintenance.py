@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
-from .security_utils import validate_external_url
+from shared.security_utils import validate_external_url
 
 if TYPE_CHECKING:
     pass

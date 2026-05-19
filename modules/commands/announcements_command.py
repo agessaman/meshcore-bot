@@ -6,8 +6,8 @@ Allows authorized users to send announcements to channels via DM
 
 import time
 
-from ..models import MeshMessage
-from ..security_utils import validate_pubkey_format
+from shared.models import MeshMessage
+from shared.security_utils import validate_pubkey_format
 from .base_command import BaseCommand
 
 

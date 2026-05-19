@@ -1,7 +1,7 @@
 """Tests for modules/models.py — MeshMessage dataclass."""
 
 
-from modules.models import MeshMessage
+from shared.models import MeshMessage
 
 
 class TestMeshMessageDefaults:

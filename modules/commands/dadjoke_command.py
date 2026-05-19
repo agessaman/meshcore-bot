@@ -10,7 +10,7 @@ from typing import Any, Optional
 
 import aiohttp
 
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from .base_command import BaseCommand
 
 logger = logging.getLogger("MeshCoreBot")

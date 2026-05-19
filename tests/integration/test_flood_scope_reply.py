@@ -16,7 +16,7 @@ import pytest
 
 from modules.command_manager import CommandManager
 from modules.message_handler import MessageHandler
-from modules.models import MeshMessage
+from shared.models import MeshMessage
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 

@@ -6,7 +6,7 @@ Lists available commands in a compact, comma-separated format for LoRa
 
 from typing import Any, Optional
 
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from .base_command import BaseCommand
 
 

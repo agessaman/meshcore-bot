@@ -3,7 +3,7 @@
 Sun Command - Provides sunrise/sunset information
 """
 
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from ..solar_conditions import get_sun
 from .base_command import BaseCommand
 

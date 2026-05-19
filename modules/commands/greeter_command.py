@@ -10,7 +10,7 @@ import time
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from ..utils import decode_escape_sequences
 from .base_command import BaseCommand
 

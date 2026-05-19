@@ -6,7 +6,7 @@ Provides commands to manage repeater contacts and purging operations
 
 import asyncio
 
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from .base_command import BaseCommand
 
 

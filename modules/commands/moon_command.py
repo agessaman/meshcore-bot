@@ -3,7 +3,7 @@
 Moon Command - Provides moon phase and position information
 """
 
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from ..solar_conditions import get_moon
 from .base_command import BaseCommand
 

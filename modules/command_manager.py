@@ -21,9 +21,9 @@ from .config_validation import (
     _channel_name_is_public,
     strip_optional_quotes,
 )
-from .models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, MeshMessage
+from shared.models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, MeshMessage
 from .plugin_loader import PluginLoader
-from .security_utils import sanitize_name, validate_safe_path
+from shared.security_utils import sanitize_name, validate_safe_path
 from .utils import check_internet_connectivity_async, decode_escape_sequences, format_keyword_response_with_placeholders
 
 

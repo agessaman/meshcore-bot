@@ -3,7 +3,7 @@
 HF Conditions Command - Provides HF band conditions for ham radio
 """
 
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from ..solar_conditions import hf_band_conditions
 from .base_command import BaseCommand
 

@@ -4,7 +4,7 @@ Web Viewer Command
 Provides commands to manage the web viewer integration
 """
 
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from .base_command import BaseCommand
 
 

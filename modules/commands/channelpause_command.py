@@ -4,7 +4,7 @@ Channel pause command
 DM-only admin: pause or resume bot responses on public channels (in-memory only).
 """
 
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from .base_command import BaseCommand
 
 

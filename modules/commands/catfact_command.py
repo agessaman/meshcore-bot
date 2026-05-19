@@ -6,7 +6,7 @@ Provides random cat facts as a hidden easter egg command
 
 import random
 
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from .base_command import BaseCommand
 
 

@@ -9,7 +9,7 @@ import re
 from typing import Optional
 
 from ..graph_trace_helper import update_mesh_graph_from_trace_data
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from ..trace_runner import RunTraceResult, run_trace
 from .base_command import BaseCommand
 

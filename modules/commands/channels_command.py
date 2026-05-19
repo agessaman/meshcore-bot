@@ -8,7 +8,7 @@ import asyncio
 import re
 from typing import Optional
 
-from ..models import MeshMessage
+from shared.models import MeshMessage
 from .base_command import BaseCommand
 
 

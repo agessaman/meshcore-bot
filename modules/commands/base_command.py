@@ -9,8 +9,8 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any, Optional
 
-from ..models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, MeshMessage
-from ..security_utils import validate_pubkey_format
+from shared.models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, MeshMessage
+from shared.security_utils import validate_pubkey_format
 from ..utils import format_elapsed_display, get_config_timezone
 
 
