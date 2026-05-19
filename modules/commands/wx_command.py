@@ -14,13 +14,8 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from shared.models import MeshMessage
-from ..utils import (
-    format_temperature_high_low,
-    geocode_city_sync,
-    geocode_zipcode_sync,
-    get_nominatim_geocoder,
-    normalize_us_state,
-)
+from shared.geocoding import geocode_city_sync, geocode_zipcode_sync, get_nominatim_geocoder, normalize_us_state
+from ..utils import format_temperature_high_low
 from .base_command import BaseCommand
 
 # Import for delegation when using Open-Meteo provider
@@ -444,7 +439,7 @@ class WxCommand(BaseCommand):
             Optional[str]: Location string (city name) or None if geocoding fails.
         """
         try:
-            from ..utils import rate_limited_nominatim_reverse_sync
+            from shared.geocoding import rate_limited_nominatim_reverse_sync
             result = rate_limited_nominatim_reverse_sync(self.bot, f"{lat}, {lon}", timeout=10)
             if result and hasattr(result, 'raw'):
                 # Extract city name from address

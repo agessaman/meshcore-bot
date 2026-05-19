@@ -11,7 +11,8 @@ from typing import Any, Optional
 
 from shared.models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, MeshMessage
 from shared.security_utils import validate_pubkey_format
-from ..utils import format_elapsed_display, get_config_timezone
+from shared.text_utils import format_elapsed_display
+from ..utils import get_config_timezone
 
 
 class BaseCommand(ABC):

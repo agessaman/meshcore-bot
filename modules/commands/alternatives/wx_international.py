@@ -11,13 +11,8 @@ from typing import Any, Optional, Union
 import requests
 
 from shared.models import MeshMessage
-from ...utils import (
-    format_temperature_high_low,
-    geocode_city_sync,
-    geocode_zipcode_sync,
-    get_nominatim_geocoder,
-    rate_limited_nominatim_reverse_sync,
-)
+from shared.geocoding import geocode_city_sync, geocode_zipcode_sync, get_nominatim_geocoder, rate_limited_nominatim_reverse_sync
+from ...utils import format_temperature_high_low
 from ..base_command import BaseCommand
 
 # Import WXSIM parser for custom weather sources

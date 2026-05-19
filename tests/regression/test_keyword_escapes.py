@@ -1,7 +1,7 @@
 """Regression tests for keyword escape sequences."""
 
 
-from modules.utils import decode_escape_sequences
+from shared.text_utils import decode_escape_sequences
 
 
 class TestKeywordEscapes:

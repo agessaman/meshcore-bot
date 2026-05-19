@@ -15,7 +15,8 @@ from typing import Any, Optional
 import aiohttp
 
 from shared.models import MeshMessage
-from ..utils import abbreviate_location, calculate_distance, format_location_for_display, geocode_city, geocode_zipcode
+from shared.geocoding import calculate_distance, geocode_city, geocode_zipcode
+from shared.text_utils import abbreviate_location, format_location_for_display
 from .base_command import BaseCommand
 
 
@@ -1141,7 +1142,7 @@ class PrefixCommand(BaseCommand):
                                     location_str = abbreviate_location(city, 20)
                             else:
                                 # Fallback to basic geocoding
-                                from ..utils import rate_limited_nominatim_reverse_sync
+                                from shared.geocoding import rate_limited_nominatim_reverse_sync
                                 location = rate_limited_nominatim_reverse_sync(
                                     self.bot, f"{row['latitude']}, {row['longitude']}", timeout=10
                                 )

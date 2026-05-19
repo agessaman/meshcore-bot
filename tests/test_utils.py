@@ -6,28 +6,32 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from modules.utils import (
-    abbreviate_location,
+from shared.geocoding import (
     calculate_distance,
+    get_major_city_queries,
+    parse_location_string,
+)
+from shared.text_utils import (
+    abbreviate_location,
+    decode_escape_sequences,
+    format_elapsed_display,
+    format_location_for_display,
+    truncate_string,
+)
+from modules.utils import (
     calculate_packet_hash,
     calculate_path_distances,
     check_internet_connectivity,
-    decode_escape_sequences,
     decode_path_len_byte,
     encode_path_len_byte,
     extract_path_node_ids_from_message,
-    format_elapsed_display,
     format_keyword_response_with_placeholders,
-    format_location_for_display,
     get_config_timezone,
-    get_major_city_queries,
     is_valid_timezone,
     node_ids_from_path_string,
-    parse_location_string,
     parse_path_string,
     parse_trace_payload_route_hashes,
     resolve_path,
-    truncate_string,
     verify_meshcore_advert_ed25519,
 )
 

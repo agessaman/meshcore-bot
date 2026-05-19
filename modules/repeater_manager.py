@@ -13,7 +13,7 @@ from typing import Any, NamedTuple, Optional
 from meshcore import EventType
 
 from shared.security_utils import sanitize_name, validate_pubkey_format
-from .utils import rate_limited_nominatim_reverse_sync
+from shared.geocoding import rate_limited_nominatim_reverse_sync
 
 
 class TrackAdvertResult(NamedTuple):

@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from typing import Any, Optional
 
 from shared.models import MeshMessage
-from ..utils import decode_escape_sequences
+from shared.text_utils import decode_escape_sequences
 from .base_command import BaseCommand
 
 

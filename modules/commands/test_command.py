@@ -11,7 +11,8 @@ from typing import Any, Optional
 
 from shared.models import MeshMessage
 from ..response_template import format_piped_template
-from ..utils import calculate_distance, extract_path_node_ids_from_message
+from shared.geocoding import calculate_distance
+from ..utils import extract_path_node_ids_from_message
 from .base_command import BaseCommand
 
 

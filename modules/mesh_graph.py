@@ -549,7 +549,7 @@ class MeshGraph:
         Returns:
             Optional[float]: Recalculated distance in km, or None if can't calculate.
         """
-        from .utils import calculate_distance
+        from shared.geocoding import calculate_distance
 
         # Get location for 'from' node (conn optional for single-connection batch flush)
         if edge.get('from_public_key'):
@@ -682,7 +682,7 @@ class MeshGraph:
 
             # If we have a reference location, prefer shorter distances (LoRa range limitation)
             if reference_location and len(results) > 1:
-                from .utils import calculate_distance
+                from shared.geocoding import calculate_distance
                 ref_lat, ref_lon = reference_location
 
                 # Calculate distances and sort by distance (shorter first)

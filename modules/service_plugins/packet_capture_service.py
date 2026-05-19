@@ -21,7 +21,7 @@ from meshcore import EventType
 from ..enums import PayloadType, PayloadVersion, RouteType
 
 # Import bot's utilities for packet hash
-from ..utils import (
+from ..utils import(
     calculate_packet_hash,
     decode_path_len_byte,
     parse_trace_payload_route_hashes,

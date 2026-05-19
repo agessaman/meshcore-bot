@@ -14,14 +14,9 @@ import requests
 
 from shared.models import MeshMessage
 from shared.security_utils import sanitize_name
-from ..utils import (
-    abbreviate_location,
-    geocode_city,
-    geocode_zipcode,
-    get_config_timezone,
-    get_nominatim_geocoder,
-    rate_limited_nominatim_reverse,
-)
+from shared.geocoding import geocode_city, geocode_zipcode, get_nominatim_geocoder, rate_limited_nominatim_reverse
+from shared.text_utils import abbreviate_location
+from ..utils import get_config_timezone
 from .base_command import BaseCommand
 
 

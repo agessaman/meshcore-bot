@@ -12,7 +12,7 @@ from typing import Any, Optional
 import requests
 
 from shared.models import MeshMessage
-from ..utils import calculate_distance
+from shared.geocoding import calculate_distance
 from .base_command import BaseCommand
 
 

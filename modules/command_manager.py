@@ -24,7 +24,8 @@ from .config_validation import (
 from shared.models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, MeshMessage
 from .plugin_loader import PluginLoader
 from shared.security_utils import sanitize_name, validate_safe_path
-from .utils import check_internet_connectivity_async, decode_escape_sequences, format_keyword_response_with_placeholders
+from shared.text_utils import decode_escape_sequences
+from .utils import check_internet_connectivity_async, format_keyword_response_with_placeholders
 
 
 @dataclass

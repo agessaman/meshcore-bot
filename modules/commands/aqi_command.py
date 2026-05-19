@@ -11,15 +11,15 @@ import requests_cache
 from retry_requests import retry
 
 from shared.models import MeshMessage
-from ..utils import (
-    abbreviate_location,
+from shared.geocoding import (
     geocode_city_sync,
     geocode_zipcode_sync,
     get_nominatim_geocoder,
-    is_valid_timezone,
     rate_limited_nominatim_geocode_sync,
     rate_limited_nominatim_reverse_sync,
 )
+from shared.text_utils import abbreviate_location
+from ..utils import is_valid_timezone
 from .base_command import BaseCommand
 
 

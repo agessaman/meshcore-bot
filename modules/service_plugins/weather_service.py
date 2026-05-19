@@ -475,7 +475,8 @@ class WeatherService(BaseServicePlugin):
             # Get location name (cached to avoid repeated API calls)
             if self._cached_location_name is None:
                 try:
-                    from ..utils import format_location_for_display, rate_limited_nominatim_reverse
+                    from shared.geocoding import rate_limited_nominatim_reverse
+                    from shared.text_utils import format_location_for_display
                     coordinates_str = f"{self.my_position_lat}, {self.my_position_lon}"
                     location = await rate_limited_nominatim_reverse(self.bot, coordinates_str, timeout=5)
 
@@ -1021,7 +1022,7 @@ class WeatherService(BaseServicePlugin):
         """
         try:
             # Use reverse geocoding if available in utils
-            from ..utils import rate_limited_nominatim_reverse_sync
+            from shared.geocoding import rate_limited_nominatim_reverse_sync
             location = rate_limited_nominatim_reverse_sync(self.bot, f"{lat}, {lon}", timeout=5)
             if location:
                 # Extract city/town name

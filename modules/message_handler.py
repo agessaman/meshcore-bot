@@ -16,11 +16,11 @@ from .enums import AdvertFlags, DeviceRole, PayloadType, PayloadVersion, RouteTy
 from .graph_trace_helper import update_mesh_graph_from_trace_data
 from shared.models import MeshMessage
 from shared.security_utils import sanitize_input, sanitize_name
+from shared.text_utils import format_elapsed_display
 from .utils import (
     calculate_packet_hash,
     decode_path_len_byte,
     encode_path_len_byte,
-    format_elapsed_display,
 )
 
 
@@ -2429,7 +2429,8 @@ class MessageHandler:
                 self.logger.debug(f"Error looking up public key for prefix {node_prefix}: {e}")
 
         # Calculate geographic distances if locations are available
-        from .utils import _get_node_location_from_db, calculate_distance
+        from .utils import _get_node_location_from_db
+        from shared.geocoding import calculate_distance
 
         # Extract edges from path
         for i in range(len(path_nodes) - 1):
@@ -2726,7 +2727,8 @@ class MessageHandler:
         recency_days = self.bot.config.getint("Path_Command", "graph_edge_expiration_days", fallback=7)
 
         # Calculate geographic distances if locations are available
-        from .utils import _get_node_location_from_db, calculate_distance
+        from .utils import _get_node_location_from_db
+        from shared.geocoding import calculate_distance
 
         # Create edge from advertiser to first hop in path
         first_hop = path_nodes[0]
@@ -2911,7 +2913,8 @@ class MessageHandler:
             # Apply recency window to avoid using stale repeaters
             geographic_distance = None
             try:
-                from .utils import _get_node_location_from_db, calculate_distance
+                from .utils import _get_node_location_from_db
+                from shared.geocoding import calculate_distance
 
                 # Get from_location using previous_location as reference (ensures we select closer repeater)
                 # Use bot location as fallback if previous_location not available

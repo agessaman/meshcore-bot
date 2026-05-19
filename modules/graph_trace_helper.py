@@ -77,7 +77,8 @@ def update_mesh_graph_from_trace_data(
 
     recency_days = bot.config.getint("Path_Command", "graph_edge_expiration_days", fallback=7)
 
-    from .utils import _get_node_location_from_db, calculate_distance
+    from .utils import _get_node_location_from_db
+    from shared.geocoding import calculate_distance
 
     bot_location = None
     try:
