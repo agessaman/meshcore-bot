@@ -135,7 +135,7 @@ async def test_send_chunks_assigns_ascending_timestamps_per_index():
     svc = DARC_MoWaS_Service(_mowas_service_bot())
     captured: list[tuple[int, datetime]] = []
 
-    async def capture(channel, chunk, index, total, timestamp):
+    async def capture(channel, chunk, index, total, timestamp, scope):
         captured.append((index, timestamp))
 
     svc._send_chunk_with_retry = capture  # type: ignore[method-assign]
