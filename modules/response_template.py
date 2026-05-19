@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any, Callable
 
-from .utils import message_path_bytes_per_hop
+from shared.parsers.path_parser import message_path_bytes_per_hop
 
 FilterFn = Callable[[str, dict[str, Any], str], str]
 

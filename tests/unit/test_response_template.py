@@ -9,7 +9,7 @@ import pytest
 from modules.commands.test_command import TestCommand as MeshTestCommand
 from shared.models import MeshMessage
 from modules.response_template import format_piped_template
-from modules.utils import message_path_bytes_per_hop
+from shared.parsers.path_parser import message_path_bytes_per_hop
 
 
 @pytest.mark.unit

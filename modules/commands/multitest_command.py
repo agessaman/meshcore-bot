@@ -14,7 +14,8 @@ from typing import Literal, Optional
 CondensePathsMode = Literal["off", "flat", "nested"]
 
 from shared.models import MeshMessage
-from ..utils import calculate_packet_hash, parse_path_string
+from shared.parsers.packet_parser import calculate_packet_hash
+from shared.parsers.path_parser import parse_path_string
 from .base_command import BaseCommand
 
 _BRANCH_INTER = "\u251c"  # ├ (intermediate branch)

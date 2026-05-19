@@ -18,21 +18,22 @@ from shared.text_utils import (
     format_location_for_display,
     truncate_string,
 )
-from modules.utils import (
-    calculate_packet_hash,
-    calculate_path_distances,
-    check_internet_connectivity,
+from shared.parsers.packet_parser import calculate_packet_hash, verify_meshcore_advert_ed25519
+from shared.parsers.path_parser import (
     decode_path_len_byte,
     encode_path_len_byte,
     extract_path_node_ids_from_message,
-    format_keyword_response_with_placeholders,
-    get_config_timezone,
-    is_valid_timezone,
     node_ids_from_path_string,
     parse_path_string,
     parse_trace_payload_route_hashes,
+)
+from modules.utils import (
+    calculate_path_distances,
+    check_internet_connectivity,
+    format_keyword_response_with_placeholders,
+    get_config_timezone,
+    is_valid_timezone,
     resolve_path,
-    verify_meshcore_advert_ed25519,
 )
 
 

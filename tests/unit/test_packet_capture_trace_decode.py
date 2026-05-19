@@ -4,7 +4,7 @@ import hashlib
 import logging
 
 from modules.service_plugins.packet_capture_service import PacketCaptureService
-from modules.utils import calculate_packet_hash
+from shared.parsers.packet_parser import calculate_packet_hash
 
 
 def test_calculate_packet_hash_trace_uses_wire_byte():

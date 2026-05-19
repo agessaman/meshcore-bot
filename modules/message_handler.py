@@ -15,13 +15,10 @@ from typing import Any, TypedDict
 from .enums import AdvertFlags, DeviceRole, PayloadType, PayloadVersion, RouteType
 from .graph_trace_helper import update_mesh_graph_from_trace_data
 from shared.models import MeshMessage
+from shared.parsers.packet_parser import calculate_packet_hash
+from shared.parsers.path_parser import decode_path_len_byte, encode_path_len_byte
 from shared.security_utils import sanitize_input, sanitize_name
 from shared.text_utils import format_elapsed_display
-from .utils import (
-    calculate_packet_hash,
-    decode_path_len_byte,
-    encode_path_len_byte,
-)
 
 
 class PendingMessageEntry(TypedDict):

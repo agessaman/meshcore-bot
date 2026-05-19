@@ -37,7 +37,8 @@ except ImportError:
 
 # Import private key utilities
 # Import utilities
-from ..utils import decode_path_len_byte, resolve_path
+from shared.parsers.path_parser import decode_path_len_byte
+from ..utils import resolve_path
 
 # Import base service
 from .base_service import BaseServicePlugin
