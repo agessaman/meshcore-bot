@@ -256,8 +256,9 @@ class BotDataViewer:
         # Prevent propagation to root logger to avoid duplicate messages
         self.logger.propagate = False
 
-        # Suppress gevent WSGI access logs (one line per request at INFO level)
+        # Suppress gevent/geventwebsocket per-request access log lines
         logging.getLogger('gevent.pywsgi').setLevel(logging.WARNING)
+        logging.getLogger('geventwebsocket.handler').setLevel(logging.WARNING)
 
         self.logger.info("Web viewer logging initialized with rotation (5MB max, 3 backups)")
 
