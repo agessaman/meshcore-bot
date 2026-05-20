@@ -5,9 +5,11 @@ This guide explains how to install the MeshCore Bot as a systemd service on Linu
 ## Prerequisites
 
 - Linux system with systemd
-- Python 3.7+ (Python 3.12+ recommended; on 3.11 the meshcore dependency has an f-string bug — the install script patches it automatically)
+- **Python 3.10+** (3.11–3.13 supported in CI; Python 3.9 is not supported in v0.9)
 - Root/sudo access
 - MeshCore-compatible device
+
+**Alternative:** Install from a Debian package (`make deb` in the repo) instead of the install script. See the [README](https://github.com/agessaman/meshcore-bot/blob/main/README.md) for build instructions.
 
 ## Quick Installation
 
@@ -36,6 +38,16 @@ This guide explains how to install the MeshCore Bot as a systemd service on Linu
    ```bash
    sudo systemctl status meshcore-bot
    ```
+
+## Upgrading
+
+After `git pull` in the repository (or copying new files), run:
+
+```bash
+sudo ./install-service.sh --upgrade
+```
+
+This updates installed files and dependencies, refreshes the systemd unit, and reloads the service **without overwriting** your existing `config.ini`. See [Upgrade guide](upgrade.md) for v0.9 migration notes (Python 3.10+, config aliases, database migrations, etc.).
 
 ## Manual Installation
 
@@ -111,13 +123,21 @@ The bot configuration is located at `/opt/meshcore-bot/config.ini`. Edit it with
 sudo nano /opt/meshcore-bot/config.ini
 ```
 
-After changing configuration, you can reload in place (no process restart):
+After changing configuration, you can reload many settings without a full restart:
 
 ```bash
 sudo systemctl reload meshcore-bot
 ```
 
-Use restart when connection/radio settings changed (serial port, BLE target, TCP host/port, timeout):
+Or use the admin reload API (requires `[Admin] enabled = true` in `config.ini`):
+
+```bash
+./scripts/reload_config.sh /opt/meshcore-bot/config.ini
+```
+
+This is equivalent to the admin DM command `reload`. It reloads in-process config; it does **not** reconnect the radio.
+
+Use **restart** when connection/radio settings change (serial port, BLE target, TCP host/port, timeout):
 
 ```bash
 sudo systemctl restart meshcore-bot
@@ -150,15 +170,14 @@ sudo systemctl restart meshcore-bot
 3. Check configuration: `sudo nano /opt/meshcore-bot/config.ini`
 4. Verify dependencies: `sudo pip3 list | grep meshcore`
 
-### SyntaxError: f-string: unmatched '[' (Python 3.11)
-If the bot fails on import with this error in `meshcore/commands/contact.py`, you are on Python 3.11 and the **meshcore** dependency uses an f-string that only works on Python 3.12+.
+### SyntaxError: f-string: unmatched '[' (Python 3.11, older meshcore)
+
+If the bot fails on import with this error in `meshcore/commands/contact.py`, you may be on an older **meshcore** package. v0.9 requires **`meshcore >= 2.3.6`**.
 
 **Options:**
-- **Recommended:** Use Python 3.12+ (create the venv with `python3.12` if available, then re-run `./install-service.sh --upgrade`).
-- **Or:** Re-run the install script so it can patch the installed package:  
-  `sudo ./install-service.sh --upgrade`  
-  The script detects Python 3.11 and patches the meshcore file in the venv.
-- **Manual patch:** Edit `/opt/meshcore-bot/venv/lib/python3.11/site-packages/meshcore/commands/contact.py`, find the line containing `contact["adv_name"]` inside the f-string, and change it to `contact['adv_name']` (single quotes around `adv_name`).
+- Re-run `./install-service.sh --upgrade` to refresh the venv with current requirements.
+- Or use Python 3.12+ for the venv: `python3.12 -m venv ...` then re-run the install script.
+- On Python 3.11 only, the install script can patch legacy meshcore f-string issues in the venv automatically.
 
 ### Permission Issues
 1. Check file ownership: `ls -la /opt/meshcore-bot/`

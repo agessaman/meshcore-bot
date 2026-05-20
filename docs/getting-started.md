@@ -20,7 +20,9 @@ Get meshcore-bot running on your machine in a few minutes.
 
 2. **Configure**
 
-   Copy an example config and edit with your connection and bot settings:
+   **Interactive (recommended):** `make config` — ncurses editor for `config.ini`.
+
+   Or copy an example config and edit with your connection and bot settings:
 
    - **Full config** (all commands and options):
      ```bash
@@ -89,5 +91,8 @@ meshcore-bot.url = "github:agessaman/meshcore-bot/";
 ## Next steps
 
 - **[Command Reference](command-reference.md)** — Full command reference (wx, aqi, sun, path, prefix, etc.)
+- **[Upgrade guide](upgrade.md)** — Migrating to v0.9 from older releases
+- **[Config validation](config-validation.md)** — Validate `config.ini` before first run
+- **[Data retention](data-retention.md)** — Database cleanup defaults
 - **[README](https://github.com/agessaman/meshcore-bot/blob/main/README.md)** — Features, keywords, configuration overview
 - **Guides** (sidebar) — Path command, repeater commands, feeds, weather service, Discord bridge, map uploader, packet capture

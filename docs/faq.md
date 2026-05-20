@@ -22,11 +22,21 @@ Without `--upgrade`, the script does *not* update the service file (systemd/laun
 
 **Recommendation:** Use `./install-service.sh --upgrade` after `git pull` when you want to upgrade; that updates files, dependencies, and the service, and reloads the service, while keeping your `config.ini` intact.
 
+### I'm upgrading to v0.9. What do I need to change?
+
+v0.9 requires **Python 3.10+** and **`meshcore >= 2.3.6`**. Your `config.ini` is preserved by the install script, but you should review:
+
+- Remove global **`[Aliases]`** and use per-command `aliases =` instead
+- Set **`web_viewer_password`** if the web viewer is exposed beyond localhost
+- Start the bot once so **database migrations** run
+
+See the full checklist in the [Upgrade guide](upgrade.md).
+
 ### I moved a previous database into a new install; the bot runs but I see "Error processing message queue" or "Error processing channel operations". What should I do?
 
 Moving an old database into a new install can cause those errors when:
 
-1. **Schema mismatch** — The old DB may be missing tables or columns (e.g. `feed_message_queue`, `channel_operations`, or `message_send_interval_seconds` on `feed_subscriptions`). The bot runs `CREATE TABLE IF NOT EXISTS` and `ALTER TABLE` on startup, so missing tables/columns are usually added. If the exception in the log is `no such column`, the schema in the copied DB is older than expected; ensure the bot has started at least once so migrations run.
+1. **Schema mismatch** — The old DB may be missing tables or columns. v0.9 uses versioned migrations (`MigrationRunner`) at startup. Ensure you are on the latest code and start the bot at least once so migrations complete. If the log shows `no such column`, the copied DB may be from a much older release — see the [Upgrade guide](upgrade.md).
 2. **Stale queue/ops** — Pending rows in `feed_message_queue` or `channel_operations` from the old install may reference channels or feeds that don’t exist or differ on the new install. You can clear them so the scheduler stops hitting errors (with the bot stopped). If `sqlite3` is not installed, use Python instead:
    - Clear unsent queue and pending channel ops (Python; no extra packages):
      ```bash

@@ -1,6 +1,6 @@
 # Data retention
 
-The bot stores data in a SQLite database for the web viewer, stats, repeater management, and path routing. To limit database size, **data retention** controls how long rows are kept. Cleanup runs **daily** from the bot’s scheduler, so retention is enforced even when the standalone web viewer is not running.
+The bot stores data in a SQLite database for the web viewer, stats, repeater management, and path routing. To limit database size, **data retention** controls how long rows are kept. Cleanup runs **daily** from the bot’s APScheduler-based maintenance loop, so retention is enforced even when the standalone web viewer is not running.
 
 ## Configuration
 

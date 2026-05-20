@@ -204,13 +204,13 @@ docker-compose up -d --build
 
 ## Using Pre-built Images
 
-If you're using GitHub Container Registry images:
+Official images are published to **GitHub Container Registry** (`ghcr.io/agessaman/meshcore-bot`) on tagged releases and `main`.
 
 1. **Update docker-compose.yml** to use the image:
    ```yaml
    services:
      meshcore-bot:
-       image: ghcr.io/your-username/meshcore-bot:latest
+       image: ghcr.io/agessaman/meshcore-bot:latest
        # Remove or comment out the 'build' section
    ```
 
@@ -219,6 +219,26 @@ If you're using GitHub Container Registry images:
    docker-compose pull
    docker-compose up -d
    ```
+
+## Multi-architecture images
+
+CI builds multi-platform images with SBOM and provenance attestations:
+
+| Platform | Typical hardware |
+|----------|------------------|
+| `linux/amd64` | x86-64 servers and desktops |
+| `linux/arm64` | Raspberry Pi 4/5 (64-bit OS), Apple Silicon via emulation |
+| `linux/arm/v7` | Raspberry Pi 3 and older (32-bit Raspberry Pi OS) |
+
+On ARM devices, pull the matching platform (Docker usually selects automatically):
+
+```bash
+docker pull --platform linux/arm64 ghcr.io/agessaman/meshcore-bot:latest
+```
+
+Or build locally for your architecture with `docker compose build`.
+
+**Non-Docker installs:** Debian packages are available via `make deb` in the repository. See the [Upgrade guide](upgrade.md).
 
 ## Troubleshooting
 
@@ -468,7 +488,7 @@ docker-compose up -d
 
 4. **Secrets**: Never commit API keys or sensitive data to version control. Use environment variables or secrets management
 
-5. **Web viewer**: If enabled, ensure it's only accessible on trusted networks or use a reverse proxy with authentication
+5. **Web viewer**: Set `web_viewer_password` in `[Web_Viewer]` when `host = 0.0.0.0`. Use a reverse proxy with TLS on untrusted networks. See [Web Viewer](web-viewer.md).
 
 ## Connecting COM Ports to Docker on Windows 11 {#connecting-com-ports-to-docker-on-windows-11}
 
@@ -536,4 +556,6 @@ serial_port = /dev/ttyUSB0
 
 - [Docker Documentation](https://docs.docker.com/)
 - [Docker Compose Documentation](https://docs.docker.com/compose/)
-- [Main README](https://github.com/agessaman/meshcore-bot/blob/main/README.md) for general bot configuration.
+- [Main README](https://github.com/agessaman/meshcore-bot/blob/main/README.md) for general bot configuration
+- [Upgrade guide](upgrade.md) for v0.9 migration notes
+- [Web Viewer](web-viewer.md) for dashboard configuration

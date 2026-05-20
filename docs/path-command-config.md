@@ -262,6 +262,17 @@ These settings control how graph edges are stored in the database.
 - Final hop proximity: enabled with lower weight
 - Good for: Well-connected networks with strong graph evidence
 
+## Geographic scoring toggle
+
+**`geographic_scoring_enabled`** in `[Path_Command]` (default `true`):
+
+- When **`true`**, geographic proximity scoring is used during path decode (subject to other preset and graph settings).
+- When **`false`**, geographic proximity guessing is disabled entirely for path decode.
+
+This is a **configuration** option only — there is no chat subcommand to toggle it at runtime. Restart the bot (or reload config if supported) after changing it.
+
+See also the [`path` command](command-reference.md#path-or-decode-or-route) in the command reference.
+
 ## Typical LoRa Transmission Ranges
 
 - **Typical transmission**: < 30km

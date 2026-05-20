@@ -10,7 +10,15 @@ Documentation for the MeshCore bot: setup, configuration, commands, and services
 - [Command Reference](command-reference.md) – Full command reference
 - [Docker deployment](docker.md) – Docker deployment
 - [Service installation](service-installation.md) – Systemd service setup
-- [Web Viewer](web-viewer.md) – Web viewer module
+- [Web Viewer](web-viewer.md) – Authenticated dashboard with live streams
+
+## Operations
+
+| Document | Description |
+|----------|-------------|
+| [Upgrade guide](upgrade.md) | Migrating from v0.7, v0.8, or earlier to v0.9 |
+| [Data retention](data-retention.md) | Database cleanup schedules and defaults |
+| [FAQ](faq.md) | Common installation and upgrade questions |
 
 ## Configuration
 
@@ -26,7 +34,7 @@ Documentation for the MeshCore bot: setup, configuration, commands, and services
 |----------|-------------|
 | [Repeater Commands](repeater-commands.md) | Repeater management DM commands |
 | [Feed Management](FEEDS.md) | RSS/REST feeds and posting to channels |
-| [Web Viewer](web-viewer.md) | Web-based data viewer and API |
+| [Web Viewer](web-viewer.md) | Web dashboard, real-time streams, and API |
 
 ## Service Plugins
 
