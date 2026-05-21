@@ -1,15 +1,10 @@
 #!/usr/bin/env python3
 """
-Eventlet entry point for the web viewer subprocess.
+Subprocess entry point for the web viewer.
 
-eventlet.monkey_patch() MUST run before any other import so that
-eventlet can replace stdlib sockets/threads cleanly.  This module
-exists solely to enforce that ordering — it is invoked via
-subprocess.Popen, never imported by the bot process.
+Invoked via subprocess.Popen by WebViewerIntegration._run_viewer().
+Runs in a fresh interpreter so it never shares state with the bot process.
 """
-import gevent.monkey                 # noqa: E402 — must be first
-gevent.monkey.patch_all()           # noqa: E402 — must be before all other imports
-
 import argparse
 import sys
 from pathlib import Path

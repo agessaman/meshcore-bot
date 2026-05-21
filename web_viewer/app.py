@@ -51,6 +51,31 @@ from shared.security_utils import (
 from modules.version_info import resolve_runtime_version
 
 
+def _apply_werkzeug_websocket_fix() -> None:
+    """Patch SimpleWebSocketWSGI so Werkzeug doesn't raise on WebSocket teardown.
+
+    python-engineio returns [] without calling start_response; Werkzeug then
+    calls write(b"") which triggers AssertionError: write() before start_response.
+    """
+    try:
+        from engineio.async_drivers import _websocket_wsgi
+        _orig = _websocket_wsgi.SimpleWebSocketWSGI.__call__
+
+        def _patched(self, environ, start_response):
+            result = _orig(self, environ, start_response)
+            try:
+                start_response('200 OK', [('Content-Length', '0')])
+            except Exception:
+                pass
+            return result
+
+        _websocket_wsgi.SimpleWebSocketWSGI.__call__ = _patched
+    except (ImportError, AttributeError):
+        pass
+
+
+_apply_werkzeug_websocket_fix()
+
 # colorlog and other handlers write ANSI SGR sequences; strip for web /logs display
 _ANSI_ESCAPE_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
@@ -131,7 +156,7 @@ class BotDataViewer:
             ping_interval=25,             # 25 second ping interval (Flask-SocketIO 5.x default)
             logger=False,                  # Disable verbose logging
             engineio_logger=False,        # Disable EngineIO logging
-            async_mode='gevent',
+            async_mode='threading',
         )
         self.socketio = SocketIO()
 
@@ -256,9 +281,8 @@ class BotDataViewer:
         # Prevent propagation to root logger to avoid duplicate messages
         self.logger.propagate = False
 
-        # Suppress gevent/geventwebsocket per-request access log lines
-        logging.getLogger('gevent.pywsgi').setLevel(logging.WARNING)
-        logging.getLogger('geventwebsocket.handler').setLevel(logging.WARNING)
+        # Suppress werkzeug per-request access log lines (INFO level)
+        logging.getLogger('werkzeug').setLevel(logging.WARNING)
 
         self.logger.info("Web viewer logging initialized with rotation (5MB max, 3 backups)")
 
@@ -8214,7 +8238,8 @@ class BotDataViewer:
         """Run the modern web viewer"""
         self.logger.info(f"Starting modern web viewer on {host}:{port}")
         try:
-            self.socketio.run(self.app, host=host, port=port, debug=debug)
+            self.socketio.run(self.app, host=host, port=port, debug=debug,
+                              allow_unsafe_werkzeug=True)
         except Exception as e:
             self.logger.error(f"Error running web viewer: {e}")
             raise
