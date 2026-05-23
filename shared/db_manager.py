@@ -28,6 +28,27 @@ sqlite3.register_adapter(date, _adapt_sqlite_date)
 sqlite3.register_adapter(datetime, _adapt_sqlite_datetime)
 
 
+def _pymc_adv_type_from_role(role: str) -> int:
+    """Map stored contact roles to pyMC ADV_TYPE values without importing pyMC."""
+    if role == "repeater":
+        return 2
+    if role == "room":
+        return 3
+    if role == "sensor":
+        return 4
+    return 1
+
+
+def _pymc_role_from_adv_type(adv_type: int) -> str:
+    if adv_type == 2:
+        return "repeater"
+    if adv_type == 3:
+        return "room"
+    if adv_type == 4:
+        return "sensor"
+    return "chat"
+
+
 class DBManager:
     """Generalized database manager for common operations.
 
@@ -462,6 +483,141 @@ class DBManager:
     def set_bot_start_time(self, start_time: float) -> None:
         """Set bot start time in metadata"""
         self.set_metadata('start_time', str(start_time))
+
+    def get_pymc_contacts_for_backend(self) -> list[dict[str, Any]]:
+        """Return contacts from complete_contact_tracking for pyMC ContactStore hydration."""
+        try:
+            with self.connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT public_key, name, role, device_type, last_heard, latitude, longitude,
+                           raw_advert_data, out_path, out_path_len, is_starred
+                    FROM complete_contact_tracking
+                    WHERE public_key IS NOT NULL
+                      AND public_key != ''
+                      AND COALESCE(is_currently_tracked, 1) = 1
+                    ORDER BY datetime(last_heard) DESC
+                    """
+                )
+                records: list[dict[str, Any]] = []
+                for row in cursor.fetchall():
+                    role = (row["role"] or "").lower()
+                    records.append(
+                        {
+                            "public_key": row["public_key"],
+                            "name": row["name"] or row["public_key"][:8],
+                            "adv_type": _pymc_adv_type_from_role(role),
+                            "flags": 1 if row["is_starred"] else 0,
+                            "out_path": row["out_path"] or "",
+                            "out_path_len": row["out_path_len"] if row["out_path_len"] is not None else -1,
+                            "gps_lat": row["latitude"] or 0.0,
+                            "gps_lon": row["longitude"] or 0.0,
+                            "lastmod": int(datetime.now().timestamp()),
+                            "last_advert_packet": row["raw_advert_data"] or "",
+                        }
+                    )
+                return records
+        except Exception as e:
+            self.logger.error(f"Error loading pyMC contacts from DB: {e}")
+            return []
+
+    def upsert_pymc_contact_from_advert(
+        self,
+        contact: Any,
+        raw_advert_packet: str | bytes | None = None,
+        snr: float | None = None,
+        rssi: int | None = None,
+        hop_count: int | None = None,
+    ) -> None:
+        """Persist a pyMC Contact into complete_contact_tracking."""
+        try:
+            public_key = getattr(contact, "public_key", "")
+            if isinstance(public_key, bytes):
+                public_key = public_key.hex()
+            if not public_key:
+                return
+            name = getattr(contact, "name", "") or public_key[:8]
+            adv_type = int(getattr(contact, "adv_type", 0) or 0)
+            role = _pymc_role_from_adv_type(adv_type)
+            flags = int(getattr(contact, "flags", 0) or 0)
+            out_path = getattr(contact, "out_path", b"")
+            if isinstance(out_path, bytes):
+                out_path = out_path.hex()
+            if isinstance(raw_advert_packet, bytes):
+                raw_advert_packet = raw_advert_packet.hex()
+            with self.connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT id FROM complete_contact_tracking WHERE public_key = ? ORDER BY id LIMIT 1",
+                    (public_key,),
+                )
+                existing = cursor.fetchone()
+                values = (
+                    name,
+                    role,
+                    "pymc",
+                    getattr(contact, "gps_lat", 0.0) or None,
+                    getattr(contact, "gps_lon", 0.0) or None,
+                    raw_advert_packet,
+                    rssi,
+                    snr,
+                    hop_count,
+                    out_path or None,
+                    getattr(contact, "out_path_len", -1),
+                    1 if (flags & 1) else 0,
+                )
+                if existing:
+                    cursor.execute(
+                        """
+                        UPDATE complete_contact_tracking
+                        SET name = ?, role = ?, device_type = ?, last_heard = CURRENT_TIMESTAMP,
+                            advert_count = advert_count + 1,
+                            latitude = ?, longitude = ?,
+                            raw_advert_data = COALESCE(?, raw_advert_data),
+                            signal_strength = COALESCE(?, signal_strength),
+                            snr = COALESCE(?, snr),
+                            hop_count = COALESCE(?, hop_count),
+                            is_currently_tracked = 1,
+                            out_path = ?, out_path_len = ?, is_starred = ?
+                        WHERE id = ?
+                        """,
+                        (*values, existing["id"]),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        INSERT INTO complete_contact_tracking (
+                            public_key, name, role, device_type, first_heard, last_heard,
+                            advert_count, latitude, longitude, raw_advert_data, signal_strength,
+                            snr, hop_count, is_currently_tracked, out_path, out_path_len, is_starred
+                        )
+                        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+                        """,
+                        (public_key, *values),
+                    )
+                conn.commit()
+        except Exception as e:
+            self.logger.error(f"Error saving pyMC contact to DB: {e}")
+
+    def update_pymc_contact_path(self, public_key: str, out_path: str | bytes, out_path_len: int) -> None:
+        """Persist a pyMC path update into complete_contact_tracking."""
+        try:
+            if isinstance(out_path, bytes):
+                out_path = out_path.hex()
+            with self.connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    UPDATE complete_contact_tracking
+                    SET out_path = ?, out_path_len = ?, last_heard = CURRENT_TIMESTAMP
+                    WHERE public_key = ?
+                    """,
+                    (out_path, out_path_len, public_key),
+                )
+                conn.commit()
+        except Exception as e:
+            self.logger.error(f"Error updating pyMC contact path: {e}")
 
     def _apply_sqlite_pragmas(self, conn: sqlite3.Connection, for_web_viewer: bool = False) -> None:
         config = getattr(self.bot, "config", None)

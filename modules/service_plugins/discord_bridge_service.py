@@ -13,8 +13,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
 
-# Import meshcore
-from meshcore import EventType
+try:
+    from meshcore import EventType
+except ImportError:
+    from shared.radio_backend import BackendEventType as EventType
 
 # Try to import aiohttp for async HTTP (preferred)
 try:

@@ -17,7 +17,10 @@ from typing import Any, Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
-from meshcore.events import EventType
+try:
+    from meshcore.events import EventType
+except ImportError:
+    from shared.radio_backend import BackendEventType as EventType
 
 from .maintenance import MaintenanceRunner
 from .scheduled_message_cron import (
@@ -807,7 +810,6 @@ class MessageScheduler:
         """Send an interval-based advert (async implementation)"""
         import asyncio
 
-        from meshcore.events import EventType
         try:
             result = await asyncio.wait_for(
                 self.bot.meshcore.commands.send_advert(flood=True),
@@ -1064,7 +1066,6 @@ class MessageScheduler:
         """Write path.hash.mode and/or loop.detect to radio firmware."""
         import asyncio
 
-        from meshcore.events import EventType
         try:
             meshcore = getattr(self.bot, 'meshcore', None)
             if not meshcore or not getattr(meshcore, 'is_connected', False):

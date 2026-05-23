@@ -11,7 +11,7 @@ import random
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from meshcore import EventType
+from shared.radio_backend import BackendEventType, is_error
 
 
 @dataclass
@@ -66,14 +66,14 @@ async def _run_trace_attempt(
     except Exception as e:
         return RunTraceResult(success=False, tag=tag, error_message=str(e))
 
-    if result.type == EventType.ERROR:
+    if is_error(result):
         reason = result.payload.get("reason", "unknown error")
         return RunTraceResult(success=False, tag=tag, error_message=reason)
 
     path_str = ",".join(path) if path else "(flood)"
     try:
         event = await bot.meshcore.wait_for_event(
-            EventType.TRACE_DATA,
+            BackendEventType.TRACE_DATA,
             attribute_filters={"tag": tag},
             timeout=timeout_seconds,
         )

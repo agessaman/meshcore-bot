@@ -12,8 +12,6 @@ from datetime import datetime
 from hashlib import sha256
 from typing import Any
 
-from meshcore import EventType
-
 from .commands.base_command import BaseCommand
 from .config_validation import (
     PUBLIC_CHANNEL_KEY_HEX,  # noqa: F401 — re-exported; used by core.py
@@ -22,6 +20,7 @@ from .config_validation import (
     strip_optional_quotes,
 )
 from shared.models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, MeshMessage
+from shared.radio_backend import is_error, is_ok, is_sent
 from .plugin_loader import PluginLoader
 from shared.security_utils import sanitize_name, validate_safe_path
 from shared.text_utils import decode_escape_sequences
@@ -427,7 +426,7 @@ class CommandManager:
         """Return True when result is an ERROR event with reason 'no_event_received'."""
         if not result or not hasattr(result, 'type'):
             return False
-        if result.type != EventType.ERROR:
+        if not is_error(result):
             return False
         payload = result.payload if hasattr(result, 'payload') else {}
         return isinstance(payload, dict) and payload.get('reason') == 'no_event_received'
@@ -460,12 +459,12 @@ class CommandManager:
             return False
 
         if hasattr(result, 'type'):
-            if result.type == EventType.ERROR:
+            if is_error(result):
                 error_payload = result.payload if hasattr(result, 'payload') else {}
                 self.logger.error(f"❌ {operation_name} failed to {target}: {error_payload if error_payload else 'Unknown error'}")
                 return False
 
-            if result.type in (EventType.MSG_SENT, EventType.OK):
+            if is_sent(result) or is_ok(result):
                 if used_retry_method and operation_name == "DM":
                     self.logger.info(f"✅ {operation_name} sent and ACK received from {target}")
                 else:

@@ -21,14 +21,11 @@ from typing import Any
 
 import colorlog
 
-# Import the official meshcore package
-import meshcore
-from meshcore import EventType
-
 from .admin_server import BotAdminServer
 from .channel_manager import ChannelManager
 from .command_manager import CommandManager
 from shared.db_manager import AsyncDBManager, DBManager
+from shared.radio_backend import BackendEventType, create_radio_backend, is_error, is_ok
 from .default_config import create_default_config
 from .feed_manager import FeedManager
 from .i18n import Translator
@@ -80,6 +77,7 @@ class MeshCoreBot:
         self.setup_logging()
 
         # Connection
+        self.radio_backend = None
         self.meshcore = None
         self.connected = False
         self.connection_time = None  # Track when connection was established to skip old cached messages
@@ -420,6 +418,15 @@ class MeshCoreBot:
             'ble_device_name': self.config.get('Connection', 'ble_device_name', fallback=''),
             'hostname': self.config.get('Connection', 'hostname', fallback=''),
             'tcp_port': self.config.getint('Connection', 'tcp_port', fallback=5000),
+            'pymc_radio_type': self.config.get('Connection', 'pymc_radio_type', fallback='kiss-modem'),
+            'pymc_serial_port': self.config.get('Connection', 'pymc_serial_port', fallback=''),
+            'pymc_baudrate': self.config.getint('Connection', 'pymc_baudrate', fallback=115200),
+            'pymc_identity_file': self.config.get('Connection', 'pymc_identity_file', fallback='pymc_identity.key'),
+            'pymc_frequency': self.config.getint('Connection', 'pymc_frequency', fallback=910525000),
+            'pymc_bandwidth': self.config.getint('Connection', 'pymc_bandwidth', fallback=62500),
+            'pymc_spreading_factor': self.config.getint('Connection', 'pymc_spreading_factor', fallback=7),
+            'pymc_coding_rate': self.config.getint('Connection', 'pymc_coding_rate', fallback=5),
+            'pymc_tx_power': self.config.getint('Connection', 'pymc_tx_power', fallback=22),
             'timeout': self.config.getint('Connection', 'timeout', fallback=30),
             # radio_debug intentionally excluded — only needs a reconnect, not a full restart
         }
@@ -468,6 +475,15 @@ class MeshCoreBot:
                 'ble_device_name': new_config.get('Connection', 'ble_device_name', fallback=''),
                 'hostname': new_config.get('Connection', 'hostname', fallback=''),
                 'tcp_port': new_config.getint('Connection', 'tcp_port', fallback=5000),
+                'pymc_radio_type': new_config.get('Connection', 'pymc_radio_type', fallback='kiss-modem'),
+                'pymc_serial_port': new_config.get('Connection', 'pymc_serial_port', fallback=''),
+                'pymc_baudrate': new_config.getint('Connection', 'pymc_baudrate', fallback=115200),
+                'pymc_identity_file': new_config.get('Connection', 'pymc_identity_file', fallback='pymc_identity.key'),
+                'pymc_frequency': new_config.getint('Connection', 'pymc_frequency', fallback=910525000),
+                'pymc_bandwidth': new_config.getint('Connection', 'pymc_bandwidth', fallback=62500),
+                'pymc_spreading_factor': new_config.getint('Connection', 'pymc_spreading_factor', fallback=7),
+                'pymc_coding_rate': new_config.getint('Connection', 'pymc_coding_rate', fallback=5),
+                'pymc_tx_power': new_config.getint('Connection', 'pymc_tx_power', fallback=22),
                 'timeout': new_config.getint('Connection', 'timeout', fallback=30),
                 # radio_debug excluded — only needs a reconnect, not a full restart
             }
@@ -830,7 +846,8 @@ class MeshCoreBot:
             self.logger.info(f"Reconnect attempt {retry_label}...")
 
             # Clean up the stale connection object
-            old_meshcore = self.meshcore
+            old_meshcore = self.radio_backend or self.meshcore
+            self.radio_backend = None
             self.meshcore = None
             self.connected = False
             if old_meshcore is not None:
@@ -886,28 +903,20 @@ class MeshCoreBot:
             if radio_debug:
                 self.logger.info("Radio debug logging enabled — meshcore library output will be at DEBUG level")
 
-            if connection_type == 'serial':
-                # Create serial connection
-                serial_port = self.config.get('Connection', 'serial_port', fallback='/dev/ttyUSB0')
-                self.logger.info(f"Connecting via serial port: {serial_port}")
-                self.meshcore = await meshcore.MeshCore.create_serial(serial_port, debug=radio_debug)
-            elif connection_type == 'tcp':
-                # Create TCP connection
-                hostname = self.config.get('Connection', 'hostname', fallback=None)
-                tcp_port = self.config.getint('Connection', 'tcp_port', fallback=5000)
-                if not hostname:
-                    self.logger.error("TCP connection requires 'hostname' to be set in config")
-                    return False
-                self.logger.info(f"Connecting via TCP: {hostname}:{tcp_port}")
-                self.meshcore = await meshcore.MeshCore.create_tcp(hostname, tcp_port, debug=radio_debug)
-            else:
-                # Create BLE connection (default)
-                ble_device_name = self.config.get('Connection', 'ble_device_name', fallback=None)
-                self.logger.info("Connecting via BLE" + (f" to device: {ble_device_name}" if ble_device_name else ""))
-                self.meshcore = await meshcore.MeshCore.create_ble(ble_device_name, debug=radio_debug)
+            self.radio_backend = create_radio_backend(
+                self.config,
+                self.db_manager,
+                self.logger,
+                radio_debug=radio_debug,
+            )
+            self.meshcore = self.radio_backend
+            if not await self.radio_backend.connect():
+                self.logger.error("Failed to connect to radio backend")
+                return False
 
             # Route meshcore library output through the bot's handlers (including log file)
-            self._configure_meshcore_debug_logging(radio_debug)
+            if connection_type != "pymc":
+                self._configure_meshcore_debug_logging(radio_debug)
 
             if self.meshcore.is_connected:
                 self.connected = True
@@ -1039,11 +1048,10 @@ class MeshCoreBot:
         if not self.meshcore or not self.meshcore.is_connected:
             return False
         try:
-            from meshcore.events import EventType
             result = await asyncio.wait_for(
                 self.meshcore.commands.get_time(), timeout=10.0
             )
-            if result.type == EventType.ERROR:
+            if is_error(result):
                 self._radio_fail_count = getattr(self, '_radio_fail_count', 0) + 1
                 threshold = self.config.getint('Bot', 'radio_probe_fail_threshold', fallback=3)
                 interval  = max(300, min(900, self.config.getint(
@@ -1120,11 +1128,10 @@ class MeshCoreBot:
         if not self.meshcore or not self.meshcore.is_connected:
             return False
         try:
-            from meshcore.events import EventType
             result = await asyncio.wait_for(
                 self.meshcore.commands.get_time(), timeout=10.0
             )
-            if result.type == EventType.ERROR:
+            if is_error(result):
                 self._radio_fail_count = getattr(self, '_radio_fail_count', 0) + 1
                 threshold = self.config.getint(
                     'Connection',
@@ -1205,7 +1212,7 @@ class MeshCoreBot:
             # Get current device time
             self.logger.info("Checking device time...")
             time_result = await self.meshcore.commands.get_time()
-            if time_result.type == EventType.ERROR:
+            if is_error(time_result):
                 self.logger.warning("Device does not support time commands")
                 return False
 
@@ -1220,7 +1227,7 @@ class MeshCoreBot:
                 self.logger.info(f"Device time is {time_diff} seconds behind, updating...")
 
                 result = await self.meshcore.commands.set_time(current_time)
-                if result.type == EventType.OK:
+                if is_ok(result):
                     self.logger.info(f"✓ Radio clock updated to: {current_time}")
                     self.last_clock_sync_time = current_time
                     return True
@@ -1293,7 +1300,7 @@ class MeshCoreBot:
 
             # Set the device name
             result = await self.meshcore.commands.set_name(desired_name)
-            if result.type == EventType.OK:
+            if is_ok(result):
                 self.logger.info(f"✓ Device name updated to: '{desired_name}'")
                 return True
             else:
@@ -1311,6 +1318,12 @@ class MeshCoreBot:
         Times out after 30 seconds if contacts are not loaded.
         """
         self.logger.info("Waiting for contacts to load...")
+
+        if getattr(getattr(self.meshcore, "capabilities", None), "backend_name", "") == "pymc_core":
+            if hasattr(self.meshcore, "commands"):
+                await self.meshcore.commands.get_contacts()
+            self.logger.info(f"pyMC contacts loaded from database: {len(getattr(self.meshcore, 'contacts', {}) or {})} contacts")
+            return
 
         # Try to manually load contacts first
         try:
@@ -1367,12 +1380,12 @@ class MeshCoreBot:
             await self.message_handler.handle_new_contact(event, metadata)
 
         # Subscribe to events
-        self.meshcore.subscribe(EventType.CONTACT_MSG_RECV, on_contact_message)
-        self.meshcore.subscribe(EventType.CHANNEL_MSG_RECV, on_channel_message)
-        self.meshcore.subscribe(EventType.RX_LOG_DATA, on_rf_data)
+        self.meshcore.subscribe(BackendEventType.CONTACT_MSG_RECV, on_contact_message)
+        self.meshcore.subscribe(BackendEventType.CHANNEL_MSG_RECV, on_channel_message)
+        self.meshcore.subscribe(BackendEventType.RX_LOG_DATA, on_rf_data)
 
         # Subscribe to RAW_DATA events for full packet data
-        self.meshcore.subscribe(EventType.RAW_DATA, on_raw_data)
+        self.meshcore.subscribe(BackendEventType.RAW_DATA, on_raw_data)
 
         # Note: Debug mode commands are not available in current meshcore-cli version
         # The meshcore library handles debug output automatically when needed
@@ -1385,7 +1398,7 @@ class MeshCoreBot:
         await asyncio.sleep(5)  # Wait 5 seconds for device to be fully ready
 
         # Subscribe to NEW_CONTACT events for automatic contact management
-        self.meshcore.subscribe(EventType.NEW_CONTACT, on_new_contact)
+        self.meshcore.subscribe(BackendEventType.NEW_CONTACT, on_new_contact)
         self.logger.info("NEW_CONTACT subscription active - ready to receive new contact events")
 
         self.logger.info("Message handlers setup complete")

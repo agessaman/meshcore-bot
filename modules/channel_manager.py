@@ -11,7 +11,7 @@ import os
 import sys
 from typing import Any, Optional
 
-from meshcore import EventType
+from shared.radio_backend import BackendEventType, is_error
 
 
 class ChannelManager:
@@ -223,7 +223,7 @@ class ChannelManager:
                         channel_event = event
                         event_received.set()
 
-                subscription = self.bot.meshcore.subscribe(EventType.CHANNEL_INFO, on_channel_info)
+                subscription = self.bot.meshcore.subscribe(BackendEventType.CHANNEL_INFO, on_channel_info)
                 try:
                     from meshcore_cli.meshcore_cli import next_cmd
                     with open(os.devnull, 'w') as devnull:
@@ -504,14 +504,14 @@ class ChannelManager:
                             return await self._add_channel_via_cli(channel_idx, channel_name, channel_secret.hex() if channel_secret else (channel_secret_hex or ""))
 
                 # Check for errors
-                if hasattr(res, 'type') and res.type == EventType.ERROR:
+                if hasattr(res, 'type') and is_error(res):
                     self.logger.error(f"Failed to set channel {channel_idx}: {res.payload if hasattr(res, 'payload') else 'Unknown error'}")
                     return False
 
                 # Fetch the channel back to get the generated key and verify
                 res = await self.bot.meshcore.commands.get_channel(channel_idx)
 
-                if hasattr(res, 'type') and res.type == EventType.ERROR:
+                if hasattr(res, 'type') and is_error(res):
                     self.logger.error(f"Failed to get channel {channel_idx} after setting: {res.payload if hasattr(res, 'payload') else 'Unknown error'}")
                     return False
 
@@ -586,7 +586,7 @@ class ChannelManager:
                         channel_set = True
                         event_received.set()
 
-            subscription = self.bot.meshcore.subscribe(EventType.CHANNEL_INFO, on_channel_info)
+            subscription = self.bot.meshcore.subscribe(BackendEventType.CHANNEL_INFO, on_channel_info)
 
             try:
                 from meshcore_cli.meshcore_cli import next_cmd
@@ -675,7 +675,7 @@ class ChannelManager:
                         channel_cleared = True
                         event_received.set()
 
-            subscription = self.bot.meshcore.subscribe(EventType.CHANNEL_INFO, on_channel_info)
+            subscription = self.bot.meshcore.subscribe(BackendEventType.CHANNEL_INFO, on_channel_info)
 
             try:
                 from meshcore_cli.meshcore_cli import next_cmd

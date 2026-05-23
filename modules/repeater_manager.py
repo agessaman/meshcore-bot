@@ -10,7 +10,10 @@ import time
 from datetime import datetime, timedelta
 from typing import Any, NamedTuple, Optional
 
-from meshcore import EventType
+try:
+    from meshcore import EventType
+except ImportError:
+    from shared.radio_backend import BackendEventType as EventType
 
 from shared.security_utils import sanitize_name, validate_pubkey_format
 from shared.geocoding import rate_limited_nominatim_reverse_sync

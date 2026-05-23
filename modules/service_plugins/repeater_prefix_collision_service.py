@@ -20,7 +20,10 @@ import time
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from meshcore import EventType
+try:
+    from meshcore import EventType
+except ImportError:
+    from shared.radio_backend import BackendEventType as EventType
 
 from .base_service import BaseServicePlugin
 

@@ -14,15 +14,15 @@ import time
 from datetime import datetime
 from typing import Any, Optional
 
-# Import meshcore
-from meshcore import EventType
+try:
+    from meshcore import EventType
+except ImportError:
+    from shared.radio_backend import BackendEventType as EventType
 
-# Import bot's enums
-from ..enums import PayloadType, PayloadVersion, RouteType
-
-# Import bot's utilities for packet hash
 from shared.parsers.packet_parser import calculate_packet_hash, verify_meshcore_advert_ed25519
 from shared.parsers.path_parser import decode_path_len_byte, parse_trace_payload_route_hashes
+
+from ..enums import PayloadType, PayloadVersion, RouteType
 from ..version_info import resolve_runtime_version
 
 # Import MQTT client

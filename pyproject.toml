@@ -51,7 +51,7 @@ meshcore-viewer = "web_viewer._launcher:_main"
 [tool.setuptools]
 # Include both the main module and the modules package
 py-modules = ["meshcore_bot"]
-packages = ["shared", "shared.parsers",
+packages = ["shared", "shared.parsers", "shared.radio_backend",
             "modules", "modules.commands", "modules.commands.alternatives",
             "modules.commands.alternatives.inactive", "modules.service_plugins",
             "web_viewer"]

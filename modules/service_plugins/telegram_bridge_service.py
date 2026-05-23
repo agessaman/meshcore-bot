@@ -14,7 +14,10 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from meshcore import EventType
+try:
+    from meshcore import EventType
+except ImportError:
+    from shared.radio_backend import BackendEventType as EventType
 
 try:
     import aiohttp

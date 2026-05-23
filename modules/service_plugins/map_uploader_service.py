@@ -13,8 +13,10 @@ import logging
 import time
 from typing import Any, Optional
 
-# Import meshcore
-from meshcore import EventType
+try:
+    from meshcore import EventType
+except ImportError:
+    from shared.radio_backend import BackendEventType as EventType
 
 # Import bot's enums
 from ..enums import AdvertFlags, PayloadType

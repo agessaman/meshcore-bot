@@ -1,8 +1,9 @@
 [Connection]
-# Connection type: serial, ble, or tcp
+# Connection type: serial, ble, tcp, or pymc
 # serial: Connect via USB serial port
 # ble: Connect via Bluetooth Low Energy
 # tcp: Connect via TCP/IP
+# pymc: Use pyMC_core CompanionRadio with a KISS modem
 connection_type = serial
 
 # Serial port (for serial connection)
@@ -17,6 +18,27 @@ serial_port = /dev/ttyUSB0
 #hostname = 192.168.1.60
 # TCP port (for TCP connection)
 #tcp_port = 5000
+
+# pyMC_core / KISS modem settings (used when connection_type = pymc)
+# v1 supports pymc_radio_type = kiss-modem.
+pymc_radio_type = kiss-modem
+pymc_serial_port = /dev/ttyUSB0
+pymc_baudrate = 115200
+pymc_identity_file = pymc_identity.key
+pymc_frequency = 910525000
+pymc_bandwidth = 62500
+pymc_spreading_factor = 7
+pymc_coding_rate = 5
+pymc_tx_power = 22
+pymc_tx_delay_ms = 50
+# Optional KISS timing controls
+#pymc_kiss_persistence = 63
+#pymc_kiss_slottime_ms = 100
+#pymc_kiss_txtail_ms = 0
+pymc_kiss_full_duplex = false
+pymc_lbt_enabled = false
+# Logical ContactStore cap only; pyMC contacts are hydrated from the bot database.
+pymc_max_contacts = 100000
 
 # Connection timeout in seconds
 timeout = 30
