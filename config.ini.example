@@ -2002,6 +2002,13 @@ enabled = false
 
 # Optional regional TC_FLOOD scope for mesh channel posts from this service.
 # flood_scope = #west
+# Optional flood scope setting per region (fallback to flood_scope if other region)
+# Region ids are 12-digit "Regionalschluessel", whereby the tailing zeros refer to
+# any id within that region
+# flood_scope.<region-id> = #scope
+# Example:
+# flood_scope.091840000000 = #de-by-muc
+# flood_scope.090000000000 = #de-by
 
 # Listen address and port of webserver that receives the webhook POSTs from DARC MoWaS.
 # Must be accessible from the internet (or HAMNET) for MoWaS to reach it.

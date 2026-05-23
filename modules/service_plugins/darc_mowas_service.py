@@ -67,6 +67,19 @@ class DARC_MoWaS_Service(BaseServicePlugin):
             "en": i18n.Translator("en"),
         }
 
+        # Parse flood_scope.<region-id> entries for per-region scope lookup
+        self._region_scopes: dict[str, str] = {}
+        if self.bot.config.has_section(self.config_section):
+            from modules.command_manager import CommandManager
+
+            for key, value in self.bot.config.items(self.config_section):
+                if key.startswith("flood_scope.") and key != "flood_scope":
+                    region_key = key[len("flood_scope."):]
+                    if region_key and value.strip():
+                        self._region_scopes[region_key] = (
+                            CommandManager._normalize_scope_name(value.strip())
+                        )
+
         self.app = Flask(__name__)
         self._server: BaseWSGIServer | None = None
         self._server_future: asyncio.Future[None] | None = None
@@ -167,11 +180,17 @@ class DARC_MoWaS_Service(BaseServicePlugin):
                 continue
             message = self.make_cb_message(alert, info)
             chunks = self.chunk_message(message)
-            task = asyncio.create_task(self._send_chunks(channel, chunks))
+            scope = self.scope_by_region(info)
+            task = asyncio.create_task(self._send_chunks(channel, chunks, scope))
             self._tasks.add(task)
             task.add_done_callback(self._tasks.discard)
 
-    async def _send_chunks(self, channel: str, chunks: list[str]) -> None:
+    async def _send_chunks(
+            self,
+            channel: str,
+            chunks: list[str],
+            scope: str | None = None
+    ) -> None:
         """
         Send all chunks, each with async retry if configured.
         Note, that we cannot guarantee that the messages arrive in-order,
@@ -191,7 +210,8 @@ class DARC_MoWaS_Service(BaseServicePlugin):
                     chunk,
                     i,
                     len(chunks),
-                    ts_now + timedelta(seconds=i)
+                    ts_now + timedelta(seconds=i),
+                    scope,
                 )
             )
 
@@ -202,6 +222,7 @@ class DARC_MoWaS_Service(BaseServicePlugin):
         index: int,
         total: int,
         timestamp: datetime,
+        scope: str | None,
     ) -> None:
         """Send a chunk and retry until acked or retries exhausted."""
         tracker = getattr(self.bot, "transmission_tracker", None)
@@ -216,7 +237,7 @@ class DARC_MoWaS_Service(BaseServicePlugin):
                 command_id=cmd_id,
                 skip_user_rate_limit=True,
                 timestamp=timestamp,
-                scope=self.get_mesh_flood_scope(),
+                scope=scope or self.get_mesh_flood_scope(),
             ):
                 self.logger.warning("Send failed for '%s'", channel)
                 return
@@ -349,6 +370,25 @@ class DARC_MoWaS_Service(BaseServicePlugin):
         chunks = _chunk_words(words, max_length - suffix_len)
         return [f"{c.strip()} ({i+1}/{len(chunks)})" for i, c in enumerate(chunks)]
 
+    def scope_by_region(self, info: "TRDECapAlertInfo") -> str | None:
+        """Hierarchical lookup of the message scope based on the alerts region id.
+
+        Config entries like ``flood_scope.091840000000 = #de-by-muc`` match any
+        alert whose region ID starts with the non-zero prefix (here ``091``).
+        The most specific (longest prefix) match wins.
+        """
+        regionid = info.region_id
+        if not regionid or not self._region_scopes:
+            return None
+        best_scope: str | None = None
+        best_len = 0
+        for cfg_region, scope in self._region_scopes.items():
+            prefix = cfg_region.rstrip("0") or cfg_region
+            if regionid.startswith(prefix) and len(prefix) > best_len:
+                best_len = len(prefix)
+                best_scope = scope
+        return best_scope
+
     def _setup_routes(self):
         """Setup webhook route"""
 
@@ -474,6 +514,13 @@ class TRDECapAlertInfo:
             parameter=parameters,
             headline=_child_text(info, "headline"),
             area=area,
+        )
+
+    @property
+    def region_id(self) -> str | None:
+        return next(
+            (val for area in self.area for name, val in area.geocode if name == "SHN"),
+            None,
         )
 
 
