@@ -35,6 +35,8 @@ async def test_post_discord_webhook_async_success():
         logger=MagicMock(),
     )
     assert ok is True
+    _, kwargs = mock_session.post.call_args
+    assert kwargs["json"]["allowed_mentions"] == bridge_outbound.DISCORD_WEBHOOK_ALLOWED_MENTIONS
 
 
 @pytest.mark.asyncio
@@ -85,3 +87,4 @@ async def test_post_discord_requests_fallback():
         )
     assert ok is True
     p.assert_called_once()
+    assert p.call_args.kwargs["json"]["allowed_mentions"] == bridge_outbound.DISCORD_WEBHOOK_ALLOWED_MENTIONS

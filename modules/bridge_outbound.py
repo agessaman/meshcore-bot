@@ -28,6 +28,8 @@ except ImportError:
     REQUESTS_AVAILABLE = False
 
 DISCORD_WEBHOOK_PREFIX = "https://discord.com/api/webhooks/"
+# Suppress @everyone/@here/role/user pings when relaying mesh text to Discord.
+DISCORD_WEBHOOK_ALLOWED_MENTIONS: dict[str, list[str]] = {"parse": []}
 DISCORD_CONTENT_MAX = 2000
 TELEGRAM_TEXT_MAX = 4096
 TELEGRAM_TRUNCATE_AT = 4000
@@ -68,6 +70,7 @@ async def post_discord_webhook(
     payload = {
         "content": _truncate_discord_content(content),
         "username": username[:80] if username else "MeshCore",
+        "allowed_mentions": DISCORD_WEBHOOK_ALLOWED_MENTIONS,
     }
 
     if AIOHTTP_AVAILABLE:
