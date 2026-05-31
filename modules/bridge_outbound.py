@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Any, Optional
 
 try:
@@ -28,6 +29,10 @@ except ImportError:
     REQUESTS_AVAILABLE = False
 
 DISCORD_WEBHOOK_PREFIX = "https://discord.com/api/webhooks/"
+# Suppress @everyone/@here/role/user pings when relaying mesh text to Discord.
+DISCORD_WEBHOOK_ALLOWED_MENTIONS: dict[str, list[str]] = {"parse": []}
+# Zero-width space after @ — Discord still renders @name but won't treat it as a mention.
+_DISCORD_MENTION_ZWSP = "\u200b"
 DISCORD_CONTENT_MAX = 2000
 TELEGRAM_TEXT_MAX = 4096
 TELEGRAM_TRUNCATE_AT = 4000
@@ -37,6 +42,22 @@ HTTP_TIMEOUT_SECONDS = 10.0
 def is_valid_discord_webhook_url(url: str) -> bool:
     u = (url or "").strip()
     return bool(u.startswith(DISCORD_WEBHOOK_PREFIX))
+
+
+def neutralize_discord_mention_content(text: str) -> str:
+    """Break @ tokens so Discord webhooks do not create mention tags or pings."""
+    if not text:
+        return text
+    # Native Discord mention syntax pasted from mesh → plain labels
+    text = re.sub(r"<@!?(\d+)>", r"@user-\1", text)
+    text = re.sub(r"<@&(\d+)>", r"@role-\1", text)
+    # Insert ZWSP after every @ not already neutralized (@everyone, **@admins**, etc.)
+    text = re.sub(
+        rf"@(?!{re.escape(_DISCORD_MENTION_ZWSP)})",
+        "@" + _DISCORD_MENTION_ZWSP,
+        text,
+    )
+    return text
 
 
 def _truncate_discord_content(content: str) -> str:
@@ -66,8 +87,9 @@ async def post_discord_webhook(
         return False
 
     payload = {
-        "content": _truncate_discord_content(content),
+        "content": _truncate_discord_content(neutralize_discord_mention_content(content)),
         "username": username[:80] if username else "MeshCore",
+        "allowed_mentions": DISCORD_WEBHOOK_ALLOWED_MENTIONS,
     }
 
     if AIOHTTP_AVAILABLE:

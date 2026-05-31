@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from modules import bridge_outbound
+from modules.bridge_outbound import DISCORD_WEBHOOK_ALLOWED_MENTIONS
 from modules.service_plugins.discord_bridge_service import DiscordBridgeService
 
 
@@ -62,3 +64,30 @@ async def test_multiple_webhooks_parsed_and_queued(multi_webhook_bot):
         assert mock_queue.await_count == 2
         called_urls = {call.args[0] for call in mock_queue.await_args_list}
         assert called_urls == {url1, url2}
+
+
+@pytest.mark.asyncio
+async def test_queue_message_includes_allowed_mentions(multi_webhook_bot):
+    """Webhook payload disables Discord mention parsing (no @everyone pings)."""
+    url = "https://discord.com/api/webhooks/123/abc"
+    multi_webhook_bot.config.set("DiscordBridge", "enabled", "true")
+    multi_webhook_bot.config.set("DiscordBridge", "bridge.Public", url)
+
+    service = DiscordBridgeService(multi_webhook_bot)
+    await service._queue_message(
+        url,
+        bridge_outbound.neutralize_discord_mention_content("**@everyone** alert"),
+        "Public",
+        "Alice",
+    )
+
+    queued = service.message_queues[url][0]
+    assert queued.payload["allowed_mentions"] == DISCORD_WEBHOOK_ALLOWED_MENTIONS
+
+
+def test_format_mentions_then_neutralize_no_bare_at_everyone(multi_webhook_bot):
+    service = DiscordBridgeService(multi_webhook_bot)
+    formatted = service._format_mentions("@[everyone] hi")
+    assert formatted == "**@everyone** hi"
+    neutral = bridge_outbound.neutralize_discord_mention_content(formatted)
+    assert "**@" + bridge_outbound._DISCORD_MENTION_ZWSP + "everyone**" in neutral
