@@ -35,6 +35,7 @@ except ImportError:
 # Import base service
 import contextlib
 
+from ..bridge_outbound import DISCORD_WEBHOOK_ALLOWED_MENTIONS
 from ..profanity_filter import censor, contains_profanity
 from ..security_utils import sanitize_name
 from .base_service import BaseServicePlugin
@@ -44,7 +45,7 @@ from .base_service import BaseServicePlugin
 class QueuedMessage:
     """Represents a message queued for Discord posting."""
     webhook_url: str
-    payload: dict[str, str]
+    payload: dict[str, Any]
     channel_name: str
     retry_count: int = 0
     first_queued: float = 0.0  # Timestamp when first queued
@@ -450,7 +451,8 @@ class DiscordBridgeService(BaseServicePlugin):
 
             payload = {
                 "content": message,
-                "username": username
+                "username": username,
+                "allowed_mentions": DISCORD_WEBHOOK_ALLOWED_MENTIONS,
             }
 
             if avatar_url:
@@ -575,7 +577,7 @@ class DiscordBridgeService(BaseServicePlugin):
                 self.logger.error(f"Error in message queue processor: {e}", exc_info=True)
                 await asyncio.sleep(1.0)  # Wait a bit before retrying on error
 
-    async def _post_to_webhook(self, webhook_url: str, payload: dict[str, str], channel_name: str, queued_msg: Optional[QueuedMessage] = None) -> bool:
+    async def _post_to_webhook(self, webhook_url: str, payload: dict[str, Any], channel_name: str, queued_msg: Optional[QueuedMessage] = None) -> bool:
         """Post message to Discord webhook.
 
         Args:
@@ -601,7 +603,7 @@ class DiscordBridgeService(BaseServicePlugin):
             self.logger.error(f"Failed to post to Discord webhook [{channel_name}]: {e}", exc_info=True)
             return False
 
-    async def _post_async(self, webhook_url: str, payload: dict[str, str], channel_name: str, queued_msg: Optional[QueuedMessage] = None) -> bool:
+    async def _post_async(self, webhook_url: str, payload: dict[str, Any], channel_name: str, queued_msg: Optional[QueuedMessage] = None) -> bool:
         """Post to webhook using aiohttp (async).
 
         Args:
@@ -653,7 +655,7 @@ class DiscordBridgeService(BaseServicePlugin):
             self.logger.error(f"Error posting to Discord webhook [{channel_name}]: {e}")
             return False
 
-    async def _post_sync(self, webhook_url: str, payload: dict[str, str], channel_name: str, queued_msg: Optional[QueuedMessage] = None) -> bool:
+    async def _post_sync(self, webhook_url: str, payload: dict[str, Any], channel_name: str, queued_msg: Optional[QueuedMessage] = None) -> bool:
         """Post to webhook using requests library (sync fallback).
 
         Args:
