@@ -298,16 +298,32 @@ class TestProbeRadioHealth:
 
     def test_returns_false_when_meshcore_is_none(self, tmp_path):
         bot = self._make_bot(tmp_path)
+        bot.connected = True
         bot.meshcore = None
+        scheduled = []
+
+        async def fake_schedule(reason):
+            scheduled.append(reason)
+
+        bot._schedule_transport_reconnect = fake_schedule
         result = asyncio.run(bot._probe_radio_health())
         assert result is False
+        assert scheduled == ['probe_not_connected']
 
     def test_returns_false_when_not_connected(self, tmp_path):
         bot = self._make_bot(tmp_path)
+        bot.connected = True
         bot.meshcore = MagicMock()
         bot.meshcore.is_connected = False
+        scheduled = []
+
+        async def fake_schedule(reason):
+            scheduled.append(reason)
+
+        bot._schedule_transport_reconnect = fake_schedule
         result = asyncio.run(bot._probe_radio_health())
         assert result is False
+        assert scheduled == ['probe_not_connected']
 
     def test_error_event_increments_fail_count(self, tmp_path):
         from meshcore.events import EventType
@@ -481,6 +497,149 @@ class TestProbeRadioHealth:
 
         assert result is False
         assert mock_warn.called
+
+    def test_tcp_probe_error_at_threshold_schedules_reconnect_not_zombie(self, tmp_path):
+        from meshcore.events import EventType
+
+        bot = self._make_bot(tmp_path)
+        bot.config.set("Connection", "connection_type", "tcp")
+        bot.connected = True
+        bot._tcp_probe_fail_count = 2
+        bot.config.set("Connection", "radio_probe_fail_threshold", "3")
+
+        error_event = MagicMock()
+        error_event.type = EventType.ERROR
+        error_event.payload = {"reason": "no_event_received"}
+
+        bot.meshcore = MagicMock()
+        bot.meshcore.is_connected = True
+        bot.meshcore.commands.get_time = MagicMock(return_value=_make_coro(error_event))
+
+        scheduled = []
+
+        async def fake_schedule(reason):
+            scheduled.append(reason)
+
+        bot._schedule_transport_reconnect = fake_schedule
+
+        result = asyncio.run(bot._probe_radio_health())
+        assert result is False
+        assert bot.is_radio_zombie is False
+        assert scheduled == ['tcp_probe_failed']
+
+    def test_tcp_probe_timeout_at_threshold_schedules_reconnect(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        bot.config.set("Connection", "connection_type", "tcp")
+        bot.connected = True
+        bot._tcp_probe_fail_count = 2
+        bot.config.set("Connection", "radio_probe_fail_threshold", "3")
+
+        bot.meshcore = MagicMock()
+        bot.meshcore.is_connected = True
+        bot.meshcore.commands.get_time = MagicMock(return_value=_make_coro(None))
+
+        scheduled = []
+
+        async def fake_schedule(reason):
+            scheduled.append(reason)
+
+        bot._schedule_transport_reconnect = fake_schedule
+
+        async def run():
+            async def fake_wait_for(coro, timeout):
+                raise asyncio.TimeoutError()
+
+            with patch("asyncio.wait_for", side_effect=fake_wait_for):
+                return await bot._probe_radio_health()
+
+        result = asyncio.run(run())
+        assert result is False
+        assert scheduled == ['tcp_probe_failed']
+
+
+class TestTransportReconnect:
+    """Transport reconnect scheduling (TCP/serial/BLE)."""
+
+    def _make_bot(self, tmp_path: Path, connection_type: str = "serial") -> MeshCoreBot:
+        config_file = tmp_path / "config.ini"
+        db_path = tmp_path / "bot.db"
+        _write_config(config_file, db_path)
+        bot = MeshCoreBot(config_file=str(config_file))
+        if connection_type == "tcp":
+            bot.config.set("Connection", "connection_type", "tcp")
+            bot.config.set("Connection", "hostname", "127.0.0.1")
+        bot.connected = True
+        return bot
+
+    def test_schedule_skips_manual_disconnect(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        asyncio.run(bot._schedule_transport_reconnect("manual_disconnect"))
+        assert bot._transport_reconnect_in_progress is False
+
+    def test_schedule_skips_when_already_in_progress(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        bot._transport_reconnect_in_progress = True
+        asyncio.run(bot._schedule_transport_reconnect("tcp_disconnect"))
+        assert bot._transport_reconnect_in_progress is True
+
+    def test_schedule_sets_in_progress_and_metadata(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        with patch.object(bot, "_update_radio_connected_metadata") as mock_meta:
+            with patch("asyncio.create_task") as mock_task:
+                asyncio.run(bot._schedule_transport_reconnect("tcp_disconnect"))
+        assert bot._transport_reconnect_in_progress is True
+        mock_meta.assert_called_once_with(False)
+        mock_task.assert_called_once()
+
+    def test_run_transport_reconnect_clears_in_progress_on_failure(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        bot._transport_reconnect_in_progress = True
+
+        async def fake_attempt():
+            return False
+
+        bot._attempt_reconnect = fake_attempt
+        asyncio.run(bot._run_transport_reconnect())
+        assert bot._transport_reconnect_in_progress is False
+        assert bot.connected is False
+
+    def test_disconnected_event_schedules_reconnect(self, tmp_path):
+        from meshcore.events import EventType
+
+        bot = self._make_bot(tmp_path)
+        bot.meshcore = MagicMock()
+        scheduled = []
+
+        async def fake_schedule(reason):
+            scheduled.append(reason)
+
+        bot._schedule_transport_reconnect = fake_schedule
+        bot.message_handler = MagicMock()
+
+        async def run_handlers():
+            await bot.setup_message_handlers()
+            disconnect_cb = None
+            for call in bot.meshcore.subscribe.call_args_list:
+                if call[0][0] == EventType.DISCONNECTED:
+                    disconnect_cb = call[0][1]
+                    break
+            assert disconnect_cb is not None
+            event = MagicMock()
+            event.payload = {"reason": "tcp_disconnect"}
+            await disconnect_cb(event)
+
+        async def noop_fetch():
+            return None
+
+        bot.meshcore.start_auto_message_fetching = noop_fetch
+
+        async def instant_sleep(*_args, **_kwargs):
+            return None
+
+        with patch("asyncio.sleep", instant_sleep):
+            asyncio.run(run_handlers())
+
+        assert scheduled == ["tcp_disconnect"]
 
 
 class TestRadioOfflineState:

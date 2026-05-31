@@ -315,7 +315,14 @@ serial_port = /dev/ttyUSB0        # Serial port path (for serial)
 #tcp_port = 5000                  # TCP port (for TCP)
 #ble_device_name = MeshCore       # BLE device name (for BLE)
 timeout = 30                      # Connection timeout
+reconnect_max_retries = 0         # 0 = retry forever on transport loss
+reconnect_delay_seconds = 5       # initial backoff between reconnect attempts
+reconnect_max_delay_seconds = 60  # cap on reconnect backoff
+radio_probe_interval_seconds = 300
+radio_probe_fail_threshold = 3
 ```
+
+For **TCP**, the bot listens for meshcore `DISCONNECTED` events and reconnects using the settings above. Repeated failed health probes on TCP also trigger reconnect (serial probes instead detect zombie firmware and do not reconnect).
 
 ### Bot Settings
 ```ini

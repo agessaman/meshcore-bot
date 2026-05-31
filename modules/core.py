@@ -350,6 +350,10 @@ class MeshCoreBot:
         self._service_restart_failures: dict[str, float] = {}
         self._service_restarting: set = set()
 
+        # Transport reconnect (serial/BLE/TCP) — lock created when event loop runs
+        self._transport_reconnect_lock: asyncio.Lock | None = None
+        self._transport_reconnect_in_progress = False
+
     @property
     def bot_root(self) -> Path:
         """Get bot root directory (where config.ini is located)"""
@@ -654,6 +658,15 @@ serial_port = /dev/ttyUSB0
 
 # Connection timeout in seconds
 timeout = 30
+
+# Automatic reconnection (serial, BLE, TCP)
+reconnect_max_retries = 0
+reconnect_delay_seconds = 5
+reconnect_max_delay_seconds = 60
+
+radio_probe_interval_seconds = 300
+radio_probe_fail_threshold = 3
+radio_offline_threshold = 3
 
 [Bot]
 # Bot name for identification and logging
@@ -1277,6 +1290,65 @@ long_jokes = false
 
         return False
 
+    def _connection_type(self) -> str:
+        """Configured transport: serial, ble, or tcp."""
+        return self.config.get('Connection', 'connection_type', fallback='ble').lower()
+
+    def _radio_probe_fail_threshold(self) -> int:
+        return self.config.getint(
+            'Connection',
+            'radio_probe_fail_threshold',
+            fallback=self.config.getint('Bot', 'radio_probe_fail_threshold', fallback=3),
+        )
+
+    def _radio_probe_interval_seconds(self) -> int:
+        return max(
+            300,
+            min(
+                900,
+                self.config.getint(
+                    'Connection',
+                    'radio_probe_interval_seconds',
+                    fallback=self.config.getint(
+                        'Bot', 'radio_probe_interval_seconds', fallback=300
+                    ),
+                ),
+            ),
+        )
+
+    async def _schedule_transport_reconnect(self, reason: str) -> None:
+        """Queue a transport-level reconnect (non-blocking)."""
+        if self._shutdown_event.is_set():
+            return
+        if reason == 'manual_disconnect':
+            return
+        if getattr(self, '_transport_reconnect_in_progress', False):
+            return
+        if not getattr(self, 'connected', False):
+            return
+
+        self._transport_reconnect_in_progress = True
+        self.logger.warning(
+            "Transport disconnect detected (%s), scheduling reconnect...",
+            reason,
+        )
+        self._update_radio_connected_metadata(False)
+        asyncio.create_task(self._run_transport_reconnect())
+
+    async def _run_transport_reconnect(self) -> None:
+        """Run reconnect with lock; clear in-progress flag when done."""
+        try:
+            if self._transport_reconnect_lock is None:
+                self._transport_reconnect_lock = asyncio.Lock()
+            async with self._transport_reconnect_lock:
+                if self._shutdown_event.is_set():
+                    return
+                if not await self._attempt_reconnect():
+                    self.logger.error("Could not reconnect, shutting down")
+                    self.connected = False
+        finally:
+            self._transport_reconnect_in_progress = False
+
     async def connect(self) -> bool:
         """Connect to MeshCore node using official package.
 
@@ -1336,6 +1408,7 @@ long_jokes = false
                 # Clear zombie state — a successful connect means the radio is alive again
                 self._radio_zombie_detected = False
                 self._radio_fail_count = 0
+                self._tcp_probe_fail_count = 0
                 try:
                     self.db_manager.set_metadata('bot.radio_zombie', 'false')
                     self.db_manager.set_metadata('bot.radio_zombie_since', '')
@@ -1433,174 +1506,108 @@ long_jokes = false
             self.logger.error(f"Error reconnecting radio: {e}")
             return False
 
-    async def _probe_radio_health(self) -> bool:
-        """Send a lightweight get_time() probe to verify the radio is responding.
+    def _handle_serial_probe_error(self, threshold: int, interval: int) -> bool:
+        """Serial/BLE: failed get_time may indicate zombie firmware (no transport reconnect)."""
+        import datetime as _dt
 
-        A connected serial transport does not guarantee the firmware is alive and
-        processing commands.  This probe detects the 'zombie connection' state
-        where the port is open and messages are received but all outgoing commands
-        time out with no_event_received.
-
-        When the configured fail threshold is reached the bot logs a CRITICAL
-        message and sends an immediate alert email (if enabled).  It does NOT
-        attempt to reconnect — a zombie radio requires a physical power cycle;
-        disconnect/reconnect of the transport does nothing.  Probing stops once
-        a zombie is confirmed to avoid log spam; it resumes automatically after
-        the next successful connect() call.
-
-        Returns True if the device responded, False otherwise.
-        """
-        # Stop probing once a zombie has been confirmed — only a power cycle
-        # can recover it; further probes just generate noise.
-        if getattr(self, '_radio_zombie_detected', False):
-            return False
-
-        if not self.meshcore or not self.meshcore.is_connected:
-            return False
-        try:
-            from meshcore.events import EventType
-            result = await asyncio.wait_for(
-                self.meshcore.commands.get_time(), timeout=10.0
-            )
-            if result.type == EventType.ERROR:
-                self._radio_fail_count = getattr(self, '_radio_fail_count', 0) + 1
-                threshold = self.config.getint('Bot', 'radio_probe_fail_threshold', fallback=3)
-                interval  = max(300, min(900, self.config.getint(
-                    'Bot', 'radio_probe_interval_seconds', fallback=300
-                )))
-                self.logger.warning(
-                    f"Radio health probe failed "
-                    f"({self._radio_fail_count}/{threshold}): no response to get_time"
-                )
-                if self._radio_fail_count >= threshold:
-                    fail_count = self._radio_fail_count
-                    self._radio_fail_count = 0
-                    self._radio_zombie_detected = True
-                    self.logger.critical(
-                        "ZOMBIE RADIO DETECTED after %d consecutive failed probes "
-                        "(probe interval %ds). The radio firmware is unresponsive. "
-                        "A physical POWER CYCLE is required — disconnect/reconnect "
-                        "will NOT fix this. Probing suspended until next reconnect.",
-                        fail_count, interval,
-                    )
-                    # Persist zombie state to db so the web viewer health API reflects it
-                    try:
-                        import datetime as _dt
-                        self.db_manager.set_metadata('bot.radio_zombie', 'true')
-                        self.db_manager.set_metadata(
-                            'bot.radio_zombie_since',
-                            _dt.datetime.utcnow().isoformat(),
-                        )
-                    except Exception:
-                        pass
-                    # Send immediate alert email via scheduler (non-blocking)
-                    scheduler = getattr(self, 'scheduler', None)
-                    if scheduler is not None:
-                        loop = asyncio.get_event_loop()
-                        loop.run_in_executor(
-                            None,
-                            scheduler.send_zombie_alert_email,
-                            fail_count, threshold, interval,
-                        )
-                return False
-            if getattr(self, '_radio_fail_count', 0) > 0:
-                self.logger.info("Radio health probe recovered — resetting fail counter")
+        self._radio_fail_count = getattr(self, '_radio_fail_count', 0) + 1
+        self.logger.warning(
+            "Radio health probe failed "
+            "(%d/%d): no response to get_time",
+            self._radio_fail_count,
+            threshold,
+        )
+        if self._radio_fail_count >= threshold:
+            fail_count = self._radio_fail_count
             self._radio_fail_count = 0
-            return True
-        except asyncio.TimeoutError:
-            self.logger.warning("Radio health probe timed out")
-            return False
-        except Exception as e:
-            self.logger.warning(f"Radio health probe error: {e}")
-            return False
+            self._radio_zombie_detected = True
+            self.logger.critical(
+                "ZOMBIE RADIO DETECTED after %d consecutive failed probes "
+                "(probe interval %ds). The radio firmware is unresponsive. "
+                "A physical POWER CYCLE is required — disconnect/reconnect "
+                "will NOT fix this. Probing suspended until next reconnect.",
+                fail_count,
+                interval,
+            )
+            try:
+                self.db_manager.set_metadata('bot.radio_zombie', 'true')
+                self.db_manager.set_metadata(
+                    'bot.radio_zombie_since',
+                    _dt.datetime.now(_dt.UTC).isoformat(),
+                )
+            except Exception:
+                pass
+            scheduler = getattr(self, 'scheduler', None)
+            if scheduler is not None:
+                loop = asyncio.get_event_loop()
+                loop.run_in_executor(
+                    None,
+                    scheduler.send_zombie_alert_email,
+                    fail_count,
+                    threshold,
+                    interval,
+                )
+        return False
+
+    async def _handle_tcp_probe_failure(
+        self, threshold: int, interval: int, detail: str
+    ) -> bool:
+        """TCP: repeated probe failures trigger transport reconnect, not zombie."""
+        self._tcp_probe_fail_count = getattr(self, '_tcp_probe_fail_count', 0) + 1
+        self.logger.warning(
+            "TCP radio health probe failed (%d/%d): %s",
+            self._tcp_probe_fail_count,
+            threshold,
+            detail,
+        )
+        if self._tcp_probe_fail_count >= threshold:
+            self._tcp_probe_fail_count = 0
+            self.logger.warning(
+                "TCP transport unresponsive after %d probes (interval %ds) — reconnecting",
+                threshold,
+                interval,
+            )
+            await self._schedule_transport_reconnect('tcp_probe_failed')
+        return False
 
     async def _probe_radio_health(self) -> bool:
         """Send a lightweight get_time() probe to verify the radio is responding.
 
-        A connected serial transport does not guarantee the firmware is alive and
-        processing commands.  This probe detects the 'zombie connection' state
-        where the port is open and messages are received but all outgoing commands
-        time out with no_event_received.
-
-        When the configured fail threshold is reached the bot logs a CRITICAL
-        message and sends an immediate alert email (if enabled).  It does NOT
-        attempt to reconnect — a zombie radio requires a physical power cycle;
-        disconnect/reconnect of the transport does nothing.  Probing stops once
-        a zombie is confirmed to avoid log spam; it resumes automatically after
-        the next successful connect() call.
-
-        Returns True if the device responded, False otherwise.
+        Serial/BLE: repeated ERROR responses declare zombie firmware (no reconnect).
+        TCP: repeated ERROR or timeout responses schedule transport reconnect.
         """
-        # Stop probing once a zombie has been confirmed — only a power cycle
-        # can recover it; further probes just generate noise.
         if getattr(self, '_radio_zombie_detected', False):
             return False
 
         if not self.meshcore or not self.meshcore.is_connected:
+            await self._schedule_transport_reconnect('probe_not_connected')
             return False
+
+        is_tcp = self._connection_type() == 'tcp'
+        threshold = self._radio_probe_fail_threshold()
+        interval = self._radio_probe_interval_seconds()
+
         try:
-            from meshcore.events import EventType
             result = await asyncio.wait_for(
                 self.meshcore.commands.get_time(), timeout=10.0
             )
             if result.type == EventType.ERROR:
-                self._radio_fail_count = getattr(self, '_radio_fail_count', 0) + 1
-                threshold = self.config.getint(
-                    'Connection',
-                    'radio_probe_fail_threshold',
-                    fallback=self.config.getint('Bot', 'radio_probe_fail_threshold', fallback=3),
-                )
-                interval = max(
-                    300,
-                    min(
-                        900,
-                        self.config.getint(
-                            'Connection',
-                            'radio_probe_interval_seconds',
-                            fallback=self.config.getint('Bot', 'radio_probe_interval_seconds', fallback=300),
-                        ),
-                    ),
-                )
-                self.logger.warning(
-                    f"Radio health probe failed "
-                    f"({self._radio_fail_count}/{threshold}): no response to get_time"
-                )
-                if self._radio_fail_count >= threshold:
-                    fail_count = self._radio_fail_count
-                    self._radio_fail_count = 0
-                    self._radio_zombie_detected = True
-                    self.logger.critical(
-                        "ZOMBIE RADIO DETECTED after %d consecutive failed probes "
-                        "(probe interval %ds). The radio firmware is unresponsive. "
-                        "A physical POWER CYCLE is required — disconnect/reconnect "
-                        "will NOT fix this. Probing suspended until next reconnect.",
-                        fail_count, interval,
+                if is_tcp:
+                    return await self._handle_tcp_probe_failure(
+                        threshold, interval, 'no response to get_time'
                     )
-                    # Persist zombie state to db so the web viewer health API reflects it
-                    try:
-                        import datetime as _dt
-                        self.db_manager.set_metadata('bot.radio_zombie', 'true')
-                        self.db_manager.set_metadata(
-                            'bot.radio_zombie_since',
-                            _dt.datetime.now(_dt.UTC).isoformat(),
-                        )
-                    except Exception:
-                        pass
-                    # Send immediate alert email via scheduler (non-blocking)
-                    scheduler = getattr(self, 'scheduler', None)
-                    if scheduler is not None:
-                        loop = asyncio.get_event_loop()
-                        loop.run_in_executor(
-                            None,
-                            scheduler.send_zombie_alert_email,
-                            fail_count, threshold, interval,
-                        )
-                return False
+                return self._handle_serial_probe_error(threshold, interval)
+
             if getattr(self, '_radio_fail_count', 0) > 0:
                 self.logger.info("Radio health probe recovered — resetting fail counter")
             self._radio_fail_count = 0
+            self._tcp_probe_fail_count = 0
             return True
         except asyncio.TimeoutError:
+            if is_tcp:
+                return await self._handle_tcp_probe_failure(
+                    threshold, interval, 'probe timed out'
+                )
             self.logger.warning("Radio health probe timed out")
             return False
         except Exception as e:
@@ -1785,7 +1792,13 @@ long_jokes = false
         async def on_new_contact(event, metadata=None):
             await self.message_handler.handle_new_contact(event, metadata)
 
+        async def on_disconnected(event, metadata=None):
+            payload = event.payload if isinstance(event.payload, dict) else {}
+            reason = payload.get('reason', 'unknown')
+            await self._schedule_transport_reconnect(reason)
+
         # Subscribe to events
+        self.meshcore.subscribe(EventType.DISCONNECTED, on_disconnected)
         self.meshcore.subscribe(EventType.CONTACT_MSG_RECV, on_contact_message)
         self.meshcore.subscribe(EventType.CHANNEL_MSG_RECV, on_channel_message)
         self.meshcore.subscribe(EventType.RX_LOG_DATA, on_rf_data)
@@ -1918,12 +1931,10 @@ long_jokes = false
         self.logger.info("Bot is running. Press Ctrl+C to stop.")
         try:
             while self.connected and not self._shutdown_event.is_set():
-                # Check if the underlying connection dropped
+                # Backup: meshcore transport dropped (DISCONNECTED event is primary)
                 if self.meshcore and not self.meshcore.is_connected:
-                    self.logger.warning("Connection lost, attempting to reconnect...")
-                    if not await self._attempt_reconnect():
-                        self.logger.error("Could not reconnect, shutting down")
-                        break
+                    await self._schedule_transport_reconnect('poll_detected')
+                    await asyncio.sleep(5)
                     continue
 
                 # Monitor web viewer process and health (never restart during shutdown)
