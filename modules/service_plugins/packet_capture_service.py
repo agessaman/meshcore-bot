@@ -473,6 +473,14 @@ class PacketCaptureService(BaseServicePlugin):
             f"Packet capture service started (MQTT: {'connected' if self.mqtt_connected else 'not connected'})"
         )
 
+    async def on_transport_reconnected(self) -> None:
+        """Re-register RX_LOG_DATA/RAW_DATA handlers on the new meshcore instance."""
+        if not self._running or not self.meshcore:
+            return
+        self.cleanup_event_subscriptions()
+        await self.setup_event_handlers()
+        self.logger.info("Packet capture event handlers re-registered after transport reconnect")
+
     async def stop(self) -> None:
         """Stop the packet capture service.
 

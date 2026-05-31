@@ -1400,7 +1400,7 @@ long_jokes = false
             # Route meshcore library output through the bot's handlers (including log file)
             self._configure_meshcore_debug_logging(radio_debug)
 
-            if self.meshcore.is_connected:
+            if self.meshcore and self.meshcore.is_connected:
                 self.connected = True
                 self._update_radio_connected_metadata(True)
                 # Track connection time to skip processing old cached messages
@@ -1431,6 +1431,8 @@ long_jokes = false
                 # Set device name to match config if needed
                 await self.set_device_name()
 
+                await self._notify_services_transport_reconnected()
+
                 return True
             else:
                 self.logger.error("Failed to connect to MeshCore node")
@@ -1439,6 +1441,22 @@ long_jokes = false
         except (OSError, ConnectionError, TimeoutError, ValueError, AttributeError) as e:
             self.logger.error(f"Connection failed: {e}")
             return False
+
+    async def _notify_services_transport_reconnected(self) -> None:
+        """Re-bind mesh event subscriptions on running services after transport reconnect."""
+        services = getattr(self, 'services', None) or {}
+        for name, service in services.items():
+            if not service.is_running():
+                continue
+            try:
+                await service.on_transport_reconnected()
+            except Exception as e:
+                self.logger.error(
+                    "Service '%s' on_transport_reconnected failed: %s",
+                    name,
+                    e,
+                    exc_info=True,
+                )
 
     def _update_radio_connected_metadata(self, connected: bool) -> None:
         """Write radio connection state to bot_metadata for the web viewer."""

@@ -3,7 +3,7 @@
 import asyncio
 import struct
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -585,11 +585,18 @@ class TestTransportReconnect:
     def test_schedule_sets_in_progress_and_metadata(self, tmp_path):
         bot = self._make_bot(tmp_path)
         with patch.object(bot, "_update_radio_connected_metadata") as mock_meta:
-            with patch("asyncio.create_task") as mock_task:
+            with patch("asyncio.create_task") as mock_create_task:
+
+                def swallow_task(coro):
+                    # Scheduling is mocked; close coroutine so it is not left unawaited.
+                    coro.close()
+                    return MagicMock()
+
+                mock_create_task.side_effect = swallow_task
                 asyncio.run(bot._schedule_transport_reconnect("tcp_disconnect"))
         assert bot._transport_reconnect_in_progress is True
         mock_meta.assert_called_once_with(False)
-        mock_task.assert_called_once()
+        mock_create_task.assert_called_once()
 
     def test_run_transport_reconnect_clears_in_progress_on_failure(self, tmp_path):
         bot = self._make_bot(tmp_path)
@@ -640,6 +647,22 @@ class TestTransportReconnect:
             asyncio.run(run_handlers())
 
         assert scheduled == ["tcp_disconnect"]
+
+    def test_notify_services_transport_reconnected_only_running(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        running_svc = MagicMock()
+        running_svc.is_running.return_value = True
+        running_svc.on_transport_reconnected = AsyncMock()
+
+        stopped_svc = MagicMock()
+        stopped_svc.is_running.return_value = False
+        stopped_svc.on_transport_reconnected = AsyncMock()
+
+        bot.services = {"running": running_svc, "stopped": stopped_svc}
+        asyncio.run(bot._notify_services_transport_reconnected())
+
+        running_svc.on_transport_reconnected.assert_awaited_once()
+        stopped_svc.on_transport_reconnected.assert_not_awaited()
 
 
 class TestRadioOfflineState:

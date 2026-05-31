@@ -232,6 +232,14 @@ class BaseServicePlugin(ABC):
         """
         pass
 
+    async def on_transport_reconnected(self) -> None:
+        """Called after bot.connect() replaces meshcore; re-bind mesh subscriptions.
+
+        Override in services that subscribe to meshcore events. Default is no-op.
+        Only invoked for services that are already running (after initial start).
+        """
+        pass
+
     def get_metadata(self) -> dict[str, Any]:
         """Get service metadata.
 
