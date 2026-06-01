@@ -1064,9 +1064,14 @@ class BotDataViewer:
                         } for row in results
                     ]
 
-                    scored_repeaters = calculate_recency_weighted_scores(repeaters_data)
-                    min_recency_threshold = 0.01
-                    recent_repeaters = [r for r, score in scored_repeaters if score >= min_recency_threshold]
+                    if len(repeaters_data) == 1:
+                        recent_repeaters = repeaters_data
+                    else:
+                        scored_repeaters = calculate_recency_weighted_scores(repeaters_data)
+                        min_recency_threshold = 0.01
+                        recent_repeaters = [
+                            r for r, score in scored_repeaters if score >= min_recency_threshold
+                        ]
 
                     if len(recent_repeaters) > 1:
                         # Multiple matches - use graph and geographic selection
@@ -8109,9 +8114,14 @@ class BotDataViewer:
                         } for row in results
                     ]
 
-                    scored_repeaters = calculate_recency_weighted_scores(repeaters_data)
-                    min_recency_threshold = 0.01
-                    recent_repeaters = [r for r, score in scored_repeaters if score >= min_recency_threshold]
+                    if len(repeaters_data) == 1:
+                        recent_repeaters = repeaters_data
+                    else:
+                        scored_repeaters = calculate_recency_weighted_scores(repeaters_data)
+                        min_recency_threshold = 0.01
+                        recent_repeaters = [
+                            r for r, score in scored_repeaters if score >= min_recency_threshold
+                        ]
 
                     if len(recent_repeaters) > 1:
                         # Multiple matches - use graph and geographic selection

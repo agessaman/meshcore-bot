@@ -12,7 +12,12 @@ from typing import Any, Callable, Optional
 
 from ..models import MeshMessage
 from ..security_utils import sanitize_name
-from ..utils import bytes_per_hop_from_routing_and_nodes, calculate_distance, parse_path_string
+from ..utils import (
+    bytes_per_hop_from_routing_and_nodes,
+    calculate_distance,
+    parse_path_string,
+    public_key_has_prefix,
+)
 from .base_command import BaseCommand
 
 
@@ -366,7 +371,7 @@ class PathCommand(BaseCommand):
                             complete_db = await self.bot.repeater_manager.get_repeater_devices(include_historical=True)
 
                             for row in complete_db:
-                                if row['public_key'].startswith(node_id):
+                                if public_key_has_prefix(row['public_key'], node_id):
                                     results.append({
                                         'name': row['name'],
                                         'public_key': row['public_key'],
@@ -471,11 +476,16 @@ class PathCommand(BaseCommand):
                         } for row in results
                     ]
 
-                    # Filter out repeaters with very low recency scores BEFORE collision detection
-                    # This prevents old repeaters from causing false collisions
-                    scored_repeaters = self._calculate_recency_weighted_scores(repeaters_data)
-                    min_recency_threshold = 0.01  # Approximately 55 hours ago or less
-                    recent_repeaters = [r for r, score in scored_repeaters if score >= min_recency_threshold]
+                    # Filter stale repeaters before collision detection (multiple matches only).
+                    # A single DB match is unambiguous — resolve it even if not recently heard.
+                    if len(repeaters_data) == 1:
+                        recent_repeaters = repeaters_data
+                    else:
+                        scored_repeaters = self._calculate_recency_weighted_scores(repeaters_data)
+                        min_recency_threshold = 0.01  # Approximately 55 hours ago or less
+                        recent_repeaters = [
+                            r for r, score in scored_repeaters if score >= min_recency_threshold
+                        ]
 
                     # Check for ID collisions (multiple repeaters with same prefix) AFTER filtering
                     if len(recent_repeaters) > 1:
@@ -622,7 +632,7 @@ class PathCommand(BaseCommand):
                     if hasattr(self.bot.meshcore, 'contacts'):
                         for contact_key, contact_data in self.bot.meshcore.contacts.items():
                             public_key = contact_data.get('public_key', contact_key)
-                            if public_key.startswith(node_id):
+                            if public_key_has_prefix(public_key, node_id):
                                 # Check if this is a repeater
                                 if hasattr(self.bot, 'repeater_manager') and self.bot.repeater_manager._is_repeater_device(contact_data):
                                     name = contact_data.get('adv_name', contact_data.get('name', self.translate('commands.path.unknown_name')))
