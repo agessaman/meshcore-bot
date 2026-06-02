@@ -3604,16 +3604,59 @@ class MessageHandler:
 
             # Check if this is a repeater or companion
             if hasattr(self.bot, "repeater_manager"):
+                auto_manage_setting = self.bot.config.get("Bot", "auto_manage_contacts", fallback="false").lower()
+                refreshed_device_contacts = await self.bot.repeater_manager.refresh_device_contacts()
                 is_repeater = self.bot.repeater_manager._is_repeater_device(contact_data)
+                existing_tracking = self.bot.repeater_manager.get_tracked_contact_row(public_key)
+                already_on_device = self.bot.repeater_manager.is_contact_on_device(public_key)
+                known_contact = already_on_device or existing_tracking is not None
 
                 if is_repeater:
-                    # REPEATER: Track directly in SQLite database (no device contact list)
-                    self.logger.info(f"📡 New repeater discovered: {contact_name} - tracking in database only")
+                    if already_on_device:
+                        if existing_tracking:
+                            self.logger.info(
+                                "📡 Known repeater advert: %s already exists in tracking DB and device contacts",
+                                contact_name,
+                            )
+                        else:
+                            self.logger.info(
+                                "📡 Repeater %s already exists in device contacts; syncing into tracking DB",
+                                contact_name,
+                            )
+                    elif existing_tracking:
+                        self.logger.info(
+                            "📡 Known repeater advert: %s exists in tracking DB but not on device; adding to device contacts",
+                            contact_name,
+                        )
+                    else:
+                        self.logger.info(
+                            "📡 New repeater discovered: %s - adding to device contacts and tracking DB",
+                            contact_name,
+                        )
 
                     # Track repeater in complete database with signal info
                     await self.bot.repeater_manager.track_contact_advertisement(
                         contact_data, signal_info, packet_hash=packet_hash
                     )
+
+                    if not already_on_device:
+                        try:
+                            self._ensure_contact_meshcore_path_encoding(contact_data)
+                            added = await self.bot.repeater_manager.add_contact_from_contact_data(
+                                contact_data,
+                                contact_name,
+                                public_key,
+                                contact_kind="repeater",
+                            )
+                            if added:
+                                already_on_device = self.bot.repeater_manager.is_contact_on_device(public_key)
+                            else:
+                                self.logger.warning(
+                                    "Failed to add repeater %s to device contacts after NEW_CONTACT",
+                                    contact_name,
+                                )
+                        except Exception as e:
+                            self.logger.error("Error adding repeater %s to device contacts: %s", contact_name, e)
 
                     # Notify web viewer of new node
                     if (
@@ -3635,16 +3678,44 @@ class MessageHandler:
                     # Check if auto-purge is needed (run after tracking to ensure data is captured)
                     await self.bot.repeater_manager.check_and_auto_purge()
 
-                    self.logger.info(f"✅ Repeater {contact_name} tracked in database - not added to device contacts")
+                    if already_on_device:
+                        self.logger.info(
+                            "✅ Repeater %s is present on device contacts and tracking DB is up to date",
+                            contact_name,
+                        )
+                    else:
+                        self.logger.info(
+                            "✅ Repeater %s tracked in database, but device contact add did not complete",
+                            contact_name,
+                        )
                     return
                 else:
                     # COMPANION: track in DB; device add behaviour depends on auto_manage_contacts
-                    auto_manage_setting = self.bot.config.get("Bot", "auto_manage_contacts", fallback="false").lower()
-                    self.logger.info(
-                        "👤 New companion discovered: %s — auto_manage_contacts=%s",
-                        contact_name,
-                        auto_manage_setting,
-                    )
+                    if already_on_device:
+                        if existing_tracking:
+                            self.logger.info(
+                                "👤 Known companion advert: %s already exists in tracking DB and device contacts — auto_manage_contacts=%s",
+                                contact_name,
+                                auto_manage_setting,
+                            )
+                        else:
+                            self.logger.info(
+                                "👤 Companion %s already exists in device contacts; syncing into tracking DB — auto_manage_contacts=%s",
+                                contact_name,
+                                auto_manage_setting,
+                            )
+                    elif existing_tracking:
+                        self.logger.info(
+                            "👤 Known companion advert: %s exists in tracking DB but not on device — auto_manage_contacts=%s",
+                            contact_name,
+                            auto_manage_setting,
+                        )
+                    else:
+                        self.logger.info(
+                            "👤 New companion discovered: %s — auto_manage_contacts=%s",
+                            contact_name,
+                            auto_manage_setting,
+                        )
 
                     track_result = await self.bot.repeater_manager.track_contact_advertisement(
                         contact_data, signal_info, packet_hash=packet_hash
@@ -3656,10 +3727,35 @@ class MessageHandler:
                             contact_name,
                         )
                     elif auto_manage_setting == "device":
-                        self.logger.info(
-                            "Device mode — companion %s tracked; firmware handles addition; bot may manage capacity",
-                            contact_name,
-                        )
+                        if already_on_device:
+                            self.logger.info(
+                                "Device mode — companion %s is already present on the radio contact DB",
+                                contact_name,
+                            )
+                        else:
+                            self.logger.info(
+                                "Device mode — companion %s is not on the radio contact DB%s; adding it now",
+                                contact_name,
+                                "" if refreshed_device_contacts else " (contact refresh unavailable)",
+                            )
+                            try:
+                                self._ensure_contact_meshcore_path_encoding(contact_data)
+                                ok = await self.bot.repeater_manager.add_contact_from_contact_data(
+                                    contact_data,
+                                    contact_name,
+                                    public_key,
+                                    contact_kind="companion",
+                                )
+                                if ok:
+                                    already_on_device = self.bot.repeater_manager.is_contact_on_device(public_key)
+                                else:
+                                    self.logger.warning(
+                                        "Failed to add companion contact %s to device in device mode",
+                                        contact_name,
+                                    )
+                            except Exception as e:
+                                self.logger.error("Error adding companion %s to device in device mode: %s", contact_name, e)
+
                         status = await self.bot.repeater_manager.get_contact_list_status()
                         if status and status.get("is_near_limit", False):
                             self.logger.warning(
@@ -3669,7 +3765,7 @@ class MessageHandler:
                             await self.bot.repeater_manager.manage_contact_list(auto_cleanup=True)
                         else:
                             self.logger.info(
-                                "New companion %s — contact list has adequate space",
+                                "Companion %s — contact list has adequate space",
                                 contact_name,
                             )
                     elif auto_manage_setting == "bot":
@@ -3677,6 +3773,11 @@ class MessageHandler:
                         if track_result.duplicate_packet:
                             self.logger.debug(
                                 "Skipping add_companion — duplicate packet_hash for %s (already tracked)",
+                                contact_name,
+                            )
+                        elif already_on_device:
+                            self.logger.info(
+                                "Bot mode — companion %s already exists on the radio contact DB; no add needed",
                                 contact_name,
                             )
                         else:
@@ -3718,10 +3819,11 @@ class MessageHandler:
 
                     await self.bot.repeater_manager.check_and_auto_purge()
 
-                    self.bot.repeater_manager.log_purging_action(
-                        "new_contact_discovered",
-                        f"New contact discovered: {contact_name} (key: {public_key[:16]}...)",
-                    )
+                    if not known_contact:
+                        self.bot.repeater_manager.log_purging_action(
+                            "new_contact_discovered",
+                            f"New contact discovered: {contact_name} (key: {public_key[:16]}...)",
+                        )
                     return
 
             # Fallback: Track in database for unknown contact types (no repeater_manager)
