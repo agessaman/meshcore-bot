@@ -6,6 +6,7 @@
     "wx": ["wx", "weather", "wxa", "wxalert"],
     "gwx": ["gwx", "globalweather", "gwxa"],
     "aqi": ["aqi", "air", "airquality", "air_quality"],
+    "rain": ["rain", "nowcast"],
     "aurora": ["aurora", "kp"],
     "solar": ["solar"],
     "sun": ["sun"],
@@ -381,6 +382,31 @@
         "black_hole": "Black holes have no atmosphere, but the tidal forces would be a bigger problem than air quality. 🕳️",
         "asteroid": "Asteroids have no atmosphere, so AQI is perfect! Just watch out for the vacuum of space. ☄️",
         "comet": "Comets have thin atmospheres of water vapor and dust. AQI: Variable, but you'd freeze in space anyway. ☄️"
+      }
+    },
+    "rain": {
+      "description": "Rain nowcast: when precipitation starts or stops in the next couple hours",
+      "usage": "Usage: rain [city|zipcode|lat,lon]",
+      "usage_short": "Usage: rain [city|zipcode|lat,lon]",
+      "starting": "{emoji} {ptype} starting in ~{minutes}min for {location}{extra}",
+      "stopping": "{emoji} {ptype} easing in ~{minutes}min for {location}",
+      "continuing": "{emoji} {ptype} steady for {window}+ in {location}",
+      "clear": "☀️ No rain expected in next {window} for {location}",
+      "duration_for": " (~{duration}min)",
+      "duration_open": " (steady)",
+      "error_fetching": "Error fetching rain nowcast data",
+      "no_location": "Usage: rain [city|zipcode|lat,lon]. No location: will use companion location if known, or bot location if not.",
+      "no_location_city": "Could not find city '{location}' in {state}",
+      "no_location_zipcode": "Could not find ZIP code '{location}'",
+      "error": "Error: {error}",
+      "precip_types": {
+        "drizzle": "Drizzle",
+        "rain": "Rain",
+        "heavy_rain": "Heavy rain",
+        "freezing": "Freezing rain",
+        "snow": "Snow",
+        "showers": "Showers",
+        "thunder": "Thunderstorms"
       }
     },
     "aurora": {

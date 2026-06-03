@@ -758,6 +758,24 @@ enabled = true
 # default_lat = 48.08
 # default_lon = -121.97
 
+[Rain_Command]
+# Minute-level rain nowcast ("rain starting in ~20min") via Open-Meteo's
+# 15-minutely precipitation. Worldwide, no API key. Keywords: rain, nowcast.
+# Usage: rain [city|zipcode|lat,lon]   (no location -> companion, then bot location)
+enabled = true
+# How far ahead to look, in minutes (default: 120)
+# window_minutes = 120
+# Precipitation amount (mm per 15-min bucket) at/above which it counts as raining.
+# Lower = more sensitive to light drizzle; raise to ignore trace amounts. (default: 0.1)
+# precip_threshold_mm = 0.1
+# Look up US ZIP -> "City, ST" via Zippopotam.us (free, no key). OpenStreetMap
+# often lacks the city for a ZIP centroid, so this gives nicer labels. Set false
+# to skip the external lookup and reverse-geocode instead. (default: true)
+# zip_city_lookup = true
+# Optional: default coordinates when user does not specify a location
+# default_lat = 47.6062
+# default_lon = -122.3321
+
 [Channels_List]
 # Common hashtag channels for the region
 # Format: channel_name = description
@@ -1716,6 +1734,35 @@ alerts_channel = #weather
 # How often to check for new weather alerts
 # Default: 600000 (10 minutes)
 poll_weather_alerts_interval = 600000
+
+# --- Proactive rain nowcast ("rain incoming" push) ---
+# Automatically posts a heads-up to a channel when precipitation is about to
+# start at the bot's position (my_position_lat/lon above), using Open-Meteo's
+# 15-minutely forecast — the same engine as the `rain`/`nowcast` command.
+# Fires once per rain episode (deduped), re-arms after it clears.
+# Opt-in: set true to enable. Default: false
+rain_nowcast_enabled = false
+
+# Channel for the heads-up. Defaults to weather_channel if unset.
+# rain_channel = #weather
+
+# How often to check for incoming rain (milliseconds). Default: 900000 (15 min)
+poll_rain_nowcast_interval = 900000
+
+# Only announce when rain is expected to start within this many minutes.
+# Default: 60
+rain_nowcast_lead_minutes = 60
+
+# Minimum minutes between pushes (cooldown backstop against forecast flapping).
+# Default: 30
+rain_nowcast_renotify_minutes = 30
+
+# Also announce when rain is about to STOP (not just start). Default: true
+# rain_nowcast_announce_ending = true
+
+# Precipitation amount (mm per 15-min bucket) that counts as rain. Lower = more
+# sensitive to light drizzle; raise to ignore trace amounts. Default: 0.1
+# rain_nowcast_threshold_mm = 0.1
 
 # Thunder/storm data collection interval (milliseconds)
 # How often to aggregate thunder data for evaluation
