@@ -6,7 +6,6 @@ import logging
 from unittest.mock import MagicMock
 
 import pytest
-
 from meshcore import EventType
 
 from modules.service_plugins.packet_capture_service import PacketCaptureService

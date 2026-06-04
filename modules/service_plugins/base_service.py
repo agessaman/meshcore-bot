@@ -238,7 +238,7 @@ class BaseServicePlugin(ABC):
         Override in services that subscribe to meshcore events. Default is no-op.
         Only invoked for services that are already running (after initial start).
         """
-        pass
+        return None
 
     def get_metadata(self) -> dict[str, Any]:
         """Get service metadata.
