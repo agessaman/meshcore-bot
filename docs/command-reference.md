@@ -242,6 +242,40 @@ aqi help
 
 ---
 
+### `rain <location>`
+
+Minute-level rain nowcast — tells you when precipitation is about to **start** or **stop** in the next couple hours, using Open-Meteo's 15-minutely precipitation forecast. Works worldwide with no API key.
+
+**Aliases:** `nowcast`
+
+**Usage:**
+```
+rain [city|zipcode|lat,lon]
+nowcast [city|zipcode|lat,lon]
+```
+
+**Examples:**
+```
+rain
+rain seattle
+rain 98101
+rain 47.6,-122.3
+```
+
+**Response:** A single line describing the upcoming precipitation, for example:
+- `🌧️ Rain starting in ~25min for Seattle (~45min)` — dry now, rain expected (with rough duration)
+- `🌧️ Rain easing in ~20min for Seattle` — raining now, clearing soon
+- `🌧️ Heavy rain steady for 2h+ in Seattle` — raining now, no break in the window
+- `☀️ No rain expected in next 2h for Seattle` — dry through the window
+
+When no location is given, uses the sender's companion location if known, then the bot's configured location.
+
+**Configuration:** `[Rain_Command]` — `enabled`, `window_minutes` (how far ahead to look, default 120), `precip_threshold_mm` (sensitivity, default 0.1), and optional `default_lat`/`default_lon`. Temperature/precipitation source units are shared via `[Weather]` (`weather_model` is honored).
+
+**Note:** Falls back to hourly precipitation when a weather model doesn't provide 15-minute data for the area.
+
+---
+
 ### `airplanes [location] [options]` / `overhead [lat,lon]`
 
 Get aircraft tracking information using ADS-B data from airplanes.live or compatible APIs.

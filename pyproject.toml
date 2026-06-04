@@ -132,6 +132,7 @@ module = [
     "modules.plugin_loader",
     "modules.security_utils",
     "modules.commands.base_command",
+    "modules.commands.rain_command",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
