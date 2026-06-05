@@ -571,12 +571,7 @@ class RepeaterManager:
 
     def _update_currently_tracked_status_on_conn(self, conn, public_key: str):
         """Update the is_currently_tracked flag on an existing connection (no commit)."""
-        is_tracked = False
-        if hasattr(self.bot.meshcore, 'contacts'):
-            for contact_key, contact_data in list(self.bot.meshcore.contacts.items()):
-                if contact_data.get('public_key', contact_key) == public_key:
-                    is_tracked = True
-                    break
+        is_tracked = self.is_contact_on_device(public_key)
         self.db_manager.execute_update_on_connection(
             conn,
             'UPDATE complete_contact_tracking SET is_currently_tracked = ? WHERE public_key = ?',
@@ -586,13 +581,7 @@ class RepeaterManager:
     async def _update_currently_tracked_status(self, public_key: str):
         """Update the is_currently_tracked flag based on device contact list"""
         try:
-            # Check if this repeater is currently in the device's contact list
-            is_tracked = False
-            if hasattr(self.bot.meshcore, 'contacts'):
-                for contact_key, contact_data in list(self.bot.meshcore.contacts.items()):
-                    if contact_data.get('public_key', contact_key) == public_key:
-                        is_tracked = True
-                        break
+            is_tracked = self.is_contact_on_device(public_key)
 
             # Update the flag
             self.db_manager.execute_update(
@@ -602,6 +591,48 @@ class RepeaterManager:
 
         except Exception as e:
             self.logger.error(f"Error updating currently tracked status: {e}")
+
+    def get_tracked_contact_row(self, public_key: str) -> Optional[dict[str, Any]]:
+        """Return a tracked contact row by public key, or None when absent."""
+        try:
+            rows = self.db_manager.execute_query(
+                '''
+                SELECT public_key, name, role, device_type, first_heard, last_heard,
+                       advert_count, is_currently_tracked
+                FROM complete_contact_tracking
+                WHERE public_key = ?
+                LIMIT 1
+                ''',
+                (public_key,),
+            )
+            return rows[0] if rows else None
+        except Exception as e:
+            self.logger.debug("Error looking up tracked contact %s: %s", public_key[:16], e)
+            return None
+
+    def is_contact_on_device(self, public_key: str) -> bool:
+        """Return True when the radio's live contact table already contains public_key."""
+        try:
+            if hasattr(self.bot.meshcore, 'contacts'):
+                for contact_key, contact_data in list(self.bot.meshcore.contacts.items()):
+                    if contact_data.get('public_key', contact_key) == public_key:
+                        return True
+        except Exception as e:
+            self.logger.debug("Error checking live device contacts for %s: %s", public_key[:16], e)
+        return False
+
+    async def refresh_device_contacts(self) -> bool:
+        """Refresh meshcore.contacts from the radio when supported."""
+        try:
+            if not getattr(self.bot, 'meshcore', None) or not hasattr(self.bot.meshcore, 'commands'):
+                return False
+            if not hasattr(self.bot.meshcore.commands, 'get_contacts'):
+                return False
+            await self.bot.meshcore.commands.get_contacts()
+            return True
+        except Exception as e:
+            self.logger.debug("Failed to refresh device contacts: %s", e)
+            return False
 
     async def get_complete_contact_database(self, role_filter: Optional[str] = None, include_historical: bool = True) -> list[dict]:
         """Get complete contact database for path estimation and analysis"""
@@ -2830,48 +2861,67 @@ class RepeaterManager:
         code_str = str(payload.get('code_string', '') or '')
         return 'TABLE_FULL' in code_str.upper()
 
-    async def add_companion_from_contact_data(
+    async def add_contact_from_contact_data(
         self,
         contact_data: dict[str, Any],
         contact_name: str,
         public_key: str,
+        contact_kind: str = "contact",
     ) -> bool:
-        """Add companion using full contact_data (paths). Pre-manages when near limit; retries once on TABLE_FULL."""
+        """Add a contact using full contact_data (paths). Pre-manage when near limit; retry once on TABLE_FULL."""
         try:
             if not self.bot.meshcore or not hasattr(self.bot.meshcore, 'commands'):
-                self.logger.error('No meshcore commands — cannot add companion %s', contact_name)
+                self.logger.error('No meshcore commands — cannot add %s %s', contact_kind, contact_name)
                 return False
 
             status = await self.get_contact_list_status()
             if status and status.get('is_near_limit'):
                 self.logger.warning(
-                    'Contact list near limit (%.1f%%) before add — managing capacity for %s',
+                    'Contact list near limit (%.1f%%) before add — managing capacity for %s %s',
                     status.get('usage_percentage', 0.0),
+                    contact_kind,
                     contact_name,
                 )
                 await self.manage_contact_list(auto_cleanup=True)
 
             result = await self.bot.meshcore.commands.add_contact(contact_data)
             if hasattr(result, 'type') and result.type == EventType.OK:
-                self.logger.info("Companion %s added to device contacts", contact_name)
+                self.logger.info("%s %s added to device contacts", contact_kind.capitalize(), contact_name)
+                await self.refresh_device_contacts()
                 return True
 
             if self._is_meshcore_table_full(result):
                 self.logger.warning(
-                    'TABLE_FULL adding companion %s — running manage_contact_list and retrying once',
+                    'TABLE_FULL adding %s %s — running manage_contact_list and retrying once',
+                    contact_kind,
                     contact_name,
                 )
                 await self.manage_contact_list(auto_cleanup=True)
                 result = await self.bot.meshcore.commands.add_contact(contact_data)
                 if hasattr(result, 'type') and result.type == EventType.OK:
-                    self.logger.info('Companion %s added after retry', contact_name)
+                    self.logger.info('%s %s added after retry', contact_kind.capitalize(), contact_name)
+                    await self.refresh_device_contacts()
                     return True
 
-            self.logger.warning('Failed to add companion %s to device: %s', contact_name, result)
+            self.logger.warning('Failed to add %s %s to device: %s', contact_kind, contact_name, result)
             return False
         except Exception as e:
-            self.logger.error('Error adding companion %s: %s', contact_name, e)
+            self.logger.error('Error adding %s %s: %s', contact_kind, contact_name, e)
             return False
+
+    async def add_companion_from_contact_data(
+        self,
+        contact_data: dict[str, Any],
+        contact_name: str,
+        public_key: str,
+    ) -> bool:
+        """Backward-compatible wrapper for companion add path."""
+        return await self.add_contact_from_contact_data(
+            contact_data,
+            contact_name,
+            public_key,
+            contact_kind="companion",
+        )
 
     async def apply_device_mode_firmware_preferences(self) -> bool:
         """Set companion-radio firmware: manual per-type adds + overwrite oldest non-favourite + chat-only (0x03)."""

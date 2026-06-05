@@ -1968,7 +1968,11 @@ def new_contact_env(mock_logger):
     )
     rm.manage_contact_list = AsyncMock(return_value={"success": True})
     rm.add_companion_from_contact_data = AsyncMock(return_value=True)
+    rm.add_contact_from_contact_data = AsyncMock(return_value=True)
+    rm.refresh_device_contacts = AsyncMock(return_value=True)
     rm.log_purging_action = Mock()
+    rm.get_tracked_contact_row = Mock(return_value=None)
+    rm.is_contact_on_device = Mock(return_value=False)
     rm.db_manager = Mock()
     rm.db_manager.execute_update = Mock()
     rm._is_repeater_device = Mock(return_value=False)
@@ -1992,24 +1996,36 @@ class TestHandleNewContactAutoManage:
         rm.track_contact_advertisement.assert_awaited_once()
         mesh.commands.add_contact.assert_not_called()
         rm.add_companion_from_contact_data.assert_not_called()
+        rm.add_contact_from_contact_data.assert_not_called()
         rm.log_purging_action.assert_called_once()
 
     async def test_device_mode_no_bot_add_contact(self, new_contact_env):
         bot, handler, rm, mesh = new_contact_env
         bot.config.set("Bot", "auto_manage_contacts", "device")
+        rm.is_contact_on_device.return_value = True
         ev = _NewContactEvent(_companion_contact_payload())
         await handler.handle_new_contact(ev, None)
         rm.track_contact_advertisement.assert_awaited_once()
         mesh.commands.add_contact.assert_not_called()
         rm.add_companion_from_contact_data.assert_not_called()
+        rm.add_contact_from_contact_data.assert_not_called()
         rm.get_contact_list_status.assert_awaited()
 
-    async def test_bot_mode_uses_add_companion_from_contact_data(self, new_contact_env):
+    async def test_device_mode_adds_contact_when_missing_from_radio_db(self, new_contact_env):
+        bot, handler, rm, mesh = new_contact_env
+        bot.config.set("Bot", "auto_manage_contacts", "device")
+        ev = _NewContactEvent(_companion_contact_payload())
+        await handler.handle_new_contact(ev, None)
+        rm.add_contact_from_contact_data.assert_awaited_once()
+        rm.add_companion_from_contact_data.assert_not_called()
+
+    async def test_bot_mode_uses_add_contact_from_contact_data(self, new_contact_env):
         bot, handler, rm, mesh = new_contact_env
         bot.config.set("Bot", "auto_manage_contacts", "bot")
         ev = _NewContactEvent(_companion_contact_payload())
         await handler.handle_new_contact(ev, None)
-        rm.add_companion_from_contact_data.assert_awaited_once()
+        rm.add_contact_from_contact_data.assert_awaited_once()
+        rm.add_companion_from_contact_data.assert_not_called()
         mesh.commands.add_contact.assert_not_called()
 
     async def test_bot_mode_skips_add_when_duplicate_packet_hash(self, new_contact_env):
@@ -2023,7 +2039,7 @@ class TestHandleNewContactAutoManage:
         ev = _NewContactEvent(_companion_contact_payload())
         await handler.handle_new_contact(ev, None)
         rm.track_contact_advertisement.assert_awaited_once()
-        rm.add_companion_from_contact_data.assert_not_called()
+        rm.add_contact_from_contact_data.assert_not_called()
         rm.get_contact_list_status.assert_not_awaited()
 
     async def test_bot_mode_two_events_first_unique_then_duplicate_adds_once(self, new_contact_env):
@@ -2041,4 +2057,87 @@ class TestHandleNewContactAutoManage:
         await handler.handle_new_contact(ev, None)
         await handler.handle_new_contact(ev, None)
         assert rm.track_contact_advertisement.await_count == 2
-        rm.add_companion_from_contact_data.assert_awaited_once()
+        rm.add_contact_from_contact_data.assert_awaited_once()
+
+    async def test_existing_companion_skips_new_contact_audit_log(self, new_contact_env):
+        bot, handler, rm, mesh = new_contact_env
+        bot.config.set("Bot", "auto_manage_contacts", "false")
+        rm.get_tracked_contact_row.return_value = {
+            "public_key": _companion_contact_payload()["public_key"],
+            "name": "Alice",
+            "role": "companion",
+        }
+
+        ev = _NewContactEvent(_companion_contact_payload())
+        await handler.handle_new_contact(ev, None)
+
+        rm.log_purging_action.assert_not_called()
+
+    async def test_existing_companion_logs_known_not_new(self, new_contact_env):
+        bot, handler, rm, mesh = new_contact_env
+        bot.config.set("Bot", "auto_manage_contacts", "false")
+        rm.get_tracked_contact_row.return_value = {
+            "public_key": _companion_contact_payload()["public_key"],
+            "name": "Alice",
+            "role": "companion",
+        }
+
+        ev = _NewContactEvent(_companion_contact_payload())
+        await handler.handle_new_contact(ev, None)
+
+        log_messages = [str(call.args[0]) for call in bot.logger.info.call_args_list if call.args]
+        assert any("Known companion advert" in msg for msg in log_messages)
+        assert not any("New companion discovered" in msg for msg in log_messages)
+
+
+@pytest.mark.asyncio
+async def test_existing_repeater_logs_known_not_new(mock_logger):
+    bot = Mock()
+    bot.logger = mock_logger
+    bot.config = configparser.ConfigParser()
+    bot.config.add_section("Bot")
+    bot.config.set("Bot", "enabled", "true")
+    bot.config.set("Bot", "rf_data_timeout", "15.0")
+    bot.config.set("Bot", "message_correlation_timeout", "10.0")
+    bot.config.set("Bot", "enable_enhanced_correlation", "true")
+    bot.connection_time = None
+    bot.prefix_hex_chars = 8
+    bot.command_manager = Mock()
+    bot.command_manager.monitor_channels = ["general"]
+    bot.command_manager.is_user_banned = Mock(return_value=False)
+    bot.command_manager.commands = {}
+
+    handler = MessageHandler(bot)
+    bot.message_handler = handler
+
+    rm = Mock()
+    from modules.repeater_manager import TrackAdvertResult
+
+    rm._is_repeater_device = Mock(return_value=True)
+    rm.get_tracked_contact_row = Mock(
+        return_value={"public_key": "cd" * 32, "name": "Roof", "role": "repeater"}
+    )
+    rm.is_contact_on_device = Mock(return_value=False)
+    rm.refresh_device_contacts = AsyncMock(return_value=True)
+    rm.track_contact_advertisement = AsyncMock(
+        return_value=TrackAdvertResult(ok=True, duplicate_packet=False)
+    )
+    rm.add_contact_from_contact_data = AsyncMock(return_value=True)
+    rm.check_and_auto_purge = AsyncMock()
+    bot.repeater_manager = rm
+    bot.web_viewer_integration = None
+
+    payload = {
+        "public_key": "cd" * 32,
+        "adv_name": "Roof",
+        "name": "Roof",
+        "type": 2,
+        "flags": 0,
+    }
+    ev = _NewContactEvent(payload)
+    await handler.handle_new_contact(ev, None)
+
+    log_messages = [str(call.args[0]) for call in bot.logger.info.call_args_list if call.args]
+    assert any("Known repeater advert" in msg for msg in log_messages)
+    assert not any("New repeater discovered" in msg for msg in log_messages)
+    rm.add_contact_from_contact_data.assert_awaited_once()
