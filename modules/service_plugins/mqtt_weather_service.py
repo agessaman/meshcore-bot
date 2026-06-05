@@ -27,6 +27,39 @@ class MqttWeatherService(BaseServicePlugin):
     config_section = "MqttWeather"
     description = "MQTT subscriber for custom.mqtt_weather.* wx/gwx sources"
 
+    # Web-viewer settings schema (see modules/settings_schema.py)
+    settings_schema = [
+        {"key": "broker", "label": "Broker host", "type": "str", "default": "", "help": "MQTT broker hostname."},
+        {"key": "port", "label": "Broker port", "type": "int", "min": 1, "max": 65535, "default": 1883,
+         "help": "Broker port (1883 plain, 443 typical for websockets/TLS)."},
+        {"key": "transport", "label": "Transport", "type": "enum",
+         "options": [{"value": "tcp", "label": "TCP"}, {"value": "websockets", "label": "WebSockets"}],
+         "default": "tcp", "help": "MQTT transport."},
+        {"key": "websocket_path", "label": "WebSocket path", "type": "str", "default": "",
+         "help": "Path when transport is websockets (e.g. /mqtt)."},
+        {"key": "use_tls", "label": "Use TLS", "type": "bool", "default": False, "help": "Enable TLS for the connection."},
+        {"key": "username", "label": "Username", "type": "str", "default": "", "help": "Broker username (optional)."},
+        {"key": "password", "label": "Password", "type": "str", "default": "", "help": "Broker password (optional)."},
+        {"key": "client_id", "label": "Client ID", "type": "str", "default": "", "help": "Optional MQTT client id."},
+        {"key": "qos", "label": "QoS", "type": "int", "min": 0, "max": 2, "default": 0, "help": "MQTT quality of service."},
+        {"key": "max_payload_bytes", "label": "Max payload", "type": "int", "min": 1, "default": 65536, "unit": "bytes",
+         "help": "Drop incoming payloads larger than this."},
+        {"key": "stale_after_seconds", "label": "Stale after", "type": "int", "min": 1, "default": 3600, "unit": "s",
+         "help": "Cached reading is stale after this long without a fresh message."},
+        {"key": "output_mode", "label": "Output mode", "type": "enum",
+         "options": [{"value": "passthrough", "label": "Passthrough"},
+                     {"value": "json_template", "label": "JSON template"}],
+         "default": "passthrough", "help": "How payloads are converted for mesh."},
+        {"key": "json_template", "label": "JSON template", "type": "str", "default": "",
+         "help": "Template for json_template mode. Placeholders: {time} {temperature_f} {temperature_c} {humidity} {device}."},
+        {"key": "json_device_key", "label": "JSON device key", "type": "str", "default": "",
+         "help": "Optional filter: JSON key to match."},
+        {"key": "json_device_value", "label": "JSON device value", "type": "str", "default": "",
+         "help": "Optional filter: required value for the device key."},
+        {"key": "passthrough_max_length", "label": "Passthrough max length", "type": "int", "min": 1, "default": 500, "unit": "chars",
+         "help": "Max output length after sanitize."},
+    ]
+
     def __init__(self, bot: Any):
         super().__init__(bot)
         self.logger = logging.getLogger("MqttWeatherService")

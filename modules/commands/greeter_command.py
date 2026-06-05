@@ -24,6 +24,34 @@ class GreeterCommand(BaseCommand):
     description = "Greets users on their first public channel message (once globally by default, or per-channel if configured)"
     category = "system"
 
+    # Web-viewer settings schema (see modules/settings_schema.py)
+    settings_schema = [
+        {"key": "greeting_message", "label": "Greeting message", "type": "str",
+         "default": "Welcome to the mesh, @[{sender}]!",
+         "help": "Default greeting. {sender} = user; separate multi-part messages with |."},
+        {"key": "rollout_days", "label": "Rollout period", "type": "int",
+         "min": 0, "default": 7, "unit": "days",
+         "help": "Days the greeter rollout runs before auto-ending."},
+        {"key": "channel_greetings", "label": "Per-channel greetings", "type": "str",
+         "default": "",
+         "help": "channel:greeting,channel2:greeting2 — overrides the default per channel."},
+        {"key": "per_channel_greetings", "label": "Greet once per channel", "type": "bool",
+         "default": False,
+         "help": "On: greet each user once per channel. Off: once globally."},
+        {"key": "include_mesh_info", "label": "Include mesh info", "type": "bool",
+         "default": True,
+         "help": "Append mesh statistics to the greeting."},
+        {"key": "mesh_info_format", "label": "Mesh info format", "type": "str",
+         "default": "",
+         "help": "Template for mesh info. Fields: {total_contacts}, {repeaters}, {companions}, {recent_activity_24h}."},
+        {"key": "auto_backfill", "label": "Auto-backfill greeted users", "type": "bool",
+         "default": False,
+         "help": "On first run, mark recently-seen users as already greeted so they aren't greeted retroactively."},
+        {"key": "backfill_lookback_days", "label": "Backfill lookback", "type": "int",
+         "min": 0, "default": 0, "unit": "days",
+         "help": "How far back to look when auto-backfilling. 0 = all time."},
+    ]
+
     def __init__(self, bot: Any):
         """Initialize the greeter command.
 

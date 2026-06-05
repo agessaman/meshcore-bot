@@ -39,6 +39,26 @@ class DARC_MoWaS_Service(BaseServicePlugin):
     config_section = "DARC_MoWaS_Service"
     description = "Receives the MoWaS alerts from a DARC operated backend"
 
+    # Web-viewer settings schema (see modules/settings_schema.py)
+    settings_schema = [
+        {"key": "host", "label": "Listen host", "type": "str", "default": "localhost",
+         "help": "Address the webhook receiver binds to (must be reachable by MoWaS)."},
+        {"key": "port", "label": "Listen port", "type": "int", "min": 1, "max": 65535, "default": 8081,
+         "help": "Port for the MoWaS webhook receiver."},
+        {"key": "channel_de", "label": "German channel", "type": "str", "default": "",
+         "help": "Channel for German-language warnings (e.g. #mowas)."},
+        {"key": "channel_en", "label": "English channel", "type": "str", "default": "",
+         "help": "Channel for English-language warnings (e.g. #mowas-en)."},
+        {"key": "hamnet", "label": "Use HAMNET", "type": "bool", "default": False,
+         "help": "Download warnings via HAMNET instead of the internet."},
+        {"key": "retry_max", "label": "Retry count", "type": "int", "min": 0, "default": 2,
+         "help": "Retries for messages not acked by at least one repeater."},
+        {"key": "retry_timeout", "label": "Retry timeout", "type": "int", "min": 1, "default": 15, "unit": "s",
+         "help": "Seconds to wait before retrying."},
+        {"key": "flood_scope", "label": "Flood scope", "type": "str", "default": "",
+         "help": "Optional regional TC_FLOOD scope for mesh posts (e.g. #west)."},
+    ]
+
     def __init__(self, bot: Any) -> None:
         super().__init__(bot)
 

@@ -608,6 +608,15 @@ class MessageScheduler:
                         lambda f: self.logger.exception("Error processing radio operations: %s", f.exception())
                         if not f.cancelled() and f.exception() else None
                     )
+                    # Config-reload requests from the web viewer use the same table.
+                    config_future = asyncio.run_coroutine_threadsafe(
+                        self._process_config_operations(),
+                        self.bot.main_event_loop
+                    )
+                    config_future.add_done_callback(
+                        lambda f: self.logger.exception("Error processing config operations: %s", f.exception())
+                        if not f.cancelled() and f.exception() else None
+                    )
                 self.last_radio_ops_check_time = time.time()
 
             # Process feed message queue (every 2 seconds, fire-and-forget)
@@ -1029,6 +1038,63 @@ class MessageScheduler:
 
         except Exception as e:
             self.logger.exception(f"Error in _process_radio_operations: {e}")
+
+    async def _process_config_operations(self):
+        """Process pending config_reload requests queued by the web viewer.
+
+        The web viewer (a separate process) inserts a ``config_reload`` row into
+        ``channel_operations``; here we call ``bot.reload_config()`` so command
+        settings saved in the UI take effect without a restart.  Service plugin
+        start/stop is not handled by reload_config and still needs a restart.
+        """
+        try:
+            with self.bot.db_manager.connection() as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT id FROM channel_operations
+                    WHERE status = 'pending' AND operation_type = 'config_reload'
+                    ORDER BY created_at ASC
+                    LIMIT 1
+                ''')
+                op = cursor.fetchone()
+
+            if not op:
+                return
+
+            op_id = op['id']
+            self.logger.info(f"Processing config reload operation {op_id}")
+
+            try:
+                success, message = self.bot.reload_config()
+            except Exception as e:  # noqa: BLE001 - never let reload crash the scheduler
+                success, message = False, str(e)
+                self.logger.exception("Error during config reload")
+
+            with self.bot.db_manager.connection() as conn:
+                cursor = conn.cursor()
+                if success:
+                    cursor.execute('''
+                        UPDATE channel_operations
+                        SET status = 'completed',
+                            processed_at = CURRENT_TIMESTAMP,
+                            result_data = ?
+                        WHERE id = ?
+                    ''', (json.dumps({'success': True, 'message': message}), op_id))
+                else:
+                    cursor.execute('''
+                        UPDATE channel_operations
+                        SET status = 'failed',
+                            processed_at = CURRENT_TIMESTAMP,
+                            error_message = ?
+                        WHERE id = ?
+                    ''', (message, op_id))
+                conn.commit()
+
+            self.logger.info("Config reload %s: %s", 'succeeded' if success else 'failed', message)
+
+        except Exception as e:
+            self.logger.exception(f"Error in _process_config_operations: {e}")
 
     async def _firmware_read_op(self):
         """Read path.hash.mode and custom vars (including loop.detect) from radio firmware."""

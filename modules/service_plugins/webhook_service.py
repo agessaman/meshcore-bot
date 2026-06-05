@@ -60,6 +60,23 @@ class WebhookService(BaseServicePlugin):
     config_section = "Webhook"
     description = "Inbound webhook receiver — relay HTTP POST payloads to MeshCore channels"
 
+    # Web-viewer settings schema (see modules/settings_schema.py)
+    settings_schema = [
+        {"key": "host", "label": "Bind host", "type": "str", "default": "127.0.0.1",
+         "help": "127.0.0.1 = localhost only (recommended); 0.0.0.0 = any interface."},
+        {"key": "port", "label": "Listen port", "type": "int", "min": 1, "max": 65535, "default": 8765,
+         "help": "Must not conflict with the web viewer port."},
+        {"key": "secret_token", "label": "Secret token", "type": "str", "default": "",
+         "help": "If set, requests must include it via 'Authorization: Bearer' or 'X-Webhook-Token'. "
+                 "Empty disables auth (not recommended)."},
+        {"key": "max_message_length", "label": "Max message length", "type": "int", "min": 1, "default": 200,
+         "help": "Excess is silently truncated."},
+        {"key": "allowed_channels", "label": "Allowed channels", "type": "list", "default": "",
+         "help": "Comma-separated channel whitelist. Empty = any channel."},
+        {"key": "flood_scope", "label": "Flood scope", "type": "str", "default": "",
+         "help": "Optional regional TC_FLOOD scope for posts (e.g. #west)."},
+    ]
+
     # Maximum body size accepted (bytes)
     MAX_BODY_SIZE = 8_192
 

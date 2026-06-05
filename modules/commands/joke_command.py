@@ -49,6 +49,16 @@ class JokeCommand(BaseCommand):
     BLACKLIST_FLAGS = "nsfw,religious,political,racist,sexist,explicit"
     TIMEOUT = 10  # seconds
 
+    # Web-viewer settings schema (see modules/settings_schema.py)
+    settings_schema = [
+        {"key": "seasonal_jokes", "label": "Seasonal jokes", "type": "bool",
+         "default": True,
+         "help": "Apply seasonal defaults (October: spooky, December: Christmas)."},
+        {"key": "long_jokes", "label": "Allow long jokes", "type": "bool",
+         "default": False,
+         "help": "On: split jokes over 130 chars into multiple messages. Off: fetch a shorter one."},
+    ]
+
     def __init__(self, bot: Any):
         """Initialize the joke command.
 

@@ -35,6 +35,23 @@ class ChannelsCommand(BaseCommand):
         {"name": "#channel", "description": "Get info on a specific channel"}
     ]
 
+    # Web-viewer dynamic section editor (see modules/settings_schema.py).
+    # Channel data lives in its own [Channels_List] section as a free-form list
+    # of "name = description" entries; users add channels by appending rows.
+    settings_dynamic_sections = [
+        {
+            "section": "Channels_List",
+            "label": "Channel list",
+            "help": ("Channels listed by this command. Use 'name' for a general "
+                     "channel or 'category.name' to group it (e.g. weather.seattle). "
+                     "The value is the channel's description."),
+            "key_label": "Channel (or category.channel)",
+            "value_label": "Description",
+            "key_placeholder": "seattle   or   weather.seattle",
+            "value_placeholder": "Seattle regional chat",
+        }
+    ]
+
     def __init__(self, bot):
         """Initialize the channels command.
 

@@ -25,6 +25,35 @@ class AnnouncementsCommand(BaseCommand):
     requires_dm = True
     category = "admin"
 
+    # Web-viewer settings schema (see modules/settings_schema.py).
+    # announce.<trigger> keys are dynamic and appear under "Other config values".
+    settings_schema = [
+        {"key": "default_announcement_channel", "label": "Default channel", "type": "str",
+         "default": "Public",
+         "help": "Channel used when an announcement specifies none."},
+        {"key": "announcement_cooldown", "label": "Cooldown", "type": "int",
+         "min": 0, "default": 60, "unit": "min",
+         "help": "Minimum minutes between repeats of the same announcement."},
+        {"key": "announcements_acl", "label": "Announcements ACL", "type": "str",
+         "default": "",
+         "help": "Comma-separated 64-char hex pubkeys allowed to announce (inherits Admin_ACL)."},
+    ]
+
+    # Web-viewer dynamic editor for the announce.* trigger keys in this section.
+    settings_dynamic_sections = [
+        {
+            "section": "Announcements_Command",
+            "key_prefix": "announce.",
+            "label": "Announcement triggers",
+            "help": ("Each trigger is sent with 'announce <name> [channel]'. "
+                     "The value is the announcement text."),
+            "key_label": "Trigger name",
+            "value_label": "Announcement text",
+            "key_placeholder": "default",
+            "value_placeholder": "This is the default announcement.",
+        }
+    ]
+
     def __init__(self, bot):
         super().__init__(bot)
 

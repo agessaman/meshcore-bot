@@ -37,6 +37,12 @@ class BaseCommand(ABC):
     examples: list[str] = []  # Example commands, e.g., ["wx 98101", "wx seattle tomorrow"]
     parameters: list[dict[str, str]] = []  # Parameter definitions, e.g., [{"name": "location", "description": "US zip code or city name"}]
 
+    # Optional machine-readable description of this command's configurable
+    # settings, used by the web viewer to render typed widgets and validate
+    # input.  See modules/settings_schema.py for the field format.  Plugins that
+    # leave this empty get a generic enable-toggle + raw key/value editor.
+    settings_schema: list[dict[str, Any]] = []
+
     def __init__(self, bot: Any) -> None:
         self.bot = bot
         self.logger = bot.logger
@@ -502,7 +508,9 @@ class BaseCommand(ABC):
             'cooldown_seconds': self.cooldown_seconds,
             'category': self.category,
             'class_name': self.__class__.__name__,
-            'module_name': self.__class__.__module__
+            'module_name': self.__class__.__module__,
+            'settings_schema': self.settings_schema,
+            'has_schema': bool(self.settings_schema),
         }
 
     async def send_response(

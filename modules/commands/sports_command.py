@@ -59,6 +59,19 @@ class SportsCommand(BaseCommand):
     thesportsdb_client: Optional[TheSportsDBClient] = None
 
 
+    # Web-viewer settings schema (see modules/settings_schema.py)
+    settings_schema = [
+        {"key": "teams", "label": "Default teams", "type": "list",
+         "default": "seahawks,mariners,sounders,kraken",
+         "help": "Comma-separated team names (lowercase) shown when 'sports' is used with no args."},
+        {"key": "channels", "label": "Allowed channels", "type": "list",
+         "default": "",
+         "help": "Comma-separated channels to restrict to. Omit to use global monitor_channels."},
+        {"key": "channel_override", "label": "Channel team overrides", "type": "str",
+         "default": "",
+         "help": "channel=team,channel2=team2 — default team shortcut per channel."},
+    ]
+
     def __init__(self, bot: "MeshCoreBot"):
         """Initialize the sports command with API clients and configuration.
 

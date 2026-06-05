@@ -70,6 +70,44 @@ class WxCommand(BaseCommand):
         {"name": "option", "description": "tomorrow, Nd (e.g. 7d, 10d), hourly, or alerts (optional)"}
     ]
 
+    # Web-viewer settings schema (see modules/settings_schema.py)
+    settings_schema = [
+        {
+            "key": "temperature_unit",
+            "label": "Temperature unit",
+            "type": "enum",
+            "options": [
+                {"value": "fahrenheit", "label": "Fahrenheit (°F)"},
+                {"value": "celsius", "label": "Celsius (°C)"},
+            ],
+            "default": "fahrenheit",
+            "help": "Unit used when reporting temperatures.",
+        },
+        {
+            "key": "wind_speed_unit",
+            "label": "Wind speed unit",
+            "type": "enum",
+            "options": [
+                {"value": "mph", "label": "Miles per hour (mph)"},
+                {"value": "kmh", "label": "Kilometers per hour (km/h)"},
+            ],
+            "default": "mph",
+            "help": "Unit used when reporting wind speed.",
+        },
+        {"key": "weather_provider", "label": "Weather provider", "type": "enum", "section": "Weather",
+         "options": [
+             {"value": "noaa", "label": "NOAA (US, includes alerts)"},
+             {"value": "openmeteo", "label": "Open-Meteo (global)"},
+         ],
+         "default": "noaa", "help": "API used for forecasts. Shared weather setting."},
+        {"key": "default_city", "label": "Default city", "type": "str", "section": "Weather",
+         "default": "", "help": "City used for a bare 'wx' when no location is given. Shared weather setting."},
+        {"key": "default_state", "label": "Default state", "type": "str", "section": "Weather",
+         "default": "", "help": "2-letter state for city disambiguation (e.g. WA). Shared weather setting."},
+        {"key": "default_country", "label": "Default country", "type": "str", "section": "Weather",
+         "default": "US", "help": "2-letter country code (e.g. US). Shared weather setting."},
+    ]
+
     # Error constants
     NO_DATA_NOGPS = "No GPS data available"
     ERROR_FETCHING_DATA = "Error fetching weather data"
@@ -370,9 +408,12 @@ class WxCommand(BaseCommand):
             # Still return the forecast, but log the warning
             # Optionally, we could return an error message here instead
 
-        # Get unit preferences from config
-        temp_unit = self.bot.config.get('Weather', 'temperature_unit', fallback='fahrenheit').lower()
-        wind_unit = self.bot.config.get('Weather', 'wind_speed_unit', fallback='mph').lower()
+        # Get unit preferences from config. Canonical section is [Wx_Command];
+        # get_config_value falls back to legacy [Weather] for existing setups.
+        temp_unit = self.get_config_value(
+            'Wx_Command', 'temperature_unit', fallback='fahrenheit', value_type='str').lower()
+        wind_unit = self.get_config_value(
+            'Wx_Command', 'wind_speed_unit', fallback='mph', value_type='str').lower()
 
         # Format based on forecast type
         if forecast_type == "tomorrow":

@@ -42,12 +42,32 @@ from flask import (
 )
 from flask_socketio import SocketIO, disconnect, emit
 
+from modules.ini_writer import update_ini_values
 from modules.security_utils import (
     VALID_JOURNAL_MODES,
     validate_external_url,
     validate_sql_identifier,
 )
+from modules.settings_schema import (
+    build_plugin_settings_view,
+    to_config_string,
+    validate_field,
+)
+from modules.settings_store import get_settings_store
 from modules.version_info import resolve_runtime_version
+
+
+def _validate_dynamic_key(key: str) -> "str | None":
+    """Validate a dynamic-section row key. Returns an error message or None.
+
+    Keys become INI option names, so they must not contain the separators or
+    comment markers that would corrupt the file on the next read.
+    """
+    if any(ch in key for ch in ('=', ':', '\n', '\r', '[', ']')):
+        return f'Invalid key "{key}": cannot contain = : [ ] or newlines'
+    if key[:1] in ('#', ';'):
+        return f'Invalid key "{key}": cannot start with # or ;'
+    return None
 
 
 def _apply_werkzeug_websocket_fix() -> None:
@@ -1399,6 +1419,198 @@ class BotDataViewer:
                 panel_categories=PANEL_CATEGORIES,
             )
 
+        # ── Plugins settings panel ───────────────────────────────────────────
+
+        @self.app.route('/plugins')
+        def plugins_page():
+            """Plugin & command settings page."""
+            return render_template('plugins.html')
+
+        @self.app.route('/api/plugins')
+        def api_plugins_get():
+            """Return the settings view for every discovered command/service."""
+            try:
+                # Re-read config from disk so the UI reflects external edits.
+                self.config = self._load_config(self.config_path)
+                view = build_plugin_settings_view(self.config, logger=self.logger)
+                return jsonify({'plugins': view})
+            except Exception:
+                self.logger.exception("Error building plugin settings view")
+                return jsonify({'error': 'Internal error — see server logs'}), 500
+
+        @self.app.route('/api/plugins/<kind>/<name>', methods=['POST'])
+        def api_plugins_save(kind: str, name: str):
+            """Validate and persist one plugin's settings, then queue a reload.
+
+            Body: ``{"section": str, "enabled": bool, "values": {key: raw}}``.
+            Validation mirrors the plugin's ``settings_schema`` server-side.
+            """
+            try:
+                data = request.get_json(silent=True) or {}
+                # Locate the plugin entry so we have its schema + section.
+                self.config = self._load_config(self.config_path)
+                view = build_plugin_settings_view(self.config, logger=self.logger)
+                entry = next(
+                    (e for e in view if e['kind'] == kind and e['name'] == name),
+                    None,
+                )
+                if entry is None:
+                    return jsonify({'success': False, 'error': 'Unknown plugin'}), 404
+
+                section = entry['section']
+                schema_by_key = {f['key']: f for f in entry['fields']}
+                raw_values = data.get('values', {}) or {}
+
+                errors: dict[str, str] = {}
+                # Schema-typed keys are validated and routed to their (possibly
+                # shared) target section; any other submitted key is written raw to
+                # the plugin's own section (covers dynamic/legacy keys not in the
+                # schema, so a partial schema never hides remaining settings).
+                updates: dict[str, dict[str, str]] = {section: {}}
+                deletes: dict[str, list[str]] = {}
+                for key, val in raw_values.items():
+                    field = schema_by_key.get(key)
+                    if field is not None:
+                        ok, coerced, err = validate_field(field, val)
+                        if not ok:
+                            errors[key] = err
+                        else:
+                            tsec = field.get('section') or section
+                            updates.setdefault(tsec, {})[key] = to_config_string(field, coerced)
+                    else:
+                        updates[section][str(key)] = '' if val is None else str(val)
+
+                if errors:
+                    return jsonify({'success': False, 'errors': errors}), 400
+
+                # The enable toggle is always written to the plugin's own section.
+                enabled = bool(data.get('enabled', entry['enabled']))
+                updates[section]['enabled'] = 'true' if enabled else 'false'
+                submitted_dyn = data.get('dynamic_sections', {}) or {}
+                for ds in entry.get('dynamic_sections', []):
+                    dsec = ds['section']
+                    prefix = ds.get('key_prefix', '') or ''
+                    rows = submitted_dyn.get(dsec, [])
+                    new_full: dict[str, str] = {}
+                    seen_full: set[str] = set()
+                    seen_disp: set[str] = set()
+                    for row in rows:
+                        rkey = (str(row.get('key', '')) or '').strip()
+                        rval = row.get('value', '')
+                        rval = '' if rval is None else str(rval)
+                        if not rkey:
+                            continue  # skip blank rows
+                        key_err = _validate_dynamic_key(rkey)
+                        if key_err:
+                            return jsonify({'success': False, 'error': key_err}), 400
+                        if rkey.lower() in seen_disp:
+                            return jsonify({'success': False,
+                                            'error': f'Duplicate key "{rkey}" in {ds["label"]}'}), 400
+                        seen_disp.add(rkey.lower())
+                        full = f"{prefix}{rkey}"
+                        new_full[full] = rval
+                        seen_full.add(full.lower())
+                    # Merge into the target section (own section keeps schema fields).
+                    updates.setdefault(dsec, {}).update(new_full)
+                    # Delete existing managed keys that are no longer present.
+                    existing = self.config.items(dsec, raw=True) if self.config.has_section(dsec) else []
+                    pl = prefix.lower()
+                    del_keys = [
+                        k for k, _ in existing
+                        if (not prefix or k.lower().startswith(pl)) and k.lower() not in seen_full
+                    ]
+                    deletes.setdefault(dsec, []).extend(del_keys)
+
+                # Repeating structured blocks (e.g. PacketCapture mqttN_*). Blocks
+                # are renumbered contiguously from 1 (the service stops scanning at
+                # the first missing index), validated per sub-schema, and unknown
+                # sub-keys are passed through so they survive the save.
+                submitted_blocks = data.get('repeating_blocks', {}) or {}
+                for rb in entry.get('repeating_blocks', []):
+                    bid = rb['id']
+                    enabled_field = rb['enabled_field']
+                    field_by_key = {f['key']: f for f in rb['fields']}
+                    written: set[str] = set()
+                    for i, block in enumerate(submitted_blocks.get(bid, []), start=1):
+                        bvals = block.get('values', {}) or {}
+                        for k, val in bvals.items():
+                            full = f"{bid}{i}_{k}"
+                            field = field_by_key.get(k)
+                            if field is not None:
+                                ok, coerced, err = validate_field(field, val)
+                                if not ok:
+                                    return jsonify({'success': False,
+                                                    'error': f'{rb["label"]} #{i}: {err}'}), 400
+                                updates[section][full] = to_config_string(field, coerced)
+                            else:
+                                updates[section][full] = '' if val is None else str(val)
+                            written.add(full.lower())
+                        en = f"{bid}{i}_{enabled_field}"
+                        updates[section][en] = 'true' if block.get('enabled', True) else 'false'
+                        written.add(en.lower())
+                    # Delete any existing block keys (old higher indices / removed).
+                    brx = re.compile(rf"^{re.escape(bid)}\d+_", re.IGNORECASE)
+                    existing = self.config.items(section, raw=True) if self.config.has_section(section) else []
+                    for k, _ in existing:
+                        if brx.match(k) and k.lower() not in written:
+                            deletes.setdefault(section, []).append(k)
+
+                store = get_settings_store(self.config, self.config_path, self.db_manager)
+                result = store.write_sections(updates, deletes)
+                backup_path = result.get('backup_path', '') if isinstance(result, dict) else ''
+
+                # A service's start/stop only takes effect on bot restart.
+                restart_required = (kind == 'service' and enabled != entry['enabled'])
+
+                # Queue a hot reload via the channel_operations table (the bot's
+                # scheduler polls this — same pattern as radio reconnect).
+                reload_queued = False
+                try:
+                    with self.db_manager.connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute(
+                            "INSERT INTO channel_operations (operation_type, status) "
+                            "VALUES ('config_reload', 'pending')"
+                        )
+                        conn.commit()
+                    reload_queued = True
+                except Exception:
+                    self.logger.exception("Failed to queue config reload")
+
+                self.logger.info(
+                    "Plugin settings saved: %s [%s] (backup=%s)",
+                    name, section, os.path.basename(backup_path) if backup_path else 'none',
+                )
+                return jsonify({
+                    'success': True,
+                    'backup_path': backup_path,
+                    'reload_queued': reload_queued,
+                    'restart_required': restart_required,
+                })
+            except Exception:
+                self.logger.exception("Error saving plugin settings")
+                return jsonify({'success': False, 'error': 'Internal error — see server logs'}), 500
+
+        @self.app.route('/api/plugins/reload-status')
+        def api_plugins_reload_status():
+            """Return the status of the most recent config_reload operation."""
+            try:
+                rows = self.db_manager.execute_query(
+                    "SELECT status, result_data, processed_at FROM channel_operations "
+                    "WHERE operation_type = 'config_reload' ORDER BY id DESC LIMIT 1"
+                )
+                if not rows:
+                    return jsonify({'status': None})
+                row = rows[0]
+                return jsonify({
+                    'status': row.get('status'),
+                    'result_data': row.get('result_data'),
+                    'processed_at': row.get('processed_at'),
+                })
+            except Exception:
+                self.logger.exception("Error reading reload status")
+                return jsonify({'status': None}), 500
+
         @self.app.route('/api/config/notifications')
         def api_config_notifications_get():
             """Return current notification settings from bot_metadata."""
@@ -1651,15 +1863,17 @@ class BotDataViewer:
                 try:
                     if not self.config.has_section('Connection'):
                         self.config.add_section('Connection')
+                    ini_updates: dict[str, str] = {}
                     if 'alert_enabled' in data:
-                        self.config.set(
-                            'Connection', 'radio_zombie_alert_enabled',
-                            'true' if str(data['alert_enabled']).lower() == 'true' else 'false',
-                        )
+                        val = 'true' if str(data['alert_enabled']).lower() == 'true' else 'false'
+                        self.config.set('Connection', 'radio_zombie_alert_enabled', val)
+                        ini_updates['radio_zombie_alert_enabled'] = val
                     if 'alert_email' in data:
-                        self.config.set('Connection', 'radio_zombie_alert_email', str(data['alert_email']))
-                    with open(self.config_path, 'w') as fh:
-                        self.config.write(fh)
+                        val = str(data['alert_email'])
+                        self.config.set('Connection', 'radio_zombie_alert_email', val)
+                        ini_updates['radio_zombie_alert_email'] = val
+                    if ini_updates:
+                        update_ini_values(self.config_path, {'Connection': ini_updates})
                     config_saved = True
                     self.logger.info("Zombie alert settings written to config.ini")
                 except OSError as exc:
@@ -1739,12 +1953,12 @@ class BotDataViewer:
                     try:
                         if not self.config.has_section('Connection'):
                             self.config.add_section('Connection')
-                        self.config.set('Connection', 'radio_debug', 'true' if enabled else 'false')
-                        with open(self.config_path, 'w') as fh:
-                            self.config.write(fh)
+                        val = 'true' if enabled else 'false'
+                        self.config.set('Connection', 'radio_debug', val)
+                        update_ini_values(self.config_path, {'Connection': {'radio_debug': val}})
                         config_saved = True
                         self.logger.info(
-                            "radio_debug=%s written to config.ini by web UI", 'true' if enabled else 'false'
+                            "radio_debug=%s written to config.ini by web UI", val
                         )
                     except OSError as exc:
                         self.logger.error("Failed to write radio_debug to config.ini: %s", exc)
@@ -1813,8 +2027,10 @@ class BotDataViewer:
                     try:
                         self.config.set('Connection', 'radio_probe_interval_seconds', str(probe_interval))
                         self.config.set('Connection', 'radio_probe_fail_threshold', str(probe_fail_threshold))
-                        with open(self.config_path, 'w') as f:
-                            self.config.write(f)
+                        update_ini_values(self.config_path, {'Connection': {
+                            'radio_probe_interval_seconds': str(probe_interval),
+                            'radio_probe_fail_threshold': str(probe_fail_threshold),
+                        }})
                         config_saved = True
                         self.logger.info("Radio probe settings written to config.ini")
                     except Exception as exc:
@@ -1870,11 +2086,15 @@ class BotDataViewer:
                 config_saved = False
                 if data.get('save_to_config', False):
                     try:
+                        enabled_val = 'true' if alert_enabled else 'false'
                         self.config.set('Connection', 'radio_offline_threshold', str(offline_threshold))
-                        self.config.set('Connection', 'radio_offline_alert_enabled', 'true' if alert_enabled else 'false')
+                        self.config.set('Connection', 'radio_offline_alert_enabled', enabled_val)
                         self.config.set('Connection', 'radio_offline_alert_email', alert_email)
-                        with open(self.config_path, 'w') as f:
-                            self.config.write(f)
+                        update_ini_values(self.config_path, {'Connection': {
+                            'radio_offline_threshold': str(offline_threshold),
+                            'radio_offline_alert_enabled': enabled_val,
+                            'radio_offline_alert_email': alert_email,
+                        }})
                         config_saved = True
                         self.logger.info("Radio offline alert settings written to config.ini")
                     except Exception as exc:

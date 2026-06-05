@@ -53,6 +53,85 @@ class PacketCaptureService(BaseServicePlugin):
     config_section = "PacketCapture"  # Explicit config section
     description = "Captures packets from MeshCore network and publishes to MQTT"
 
+    # Web-viewer settings schema (see modules/settings_schema.py). Core settings
+    # are typed here; the detailed mqtt1_*/mqtt2_* broker keys remain editable
+    # via the raw "Other config values" editor.
+    settings_schema = [
+        {"key": "output_file", "label": "Output file", "type": "str", "default": "", "width": "lg",
+         "help": "Optional file to also write captured packets to."},
+        {"key": "owner_public_key", "label": "Owner public key", "type": "str", "default": "", "width": "lg",
+         "help": "Owner identity included with uploads."},
+        {"key": "owner_email", "label": "Owner email", "type": "str", "default": "",
+         "help": "Owner contact email included with uploads."},
+        {"key": "private_key_path", "label": "Private key path", "type": "str", "default": "", "width": "lg",
+         "help": "Path to the device private key used to sign uploads."},
+        {"key": "iata", "label": "IATA code", "type": "str", "default": "",
+         "help": "Nearest airport IATA code for location tagging."},
+        {"key": "verbose", "label": "Verbose logging", "type": "bool", "default": False, "help": "Detailed logging."},
+        {"key": "debug", "label": "Debug logging", "type": "bool", "default": False, "help": "Debug-level logging."},
+        {"key": "mqtt_enabled", "label": "MQTT publishing", "type": "bool", "default": True,
+         "help": "Master switch for publishing captured packets to the MQTT brokers below."},
+        # --- Advanced (collapsed by default in the UI) ---
+        {"key": "auth_token_method", "label": "Auth token method", "type": "enum", "group": "Advanced",
+         "options": [{"value": "device", "label": "Device (on-device signing, default)"},
+                     {"value": "python", "label": "Python (requires private key)"}],
+         "default": "device", "help": "How JWT auth tokens are signed."},
+        {"key": "mqtt_skip_unparseable_packets", "label": "Skip unparseable packets", "type": "bool",
+         "group": "Advanced", "default": True, "help": "Don't publish packets that fail to parse (hash 0000…)."},
+        {"key": "advert_require_valid_signature", "label": "Require valid advert signature", "type": "bool",
+         "group": "Advanced", "default": False, "help": "Only publish ADVERT packets with a valid signature."},
+        {"key": "raw_duplicate_window", "label": "Duplicate window", "type": "float", "group": "Advanced",
+         "min": 0, "default": 2.0, "unit": "s", "help": "De-duplicate identical raw packets within this window."},
+        {"key": "rf_data_cache_timeout", "label": "RF data cache timeout", "type": "float", "group": "Advanced",
+         "min": 0, "default": 15.0, "unit": "s", "help": "How long RF metadata is cached for correlation."},
+        {"key": "stats_in_status_enabled", "label": "Stats in status", "type": "bool", "group": "Advanced",
+         "default": True, "help": "Include capture statistics in the MQTT status payload."},
+        {"key": "stats_refresh_interval", "label": "Stats refresh interval", "type": "int", "group": "Advanced",
+         "min": 0, "default": 300, "unit": "s", "help": "How often stats are refreshed. 0 disables."},
+        {"key": "health_check_interval", "label": "Health check interval", "type": "int", "group": "Advanced",
+         "min": 0, "default": 30, "unit": "s", "help": "Radio health-check cadence. 0 disables."},
+        {"key": "health_check_grace_period", "label": "Health check grace period", "type": "int", "group": "Advanced",
+         "min": 0, "default": 2, "help": "Consecutive failures tolerated before acting."},
+        {"key": "jwt_renewal_interval", "label": "JWT renewal interval", "type": "int", "group": "Advanced",
+         "min": 1, "default": 43200, "unit": "s", "help": "Default JWT renewal interval (per-broker overrides apply)."},
+        {"key": "jwt_ttl_seconds", "label": "JWT TTL", "type": "int", "group": "Advanced",
+         "min": 1, "default": 86400, "unit": "s", "help": "Default JWT lifetime (per-broker overrides apply)."},
+    ]
+
+    # Repeating structured blocks (see modules/settings_schema.py). Each MQTT
+    # broker is mqtt<N>_* and must stay contiguously numbered — the editor
+    # renumbers them on save.
+    settings_repeating_blocks = [
+        {
+            "id": "mqtt",
+            "label": "MQTT brokers",
+            "item_label": "MQTT broker",
+            "enabled_field": "enabled",
+            "help": "Each broker captured packets are published to. Brokers are tried in order.",
+            "fields": [
+                {"key": "server", "label": "Server", "type": "str", "default": "",
+                 "help": "Broker hostname or IP."},
+                {"key": "port", "label": "Port", "type": "int", "min": 1, "max": 65535, "default": 1883,
+                 "help": "Broker port (1883 plain, 8883/443 for TLS/websockets)."},
+                {"key": "transport", "label": "Transport", "type": "enum",
+                 "options": [{"value": "tcp", "label": "TCP"}, {"value": "websockets", "label": "WebSockets"}],
+                 "default": "tcp"},
+                {"key": "use_tls", "label": "Use TLS", "type": "bool", "default": False},
+                {"key": "use_auth_token", "label": "Use JWT auth token", "type": "bool", "default": False,
+                 "help": "Authenticate with a signed JWT instead of username/password."},
+                {"key": "token_audience", "label": "Token audience", "type": "str", "default": "",
+                 "help": "JWT audience claim (when using auth token)."},
+                {"key": "topic_status", "label": "Status topic", "type": "str", "default": ""},
+                {"key": "topic_packets", "label": "Packets topic", "type": "str", "default": ""},
+                {"key": "websocket_path", "label": "WebSocket path", "type": "str", "default": "/mqtt",
+                 "help": "Path when transport is websockets."},
+                {"key": "client_id", "label": "Client ID", "type": "str", "default": ""},
+                {"key": "upload_packet_types", "label": "Upload packet types", "type": "str", "default": "",
+                 "help": "Comma-separated type numbers (e.g. 2,4). Empty = upload all."},
+            ],
+        }
+    ]
+
     def __init__(self, bot):
         """Initialize packet capture service.
 

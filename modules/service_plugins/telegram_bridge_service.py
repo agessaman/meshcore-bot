@@ -69,6 +69,35 @@ class TelegramBridgeService(BaseServicePlugin):
     config_section = 'TelegramBridge'
     description = "Posts MeshCore channel messages to Telegram (one-way, read-only)"
 
+    # Web-viewer settings schema (see modules/settings_schema.py)
+    settings_schema = [
+        {"key": "api_token", "label": "Bot API token", "type": "str", "default": "",
+         "help": "Token from @BotFather. Can also be set via the TELEGRAM_BOT_TOKEN env var."},
+        {"key": "parse_mode", "label": "Parse mode", "type": "enum",
+         "options": [{"value": "HTML", "label": "HTML"},
+                     {"value": "Markdown", "label": "Markdown"},
+                     {"value": "MarkdownV2", "label": "MarkdownV2"}],
+         "default": "HTML", "help": "Message formatting mode."},
+        {"key": "disable_web_page_preview", "label": "Disable link previews", "type": "bool",
+         "default": False, "help": "Disable link previews in bridged messages."},
+        {"key": "max_message_length", "label": "Max message length", "type": "int",
+         "min": 1, "max": 4096, "default": 4096, "help": "Telegram's hard limit is 4096."},
+        {"key": "filter_profanity", "label": "Profanity filter", "type": "enum",
+         "options": [{"value": "drop", "label": "Drop (don't bridge)"},
+                     {"value": "censor", "label": "Censor (****)"},
+                     {"value": "off", "label": "Off"}],
+         "default": "drop", "help": "How to handle profanity in messages and usernames."},
+        {"key": "bridge_bot_responses", "label": "Bridge bot responses", "type": "bool",
+         "default": True, "help": "Also bridge the bot's own command replies."},
+    ]
+    settings_dynamic_sections = [
+        {"section": "TelegramBridge", "key_prefix": "bridge.",
+         "label": "Channel mappings", "key_label": "MeshCore channel", "value_label": "Telegram chat ID",
+         "help": "Map a MeshCore channel to a Telegram chat. Use @channelusername (public) or a "
+                 "numeric -100... ID (private). DMs are never bridged.",
+         "key_placeholder": "Public", "value_placeholder": "@YourChannel or -1001234567890"},
+    ]
+
     def __init__(self, bot: Any):
         super().__init__(bot)
 

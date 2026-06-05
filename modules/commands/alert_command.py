@@ -190,6 +190,32 @@ class AlertCommand(BaseCommand):
     ]
     requires_internet = True  # Requires internet access for PulsePoint API
 
+    # Web-viewer settings schema (see modules/settings_schema.py).
+    # PulsePoint agency.* keys are dynamic and appear under "Other config values".
+    settings_schema = [
+        {"key": "max_distance_km", "label": "Max distance", "type": "float",
+         "min": 0, "default": 20.0, "unit": "km",
+         "help": "Only show incidents within this distance of the location."},
+        {"key": "max_incident_age_hours", "label": "Max incident age", "type": "float",
+         "min": 0, "default": 24.0, "unit": "hours",
+         "help": "Ignore incidents older than this many hours."},
+    ]
+
+    # Web-viewer dynamic editor for the PulsePoint agency.* keys in this section.
+    settings_dynamic_sections = [
+        {
+            "section": "Alert_Command",
+            "key_prefix": "agency.",
+            "label": "PulsePoint agencies",
+            "help": ("Map a region name to its PulsePoint agency IDs. Users query "
+                     "with 'alert <region>'. Find IDs at web.pulsepoint.org."),
+            "key_label": "Region name",
+            "value_label": "Agency IDs (comma-separated)",
+            "key_placeholder": "county1",
+            "value_placeholder": "1234,5678",
+        }
+    ]
+
     def __init__(self, bot):
         super().__init__(bot)
         self.url_timeout = 10

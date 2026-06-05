@@ -30,6 +30,12 @@ class ScheduleCommand(BaseCommand):
     usage = "schedule [list]"
     examples = ["schedule", "schedule list"]
 
+    # Web-viewer settings schema (see modules/settings_schema.py)
+    settings_schema = [
+        {"key": "dm_only", "label": "DM only", "type": "bool", "default": True,
+         "help": "Restrict the schedule command to direct messages only."},
+    ]
+
     def __init__(self, bot: Any) -> None:
         super().__init__(bot)
         self._enabled = self.get_config_value(

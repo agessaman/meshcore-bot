@@ -52,6 +52,36 @@ class WeatherService(BaseServicePlugin):
     config_section = 'Weather_Service'
     description = "Scheduled weather forecasts and alert monitoring"
 
+    # Web-viewer settings schema (see modules/settings_schema.py)
+    settings_schema = [
+        {"key": "weather_alarm", "label": "Daily forecast time", "type": "str", "default": "6:00",
+         "help": "HH:MM (24h), or 'sunrise'/'sunset'."},
+        {"key": "weather_channel", "label": "Forecast channel", "type": "str", "default": "#weather",
+         "help": "Channel for daily forecasts."},
+        {"key": "alerts_channel", "label": "Alerts channel", "type": "str", "default": "#weather",
+         "help": "Channel for weather alerts."},
+        {"key": "my_position_lat", "label": "Latitude", "type": "float", "min": -90, "max": 90, "default": "",
+         "help": "Bot latitude (decimal degrees) for forecasts/alerts."},
+        {"key": "my_position_lon", "label": "Longitude", "type": "float", "min": -180, "max": 180, "default": "",
+         "help": "Bot longitude (decimal degrees)."},
+        {"key": "poll_weather_alerts_interval", "label": "Alert poll interval", "type": "int",
+         "min": 1000, "default": 600000, "unit": "ms", "help": "How often to check for new alerts."},
+        {"key": "rain_nowcast_enabled", "label": "Rain nowcast", "type": "bool", "default": False,
+         "help": "Push a heads-up when rain is about to start at the bot's position."},
+        {"key": "rain_channel", "label": "Rain nowcast channel", "type": "str", "default": "",
+         "help": "Channel for rain heads-ups. Defaults to the forecast channel."},
+        {"key": "poll_rain_nowcast_interval", "label": "Rain poll interval", "type": "int",
+         "min": 1000, "default": 900000, "unit": "ms", "help": "How often to check for incoming rain."},
+        {"key": "rain_nowcast_lead_minutes", "label": "Rain lead time", "type": "int", "min": 1, "default": 60, "unit": "min",
+         "help": "Only announce rain starting within this many minutes."},
+        {"key": "rain_nowcast_renotify_minutes", "label": "Rain renotify", "type": "int", "min": 1, "default": 30, "unit": "min",
+         "help": "Minimum minutes between rain pushes."},
+        {"key": "blitz_collection_interval", "label": "Storm collection interval", "type": "int",
+         "min": 1000, "default": 600000, "unit": "ms", "help": "How often thunder/storm data is aggregated."},
+        {"key": "flood_scope", "label": "Flood scope", "type": "str", "default": "",
+         "help": "Optional regional TC_FLOOD scope for mesh posts (e.g. #west)."},
+    ]
+
     def __init__(self, bot: Any):
         """Initialize weather service.
 

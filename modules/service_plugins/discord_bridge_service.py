@@ -72,6 +72,34 @@ class DiscordBridgeService(BaseServicePlugin):
     config_section = 'DiscordBridge'
     description = "Posts MeshCore channel messages to Discord (one-way, read-only)"
 
+    # Web-viewer settings schema (see modules/settings_schema.py)
+    settings_schema = [
+        {"key": "avatar_style", "label": "Avatar style", "type": "enum",
+         "options": [{"value": "color", "label": "Color (default, no API)"},
+                     {"value": "fun-emoji", "label": "Fun emoji (DiceBear)"},
+                     {"value": "avataaars", "label": "Avataaars (DiceBear)"},
+                     {"value": "bottts", "label": "Bottts (DiceBear)"},
+                     {"value": "identicon", "label": "Identicon (DiceBear)"},
+                     {"value": "pixel-art", "label": "Pixel art (DiceBear)"},
+                     {"value": "adventurer", "label": "Adventurer (DiceBear)"},
+                     {"value": "initials", "label": "Initials (DiceBear)"}],
+         "default": "color", "help": "How user avatars are generated in Discord."},
+        {"key": "filter_profanity", "label": "Profanity filter", "type": "enum",
+         "options": [{"value": "drop", "label": "Drop (don't bridge)"},
+                     {"value": "censor", "label": "Censor (****)"},
+                     {"value": "off", "label": "Off"}],
+         "default": "drop", "help": "How to handle profanity in messages and usernames."},
+        {"key": "bridge_bot_responses", "label": "Bridge bot responses", "type": "bool",
+         "default": True, "help": "Also bridge the bot's own command replies."},
+    ]
+    settings_dynamic_sections = [
+        {"section": "DiscordBridge", "key_prefix": "bridge.",
+         "label": "Channel mappings", "key_label": "MeshCore channel", "value_label": "Discord webhook URL(s)",
+         "help": "Map a MeshCore channel to one or more Discord webhook URLs (comma-separated). "
+                 "Webhook URLs are secrets — anyone with one can post to your channel. DMs are never bridged.",
+         "key_placeholder": "Public", "value_placeholder": "https://discord.com/api/webhooks/..."},
+    ]
+
     def __init__(self, bot: Any):
         """Initialize Discord bridge service.
 

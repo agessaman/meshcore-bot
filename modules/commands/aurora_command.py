@@ -31,6 +31,23 @@ class AuroraCommand(BaseCommand):
         {"name": "location", "description": "Optional: city, US ZIP, or lat,lon. Default: config or companion location."}
     ]
 
+    # Web-viewer settings schema (see modules/settings_schema.py).
+    # Falls back to [Bot] bot_latitude/longitude when these are unset.
+    settings_schema = [
+        {"key": "default_lat", "label": "Default latitude", "type": "float",
+         "min": -90, "max": 90, "default": "",
+         "help": "Latitude used when no location is given (overrides bot location)."},
+        {"key": "default_lon", "label": "Default longitude", "type": "float",
+         "min": -180, "max": 180, "default": "",
+         "help": "Longitude used when no location is given (overrides bot location)."},
+        {"key": "default_state", "label": "Default state", "type": "str", "section": "Weather",
+         "default": "", "help": "2-letter state for city disambiguation (e.g. WA). Shared weather setting."},
+        {"key": "default_country", "label": "Default country", "type": "str", "section": "Weather",
+         "default": "US", "help": "2-letter country code (e.g. US). Shared weather setting."},
+        {"key": "use_zulu_time", "label": "Use UTC (Zulu) time", "type": "bool", "section": "Solar_Config",
+         "default": False, "help": "On = 24-hour UTC times; off = 12-hour local. Shared solar setting."},
+    ]
+
     def __init__(self, bot):
         super().__init__(bot)
         self.aurora_enabled = self.get_config_value("Aurora_Command", "enabled", fallback=True, value_type="bool")
