@@ -7,15 +7,23 @@ explicitly, matching how the command derives it from the API's current.time.
 """
 
 from modules.commands.rain_command import (
+    RAIN_FAMILY,
+    SNOW_FAMILY,
     NowcastResult,
     _round5,  # noqa: PLC2701 (testing internal helper)
     analyze_precip_nowcast,
     city_display_name,
     decide_rain_notification,
+    episode_probability_temp,
+    format_amount_estimate,
+    format_precip_amount,
+    format_snow_amount,
+    join_location,
     precip_bucket_for_code,
     precip_descriptor,
     titlecase_location,
 )
+from modules.region_capitals import REGION_DEFAULT_NOTE, region_capital_query
 
 NOW = "2026-06-03T14:00"
 
@@ -348,3 +356,249 @@ def test_decide_full_episode_sequence():
         clock += 15 * 60  # advance 15 min between polls
 
     assert kinds == [None, "starting", None, None, "ending", None, None]
+
+
+# --- amount estimate (amount_mm on the result) ------------------------------
+
+def test_amount_dry_incoming_episode_sum():
+    # Rain 14:30 + 14:45 (0.5 each), dry after -> episode total 1.0 mm.
+    precip = [0.0, 0.0, 0.5, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0]
+    codes = [0, 0, 61, 61, 0, 0, 0, 0, 0]
+    r = analyze_precip_nowcast(TIMES_15, precip, codes, NOW, window_minutes=120)
+    assert r.state == "dry_incoming"
+    assert abs(r.amount_mm - 1.0) < 1e-9
+
+
+def test_amount_dry_incoming_open_ended_sums_to_window_edge():
+    # Rain from 14:30 through 16:00 (+120, the window edge): 7 buckets x 0.5.
+    precip = [0.0, 0.0] + [0.5] * 7
+    codes = [0, 0] + [63] * 7
+    r = analyze_precip_nowcast(TIMES_15, precip, codes, NOW, window_minutes=120)
+    assert r.state == "dry_incoming"
+    assert r.open_ended is True
+    assert abs(r.amount_mm - 3.5) < 1e-9
+
+
+def test_amount_raining_stopping_includes_current_bucket():
+    # Raining now (0.5) + 14:15 (0.5), clears at 14:30 -> 1.0 mm remaining.
+    precip = [0.5, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    codes = [63, 63, 0, 0, 0, 0, 0, 0, 0]
+    r = analyze_precip_nowcast(TIMES_15, precip, codes, NOW, window_minutes=120)
+    assert r.state == "raining_stopping"
+    assert abs(r.amount_mm - 1.0) < 1e-9
+
+
+def test_amount_raining_continuing_sums_current_plus_window():
+    # Steady 0.5 across the current bucket + 8 upcoming -> 4.5 mm over 2h.
+    precip = [0.5] * 9
+    r = analyze_precip_nowcast(TIMES_15, precip, _codes(9, 65), NOW, window_minutes=120)
+    assert r.state == "raining_continuing"
+    assert abs(r.amount_mm - 4.5) < 1e-9
+
+
+def test_amount_dry_clear_is_none():
+    r = analyze_precip_nowcast(TIMES_15, [0.0] * 9, _codes(9, 0), NOW, window_minutes=120)
+    assert r.state == "dry_clear"
+    assert r.amount_mm is None
+
+
+# --- format_precip_amount ---------------------------------------------------
+
+def test_format_amount_inches_trims_zeros():
+    assert format_precip_amount(5.08, "in") == "0.2 in"   # user's example
+    assert format_precip_amount(25.4, "in") == "1 in"      # exact inch
+    assert format_precip_amount(4.5, "in") == "0.18 in"
+
+
+def test_format_amount_inches_trace_and_none():
+    assert format_precip_amount(0.2, "in") == "<0.01 in"   # 0.008 in rounds away
+    assert format_precip_amount(0.0, "in") is None
+    assert format_precip_amount(None, "in") is None
+    assert format_precip_amount(-1.0, "in") is None
+
+
+def test_format_amount_mm_unit():
+    assert format_precip_amount(5.0, "mm") == "5.0 mm"
+    assert format_precip_amount(12.3, "mm") == "12.3 mm"
+    assert format_precip_amount(0.05, "mm") == "<0.1 mm"
+
+
+# --- snowfall amount (depth, not liquid equivalent) -------------------------
+
+def test_amount_snow_uses_snowfall_series():
+    # Snow incoming 14:30-14:45: 3.5 cm/bucket snow vs only 0.5 mm/bucket liquid.
+    precip = [0.0, 0.0, 0.5, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0]
+    snow = [0.0, 0.0, 3.5, 3.5, 0.0, 0.0, 0.0, 0.0, 0.0]
+    codes = [0, 0, 73, 73, 0, 0, 0, 0, 0]
+    r = analyze_precip_nowcast(TIMES_15, precip, codes, NOW, window_minutes=120, snow=snow)
+    assert r.state == "dry_incoming"
+    assert r.bucket == "snow"
+    assert abs(r.amount_mm - 1.0) < 1e-9   # liquid equivalent
+    assert abs(r.snow_cm - 7.0) < 1e-9     # actual snow depth (the useful number)
+
+
+def test_amount_snow_none_series_defaults_zero():
+    # No snow series -> snow_cm sums to 0; the rain path is unaffected.
+    precip = [0.0, 0.0, 0.5, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0]
+    r = analyze_precip_nowcast(TIMES_15, precip, _codes(9, 61), NOW, window_minutes=120)
+    assert r.state == "dry_incoming"
+    assert r.bucket == "rain"
+    assert r.snow_cm == 0.0
+
+
+def test_format_snow_amount():
+    assert format_snow_amount(7.0, "in") == "2.8 in snow"    # 7 cm -> ~2.8"
+    assert format_snow_amount(2.54, "in") == "1 in snow"      # exact inch
+    assert format_snow_amount(0.1, "in") == "<0.1 in snow"
+    assert format_snow_amount(0.0, "in") is None
+    assert format_snow_amount(None, "in") is None
+    assert format_snow_amount(12.5, "mm") == "12.5 cm snow"   # metric shows cm
+
+
+def test_episode_probability_temp_dry_incoming():
+    # Rain starts at 14:30 (+30min) -> prob/temp read at that bucket.
+    s = {"times": TIMES_15, "now": NOW,
+         "prob": [10, 20, 80, 80, 30, 0, 0, 0, 0],
+         "temp": [20, 20, 1.0, 1.0, 5, 5, 5, 5, 5]}  # 1.0C -> 34F
+    r = NowcastResult(state="dry_incoming", minutes=30, bucket="rain")
+    assert episode_probability_temp(s, r) == (80, 34)
+
+
+def test_episode_probability_temp_raining_now():
+    s = {"times": TIMES_15, "now": NOW,
+         "prob": [90, 90, 0, 0, 0, 0, 0, 0, 0],
+         "temp": [0.0, 0.0, 0, 0, 0, 0, 0, 0, 0]}  # 0C -> 32F at "now" bucket
+    r = NowcastResult(state="raining_continuing", bucket="rain")
+    assert episode_probability_temp(s, r) == (90, 32)
+
+
+def test_episode_probability_temp_dry_clear_and_missing():
+    s = {"times": TIMES_15, "now": NOW, "prob": [0] * 9, "temp": [10] * 9}
+    assert episode_probability_temp(s, NowcastResult(state="dry_clear")) == (None, None)
+    s2 = {"times": TIMES_15, "now": NOW, "prob": [], "temp": []}
+    assert episode_probability_temp(s2, NowcastResult(state="dry_incoming", minutes=30, bucket="rain")) == (None, None)
+
+
+def test_format_amount_estimate_per_bucket():
+    # rain/showers -> liquid; snow -> depth from snow_cm; freezing -> liquid + "ice".
+    assert format_amount_estimate("rain", 5.08, 0.0, "in") == "0.2 in"
+    assert format_amount_estimate("heavy_rain", 12.7, 0.0, "in") == "0.5 in"
+    assert format_amount_estimate("snow", 8.6, 7.0, "in") == "2.8 in snow"
+    assert format_amount_estimate("freezing", 2.54, 0.0, "in") == "0.1 in ice"
+    assert format_amount_estimate("freezing", 5.0, 0.0, "mm") == "5.0 mm ice"
+    assert format_amount_estimate("drizzle", 0.0, 0.0, "in") is None   # negligible -> no estimate
+
+
+# --- precip family filter (the !rain vs !snow engine) -----------------------
+
+def test_family_snow_ignores_rain():
+    # Rain incoming, no snow.
+    precip = [0.0, 0.0, 0.5, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0]
+    codes = [0, 0, 61, 61, 0, 0, 0, 0, 0]
+    assert analyze_precip_nowcast(TIMES_15, precip, codes, NOW, family=SNOW_FAMILY).state == "dry_clear"
+    r = analyze_precip_nowcast(TIMES_15, precip, codes, NOW, family=RAIN_FAMILY)
+    assert r.state == "dry_incoming" and r.bucket == "rain"
+
+
+def test_family_rain_ignores_snow():
+    precip = [0.0, 0.0, 0.5, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0]
+    snow = [0.0, 0.0, 3.0, 3.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    codes = [0, 0, 73, 73, 0, 0, 0, 0, 0]
+    assert analyze_precip_nowcast(TIMES_15, precip, codes, NOW, snow=snow, family=RAIN_FAMILY).state == "dry_clear"
+    r = analyze_precip_nowcast(TIMES_15, precip, codes, NOW, snow=snow, family=SNOW_FAMILY)
+    assert r.state == "dry_incoming" and r.bucket == "snow"
+
+
+def test_family_smart_hunt_rain_now_snow_later():
+    # Rain at 14:15, then snow at 14:45-15:00. !snow finds the later snow;
+    # !rain finds the sooner rain. (The "smart hunt" the user asked for.)
+    precip = [0.0, 0.5, 0.0, 0.5, 0.5, 0.0, 0.0, 0.0, 0.0]
+    snow = [0.0, 0.0, 0.0, 3.0, 3.0, 0.0, 0.0, 0.0, 0.0]
+    codes = [0, 61, 0, 73, 73, 0, 0, 0, 0]
+    rsnow = analyze_precip_nowcast(TIMES_15, precip, codes, NOW, snow=snow, family=SNOW_FAMILY)
+    assert rsnow.state == "dry_incoming" and rsnow.bucket == "snow" and rsnow.minutes == 45
+    rrain = analyze_precip_nowcast(TIMES_15, precip, codes, NOW, snow=snow, family=RAIN_FAMILY)
+    assert rrain.state == "dry_incoming" and rrain.bucket == "rain" and rrain.minutes == 15
+
+
+def test_family_none_still_sees_any_precip():
+    # No filter: a snow series is still detected (as the snow bucket).
+    precip = [0.5, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    snow = [3.0, 3.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    codes = [73, 73, 0, 0, 0, 0, 0, 0, 0]
+    r = analyze_precip_nowcast(TIMES_15, precip, codes, NOW, snow=snow,
+                               current_precip=0.5, current_code=73)
+    assert r.state == "raining_stopping" and r.bucket == "snow"
+
+
+# --- join_location (the 'Spain, Spain' dedup) -------------------------------
+
+def test_join_location_dedupes_equal_names():
+    # The reported bug: '!rain spain' -> city 'Spain' + country 'Spain'.
+    assert join_location("Spain", "Spain") == "Spain"
+    assert join_location("Singapore", "Singapore") == "Singapore"
+    assert join_location("spain", "Spain") == "Spain"   # case-insensitive
+
+
+def test_join_location_keeps_distinct_names():
+    assert join_location("Nashville", "TN") == "Nashville, TN"
+    assert join_location("Paris", "France") == "Paris, France"
+
+
+def test_join_location_handles_missing_sides():
+    assert join_location("Nashville", None) == "Nashville"
+    assert join_location("Nashville", "") == "Nashville"
+    assert join_location(None, "France") == "France"
+    assert join_location("", "France") == "France"
+    assert join_location(None, None) == ""
+
+
+def test_spain_end_to_end_label():
+    # city_display_name + join_location together, as _resolve_location does it.
+    suffix = "Spain"
+    typed_city = city_display_name("spain", suffix)
+    assert join_location(typed_city, suffix) == "Spain"   # not "Spain, Spain"
+
+
+# --- region_capital_query (bare country/state -> capital) --------------------
+
+def test_region_capital_country():
+    assert region_capital_query("france") == "Paris, France"
+    assert region_capital_query("spain") == "Madrid, Spain"
+    assert region_capital_query("japan") == "Tokyo, Japan"
+
+
+def test_region_capital_us_state():
+    assert region_capital_query("texas") == "Austin, TX"
+    assert region_capital_query("california") == "Sacramento, CA"
+    assert region_capital_query("georgia") == "Atlanta, GA"   # US state wins over country
+
+
+def test_region_capital_aliases_and_normalization():
+    assert region_capital_query("uk") == "London, United Kingdom"
+    assert region_capital_query("usa") == "Washington, United States"
+    assert region_capital_query("FRANCE") == "Paris, France"     # case-insensitive
+    assert region_capital_query("  texas  ") == "Austin, TX"      # trimmed
+
+
+def test_region_capital_excludes_city_dominant_states():
+    # New York / Washington almost always mean the city -> not defaulted.
+    assert region_capital_query("new york") is None
+    assert region_capital_query("washington") is None
+
+
+def test_region_capital_non_regions_pass_through():
+    assert region_capital_query("paris") is None          # a city, not a region
+    assert region_capital_query("nashville") is None
+    assert region_capital_query("paris, france") is None  # already qualified
+    assert region_capital_query("37013") is None          # a ZIP
+    assert region_capital_query("") is None
+    assert region_capital_query(None) is None
+
+
+def test_region_note_fits_channel_budget():
+    # 160-byte channel cap minus 'WeatherBot-V3: ' prefix = 145 body bytes.
+    budget = 160 - len(b"WeatherBot-V3") - 2
+    worst_forecast = "🌧️ Heavy rain steady for 2h+ in Paris, France (est 0.5 in)"
+    combined = f"{worst_forecast} {REGION_DEFAULT_NOTE}"
+    assert len(combined.encode("utf-8")) <= budget

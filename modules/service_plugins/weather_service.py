@@ -33,7 +33,10 @@ import contextlib
 from ..commands.rain_command import (
     analyze_precip_nowcast,
     decide_rain_notification,
+    episode_probability_temp,
     fetch_precip_series,
+    format_amount_estimate,
+    join_location,
     precip_descriptor,
     reverse_geocode_region,
 )
@@ -106,6 +109,13 @@ class WeatherService(BaseServicePlugin):
         self.rain_nowcast_threshold_mm = self.bot.config.getfloat('Weather_Service', 'rain_nowcast_threshold_mm', fallback=0.1)
         # Also announce when rain is about to stop (not just start).
         self.rain_nowcast_announce_ending = self.bot.config.getboolean('Weather_Service', 'rain_nowcast_announce_ending', fallback=True)
+        # Optional precip-amount estimate in the heads-up, e.g. "(est 0.2 in)".
+        self.rain_nowcast_show_amount = self.bot.config.getboolean('Weather_Service', 'rain_nowcast_show_amount', fallback=True)
+        self.rain_nowcast_amount_unit = self.bot.config.get('Weather_Service', 'rain_nowcast_amount_unit', fallback='in').strip().lower()
+        # Only push an "incoming" alert when precip is at least this likely (%), to
+        # cut false alarms; reuse a fetched series for this many seconds.
+        self.rain_nowcast_min_probability = self.bot.config.getint('Weather_Service', 'rain_nowcast_min_probability', fallback=50)
+        self.rain_nowcast_cache_seconds = self.bot.config.getint('Weather_Service', 'rain_nowcast_cache_seconds', fallback=300)
 
         # Track seen alerts to avoid duplicates
         self.seen_alert_ids: set[str] = set()
@@ -835,6 +845,7 @@ class WeatherService(BaseServicePlugin):
                     weather_model=self.weather_model or "",
                     timeout=10,
                     logger=self.logger,
+                    cache_ttl=self.rain_nowcast_cache_seconds,
                 ),
             )
             if not series:
@@ -847,8 +858,15 @@ class WeatherService(BaseServicePlugin):
                 series["times"], series["precip"], series["codes"], series["now"],
                 window_minutes=window, threshold=self.rain_nowcast_threshold_mm,
                 current_precip=series.get("current_precip"), current_code=series.get("current_code"),
+                snow=series.get("snow"),
             )
             if result is None:
+                return
+
+            prob, temp_f = episode_probability_temp(series, result)
+            # Probability gate: skip a low-confidence "incoming" alert, and leave
+            # the announced flag unset so it can still fire if confidence rises.
+            if result.state == "dry_incoming" and prob is not None and prob < self.rain_nowcast_min_probability:
                 return
 
             now_ts = time.time()
@@ -868,7 +886,7 @@ class WeatherService(BaseServicePlugin):
             if kind is None:
                 return
 
-            message = await self._format_rain_nowcast(result, kind)
+            message = await self._format_rain_nowcast(result, kind, prob, temp_f)
             await self.bot.command_manager.send_channel_message(
                 self.rain_channel,
                 message,
@@ -883,10 +901,13 @@ class WeatherService(BaseServicePlugin):
         except Exception as e:
             self.logger.error(f"Error checking rain nowcast: {e}")
 
-    async def _format_rain_nowcast(self, result: Any, kind: str) -> str:
+    async def _format_rain_nowcast(
+        self, result: Any, kind: str, prob: Optional[int] = None, temp_f: Optional[int] = None
+    ) -> str:
         """Build the proactive heads-up line (English, mesh-friendly).
 
         kind is "starting" (rain incoming) or "ending" (rain about to stop).
+        prob/temp_f add a probability and a borderline-temperature tag.
         """
         emoji, ptype = precip_descriptor(result.bucket)
 
@@ -900,15 +921,26 @@ class WeatherService(BaseServicePlugin):
                     self.bot, self.my_position_lat, self.my_position_lon, timeout=10, logger=self.logger
                 ),
             )
-            self._cached_rain_location = (f"{city}, {suffix}" if suffix else city) if city else ""
+            self._cached_rain_location = join_location(city, suffix)
         location = f" near {self._cached_rain_location}" if self._cached_rain_location else ""
 
+        parts = []
+        if self.rain_nowcast_show_amount:
+            amt = format_amount_estimate(
+                result.bucket, result.amount_mm, result.snow_cm, self.rain_nowcast_amount_unit
+            )
+            if amt:
+                parts.append(f"est {amt}")
+        if prob is not None:
+            parts.append(f"{prob}%")
+        est = f" ({', '.join(parts)})" if parts else ""
+        temp = f" {temp_f}°F" if (temp_f is not None and 30 <= temp_f <= 38) else ""
         if kind == "ending":
-            return f"{emoji} Heads up — {ptype} ending in ~{result.minutes}min{location}"
+            return f"{emoji} Heads up — {ptype} ending in ~{result.minutes}min{est}{temp}{location}"
         # Flag prolonged rain ("steady") rather than a numeric duration, which
         # would sit confusingly next to the minutes-until-start value.
         steady = " (steady)" if result.open_ended else ""
-        return f"{emoji} Heads up — {ptype} starting in ~{result.minutes}min{steady}{location}"
+        return f"{emoji} Heads up — {ptype} starting in ~{result.minutes}min{est}{steady}{temp}{location}"
 
     async def _connect_blitzortung_mqtt(self) -> None:
         """Connect to Blitzortung MQTT broker and subscribe to lightning data.
