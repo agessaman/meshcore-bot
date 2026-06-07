@@ -11,7 +11,7 @@ import json
 import logging
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 # Import meshcore
@@ -394,6 +394,11 @@ class PacketCaptureService(BaseServicePlugin):
         return iat, iat + ttl
 
     @staticmethod
+    def _utc_iso_timestamp() -> str:
+        """UTC ISO 8601 timestamp with Z suffix for broad consumer compatibility."""
+        return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    @staticmethod
     def _jwt_ttl_log_phrase(ttl_seconds: int) -> str:
         """Short TTL description for log lines."""
         if ttl_seconds >= 3600 and ttl_seconds % 3600 == 0:
@@ -694,7 +699,7 @@ class PacketCaptureService(BaseServicePlugin):
             dict[str, Any]: Formatted packet dictionary.
         """
         current_time = datetime.now()
-        timestamp = current_time.isoformat()
+        timestamp = self._utc_iso_timestamp()
 
         # Remove 0x prefix if present
         clean_raw_hex = raw_hex.replace("0x", "").upper()
@@ -1839,7 +1844,7 @@ class PacketCaptureService(BaseServicePlugin):
 
         status_msg = {
             "status": status,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": self._utc_iso_timestamp(),
             "origin": device_name,
             "origin_id": device_public_key,
             "model": firmware_info.get("model", "unknown"),
