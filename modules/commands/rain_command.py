@@ -7,7 +7,7 @@ Open-Meteo's 15-minutely precipitation forecast. Works worldwide, no API key.
 import asyncio
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import requests
@@ -263,6 +263,156 @@ def fetch_precip_series(
         "now": now,
         "current_precip": current.get("precipitation"),
         "current_code": current.get("weather_code"),
+        "step": 60,
+    }
+
+
+# --- NWS gridpoint precip source ---------------------------------------------
+# WHY THIS EXISTS: the Open-Meteo *forecast model* (fetch_precip_series, above)
+# smooths away scattered, pop-up convection, so the nowcast can miss rain that is
+# actually happening. Observed near Nashville (36.16, -86.78): Open-Meteo reported
+# 0.00 in / ~12% precip across the next 3 h while NWS's own gridpoint showed
+# 65-74% probability with measurable QPF — and thunderstorms were occurring. The
+# model-based push therefore never fired. NWS's gridpoint forecast is
+# forecaster-adjusted and does capture convective chances, so for US points we
+# prefer it (fetch_precip_series_nws) and fall back to Open-Meteo only where NWS
+# has no coverage (outside the US) or the request fails.
+
+# NWS gridpoint "weather" type -> a representative WMO code, so precip_bucket_for_code()
+# classifies the NWS series exactly like it classifies the Open-Meteo one.
+_NWS_WEATHER_CODE = [
+    ("thunderstorm", 95),
+    ("snow", 73), ("blowing_snow", 73), ("snow_showers", 73),
+    ("ice", 66), ("sleet", 66), ("freezing", 66), ("ice_pellets", 66),
+    ("drizzle", 53),
+    ("rain_showers", 81), ("showers", 81),
+    ("rain", 63),
+]
+
+
+def _iso_duration_hours(dur: str) -> int:
+    """Hours spanned by an ISO-8601 duration like 'PT6H', 'PT1H', 'P1DT6H' (min 1)."""
+    m = re.match(r"P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?", dur or "")
+    if not m:
+        return 1
+    days, hours, mins = (int(g) if g else 0 for g in m.groups())
+    return max(1, days * 24 + hours + (1 if mins else 0))
+
+
+def _nws_hourly(values: Optional[list], *, divide: bool) -> dict:
+    """Map hour-start (naive UTC datetime) -> value from an NWS gridpoint property.
+
+    NWS reports each property as time-bucketed values whose validTime is an ISO
+    interval like '2026-06-08T12:00:00+00:00/PT6H'. ``divide`` splits an
+    accumulation (e.g. 6-hour QPF) evenly across its hours; otherwise the period's
+    value is repeated for each hour (hourly PoP, the weather-type list).
+    """
+    out: dict = {}
+    for v in values or []:
+        try:
+            start_s, _, dur = (v.get("validTime") or "").partition("/")
+            start = datetime.fromisoformat(start_s).astimezone(timezone.utc).replace(tzinfo=None)
+        except (TypeError, ValueError, AttributeError):
+            continue
+        n = _iso_duration_hours(dur)
+        raw = v.get("value")
+        share = (raw / n) if (divide and raw is not None) else raw
+        for k in range(n):
+            out[start + timedelta(hours=k)] = share
+    return out
+
+
+def _nws_weather_code(value: Any) -> Optional[int]:
+    """Pick a representative WMO code from an NWS gridpoint ``weather`` value (list of segments)."""
+    if not value:
+        return None
+    blob = " ".join(
+        str(seg.get("weather") or "") for seg in value if isinstance(seg, dict)
+    ).lower()
+    if not blob.strip():
+        return None
+    for needle, code in _NWS_WEATHER_CODE:
+        if needle in blob or needle.replace("_", " ") in blob:
+            return code
+    return 63  # precip of unknown type -> rain
+
+
+def fetch_precip_series_nws(
+    session: Any,
+    lat: float,
+    lon: float,
+    *,
+    timeout: int = 10,
+    logger: Any = None,
+    pop_floor: int = 50,
+) -> Optional[dict]:
+    """Build a precip nowcast series from the NWS gridpoint forecast (US only).
+
+    Returns the same shape as fetch_precip_series (times/precip/codes/now/
+    current_precip/current_code/step), or None when NWS has no coverage (e.g.
+    outside the US) so the caller can fall back to Open-Meteo.
+
+    NWS exposes 6-hour QPF (mm) and hourly PoP (%). We build an hourly series in
+    which each hour's precip is its QPF share, but zeroed when that hour's PoP is
+    below ``pop_floor`` -- so the predicted rain-start tracks the hourly
+    probability rather than snapping to coarse 6-hour QPF boundaries, and a trace
+    of QPF at a low chance is not reported as rain. Times are naive UTC ISO strings
+    (they only need to be self-consistent: the nowcast works on relative minutes).
+    """
+    headers = {"User-Agent": "(meshcore-bot, weather-nowcast)", "Accept": "application/geo+json"}
+    try:
+        pts = session.get(
+            f"https://api.weather.gov/points/{round(lat, 4)},{round(lon, 4)}",
+            headers=headers, timeout=timeout,
+        )
+        if not pts.ok:
+            return None  # no NWS coverage (outside the US) -> caller falls back to Open-Meteo
+        grid_url = (pts.json().get("properties") or {}).get("forecastGridData")
+        if not grid_url:
+            return None
+        gp = session.get(grid_url, headers=headers, timeout=timeout)
+        if not gp.ok:
+            return None
+        props = gp.json().get("properties") or {}
+    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+        if logger:
+            logger.debug(f"NWS nowcast timeout/connection error: {e}")
+        return None
+    except (ValueError, KeyError, TypeError) as e:
+        if logger:
+            logger.debug(f"NWS nowcast parse error: {e}")
+        return None
+
+    qpf = _nws_hourly((props.get("quantitativePrecipitation") or {}).get("values"), divide=True)
+    pop = _nws_hourly((props.get("probabilityOfPrecipitation") or {}).get("values"), divide=False)
+    wx = _nws_hourly((props.get("weather") or {}).get("values"), divide=False)
+    if not qpf and not pop:
+        return None
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    base = now.replace(minute=0, second=0, microsecond=0)
+    hours = [base + timedelta(hours=i) for i in range(0, 6)]  # current hour + 5 ahead (covers the window)
+
+    times: list[str] = []
+    precip: list[Optional[float]] = []
+    codes: list[Optional[int]] = []
+    for h in hours:
+        p = pop.get(h)
+        q = qpf.get(h)
+        # Count an hour as precipitating only when NWS gives a real chance; the
+        # amount is its QPF share. (QPF is 6-hourly, PoP hourly -- PoP sets timing.)
+        amt = q if (q is not None and p is not None and p >= pop_floor) else 0.0
+        times.append(h.isoformat(timespec="minutes"))
+        precip.append(amt)
+        codes.append(_nws_weather_code(wx.get(h)) if amt else None)
+
+    return {
+        "times": times,
+        "precip": precip,
+        "codes": codes,
+        "now": now.isoformat(timespec="minutes"),
+        "current_precip": precip[0] if precip else None,
+        "current_code": codes[0] if codes else None,
         "step": 60,
     }
 
@@ -690,9 +840,20 @@ class RainCommand(BaseCommand):
         return (lat, lon, label, None)
 
     def _fetch_series(self, lat: float, lon: float) -> Optional[dict]:
-        """Fetch the precip series via the shared fetcher (own short-lived session)."""
+        """Fetch the precip series (own short-lived session).
+
+        Prefers the NWS gridpoint (US) so a "!rain"/"!snow" matches the proactive
+        push and reflects the forecaster-adjusted convective chances the Open-Meteo
+        model can miss; falls back to Open-Meteo for non-US locations (no NWS
+        coverage) or on any failure.
+        """
         session = self._create_retry_session()
         try:
+            series = fetch_precip_series_nws(
+                session, lat, lon, timeout=self.url_timeout, logger=self.logger,
+            )
+            if series:
+                return series
             return fetch_precip_series(
                 session, lat, lon,
                 weather_model=self.weather_model, timeout=self.url_timeout, logger=self.logger,
