@@ -8,6 +8,9 @@ explicitly, matching how the command derives it from the API's current.time.
 
 from modules.commands.rain_command import (
     NowcastResult,
+    _iso_duration_hours,  # noqa: PLC2701 (testing internal helper)
+    _nws_hourly,  # noqa: PLC2701
+    _nws_weather_code,  # noqa: PLC2701
     _round5,  # noqa: PLC2701 (testing internal helper)
     analyze_precip_nowcast,
     city_display_name,
@@ -348,3 +351,43 @@ def test_decide_full_episode_sequence():
         clock += 15 * 60  # advance 15 min between polls
 
     assert kinds == [None, "starting", None, None, "ending", None, None]
+
+
+# --- NWS gridpoint source (fetch_precip_series_nws helpers) -------------------
+
+def test_iso_duration_hours():
+    assert _iso_duration_hours("PT1H") == 1
+    assert _iso_duration_hours("PT6H") == 6
+    assert _iso_duration_hours("P1DT6H") == 30
+    assert _iso_duration_hours("PT3H") == 3
+    assert _iso_duration_hours("") == 1       # unparseable -> at least 1 hour
+    assert _iso_duration_hours("PT30M") == 1  # sub-hour -> 1
+
+
+def test_nws_weather_code_classification():
+    # NWS weather types map to WMO codes that classify into the same buckets.
+    assert precip_bucket_for_code(_nws_weather_code([{"weather": "thunderstorms"}])) == "thunder"
+    assert precip_bucket_for_code(_nws_weather_code([{"weather": "snow"}])) == "snow"
+    assert precip_bucket_for_code(_nws_weather_code([{"weather": "rain"}])) == "rain"
+    assert precip_bucket_for_code(_nws_weather_code([{"weather": "freezing_rain"}])) == "freezing"
+    # a thunderstorm-with-rain still classifies as thunder (priority order)
+    assert _nws_weather_code([{"weather": "rain"}, {"weather": "thunderstorms"}]) == 95
+    assert _nws_weather_code([]) is None
+    assert _nws_weather_code([{"weather": None}]) is None
+
+
+def test_nws_hourly_divide_and_repeat():
+    # a 6-hour QPF accumulation is split evenly across its hours
+    spread = _nws_hourly(
+        [{"validTime": "2026-06-08T12:00:00+00:00/PT6H", "value": 6.0}], divide=True
+    )
+    assert len(spread) == 6
+    assert all(abs(v - 1.0) < 1e-9 for v in spread.values())
+    # an hourly PoP is repeated (not divided)
+    pop = _nws_hourly(
+        [{"validTime": "2026-06-08T12:00:00+00:00/PT1H", "value": 70}], divide=False
+    )
+    assert list(pop.values()) == [70]
+    # malformed / empty inputs are skipped, not fatal
+    assert _nws_hourly([{"value": 5}], divide=True) == {}
+    assert _nws_hourly(None, divide=False) == {}
