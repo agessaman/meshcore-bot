@@ -18,6 +18,8 @@ my_position_lon = -122.3321
 
 # Daily forecast time
 weather_alarm = 6:00              # Or "sunrise" / "sunset"
+# weather_alarm = 6:00, 12:00, 18:00   # Multiple times per day
+# weather_alarm = every hour             # Or every 2 hours, every 30 minutes, @hourly
 
 # Channels
 weather_channel = #weather
@@ -37,7 +39,7 @@ alerts_channel = #weather
 enabled = true
 my_position_lat = 47.6062         # Your latitude (required)
 my_position_lon = -122.3321       # Your longitude (required)
-weather_alarm = 6:00              # Time for daily forecast (HH:MM or sunrise/sunset)
+weather_alarm = 6:00              # Time(s) for forecast (see Scheduling Options below)
 weather_channel = #weather        # Channel for forecasts
 alerts_channel = #weather         # Channel for weather alerts
 ```
@@ -83,6 +85,8 @@ Sends forecast to `weather_channel` at configured time:
 
 **Scheduling Options:**
 - Fixed time: `weather_alarm = 6:00` (24-hour format)
+- Multiple times: `weather_alarm = 6:00, 12:00, 18:00`
+- Interval: `weather_alarm = every hour` (also `every 2 hours`, `every 30 minutes`, `@hourly`)
 - Sunrise: `weather_alarm = sunrise`
 - Sunset: `weather_alarm = sunset`
 

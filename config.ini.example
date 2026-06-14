@@ -1684,9 +1684,11 @@ enabled = false
 # flood_scope = #west
 
 # Daily weather forecast time
-# Format: HH:MM (24-hour format, e.g., "6:00" for 6 AM)
+# Single time: HH:MM (24-hour format, e.g., "6:00" for 6 AM)
+# Multiple times: comma-separated (e.g., "6:00, 12:00, 18:00")
+# Interval: "every hour", "every 2 hours", "every 30 minutes", or "@hourly"
 # Or use "sunrise" or "sunset" for dynamic times based on your location
-# Bot will send daily weather forecast at this time
+# Bot will send weather forecast at the configured schedule
 weather_alarm = 6:00
 
 # NOTE: Temperature, wind speed, and precipitation units are inherited from [Weather] section

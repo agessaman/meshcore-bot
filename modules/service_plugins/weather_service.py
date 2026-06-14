@@ -16,7 +16,6 @@ from typing import Any, Optional
 import ephem
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -33,6 +32,11 @@ import contextlib
 from ..url_shortener import shorten_url
 from ..utils import format_temperature_high_low, get_config_timezone
 from .base_service import BaseServicePlugin
+from .weather_alarm_schedule import (
+    WeatherAlarmSchedule,
+    build_forecast_cron_triggers,
+    parse_weather_alarm_schedule,
+)
 
 
 class WeatherService(BaseServicePlugin):
@@ -54,7 +58,8 @@ class WeatherService(BaseServicePlugin):
         super().__init__(bot)
 
         # Configuration
-        self.weather_alarm_time = self.bot.config.get('Weather_Service', 'weather_alarm', fallback='6:00')
+        self.weather_alarm_raw = self.bot.config.get('Weather_Service', 'weather_alarm', fallback='6:00')
+        self.weather_schedule = self._load_weather_schedule(self.weather_alarm_raw)
         self.my_position_lat = self.bot.config.getfloat('Weather_Service', 'my_position_lat', fallback=None)
         self.my_position_lon = self.bot.config.getfloat('Weather_Service', 'my_position_lon', fallback=None)
         self.weather_channel = self.bot.config.get('Weather_Service', 'weather_channel', fallback='general')
@@ -112,12 +117,29 @@ class WeatherService(BaseServicePlugin):
         self.mqtt_task: Optional[asyncio.Task] = None
 
         # Check if using sunrise/sunset
-        self.use_sunrise_sunset = self.weather_alarm_time.lower() in ['sunrise', 'sunset']
+        self.use_sunrise_sunset = self.weather_schedule.mode == 'sun_event'
 
         # Cache for location name (to avoid repeated reverse geocoding)
         self._cached_location_name: Optional[str] = None
 
-        self.logger.info(f"Weather service initialized: position=({self.my_position_lat}, {self.my_position_lon}), alarm={self.weather_alarm_time}")
+        self.logger.info(
+            "Weather service initialized: position=(%s, %s), alarm=%s",
+            self.my_position_lat,
+            self.my_position_lon,
+            self.weather_schedule.display,
+        )
+
+    def _load_weather_schedule(self, raw: str) -> WeatherAlarmSchedule:
+        """Load and validate weather forecast schedule from config."""
+        try:
+            return parse_weather_alarm_schedule(raw)
+        except ValueError as exc:
+            self.logger.warning(
+                "Invalid weather_alarm %r (%s), falling back to 6:00",
+                raw,
+                exc,
+            )
+            return parse_weather_alarm_schedule('6:00')
 
     def _load_weather_model(self) -> Optional[str]:
         """Load and normalize Open-Meteo model selection from config.
@@ -210,8 +232,8 @@ class WeatherService(BaseServicePlugin):
             # For sunrise/sunset, use a background task that reschedules daily
             self._forecast_task = asyncio.create_task(self._sunrise_sunset_forecast_loop())
         else:
-            # For fixed times, use APScheduler (BackgroundScheduler + daily cron)
-            self._setup_daily_forecast()
+            # For fixed times and intervals, use APScheduler cron jobs
+            self._setup_forecast_schedule()
 
         # Start background tasks
         self._alerts_task = asyncio.create_task(self._poll_weather_alerts_loop())
@@ -273,17 +295,9 @@ class WeatherService(BaseServicePlugin):
 
         self.logger.info("Weather service stopped")
 
-    def _setup_daily_forecast(self) -> None:
-        """Setup daily weather forecast schedule for fixed times (APScheduler cron, bot timezone)."""
+    def _setup_forecast_schedule(self) -> None:
+        """Setup weather forecast schedule (fixed times or intervals, bot timezone)."""
         try:
-            # Parse time (format: "HH:MM" or "H:MM")
-            if ':' in self.weather_alarm_time:
-                hour, minute = map(int, self.weather_alarm_time.split(':'))
-            else:
-                # Assume format "HHMM"
-                hour = int(self.weather_alarm_time[:2])
-                minute = int(self.weather_alarm_time[2:])
-
             if self._forecast_scheduler is not None:
                 try:
                     self._forecast_scheduler.shutdown(wait=False)
@@ -292,29 +306,31 @@ class WeatherService(BaseServicePlugin):
                 self._forecast_scheduler = None
 
             tz, _ = get_config_timezone(self.bot.config, self.logger)
+            triggers = build_forecast_cron_triggers(self.weather_schedule, tz)
             self._forecast_scheduler = BackgroundScheduler(timezone=tz)
-            self._forecast_scheduler.add_job(
-                self._send_daily_forecast,
-                CronTrigger(hour=hour, minute=minute),
-                id="weather_daily_forecast",
-                replace_existing=True,
-            )
+            for job_id, trigger, label in triggers:
+                self._forecast_scheduler.add_job(
+                    self._send_daily_forecast,
+                    trigger,
+                    id=job_id,
+                    replace_existing=True,
+                )
             self._forecast_scheduler.start()
+            labels = ", ".join(label for _, _, label in triggers)
             self.logger.info(
-                "Scheduled daily weather forecast at %02d:%02d (%s)",
-                hour,
-                minute,
+                "Scheduled weather forecast (%s) in %s",
+                labels,
                 getattr(tz, "zone", tz),
             )
         except Exception as e:
-            self.logger.error(f"Error setting up daily forecast schedule: {e}")
+            self.logger.error(f"Error setting up forecast schedule: {e}")
 
     async def _sunrise_sunset_forecast_loop(self) -> None:
         """Background task for sunrise/sunset-based forecasts.
 
         Calculates daily sunrise/sunset times and schedules the forecast accordingly.
         """
-        event_type = self.weather_alarm_time.lower()
+        event_type = self.weather_schedule.sun_event or 'sunrise'
         self.logger.info(f"Starting {event_type}-based forecast loop")
 
         while self._running:
