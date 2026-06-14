@@ -3,6 +3,9 @@
 
 import pytest
 
+from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
+
 from modules.service_plugins.weather_alarm_schedule import (
     build_forecast_cron_triggers,
     parse_clock_time,
@@ -67,6 +70,9 @@ def test_build_forecast_cron_triggers_fixed_times():
     assert len(triggers) == 2
     assert triggers[0][0] == "weather_forecast_0600"
     assert triggers[1][0] == "weather_forecast_1800"
+    # Fixed times must use CronTrigger
+    assert isinstance(triggers[0][1], CronTrigger)
+    assert isinstance(triggers[1][1], CronTrigger)
 
 
 def test_build_forecast_cron_triggers_hourly():
@@ -74,3 +80,21 @@ def test_build_forecast_cron_triggers_hourly():
     triggers = build_forecast_cron_triggers(schedule, "UTC")
     assert len(triggers) == 1
     assert triggers[0][0] == "weather_forecast_interval"
+    # Intervals must use IntervalTrigger, not CronTrigger
+    assert isinstance(triggers[0][1], IntervalTrigger)
+
+
+def test_build_forecast_cron_triggers_every_n_hours():
+    schedule = parse_weather_alarm_schedule("every 2 hours")
+    triggers = build_forecast_cron_triggers(schedule, "UTC")
+    assert len(triggers) == 1
+    assert triggers[0][0] == "weather_forecast_interval"
+    assert isinstance(triggers[0][1], IntervalTrigger)
+
+
+def test_build_forecast_cron_triggers_every_minutes():
+    schedule = parse_weather_alarm_schedule("every 30 minutes")
+    triggers = build_forecast_cron_triggers(schedule, "UTC")
+    assert len(triggers) == 1
+    assert triggers[0][0] == "weather_forecast_interval"
+    assert isinstance(triggers[0][1], IntervalTrigger)

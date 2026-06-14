@@ -7,6 +7,8 @@ import re
 from dataclasses import dataclass, field
 
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.base import BaseTrigger
 
 
 @dataclass(frozen=True)
@@ -114,14 +116,18 @@ def parse_weather_alarm_schedule(raw: str) -> WeatherAlarmSchedule:
 def build_forecast_cron_triggers(
     schedule: WeatherAlarmSchedule,
     timezone,
-) -> list[tuple[str, CronTrigger, str]]:
-    """Build APScheduler cron triggers for a parsed schedule.
+) -> list[tuple[str, BaseTrigger, str]]:
+    """Build APScheduler triggers for a parsed schedule.
+
+    Fixed times use ``CronTrigger``; intervals use ``IntervalTrigger`` so that
+    the period is counted from the moment the scheduler starts rather than
+    being pinned to clock boundaries (e.g. 00:00, 02:00, 04:00 …).
 
     Returns:
         List of ``(job_id, trigger, label)`` tuples.
     """
     if schedule.mode == "fixed":
-        triggers: list[tuple[str, CronTrigger, str]] = []
+        triggers: list[tuple[str, BaseTrigger, str]] = []
         for hour, minute in schedule.fixed_times:
             label = f"{hour:02d}:{minute:02d}"
             triggers.append(
@@ -135,18 +141,11 @@ def build_forecast_cron_triggers(
 
     if schedule.mode == "interval":
         if schedule.interval_hours is not None:
-            hours = schedule.interval_hours
-            if hours == 1:
-                trigger = CronTrigger(minute=0, timezone=timezone)
-            elif hours == 24:
-                trigger = CronTrigger(hour=0, minute=0, timezone=timezone)
-            else:
-                trigger = CronTrigger(hour=f"*/{hours}", minute=0, timezone=timezone)
+            trigger = IntervalTrigger(hours=schedule.interval_hours, timezone=timezone)
             return [("weather_forecast_interval", trigger, schedule.display)]
 
         if schedule.interval_minutes is not None:
-            minutes = schedule.interval_minutes
-            trigger = CronTrigger(minute=f"*/{minutes}", timezone=timezone)
+            trigger = IntervalTrigger(minutes=schedule.interval_minutes, timezone=timezone)
             return [("weather_forecast_interval", trigger, schedule.display)]
 
     raise ValueError(f"unsupported schedule mode: {schedule.mode}")
