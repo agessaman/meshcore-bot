@@ -129,13 +129,34 @@ def _mowas_service_bot():
 
 
 @pytest.mark.unit
+class TestScopeByRegion:
+    def test_hierarchical_lookup(self):
+        bot = _mowas_service_bot()
+        bot.config.set("DARC_MoWaS_Service", "flood_scope.090000000000", "#de-by")
+        bot.config.set("DARC_MoWaS_Service", "flood_scope.091840000000", "#de-by-muc")
+        svc = DARC_MoWaS_Service(bot)
+        # City Haar within LK Munich
+        area = TRDECapAlertArea(areaDesc="Stadt Haar", geocode=[("SHN", "091841230000")])
+        info = TRDECapAlertInfo(language="de", category=None, event=None, urgency=None,
+            severity=None, certainty=None, description="", parameter=[], headline=None, area=[area])
+        # most specific wins
+        assert svc.scope_by_region(info) == "#de-by-muc"
+        # broader prefix
+        area.geocode = [("SHN", "091000000000")]
+        assert svc.scope_by_region(info) == "#de-by"
+        # no match
+        area.geocode = [("SHN", "050000000000")]
+        assert svc.scope_by_region(info) is None
+
+
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_send_chunks_assigns_ascending_timestamps_per_index():
     """Each chunk gets ts_now + i seconds so clients can order and dedupe."""
     svc = DARC_MoWaS_Service(_mowas_service_bot())
     captured: list[tuple[int, datetime]] = []
 
-    async def capture(channel, chunk, index, total, timestamp):
+    async def capture(channel, chunk, index, total, timestamp, scope):
         captured.append((index, timestamp))
 
     svc._send_chunk_with_retry = capture  # type: ignore[method-assign]

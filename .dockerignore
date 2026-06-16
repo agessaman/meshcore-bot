@@ -28,7 +28,12 @@ ENV/
 
 # OS
 .DS_Store
+**/.DS_Store
 Thumbs.db
+# macOS AppleDouble sidecar files (created when copying to SMB/exFAT shares).
+# Keep them out of the build context so the plugin loader doesn't try to import them.
+._*
+**/._*
 
 # Project specific
 *.db

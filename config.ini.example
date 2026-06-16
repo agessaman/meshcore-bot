@@ -758,6 +758,24 @@ enabled = true
 # default_lat = 48.08
 # default_lon = -121.97
 
+[Rain_Command]
+# Minute-level rain nowcast ("rain starting in ~20min") via Open-Meteo's
+# 15-minutely precipitation. Worldwide, no API key. Keywords: rain, nowcast.
+# Usage: rain [city|zipcode|lat,lon]   (no location -> companion, then bot location)
+enabled = true
+# How far ahead to look, in minutes (default: 120)
+# window_minutes = 120
+# Precipitation amount (mm per 15-min bucket) at/above which it counts as raining.
+# Lower = more sensitive to light drizzle; raise to ignore trace amounts. (default: 0.1)
+# precip_threshold_mm = 0.1
+# Look up US ZIP -> "City, ST" via Zippopotam.us (free, no key). OpenStreetMap
+# often lacks the city for a ZIP centroid, so this gives nicer labels. Set false
+# to skip the external lookup and reverse-geocode instead. (default: true)
+# zip_city_lookup = true
+# Optional: default coordinates when user does not specify a location
+# default_lat = 47.6062
+# default_lon = -122.3321
+
 [Channels_List]
 # Common hashtag channels for the region
 # Format: channel_name = description
@@ -821,6 +839,22 @@ channel_override = #sounders=sounders,#seahawks=seahawks,#kraken=kraken,#mariner
 
 # ESPN API timeout in seconds
 api_timeout = 10
+
+[Worldcup_Command]
+# Enable or disable the World Cup command (true/false)
+# Commands: wc / worldcup
+# This command only responds while a FIFA World Cup (men's or women's) is actually
+# in progress. The active tournament is auto-detected from the ESPN schedule, so no
+# dates need to be configured; outside a tournament it replies that none is in progress.
+# World Cup scores are also available year-round via the sports command (e.g. "sports fifa").
+enabled = true
+
+# ESPN API timeout in seconds
+api_timeout = 10
+
+# How long (in minutes) to cache season detection and nation roster lookups,
+# to avoid repeated ESPN requests. Default: 360 (6 hours).
+cache_ttl_minutes = 360
 
 [Stats_Command]
 # Enable or disable the stats command (true/false)
@@ -1471,6 +1505,11 @@ debug = false
 # false: Start web viewer manually (recommended)
 auto_start = false
 
+# Enable multibyte monitor page (/multibyte-rollout)
+# false: hide page/nav/API endpoint
+# true: expose page/nav/API endpoint
+multibyte_monitor_enabled = false
+
 # Optional timeout overrides for web viewer integration (seconds)
 # edge_post_timeout_sec = 1.0
 # node_post_timeout_sec = 0.5
@@ -1714,6 +1753,35 @@ alerts_channel = #weather
 # Default: 600000 (10 minutes)
 poll_weather_alerts_interval = 600000
 
+# --- Proactive rain nowcast ("rain incoming" push) ---
+# Automatically posts a heads-up to a channel when precipitation is about to
+# start at the bot's position (my_position_lat/lon above), using Open-Meteo's
+# 15-minutely forecast — the same engine as the `rain`/`nowcast` command.
+# Fires once per rain episode (deduped), re-arms after it clears.
+# Opt-in: set true to enable. Default: false
+rain_nowcast_enabled = false
+
+# Channel for the heads-up. Defaults to weather_channel if unset.
+# rain_channel = #weather
+
+# How often to check for incoming rain (milliseconds). Default: 900000 (15 min)
+poll_rain_nowcast_interval = 900000
+
+# Only announce when rain is expected to start within this many minutes.
+# Default: 60
+rain_nowcast_lead_minutes = 60
+
+# Minimum minutes between pushes (cooldown backstop against forecast flapping).
+# Default: 30
+rain_nowcast_renotify_minutes = 30
+
+# Also announce when rain is about to STOP (not just start). Default: true
+# rain_nowcast_announce_ending = true
+
+# Precipitation amount (mm per 15-min bucket) that counts as rain. Lower = more
+# sensitive to light drizzle; raise to ignore trace amounts. Default: 0.1
+# rain_nowcast_threshold_mm = 0.1
+
 # Thunder/storm data collection interval (milliseconds)
 # How often to aggregate thunder data for evaluation
 # Default: 600000 (10 minutes)
@@ -1802,6 +1870,57 @@ maxlongitude = -114.0
 # When true: notification message then link-only message. When false: no link sent.
 # Default: true
 send_link = true
+
+[Worldcup_Service]
+# Live FIFA World Cup score updates posted to a channel (true/false).
+# Posts proactive messages as matches progress, e.g.:
+#   Group E: Côte d'Ivoire 0, Ecuador 0 (half-time)
+# Only runs while a World Cup (men's or women's) is in progress; the active tournament
+# is auto-detected from the ESPN calendar, so no dates need to be configured. When no
+# tournament is active the service idles. Pairs with the wc/worldcup command.
+enabled = false
+
+# Optional regional TC_FLOOD scope for mesh channel posts from this service.
+# flood_scope = #west
+
+# Channel to post live updates to
+channel = #general
+
+# Poll interval (milliseconds) while a tournament is active but no match is in progress
+# (waiting for the next kick-off). Default: 60000 (1 minute)
+poll_interval = 60000
+
+# Faster poll interval (milliseconds) used while at least one match is LIVE, for timelier
+# goal/half-time/full-time updates. ESPN's scoreboard is edge-cached ~15-20s, so polling
+# faster than that yields no fresher data. Default: 20000 (20 seconds)
+live_poll_interval = 20000
+
+# Idle interval (seconds) used when no tournament is in progress. Default: 1800 (30 min)
+idle_interval = 1800
+
+# Which match events to announce (each true/false)
+announce_kickoff = true
+announce_goals = true
+announce_halftime = true
+announce_fulltime = true
+
+# Send only to external targets (Discord/Telegram) and skip mesh channel posts (true/false).
+# Default: false
+silence_mesh_output = false
+
+# EXPERIMENTAL: use ESPN's "fastcast" WebSocket push for near-real-time updates instead of
+# relying solely on the poll interval (true/false). When on, a push wakes the service to
+# re-check scores immediately (with a cache-busting request); REST polling above continues
+# as a heartbeat/fallback, so this can only make updates faster, never break them.
+# This is a reverse-engineered, undocumented ESPN protocol and may stop working without
+# notice. Leave false unless you are testing it. Default: false
+use_fastcast = false
+# Optional override for the fastcast topic to subscribe to. Leave blank to use the default
+# derived from the men's tournament. The topic format is undocumented and may need tuning.
+# fastcast_topic =
+
+# ESPN API timeout in seconds
+api_timeout = 10
 
 [Rate_Limits]
 # Per-channel rate limiting: minimum seconds between bot messages on a specific channel.
@@ -1999,6 +2118,13 @@ enabled = false
 
 # Optional regional TC_FLOOD scope for mesh channel posts from this service.
 # flood_scope = #west
+# Optional flood scope setting per region (fallback to flood_scope if other region)
+# Region ids are 12-digit "Regionalschluessel", whereby the tailing zeros refer to
+# any id within that region
+# flood_scope.<region-id> = #scope
+# Example:
+# flood_scope.091840000000 = #de-by-muc
+# flood_scope.090000000000 = #de-by
 
 # Listen address and port of webserver that receives the webhook POSTs from DARC MoWaS.
 # Must be accessible from the internet (or HAMNET) for MoWaS to reach it.

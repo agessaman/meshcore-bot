@@ -664,7 +664,41 @@ LEAGUE_MAPPINGS = {
 
     # Premier League
     'epl': {'sport': 'soccer', 'league': 'eng.1'},
-    'premier league': {'sport': 'soccer', 'league': 'eng.1'}
+    'premier league': {'sport': 'soccer', 'league': 'eng.1'},
+
+    # FIFA World Cup (men's = fifa.world, women's = fifa.wwc)
+    'fifa': {'sport': 'soccer', 'league': 'fifa.world'},
+    'worldcup': {'sport': 'soccer', 'league': 'fifa.world'},
+    'world cup': {'sport': 'soccer', 'league': 'fifa.world'},
+    'wc': {'sport': 'soccer', 'league': 'fifa.world'},
+    'fifaw': {'sport': 'soccer', 'league': 'fifa.wwc'},
+    'wwc': {'sport': 'soccer', 'league': 'fifa.wwc'},
+}
+
+# Common nation name synonyms -> ESPN national-team display name.
+# Used to resolve `wc <nation>` / `sports <nation>` against the live name->id index
+# built from standings/scoreboard data. Keep this small; the live index is the source
+# of truth and already matches full names, locations, and abbreviations.
+WORLD_CUP_NATIONS = {
+    'usa': 'United States',
+    'us': 'United States',
+    'usmnt': 'United States',
+    'uswnt': 'United States',
+    'united states': 'United States',
+    'america': 'United States',
+    'korea': 'Korea Republic',
+    'south korea': 'Korea Republic',
+    'north korea': 'Korea DPR',
+    'iran': 'IR Iran',
+    'ivory coast': "Côte d'Ivoire",
+    'holland': 'Netherlands',
+    'turkey': 'Türkiye',
+    'czech republic': 'Czechia',
+    'uae': 'United Arab Emirates',
+    'bosnia': 'Bosnia and Herzegovina',
+    'cape verde': 'Cabo Verde',
+    'drc': 'Congo DR',
+    'dr congo': 'Congo DR',
 }
 
 def format_clean_date_time(dt) -> str:

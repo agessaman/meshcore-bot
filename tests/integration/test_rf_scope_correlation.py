@@ -10,6 +10,7 @@ from modules.command_manager import CommandManager
 from modules.message_handler import MessageHandler
 from tests.integration.test_flood_scope_reply import make_transport_code
 
+
 def _fresh_rf(entry: dict) -> dict:
     """Copy RF fixture with a current timestamp so find_recent_rf_data age filter passes."""
     out = dict(entry)

@@ -1,4 +1,5 @@
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -11,6 +12,8 @@ class ESPNClient:
     """Client for ESPN API using aiohttp for asynchronous requests"""
 
     BASE_URL = "http://site.api.espn.com/apis/site/v2/sports"
+    # Standings live under a different path prefix than the site v2 endpoints
+    STANDINGS_BASE_URL = "http://site.api.espn.com/apis/v2/sports"
 
     def __init__(self, logger: Optional[logging.Logger] = None, timeout: int = 10, session: Optional[aiohttp.ClientSession] = None):
         """Initialize the ESPN API client.
@@ -48,6 +51,215 @@ class ESPNClient:
                 return parsed_events
         except Exception as e:
             self.logger.error(f"ESPN fetch_scoreboard error for {sport}/{league}: {e}")
+            return []
+
+    async def fetch_scoreboard_with_calendar(self, sport: str, league: str) -> Optional[dict]:
+        """Fetch scoreboard plus tournament calendar/league metadata.
+
+        Returns a dict with:
+          - 'events': parsed game events (same shape as fetch_scoreboard)
+          - 'calendar': list of {startDate, endDate, label} stage entries (may be empty)
+          - 'league_name': human-readable league/tournament name
+          - 'competitors': raw competitor dicts seen in today's events (id/name/abbr/location)
+
+        Used by the World Cup command to determine whether a tournament is in season
+        and to resolve nation names when standings are unavailable. Returns None on error.
+        """
+        url = f"{self.BASE_URL}/{sport}/{league}/scoreboard"
+        try:
+            session = await self._get_session()
+            async with session.get(url) as response:
+                response.raise_for_status()
+                data = await response.json()
+
+                events_raw = data.get('events', [])
+                parsed_events = []
+                competitors: list[dict] = []
+                for event in events_raw:
+                    parsed = self.parse_league_game_event(event, sport, league)
+                    if parsed:
+                        parsed_events.append(parsed)
+                    for comp in event.get('competitions', [{}])[0].get('competitors', []):
+                        team = comp.get('team', {})
+                        if team:
+                            competitors.append(team)
+
+                leagues = data.get('leagues', [])
+                league_obj = leagues[0] if leagues else {}
+
+                # The calendar nests the real stages (Group, Round of 32, ... Final) under
+                # an 'entries' list inside a single top-level wrapper whose own end date spans
+                # the whole season. Flatten to the actual stages so callers get true windows.
+                calendar = []
+
+                def _add_cal(entry: dict) -> None:
+                    if isinstance(entry, dict) and entry.get('startDate') and entry.get('endDate'):
+                        calendar.append({
+                            'label': entry.get('label', ''),
+                            'startDate': entry['startDate'],
+                            'endDate': entry['endDate'],
+                        })
+
+                for entry in league_obj.get('calendar', []):
+                    nested = entry.get('entries') if isinstance(entry, dict) else None
+                    if isinstance(nested, list) and nested:
+                        for sub in nested:
+                            _add_cal(sub)
+                    else:
+                        _add_cal(entry)
+
+                return {
+                    'events': parsed_events,
+                    'calendar': calendar,
+                    'league_name': league_obj.get('name', ''),
+                    'competitors': competitors,
+                }
+        except Exception as e:
+            self.logger.error(f"ESPN fetch_scoreboard_with_calendar error for {sport}/{league}: {e}")
+            return None
+
+    async def fetch_team_fixtures(self, sport: str, league: str, team_id: str, start_date: str, end_date: str) -> list[dict]:
+        """Fetch a team's matches across a date range via the dated scoreboard endpoint.
+
+        Unlike the team /schedule endpoint (which, for tournament national teams, only
+        returns matches already played), the dated scoreboard exposes the full set of
+        known fixtures. start_date/end_date are 'YYYYMMDD' strings. Returns parsed events
+        (past, live, and scheduled) involving team_id, or [] on error.
+        """
+        url = f"{self.BASE_URL}/{sport}/{league}/scoreboard?dates={start_date}-{end_date}"
+        try:
+            session = await self._get_session()
+            async with session.get(url) as response:
+                response.raise_for_status()
+                data = await response.json()
+
+                results = []
+                for event in data.get('events', []):
+                    competition = event.get('competitions', [{}])[0]
+                    competitors = competition.get('competitors', [])
+                    if any(str(c.get('team', {}).get('id', '')) == str(team_id) for c in competitors):
+                        parsed = self.parse_game_event_with_timestamp(event, str(team_id), sport, league)
+                        if parsed:
+                            results.append(parsed)
+                return results
+        except Exception as e:
+            self.logger.error(f"ESPN fetch_team_fixtures error for {team_id} {start_date}-{end_date}: {e}")
+            return []
+
+    def _score_int(self, competitor: dict) -> int:
+        """Best-effort integer score for a competitor (0 on failure)."""
+        try:
+            return int(float(self.extract_score(competitor)))
+        except (TypeError, ValueError):
+            return 0
+
+    async def fetch_match_states(self, sport: str, league: str, cache_bust: bool = False) -> list[dict]:
+        """Return current per-match live state for the scoreboard (today's matches).
+
+        Each item: {id, home_id, away_id, home_name, away_name, home_score, away_score,
+        status, clock, home_pen, away_pen}. Names are full team display names. Penalty
+        fields are None unless a shootout score is present. Used by the live-score service
+        to detect kickoff / goal / half-time / full-time transitions. Returns [] on error.
+
+        cache_bust appends a unique query param to bypass ESPN's edge cache, used when a
+        fastcast push signals a change so the REST snapshot reflects it immediately.
+        """
+        url = f"{self.BASE_URL}/{sport}/{league}/scoreboard"
+        if cache_bust:
+            url += f"?_={int(time.time() * 1000)}"
+        try:
+            session = await self._get_session()
+            async with session.get(url) as response:
+                response.raise_for_status()
+                data = await response.json()
+
+                states = []
+                for event in data.get('events', []):
+                    competition = event.get('competitions', [{}])[0]
+                    competitors = competition.get('competitors', [])
+                    if len(competitors) != 2:
+                        continue
+                    home = next((c for c in competitors if c.get('homeAway') == 'home'), competitors[0])
+                    away = next((c for c in competitors if c.get('homeAway') == 'away'), competitors[1])
+                    status_obj = competition.get('status', event.get('status', {}))
+                    states.append({
+                        'id': str(event.get('id', '')),
+                        'home_id': str(home.get('team', {}).get('id', '')),
+                        'away_id': str(away.get('team', {}).get('id', '')),
+                        'home_name': home.get('team', {}).get('displayName', home.get('team', {}).get('name', '?')),
+                        'away_name': away.get('team', {}).get('displayName', away.get('team', {}).get('name', '?')),
+                        'home_score': self._score_int(home),
+                        'away_score': self._score_int(away),
+                        'status': status_obj.get('type', {}).get('name', 'UNKNOWN'),
+                        'clock': status_obj.get('displayClock', ''),
+                        'home_pen': self.extract_shootout_score(home),
+                        'away_pen': self.extract_shootout_score(away),
+                    })
+                return states
+        except Exception as e:
+            self.logger.error(f"ESPN fetch_match_states error for {sport}/{league}: {e}")
+            return []
+
+    @staticmethod
+    def _stat_value(stats: list[dict], *names: str) -> Optional[float]:
+        """Look up a numeric stat value by its 'name' (or 'type') from a stats array."""
+        wanted = {n.lower() for n in names}
+        for stat in stats:
+            if str(stat.get('name', '')).lower() in wanted or str(stat.get('type', '')).lower() in wanted:
+                value = stat.get('value')
+                if isinstance(value, (int, float)):
+                    return value
+        return None
+
+    async def fetch_standings(self, sport: str, league: str) -> list[dict]:
+        """Fetch and parse group standings for a league.
+
+        Returns a list of groups, each:
+          {'group_name': 'Group A',
+           'entries': [{'rank', 'name', 'abbr', 'gp', 'w', 'd', 'l', 'pts', 'gd'}, ...]}
+        Entries are sorted by rank. Returns [] on error or if no standings exist.
+        """
+        url = f"{self.STANDINGS_BASE_URL}/{sport}/{league}/standings"
+        try:
+            session = await self._get_session()
+            async with session.get(url) as response:
+                response.raise_for_status()
+                data = await response.json()
+
+                groups = []
+                for child in data.get('children', []):
+                    standings = child.get('standings', {})
+                    entries = []
+                    for entry in standings.get('entries', []):
+                        team = entry.get('team', {})
+                        stats = entry.get('stats', [])
+
+                        def _i(*names: str) -> int:
+                            v = self._stat_value(stats, *names)
+                            return int(v) if v is not None else 0
+
+                        entries.append({
+                            'rank': _i('rank'),
+                            'id': str(team.get('id', '')),
+                            'name': team.get('displayName', team.get('name', '')),
+                            'abbr': team.get('abbreviation', ''),
+                            'location': team.get('location', ''),
+                            'gp': _i('gamesPlayed'),
+                            'w': _i('wins'),
+                            'd': _i('ties', 'draws'),
+                            'l': _i('losses'),
+                            'pts': _i('points'),
+                            'gd': _i('pointDifferential'),
+                        })
+
+                    entries.sort(key=lambda e: e['rank'] if e['rank'] else 999)
+                    groups.append({
+                        'group_name': child.get('name', ''),
+                        'entries': entries,
+                    })
+                return groups
+        except Exception as e:
+            self.logger.error(f"ESPN fetch_standings error for {sport}/{league}: {e}")
             return []
 
     async def fetch_team_schedule(self, sport: str, league: str, team_id: str) -> list[dict]:

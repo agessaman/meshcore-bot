@@ -227,6 +227,13 @@ class TelegramBridgeService(BaseServicePlugin):
             f"Telegram bridge service started (bridging {len(self.channel_chat_ids)} channels)"
         )
 
+    async def on_transport_reconnected(self) -> None:
+        """Re-subscribe to channel messages on the new meshcore instance."""
+        if not self._running or not getattr(self.bot, 'meshcore', None):
+            return
+        self.bot.meshcore.subscribe(EventType.CHANNEL_MSG_RECV, self._on_mesh_channel_message)
+        self.logger.info("Telegram bridge re-subscribed to CHANNEL_MSG_RECV after transport reconnect")
+
     async def stop(self) -> None:
         self.logger.info("Stopping Telegram bridge service...")
         self._running = False

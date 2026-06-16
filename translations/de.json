@@ -55,6 +55,7 @@
             "scores",
             "sport"
         ],
+        "worldcup": ["wc", "worldcup", "wm", "weltmeisterschaft"],
         "stats": [
             "stats",
             "statistik"
@@ -274,6 +275,17 @@
             "no_games_league": "Keine Spiele für {sport} gefunden",
             "no_games_team": "Keine Spiele für {team} gefunden",
             "team_not_found": "Team/Liga '{team}' nicht gefunden. Versuche: seahawks, mariners, sounders, kraken, storm, chiefs, lfc, mlb, nfl, mls, wnba, epl, usw."
+        },
+        "worldcup": {
+          "description": "FIFA-WM-Ergebnisse, Tabellen & Ländermatches (nur während der WM)",
+          "help": "WM-Ergebnisse. 'wc' für heutige Spiele, 'wc group [A-L]' für Tabellen oder 'wc [Land]' für die Spiele eines Teams.",
+          "not_in_season": "Derzeit findet keine Weltmeisterschaft statt.",
+          "no_games_today": "Heute keine WM-Spiele.",
+          "no_games_nation": "Keine WM-Spiele für {nation} gefunden.",
+          "groups_list": "WM-Gruppen: {groups}. Versuche 'wc group A'.",
+          "group_not_found": "Gruppe '{group}' nicht gefunden. Nutze einen Gruppenbuchstaben, z. B. 'wc group A'.",
+          "nation_not_found": "Land '{nation}' bei der aktuellen WM nicht gefunden.",
+          "error_fetching": "Fehler beim Abrufen der WM-Daten"
         },
         "stats": {
             "description": "Statistiken der letzten 24 Stunden anzeigen. Nutze 'stats messages', 'stats channels' oder 'stats paths' für spezifische Stats.",

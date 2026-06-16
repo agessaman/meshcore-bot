@@ -139,7 +139,7 @@ seriously, there are some people...
 
 MeshCore @ mentions are cleaned up and bolded: `@[username]` → `**@username**`
 
-Bridged messages never trigger Discord mention notifications (`@everyone`, `@here`, roles, or users). The webhook sets `allowed_mentions` so mesh highlights display as plain text only.
+Bridged messages never trigger Discord mention notifications (`@everyone`, `@here`, roles, or users). The webhook sets `allowed_mentions` and neutralizes `@` in message text so mesh highlights stay plain text (no blue mention tags).
 
 ---
 

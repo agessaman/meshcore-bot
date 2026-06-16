@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import configparser
 import logging
+import re
 from unittest.mock import MagicMock
 
 from modules.service_plugins.packet_capture_service import PacketCaptureService
@@ -73,3 +74,9 @@ def test_log_packet_summary_only_when_verbose_or_debug():
     svc._log_packet_summary("packet line")
     assert len(records) == 1
     assert records[0].levelno == logging.INFO
+
+
+def test_utc_iso_timestamp_is_z_suffixed():
+    ts = PacketCaptureService._utc_iso_timestamp()
+    assert ts.endswith("Z")
+    assert re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$", ts)

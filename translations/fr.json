@@ -48,6 +48,7 @@
             "score",
             "scores"
         ],
+        "worldcup": ["wc", "worldcup", "cdm", "mondial"],
         "stats": [
             "stats"
         ],
@@ -254,6 +255,17 @@
             "no_games_league": "Aucun match trouvé pour {sport}",
             "no_games_team": "Aucun match trouvé pour {team}",
             "team_not_found": "Équipe/Ligue '{team}' introuvable. Essayez: seahawks, mariners, sounders, kraken, storm, chiefs, lfc, mlb, nfl, mls, wnba, epl, etc."
+        },
+        "worldcup": {
+          "description": "Scores, classements et matchs par nation de la Coupe du Monde FIFA (en saison uniquement)",
+          "help": "Scores de la Coupe du Monde. 'wc' pour les matchs du jour, 'wc group [A-L]' pour les classements ou 'wc [pays]' pour les matchs d'une équipe.",
+          "not_in_season": "Aucune Coupe du Monde n'est en cours actuellement.",
+          "no_games_today": "Aucun match de Coupe du Monde aujourd'hui.",
+          "no_games_nation": "Aucun match de Coupe du Monde trouvé pour {nation}.",
+          "groups_list": "Groupes de la Coupe du Monde : {groups}. Essayez 'wc group A'.",
+          "group_not_found": "Groupe '{group}' introuvable. Utilisez une lettre de groupe, p. ex. 'wc group A'.",
+          "nation_not_found": "Pays '{nation}' introuvable dans la Coupe du Monde actuelle.",
+          "error_fetching": "Erreur lors de la récupération des données de la Coupe du Monde"
         },
         "stats": {
             "description": "Stats des dernières 24h. 'stats messages', 'stats channels' ou 'stats paths' pour stats spécifiques.",

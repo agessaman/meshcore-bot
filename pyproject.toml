@@ -64,6 +64,8 @@ modules = [
 ]
 
 [tool.ruff]
+# Match CI/Makefile installs so lint rules do not drift on unpinned `pip install ruff`.
+required-version = "==0.15.15"
 line-length = 120
 target-version = "py310"
 exclude = [".venv", "build", "dist"]
@@ -132,6 +134,7 @@ module = [
     "modules.plugin_loader",
     "modules.security_utils",
     "modules.commands.base_command",
+    "modules.commands.rain_command",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

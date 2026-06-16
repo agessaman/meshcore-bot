@@ -1620,7 +1620,7 @@
                 nodeMapById.set(nodeId, {
                     id: nodeId,
                     label: shortLabel,
-                    title: `${node.name} (${node.prefix})`, // Full name in tooltip
+                    title: `${escapeHtml(node.name)} (${escapeHtml(node.prefix)})`, // Full name in tooltip (rendered as HTML by vis-network)
                     prefix: node.prefix, // Store prefix for reference
                     color: {
                         background: node.role === 'roomserver' ? '#198754' : '#0d6efd',
@@ -2225,7 +2225,7 @@
             const label = isLinked
                 ? (n.name.length > 22 ? n.name.substring(0, 22) + '... (' + n.prefix + ')' : n.name + ' (' + n.prefix + ')')
                 : '';
-            const title = n.name + ' (' + n.prefix + ')';
+            const title = escapeHtml(n.name) + ' (' + escapeHtml(n.prefix) + ')';
             const update = {
                 id: nid,
                 label: label,
@@ -2333,7 +2333,7 @@
                 return {
                     id: nodeId,
                     label: getDefaultNodeLabel(node),
-                    title: node.name + ' (' + node.prefix + ')',
+                    title: escapeHtml(node.name) + ' (' + escapeHtml(node.prefix) + ')',
                     font: { size: 12 },
                     color: {
                         background: bg,

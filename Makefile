@@ -33,7 +33,7 @@ install: $(VENV)/bin/python
 
 dev: $(VENV)/bin/python
 	$(PIP) install -e ".[profanity,geo,test]"
-	$(PIP) install ruff mypy
+	$(PIP) install "ruff==0.15.15" mypy
 
 # ---------------------------------------------------------------------------
 # Testing

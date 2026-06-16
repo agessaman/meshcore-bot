@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Optional
 from ..clients.espn_client import ESPNClient
 from ..clients.sports_mappings import LEAGUE_MAPPINGS, SPORT_EMOJIS, TEAM_MAPPINGS
 from ..clients.thesportsdb_client import TheSportsDBClient
+from ..clients.worldcup_data import WorldCupData
 from ..models import MeshMessage
 from .base_command import BaseCommand
 
@@ -76,6 +77,8 @@ class SportsCommand(BaseCommand):
         # Initialize API clients
         self.espn_client = ESPNClient(logger=self.logger, timeout=self.url_timeout)
         self.thesportsdb_client = TheSportsDBClient(logger=self.logger)
+        # Resolves World Cup nation names (e.g. `sports brazil`) to ESPN team ids
+        self.wc_data = WorldCupData(self.espn_client, logger=self.logger)
 
         # Load default teams from config
         self.default_teams = self.load_default_teams()
@@ -412,6 +415,14 @@ class SportsCommand(BaseCommand):
 
 
 
+    async def resolve_world_cup_nation(self, team_name: str) -> Optional[dict[str, str]]:
+        """Resolve a World Cup nation name to team_info, trying men's then women's."""
+        for wc_league in ('fifa.world', 'fifa.wwc'):
+            nation_info = await self.wc_data.resolve_nation(team_name, wc_league)
+            if nation_info:
+                return nation_info
+        return None
+
     async def get_team_scores(self, team_name: str) -> str:
         """Get scores for a specific team or league"""
         # Check if this is a schedule query (team_name ends with " schedule")
@@ -426,8 +437,10 @@ class SportsCommand(BaseCommand):
                 # (which is essentially the schedule)
                 return await self.get_league_scores(league_info)
 
-            # Otherwise, treat as team query
+            # Otherwise, treat as team query (with World Cup nation fallback)
             team_info = TEAM_MAPPINGS.get(team_name_clean)
+            if not team_info:
+                team_info = await self.resolve_world_cup_nation(team_name_clean)
             if not team_info:
                 return self.translate('commands.sports.team_not_found', team=team_name_clean)
 
@@ -451,8 +464,10 @@ class SportsCommand(BaseCommand):
         if city_teams:
             return await self.get_city_scores(city_teams, team_name)
 
-        # Otherwise, treat as single team query
+        # Otherwise, treat as single team query (with World Cup nation fallback)
         team_info = TEAM_MAPPINGS.get(team_name)
+        if not team_info:
+            team_info = await self.resolve_world_cup_nation(team_name)
         if not team_info:
             return self.translate('commands.sports.team_not_found', team=team_name)
 

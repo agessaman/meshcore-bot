@@ -12,6 +12,7 @@
         "hfcond": ["hfcond", "hf"],
         "satpass": ["satpass", "satelite"],
         "sports": ["deportes", "sports", "score", "scores", "puntaje", "puntajes"],
+        "worldcup": ["wc", "worldcup", "mundial", "copa"],
         "stats": ["estadisticas", "estadísticas", "stats"],
         "channels": ["canales", "channels", "channel", "canal"],
         "path": ["ruta", "path", "decode", "route", "decodificar"],
@@ -130,6 +131,17 @@
             "no_games_league": "No se encontraron juegos para {sport}",
             "no_games_team": "No se encontraron juegos para {team}",
             "team_not_found": "Equipo/Liga '{team}' no encontrado. Intenta: seahawks, mariners, sounders, kraken, storm, chiefs, lfc, mlb, nfl, mls, wnba, epl, etc."
+        },
+        "worldcup": {
+          "description": "Resultados, posiciones y partidos del Mundial FIFA (solo en temporada)",
+          "help": "Resultados del Mundial. Usa 'wc' para los partidos de hoy, 'wc group [A-L]' para posiciones o 'wc [país]' para los partidos de un equipo.",
+          "not_in_season": "No hay ningún Mundial en curso.",
+          "no_games_today": "Hoy no hay partidos del Mundial.",
+          "no_games_nation": "No se encontraron partidos del Mundial para {nation}.",
+          "groups_list": "Grupos del Mundial: {groups}. Prueba 'wc group A'.",
+          "group_not_found": "Grupo '{group}' no encontrado. Usa una letra de grupo, p. ej. 'wc group A'.",
+          "nation_not_found": "País '{nation}' no encontrado en el Mundial actual.",
+          "error_fetching": "Error al obtener datos del Mundial"
         },
         "stats": {
             "description": "Mostrar estadísticas de las últimas 24 horas. Usa 'stats messages', 'stats channels', o 'stats paths' para estadísticas específicas.",

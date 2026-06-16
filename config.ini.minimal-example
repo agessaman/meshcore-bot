@@ -438,6 +438,9 @@ enabled = false
 [Sports_Command]
 enabled = false
 
+[Worldcup_Command]
+enabled = false
+
 [Stats_Command]
 enabled = false
 

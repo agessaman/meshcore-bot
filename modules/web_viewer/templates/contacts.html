@@ -866,7 +866,6 @@ class ModernContactsManager {
     renderContactCardHtml(contact) {
         const uidEsc = this.escapeHtml(contact.user_id);
         const uidJs = contact.user_id.replace(/'/g, "\\'");
-        const nameJs = (contact.username || 'Unknown').replace(/'/g, "\\'");
         const checked = this.selectedContactIds.has(contact.user_id) ? 'checked' : '';
         const hasGeo = !!(contact.latitude && contact.longitude && contact.latitude !== 0 && contact.longitude !== 0);
         const starLabel = contact.is_starred ? 'Unstar contact' : 'Star contact';
@@ -880,7 +879,7 @@ class ModernContactsManager {
                     <div class="flex-grow-1 min-w-0">
                         <div class="d-flex justify-content-between align-items-start gap-2">
                             <div class="min-w-0">
-                                <div class="fw-bold">${contact.username || 'Unknown'}</div>
+                                <div class="fw-bold">${this.escapeHtml(contact.username || 'Unknown')}</div>
                                 <small class="text-muted text-break d-block">${contact.user_id ? contact.user_id.substring(0, 16) + '...' : 'Unknown'}</small>
                             </div>
                             <div class="contact-mobile-device text-end flex-shrink-0">${this.formatDeviceType(contact)}</div>
@@ -910,7 +909,7 @@ class ModernContactsManager {
                                     <li><button type="button" class="dropdown-item" onclick="contactsManager.viewAdvertData('${contact.user_id}')"><i class="fas fa-info-circle me-2 text-info"></i>View advertisement data</button></li>
                                     ${geoMenuItem}
                                     <li><hr class="dropdown-divider"></li>
-                                    <li><button type="button" class="dropdown-item text-danger" onclick="contactsManager.showDeleteConfirmation('${uidJs}', '${nameJs}')"><i class="fas fa-trash me-2"></i>Delete contact</button></li>
+                                    <li><button type="button" class="dropdown-item text-danger" onclick="contactsManager.showDeleteConfirmation('${uidJs}')"><i class="fas fa-trash me-2"></i>Delete contact</button></li>
                                 </ul>
                             </div>
                         </div>
@@ -949,7 +948,7 @@ class ModernContactsManager {
                     <input type="checkbox" class="form-check-input contact-row-checkbox" data-user-id="${this.escapeHtml(contact.user_id)}" ${this.selectedContactIds.has(contact.user_id) ? 'checked' : ''}>
                 </td>
                 <td>
-                    <strong>${contact.username || 'Unknown'}</strong>
+                    <strong>${this.escapeHtml(contact.username || 'Unknown')}</strong>
                     <br>
                     <small class="text-muted">${contact.user_id ? contact.user_id.substring(0, 16) + '...' : 'Unknown'}</small>
                 </td>
@@ -975,7 +974,7 @@ class ModernContactsManager {
                             </button>` : 
                             ''
                         }
-                        <button class="btn btn-sm btn-outline-danger" onclick="contactsManager.showDeleteConfirmation('${contact.user_id.replace(/'/g, "\\'")}', '${(contact.username || 'Unknown').replace(/'/g, "\\'")}')" title="Delete Contact">
+                        <button class="btn btn-sm btn-outline-danger" onclick="contactsManager.showDeleteConfirmation('${contact.user_id.replace(/'/g, "\\'")}')" title="Delete Contact">
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>
@@ -1958,11 +1957,11 @@ class ModernContactsManager {
                 <div class="modal-dialog modal-lg">
                     <div class="modal-content">
                         <div class="modal-header">
-                            <h5 class="modal-title">Advertisement Data - ${contact.username || 'Unknown'}</h5>
+                            <h5 class="modal-title">Advertisement Data - ${this.escapeHtml(contact.username || 'Unknown')}</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                         </div>
                         <div class="modal-body">
-                            <pre class="bg-light p-3 rounded" style="background-color: var(--bg-secondary); color: var(--text-color);">${JSON.stringify(contact.raw_advert_data_parsed || contact.raw_advert_data || 'No advertisement data available', null, 2)}</pre>
+                            <pre class="bg-light p-3 rounded" style="background-color: var(--bg-secondary); color: var(--text-color);">${this.escapeHtml(JSON.stringify(contact.raw_advert_data_parsed || contact.raw_advert_data || 'No advertisement data available', null, 2))}</pre>
                         </div>
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -2140,14 +2139,17 @@ class ModernContactsManager {
         }
     }
     
-    showDeleteConfirmation(userId, username) {
+    showDeleteConfirmation(userId) {
         // Find the contact data
         const contact = this.filteredData.find(c => c.user_id === userId);
         if (!contact) {
             this.showError('Contact data not found');
             return;
         }
-        
+        // Derive the display name from the looked-up contact rather than
+        // trusting a value interpolated through an HTML attribute by the caller.
+        const username = contact.username || 'Unknown';
+
         // Create a modal for delete confirmation
         const modalHtml = `
             <div class="modal fade" id="deleteContactModal" tabindex="-1">
@@ -2262,7 +2264,7 @@ class ModernContactsManager {
             this.updateStatistics();
             
             // Show success message
-            this.showSuccess(`Contact "${username || 'Unknown'}" has been deleted successfully.`);
+            this.showSuccess(`Contact "${this.escapeHtml(username || 'Unknown')}" has been deleted successfully.`);
             
         } catch (error) {
             console.error('Error deleting contact:', error);
@@ -2460,7 +2462,7 @@ class ModernContactsManager {
                 previewText.innerHTML = `<i class="fas fa-check-circle text-success me-1"></i>No contacts found that are older than <strong>${days} days</strong>.`;
                 confirmBtn.disabled = true;
             } else {
-                const sampleNames = (data.samples || []).map(s => `<em>${s.name}</em>`).join(', ');
+                const sampleNames = (data.samples || []).map(s => `<em>${this.escapeHtml(s.name)}</em>`).join(', ');
                 const more = data.count > 5 ? ` and ${data.count - 5} more` : '';
                 previewText.innerHTML = `<i class="fas fa-exclamation-triangle text-warning me-1"></i><strong>${data.count}</strong> contact(s) will be deleted: ${sampleNames}${more}.`;
                 confirmLabel.textContent = `Purge ${data.count} contact(s)`;

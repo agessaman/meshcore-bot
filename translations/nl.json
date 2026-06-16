@@ -48,6 +48,7 @@
             "score",
             "scores"
         ],
+        "worldcup": ["wc", "worldcup", "wk"],
         "stats": [
             "stats"
         ],
@@ -254,6 +255,17 @@
             "no_games_league": "Geen wedstrijden voor {sport}",
             "no_games_team": "Geen wedstrijden voor {team}",
             "team_not_found": "Team/competitie '{team}' niet gevonden. Probeer: seahawks, mariners, sounders, kraken, storm, chiefs, lfc, mlb, nfl, mls, wnba, epl, etc."
+        },
+        "worldcup": {
+          "description": "FIFA WK-uitslagen, standen & landenwedstrijden (alleen tijdens het toernooi)",
+          "help": "WK-uitslagen. Gebruik 'wc' voor wedstrijden van vandaag, 'wc group [A-L]' voor standen of 'wc [land]' voor wedstrijden van een team.",
+          "not_in_season": "Er is momenteel geen WK aan de gang.",
+          "no_games_today": "Vandaag geen WK-wedstrijden.",
+          "no_games_nation": "Geen WK-wedstrijden gevonden voor {nation}.",
+          "groups_list": "WK-groepen: {groups}. Probeer 'wc group A'.",
+          "group_not_found": "Groep '{group}' niet gevonden. Gebruik een groepsletter, bijv. 'wc group A'.",
+          "nation_not_found": "Land '{nation}' niet gevonden in het huidige WK.",
+          "error_fetching": "Fout bij het ophalen van WK-gegevens"
         },
         "stats": {
             "description": "Statistieken laatste 24 uur. Gebruik 'stats messages', 'stats channels' of 'stats paths' voor specifieke stats.",

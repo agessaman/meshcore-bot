@@ -61,8 +61,9 @@ host = 127.0.0.1
 port = 8080
 debug = false
 auto_start = false
-decode_hashtag_channels =
-# db_path = meshcore_bot.db
+
+# Optional: enable the multibyte monitor page and API
+multibyte_monitor_enabled = false
 ```
 
 | Option | Description |

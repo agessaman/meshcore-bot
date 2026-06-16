@@ -76,6 +76,10 @@ enabled = true
 [Sports_Command]
 teams = seahawks,mariners,sounders,kraken
 
+# FIFA World Cup scores (wc/worldcup); only responds during a tournament (auto-detected)
+[Worldcup_Command]
+enabled = true
+
 # Optional: Web viewer - uncomment to enable. SECURITY: no auth; use host=127.0.0.1 for localhost only.
 # [Web_Viewer]
 # enabled = true

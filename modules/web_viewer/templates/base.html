@@ -1,29 +1,30 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}MeshCore Bot Data Viewer{% endblock %}</title>
-    
+
     <!-- Manifest served from Flask static folder -->
     <link rel="manifest" href="{{ url_for('static', filename='ico/site.webmanifest') }}">
-    
+
     <!-- Apply theme immediately to prevent flash -->
     <script>
-        (function() {
+        (function () {
             const storedTheme = localStorage.getItem('theme');
             const systemPreference = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
             const theme = storedTheme || systemPreference;
             document.documentElement.setAttribute('data-theme', theme);
         })();
     </script>
-    
+
     <!-- Bootstrap 5.1.3 -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    
+
     <!-- Font Awesome for icons -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    
+
     <!-- Custom styles -->
     <style>
         /* CSS Variables for Light Mode (Default) */
@@ -59,11 +60,12 @@
         }
 
         /* Apply theme variables */
-        html, body {
+        html,
+        body {
             margin: 0;
             padding: 0;
         }
-        
+
         body {
             background-color: var(--bg-color);
             color: var(--text-color);
@@ -74,7 +76,7 @@
             font-weight: bold;
             color: #007bff !important;
         }
-        
+
         .status-indicator {
             width: 12px;
             height: 12px;
@@ -82,10 +84,19 @@
             display: inline-block;
             margin-right: 8px;
         }
-        .status-connected { background-color: #28a745; }
-        .status-disconnected { background-color: #dc3545; }
-        .status-warning { background-color: #ffc107; }
-        
+
+        .status-connected {
+            background-color: #28a745;
+        }
+
+        .status-disconnected {
+            background-color: #dc3545;
+        }
+
+        .status-warning {
+            background-color: #ffc107;
+        }
+
         .log-entry {
             font-family: 'Courier New', monospace;
             font-size: 0.9em;
@@ -96,15 +107,15 @@
             border-radius: 0 5px 5px 0;
             color: var(--text-color);
         }
-        
+
         .command-entry {
             border-left-color: #28a745;
         }
-        
+
         .packet-entry {
             border-left-color: #ffc107;
         }
-        
+
         .connection-info {
             background-color: var(--connection-info-bg);
             padding: 15px;
@@ -112,14 +123,14 @@
             margin-bottom: 20px;
             color: var(--text-color);
         }
-        
+
         .card {
             box-shadow: 0 2px 4px var(--shadow-color);
             border: none;
             background-color: var(--card-bg);
             color: var(--text-color);
         }
-        
+
         .card-header {
             background-color: var(--card-header-bg);
             border-bottom: 1px solid var(--border-color);
@@ -130,11 +141,11 @@
         .card-body {
             color: var(--text-color);
         }
-        
+
         .btn-group .btn {
             margin-right: 5px;
         }
-        
+
         .table-responsive {
             border-radius: 8px;
             overflow: hidden;
@@ -145,25 +156,25 @@
             color: var(--text-color);
         }
 
-        [data-theme="dark"] .table-striped > tbody > tr:nth-of-type(odd) > td {
+        [data-theme="dark"] .table-striped>tbody>tr:nth-of-type(odd)>td {
             background-color: var(--bg-tertiary);
         }
 
-        [data-theme="dark"] .table-hover > tbody > tr:hover > td {
+        [data-theme="dark"] .table-hover>tbody>tr:hover>td {
             background-color: var(--bg-tertiary);
         }
-        
+
         .badge {
             font-size: 0.8em;
         }
-        
-        
+
+
         .loading {
             text-align: center;
             padding: 20px;
             color: var(--text-muted);
         }
-        
+
         .error {
             color: #dc3545;
             background-color: #f8d7da;
@@ -178,7 +189,7 @@
             background-color: #721c24;
             border-color: #842029;
         }
-        
+
         .success {
             color: #155724;
             background-color: #d4edda;
@@ -369,9 +380,10 @@
             color: var(--text-color);
         }
     </style>
-    
+
     {% block extra_css %}{% endblock %}
 </head>
+
 <body>
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
@@ -379,11 +391,11 @@
             <a class="navbar-brand" href="/">
                 <i class="fas fa-satellite-dish"></i> {{ bot_name|default('MeshCore Bot') }}
             </a>
-            
+
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
-            
+
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
                     <li class="nav-item">
@@ -401,6 +413,13 @@
                             <i class="fas fa-users"></i> Contacts
                         </a>
                     </li>
+                    {% if multibyte_monitor_enabled %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="/multibyte-rollout">
+                            <i class="fas fa-code-branch"></i> Multibyte
+                        </a>
+                    </li>
+                    {% endif %}
                     <li class="nav-item">
                         <a class="nav-link" href="/mesh">
                             <i class="fas fa-project-diagram"></i> Mesh Graph
@@ -436,11 +455,12 @@
                         </a>
                     </li>
                 </ul>
-                
+
                 <!-- Dark Mode Toggle and Connection Status -->
                 <div class="navbar-nav d-flex align-items-center">
                     <div class="nav-item me-3">
-                        <button class="dark-mode-toggle" id="dark-mode-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">
+                        <button class="dark-mode-toggle" id="dark-mode-toggle" aria-label="Toggle dark mode"
+                            title="Toggle dark mode">
                             <i class="fas fa-moon" id="dark-mode-icon"></i>
                         </button>
                     </div>
@@ -454,17 +474,22 @@
             </div>
         </div>
     </nav>
-    
+
     <!-- Bot Initializing Banner (shown while bot is connecting to radio at startup) -->
-    <div id="init-banner" class="alert alert-info mb-0 rounded-0 border-0 border-bottom border-info{% if not bot_initializing %} d-none{% endif %}" role="alert" style="border-width: 2px !important;">
+    <div id="init-banner"
+        class="alert alert-info mb-0 rounded-0 border-0 border-bottom border-info{% if not bot_initializing %} d-none{% endif %}"
+        role="alert" style="border-width: 2px !important;">
         <div class="container-fluid">
             <i class="fas fa-spinner fa-spin me-2"></i>
-            <strong>Bot Initializing</strong> — connecting to radio hardware. The web viewer is available but bot commands are not yet active.
+            <strong>Bot Initializing</strong> — connecting to radio hardware. The web viewer is available but bot
+            commands are not yet active.
         </div>
     </div>
 
     <!-- Zombie Radio Banner (persistent — shown on all pages when radio is in zombie state) -->
-    <div id="zombie-banner" class="alert alert-danger mb-0 rounded-0 border-0 border-bottom border-danger{% if not radio_zombie %} d-none{% endif %}" role="alert" style="border-width: 2px !important;">
+    <div id="zombie-banner"
+        class="alert alert-danger mb-0 rounded-0 border-0 border-bottom border-danger{% if not radio_zombie %} d-none{% endif %}"
+        role="alert" style="border-width: 2px !important;">
         <div class="container-fluid">
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
                 <div>
@@ -472,14 +497,16 @@
                     <strong>Radio Zombie State Detected</strong> — The bot radio firmware is unresponsive.
                     A physical <strong>power cycle</strong> of the radio hardware is required.
                     Disconnect/reconnect will <em>not</em> fix this.
-                    <span id="zombie-since-span" class="ms-3 text-danger-emphasis small opacity-75{% if not radio_zombie_since %} d-none{% endif %}">
-                        <i class="fas fa-clock me-1"></i>Since: <span id="zombie-since-text">{{ radio_zombie_since or '' }}</span>
+                    <span id="zombie-since-span"
+                        class="ms-3 text-danger-emphasis small opacity-75{% if not radio_zombie_since %} d-none{% endif %}">
+                        <i class="fas fa-clock me-1"></i>Since: <span id="zombie-since-text">{{ radio_zombie_since or ''
+                            }}</span>
                     </span>
                 </div>
                 <div class="d-flex gap-2 align-items-center flex-shrink-0">
                     <span class="small opacity-75">After power cycling:</span>
-                    <button id="zombie-recover-btn" class="btn btn-warning btn-sm fw-semibold"
-                            onclick="zombieRecover()" type="button">
+                    <button id="zombie-recover-btn" class="btn btn-warning btn-sm fw-semibold" onclick="zombieRecover()"
+                        type="button">
                         <i class="fas fa-power-off me-1"></i>Restart Bot Processing
                     </button>
                 </div>
@@ -488,21 +515,25 @@
     </div>
 
     <!-- Radio Offline Banner (shown when repeated send timeouts have entered the offline state) -->
-    <div id="offline-banner" class="alert alert-warning mb-0 rounded-0 border-0 border-bottom border-warning{% if not radio_offline %} d-none{% endif %}" role="alert" style="border-width: 2px !important;">
+    <div id="offline-banner"
+        class="alert alert-warning mb-0 rounded-0 border-0 border-bottom border-warning{% if not radio_offline %} d-none{% endif %}"
+        role="alert" style="border-width: 2px !important;">
         <div class="container-fluid">
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
                 <div>
                     <i class="fas fa-plug me-2"></i>
                     <strong>Radio Offline</strong> — the bot cannot send outbound messages to the mesh.
                     Check radio power and connection. Inbound packets may still be arriving normally.
-                    <span id="offline-since-span" class="ms-3 text-warning-emphasis small opacity-75{% if not radio_offline_since %} d-none{% endif %}">
-                        <i class="fas fa-clock me-1"></i>Since: <span id="offline-since-text">{{ radio_offline_since or '' }}</span>
+                    <span id="offline-since-span"
+                        class="ms-3 text-warning-emphasis small opacity-75{% if not radio_offline_since %} d-none{% endif %}">
+                        <i class="fas fa-clock me-1"></i>Since: <span id="offline-since-text">{{ radio_offline_since or
+                            '' }}</span>
                     </span>
                 </div>
                 <div class="d-flex gap-2 align-items-center flex-shrink-0">
                     <span class="small opacity-75">Once radio is fixed:</span>
-                    <button id="offline-clear-btn" class="btn btn-dark btn-sm fw-semibold"
-                            onclick="radioOfflineClear()" type="button">
+                    <button id="offline-clear-btn" class="btn btn-dark btn-sm fw-semibold" onclick="radioOfflineClear()"
+                        type="button">
                         <i class="fas fa-check me-1"></i>Clear Offline Flag
                     </button>
                 </div>
@@ -511,140 +542,144 @@
     </div>
 
     <script>
-    // Global 401 interceptor: redirect to login when session expires mid-page.
-    // Wraps window.fetch so all AJAX calls in every template are covered.
-    (function() {
-        var _origFetch = window.fetch;
-        window.fetch = function(url, options) {
-            return _origFetch.apply(this, arguments).then(function(response) {
-                if (response.status === 401 && typeof url === 'string' && url.startsWith('/api/')) {
-                    var next = encodeURIComponent(window.location.pathname + window.location.search);
-                    window.location.href = '/login?next=' + next;
+        // Global 401 interceptor: redirect to login when session expires mid-page.
+        // Wraps window.fetch so all AJAX calls in every template are covered.
+        (function () {
+            var _origFetch = window.fetch;
+            window.fetch = function (url, options) {
+                return _origFetch.apply(this, arguments).then(function (response) {
+                    if (response.status === 401 && typeof url === 'string' && url.startsWith('/api/')) {
+                        var next = encodeURIComponent(window.location.pathname + window.location.search);
+                        window.location.href = '/login?next=' + next;
+                    }
+                    return response;
+                });
+            };
+        })();
+
+        // Banner action: zombie recover
+        function zombieRecover() {
+            var btn = document.getElementById('zombie-recover-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Restarting\u2026';
+            fetch('/api/admin/zombie-recover', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (data.success) {
+                        var b = document.getElementById('zombie-banner');
+                        b.className = 'alert alert-success mb-0 rounded-0 border-0 border-bottom border-success';
+                        b.innerHTML = '<div class="container-fluid"><i class="fas fa-check-circle me-2"></i>' +
+                            '<strong>Reconnect scheduled.</strong> Refresh this page in a few seconds to confirm the radio is back online.</div>';
+                    } else {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-power-off me-1"></i>Restart Bot Processing';
+                        alert('Error: ' + (data.error || 'Unknown error \u2014 check server logs'));
+                    }
+                })
+                .catch(function () {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-power-off me-1"></i>Restart Bot Processing';
+                    alert('Network error \u2014 could not reach the server.');
+                });
+        }
+
+        // Banner action: radio offline clear
+        function radioOfflineClear() {
+            var btn = document.getElementById('offline-clear-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Clearing\u2026';
+            fetch('/api/admin/radio-offline-clear', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (data.success) {
+                        var b = document.getElementById('offline-banner');
+                        b.className = 'alert alert-success mb-0 rounded-0 border-0 border-bottom border-success';
+                        b.innerHTML = '<div class="container-fluid"><i class="fas fa-check-circle me-2"></i>' +
+                            '<strong>Offline flag cleared.</strong> The bot will resume outbound sends. Refresh to confirm.</div>';
+                    } else {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-check me-1"></i>Clear Offline Flag';
+                        alert('Error: ' + (data.error || 'Unknown error \u2014 check server logs'));
+                    }
+                })
+                .catch(function () {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-check me-1"></i>Clear Offline Flag';
+                    alert('Network error \u2014 could not reach the server.');
+                });
+        }
+
+        // Live banner polling — updates all banners every 10s without a page reload
+        (function () {
+            function applyBannerStatus(d) {
+                var show = function (id) { var el = document.getElementById(id); if (el) el.classList.remove('d-none'); };
+                var hide = function (id) { var el = document.getElementById(id); if (el) el.classList.add('d-none'); };
+                var setText = function (id, v) { var el = document.getElementById(id); if (el) el.textContent = v || ''; };
+
+                d.bot_initializing ? show('init-banner') : hide('init-banner');
+
+                if (d.radio_zombie) {
+                    show('zombie-banner');
+                    if (d.radio_zombie_since) { setText('zombie-since-text', d.radio_zombie_since); show('zombie-since-span'); }
+                    else { hide('zombie-since-span'); }
+                } else {
+                    hide('zombie-banner');
                 }
-                return response;
-            });
-        };
-    })();
 
-    // Banner action: zombie recover
-    function zombieRecover() {
-        var btn = document.getElementById('zombie-recover-btn');
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Restarting\u2026';
-        fetch('/api/admin/zombie-recover', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'}})
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            if (data.success) {
-                var b = document.getElementById('zombie-banner');
-                b.className = 'alert alert-success mb-0 rounded-0 border-0 border-bottom border-success';
-                b.innerHTML = '<div class="container-fluid"><i class="fas fa-check-circle me-2"></i>' +
-                    '<strong>Reconnect scheduled.</strong> Refresh this page in a few seconds to confirm the radio is back online.</div>';
-            } else {
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-power-off me-1"></i>Restart Bot Processing';
-                alert('Error: ' + (data.error || 'Unknown error \u2014 check server logs'));
-            }
-        })
-        .catch(function() {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-power-off me-1"></i>Restart Bot Processing';
-            alert('Network error \u2014 could not reach the server.');
-        });
-    }
-
-    // Banner action: radio offline clear
-    function radioOfflineClear() {
-        var btn = document.getElementById('offline-clear-btn');
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Clearing\u2026';
-        fetch('/api/admin/radio-offline-clear', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'}})
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            if (data.success) {
-                var b = document.getElementById('offline-banner');
-                b.className = 'alert alert-success mb-0 rounded-0 border-0 border-bottom border-success';
-                b.innerHTML = '<div class="container-fluid"><i class="fas fa-check-circle me-2"></i>' +
-                    '<strong>Offline flag cleared.</strong> The bot will resume outbound sends. Refresh to confirm.</div>';
-            } else {
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-check me-1"></i>Clear Offline Flag';
-                alert('Error: ' + (data.error || 'Unknown error \u2014 check server logs'));
-            }
-        })
-        .catch(function() {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-check me-1"></i>Clear Offline Flag';
-            alert('Network error \u2014 could not reach the server.');
-        });
-    }
-
-    // Live banner polling — updates all banners every 10s without a page reload
-    (function() {
-        function applyBannerStatus(d) {
-            var show = function(id) { var el = document.getElementById(id); if (el) el.classList.remove('d-none'); };
-            var hide = function(id) { var el = document.getElementById(id); if (el) el.classList.add('d-none'); };
-            var setText = function(id, v) { var el = document.getElementById(id); if (el) el.textContent = v || ''; };
-
-            d.bot_initializing ? show('init-banner') : hide('init-banner');
-
-            if (d.radio_zombie) {
-                show('zombie-banner');
-                if (d.radio_zombie_since) { setText('zombie-since-text', d.radio_zombie_since); show('zombie-since-span'); }
-                else { hide('zombie-since-span'); }
-            } else {
-                hide('zombie-banner');
+                if (d.radio_offline) {
+                    show('offline-banner');
+                    if (d.radio_offline_since) { setText('offline-since-text', d.radio_offline_since); show('offline-since-span'); }
+                    else { hide('offline-since-span'); }
+                } else {
+                    hide('offline-banner');
+                }
             }
 
-            if (d.radio_offline) {
-                show('offline-banner');
-                if (d.radio_offline_since) { setText('offline-since-text', d.radio_offline_since); show('offline-since-span'); }
-                else { hide('offline-since-span'); }
-            } else {
-                hide('offline-banner');
+            function pollBanners() {
+                fetch('/api/banner-status')
+                    .then(function (r) { return r.json(); })
+                    .then(applyBannerStatus)
+                    .catch(function () { });  // silent — server may be restarting
             }
-        }
 
-        function pollBanners() {
-            fetch('/api/banner-status')
-            .then(function(r) { return r.json(); })
-            .then(applyBannerStatus)
-            .catch(function() {});  // silent — server may be restarting
-        }
-
-        setInterval(pollBanners, 10000);
-    })();
+            setInterval(pollBanners, 10000);
+        })();
     </script>
 
     <!-- Main Content -->
     <div class="container-fluid mt-4">
         {% block content %}{% endblock %}
     </div>
-    
+
     <!-- Footer links (bottom of page, visible when scrolled down) -->
     <footer class="text-center py-2" style="font-size: 0.7rem;">
-        <a href="https://github.com/agessaman/meshcore-bot" target="_blank" rel="noopener noreferrer" style="color: var(--text-muted, #6c757d); text-decoration: none;">meshcore-bot</a>
+        <a href="https://github.com/agessaman/meshcore-bot" target="_blank" rel="noopener noreferrer"
+            style="color: var(--text-muted, #6c757d); text-decoration: none;">meshcore-bot</a>
         {% if version_info.tag %}
         <span class="mx-1" style="color: var(--text-muted, #6c757d);"> {{ version_info.tag }}</span>
         {% elif version_info.branch or version_info.commit or version_info.date %}
         <span class="mx-1" style="color: var(--text-muted, #6c757d);">
             {% if version_info.branch %}{{ version_info.branch }}{% endif %}
-            {% if version_info.commit %}{% if version_info.branch %} · {% endif %}<code class="text-muted" style="font-size: inherit;">{{ version_info.commit }}</code>{% endif %}
-            {% if version_info.date %}{% if version_info.branch or version_info.commit %} · {% endif %}{{ version_info.date }}{% endif %}
+            {% if version_info.commit %}{% if version_info.branch %} · {% endif %}<code class="text-muted"
+                style="font-size: inherit;">{{ version_info.commit }}</code>{% endif %}
+            {% if version_info.date %}{% if version_info.branch or version_info.commit %} · {% endif %}{{
+            version_info.date }}{% endif %}
         </span>
         {% endif %}
         <span class="mx-1" style="color: var(--text-muted, #6c757d);"> for </span>
-        <a href="https://meshcore.co.uk/index.html" target="_blank" rel="noopener noreferrer" style="color: var(--text-muted, #6c757d); text-decoration: none;">MeshCore</a>
+        <a href="https://meshcore.co.uk/index.html" target="_blank" rel="noopener noreferrer"
+            style="color: var(--text-muted, #6c757d); text-decoration: none;">MeshCore</a>
     </footer>
-    
+
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    
+
     <!-- Socket.IO Client -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
-    
+
     <!-- Moment.js for date formatting -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
-    
+
     <!-- Chart.js for graphs -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
@@ -660,11 +695,11 @@
                 this.connected = false;
                 this.lastActivity = null;
                 this.pingInterval = null;
-                
+
                 this.initializeSocket();
                 this.startPingInterval();
             }
-            
+
             initializeSocket() {
                 // Use io() without forceNew so that realtime.html's io() shares
                 // this same manager/socket.  forceNew created a second independent
@@ -673,10 +708,10 @@
                     transports: ['websocket', 'polling'],
                     timeout: 5000
                 });
-                
+
                 this.setupSocketEvents();
             }
-            
+
             setupSocketEvents() {
                 this.socket.on('connect', () => {
                     console.log('Connected to server');
@@ -685,23 +720,23 @@
                     this.lastActivity = new Date();
                     this.updateLastActivity();
                 });
-                
+
                 this.socket.on('disconnect', (reason) => {
                     console.log('Disconnected from server:', reason);
                     this.connected = false;
                     this.updateConnectionStatus('Disconnected', 'disconnected');
                 });
-                
+
                 this.socket.on('status', (data) => {
                     console.log('Server status:', data.message);
                     this.showNotification(data.message, 'info');
                 });
-                
+
                 this.socket.on('error', (data) => {
                     console.error('Server error:', data.message);
                     this.showNotification(`Error: ${data.message}`, 'danger');
                 });
-                
+
                 // Modern ping/pong pattern
                 this.socket.on('pong', () => {
                     console.log('Pong received from server');
@@ -709,7 +744,7 @@
                     this.updateLastActivity();
                 });
             }
-            
+
             startPingInterval() {
                 this.pingInterval = setInterval(() => {
                     if (this.socket && this.socket.connected) {
@@ -717,18 +752,18 @@
                     }
                 }, 20000);
             }
-            
+
             stopPingInterval() {
                 if (this.pingInterval) {
                     clearInterval(this.pingInterval);
                     this.pingInterval = null;
                 }
             }
-            
+
             updateConnectionStatus(text, status) {
                 const statusElement = document.getElementById('connection-text');
                 const indicatorElement = document.getElementById('connection-status');
-                
+
                 if (statusElement) {
                     statusElement.textContent = text;
                 }
@@ -736,7 +771,7 @@
                     indicatorElement.className = `status-indicator status-${status}`;
                 }
             }
-            
+
             updateLastActivity() {
                 if (this.lastActivity) {
                     const lastUpdateElement = document.getElementById('last-update');
@@ -745,20 +780,20 @@
                     }
                 }
             }
-            
+
             showNotification(message, type = 'info') {
                 // Create notification element
                 const notification = document.createElement('div');
                 notification.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
                 notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; max-width: 300px;';
-                
+
                 notification.innerHTML = `
                     ${message}
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 `;
-                
+
                 document.body.appendChild(notification);
-                
+
                 // Auto-remove after 3 seconds
                 setTimeout(() => {
                     if (notification.parentNode) {
@@ -767,7 +802,7 @@
                 }, 3000);
             }
         }
-        
+
         // Update timestamp function
         function updateTimestamp() {
             const now = new Date();
@@ -777,7 +812,7 @@
                 lastUpdateElement.textContent = timestamp;
             }
         }
-        
+
         // Dark Mode Management
         class DarkModeManager {
             constructor() {
@@ -855,8 +890,9 @@
             setInterval(updateTimestamp, 1000);
         });
     </script>
-    
+
     <script src="{{ url_for('static', filename='js/channel_operations.js') }}"></script>
     {% block extra_js %}{% endblock %}
 </body>
+
 </html>

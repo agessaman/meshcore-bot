@@ -35,7 +35,10 @@ except ImportError:
 # Import base service
 import contextlib
 
-from ..bridge_outbound import DISCORD_WEBHOOK_ALLOWED_MENTIONS
+from ..bridge_outbound import (
+    DISCORD_WEBHOOK_ALLOWED_MENTIONS,
+    neutralize_discord_mention_content,
+)
 from ..profanity_filter import censor, contains_profanity
 from ..security_utils import sanitize_name
 from .base_service import BaseServicePlugin
@@ -326,6 +329,13 @@ class DiscordBridgeService(BaseServicePlugin):
         self._running = True
         self.logger.info(f"Discord bridge service started (bridging {len(self.channel_webhooks)} channels)")
 
+    async def on_transport_reconnected(self) -> None:
+        """Re-subscribe to channel messages on the new meshcore instance."""
+        if not self._running or not getattr(self.bot, 'meshcore', None):
+            return
+        self.bot.meshcore.subscribe(EventType.CHANNEL_MSG_RECV, self._on_mesh_channel_message)
+        self.logger.info("Discord bridge re-subscribed to CHANNEL_MSG_RECV after transport reconnect")
+
     async def stop(self) -> None:
         """Stop the Discord bridge service.
 
@@ -414,6 +424,7 @@ class DiscordBridgeService(BaseServicePlugin):
 
             # Clean up MeshCore @ mentions: @[username] → **@username**
             message_text = self._format_mentions(message_text)
+            message_text = neutralize_discord_mention_content(message_text)
 
             # Profanity filter: drop (don't bridge), censor (replace with ****), or off
             if self.filter_profanity == 'drop':

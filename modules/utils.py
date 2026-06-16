@@ -1745,6 +1745,13 @@ async def check_internet_connectivity_async(host: str = "8.8.8.8", port: int = 5
         return False
 
 
+def public_key_has_prefix(public_key: str, prefix: str) -> bool:
+    """Return True if public_key starts with prefix (case-insensitive hex match)."""
+    if not public_key or not prefix:
+        return False
+    return public_key.lower().startswith(prefix.lower())
+
+
 def parse_path_string(path_str: str, prefix_hex_chars: int = 2) -> list[str]:
     """Parse a path string to extract node IDs.
 

@@ -250,6 +250,14 @@ class MapUploaderService(BaseServicePlugin):
         self._running = True
         self.logger.info("Map uploader service started")
 
+    async def on_transport_reconnected(self) -> None:
+        """Re-register RX_LOG_DATA handler on the new meshcore instance."""
+        if not self._running or not self.meshcore:
+            return
+        self._cleanup_event_subscriptions()
+        await self._setup_event_handlers()
+        self.logger.info("Map uploader event handlers re-registered after transport reconnect")
+
     async def stop(self) -> None:
         """Stop the map uploader service.
 

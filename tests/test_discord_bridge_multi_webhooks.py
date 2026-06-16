@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from modules import bridge_outbound
 from modules.bridge_outbound import DISCORD_WEBHOOK_ALLOWED_MENTIONS
 from modules.service_plugins.discord_bridge_service import DiscordBridgeService
 
@@ -73,12 +74,20 @@ async def test_queue_message_includes_allowed_mentions(multi_webhook_bot):
     multi_webhook_bot.config.set("DiscordBridge", "bridge.Public", url)
 
     service = DiscordBridgeService(multi_webhook_bot)
-    await service._queue_message(url, "**@everyone** alert", "Public", "Alice")
+    await service._queue_message(
+        url,
+        bridge_outbound.neutralize_discord_mention_content("**@everyone** alert"),
+        "Public",
+        "Alice",
+    )
 
     queued = service.message_queues[url][0]
     assert queued.payload["allowed_mentions"] == DISCORD_WEBHOOK_ALLOWED_MENTIONS
 
 
-def test_format_mentions_bolds_mesh_highlight(multi_webhook_bot):
+def test_format_mentions_then_neutralize_no_bare_at_everyone(multi_webhook_bot):
     service = DiscordBridgeService(multi_webhook_bot)
-    assert service._format_mentions("@[everyone] hi") == "**@everyone** hi"
+    formatted = service._format_mentions("@[everyone] hi")
+    assert formatted == "**@everyone** hi"
+    neutral = bridge_outbound.neutralize_discord_mention_content(formatted)
+    assert "**@" + bridge_outbound._DISCORD_MENTION_ZWSP + "everyone**" in neutral
