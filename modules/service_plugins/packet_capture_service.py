@@ -11,7 +11,7 @@ import json
 import logging
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 # Import meshcore
@@ -685,7 +685,7 @@ class PacketCaptureService(BaseServicePlugin):
         Returns:
             dict[str, Any]: Formatted packet dictionary.
         """
-        current_time = datetime.now()
+        current_time = datetime.now(timezone.utc)
         timestamp = current_time.isoformat()
 
         # Remove 0x prefix if present
@@ -1831,7 +1831,7 @@ class PacketCaptureService(BaseServicePlugin):
 
         status_msg = {
             "status": status,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "origin": device_name,
             "origin_id": device_public_key,
             "model": firmware_info.get("model", "unknown"),
