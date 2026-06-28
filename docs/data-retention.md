@@ -15,7 +15,7 @@ purging_log_retention_days = 90
 mesh_connections_retention_days = 7
 ```
 
-Stats tables (message_stats, command_stats, path_stats) use **`[Stats_Command]`** `data_retention_days` (default 7); the scheduler runs that cleanup daily as well. Stats are **collected** when the stats command is enabled, or when the optional **`collect_stats = true`** is set under `[Stats_Command]` (so the web viewer dashboard can show message/command/path stats even if the `stats` chat command is disabled).
+Stats tables (message_stats, command_stats, path_stats) use **`[Stats_Command]`** `data_retention_days` (default 7); the scheduler runs that cleanup daily as well. Stats are **collected** by default with **`collect_stats = true`** under `[Stats_Command]`, even if the user-facing `stats` chat command is disabled with `enabled = false`. Set **`collect_stats = false`** only if you want to stop writing those dashboard stats tables.
 
 ## Tables and defaults
 

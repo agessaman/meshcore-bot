@@ -246,12 +246,13 @@ aqi help
 
 Minute-level rain nowcast — tells you when precipitation is about to **start** or **stop** in the next couple hours, using Open-Meteo's 15-minutely precipitation forecast. Works worldwide with no API key.
 
-**Aliases:** `nowcast`
+**Aliases:** `nowcast`, `snow`
 
 **Usage:**
 ```
 rain [city|zipcode|lat,lon]
 nowcast [city|zipcode|lat,lon]
+snow [city|zipcode|lat,lon]
 ```
 
 **Examples:**
@@ -260,6 +261,7 @@ rain
 rain seattle
 rain 98101
 rain 47.6,-122.3
+snow denver
 ```
 
 **Response:** A single line describing the upcoming precipitation, for example:
@@ -267,6 +269,8 @@ rain 47.6,-122.3
 - `🌧️ Rain easing in ~20min for Seattle` — raining now, clearing soon
 - `🌧️ Heavy rain steady for 2h+ in Seattle` — raining now, no break in the window
 - `☀️ No rain expected in next 2h for Seattle` — dry through the window
+
+The keyword sets which precipitation the answer leads with: `rain`/`nowcast` lead with rain (liquid amount), while `snow` leads with snowfall (reported as depth, e.g. `🌨️ Snow starting in ~40min (~1.5 in snow)`). Either keyword still mentions the other type when it's in the window, and snow/ice changeovers are called out. Bare countries or US states (e.g. `rain france`, `snow texas`) default to the region's capital with a heads-up, since one centroid isn't representative.
 
 When no location is given, uses the sender's companion location if known, then the bot's configured location.
 
@@ -683,6 +687,29 @@ sports mlb
 ```
 
 **Response:** Current scores and game information for the requested teams or league.
+
+> World Cup scores are also available year-round here, e.g. `sports fifa`.
+
+---
+
+### `wc` or `worldcup`
+
+FIFA World Cup scores and schedule. Responds **only while a World Cup (men's or women's) is actually in progress** — the active tournament is auto-detected from the ESPN schedule, so no dates need to be configured. Outside a tournament it replies that none is in progress.
+
+**Usage:**
+- `wc` - Live/most recent scores and upcoming fixtures
+- `wc <nation>` - Focus on a specific nation's match
+
+**Examples:**
+```
+wc
+worldcup
+wc argentina
+```
+
+**Response:** Current scores, match state, and upcoming fixtures for the active tournament.
+
+**Configuration:** `[Worldcup_Command]` — `enabled`, `api_timeout`, `cache_ttl_minutes`. For proactive live match announcements posted to a channel, see the [World Cup Live Service](service-plugins.md).
 
 ---
 

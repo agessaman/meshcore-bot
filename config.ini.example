@@ -106,7 +106,9 @@ node_id =
 # Command prefix (optional)
 # If set, all commands must start with this prefix (e.g., "!", ".", "b", "abc")
 # Examples: "!" for !ping, "." for .ping, "b" for bping, "abc" for abcping
-# Leave empty or unset to allow commands without prefix (backward compatible)
+# The prefix applies uniformly to every command (including help); messages without
+# it are ignored. Leave empty or unset to allow commands without a prefix (backward
+# compatible; a leading "!" is still accepted in that mode).
 #command_prefix =
 
 # Respond to channel messages when the bot is mentioned via @[bot_name]
@@ -571,18 +573,6 @@ log_max_bytes = 5242880
 # log_backup_count: number of rotated backup files to keep (e.g. meshcore_bot.log.1 … .3)
 log_backup_count = 3
 
-[Custom_Syntax]
-# Custom syntax patterns for special message formats
-# Format: pattern = "response_format"
-# Available fields: {sender}, {phrase}, {connection_info}, {snr}, {timestamp}, {path}, {path_distance}, {firstlast_distance}
-# {phrase}: The text after the trigger (for custom syntax patterns)
-# {path_distance}: Total distance between all hops in path with locations (e.g., "123.4km (3 segs, 1 no-loc)")
-# {firstlast_distance}: Distance between first and last repeater in path (e.g., "45.6km" or empty if locations missing)
-# 
-# Note: The "t" command is now handled by the test command as an alias
-# "t phrase" works the same as "test phrase" - both use the test response format
-# Example: "t hello world" -> "ack {sender}: hello world | {connection_info}"
-
 [External_Data]
 # URL shortener API base (v.gd / is.gd-compatible create.php). Default: https://v.gd
 # See https://v.gd/apishorteningreference.php
@@ -788,7 +778,8 @@ enabled = true
 
 [Rain_Command]
 # Minute-level rain nowcast ("rain starting in ~20min") via Open-Meteo's
-# 15-minutely precipitation. Worldwide, no API key. Keywords: rain, nowcast.
+# 15-minutely precipitation. Worldwide, no API key. Keywords: rain, nowcast, snow.
+# (snow leads the reply with snowfall depth; rain/nowcast lead with rain amount.)
 # Usage: rain [city|zipcode|lat,lon]   (no location -> companion, then bot location)
 enabled = true
 # How far ahead to look, in minutes (default: 120)
@@ -885,7 +876,8 @@ api_timeout = 10
 cache_ttl_minutes = 360
 
 [Stats_Command]
-# Enable or disable the stats command (true/false)
+# Enable or disable the user-facing stats command (true/false)
+# This only controls whether the bot responds to the "stats" command.
 enabled = true
 
 # Data retention settings
@@ -899,6 +891,11 @@ data_retention_days = 7
 auto_cleanup = true
 
 # Stats collection settings
+# Collect message, command, and path stats for the web viewer dashboard
+# true: Populate stats tables even if the stats command is disabled
+# false: Disable stats table writes
+collect_stats = true
+
 # Track all incoming messages (not just commands)
 # true: Record all messages for comprehensive stats
 # false: Only record command executions

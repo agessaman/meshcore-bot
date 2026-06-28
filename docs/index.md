@@ -40,3 +40,4 @@ Documentation for the MeshCore bot: setup, configuration, commands, and services
 | [Map Uploader](map-uploader.md) | Uploading to map.meshcore.dev |
 | [Weather Service](weather-service.md) | Scheduled weather and alerts |
 | [Repeater Prefix Collision Service](repeater-prefix-collision-service.md) | Detect repeater prefix collisions |
+| [World Cup](worldcup.md) | World Cup command and live match announcements |

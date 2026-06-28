@@ -833,13 +833,18 @@ class BaseCommand(ABC):
         """
         content = message.content.strip()
 
-        if self._command_prefix:
-            if not content.startswith(self._command_prefix):
-                return ""
-            content = content[len(self._command_prefix):].strip()
-        else:
-            if content.startswith('!'):
-                content = content[1:].strip()
+        # When CommandManager.check_keywords has already stripped the configured prefix
+        # (and legacy "!") from this message, skip prefix handling entirely: the content
+        # is canonical and re-stripping/re-rejecting it here would break matching for
+        # every command after the first in the check_keywords scan.
+        if not getattr(message, 'prefix_normalized', False):
+            if self._command_prefix:
+                if not content.startswith(self._command_prefix):
+                    return ""
+                content = content[len(self._command_prefix):].strip()
+            else:
+                if content.startswith('!'):
+                    content = content[1:].strip()
 
         mention_mode = self.bot.config.get('Bot', 'respond_to_mentions', fallback='also').strip().lower()
         if mention_mode != 'false':

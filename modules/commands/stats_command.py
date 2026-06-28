@@ -47,11 +47,11 @@ class StatsCommand(BaseCommand):
         self.stats_enabled = self.get_config_value('Stats_Command', 'enabled', fallback=None, value_type='bool')
         if self.stats_enabled is None:
             self.stats_enabled = self.get_config_value('Stats_Command', 'stats_enabled', fallback=True, value_type='bool')
-        # Optional: collect_stats (defaults to stats_enabled). When true, messages/commands/paths
-        # are recorded for the web viewer dashboard even if enabled = false.
+        # Optional: collect_stats controls dashboard/stat table writes independently
+        # of whether the user-facing stats command is enabled.
         self.collect_stats = self.get_config_value('Stats_Command', 'collect_stats', fallback=None, value_type='bool')
         if self.collect_stats is None:
-            self.collect_stats = self.stats_enabled
+            self.collect_stats = True
         self.data_retention_days = self.get_config_value('Stats_Command', 'data_retention_days', fallback=7, value_type='int')
         self.auto_cleanup = self.get_config_value('Stats_Command', 'auto_cleanup', fallback=True, value_type='bool')
         self.track_all_messages = self.get_config_value('Stats_Command', 'track_all_messages', fallback=True, value_type='bool')

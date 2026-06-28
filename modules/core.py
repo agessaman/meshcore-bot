@@ -895,17 +895,6 @@ colored_output = true
 # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
 meshcore_log_level = INFO
 
-[Custom_Syntax]
-# Custom syntax patterns for special message formats
-# Format: pattern = "response_format"
-# Available fields: {sender}, {phrase}, {connection_info}, {snr}, {timestamp}, {path}
-# {phrase}: The text after the trigger (for t_phrase syntax)
-#
-# Special syntax: Messages starting with "t " or "T " followed by a phrase
-# Example: "t hello world" -> "ack {sender}: hello world | {connection_info}"
-t_phrase = "ack {sender}: {phrase} | {connection_info}"
-
-
 [External_Data]
 # Weather API key (future feature)
 weather_api_key =

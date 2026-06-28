@@ -481,6 +481,56 @@ class TestGetAvailableCommandsList:
         result = cmd.get_available_commands_list()
         assert "ping" in result
 
+    def test_unused_commands_listed_when_stats_present(self):
+        """Regression for issue #137: commands with no usage stats must still appear.
+
+        Previously, once command_stats had any rows, only commands present in the
+        table were listed, so never-used commands were missing from help.
+        """
+        from contextlib import contextmanager
+
+        bot = _make_bot()
+        conn = _create_tracked_connection()
+        conn.execute("""
+            CREATE TABLE command_stats (
+                id INTEGER PRIMARY KEY,
+                timestamp INTEGER,
+                sender_id TEXT,
+                command_name TEXT,
+                channel TEXT,
+                is_dm BOOLEAN,
+                response_sent BOOLEAN
+            )
+        """)
+        # Only 'ping' has been used; 'version' has never been used.
+        conn.execute("INSERT INTO command_stats (timestamp, sender_id, command_name, channel, is_dm, response_sent) VALUES (1, 'u1', 'ping', 'general', 0, 1)")
+        conn.commit()
+
+        db = MagicMock()
+
+        @contextmanager
+        def _conn_ctx():
+            yield conn
+
+        db.connection = _conn_ctx
+        bot.db_manager = db
+
+        mock_ping = MagicMock()
+        mock_ping.name = "ping"
+        mock_version = MagicMock()
+        mock_version.name = "version"
+        bot.command_manager.commands = {"ping": mock_ping, "version": mock_version}
+        bot.command_manager.plugin_loader.keyword_mappings = {
+            "ping": "ping",
+            "version": "version",
+        }
+
+        cmd = HelpCommand(bot)
+        result = cmd.get_available_commands_list()
+        # The used command appears first, but the unused one must also be listed.
+        assert "ping" in result
+        assert "version" in result
+
     def test_db_exception_falls_back_gracefully(self):
         """If DB raises, falls back to sorted command names."""
         bot = _make_bot()

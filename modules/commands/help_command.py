@@ -254,6 +254,14 @@ class HelpCommand(BaseCommand):
                     primary_name = self.bot.command_manager.commands[cmd_name].name if hasattr(self.bot.command_manager.commands[cmd_name], 'name') else cmd_name
                     command_counts[primary_name] = 0
 
+            # Ensure every channel-valid command appears even if it has no usage stats
+            # yet. Without this, a populated command_stats table would make the list show
+            # only previously-used commands (the fallback below only fires when the map
+            # is empty). Unused commands get count 0 and sort after used ones.
+            for pname in primary_names:
+                if pname not in command_counts:
+                    command_counts[pname] = 0
+
             # If we have stats, sort by count descending, otherwise use all commands
             if command_counts:
                 # Sort by count descending, then by name for consistency

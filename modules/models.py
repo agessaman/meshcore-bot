@@ -31,6 +31,11 @@ class MeshMessage:
     reply_scope: Optional[str] = None
     # Lowercased content set by base_command.cleanup_message_for_matching
     content_lower: str = ""
+    # Transient flag: True once CommandManager.check_keywords has stripped the
+    # configured command prefix (and legacy "!") from content. Prevents per-command
+    # cleanup_message_for_matching from re-stripping/re-rejecting an already-normalized
+    # message, which previously broke matching for all-but-the-first command.
+    prefix_normalized: bool = False
 
     def effective_outgoing_flood_scope(self, bot: Any) -> str:
         """Resolve outbound flood scope the same way as ``CommandManager.send_channel_message``.

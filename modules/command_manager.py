@@ -705,44 +705,68 @@ class CommandManager:
 
         content_lower = content.lower()
 
-        # Check for help requests first (special handling)
-        # Check both English "help" and translated help keywords
-        help_keywords = ['help']
-        if 'help' in self.commands:
-            help_command = self.commands['help']
-            if hasattr(help_command, 'keywords'):
+        # Persist the normalized (prefix-stripped) content to the shared message once,
+        # before iterating commands. Each command's cleanup_message_for_matching would
+        # otherwise re-strip/re-reject the prefix off this same object; the first
+        # keyword command would consume the prefix and break matching for every command
+        # after it. The flag tells per-command cleanup the prefix is already handled.
+        message.content = content
+        message.content_lower = content_lower
+        message.prefix_normalized = True
+
+        # Check for help requests first (special handling).
+        # Check both English "help" and translated help keywords.
+        #
+        # Respect the [Help_Command] enabled flag: this special path bypasses the
+        # plugin loop (where can_execute() normally enforces enablement), so without
+        # this guard it would respond to "help" even when the command is disabled.
+        # When no help command is loaded we keep the legacy default of responding to
+        # the literal "help" keyword (help defaults to enabled).
+        help_command = self.commands.get('help')
+        help_enabled = getattr(help_command, 'help_enabled', True) if help_command is not None else True
+        if help_enabled:
+            help_keywords = ['help']
+            if help_command is not None and hasattr(help_command, 'keywords'):
                 help_keywords = [k.lower() for k in help_command.keywords]
 
-        # Check if message starts with any help keyword
-        for help_keyword in help_keywords:
-            if content_lower.startswith(help_keyword + ' ') or content_lower == help_keyword:
-                # Check channel restrictions for help keyword (same as other keywords/commands)
-                # DMs are allowed if respond_to_dms is enabled
-                if message.is_dm:
-                    if not self.bot.config.getboolean('Channels', 'respond_to_dms', fallback=True):
-                        break  # DMs disabled, skip help keyword
-                else:
-                    # For channel messages, check if channel is in monitor_channels
-                    if message.channel not in self.monitor_channels:
-                        break  # Channel not monitored, skip help keyword
-                    # When channel_keywords is set, only allow listed triggers in channel
-                    if not self._is_channel_trigger_allowed('help', message):
-                        break
+            # Check if message starts with any help keyword
+            for help_keyword in help_keywords:
+                if content_lower.startswith(help_keyword + ' ') or content_lower == help_keyword:
+                    # Check channel restrictions for help keyword (same as other keywords/commands)
+                    # DMs are allowed if respond_to_dms is enabled
+                    if message.is_dm:
+                        if not self.bot.config.getboolean('Channels', 'respond_to_dms', fallback=True):
+                            break  # DMs disabled, skip help keyword
+                    else:
+                        # For channel messages, honor the help command's channel access:
+                        # its per-command `channels` override when set, otherwise the
+                        # global monitor_channels. Without this the special path would
+                        # ignore [Help_Command] channels = ... (it bypasses the plugin
+                        # loop where is_channel_allowed is normally enforced). Fall back
+                        # to a bare monitor_channels check when no help command is loaded.
+                        if help_command is not None and hasattr(help_command, 'is_channel_allowed'):
+                            if not help_command.is_channel_allowed(message):
+                                break  # Not allowed in this channel, skip help keyword
+                        elif message.channel not in self.monitor_channels:
+                            break  # Channel not monitored, skip help keyword
+                        # When channel_keywords is set, only allow listed triggers in channel
+                        if not self._is_channel_trigger_allowed('help', message):
+                            break
 
-                # Channel check passed, process help request
-                if content_lower.startswith(help_keyword + ' '):
-                    command_name = content_lower[len(help_keyword):].strip()  # Remove help keyword prefix
-                    help_text = self.get_help_for_command(command_name, message)
-                    # Format the help response with message data (same as other keywords)
-                    help_text = self.format_keyword_response(help_text, message)
-                    matches.append(('help', help_text))
-                    return matches
-                elif content_lower == help_keyword:
-                    help_text = self.get_general_help(message)
-                    # Format the help response with message data (same as other keywords)
-                    help_text = self.format_keyword_response(help_text, message)
-                    matches.append(('help', help_text))
-                    return matches
+                    # Channel check passed, process help request
+                    if content_lower.startswith(help_keyword + ' '):
+                        command_name = content_lower[len(help_keyword):].strip()  # Remove help keyword prefix
+                        help_text = self.get_help_for_command(command_name, message)
+                        # Format the help response with message data (same as other keywords)
+                        help_text = self.format_keyword_response(help_text, message)
+                        matches.append(('help', help_text))
+                        return matches
+                    elif content_lower == help_keyword:
+                        help_text = self.get_general_help(message)
+                        # Format the help response with message data (same as other keywords)
+                        help_text = self.format_keyword_response(help_text, message)
+                        matches.append(('help', help_text))
+                        return matches
 
         # Check all loaded plugins for matches
         for command_name, command in self.commands.items():

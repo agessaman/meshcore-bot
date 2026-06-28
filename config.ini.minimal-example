@@ -288,6 +288,7 @@ meshcore_log_level = INFO
 #  - path (p): Decode hex path data to show repeaters                                              #
 #  - prefix: Look up repeaters by two-character prefix                                             #
 #  - multitest (mt): Listen for multiple path variations                                           #
+#  - help: List available commands ('help <command>' for details)                                 #
 #                                                                                                  #
 ####################################################################################################
 
@@ -412,6 +413,13 @@ enabled = true
 # Example: "Found {path_count} unique path(s) for @[{sender}]:\n{paths}"
 response_format = Found {path_count} unique path(s) for @[{sender}]:\n{paths}
 
+[Help_Command]
+# Enable or disable the help command
+# true: Help command is available (responds to 'help'; 'help <command>' for details)
+# false: Help command is disabled
+# Recommended to leave enabled so users can discover the commands above.
+enabled = true
+
 ####################################################################################################
 #                                                                                                  #
 #                              All Other Commands Disabled                                         #
@@ -420,10 +428,6 @@ response_format = Found {path_count} unique path(s) for @[{sender}]:\n{paths}
 #  To enable any of these commands, uncomment and set enabled = true in the appropriate section.   #
 #                                                                                                  #
 ####################################################################################################
-
-[Help_Command]
-# Enable or disable the help command
-enabled = false
 
 [Cmd_Command]
 # Enable or disable the cmd command

@@ -238,6 +238,56 @@ class TestCheckKeywords:
         matches = manager.check_keywords(msg)
         assert any(trigger == "help" for trigger, _ in matches)
 
+    def test_help_disabled_no_response(self, cm_bot):
+        """[Help_Command] enabled=false must suppress the help response.
+
+        The special help path bypasses the plugin loop (where can_execute() enforces
+        enablement), so it has to honor the flag itself.
+        """
+        mock_help = MagicMock()
+        mock_help.help_enabled = False
+        mock_help.keywords = ["help"]
+        mock_help.should_execute = Mock(return_value=False)
+        manager = make_manager(cm_bot, commands={"help": mock_help})
+        msg = mock_message(content="help", is_dm=True)
+        matches = manager.check_keywords(msg)
+        assert not any(trigger == "help" for trigger, _ in matches)
+
+    def test_help_enabled_responds_when_command_loaded(self, cm_bot):
+        """A loaded, enabled help command still produces a help response."""
+        cm_bot.config.set("Keywords", "help", "Help: ping, test")
+        mock_help = MagicMock()
+        mock_help.help_enabled = True
+        mock_help.keywords = ["help"]
+        manager = make_manager(cm_bot, commands={"help": mock_help})
+        msg = mock_message(content="help", is_dm=True)
+        matches = manager.check_keywords(msg)
+        assert any(trigger == "help" for trigger, _ in matches)
+
+    def test_help_channel_override_blocks_disallowed_channel(self, cm_bot):
+        """[Help_Command] channels override must gate the special help path too.
+
+        The path bypasses the plugin loop (where is_channel_allowed is enforced), so
+        it has to consult the help command's channel access directly.
+        """
+        cm_bot.config.set("Keywords", "help", "Help: ping, test")
+        mock_help = MagicMock()
+        mock_help.help_enabled = True
+        mock_help.keywords = ["help"]
+        # Disallow the channel the message arrives on.
+        mock_help.is_channel_allowed = Mock(return_value=False)
+        mock_help.should_execute = Mock(return_value=False)
+        manager = make_manager(cm_bot, commands={"help": mock_help})
+
+        msg = mock_message(content="help", channel="general", is_dm=False)
+        matches = manager.check_keywords(msg)
+        assert not any(trigger == "help" for trigger, _ in matches)
+
+        # Allowed channel still responds.
+        mock_help.is_channel_allowed = Mock(return_value=True)
+        matches = manager.check_keywords(mock_message(content="help", channel="general", is_dm=False))
+        assert any(trigger == "help" for trigger, _ in matches)
+
 
 class TestGetHelpForCommand:
     """Tests for command-specific help."""

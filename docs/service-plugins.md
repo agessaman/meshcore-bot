@@ -13,6 +13,7 @@ Service plugins extend the bot with background services that run alongside the m
 | Webhook Service (`Webhook`) | Accept inbound HTTP POST payloads and relay to mesh channels or DMs |
 | [Earthquake Service](earthquake-service.md) | Earthquake alerts for a configured region (USGS API, defaults: California) |
 | [Repeater Prefix Collision Service](repeater-prefix-collision-service.md) | Alerts when a newly heard repeater prefix collides with an existing repeater prefix |
+| [World Cup Live Service](worldcup.md) | Proactive FIFA World Cup match announcements (auto-detects the active tournament) |
 
 ## Enabling a plugin
 

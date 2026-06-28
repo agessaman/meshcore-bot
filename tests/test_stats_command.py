@@ -3,7 +3,7 @@
 import configparser
 import sqlite3
 from contextlib import contextmanager
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -45,7 +45,7 @@ def _make_db_manager():
     return db
 
 
-def _make_bot(enabled=True):
+def _make_bot(enabled=True, collect_stats=True):
     bot = MagicMock()
     bot.logger = Mock()
     config = configparser.ConfigParser()
@@ -57,7 +57,8 @@ def _make_bot(enabled=True):
     config.add_section("Keywords")
     config.add_section("Stats_Command")
     config.set("Stats_Command", "enabled", str(enabled).lower())
-    config.set("Stats_Command", "collect_stats", "true")
+    if collect_stats is not None:
+        config.set("Stats_Command", "collect_stats", str(collect_stats).lower())
     bot.config = config
     bot.translator = MagicMock()
     bot.translator.translate = Mock(side_effect=lambda key, **kw: key)
@@ -141,6 +142,18 @@ class TestStatsCommandEnabled:
         cmd = StatsCommand(bot)
         assert cmd.stats_enabled is False
 
+    def test_collect_stats_defaults_true_when_command_disabled(self):
+        bot = _make_bot(enabled=False, collect_stats=None)
+        cmd = StatsCommand(bot)
+        assert cmd.stats_enabled is False
+        assert cmd.collect_stats is True
+
+    def test_collect_stats_explicit_false_opt_out(self):
+        bot = _make_bot(enabled=True, collect_stats=False)
+        cmd = StatsCommand(bot)
+        assert cmd.stats_enabled is True
+        assert cmd.collect_stats is False
+
 
 # ---------------------------------------------------------------------------
 # record_message
@@ -167,6 +180,15 @@ class TestRecordMessage:
         msg = mock_message(content="hello", channel="general")
         # Should return early without error
         cmd.record_message(msg)
+
+    def test_record_message_explicit_collect_stats_false_does_not_insert(self):
+        bot = _make_bot(enabled=True, collect_stats=False)
+        cmd = StatsCommand(bot)
+        msg = mock_message(content="hello", channel="general")
+        cmd.record_message(msg)
+        with bot.db_manager.connection() as conn:
+            count = conn.execute("SELECT COUNT(*) FROM message_stats").fetchone()[0]
+        assert count == 0
 
     def test_record_message_disabled_track_all(self):
         bot = _make_bot(enabled=True)
@@ -298,12 +320,13 @@ class TestRecordPathStats:
 class TestExecuteStats:
     def test_execute_disabled_returns_false(self):
         import asyncio
-        bot = _make_bot(enabled=False)
+        bot = _make_bot(enabled=False, collect_stats=None)
         cmd = StatsCommand(bot)
-        cmd.stats_enabled = False
+        cmd.send_response = AsyncMock(return_value=True)
         msg = mock_message(content="stats", channel="general")
         result = asyncio.run(cmd.execute(msg))
         assert result is False
+        cmd.send_response.assert_awaited_once()
 
     def test_execute_enabled_returns_true(self):
         import asyncio

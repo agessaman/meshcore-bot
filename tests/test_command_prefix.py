@@ -290,3 +290,79 @@ class TestCommandPrefix:
         # Should also match with legacy ! prefix
         mock_message.content = "!test"
         assert command.matches_keyword(mock_message) is True
+
+
+class MockAlphaCommand(BaseCommand):
+    """Second mock command, used to exercise multi-command iteration."""
+    name = "alpha"
+    keywords = ['alpha']
+    description = "Alpha command"
+    category = "test"
+
+    async def execute(self, message: MeshMessage) -> bool:
+        return True
+
+
+class TestCommandPrefixMultipleCommands:
+    """Regression tests for issue #137.
+
+    With a configured prefix, the bot must respond to every command, not just the
+    first one in iteration order. The original bug: cleanup_message_for_matching
+    mutated the shared message (stripping the prefix), so the first command consumed
+    the prefix and every later command then failed its own prefix check.
+    """
+
+    def _make_manager(self, mock_bot, commands):
+        for section in ('Keywords', 'Custom_Syntax'):
+            if not mock_bot.config.has_section(section):
+                mock_bot.config.add_section(section)
+        with patch('modules.command_manager.PluginLoader') as mock_loader_class:
+            loader = Mock()
+            loader.load_all_plugins = Mock(return_value=commands)
+            loader.keyword_mappings = {}
+            mock_loader_class.return_value = loader
+            manager = CommandManager(mock_bot)
+        # Commands resolve channel access via bot.command_manager at call time.
+        mock_bot.command_manager = manager
+        return manager
+
+    def test_non_first_command_matches_with_prefix(self, mock_bot, mock_message):
+        """A command that is NOT first in iteration order still matches with a prefix."""
+        mock_bot.config.set('Bot', 'command_prefix', '!')
+        # 'alpha' is iterated before 'test'; under the old bug it would strip the
+        # prefix and leave 'test' unable to match.
+        commands = {'alpha': MockAlphaCommand(mock_bot), 'test': MockTestCommand(mock_bot)}
+        manager = self._make_manager(mock_bot, commands)
+
+        mock_message.content = "!test"
+        matches = manager.check_keywords(mock_message)
+        assert any(trigger == 'test' for trigger, _ in matches)
+
+    def test_first_command_still_matches_with_prefix(self, mock_bot, mock_message):
+        """The first-iterated command continues to match with a prefix."""
+        mock_bot.config.set('Bot', 'command_prefix', '!')
+        commands = {'alpha': MockAlphaCommand(mock_bot), 'test': MockTestCommand(mock_bot)}
+        manager = self._make_manager(mock_bot, commands)
+
+        mock_message.content = "!alpha"
+        matches = manager.check_keywords(mock_message)
+        assert any(trigger == 'alpha' for trigger, _ in matches)
+
+    def test_bare_command_blocked_when_prefix_required(self, mock_bot, mock_message):
+        """Prefix enforcement still rejects unprefixed messages (now centralized)."""
+        mock_bot.config.set('Bot', 'command_prefix', '!')
+        commands = {'alpha': MockAlphaCommand(mock_bot), 'test': MockTestCommand(mock_bot)}
+        manager = self._make_manager(mock_bot, commands)
+
+        mock_message.content = "test"
+        assert manager.check_keywords(mock_message) == []
+
+    def test_multiple_commands_match_without_prefix(self, mock_bot, mock_message):
+        """Without a prefix, a non-first command still matches (no regression)."""
+        mock_bot.config.set('Bot', 'command_prefix', '')
+        commands = {'alpha': MockAlphaCommand(mock_bot), 'test': MockTestCommand(mock_bot)}
+        manager = self._make_manager(mock_bot, commands)
+
+        mock_message.content = "test"
+        matches = manager.check_keywords(mock_message)
+        assert any(trigger == 'test' for trigger, _ in matches)

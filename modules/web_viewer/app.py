@@ -4160,6 +4160,30 @@ class BotDataViewer:
                 cursor.execute(query)
                 stats['top_users'] = [{'user': row[0], 'count': row[1]} for row in cursor.fetchall()]
 
+                # Top channels by message count - filter by time window
+                if top_channels_window == '24h':
+                    time_filter = "AND timestamp > strftime('%s', 'now', '-24 hours')"
+                elif top_channels_window == '7d':
+                    time_filter = "AND timestamp > strftime('%s', 'now', '-7 days')"
+                elif top_channels_window == '30d':
+                    time_filter = "AND timestamp > strftime('%s', 'now', '-30 days')"
+                else:  # 'all'
+                    time_filter = ""
+
+                query = f"""
+                    SELECT channel, COUNT(*) as message_count, COUNT(DISTINCT sender_id) as unique_users
+                    FROM message_stats
+                    WHERE channel IS NOT NULL {time_filter}
+                    GROUP BY channel
+                    ORDER BY message_count DESC
+                    LIMIT 10
+                """
+                cursor.execute(query)
+                stats['top_channels'] = [
+                    {'channel': row[0], 'messages': row[1], 'users': row[2]}
+                    for row in cursor.fetchall()
+                ]
+
             if 'command_stats' in tables:
                 cursor.execute("SELECT COUNT(*) FROM command_stats")
                 stats['total_commands'] = cursor.fetchone()[0]
@@ -4239,30 +4263,6 @@ class BotDataViewer:
                     stats['bot_reply_rate_30d'] = round((replied_30d / total_30d) * 100, 1)
                 else:
                     stats['bot_reply_rate_30d'] = 0
-
-                # Top channels by message count - filter by time window
-                if top_channels_window == '24h':
-                    time_filter = "AND timestamp > strftime('%s', 'now', '-24 hours')"
-                elif top_channels_window == '7d':
-                    time_filter = "AND timestamp > strftime('%s', 'now', '-7 days')"
-                elif top_channels_window == '30d':
-                    time_filter = "AND timestamp > strftime('%s', 'now', '-30 days')"
-                else:  # 'all'
-                    time_filter = ""
-
-                query = f"""
-                    SELECT channel, COUNT(*) as message_count, COUNT(DISTINCT sender_id) as unique_users
-                    FROM message_stats
-                    WHERE channel IS NOT NULL {time_filter}
-                    GROUP BY channel
-                    ORDER BY message_count DESC
-                    LIMIT 10
-                """
-                cursor.execute(query)
-                stats['top_channels'] = [
-                    {'channel': row[0], 'messages': row[1], 'users': row[2]}
-                    for row in cursor.fetchall()
-                ]
 
             # Path statistics (if path_stats table exists)
             if 'path_stats' in tables:
