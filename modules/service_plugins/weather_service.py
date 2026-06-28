@@ -38,6 +38,7 @@ from ..commands.rain_command import (
     fetch_precip_series_nws,
     format_amount_estimate,
     join_location,
+    nws_http_means_no_coverage,
     precip_descriptor,
     reverse_geocode_region,
 )
@@ -123,6 +124,9 @@ class WeatherService(BaseServicePlugin):
 
         # Track last alert check time to only send new alerts
         self.last_alert_check_time: Optional[float] = None
+
+        # Lazy: None = unknown, False = NOAA alerts unavailable (non-US / no coverage)
+        self._nws_alerts_available: Optional[bool] = None
 
         # Background tasks
         self._alerts_task: Optional[asyncio.Task] = None
@@ -715,6 +719,9 @@ class WeatherService(BaseServicePlugin):
                 # Subsequent checks: only get alerts since last check
                 time_window_start = self.last_alert_check_time
 
+            if self._nws_alerts_available is False:
+                return
+
             # Round coordinates
             lat_rounded = round(self.my_position_lat, 4)
             lon_rounded = round(self.my_position_lon, 4)
@@ -725,11 +732,21 @@ class WeatherService(BaseServicePlugin):
             try:
                 alert_data = self.api_session.get(alert_url, timeout=10)
                 if not alert_data.ok:
-                    self.logger.debug(f"Error fetching alerts: HTTP {alert_data.status_code}")
+                    if nws_http_means_no_coverage(alert_data.status_code):
+                        self._nws_alerts_available = False
+                        self.logger.warning(
+                            "NWS weather alerts unavailable (HTTP %s); NOAA alerts are US-only — "
+                            "skipping future alert polls",
+                            alert_data.status_code,
+                        )
+                    else:
+                        self.logger.debug(f"Error fetching alerts: HTTP {alert_data.status_code}")
                     return
             except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
                 self.logger.debug(f"Timeout/connection error fetching alerts: {e}")
                 return
+
+            self._nws_alerts_available = True
 
             # Parse ATOM feed with full metadata extraction (same as wx_command)
             alerts = []

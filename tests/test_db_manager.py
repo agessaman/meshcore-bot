@@ -17,6 +17,25 @@ def db(mock_logger, tmp_path):
     return DBManager(bot, str(tmp_path / "test.db"))
 
 
+class TestDatabaseInitialization:
+    def test_missing_parent_logs_path_diagnostics(self, mock_logger, tmp_path):
+        bot = Mock()
+        bot.logger = mock_logger
+        db_path = tmp_path / "missing" / "test.db"
+
+        with pytest.raises(sqlite3.OperationalError, match="unable to open database file"):
+            DBManager(bot, str(db_path))
+
+        logged = " ".join(
+            str(arg)
+            for call in mock_logger.error.call_args_list
+            for arg in call.args
+        )
+        assert str(db_path) in logged
+        assert "parent=" in logged
+        assert "exists=False" in logged
+
+
 class TestGeocoding:
     """Tests for geocoding cache."""
 

@@ -4,6 +4,7 @@ import json
 import queue
 import time
 from configparser import ConfigParser
+from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -441,6 +442,77 @@ class TestWebViewerIntegrationValidation:
                  patch("modules.web_viewer.integration.BotIntegration._start_drain_thread"):
                 WebViewerIntegration(bot)
         bot.logger.error.assert_not_called()
+
+    def test_start_viewer_refuses_missing_db_parent(self, tmp_path):
+        from modules.web_viewer.integration import WebViewerIntegration
+
+        bot = _make_bot()
+        bot.config_file = str(tmp_path / "config.ini")
+        Path(bot.config_file).write_text("[Bot]\n", encoding="utf-8")
+        bot.config.set("Web_Viewer", "db_path", "missing/viewer.db")
+        bot.db_manager.db_path = str(tmp_path / "bot.db")
+
+        with patch("modules.web_viewer.integration.BotIntegration._init_http_session"), \
+             patch("modules.web_viewer.integration.BotIntegration._init_packet_stream_table"), \
+             patch("modules.web_viewer.integration.BotIntegration._start_drain_thread"):
+            wvi = WebViewerIntegration(bot)
+
+        with patch.object(wvi, "_run_viewer") as run_viewer:
+            wvi.start_viewer()
+
+        run_viewer.assert_not_called()
+        assert wvi.running is False
+        assert any(
+            "parent directory does not exist" in str(call.args[0])
+            for call in bot.logger.error.call_args_list
+        )
+
+    def test_start_viewer_refuses_db_parent_that_is_file(self, tmp_path):
+        from modules.web_viewer.integration import WebViewerIntegration
+
+        bot = _make_bot()
+        bot.config_file = str(tmp_path / "config.ini")
+        Path(bot.config_file).write_text("[Bot]\n", encoding="utf-8")
+        not_dir = tmp_path / "not_a_directory"
+        not_dir.write_text("not a directory", encoding="utf-8")
+        bot.config.set("Web_Viewer", "db_path", "not_a_directory/viewer.db")
+        bot.db_manager.db_path = str(tmp_path / "bot.db")
+
+        with patch("modules.web_viewer.integration.BotIntegration._init_http_session"), \
+             patch("modules.web_viewer.integration.BotIntegration._init_packet_stream_table"), \
+             patch("modules.web_viewer.integration.BotIntegration._start_drain_thread"):
+            wvi = WebViewerIntegration(bot)
+
+        with patch.object(wvi, "_run_viewer") as run_viewer:
+            wvi.start_viewer()
+
+        run_viewer.assert_not_called()
+        assert wvi.running is False
+        assert any(
+            "parent path is not a directory" in str(call.args[0])
+            for call in bot.logger.error.call_args_list
+        )
+
+    def test_start_viewer_allows_valid_db_parent(self, tmp_path):
+        from modules.web_viewer.integration import WebViewerIntegration
+
+        bot = _make_bot()
+        bot.config_file = str(tmp_path / "config.ini")
+        Path(bot.config_file).write_text("[Bot]\n", encoding="utf-8")
+        bot.config.set("Web_Viewer", "db_path", "viewer.db")
+        bot.db_manager.db_path = str(tmp_path / "bot.db")
+
+        with patch("modules.web_viewer.integration.BotIntegration._init_http_session"), \
+             patch("modules.web_viewer.integration.BotIntegration._init_packet_stream_table"), \
+             patch("modules.web_viewer.integration.BotIntegration._start_drain_thread"):
+            wvi = WebViewerIntegration(bot)
+
+        with patch("modules.web_viewer.integration.threading.Thread") as thread_cls:
+            thread = thread_cls.return_value
+            wvi.start_viewer()
+
+        thread.start.assert_called_once()
+        assert wvi.running is True
 
 
 class TestNormalizedWebViewerPassword:

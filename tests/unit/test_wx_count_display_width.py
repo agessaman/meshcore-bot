@@ -3,6 +3,7 @@
 
 import pytest
 
+from modules.models import MeshMessage
 from modules.commands.alternatives.wx_international import GlobalWxCommand
 from modules.commands.wx_command import WxCommand
 
@@ -27,6 +28,14 @@ def wx_cmd(wx_bot):
 def gwx_cmd(wx_bot):
     """GlobalWxCommand shares the same bot shape (db_manager, Weather section)."""
     return GlobalWxCommand(wx_bot)
+
+
+@pytest.fixture
+def openmeteo_wx_cmd(wx_bot):
+    """WxCommand configured to delegate to GlobalWxCommand via Open-Meteo."""
+    wx_bot.config.set("Weather", "weather_provider", "openmeteo")
+    wx_bot.config.set("Wx_Command", "aliases", "wetter")
+    return WxCommand(wx_bot)
 
 
 @pytest.mark.unit
@@ -64,3 +73,11 @@ def test_wx_and_gwx_count_display_width_agree_on_same_string(wx_cmd, gwx_cmd):
     samples = ["", "a", "résumé", "🎯📍❓", "line1\nline2"]
     for s in samples:
         assert wx_cmd._count_display_width(s) == gwx_cmd._count_display_width(s)
+
+
+@pytest.mark.unit
+def test_openmeteo_delegation_preserves_wx_command_aliases(openmeteo_wx_cmd):
+    assert openmeteo_wx_cmd.delegate_command is not None
+    assert "wetter" in openmeteo_wx_cmd.delegate_command.keywords
+    assert openmeteo_wx_cmd.matches_keyword(MeshMessage(content="!wetter Berlin"))
+    assert openmeteo_wx_cmd.matches_keyword(MeshMessage(content="!wx Berlin"))

@@ -35,13 +35,22 @@ class MeshMessage:
     def effective_outgoing_flood_scope(self, bot: Any) -> str:
         """Resolve outbound flood scope the same way as ``CommandManager.send_channel_message``.
 
-        For channel replies: ``reply_scope`` when set, else ``[Channels] outgoing_flood_scope_override``.
+        For channel replies: ``reply_scope`` when set, else per-channel
+        ``[Channels] flood_scope.<channel>``, else ``[Channels] outgoing_flood_scope_override``.
         Empty string means global flood. DMs return ``""`` (not applicable).
         """
         if self.is_dm:
             return ""
         if self.reply_scope is not None:
             return (self.reply_scope or "").strip()
+        if self.channel and bot.config.has_section("Channels"):
+            channel_key = self.channel.strip().removeprefix("#").lower()
+            for key, value in bot.config.items("Channels"):
+                if not key.startswith("flood_scope."):
+                    continue
+                configured_channel = key[len("flood_scope."):].strip().removeprefix("#").lower()
+                if configured_channel == channel_key:
+                    return (value or "").strip()
         scope_cfg = ""
         if bot.config.has_section("Channels") and bot.config.has_option(
             "Channels", "outgoing_flood_scope_override"
@@ -52,4 +61,4 @@ class MeshMessage:
     @staticmethod
     def is_global_flood_scope(scope: str) -> bool:
         """Match ``send_channel_message`` global markers (before ``_normalize_scope_name``)."""
-        return scope in ("", "*", "0", "None")
+        return scope in ("", "*", "0", "None") or scope.lower() == "none"

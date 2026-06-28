@@ -701,6 +701,7 @@ class TestCommand(BaseCommand):
                 'timestamp': timestamp,
                 'elapsed': elapsed,
                 'snr': str(message.snr) if message.snr is not None else self.translate('common.unknown'),
+                'rssi': str(message.rssi) if message.rssi is not None else self.translate('common.unknown'),
                 'path_distance': path_distance or '',
                 'firstlast_distance': firstlast_distance or '',
             }

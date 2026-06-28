@@ -44,6 +44,7 @@ from ..clients.mqtt_weather import (
     load_mqtt_weather_format_config,
     mqtt_weather_display_for_topic,
 )
+from .rain_command import nws_http_means_no_coverage
 
 # Multiday: plain digits (e.g. 7), 7day/7-day, or suffix form 7d/10d (min 2, max below).
 WX_MULTIDAY_MAX_DAYS = 16
@@ -90,8 +91,8 @@ class WxCommand(BaseCommand):
         if weather_provider == 'openmeteo' and WX_INTERNATIONAL_AVAILABLE:
             # Delegate to international weather command
             self.delegate_command = GlobalWxCommand(bot)
-            # Update keywords to match wx command for compatibility
-            self.delegate_command.keywords = ['wx', 'weather', 'wxa', 'wxalert']
+            # Use wx triggers plus any [Wx_Command] aliases loaded by BaseCommand.
+            self.delegate_command.keywords = list(self.keywords)
             self.delegate_command.description = "Get weather information for any location (usage: wx Tokyo)"
             self.logger.info("Weather provider set to 'openmeteo', delegating wx command to wx_international")
         else:
@@ -120,6 +121,9 @@ class WxCommand(BaseCommand):
             # Create a retry-enabled session for NOAA API calls
             # This makes the API more resilient to timeouts and transient errors
             self.noaa_session = self._create_retry_session()
+
+            # Lazy: None = unknown, False = NOAA alerts unavailable (non-US / no coverage)
+            self._nws_alerts_available = None
 
     def _format_high_low(self, high: Optional[float], low: Optional[float], temp_symbol: str) -> str:
         """Format high/low using [Weather] temperature_*_format templates."""
@@ -1940,6 +1944,9 @@ class WxCommand(BaseCommand):
             If return_full_data=True: (list of alert dicts, alert_count)
         """
         try:
+            if getattr(self, "_nws_alerts_available", None) is False:
+                return self.ERROR_FETCHING_DATA
+
             # Round coordinates to 4 decimal places to avoid API redirects
             lat_rounded = round(lat, 4)
             lon_rounded = round(lon, 4)
@@ -1949,11 +1956,23 @@ class WxCommand(BaseCommand):
             try:
                 alert_data = self.noaa_session.get(alert_url, timeout=self.url_timeout)
                 if not alert_data.ok:
-                    self.logger.warning(f"Error fetching weather alerts from NOAA: HTTP {alert_data.status_code}")
+                    if nws_http_means_no_coverage(alert_data.status_code):
+                        self._nws_alerts_available = False
+                        self.logger.warning(
+                            "NWS weather alerts unavailable (HTTP %s); NOAA alerts are US-only — "
+                            "skipping future alert requests",
+                            alert_data.status_code,
+                        )
+                    else:
+                        self.logger.warning(
+                            f"Error fetching weather alerts from NOAA: HTTP {alert_data.status_code}"
+                        )
                     return self.ERROR_FETCHING_DATA
             except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
                 self.logger.warning(f"Timeout/connection error fetching weather alerts from NOAA: {e}")
                 return self.ERROR_FETCHING_DATA
+
+            self._nws_alerts_available = True
 
             alerts = []  # Store structured alert data
             alertxml = xml.dom.minidom.parseString(alert_data.text)

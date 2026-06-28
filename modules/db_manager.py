@@ -5,11 +5,13 @@ Provides common database operations and table management for the MeshCore Bot
 """
 
 import json
+import os
 import re
 import sqlite3
 from collections.abc import AsyncGenerator, Generator
 from contextlib import asynccontextmanager, contextmanager
 from datetime import date, datetime
+from pathlib import Path
 from typing import Any, Optional
 
 from .db_migrations import MigrationRunner
@@ -73,8 +75,34 @@ class DBManager:
                 self.logger.info("Database manager initialized successfully")
 
         except Exception as e:
-            self.logger.error(f"Failed to initialize database: {e}")
+            self.logger.error(
+                "Failed to initialize database at %s: %s. %s",
+                self.db_path,
+                e,
+                self._database_path_diagnostics(),
+            )
             raise
+
+    def _database_path_diagnostics(self) -> str:
+        """Return filesystem details that explain common SQLite open failures."""
+        try:
+            if str(self.db_path) == ":memory:":
+                return "Using in-memory SQLite database."
+            db_file = Path(self.db_path)
+            parent = db_file.parent if db_file.parent != Path("") else Path(".")
+            parent_exists = parent.exists()
+            parent_is_dir = parent.is_dir() if parent_exists else False
+            parent_writable = os.access(str(parent), os.W_OK) if parent_exists else False
+            file_exists = db_file.exists()
+            file_readable = os.access(str(db_file), os.R_OK) if file_exists else False
+            file_writable = os.access(str(db_file), os.W_OK) if file_exists else False
+            return (
+                f"parent={parent} "
+                f"(exists={parent_exists}, is_dir={parent_is_dir}, writable={parent_writable}); "
+                f"file_exists={file_exists}, readable={file_readable}, writable={file_writable}"
+            )
+        except Exception as diag_error:
+            return f"could not inspect database path: {diag_error}"
 
     # Geocoding cache methods
     def get_cached_geocoding(self, query: str) -> tuple[Optional[float], Optional[float]]:

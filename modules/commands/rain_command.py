@@ -408,6 +408,11 @@ def fetch_precip_series(
     return series
 
 
+def nws_http_means_no_coverage(status_code: int) -> bool:
+    """True when an NWS HTTP status means the point has no US weather.gov coverage."""
+    return status_code in (400, 404)
+
+
 # --- NWS gridpoint precip source ---------------------------------------------
 # WHY THIS EXISTS: the Open-Meteo *forecast model* (fetch_precip_series, above)
 # smooths away scattered, pop-up convection, so the nowcast can miss rain that is

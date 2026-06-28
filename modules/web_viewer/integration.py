@@ -695,10 +695,84 @@ class WebViewerIntegration:
                     "host = 127.0.0.1 for local-only access."
                 )
 
+    def _resolve_viewer_db_path(self) -> Path:
+        """Return the database path the viewer subprocess will use."""
+        config_path = getattr(self.bot, 'config_file', 'config.ini')
+        config_base = Path(config_path).resolve().parent if config_path else Path(".").resolve()
+        if self.bot.config.has_section('Web_Viewer') and self.bot.config.has_option('Web_Viewer', 'db_path'):
+            raw = self.bot.config.get('Web_Viewer', 'db_path', fallback='').strip()
+            if raw:
+                return Path(resolve_path(raw, config_base))
+        return Path(self.bot.db_manager.db_path)
+
+    def _preflight_database_path(self) -> bool:
+        """Validate the web viewer DB path before spawning the subprocess."""
+        try:
+            db_path = self._resolve_viewer_db_path()
+        except Exception as e:
+            self.logger.error("Web viewer database path could not be resolved: %s", e)
+            return False
+
+        parent = db_path.parent if db_path.parent != Path("") else Path(".")
+        parent_exists = parent.exists()
+        parent_is_dir = parent.is_dir() if parent_exists else False
+        parent_writable = os.access(str(parent), os.W_OK) if parent_exists else False
+        file_exists = db_path.exists()
+        file_readable = os.access(str(db_path), os.R_OK) if file_exists else False
+        file_writable = os.access(str(db_path), os.W_OK) if file_exists else False
+
+        self.logger.info("Web viewer database path: %s", db_path)
+
+        if not parent_exists:
+            self.logger.error(
+                "Web viewer database parent directory does not exist: %s. "
+                "Create it, fix [Web_Viewer] db_path, or remove [Web_Viewer] db_path to use [Bot] db_path.",
+                parent,
+            )
+            return False
+        if not parent_is_dir:
+            self.logger.error(
+                "Web viewer database parent path is not a directory: %s. "
+                "Fix [Web_Viewer] db_path or remove it to use [Bot] db_path.",
+                parent,
+            )
+            return False
+        if not parent_writable:
+            self.logger.error(
+                "Web viewer database parent directory is not writable: %s. "
+                "Fix permissions or choose a writable db_path.",
+                parent,
+            )
+            return False
+        if file_exists and (not file_readable or not file_writable):
+            self.logger.error(
+                "Web viewer database file is not readable and writable: %s "
+                "(readable=%s, writable=%s). Fix file permissions.",
+                db_path,
+                file_readable,
+                file_writable,
+            )
+            return False
+
+        if self.bot.config.has_section('Web_Viewer') and self.bot.config.get('Web_Viewer', 'db_path', fallback='').strip():
+            bot_db_path = Path(self.bot.db_manager.db_path)
+            if db_path.resolve() != bot_db_path.resolve():
+                self.logger.warning(
+                    "Web viewer database path differs from bot database: viewer=%s, bot=%s. "
+                    "Remove [Web_Viewer] db_path unless you intentionally use a separate viewer database.",
+                    db_path,
+                    bot_db_path,
+                )
+        return True
+
     def start_viewer(self):
         """Start the web viewer in a separate thread"""
         if self.running:
             self.logger.warning("Web viewer is already running")
+            return
+
+        if not self._preflight_database_path():
+            self.running = False
             return
 
         # Intentional (re)start after stop_viewer / restart_viewer — allow monitor thread to run

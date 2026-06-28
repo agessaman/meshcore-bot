@@ -74,6 +74,62 @@ Once started, open your web browser and navigate to:
 - **Local access**: http://localhost:5005 (or your configured port)
 - **Network access**: http://YOUR_BOT_IP:5005 (if host is set to 0.0.0.0)
 
+## Reverse Proxy With Nginx Basic Auth
+
+If you expose the web viewer outside your local network, run it behind HTTPS and authentication. One option is to bind the viewer locally, then put Nginx in front with basic auth:
+
+```ini
+[Web_Viewer]
+enabled = true
+auto_start = true
+host = 127.0.0.1
+port = 8080
+```
+
+Example Nginx server block:
+
+```nginx
+server {
+  # [...]
+  auth_basic           "Login required";
+  auth_basic_user_file /etc/nginx/.meshcore-bot.htpasswd;
+
+  location / {
+    # Local web viewer instance
+    proxy_pass      http://127.0.0.1:8080;
+    proxy_buffering off;
+    include /etc/nginx/proxy_params;
+  }
+
+  # Socket.IO websocket path for live updates
+  location /socket.io/ {
+    if ($http_connection !~* "upgrade") {
+      return 403;
+    }
+    if ($http_upgrade !~* "websocket") {
+      return 403;
+    }
+
+    proxy_pass http://127.0.0.1:8080;
+    include /etc/nginx/proxy_params;
+
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 86400;
+  }
+}
+```
+
+With the config above, `/etc/nginx/proxy_params` should include the standard forwarded headers:
+
+```nginx
+proxy_set_header Host $http_host;
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+```
+
 ## Pages Overview
 
 ### Dashboard
@@ -238,7 +294,7 @@ chmod +x restart_viewer.sh
 - The web viewer is designed for local network use
 - Set `host = 127.0.0.1` for localhost-only access
 - Set `host = 0.0.0.0` for network access (use with caution)
-- No authentication is implemented - consider firewall rules for production use
+- For network access, set `web_viewer_password` or use a reverse proxy with authentication and firewall rules
 
 ## Future Enhancements
 
@@ -246,5 +302,5 @@ chmod +x restart_viewer.sh
 - Real-time message monitoring
 - Interactive contact management
 - Export functionality
-- Authentication system
+- Additional authentication options
 - Mobile-responsive design improvements

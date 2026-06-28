@@ -884,6 +884,12 @@ class TestGetMaxMessageLength:
         msg = MeshMessage(content="x", channel="general", is_dm=False)
         assert mgr.get_max_message_length(msg) == 137
 
+    def test_channel_flood_scope_reduces_budget_by_10_bytes(self):
+        mgr = self._make_manager(bot_name="LongBotName")
+        mgr.bot.config.set("Channels", "flood_scope.weather", "#sea")
+        msg = MeshMessage(content="x", channel="#Weather", is_dm=False)
+        assert mgr.get_max_message_length(msg) == 137
+
     def test_parity_with_base_command_get_max_message_length(self):
         """CommandManager must mirror BaseCommand byte budgets (PR #128)."""
         from tests.commands.test_base_command import _TestCommand

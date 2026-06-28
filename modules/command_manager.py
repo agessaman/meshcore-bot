@@ -165,11 +165,18 @@ class CommandManager:
     @staticmethod
     def _normalize_scope_name(scope: str) -> str:
         """Return scope with '#' prepended if it is a non-global named region without one."""
-        if scope in ("", "*", "0", "None"):
+        if scope in ("", "*", "0", "None") or scope.lower() == "none":
+            if scope.lower() == "none":
+                return "None"
             return scope
         if not scope.startswith("#"):
             return "#" + scope
         return scope
+
+    @staticmethod
+    def _normalize_channel_name_for_scope_config(channel: str) -> str:
+        """Normalize channel names for [Channels] flood_scope.<channel> lookups."""
+        return channel.strip().removeprefix("#").lower()
 
     def _outgoing_flood_scope_override(self) -> str:
         """[Channels] outgoing_flood_scope_override when set, else empty string."""
@@ -179,18 +186,33 @@ class CommandManager:
             return (self.bot.config.get("Channels", "outgoing_flood_scope_override") or "").strip()
         return ""
 
+    def _channel_flood_scope(self, channel: str | None) -> str | None:
+        """Return [Channels] flood_scope.<channel> when configured, including global markers."""
+        if not channel or not self.bot.config.has_section("Channels"):
+            return None
+        channel_key = self._normalize_channel_name_for_scope_config(channel)
+        for key, value in self.bot.config.items("Channels"):
+            if not key.startswith("flood_scope."):
+                continue
+            configured_channel = key[len("flood_scope."):]
+            if self._normalize_channel_name_for_scope_config(configured_channel) == channel_key:
+                return self._normalize_scope_name((value or "").strip())
+        return None
+
     def resolve_channel_send_scope(
         self,
         *,
         scope: str | None = None,
         message: MeshMessage | None = None,
         config_section: str | None = None,
+        channel: str | None = None,
     ) -> str | None:
         """Resolve explicit regional scope before send_channel_message applies override.
 
         Precedence: explicit ``scope`` arg → ``message.reply_scope`` (mirror incoming) →
-        ``flood_scope`` in ``config_section``. Returns ``None`` when unset so
-        ``send_channel_message`` falls back to ``outgoing_flood_scope_override``.
+        ``flood_scope`` in ``config_section`` → per-channel ``flood_scope.<channel>``.
+        Returns ``None`` when unset so ``send_channel_message`` falls back to
+        ``outgoing_flood_scope_override``.
         """
         if scope is not None:
             return scope
@@ -200,6 +222,9 @@ class CommandManager:
             raw = (self.bot.config.get(config_section, "flood_scope", fallback="") or "").strip()
             if raw:
                 return self._normalize_scope_name(raw)
+        channel_scope = self._channel_flood_scope(channel or (message.channel if message else None))
+        if channel_scope is not None:
+            return channel_scope
         return None
 
     def _should_queue_command(self, command: BaseCommand, message: MeshMessage) -> tuple[bool, float]:
@@ -1220,7 +1245,7 @@ class CommandManager:
                 # Don't fail the send if transmission tracking fails
 
             # Optional flood scope (region): set before send, restore after
-            resolved = self.resolve_channel_send_scope(scope=scope)
+            resolved = self.resolve_channel_send_scope(scope=scope, channel=channel)
             scope_to_use = (
                 resolved if resolved is not None else self._outgoing_flood_scope_override()
             ) or ""
