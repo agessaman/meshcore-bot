@@ -267,7 +267,7 @@ respond_to_dms = true
 
 # Maximum number of hops on an incoming message, any higher and it will be ignored.
 # Messages received with a high number of hops are rarely intended for the local
-# mesh and are not likely to get recieve a response.
+# mesh and are not likely to get receive a response.
 # Default: 64 - to not change behavior on existing installations
 max_response_hops = 7
 
