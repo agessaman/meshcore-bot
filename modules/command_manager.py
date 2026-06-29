@@ -848,59 +848,6 @@ class CommandManager:
                         self.logger.warning(f"Error formatting response for '{keyword}': {e}")
                         matches.append((keyword, response_format))
 
-        # Check remaining keywords for custom_syntax
-        # self.logger.warn(f"self.custom_syntax {self.custom_syntax}")
-
-        if len(matches) == 0:
-            for keyword, response_format in self.custom_syntax.items():
-                # self.logger.warn(f"self.custom_syntax keyword {keyword}")
-                # Skip if we already have a plugin handling this keyword
-                if any(keyword.lower() in [k.lower() for k in cmd.keywords] for cmd in self.commands.values()):
-                    continue
-
-                # Check channel restrictions for plain keywords (same as commands)
-                # DMs are allowed if respond_to_dms is enabled
-                if message.is_dm:
-                    if not self.bot.config.getboolean("Channels", "respond_to_dms", fallback=True):
-                        continue  # DMs disabled, skip this keyword
-                else:
-                    # For channel messages, check if channel is in monitor_channels
-                    if message.channel not in self.monitor_channels:
-                        continue  # Channel not monitored, skip this keyword
-                    # When channel_keywords is set, only allow listed triggers in channel
-                    if not self._is_channel_trigger_allowed(keyword, message):
-                        continue
-
-                keyword_lower = keyword.lower()
-
-                # Check for exact match first
-                if keyword_lower == content_lower:
-                    try:
-                        # Format the response with available message data
-                        response = self.format_keyword_response(
-                            response_format, message)
-                        matches.append((keyword, response))
-                    except Exception as e:
-                        # Fallback to simple response if formatting fails
-                        self.logger.warning(
-                            f"Error formatting response for '{keyword}': {e}")
-                        matches.append((keyword, response_format))
-                # Check if the message starts with the keyword (followed by space or end of string)
-                # This ensures the keyword is the first word in the message
-                elif content_lower.startswith(keyword_lower):
-                    # Check if it's followed by a space or is the end of the message
-                    if len(content_lower) == len(keyword_lower) or content_lower[len(keyword_lower)] == " ":
-                        try:
-                            # Format the response with available message data
-                            response = self.format_keyword_response(
-                                response_format, message)
-                            matches.append((keyword, response))
-                        except Exception as e:
-                            # Fallback to simple response if formatting fails
-                            self.logger.warning(
-                                f"Error formatting response for '{keyword}': {e}")
-                            matches.append((keyword, response_format))
-
         return matches
 
     def _normalize_trigger_text(self, raw: str) -> str:
