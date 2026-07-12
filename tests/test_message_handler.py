@@ -1,12 +1,17 @@
 """Tests for MessageHandler pure logic (no network, no meshcore device)."""
 
 import configparser
+import hashlib
+import hmac
 import time
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 from modules.message_handler import MessageHandler
+from modules.meshcore_payload_decode import DEFAULT_PUBLIC_CHANNEL_KEY, TIME_SYNC_DATA_TYPE, channel_hash_for_key
 from modules.models import MeshMessage
 from tests.conftest import mock_message as make_message
 
@@ -914,6 +919,19 @@ def _make_packet_hex(
     return pkt.hex()
 
 
+def _encrypt_group_payload_for_packet_test(key16: bytes, plaintext: bytes) -> bytes:
+    """Build an encrypted GRP_DATA payload with the same MAC/padding used by MeshCore."""
+    # MeshCore channel data uses AES-128-ECB without an explicit padding marker.
+    # Zero padding keeps the constructed fixture compatible with the decoder's
+    # data-length byte, so the test exercises the real framing without exposing
+    # channel secrets or relying on a live device.
+    padded = plaintext + (b"\x00" * ((16 - (len(plaintext) % 16)) % 16))
+    encryptor = Cipher(algorithms.AES(key16), modes.ECB(), backend=default_backend()).encryptor()
+    ciphertext = encryptor.update(padded) + encryptor.finalize()
+    cipher_mac = hmac.new(key16 + (b"\x00" * 16), ciphertext, hashlib.sha256).digest()[:2]
+    return bytes([int(channel_hash_for_key(key16), 16)]) + cipher_mac + ciphertext
+
+
 # ---------------------------------------------------------------------------
 # decode_meshcore_packet
 # ---------------------------------------------------------------------------
@@ -1038,6 +1056,29 @@ class TestDecodeMeshcorePacket:
         assert result["route_type_name"] == "DIRECT"
         assert result["payload_type_name"] == "GRP_TXT"
         assert result["has_transport_codes"] is False
+
+    def test_group_data_time_sync_packet_attaches_decoded_application(self, handler):
+        tv1 = (
+            b"Tv1"
+            + (1_783_898_163).to_bytes(4, "little")
+            + (42).to_bytes(2, "little")
+            + bytes([7])
+            + b"TimeBot"
+            + (b"\x33" * 64)
+        )
+        plaintext = TIME_SYNC_DATA_TYPE.to_bytes(2, "little") + bytes([len(tv1)]) + tv1
+        payload = _encrypt_group_payload_for_packet_test(DEFAULT_PUBLIC_CHANNEL_KEY, plaintext)
+        hex_str = _make_packet_hex(6, 1, payload_bytes=payload)
+
+        result = handler.decode_meshcore_packet(hex_str)
+
+        assert result is not None
+        assert result["payload_type_name"] == "GRP_DATA"
+        assert result["decoded"]["decrypted"] is True
+        assert result["decoded"]["channel"] == "Public"
+        assert result["decoded"]["application"]["kind"] == "TIME_SYNC"
+        assert result["decoded"]["application"]["identity_name"] == "TimeBot"
+        assert result["decoded"]["application"]["sequence"] == 42
 
     # --- TRANSPORT_FLOOD route (has 4 transport bytes) ---
 

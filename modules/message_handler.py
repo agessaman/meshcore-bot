@@ -14,6 +14,7 @@ from typing import Any, TypedDict
 
 from .enums import AdvertFlags, DeviceRole, PayloadType, PayloadVersion, RouteType
 from .graph_trace_helper import update_mesh_graph_from_trace_data
+from .meshcore_payload_decode import DEFAULT_PUBLIC_CHANNEL_KEY, ChannelKeyStore, decode_payload
 from .models import MeshMessage
 from .security_utils import sanitize_input, sanitize_name
 from .utils import (
@@ -73,6 +74,24 @@ class MessageHandler:
         self.multitest_listener: Any | None = None
 
         self.logger.info(f"RF Data Correlation: timeout={self.rf_data_timeout}s, enhanced={self.enhanced_correlation}")
+
+    def _build_channel_decode_key_store(self) -> ChannelKeyStore:
+        """Build a read-only channel key store from the current channel cache."""
+        store = ChannelKeyStore()
+        store.add_secret(DEFAULT_PUBLIC_CHANNEL_KEY, "Public")
+
+        channel_manager = getattr(self.bot, "channel_manager", None)
+        channels = getattr(channel_manager, "_channels_cache", {}) if channel_manager else {}
+        if not isinstance(channels, dict):
+            channels = {}
+        for channel in channels.values():
+            if not isinstance(channel, dict):
+                continue
+            name = channel.get("channel_name") or channel.get("name") or "Channel"
+            key_hex = channel.get("channel_key_hex") or ""
+            if isinstance(key_hex, str) and len(key_hex.strip()) == 32:
+                store.add_hex(key_hex, name)
+        return store
 
     @staticmethod
     def _match_scope(
@@ -1729,6 +1748,14 @@ class MessageHandler:
                 "payload_hex": payload.hex(),
                 "payload_bytes": len(payload),
             }
+
+            try:
+                decoded = decode_payload(payload_type.value, payload, self._build_channel_decode_key_store())
+                if path_values:
+                    decoded["path"] = list(path_values)
+                packet_info["decoded"] = decoded
+            except Exception as e:
+                self.logger.debug("Payload decode failed: %s", e)
 
             self.logger.debug(
                 f"Successfully decoded: route={packet_info.get('route_type_name')}, type={packet_info.get('payload_type_name')}"

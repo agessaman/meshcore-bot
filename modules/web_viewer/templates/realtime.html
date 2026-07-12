@@ -380,8 +380,9 @@
         margin-top: 0.5rem;
     }
     
-    /* GroupText section */
-    #grouptext-breakdown {
+    /* GroupText / GroupDatagram sections */
+    #grouptext-breakdown,
+    #groupdata-breakdown {
         display: none;
         background-color: #212529;
         border: 1px solid #343a40;
@@ -390,7 +391,8 @@
         margin-top: 1rem;
     }
     
-    #grouptext-breakdown.visible {
+    #grouptext-breakdown.visible,
+    #groupdata-breakdown.visible {
         display: block !important;
     }
     
@@ -762,6 +764,72 @@
                             <div class="decrypted-message mt-2">
                                 <span class="decrypted-label">Message:</span>
                                 <div id="decrypted-message" class="message-content"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- GroupDatagram Payload Breakdown (shown only for GroupData packets) -->
+                <div id="groupdata-breakdown" class="groupdata-section">
+                    <h6 class="section-title">GroupDatagram Payload Byte Breakdown</h6>
+                    <div id="groupdata-hex" class="hex-breakdown mb-3"></div>
+
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="segment-card">
+                                <h6 class="segment-title text-danger">Channel Hash</h6>
+                                <div class="segment-bytes">Bytes 0-0</div>
+                                <code id="groupdata-channel-hash-value" class="segment-value"></code>
+                                <p class="segment-description">First byte of SHA256 of channel's shared key</p>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="segment-card">
+                                <h6 class="segment-title text-warning">Cipher MAC</h6>
+                                <div class="segment-bytes">Bytes 1-2</div>
+                                <code id="groupdata-cipher-mac-value" class="segment-value"></code>
+                                <p class="segment-description">MAC for encrypted data</p>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="segment-card">
+                                <h6 class="segment-title text-info">Ciphertext</h6>
+                                <div class="segment-bytes" id="groupdata-ciphertext-bytes">Bytes 3-?</div>
+                                <code id="groupdata-ciphertext-value" class="segment-value text-truncate-multi"></code>
+                                <p class="segment-description">Encrypted datagram content (data_type + data_len + data)</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="groupdata-decrypted-section" class="mt-3" style="display: none;">
+                        <div class="segment-card decrypted-card">
+                            <h6 class="segment-title text-success"><i class="fas fa-unlock"></i> Decrypted Datagram</h6>
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <div class="decrypted-field">
+                                        <span class="decrypted-label">Channel:</span>
+                                        <span id="groupdata-decrypted-channel" class="decrypted-value"></span>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="decrypted-field">
+                                        <span class="decrypted-label">Data Type:</span>
+                                        <span id="groupdata-data-type" class="decrypted-value"></span>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="decrypted-field">
+                                        <span class="decrypted-label">Data Length:</span>
+                                        <span id="groupdata-data-len" class="decrypted-value"></span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="timesync-details" class="decrypted-message mt-2" style="display: none;">
+                                <div><strong>Application:</strong> <span id="timesync-format"></span></div>
+                                <div><strong>Identity:</strong> <span id="timesync-identity"></span></div>
+                                <div><strong>Timestamp:</strong> <span id="timesync-timestamp"></span></div>
+                                <div><strong>Sequence:</strong> <span id="timesync-sequence"></span></div>
+                                <div><strong>Signature:</strong> <span id="timesync-signature"></span></div>
                             </div>
                         </div>
                     </div>
@@ -1173,6 +1241,25 @@
         return String(content).replace(/^\s*\[[#]+[^\]]*\]\s*/u, '');
     }
 
+    function getDecodedPayload(data) {
+        if (!data || typeof data !== 'object') return null;
+        if (data.decoded && typeof data.decoded === 'object') return data.decoded;
+        if (data.payload?.decoded && typeof data.payload.decoded === 'object') return data.payload.decoded;
+        return null;
+    }
+
+    function getTimeSyncSummary(data) {
+        const decoded = getDecodedPayload(data);
+        const app = decoded?.application;
+        if (!decoded || decoded.kind !== 'GRP_DATA' || app?.kind !== 'TIME_SYNC') {
+            return '';
+        }
+        const channel = decoded.channel ? ` on ${escapeHtml(decoded.channel)}` : '';
+        const identity = app.identity_name ? ` from ${escapeHtml(app.identity_name)}` : '';
+        const sequence = app.sequence !== undefined ? ` seq ${escapeHtml(String(app.sequence))}` : '';
+        return `<div class="small text-success"><strong>Time sync:</strong>${identity}${channel}${sequence}</div>`;
+    }
+
     function addMessageEntry(data) {
         if (messagePaused) return;
         const container = document.getElementById('message-stream');
@@ -1512,6 +1599,7 @@
         // Format advert info (only show if this is an ADVERT packet with advert data)
         const advertInfo = data.advert_name && data.payload_type_name === 'ADVERT' ? 
             `<div class="small text-success"><strong>Advertised:</strong> ${escapeHtml(data.advert_name)} (${data.advert_mode || 'Unknown'})</div>` : '';
+        const timeSyncInfo = getTimeSyncSummary(data);
         
         // Check if raw packet hex is available for detailed view
         const hasRawHex = !!(data.raw_packet_hex || data.payload_hex);
@@ -1584,6 +1672,7 @@
                     </div>
                     
                     ${advertInfo}
+                    ${timeSyncInfo}
                     ${headerInfo}
                     ${transportInfo}
                     ${payloadInfo}
@@ -1782,25 +1871,35 @@
         
         // GroupText breakdown (if applicable)
         const grouptextSection = document.getElementById('grouptext-breakdown');
+        const groupdataSection = document.getElementById('groupdata-breakdown');
         const advertSection = document.getElementById('advert-breakdown');
         
         // Handle payload type as number or string (server may send number or string)
         const ptNum = typeof payloadTypeNum === 'string' ? parseInt(payloadTypeNum, 10) : payloadTypeNum;
         const isGroupText = ptNum === 5 || payloadTypeNum === 'GRP_TXT' || payloadType === 'GRP_TXT' || payloadType === 'GroupText';
+        const isGroupData = ptNum === 6 || payloadTypeNum === 'GRP_DATA' || payloadType === 'GRP_DATA' || payloadType === 'GroupDatagram' || payloadType === 'GroupData';
         const isAdvert = ptNum === 4 || payloadTypeNum === 'ADVERT' || payloadType === 'Advert' || payloadType === 'ADVERT';
         
         if (isGroupText) {
             if (grouptextSection) grouptextSection.classList.add('visible');
+            if (groupdataSection) groupdataSection.classList.remove('visible');
             if (advertSection) advertSection.classList.remove('show-section');
             await populateGroupTextBreakdown(decoded, serverData, structure, rawHex);
+        } else if (isGroupData) {
+            if (grouptextSection) grouptextSection.classList.remove('visible');
+            if (groupdataSection) groupdataSection.classList.add('visible');
+            if (advertSection) advertSection.classList.remove('show-section');
+            populateGroupDataBreakdown(decoded, serverData);
         } else if (isAdvert) {
             if (grouptextSection) grouptextSection.classList.remove('visible');
+            if (groupdataSection) groupdataSection.classList.remove('visible');
             if (advertSection) {
                 advertSection.classList.add('show-section');
             }
             populateAdvertBreakdown(decoded, serverData);
         } else {
             if (grouptextSection) grouptextSection.classList.remove('visible');
+            if (groupdataSection) groupdataSection.classList.remove('visible');
             if (advertSection) advertSection.classList.remove('show-section');
         }
         
@@ -2071,6 +2170,75 @@
         const mac = hex.slice(2, 6);
         const ciphertext = hex.slice(6);
         
+        container.innerHTML = `<span class="hex-channel-hash" title="Channel Hash">${channelHash}</span> ` +
+            `<span class="hex-cipher-mac" title="Cipher MAC">${formatHexSpaced(mac)}</span> ` +
+            `<span class="hex-ciphertext" title="Ciphertext">${formatHexSpaced(ciphertext)}</span>`;
+    }
+
+    function populateGroupDataBreakdown(decoded, serverData) {
+        const payloadHex = decoded?.payload?.raw || serverData.payload_hex || '';
+        const decodedPayload = getDecodedPayload(serverData) || decoded?.payload?.decoded || {};
+
+        if (payloadHex.length < 6) {
+            document.getElementById('groupdata-hex').textContent = 'Payload too short for GroupDatagram';
+            return;
+        }
+
+        const channelHash = (decodedPayload.channel_hash || decodedPayload.channelHash || payloadHex.slice(0, 2)).toString().toUpperCase();
+        const cipherMAC = (decodedPayload.cipher_mac || decodedPayload.cipherMac || payloadHex.slice(2, 6)).toString().toUpperCase();
+        const ciphertext = (decodedPayload.ciphertext || payloadHex.slice(6)).toString().toUpperCase();
+        const channelEntries = channelHashMap.get(channelHash) || [];
+        let channelHashDisplay = `0x${channelHash}`;
+        if (channelEntries.length === 1) {
+            channelHashDisplay += ` (${channelEntries[0].name})`;
+        } else if (channelEntries.length > 1) {
+            channelHashDisplay += ` (${channelEntries.map(e => e.name).join(' or ')})`;
+        }
+
+        document.getElementById('groupdata-channel-hash-value').textContent = channelHashDisplay;
+        document.getElementById('groupdata-cipher-mac-value').textContent = cipherMAC;
+        document.getElementById('groupdata-ciphertext-value').textContent = ciphertext.slice(0, 80) + (ciphertext.length > 80 ? '...' : '');
+        document.getElementById('groupdata-ciphertext-bytes').textContent = `Bytes 3-${2 + (ciphertext.length / 2)}`;
+        renderGroupDataHex(payloadHex);
+
+        const decryptedSection = document.getElementById('groupdata-decrypted-section');
+        const timeSyncSection = document.getElementById('timesync-details');
+        if (decodedPayload.decrypted) {
+            decryptedSection.style.display = 'block';
+            document.getElementById('groupdata-decrypted-channel').textContent = decodedPayload.channel || 'Unknown';
+            document.getElementById('groupdata-data-type').textContent = decodedPayload.data_type_hex || `0x${Number(decodedPayload.data_type || 0).toString(16).padStart(4, '0')}`;
+            document.getElementById('groupdata-data-len').textContent = `${decodedPayload.data_len ?? 0} bytes`;
+
+            const app = decodedPayload.application;
+            if (app?.kind === 'TIME_SYNC') {
+                timeSyncSection.style.display = 'block';
+                document.getElementById('timesync-format').textContent = app.format || 'MeshCore-Time-v1';
+                document.getElementById('timesync-identity').textContent = app.identity_name || 'Unknown';
+                document.getElementById('timesync-timestamp').textContent = app.timestamp_iso || (app.timestamp ? new Date(app.timestamp * 1000).toLocaleString() : 'Unknown');
+                document.getElementById('timesync-sequence').textContent = app.sequence ?? 'Unknown';
+                document.getElementById('timesync-signature').textContent = `${app.signature_len || 0} bytes, SHA-256 ${app.signature_fingerprint || 'unknown'}`;
+            } else {
+                timeSyncSection.style.display = 'none';
+            }
+        } else {
+            decryptedSection.style.display = 'none';
+            timeSyncSection.style.display = 'none';
+        }
+    }
+
+    function renderGroupDataHex(payloadHex) {
+        const container = document.getElementById('groupdata-hex');
+        const hex = payloadHex.toUpperCase();
+
+        if (hex.length < 6) {
+            container.textContent = hex;
+            return;
+        }
+
+        const channelHash = hex.slice(0, 2);
+        const mac = hex.slice(2, 6);
+        const ciphertext = hex.slice(6);
+
         container.innerHTML = `<span class="hex-channel-hash" title="Channel Hash">${channelHash}</span> ` +
             `<span class="hex-cipher-mac" title="Cipher MAC">${formatHexSpaced(mac)}</span> ` +
             `<span class="hex-ciphertext" title="Ciphertext">${formatHexSpaced(ciphertext)}</span>`;
