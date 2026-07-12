@@ -546,7 +546,12 @@ class BotIntegration:
             }
             if self.http_session:
                 try:
-                    self.http_session.post(url, json=payload, timeout=self.edge_post_timeout_sec)
+                    self.http_session.post(
+                        url,
+                        json=payload,
+                        timeout=self.edge_post_timeout_sec,
+                        headers=headers,
+                    )
                     self._record_web_viewer_result(True)
                 except Exception:
                     self._record_web_viewer_result(False)
