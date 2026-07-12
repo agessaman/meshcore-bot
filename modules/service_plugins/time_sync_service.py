@@ -30,7 +30,7 @@ class TimeSyncSettings:
     """Validated time-sync service settings."""
 
     channel: str
-    display_name: str
+    identity_name: str
     public_key: bytes
     interval_seconds: int
 
@@ -78,8 +78,7 @@ class TimeSyncService(BaseServicePlugin):
         if self.bot.channel_manager.get_channel_number(channel) is None:
             raise TimeSyncError(f"channel {channel!r} was not found in the MeshCore channel cache")
 
-        display_name = self.bot.config.get(self.config_section, "display_name", fallback="")
-        validate_display_name(display_name)
+        identity_name = self._bot_identity_name()
 
         interval_seconds = self.bot.config.getint(self.config_section, "interval_seconds", fallback=604800)
         if interval_seconds <= 0:
@@ -89,10 +88,27 @@ class TimeSyncService(BaseServicePlugin):
 
         return TimeSyncSettings(
             channel=channel,
-            display_name=display_name,
+            identity_name=identity_name,
             public_key=public_key,
             interval_seconds=interval_seconds,
         )
+
+    def _bot_identity_name(self) -> str:
+        """Return the existing bot/radio identity name used in signed Tv1 payloads."""
+        meshcore = getattr(self.bot, "meshcore", None)
+        self_info = getattr(meshcore, "self_info", None) if meshcore is not None else None
+        device_name: Any = None
+        if isinstance(self_info, dict):
+            device_name = self_info.get("name") or self_info.get("adv_name")
+        elif self_info is not None:
+            device_name = getattr(self_info, "name", None) or getattr(self_info, "adv_name", None)
+
+        # The wider bot code uses [Bot] bot_name as the configured identity and
+        # normally pushes it to the radio at startup.  Fall back to it if the
+        # connected device has not exposed its current name yet.
+        identity_name = str(device_name or self.bot.config.get("Bot", "bot_name", fallback=""))
+        validate_display_name(identity_name)
+        return identity_name
 
     @staticmethod
     def _coerce_public_key_bytes(value: Any) -> bytes:
@@ -193,10 +209,17 @@ class TimeSyncService(BaseServicePlugin):
             "enabled": self.enabled,
             "running": self._running,
             "channel": self._settings.channel if self._settings else self.bot.config.get(self.config_section, "channel", fallback=""),
-            "display_name": self._settings.display_name if self._settings else self.bot.config.get(self.config_section, "display_name", fallback=""),
+            "identity_name": self._settings.identity_name if self._settings else self._status_identity_name(),
             "sequence": self._sequence,
             "public_key_fingerprint": fingerprint,
         }
+
+    def _status_identity_name(self) -> str:
+        """Best-effort identity name for status without raising on invalid config."""
+        try:
+            return self._bot_identity_name()
+        except TimeSyncError:
+            return ""
 
     async def start(self) -> None:
         """Validate configuration and start the periodic announcement loop."""
@@ -218,9 +241,9 @@ class TimeSyncService(BaseServicePlugin):
         self._running = True
         self._task = asyncio.create_task(self._run_loop())
         self.logger.info(
-            "Time sync service started: channel=%s display_name=%r interval=%ss public_key=%s...",
+            "Time sync service started: channel=%s identity_name=%r interval=%ss public_key=%s...",
             self._settings.channel,
-            self._settings.display_name,
+            self._settings.identity_name,
             self._settings.interval_seconds,
             self._settings.public_key.hex()[:12],
         )
@@ -275,7 +298,7 @@ class TimeSyncService(BaseServicePlugin):
         channel_id = derive_time_sync_channel_id(channel_secret)
         canonical = build_time_sync_canonical(
             channel_id,
-            settings.display_name,
+            settings.identity_name,
             unix_seconds,
             sequence,
         )
@@ -284,7 +307,7 @@ class TimeSyncService(BaseServicePlugin):
         # repeater already has the full public key pinned in its configuration.
         signature = await self._sign_with_bot_identity(canonical)
         tv1_payload = build_time_sync_payload(
-            settings.display_name,
+            settings.identity_name,
             unix_seconds,
             sequence,
             signature,
