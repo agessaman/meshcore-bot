@@ -65,6 +65,24 @@ class TestResetCircuitBreaker:
 
 
 # ---------------------------------------------------------------------------
+# stream_data authentication
+# ---------------------------------------------------------------------------
+
+
+class TestStreamDataAuthentication:
+    def test_mesh_edge_update_passes_stream_token_with_pooled_session(self):
+        bi = _make_bot_integration()
+        bi.http_session = MagicMock()
+
+        bi.send_mesh_edge_update({"from": "aa", "to": "bb"})
+
+        bi.http_session.post.assert_called_once()
+        kwargs = bi.http_session.post.call_args.kwargs
+        assert kwargs["headers"]["X-Stream-Token"] == bi._stream_token
+        assert kwargs["headers"]["X-Requested-With"] == "BotIntegration"
+
+
+# ---------------------------------------------------------------------------
 # _should_skip_web_viewer_send
 # ---------------------------------------------------------------------------
 
