@@ -34,6 +34,11 @@ from .security_utils import sanitize_name, validate_safe_path
 from .utils import check_internet_connectivity_async, decode_escape_sequences, format_keyword_response_with_placeholders
 
 
+CMD_SEND_CHANNEL_DATA = 0x3E
+CHANNEL_DATA_FLOOD_PATH_LEN = 0xFF
+MAX_CHANNEL_DATA_PAYLOAD_BYTES = 163
+
+
 @dataclass
 class InternetStatusCache:
     """Thread-safe cache for internet connectivity status.
@@ -1358,8 +1363,14 @@ class CommandManager:
         if data_type < 0 or data_type > 0xFFFF:
             self.logger.error("Group datagram data_type must be a uint16 value")
             return False
-        if len(data) > 0xFF:
-            self.logger.error("Group datagram data payload exceeds 255 bytes")
+        if data_type == 0:
+            self.logger.error("Group datagram data_type 0x0000 is reserved")
+            return False
+        if len(data) > MAX_CHANNEL_DATA_PAYLOAD_BYTES:
+            self.logger.error(
+                "Group datagram data payload exceeds %d bytes",
+                MAX_CHANNEL_DATA_PAYLOAD_BYTES,
+            )
             return False
 
         can_send, reason = await self._check_rate_limits(
@@ -1409,11 +1420,13 @@ class CommandManager:
             )
             result = None
             last_type_error: TypeError | None = None
+            found_send_api = False
 
             for method_name in candidates:
                 method = getattr(commands, method_name, None)
                 if method is None:
                     continue
+                found_send_api = True
 
                 # MeshCore Python releases have not exposed one stable name for
                 # binary group data.  Try the safer explicit form first, then
@@ -1431,15 +1444,34 @@ class CommandManager:
                         continue
 
             if result is None:
+                send_method = getattr(commands, "send", None)
+                if send_method is not None:
+                    # meshcore==2.3.7 exposes the firmware's generic command
+                    # sender, but not a named channel-data helper.  Command 62
+                    # is CMD_SEND_CHANNEL_DATA; path_len 0xFF means flood on
+                    # send, and the firmware wraps/encrypts the GRP_DATA packet.
+                    command_frame = (
+                        bytes([CMD_SEND_CHANNEL_DATA, channel_num, CHANNEL_DATA_FLOOD_PATH_LEN])
+                        + data_type.to_bytes(2, byteorder="little")
+                        + data
+                    )
+                    result = await send_method(command_frame, [EventType.OK, EventType.ERROR])
+
+            if result is None:
                 if last_type_error:
                     self.logger.error(
-                        "MeshCore group datagram send API was found but rejected supported call shapes: %s",
+                        "MeshCore group datagram send API was found but rejected supported call shapes "
+                        "and CMD_SEND_CHANNEL_DATA fallback returned no result: %s",
                         last_type_error,
+                    )
+                elif found_send_api:
+                    self.logger.error(
+                        "MeshCore group datagram send API was found but returned no result"
                     )
                 else:
                     self.logger.error(
                         "MeshCore group datagram send API is unavailable; need send_chan_data, "
-                        "send_grp_data, send_group_data, or send_group_datagram"
+                        "send_grp_data, send_group_data, send_group_datagram, or generic send"
                     )
                 return False
 
