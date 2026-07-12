@@ -62,6 +62,7 @@ CANONICAL_NON_COMMAND_SECTIONS = frozenset({
     "PacketCapture",
     "MapUploader",
     "Weather_Service",
+    "Time_Sync",
     "MqttWeather",
     "Earthquake_Service",
     "Worldcup_Service",

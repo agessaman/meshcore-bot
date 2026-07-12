@@ -1325,6 +1325,133 @@ class CommandManager:
             self.logger.error(f"Failed to send channel message: {e}")
             return False
 
+    async def send_group_datagram(
+        self,
+        channel: str,
+        data_type: int,
+        data: bytes,
+        command_id: str | None = None,
+        skip_user_rate_limit: bool = True,
+        rate_limit_key: str | None = None,
+    ) -> bool:
+        """Send a binary MeshCore group datagram without using group text.
+
+        The MeshCore firmware group-datagram plaintext is:
+        ``data_type`` as uint16 little-endian, ``data_len`` as uint8, then raw
+        ``data`` bytes.  The underlying MeshCore command API is still
+        responsible for channel encryption/MAC and transport framing.
+        """
+        if not self.bot.connected or not self.bot.meshcore:
+            return False
+
+        if self.bot.is_radio_zombie:
+            self.bot.logger.warning("send_group_datagram suppressed — radio is in zombie state; power cycle required")
+            return False
+        if self.bot.is_radio_offline:
+            self.bot.logger.warning(
+                "send_group_datagram suppressed — radio is offline (repeated send timeouts)"
+            )
+            return False
+
+        if data_type < 0 or data_type > 0xFFFF:
+            self.logger.error("Group datagram data_type must be a uint16 value")
+            return False
+        if len(data) > 0xFF:
+            self.logger.error("Group datagram data payload exceeds 255 bytes")
+            return False
+
+        can_send, reason = await self._check_rate_limits(
+            skip_user_rate_limit=skip_user_rate_limit,
+            rate_limit_key=rate_limit_key,
+            channel=channel,
+        )
+        if not can_send:
+            if reason:
+                self.logger.warning(reason)
+            return False
+
+        try:
+            channel_num = self.bot.channel_manager.get_channel_number(channel)
+            if channel_num is None:
+                self.logger.error(f"Channel '{channel}' not found. Cannot send group datagram.")
+                return False
+
+            datagram_data = data_type.to_bytes(2, byteorder="little") + bytes([len(data)]) + data
+            target = f"{channel} (channel {channel_num})"
+            self.logger.info(
+                "Sending group datagram to %s: data_type=0x%04x, data_len=%d",
+                target,
+                data_type,
+                len(data),
+            )
+
+            try:
+                if hasattr(self.bot, 'transmission_tracker') and self.bot.transmission_tracker:
+                    if not command_id:
+                        command_id = f"group_datagram_{channel}_{int(time.time())}"
+                    self.bot.transmission_tracker.record_transmission(
+                        content=f"group_datagram:{data_type:04x}:{len(data)}",
+                        target=channel,
+                        message_type='group_datagram',
+                        command_id=command_id,
+                    )
+            except Exception as e:
+                self.logger.debug(f"Error recording group datagram transmission: {e}")
+
+            commands = self.bot.meshcore.commands
+            candidates = (
+                "send_chan_data",
+                "send_grp_data",
+                "send_group_data",
+                "send_group_datagram",
+            )
+            result = None
+            last_type_error: TypeError | None = None
+
+            for method_name in candidates:
+                method = getattr(commands, method_name, None)
+                if method is None:
+                    continue
+
+                # MeshCore Python releases have not exposed one stable name for
+                # binary group data.  Try the safer explicit form first, then
+                # the pre-wrapped datagram form used by lower-level wrappers.
+                try:
+                    result = await method(channel_num, data_type, data)
+                    break
+                except TypeError as exc:
+                    last_type_error = exc
+                    try:
+                        result = await method(channel_num, datagram_data)
+                        break
+                    except TypeError as exc2:
+                        last_type_error = exc2
+                        continue
+
+            if result is None:
+                if last_type_error:
+                    self.logger.error(
+                        "MeshCore group datagram send API was found but rejected supported call shapes: %s",
+                        last_type_error,
+                    )
+                else:
+                    self.logger.error(
+                        "MeshCore group datagram send API is unavailable; need send_chan_data, "
+                        "send_grp_data, send_group_data, or send_group_datagram"
+                    )
+                return False
+
+            success = self._handle_send_result(result, "Group datagram", target, rate_limit_key=rate_limit_key)
+            if success:
+                ch_limiter = getattr(self.bot, 'channel_rate_limiter', None)
+                if ch_limiter:
+                    ch_limiter.record_send(channel)
+            return success
+
+        except Exception as e:
+            self.logger.error(f"Failed to send group datagram: {e}")
+            return False
+
     async def send_channel_messages_chunked(
         self,
         channel: str,

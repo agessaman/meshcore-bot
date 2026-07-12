@@ -342,7 +342,7 @@ admin_pubkeys =
 # These commands will only work for users in the admin_pubkeys list
 # reload: Reload configuration without restarting (radio settings cannot be changed)
 # channelpause: DM-only; channelpause / channelresume — pause or resume bot responses on channels (not persisted)
-admin_commands = repeater,webviewer,reload,channelpause
+admin_commands = repeater,webviewer,reload,channelpause,timesync
 [Plugin_Overrides]
 # Plugin Overrides - Use alternative plugin implementations
 # Format: command_name = alternative_file_name
@@ -1593,6 +1593,28 @@ decode_hashtag_channels =
 #                                                                                                  #
 #          Settings for non-interactive bot services and plugins (weather, alerts, etc.)           #
 #                                                                                                  #
+####################################################################################################
+[Time_Sync]
+# Authenticated binary repeater time-sync source (source-side only).
+# Sends PAYLOAD_TYPE_GRP_DATA with inner data_type 0x0121. Disabled by default.
+enabled = false
+
+# MeshCore group/public channel name as configured on the radio, e.g. #time.
+channel =
+
+# Exact display name expected by repeater firmware. Case-sensitive, 1..20 UTF-8 bytes, no CR/LF.
+display_name =
+
+# Time sync signs with the existing MeshCore bot/radio identity. Use the
+# "timesync publickey" admin command to retrieve the public key for repeaters.
+
+# Initial uint16 sequence when no persisted sequence exists in bot_metadata.
+# Valid range: 0 to 65535.
+sequence = 0
+
+# Announcement interval in seconds. Default is 604800 seconds (1 week).
+interval_seconds = 604800
+
 ####################################################################################################
 [PacketCapture]
 # Enable packet capture service (true/false)

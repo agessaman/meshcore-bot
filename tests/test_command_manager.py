@@ -429,6 +429,45 @@ class TestSendChannelMessageListeners:
         cm_bot.meshcore.get_contact_by_name.assert_not_called()
 
 
+class TestSendGroupDatagram:
+    """Tests for binary group datagram sends."""
+
+    @pytest.mark.asyncio
+    async def test_send_group_datagram_uses_binary_api_not_group_text(self, cm_bot):
+        from meshcore import EventType
+
+        cm_bot.connected = True
+        cm_bot.channel_manager = Mock()
+        cm_bot.channel_manager.get_channel_number = Mock(return_value=2)
+        cm_bot.meshcore = Mock()
+        cm_bot.meshcore.commands = Mock()
+        cm_bot.meshcore.commands.send_chan_data = AsyncMock(
+            return_value=Mock(type=EventType.MSG_SENT, payload=None)
+        )
+        cm_bot.meshcore.commands.send_chan_msg = AsyncMock()
+        cm_bot.bot_tx_rate_limiter.wait_for_tx = AsyncMock(return_value=None)
+        cm_bot.channel_rate_limiter = None
+        cm_bot.transmission_tracker = None
+
+        manager = make_manager(cm_bot)
+        result = await manager.send_group_datagram("#time", 0x0121, b"Tv1payload")
+
+        assert result is True
+        cm_bot.meshcore.commands.send_chan_data.assert_awaited_once_with(2, 0x0121, b"Tv1payload")
+        cm_bot.meshcore.commands.send_chan_msg.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_send_group_datagram_rejects_oversized_data(self, cm_bot):
+        cm_bot.connected = True
+        cm_bot.meshcore = Mock()
+        cm_bot.bot_tx_rate_limiter.wait_for_tx = AsyncMock(return_value=None)
+        manager = make_manager(cm_bot)
+
+        result = await manager.send_group_datagram("#time", 0x0121, b"x" * 256)
+
+        assert result is False
+
+
 class TestSendDMRecipientResolution:
     """Tests for recipient lookup in send_dm()."""
 
