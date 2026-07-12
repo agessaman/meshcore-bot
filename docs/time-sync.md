@@ -16,7 +16,9 @@ sequence = 0
 interval_seconds = 604800
 ```
 
-`channel` must match a configured MeshCore group/public channel name. For hashtag channels, include the leading `#`, for example `#time`; `time` without `#` is treated as a different custom/private channel name. For the default public channel, use `Public`.
+`channel` must match a MeshCore group/public channel already configured on the radio. The bot does not create the channel at time-sync startup, because the signed datagram must still use the normal MeshCore channel encryption/MAC send path. For hashtag channels, include the leading `#`, for example `#time`; `time` without `#` is treated as a different custom/private channel name. For the default public channel, use `Public`.
+
+The example default is `#time`, but that channel must still exist on the connected radio. If the startup log says `channel '#time' was not found in the MeshCore channel cache`, either add the `#time` channel to the radio or change `[Time_Sync] channel` to an existing configured channel.
 
 The Tv1 display-name field is taken from the existing bot/radio identity name, not from `[Time_Sync]`. In normal deployments this is `[Bot] bot_name`, because MeshCore-Bot already synchronises that value to the radio device name at startup when `auto_update_device_name = true`. The repeater firmware must be configured with that exact identity name. It is case-sensitive, must be 1..20 UTF-8 bytes, and must not contain carriage return or line feed.
 

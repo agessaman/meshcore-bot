@@ -86,6 +86,18 @@ def test_enabling_fails_with_incomplete_or_invalid_config(field, value):
         service._load_settings()
 
 
+def test_missing_channel_error_explains_radio_channel_requirement():
+    bot = _make_bot(channel="#missing")
+    service = TimeSyncService(bot)
+
+    with pytest.raises(Exception) as exc_info:
+        service._load_settings()
+
+    message = str(exc_info.value)
+    assert "was not found in the MeshCore channel cache" in message
+    assert "add it to the radio's configured channels" in message
+
+
 @pytest.mark.parametrize("identity_name", ["", "Time\nBot", "a" * 21])
 def test_enabling_fails_with_invalid_existing_identity_name(identity_name):
     bot = _make_bot(identity_name=identity_name)

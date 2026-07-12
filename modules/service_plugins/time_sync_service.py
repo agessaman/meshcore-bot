@@ -76,7 +76,11 @@ class TimeSyncService(BaseServicePlugin):
 
         # Fail early if the configured channel is not currently known by the bot.
         if self.bot.channel_manager.get_channel_number(channel) is None:
-            raise TimeSyncError(f"channel {channel!r} was not found in the MeshCore channel cache")
+            raise TimeSyncError(
+                f"channel {channel!r} was not found in the MeshCore channel cache; "
+                "add it to the radio's configured channels or set [Time_Sync] channel "
+                "to an existing group/public channel"
+            )
 
         identity_name = self._bot_identity_name()
 
