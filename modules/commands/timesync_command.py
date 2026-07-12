@@ -67,7 +67,7 @@ class TimeSyncCommand(BaseCommand):
             f"enabled: {status.get('enabled')}\n"
             f"running: {status.get('running')}\n"
             f"channel: {status.get('channel') or 'not configured'}\n"
-            f"display_name: {status.get('display_name') or 'not configured'}\n"
+            f"identity_name: {status.get('identity_name') or 'unavailable'}\n"
             f"sequence: {status.get('sequence')}\n"
             f"public_key_fingerprint: {fingerprint}"
         )

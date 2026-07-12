@@ -12,12 +12,13 @@ Add or update `[Time_Sync]` in `config.ini`:
 [Time_Sync]
 enabled = true
 channel = #time
-display_name = TimeBot
 sequence = 0
 interval_seconds = 604800
 ```
 
-`channel` must match a configured MeshCore group/public channel. `display_name` is exact and case-sensitive, must be 1..20 UTF-8 bytes, and must not contain carriage return or line feed.
+`channel` must match a configured MeshCore group/public channel name. For hashtag channels, include the leading `#`, for example `#time`; `time` without `#` is treated as a different custom/private channel name. For the default public channel, use `Public`.
+
+The Tv1 display-name field is taken from the existing bot/radio identity name, not from `[Time_Sync]`. In normal deployments this is `[Bot] bot_name`, because MeshCore-Bot already synchronises that value to the radio device name at startup when `auto_update_device_name = true`. The repeater firmware must be configured with that exact identity name. It is case-sensitive, must be 1..20 UTF-8 bytes, and must not contain carriage return or line feed.
 
 Time sync signs with the existing MeshCore bot/radio identity. It does not use a separate time-sync private key. The default interval is `604800` seconds, which is one week.
 
@@ -81,7 +82,7 @@ There is a final newline after the sequence line.
 channel-id = SHA-256(raw 16-byte channel secret)
 ```
 
-For hashtag channels, the raw channel secret is the first 16 bytes of `SHA-256(lowercase "#channel")`. For the Public channel, MeshCore-Bot uses MeshCore's fixed public-channel secret. Do not use MeshCore's one-byte channel hash for signatures; that hash is only a transport lookup value.
+For hashtag channels, the configured channel name must include the leading `#`, and the raw channel secret is the first 16 bytes of `SHA-256(lowercase "#channel")`. For example, configure `channel = #time`, not `channel = time`, when the repeater is using the `#time` hashtag channel. For the Public channel, MeshCore-Bot uses MeshCore's fixed public-channel secret. Do not use MeshCore's one-byte channel hash for signatures; that hash is only a transport lookup value.
 
 ## Sequence Persistence
 
@@ -99,7 +100,7 @@ Protect the MeshCore bot identity. Anyone with the bot identity private key can 
 
 ## Deterministic Vector
 
-For `#time`, display name `TimeBot`, timestamp `1783862400`, sequence `12345`, and the deterministic test key in `tests/test_time_sync.py`:
+For `#time`, bot identity name `TimeBot`, timestamp `1783862400`, sequence `12345`, and the deterministic test key in `tests/test_time_sync.py`:
 
 ```text
 channel secret = 5d13043d9a5e61bc61aeb63208f5c64e

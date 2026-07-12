@@ -1599,14 +1599,17 @@ decode_hashtag_channels =
 # Sends PAYLOAD_TYPE_GRP_DATA with inner data_type 0x0121. Disabled by default.
 enabled = false
 
-# MeshCore group/public channel name as configured on the radio, e.g. #time.
-channel =
-
-# Exact display name expected by repeater firmware. Case-sensitive, 1..20 UTF-8 bytes, no CR/LF.
-display_name =
+# MeshCore group/public channel name as configured on the radio.
+# For hashtag channels include the leading "#", e.g. #time. Without "#",
+# "time" is treated as a custom/private channel name, not the #time hashtag.
+# For the default public channel use Public.
+channel = #time
 
 # Time sync signs with the existing MeshCore bot/radio identity. Use the
 # "timesync publickey" admin command to retrieve the public key for repeaters.
+# The Tv1 display-name field is taken from the existing bot/radio identity name,
+# normally [Bot] bot_name after the standard startup name sync. It is not
+# configured separately here.
 
 # Initial uint16 sequence when no persisted sequence exists in bot_metadata.
 # Valid range: 0 to 65535.

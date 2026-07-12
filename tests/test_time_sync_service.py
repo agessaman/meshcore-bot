@@ -33,20 +33,21 @@ def _make_bot(
     *,
     enabled: bool = True,
     channel: str = "#time",
-    display_name: str = "TimeBot",
+    identity_name: str = "TimeBot",
 ):
     config = configparser.ConfigParser()
+    config.add_section("Bot")
+    config.set("Bot", "bot_name", identity_name)
     config.add_section("Time_Sync")
     config.set("Time_Sync", "enabled", "true" if enabled else "false")
     config.set("Time_Sync", "channel", channel)
-    config.set("Time_Sync", "display_name", display_name)
     config.set("Time_Sync", "sequence", "12345")
 
     bot = Mock()
     bot.config = config
     bot.logger = Mock()
     bot.meshcore = Mock()
-    bot.meshcore.self_info = {"public_key": BOT_PUBLIC_KEY}
+    bot.meshcore.self_info = {"public_key": BOT_PUBLIC_KEY, "name": identity_name}
     bot.meshcore.commands = Mock()
     bot.meshcore.commands.sign = AsyncMock(return_value=Mock(payload={"signature": b"\x33" * 64}))
     bot.channel_manager = _ChannelManager(channel_exists=bool(channel))
@@ -74,9 +75,6 @@ async def test_disabled_source_sends_nothing():
     [
         ("channel", ""),
         ("channel", "#missing"),
-        ("display_name", ""),
-        ("display_name", "Time\nBot"),
-        ("display_name", "a" * 21),
     ],
 )
 def test_enabling_fails_with_incomplete_or_invalid_config(field, value):
@@ -86,6 +84,35 @@ def test_enabling_fails_with_incomplete_or_invalid_config(field, value):
 
     with pytest.raises(Exception):
         service._load_settings()
+
+
+@pytest.mark.parametrize("identity_name", ["", "Time\nBot", "a" * 21])
+def test_enabling_fails_with_invalid_existing_identity_name(identity_name):
+    bot = _make_bot(identity_name=identity_name)
+    service = TimeSyncService(bot)
+
+    with pytest.raises(Exception):
+        service._load_settings()
+
+
+def test_display_name_is_derived_from_existing_bot_identity_not_timesync_config():
+    bot = _make_bot(identity_name="RadioName")
+    bot.config.set("Time_Sync", "display_name", "IgnoredName")
+    service = TimeSyncService(bot)
+
+    settings = service._load_settings()
+
+    assert settings.identity_name == "RadioName"
+
+
+def test_identity_name_falls_back_to_bot_name_when_radio_name_unavailable():
+    bot = _make_bot(identity_name="ConfigName")
+    bot.meshcore.self_info = {"public_key": BOT_PUBLIC_KEY}
+    service = TimeSyncService(bot)
+
+    settings = service._load_settings()
+
+    assert settings.identity_name == "ConfigName"
 
 
 @pytest.mark.asyncio
