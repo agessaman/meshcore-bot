@@ -69,6 +69,7 @@ nav:
     - Packet Capture: packet-capture.md
     - Map Uploader: map-uploader.md
     - Weather Service: weather-service.md
+    - Authenticated Time Sync: time-sync.md
     - Feed Management: feeds.md
   - FAQ: faq.md
   - Upgrade: upgrade.md

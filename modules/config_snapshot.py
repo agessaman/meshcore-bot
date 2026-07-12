@@ -10,6 +10,7 @@ _REDACT_KEY_PARTS: tuple[str, ...] = (
     "api_key",
     "token",
     "secret",
+    "private_key",
     "smtp_user",
 )
 
