@@ -493,7 +493,7 @@ class TimeSyncService(BaseServicePlugin):
     def _format_text_broadcast(identity_name: str, unix_seconds: int, sequence: int) -> str:
         """Return the optional human-readable companion message for a Tv1 datagram."""
         iso_utc = datetime.fromtimestamp(unix_seconds, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-        return f"Time sync: {iso_utc} (unix {unix_seconds}, seq {sequence}, source {identity_name})"
+        return f"Time sync: {iso_utc}"
 
     async def _send_text_broadcast(
         self,

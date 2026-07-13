@@ -245,10 +245,10 @@ async def test_send_once_optionally_sends_human_readable_text_broadcast():
     args = bot.command_manager.send_channel_message.await_args.args
     kwargs = bot.command_manager.send_channel_message.await_args.kwargs
     assert args[0] == "#time-text"
-    assert "Time sync: 2026-07-12 13:20:00 UTC" in args[1]
-    assert "unix 1783862400" in args[1]
-    assert "seq 42" in args[1]
-    assert "source TimeBot" in args[1]
+    assert args[1] == "Time sync: 2026-07-12 13:20:00 UTC"
+    assert "unix 1783862400" not in args[1]
+    assert "seq 42" not in args[1]
+    assert "source TimeBot" not in args[1]
     assert kwargs["command_id"] == "time_sync_text_#time-text_1783862400_42"
     assert kwargs["skip_user_rate_limit"] is True
     assert kwargs["scope"] == "#local"
