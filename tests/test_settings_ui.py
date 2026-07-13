@@ -352,6 +352,20 @@ class TestPluginsApi:
         )
         assert rows and rows[0]["status"] == "pending"
 
+    def test_timesync_send_queues_service_operation(self, viewer):
+        client = viewer.app.test_client()
+        resp = client.post("/api/plugins/service/timesync/send", json={})
+
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["success"] is True
+        rows = viewer.db_manager.execute_query(
+            "SELECT operation_type, status FROM channel_operations WHERE id = ?",
+            (body["operation_id"],),
+        )
+        assert rows[0]["operation_type"] == "time_sync_send"
+        assert rows[0]["status"] == "pending"
+
     def test_omitted_dynamic_sections_do_not_wipe_managed_keys(self, viewer, tmp_path):
         """A payload without dynamic_sections must leave [Channels_List] alone."""
         client = viewer.app.test_client()

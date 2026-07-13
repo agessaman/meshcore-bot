@@ -970,6 +970,34 @@ class BotDataViewer:
                 self.logger.exception("Error saving plugin settings")
                 return jsonify({'success': False, 'error': 'Internal error — see server logs'}), 500
 
+        @self.app.route('/api/plugins/service/timesync/send', methods=['POST'])
+        def api_plugins_timesync_send():
+            """Queue one immediate time-sync broadcast for the bot scheduler.
+
+            The web viewer often runs as a separate process, so it cannot safely
+            call ``TimeSyncService.send_once()`` directly.  Queueing through the
+            shared ``channel_operations`` table matches the existing radio/config
+            operation pattern and keeps the live radio work inside the bot.
+            """
+            try:
+                with self.db_manager.connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "INSERT INTO channel_operations (operation_type, status) "
+                        "VALUES ('time_sync_send', 'pending')"
+                    )
+                    conn.commit()
+                    op_id = cursor.lastrowid
+                self.logger.info("Queued manual time-sync broadcast operation: %s", op_id)
+                return jsonify({
+                    'success': True,
+                    'operation_id': op_id,
+                    'message': 'Time sync broadcast queued',
+                })
+            except Exception as exc:
+                self.logger.error("Error queuing time-sync broadcast: %s", exc)
+                return jsonify({'success': False, 'error': str(exc)}), 500
+
         @self.app.route('/api/plugins/reload-status')
         def api_plugins_reload_status():
             """Return the status of the most recent config_reload operation."""

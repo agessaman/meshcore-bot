@@ -62,6 +62,8 @@
     .dynamic-section { border-top: 1px solid var(--border-color); padding-top: 0.75rem; }
     .dynamic-row .dyn-key { font-family: var(--bs-font-monospace, monospace); }
     .repeating-section { border-top: 1px solid var(--border-color); padding-top: 0.75rem; }
+    .plugin-action-section { border-top: 1px solid var(--border-color); padding-top: 0.75rem; }
+    .plugin-action-status { margin-left: 0.5rem; font-size: 0.85rem; }
     .rb-block { border: 1px solid var(--border-color); background-color: var(--bg-secondary, #f8f9fa); }
     [data-theme="dark"] .rb-block { background-color: rgba(255,255,255,0.03); }
     .rb-block .card-header { background-color: transparent; }
@@ -362,6 +364,11 @@ class PluginsManager {
             blockEditors.push(editor);
         });
 
+        // Service-specific actions that execute through queued bot operations.
+        if (plugin.kind === 'service' && plugin.name === 'timesync') {
+            form.appendChild(this.renderTimeSyncActions());
+        }
+
         // Service restart caveat.
         if (plugin.kind === 'service') {
             const restart = document.createElement('div');
@@ -410,6 +417,88 @@ class PluginsManager {
                           setEnabled: (v) => { card.classList.toggle('disabled', !v); } });
 
         return card;
+    }
+
+    renderTimeSyncActions() {
+        const section = document.createElement('div');
+        section.className = 'plugin-action-section mt-3';
+
+        const label = document.createElement('div');
+        label.className = 'form-label fw-semibold mb-1';
+        label.textContent = 'Manual broadcast';
+        section.appendChild(label);
+
+        const row = document.createElement('div');
+        row.className = 'd-flex align-items-center flex-wrap gap-1';
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn btn-outline-primary btn-sm';
+        button.innerHTML = '<i class="fas fa-broadcast-tower me-1"></i>Send broadcast now';
+
+        const status = document.createElement('span');
+        status.className = 'plugin-action-status text-muted';
+
+        row.appendChild(button);
+        row.appendChild(status);
+        section.appendChild(row);
+
+        button.addEventListener('click', () => this.sendTimeSyncBroadcast(button, status));
+        return section;
+    }
+
+    async sendTimeSyncBroadcast(button, status) {
+        const original = button.innerHTML;
+        button.disabled = true;
+        button.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Sending…';
+        this.setActionStatus(status, '', '');
+        try {
+            const resp = await fetch('/api/plugins/service/timesync/send', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({}),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Could not queue broadcast');
+            this.setActionStatus(status, 'Queued.', 'muted');
+            await this.pollOperationStatus(data.operation_id, status);
+        } catch (err) {
+            this.setActionStatus(status, err.message, 'danger');
+        } finally {
+            button.disabled = false;
+            button.innerHTML = original;
+        }
+    }
+
+    async pollOperationStatus(operationId, status) {
+        if (!operationId) {
+            this.setActionStatus(status, 'Queued.', 'success');
+            return;
+        }
+        for (let attempt = 0; attempt < 30; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            const resp = await fetch(`/api/channel-operations/${operationId}`);
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Could not read broadcast status');
+            if (data.status === 'completed') {
+                const message = data.result_data?.message || 'Time sync broadcast sent.';
+                this.setActionStatus(status, message, 'success');
+                return;
+            }
+            if (data.status === 'failed') {
+                throw new Error(data.error_message || 'Time sync broadcast failed');
+            }
+            this.setActionStatus(status, 'Waiting for bot…', 'muted');
+        }
+        this.setActionStatus(status, 'Still pending; check logs.', 'warning');
+    }
+
+    setActionStatus(el, msg, type) {
+        el.textContent = msg;
+        el.className = 'plugin-action-status' + (type ? ' text-' + type : '');
     }
 
     async save(plugin, toggle, inputs, saveBtn, status, dynamicEditors = [], blockEditors = []) {
