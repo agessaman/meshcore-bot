@@ -72,6 +72,8 @@ class TimeSyncCommand(BaseCommand):
             f"channel: {status.get('channel') or 'not configured'}\n"
             f"identity_name: {status.get('identity_name') or 'unavailable'}\n"
             f"sequence: {status.get('sequence')}\n"
+            f"flood_scope: {status.get('flood_scope') or 'not configured'}\n"
+            f"full_flood_enabled: {status.get('full_flood_enabled')}\n"
             f"public_key_fingerprint: {fingerprint}"
         )
         await self.send_response(message, text)

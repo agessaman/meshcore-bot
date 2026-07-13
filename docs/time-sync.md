@@ -2,7 +2,7 @@
 
 MeshCore-Bot can act as a source for authenticated repeater time synchronisation. This is source-side only: MeshCore repeater firmware performs verification and clock policy.
 
-The feature is disabled by default and sends binary MeshCore group datagrams only. It does not send group text fallbacks.
+The feature is disabled by default and sends binary MeshCore group datagrams. It can optionally send a human-readable channel text companion for operator visibility, but repeater firmware uses only the signed binary datagram.
 
 ## Configuration
 
@@ -14,6 +14,10 @@ enabled = true
 channel = #time
 sequence = 0
 interval_seconds = 604800
+flood_scope = #west
+full_flood_enabled = false
+text_broadcast_enabled = false
+text_channel =
 ```
 
 `channel` must match a MeshCore group/public channel already configured on the radio. The bot does not create the channel at time-sync startup, because the signed datagram must still use the normal MeshCore channel encryption/MAC send path. For hashtag channels, include the leading `#`, for example `#time`; `time` without `#` is treated as a different custom/private channel name. For the default public channel, use `Public`.
@@ -23,6 +27,12 @@ The example default is `#time`, but that channel must still exist on the connect
 The Tv1 display-name field is taken from the existing bot/radio identity name, not from `[Time_Sync]`. In normal deployments this is `[Bot] bot_name`, because MeshCore-Bot already synchronises that value to the radio device name at startup when `auto_update_device_name = true`. The repeater firmware must be configured with that exact identity name. It is case-sensitive, must be 1..20 UTF-8 bytes, and must not contain carriage return or line feed.
 
 Time sync signs with the existing MeshCore bot/radio identity. It does not use a separate time-sync private key. The default interval is `604800` seconds, which is one week.
+
+`flood_scope` is required by default and must be a regional MeshCore flood scope such as `#west`. The bot applies this scope to the signed binary datagram and to the optional text companion. This prevents time broadcasts from full-flooding the whole mesh unless that is explicitly requested.
+
+Set `full_flood_enabled = true` only when this source should send global/full-flood time broadcasts. When enabled, the service ignores `flood_scope` and sends with the global `*` scope.
+
+`text_broadcast_enabled` optionally sends a human-readable companion message after the binary datagram has been accepted by the MeshCore send API. This text message is not used by repeater firmware for time synchronisation, is not signed as a protocol payload, and should be treated as operator-visible context only. If `text_channel` is blank, the companion text is sent to the same channel as `channel`. If `text_channel` is set, it must also be a MeshCore group/public channel already known to the connected radio.
 
 To authorise the admin command, include `timesync` in `[Admin_ACL] admin_commands` and set `admin_pubkeys`.
 

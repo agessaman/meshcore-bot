@@ -392,6 +392,69 @@ async def test_send_channel_message_normalizes_bare_scope():
     assert "#west" in scope_set
 
 
+@pytest.mark.asyncio
+async def test_send_group_datagram_applies_and_restores_regional_scope():
+    """Group datagrams use the same scoped flood control as channel text."""
+    bot = MagicMock()
+    bot.logger = Mock()
+    bot.config = make_config()
+    bot.connected = True
+    bot.meshcore = MagicMock()
+    bot.is_radio_zombie = False
+    bot.is_radio_offline = False
+    bot.channel_manager = MagicMock()
+    bot.channel_manager.get_channel_number = Mock(return_value=0)
+
+    cm = object.__new__(CommandManager)
+    cm.bot = bot
+    cm.logger = bot.logger
+    cm._check_rate_limits = AsyncMock(return_value=(True, None))
+    cm._handle_send_result = Mock(return_value=True)
+
+    set_flood_scope = AsyncMock(return_value=MagicMock(type="OK"))
+    send_chan_data = AsyncMock(return_value=MagicMock(type="OK", payload={}))
+    bot.meshcore.commands.set_flood_scope = set_flood_scope
+    bot.meshcore.commands.send_chan_data = send_chan_data
+
+    sent = await cm.send_group_datagram("#time", 0x0121, b"Tv1payload", scope="west")
+
+    assert sent is True
+    send_chan_data.assert_awaited_once_with(0, 0x0121, b"Tv1payload")
+    calls = [call.args[0] for call in set_flood_scope.await_args_list]
+    assert calls == ["#west", "*"]
+
+
+@pytest.mark.asyncio
+async def test_send_group_datagram_global_scope_does_not_set_flood_scope():
+    """Explicit global scope is the full-flood opt-in path."""
+    bot = MagicMock()
+    bot.logger = Mock()
+    bot.config = make_config()
+    bot.connected = True
+    bot.meshcore = MagicMock()
+    bot.is_radio_zombie = False
+    bot.is_radio_offline = False
+    bot.channel_manager = MagicMock()
+    bot.channel_manager.get_channel_number = Mock(return_value=0)
+
+    cm = object.__new__(CommandManager)
+    cm.bot = bot
+    cm.logger = bot.logger
+    cm._check_rate_limits = AsyncMock(return_value=(True, None))
+    cm._handle_send_result = Mock(return_value=True)
+
+    set_flood_scope = AsyncMock(return_value=MagicMock(type="OK"))
+    send_chan_data = AsyncMock(return_value=MagicMock(type="OK", payload={}))
+    bot.meshcore.commands.set_flood_scope = set_flood_scope
+    bot.meshcore.commands.send_chan_data = send_chan_data
+
+    sent = await cm.send_group_datagram("#time", 0x0121, b"Tv1payload", scope="*")
+
+    assert sent is True
+    send_chan_data.assert_awaited_once_with(0, 0x0121, b"Tv1payload")
+    set_flood_scope.assert_not_awaited()
+
+
 # ── Production #snoco scoped ping regression (2026-05-16) ─────────────────────
 
 # Captured from live TC_FLOOD channel ping on #bot: tc_code1=30332, GRP_TXT type 5.

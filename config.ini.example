@@ -1636,6 +1636,25 @@ sequence = 0
 # Announcement interval in seconds. Default is 604800 seconds (1 week).
 interval_seconds = 604800
 
+# Regional flood scope for time broadcasts. Required by default so time sync
+# does not full-flood the whole mesh accidentally. Use the same scope name used
+# by your regional MeshCore flood scope, e.g. #west.
+flood_scope =
+
+# Explicit opt-in for global/full-flood time broadcasts. Leave false for normal
+# regional operation; set true only when the time source should reach the full
+# flood domain.
+full_flood_enabled = false
+
+# Optional human-readable text companion sent after the binary datagram is
+# accepted by the MeshCore send API. The signed binary datagram remains the
+# authoritative time-sync packet; this is only for operator visibility.
+text_broadcast_enabled = false
+
+# Optional text-equivalent channel for the human-readable companion message.
+# Leave blank to send the text companion to the same channel as the datagram.
+text_channel =
+
 ####################################################################################################
 [PacketCapture]
 # Enable packet capture service (true/false)
