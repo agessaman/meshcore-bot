@@ -8,6 +8,10 @@ A web-based interface for viewing and analyzing data from your MeshCore Bot.
 - **Repeater Contacts**: View active repeater contacts with location and status information
 - **Contact Tracking**: Complete history of all heard contacts with signal strength and routing data
 - **Config panel**: Structured settings with categorized topics and database tools
+- **Plugins page**: Toggle every command and service on/off and edit their settings
+  from the browser. Changes are validated, written to `config.ini` with comments
+  preserved and a timestamped backup, and the bot hot-reloads command settings
+  within a few seconds (service on/off still needs a restart)
 - **Purging Log**: Audit trail of contact purging operations
 - **Real-time Updates**: Auto-refreshes every 30 seconds
 - **API Endpoints**: JSON API for programmatic access
@@ -155,6 +159,29 @@ proxy_set_header X-Forwarded-Proto $scheme;
 - Categorized configuration topics in a left navigation column
 - Core settings such as notifications, log rotation, backup, and maintenance status
 - Database operations and database information views in the same tab
+
+### Radio
+- Radio connect/disconnect and channel management (create, inspect, delete)
+- **Radio Parameters**: read/write frequency, bandwidth, spreading factor, coding
+  rate, and TX power on the device
+- **Node Settings**: read/write companion firmware settings on the device
+  - *Response Path Hashing*: the path hash size the firmware uses for each hop
+    when building outgoing/response paths (mode 0–2 = 1–3 bytes per hop; larger
+    hashes avoid relay collisions but need firmware 1.14+ mesh-wide)
+  - *Identity & Adverts*: node name, advertised latitude/longitude, advert
+    location policy, and buttons to send a zero-hop or flood advert. The name
+    field is locked when the bot manages it (`[Bot] bot_name` with
+    `auto_update_device_name` on)
+  - *Mesh Behavior*: extra ACK count and telemetry permissions
+    (base/location/environment, each deny / per-contact flags / allow all).
+    New-contact handling is shown read-only — it is owned by
+    `[Bot] auto_manage_contacts` in config.ini, which the bot applies to the
+    device itself
+  - *Advanced Tuning*: RX delay base and airtime factor (write-only; the device
+    does not report current values)
+- Device writes are queued through the bot process (`channel_operations` table),
+  so the bot must be running and connected to the radio for reads/writes to
+  complete
 
 ### Purging Log
 - Audit trail of contact purging operations

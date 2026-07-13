@@ -113,6 +113,35 @@ def main():
                 print(f"Info: {message}", file=sys.stderr)
         sys.exit(1 if has_error else 0)
 
+    # Always sanity-check the config on normal startup too — misspelled
+    # sections/keys otherwise fail silently and are the most common source of
+    # "why doesn't my setting work" confusion. Non-fatal: warn and continue.
+    try:
+        from modules.config_validation import (
+            SEVERITY_ERROR as _SEV_ERR,
+        )
+        from modules.config_validation import (
+            SEVERITY_WARNING as _SEV_WARN,
+        )
+        from modules.config_validation import (
+            validate_config as _startup_validate,
+        )
+        _issues = [
+            (sev, msg) for sev, msg in _startup_validate(args.config)
+            if sev in (_SEV_ERR, _SEV_WARN)
+        ]
+        _MAX_SHOWN = 15
+        for sev, msg in _issues[:_MAX_SHOWN]:
+            print(f"Config {sev}: {msg}", file=sys.stderr)
+        if len(_issues) > _MAX_SHOWN:
+            print(
+                f"Config: ... and {len(_issues) - _MAX_SHOWN} more issue(s); "
+                "run with --validate-config for the full report",
+                file=sys.stderr,
+            )
+    except Exception as exc:  # noqa: BLE001 - never block startup on the linter itself
+        print(f"Config validation skipped: {exc}", file=sys.stderr)
+
     from modules.core import MeshCoreBot
     bot = MeshCoreBot(config_file=args.config)
 

@@ -31,6 +31,17 @@ class DadJokeCommand(BaseCommand):
     usage = "dadjoke"
     examples = ["dadjoke"]
 
+    # Web-viewer settings schema (see modules/settings_schema.py)
+    settings_schema = [
+        {
+            "key": "long_jokes",
+            "label": "Allow long jokes",
+            "type": "bool",
+            "default": False,
+            "help": "Permit multi-message long-form jokes instead of short one-liners.",
+        },
+    ]
+
     # API configuration
     DAD_JOKE_API_URL = "https://icanhazdadjoke.com/"
     TIMEOUT = 10  # seconds

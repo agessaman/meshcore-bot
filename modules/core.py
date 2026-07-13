@@ -600,7 +600,13 @@ class MeshCoreBot:
             # Radio settings unchanged, proceed with reload
             self.logger.info("Reloading configuration (radio settings unchanged)")
 
-            # Reload the config
+            # Reload the config. ConfigParser.read() merges into existing state,
+            # which would resurrect keys deleted from the file (e.g. rows removed
+            # in the web settings UI) — so clear all sections first while keeping
+            # the same parser object, since components hold references to it.
+            for stale_section in self.config.sections():
+                self.config.remove_section(stale_section)
+            self.config.defaults().clear()
             self.config.read(self.config_file, encoding="utf-8")
             local_config = self._local_root / "config.ini"
             if local_config.exists():
@@ -654,6 +660,20 @@ class MeshCoreBot:
 
             # Update command manager (keywords, custom syntax, banned users, monitor channels)
             if hasattr(self, 'command_manager'):
+                # Re-instantiate command plugins: commands read their settings
+                # (including 'enabled') in __init__ and cache them on the
+                # instance, so edits from the web settings UI only take effect
+                # with fresh instances. Cooldown timers reset; reloads are rare
+                # and user-driven, so that trade-off is acceptable.
+                try:
+                    self.command_manager.commands = (
+                        self.command_manager.plugin_loader.load_all_plugins()
+                    )
+                    self.logger.info(
+                        f"Reloaded {len(self.command_manager.commands)} command plugins"
+                    )
+                except Exception as e:
+                    self.logger.error(f"Command plugin reload failed; keeping existing instances: {e}")
                 self.command_manager.keywords = self.command_manager.load_keywords()
                 self.command_manager.custom_syntax = self.command_manager.load_custom_syntax()
                 self.command_manager.banned_users = self.command_manager.load_banned_users()

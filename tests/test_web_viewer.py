@@ -1602,27 +1602,50 @@ class TestWerkzeugWebSocketFix:
 
 
 # ===========================================================================
-# TASK-01: Radio page — firmware config + reboot UI removed
+# TASK-01: Radio page — old firmware config card + reboot UI removed.
+# The Node Settings card later reintroduced firmware settings (path hash mode)
+# with new element ids; only the old card must stay absent.
 # ===========================================================================
 
 class TestRadioPageFirmwareRemoval:
-    """Assert that firmware config and reboot UI are absent from /radio (TASK-01)."""
+    """Assert that the old firmware config card and reboot UI are absent from /radio (TASK-01)."""
 
     def test_radio_page_loads(self, client):
         resp = client.get("/radio")
         assert resp.status_code == 200
 
-    def test_firmware_config_card_absent(self, client):
+    def test_old_firmware_config_card_absent(self, client):
         resp = client.get("/radio")
         html = resp.data.decode()
         assert 'id="firmware-config"' not in html
-        assert "readFirmwareConfig" not in html
-        assert "writeFirmwareConfig" not in html
         assert "readFirmwareBtn" not in html
         assert "writeFirmwareBtn" not in html
         assert "firmwareStatusAlert" not in html
         assert "firmwareLastRead" not in html
         assert "Firmware Configuration" not in html
+
+    def test_node_settings_card_present(self, client):
+        resp = client.get("/radio")
+        html = resp.data.decode()
+        assert 'id="node-settings-card"' in html
+        assert 'id="nodePathHashMode"' in html
+        # loop.detect is repeater/room-server CLI config, not a companion
+        # setting — it must not appear on this page.
+        assert 'nodeLoopDetect' not in html
+        assert 'loop_detect' not in html
+        assert 'id="nodeName"' in html
+        assert 'id="sendAdvertFloodBtn"' in html
+        assert 'id="nodeTelemBase"' in html
+        assert 'id="nodeRxDelay"' in html
+
+    def test_new_contacts_mode_is_config_managed(self, client):
+        """manual_add_contacts is owned by [Bot] auto_manage_contacts — the
+        panel shows the scheme read-only instead of offering a device toggle."""
+        resp = client.get("/radio")
+        html = resp.data.decode()
+        assert 'id="nodeManualAdd"' not in html
+        assert 'id="nodeNewContactsMode"' in html
+        assert "auto_manage_contacts" in html
 
     def test_reboot_ui_absent(self, client):
         resp = client.get("/radio")

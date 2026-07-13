@@ -16,8 +16,10 @@ from meshcore import EventType
 
 from .command_prefix import (
     load_command_prefix_settings,
-    normalize_command_content as normalize_command_content_text,
     parse_command_prefixes,
+)
+from .command_prefix import (
+    normalize_command_content as normalize_command_content_text,
 )
 from .commands.base_command import BaseCommand
 from .config_validation import (

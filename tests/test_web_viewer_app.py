@@ -374,6 +374,130 @@ class TestApiExportPaths:
 
 
 # ---------------------------------------------------------------------------
+# api_mesh_edges (evidence modes)
+# ---------------------------------------------------------------------------
+
+
+def _seed_observed_path(db_path, path_hex, bytes_per_hop, observation_count=1,
+                        last_seen=None, packet_type='advert'):
+    """Insert an observed_paths row; from/to prefixes derived from the path."""
+    hex_chars = bytes_per_hop * 2
+    hops = [path_hex[i:i + hex_chars] for i in range(0, len(path_hex), hex_chars)]
+    ts = last_seen or time.strftime('%Y-%m-%dT%H:%M:%S')
+    with sqlite3.connect(db_path, timeout=60) as conn:
+        conn.execute("""
+            INSERT INTO observed_paths
+            (from_prefix, to_prefix, path_hex, path_length, bytes_per_hop,
+             packet_type, observation_count, first_seen, last_seen)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (hops[0], hops[-1], path_hex, len(path_hex) // 2, bytes_per_hop,
+              packet_type, observation_count, ts, ts))
+        conn.commit()
+
+
+class TestApiMeshEdgesEvidence:
+    def test_default_mode_tags_evidence_by_key_length(self, viewer_with_db):
+        with sqlite3.connect(viewer_with_db.db_path, timeout=60) as conn:
+            conn.execute("""
+                INSERT INTO mesh_connections (from_prefix, to_prefix, observation_count)
+                VALUES ('aa', 'bb', 5), ('aabb', 'ccdd', 3)
+            """)
+            conn.commit()
+
+        with viewer_with_db.app.test_client() as client:
+            response = client.get('/api/mesh/edges')
+            assert response.status_code == 200
+            edges = {(e['from_prefix'], e['to_prefix']): e
+                     for e in json.loads(response.data)['edges']}
+            assert edges[('aa', 'bb')]['evidence'] == 'singlebyte'
+            assert edges[('aabb', 'ccdd')]['evidence'] == 'multibyte'
+
+    def test_multibyte_mode_derives_consecutive_pairs(self, viewer_with_db):
+        # 2-byte path with 3 hops -> two directed edges; 1-byte row excluded
+        _seed_observed_path(viewer_with_db.db_path, 'aaaabbbbcccc', 2, observation_count=2)
+        _seed_observed_path(viewer_with_db.db_path, 'ddee', 1, observation_count=9)
+
+        with viewer_with_db.app.test_client() as client:
+            response = client.get('/api/mesh/edges?evidence=multibyte')
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            assert data['evidence'] == 'multibyte'
+            edges = {(e['from_prefix'], e['to_prefix']): e for e in data['edges']}
+            assert set(edges) == {('aaaa', 'bbbb'), ('bbbb', 'cccc')}
+            edge = edges[('aaaa', 'bbbb')]
+            assert edge['observation_count'] == 2
+            assert edge['path_count'] == 1
+            assert edge['evidence'] == 'multibyte'
+            assert edge['avg_hop_position'] == 1
+            assert edges[('bbbb', 'cccc')]['avg_hop_position'] == 2
+
+    def test_multibyte_mode_coalesces_unique_lower_resolution(self, viewer_with_db):
+        # One 3-byte edge plus a 2-byte observation of the same link:
+        # unique prefix match, so the 2-byte counts merge into the 3-byte edge
+        _seed_observed_path(viewer_with_db.db_path, 'aaaa11bbbb22', 3, observation_count=4)
+        _seed_observed_path(viewer_with_db.db_path, 'aaaabbbb', 2, observation_count=3)
+
+        with viewer_with_db.app.test_client() as client:
+            response = client.get('/api/mesh/edges?evidence=multibyte')
+            data = json.loads(response.data)
+            edges = {(e['from_prefix'], e['to_prefix']): e for e in data['edges']}
+            assert set(edges) == {('aaaa11', 'bbbb22')}
+            assert edges[('aaaa11', 'bbbb22')]['observation_count'] == 7
+            assert edges[('aaaa11', 'bbbb22')]['path_count'] == 2
+
+    def test_multibyte_mode_keeps_ambiguous_resolutions_separate(self, viewer_with_db):
+        # Two distinct 3-byte edges share the same 4-char truncation:
+        # the 2-byte observation is ambiguous and must stay its own edge
+        _seed_observed_path(viewer_with_db.db_path, 'aaaa11bbbb22', 3)
+        _seed_observed_path(viewer_with_db.db_path, 'aaaa33bbbb44', 3)
+        _seed_observed_path(viewer_with_db.db_path, 'aaaabbbb', 2)
+
+        with viewer_with_db.app.test_client() as client:
+            response = client.get('/api/mesh/edges?evidence=multibyte')
+            data = json.loads(response.data)
+            keys = {(e['from_prefix'], e['to_prefix']) for e in data['edges']}
+            assert keys == {('aaaa11', 'bbbb22'), ('aaaa33', 'bbbb44'), ('aaaa', 'bbbb')}
+
+    def test_multibyte_mode_min_observations_applied_after_merge(self, viewer_with_db):
+        _seed_observed_path(viewer_with_db.db_path, 'aaaa11bbbb22', 3, observation_count=2)
+        _seed_observed_path(viewer_with_db.db_path, 'aaaabbbb', 2, observation_count=2)
+        _seed_observed_path(viewer_with_db.db_path, 'cccc55dddd66', 3, observation_count=1)
+
+        with viewer_with_db.app.test_client() as client:
+            response = client.get('/api/mesh/edges?evidence=multibyte&min_observations=4')
+            data = json.loads(response.data)
+            keys = {(e['from_prefix'], e['to_prefix']) for e in data['edges']}
+            # merged edge has 4 observations and survives; the other has 1
+            assert keys == {('aaaa11', 'bbbb22')}
+
+    def test_multibyte_mode_days_filter(self, viewer_with_db):
+        _seed_observed_path(viewer_with_db.db_path, 'aaaa11bbbb22', 3,
+                            last_seen='2020-01-01T00:00:00')
+        _seed_observed_path(viewer_with_db.db_path, 'cccc55dddd66', 3)
+
+        with viewer_with_db.app.test_client() as client:
+            response = client.get('/api/mesh/edges?evidence=multibyte&days=7')
+            data = json.loads(response.data)
+            keys = {(e['from_prefix'], e['to_prefix']) for e in data['edges']}
+            assert keys == {('cccc55', 'dddd66')}
+
+    def test_stats_include_multibyte_edge_count(self, viewer_with_db):
+        with sqlite3.connect(viewer_with_db.db_path, timeout=60) as conn:
+            conn.execute("""
+                INSERT INTO mesh_connections (from_prefix, to_prefix, observation_count)
+                VALUES ('aa', 'bb', 5), ('aabb', 'ccdd', 3), ('aabb11', 'ccdd22', 1)
+            """)
+            conn.commit()
+
+        with viewer_with_db.app.test_client() as client:
+            response = client.get('/api/mesh/stats')
+            assert response.status_code == 200
+            stats = json.loads(response.data)
+            assert stats['total_edges'] == 3
+            assert stats['multibyte_edges'] == 2
+
+
+# ---------------------------------------------------------------------------
 # api_geocode_contact
 # ---------------------------------------------------------------------------
 
@@ -880,6 +1004,169 @@ class TestApiRadioStatus:
             # Response has 'connected' and 'status_known'
             assert 'connected' in data
             assert 'status_known' in data
+
+
+# ---------------------------------------------------------------------------
+# api_radio_params / api_radio_advert / firmware config
+# ---------------------------------------------------------------------------
+
+
+def _queued_operation(viewer, op_id):
+    with viewer.db_manager.connection() as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT operation_type, payload_data, status FROM channel_operations WHERE id = ?",
+            (op_id,),
+        ).fetchone()
+    return row
+
+
+class TestApiRadioParams:
+    def test_read_queues_operation(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.get('/api/radio/params')
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            row = _queued_operation(viewer_with_db, data['operation_id'])
+            assert row['operation_type'] == 'radio_params_read'
+            assert row['status'] == 'pending'
+
+    def test_write_node_settings_queues_operation(self, viewer_with_db):
+        payload = {
+            'name': 'TestBot',
+            'lat': 47.6,
+            'lon': -122.3,
+            'adv_loc_policy': 1,
+            'multi_acks': 1,
+            'telemetry_mode_base': 2,
+            'telemetry_mode_loc': 0,
+            'telemetry_mode_env': 1,
+            'rx_delay': 2.5,
+            'airtime_factor': 1.0,
+        }
+        with viewer_with_db.app.test_client() as client:
+            response = client.post('/api/radio/params', json=payload)
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            row = _queued_operation(viewer_with_db, data['operation_id'])
+            assert row['operation_type'] == 'radio_params_write'
+            assert json.loads(row['payload_data']) == payload
+
+    def test_write_rejects_unknown_only_fields(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.post('/api/radio/params', json={'bogus': 1})
+            assert response.status_code == 400
+
+    def test_write_rejects_long_name(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.post('/api/radio/params', json={'name': 'x' * 33})
+            assert response.status_code == 400
+
+    def test_write_rejects_lat_without_lon(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.post('/api/radio/params', json={'lat': 47.6})
+            assert response.status_code == 400
+
+    def test_write_rejects_out_of_range_lat(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.post('/api/radio/params', json={'lat': 91.0, 'lon': 0.0})
+            assert response.status_code == 400
+
+    def test_write_rejects_bad_adv_loc_policy(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.post('/api/radio/params', json={'adv_loc_policy': 2})
+            assert response.status_code == 400
+
+    def test_write_rejects_manual_add_contacts(self, viewer_with_db):
+        """manual_add_contacts is owned by [Bot] auto_manage_contacts, not this API."""
+        with viewer_with_db.app.test_client() as client:
+            response = client.post('/api/radio/params', json={'manual_add_contacts': True})
+            assert response.status_code == 400
+
+    def test_write_drops_manual_add_contacts_from_mixed_payload(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.post(
+                '/api/radio/params',
+                json={'manual_add_contacts': True, 'multi_acks': 1},
+            )
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            row = _queued_operation(viewer_with_db, data['operation_id'])
+            assert json.loads(row['payload_data']) == {'multi_acks': 1}
+
+    def test_write_rejects_bad_multi_acks(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.post('/api/radio/params', json={'multi_acks': 4})
+            assert response.status_code == 400
+
+    def test_write_rejects_bad_telemetry_mode(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.post('/api/radio/params', json={'telemetry_mode_base': 3})
+            assert response.status_code == 400
+
+    def test_write_rejects_rx_delay_without_airtime_factor(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.post('/api/radio/params', json={'rx_delay': 1.0})
+            assert response.status_code == 400
+
+    def test_write_rejects_out_of_range_tuning(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.post(
+                '/api/radio/params', json={'rx_delay': 21.0, 'airtime_factor': 1.0}
+            )
+            assert response.status_code == 400
+
+
+class TestApiRadioAdvert:
+    def test_advert_queues_operation(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.post('/api/radio/advert', json={'flood': True})
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            row = _queued_operation(viewer_with_db, data['operation_id'])
+            assert row['operation_type'] == 'radio_advert'
+            assert json.loads(row['payload_data']) == {'flood': True}
+
+    def test_advert_defaults_to_zero_hop(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.post('/api/radio/advert', json={})
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            row = _queued_operation(viewer_with_db, data['operation_id'])
+            assert json.loads(row['payload_data']) == {'flood': False}
+
+    def test_advert_rejects_non_bool_flood(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.post('/api/radio/advert', json={'flood': 'yes'})
+            assert response.status_code == 400
+
+
+class TestApiFirmwareConfig:
+    def test_write_rejects_loop_detect(self, viewer_with_db):
+        """loop.detect is repeater/room-server CLI config, not a companion setting."""
+        with viewer_with_db.app.test_client() as client:
+            response = client.post(
+                '/api/radio/firmware/config/write', json={'loop_detect': 'on'}
+            )
+            assert response.status_code == 400
+
+    def test_write_rejects_out_of_range_path_hash_mode(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.post(
+                '/api/radio/firmware/config/write', json={'path_hash_mode': 3}
+            )
+            assert response.status_code == 400
+
+    def test_write_accepts_valid_path_hash_mode(self, viewer_with_db):
+        with viewer_with_db.app.test_client() as client:
+            response = client.post(
+                '/api/radio/firmware/config/write', json={'path_hash_mode': 1}
+            )
+            assert response.status_code == 200
+            data = json.loads(response.data)
+            row = _queued_operation(viewer_with_db, data['operation_id'])
+            assert row['operation_type'] == 'firmware_write'
+            assert json.loads(row['payload_data']) == {'path_hash_mode': 1}
 
 
 # ---------------------------------------------------------------------------

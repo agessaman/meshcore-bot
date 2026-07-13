@@ -559,6 +559,21 @@ class MultitestCommand(BaseCommand):
     usage = "multitest"
     examples = ["multitest", "mt"]
 
+    # Web-viewer settings schema (see modules/settings_schema.py)
+    settings_schema = [
+        {"key": "response_format", "label": "Response format", "type": "str",
+         "default": "",
+         "help": "Result template. Fields: {sender}, {path_count}, {paths}, {listening_duration}. Empty = default."},
+        {"key": "condense_paths", "label": "Path layout", "type": "enum",
+         "options": [
+             {"value": "true", "label": "Condensed tree (default)"},
+             {"value": "false", "label": "One full path per line"},
+             {"value": "nested", "label": "Nested/indented tree"},
+         ],
+         "default": "true",
+         "help": "How collected paths are displayed."},
+    ]
+
     def __init__(self, bot):
         super().__init__(bot)
         self.multitest_enabled = self.get_config_value('Multitest_Command', 'enabled', fallback=True, value_type='bool')

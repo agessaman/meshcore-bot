@@ -33,6 +33,12 @@ class TestCommand(BaseCommand):
     usage = "test [phrase]"
     examples = ["test", "t hello world"]
 
+    # Web-viewer settings schema (see modules/settings_schema.py)
+    settings_schema = [
+        {"key": "response_format", "label": "Response format", "type": "str", "default": "",
+         "help": "Template for the test reply. Empty uses the default format."},
+    ]
+
     def __init__(self, bot):
         super().__init__(bot)
         self.test_enabled = self.get_config_value('Test_Command', 'enabled', fallback=True, value_type='bool')

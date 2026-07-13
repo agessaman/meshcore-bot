@@ -148,6 +148,41 @@ monitor_channels = #general
         success, msg = b.reload_config()
         assert success is False
 
+    def test_reload_drops_keys_deleted_from_file(self, tmp_path):
+        """ConfigParser.read() merges; reload must not resurrect deleted keys.
+
+        The web settings UI deletes rows (e.g. announce.* triggers) from
+        config.ini — a reload afterwards has to reflect the deletion.
+        """
+        config_file = tmp_path / "config.ini"
+        db_path = tmp_path / "bot.db"
+        _write_config(config_file, db_path, extra="[Channels_List]\nseattle = Seattle chat\n")
+        b = MeshCoreBot(config_file=str(config_file))
+        assert b.config.get("Channels_List", "seattle") == "Seattle chat"
+        # Remove the key (and its whole section) from the file.
+        _write_config(config_file, db_path)
+        success, _ = b.reload_config()
+        assert success is True
+        assert not b.config.has_section("Channels_List") or not b.config.has_option(
+            "Channels_List", "seattle"
+        )
+
+    def test_reload_reinstantiates_command_plugins(self, tmp_path):
+        """Command settings are cached in __init__; reload must refresh them."""
+        config_file = tmp_path / "config.ini"
+        db_path = tmp_path / "bot.db"
+        _write_config(config_file, db_path, extra="[Ping_Command]\nenabled = true\n")
+        b = MeshCoreBot(config_file=str(config_file))
+        if not hasattr(b, "command_manager"):
+            pytest.skip("bot built without command_manager")
+        before = b.command_manager.commands.get("ping")
+        _write_config(config_file, db_path, extra="[Ping_Command]\nenabled = false\n")
+        success, _ = b.reload_config()
+        assert success is True
+        after = b.command_manager.commands.get("ping")
+        assert after is not None and after is not before
+        assert b.config.getboolean("Ping_Command", "enabled") is False
+
 
 # ---------------------------------------------------------------------------
 # key_prefix / is_valid_prefix

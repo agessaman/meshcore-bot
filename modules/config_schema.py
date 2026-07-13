@@ -41,6 +41,21 @@ DEPRECATED_SECTIONS = frozenset({"Jokes"})
 # Legacy key suffixes (e.g. alert_enabled instead of enabled in *_Command sections).
 LEGACY_ENABLED_KEY_RE = re.compile(r"^[a-z]+_enabled$")
 
+# Legacy aliases for a plugin's canonical `[Section] enabled` key, tried in
+# order when the canonical key is absent. Single source of truth shared by
+# BaseCommand.get_config_value (runtime reads) and the web settings view
+# (modules/settings_schema.read_enabled) — keep additions here so runtime
+# behavior and the UI can never disagree.
+# Maps canonical section -> ordered ((legacy_section, legacy_key), ...).
+LEGACY_ENABLED_ALIASES: dict[str, tuple[tuple[str, str], ...]] = {
+    "Joke_Command": (("Jokes", "joke_enabled"),),
+    "DadJoke_Command": (("Jokes", "dadjoke_enabled"),),
+    "Stats_Command": (("Stats_Command", "stats_enabled"), ("Stats", "stats_enabled")),
+    "Sports_Command": (("Sports_Command", "sports_enabled"), ("Sports", "sports_enabled")),
+    "Hacker_Command": (("Hacker_Command", "hacker_enabled"), ("Hacker", "hacker_enabled")),
+    "Alert_Command": (("Alert_Command", "alert_enabled"),),
+}
+
 # Keys supported on every *_Command section via BaseCommand (config.ini.example may omit them).
 STANDARD_COMMAND_KEYS = frozenset({
     "enabled",

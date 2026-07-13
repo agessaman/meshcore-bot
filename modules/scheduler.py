@@ -608,6 +608,15 @@ class MessageScheduler:
                         lambda f: self.logger.exception("Error processing radio operations: %s", f.exception())
                         if not f.cancelled() and f.exception() else None
                     )
+                    # Config-reload requests from the web viewer use the same table.
+                    config_future = asyncio.run_coroutine_threadsafe(
+                        self._process_config_operations(),
+                        self.bot.main_event_loop
+                    )
+                    config_future.add_done_callback(
+                        lambda f: self.logger.exception("Error processing config operations: %s", f.exception())
+                        if not f.cancelled() and f.exception() else None
+                    )
                 self.last_radio_ops_check_time = time.time()
 
             # Process feed message queue (every 2 seconds, fire-and-forget)
@@ -954,7 +963,8 @@ class MessageScheduler:
                       AND operation_type IN (
                           'radio_reboot', 'radio_connect', 'radio_disconnect',
                           'firmware_read', 'firmware_write',
-                          'radio_params_read', 'radio_params_write'
+                          'radio_params_read', 'radio_params_write',
+                          'radio_advert'
                       )
                     ORDER BY created_at ASC
                     LIMIT 1
@@ -986,6 +996,9 @@ class MessageScheduler:
                 elif op_type == 'radio_params_write':
                     payload = json.loads(op['payload_data'] or '{}')
                     success, result_payload = await self._radio_params_write_op(payload)
+                elif op_type == 'radio_advert':
+                    payload = json.loads(op['payload_data'] or '{}')
+                    success, result_payload = await self._radio_advert_op(payload)
                 else:
                     success = False
 
@@ -1030,8 +1043,65 @@ class MessageScheduler:
         except Exception as e:
             self.logger.exception(f"Error in _process_radio_operations: {e}")
 
+    async def _process_config_operations(self):
+        """Process pending config_reload requests queued by the web viewer.
+
+        The web viewer (a separate process) inserts a ``config_reload`` row into
+        ``channel_operations``; here we call ``bot.reload_config()`` so command
+        settings saved in the UI take effect without a restart.  Service plugin
+        start/stop is not handled by reload_config and still needs a restart.
+        """
+        try:
+            with self.bot.db_manager.connection() as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT id FROM channel_operations
+                    WHERE status = 'pending' AND operation_type = 'config_reload'
+                    ORDER BY created_at ASC
+                    LIMIT 1
+                ''')
+                op = cursor.fetchone()
+
+            if not op:
+                return
+
+            op_id = op['id']
+            self.logger.info(f"Processing config reload operation {op_id}")
+
+            try:
+                success, message = self.bot.reload_config()
+            except Exception as e:  # noqa: BLE001 - never let reload crash the scheduler
+                success, message = False, str(e)
+                self.logger.exception("Error during config reload")
+
+            with self.bot.db_manager.connection() as conn:
+                cursor = conn.cursor()
+                if success:
+                    cursor.execute('''
+                        UPDATE channel_operations
+                        SET status = 'completed',
+                            processed_at = CURRENT_TIMESTAMP,
+                            result_data = ?
+                        WHERE id = ?
+                    ''', (json.dumps({'success': True, 'message': message}), op_id))
+                else:
+                    cursor.execute('''
+                        UPDATE channel_operations
+                        SET status = 'failed',
+                            processed_at = CURRENT_TIMESTAMP,
+                            error_message = ?
+                        WHERE id = ?
+                    ''', (message, op_id))
+                conn.commit()
+
+            self.logger.info("Config reload %s: %s", 'succeeded' if success else 'failed', message)
+
+        except Exception as e:
+            self.logger.exception(f"Error in _process_config_operations: {e}")
+
     async def _firmware_read_op(self):
-        """Read path.hash.mode and custom vars (including loop.detect) from radio firmware."""
+        """Read the path hash mode from radio firmware (device query)."""
         import asyncio
         try:
             meshcore = getattr(self.bot, 'meshcore', None)
@@ -1042,25 +1112,13 @@ class MessageScheduler:
                 meshcore.commands.get_path_hash_mode(), timeout=10
             )
 
-            custom_vars_event = await asyncio.wait_for(
-                meshcore.commands.get_custom_vars(), timeout=10
-            )
-
-            custom_vars = {}
-            if custom_vars_event and custom_vars_event.payload:
-                custom_vars = dict(custom_vars_event.payload)
-
-            return True, {
-                'path_hash_mode': path_hash_mode,
-                'loop_detect': custom_vars.get('loop.detect'),
-                'custom_vars': custom_vars,
-            }
+            return True, {'path_hash_mode': path_hash_mode}
         except Exception as e:
             self.logger.error(f"Firmware read failed: {e}")
             return False, {'error': str(e)}
 
     async def _firmware_write_op(self, payload: dict):
-        """Write path.hash.mode and/or loop.detect to radio firmware."""
+        """Write the path hash mode to radio firmware."""
         import asyncio
 
         from meshcore.events import EventType
@@ -1082,16 +1140,6 @@ class MessageScheduler:
                 if not ok:
                     errors.append(f"set_path_hash_mode({mode}) failed: {result}")
 
-            if 'loop_detect' in payload:
-                value = str(payload['loop_detect']).lower()
-                result = await asyncio.wait_for(
-                    meshcore.commands.set_custom_var('loop.detect', value), timeout=10
-                )
-                ok = getattr(result, 'type', None) == EventType.OK
-                results['loop_detect'] = ok
-                if not ok:
-                    errors.append(f"set_custom_var(loop.detect, {value}) failed: {result}")
-
             success = len(errors) == 0
             response: dict[str, Any] = {'results': results}
             if errors:
@@ -1102,7 +1150,7 @@ class MessageScheduler:
             return False, {'error': str(e)}
 
     async def _radio_params_read_op(self):
-        """Read current radio parameters (freq, bw, sf, cr, tx_power) via SELF_INFO."""
+        """Read current radio and node parameters via SELF_INFO (appstart)."""
         try:
             meshcore = getattr(self.bot, 'meshcore', None)
             if not meshcore or not getattr(meshcore, 'is_connected', False):
@@ -1122,13 +1170,34 @@ class MessageScheduler:
                 'cr': p.get('radio_cr'),
                 'tx_power': p.get('tx_power'),
                 'max_tx_power': p.get('max_tx_power'),
+                'name': p.get('name'),
+                'adv_lat': p.get('adv_lat'),
+                'adv_lon': p.get('adv_lon'),
+                'adv_loc_policy': p.get('adv_loc_policy'),
+                'manual_add_contacts': p.get('manual_add_contacts'),
+                'multi_acks': p.get('multi_acks'),
+                'telemetry_mode_base': p.get('telemetry_mode_base'),
+                'telemetry_mode_loc': p.get('telemetry_mode_loc'),
+                'telemetry_mode_env': p.get('telemetry_mode_env'),
             }
         except Exception as e:
             self.logger.error(f"Radio params read failed: {e}")
             return False, {'error': str(e)}
 
+    # Fields applied through a single CMD_SET_OTHER_PARAMS frame (read-modify-write).
+    OTHER_PARAMS_FIELDS = (
+        'manual_add_contacts', 'multi_acks', 'adv_loc_policy',
+        'telemetry_mode_base', 'telemetry_mode_loc', 'telemetry_mode_env',
+    )
+
     async def _radio_params_write_op(self, payload: dict):
-        """Write radio parameters (freq, bw, sf, cr, tx_power) to device."""
+        """Write radio and node parameters to the device.
+
+        Accepts any mix of: freq/bw/sf/cr (together), tx_power, name, lat/lon
+        (together), rx_delay/airtime_factor (together), and the
+        CMD_SET_OTHER_PARAMS fields (manual_add_contacts, multi_acks,
+        adv_loc_policy, telemetry_mode_*).
+        """
         try:
             meshcore = getattr(self.bot, 'meshcore', None)
             if not meshcore or not getattr(meshcore, 'is_connected', False):
@@ -1159,6 +1228,63 @@ class MessageScheduler:
                 if not ok:
                     errors.append(f"set_tx_power failed: {result}")
 
+            if 'name' in payload:
+                result = await asyncio.wait_for(
+                    meshcore.commands.set_name(str(payload['name'])), timeout=10
+                )
+                ok = getattr(result, 'type', None) == EventType.OK
+                results['name'] = ok
+                if not ok:
+                    errors.append(f"set_name failed: {result}")
+
+            if 'lat' in payload and 'lon' in payload:
+                result = await asyncio.wait_for(
+                    meshcore.commands.set_coords(
+                        float(payload['lat']), float(payload['lon'])
+                    ), timeout=10
+                )
+                ok = getattr(result, 'type', None) == EventType.OK
+                results['coords'] = ok
+                if not ok:
+                    errors.append(f"set_coords failed: {result}")
+
+            if any(k in payload for k in self.OTHER_PARAMS_FIELDS):
+                # CMD_SET_OTHER_PARAMS writes all of these at once, so read the
+                # current values first and overlay only the requested changes.
+                infos_event = await asyncio.wait_for(
+                    meshcore.commands.send_appstart(), timeout=10
+                )
+                if infos_event is None or infos_event.type == EventType.ERROR:
+                    errors.append('Failed to read current device settings before update')
+                else:
+                    infos = dict(infos_event.payload or {})
+                    if 'manual_add_contacts' in payload:
+                        infos['manual_add_contacts'] = bool(payload['manual_add_contacts'])
+                    for key in ('multi_acks', 'adv_loc_policy',
+                                'telemetry_mode_base', 'telemetry_mode_loc',
+                                'telemetry_mode_env'):
+                        if key in payload:
+                            infos[key] = int(payload[key])
+                    result = await asyncio.wait_for(
+                        meshcore.commands.set_other_params_from_infos(infos), timeout=10
+                    )
+                    ok = getattr(result, 'type', None) == EventType.OK
+                    results['other_params'] = ok
+                    if not ok:
+                        errors.append(f"set_other_params failed: {result}")
+
+            if 'rx_delay' in payload and 'airtime_factor' in payload:
+                # Firmware stores these as floats; the wire format is value x1000.
+                rx_ms = int(round(float(payload['rx_delay']) * 1000))
+                af_ms = int(round(float(payload['airtime_factor']) * 1000))
+                result = await asyncio.wait_for(
+                    meshcore.commands.set_tuning(rx_ms, af_ms), timeout=10
+                )
+                ok = getattr(result, 'type', None) == EventType.OK
+                results['tuning'] = ok
+                if not ok:
+                    errors.append(f"set_tuning failed: {result}")
+
             success = len(errors) == 0
             response: dict = {'results': results}
             if errors:
@@ -1166,6 +1292,25 @@ class MessageScheduler:
             return success, response
         except Exception as e:
             self.logger.error(f"Radio params write failed: {e}")
+            return False, {'error': str(e)}
+
+    async def _radio_advert_op(self, payload: dict):
+        """Send a self-advertisement (optionally flooded) from the device."""
+        try:
+            meshcore = getattr(self.bot, 'meshcore', None)
+            if not meshcore or not getattr(meshcore, 'is_connected', False):
+                return False, {'error': 'Radio not connected'}
+
+            flood = bool(payload.get('flood', False))
+            result = await asyncio.wait_for(
+                meshcore.commands.send_advert(flood=flood), timeout=10
+            )
+            ok = getattr(result, 'type', None) == EventType.OK
+            if not ok:
+                return False, {'error': f"send_advert failed: {result}"}
+            return True, {'flood': flood}
+        except Exception as e:
+            self.logger.error(f"Radio advert failed: {e}")
             return False, {'error': str(e)}
 
     # ── Maintenance (delegates to MaintenanceRunner) ─────────────────────────

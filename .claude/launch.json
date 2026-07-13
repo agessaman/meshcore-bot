@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web-viewer",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": [
+        "-m",
+        "modules.web_viewer.app",
+        "--config",
+        "config.ini",
+        "--port",
+        "8757"
+      ],
+      "port": 8757
+    }
+  ]
+}

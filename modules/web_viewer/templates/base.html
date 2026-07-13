@@ -242,6 +242,14 @@
             color: var(--text-color);
         }
 
+        [data-theme="dark"] .form-control:disabled,
+        [data-theme="dark"] .form-control[readonly],
+        [data-theme="dark"] .form-select:disabled {
+            background-color: var(--bg-color);
+            border-color: var(--border-color);
+            color: var(--text-muted);
+        }
+
         /* Dark mode text muted */
         [data-theme="dark"] .text-muted {
             color: var(--text-muted) !important;
@@ -447,6 +455,11 @@
                     <li class="nav-item">
                         <a class="nav-link" href="/config">
                             <i class="fas fa-cog"></i> Config
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/plugins">
+                            <i class="fas fa-puzzle-piece"></i> Plugins
                         </a>
                     </li>
                     <li class="nav-item">

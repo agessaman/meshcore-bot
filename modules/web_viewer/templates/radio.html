@@ -132,6 +132,191 @@
                 </div>
             </div>
 
+            <!-- Node Settings -->
+            <div class="card mb-4" id="node-settings-card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-microchip me-2"></i>Node Settings</h5>
+                    <button class="btn btn-sm btn-outline-secondary" id="readNodeSettingsBtn">
+                        <span class="spinner-border spinner-border-sm me-1" id="readNodeSpinner" style="display:none" role="status"></span>
+                        <i class="fas fa-sync me-1" id="readNodeIcon"></i>Read from Device
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div id="nodeSettingsAlert" style="display:none"></div>
+
+                    <!-- Response Path Hashing -->
+                    <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
+                        Response Path Hashing
+                    </h6>
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-3">
+                            <label class="form-label" for="nodePathHashMode">Path Hash Size</label>
+                            <select class="form-select" id="nodePathHashMode">
+                                <option value="">—</option>
+                                <option value="0">1 byte per hop (mode 0)</option>
+                                <option value="1">2 bytes per hop (mode 1)</option>
+                                <option value="2">3 bytes per hop (mode 2)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-auto">
+                            <button type="button" class="btn btn-warning" id="savePathHashBtn">
+                                <span class="spinner-border spinner-border-sm me-1" id="savePathHashSpinner" style="display:none" role="status"></span>
+                                <i class="fas fa-upload me-1"></i>Write Path Settings
+                            </button>
+                        </div>
+                    </div>
+                    <small class="form-text text-muted d-block mt-2">
+                        Hash bytes per hop for outgoing (response) paths — mode 0 is the legacy
+                        default; larger hashes avoid relay collisions but need firmware 1.14+
+                        mesh-wide.
+                    </small>
+
+                    <hr class="my-4">
+
+                    <!-- Identity & Adverts -->
+                    <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
+                        Identity &amp; Adverts
+                    </h6>
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label" for="nodeName">Node Name</label>
+                            <input type="text" class="form-control" id="nodeName" maxlength="32"
+                                placeholder="e.g. MyBot"{% if device_name_managed %} disabled{% endif %}>
+                            {% if device_name_managed %}
+                            <small class="form-text text-muted">
+                                Managed by <code>[Bot] bot_name</code> in config.ini —
+                                reapplied at startup.
+                            </small>
+                            {% else %}
+                            <small class="form-text text-muted">Advertised name (max 32 bytes).</small>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label" for="nodeLat">Latitude</label>
+                            <input type="number" class="form-control" id="nodeLat" step="0.000001" min="-90" max="90" placeholder="e.g. 47.6">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label" for="nodeLon">Longitude</label>
+                            <input type="number" class="form-control" id="nodeLon" step="0.000001" min="-180" max="180" placeholder="e.g. -122.3">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label" for="nodeAdvLocPolicy">Advert Location Policy</label>
+                            <select class="form-select" id="nodeAdvLocPolicy">
+                                <option value="">—</option>
+                                <option value="0">Don't include location</option>
+                                <option value="1">Include location</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mt-3 d-flex gap-2 flex-wrap">
+                        <button type="button" class="btn btn-warning" id="saveIdentityBtn">
+                            <span class="spinner-border spinner-border-sm me-1" id="saveIdentitySpinner" style="display:none" role="status"></span>
+                            <i class="fas fa-upload me-1"></i>Write Identity
+                        </button>
+                        <button type="button" class="btn btn-outline-primary" id="sendAdvertZeroBtn">
+                            <span class="spinner-border spinner-border-sm me-1" id="advertZeroSpinner" style="display:none" role="status"></span>
+                            <i class="fas fa-bullhorn me-1"></i>Send Advert (Zero-Hop)
+                        </button>
+                        <button type="button" class="btn btn-outline-primary" id="sendAdvertFloodBtn">
+                            <span class="spinner-border spinner-border-sm me-1" id="advertFloodSpinner" style="display:none" role="status"></span>
+                            <i class="fas fa-water me-1"></i>Send Flood Advert
+                        </button>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <!-- Mesh Behavior -->
+                    <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
+                        Mesh Behavior
+                    </h6>
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label" for="nodeNewContactsMode">New Contacts</label>
+                            <input type="text" class="form-control" id="nodeNewContactsMode" disabled
+                                value="{% if auto_manage_contacts == 'device' %}Device auto-add (firmware slot policy){% elif auto_manage_contacts == 'bot' %}Bot-managed auto-add{% else %}Manual (!repeater commands){% endif %}">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label" for="nodeMultiAcks">Extra ACKs</label>
+                            <select class="form-select" id="nodeMultiAcks">
+                                <option value="">—</option>
+                                <option value="0">0 (default)</option>
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label" for="nodeTelemBase">Base Telemetry</label>
+                            <select class="form-select" id="nodeTelemBase">
+                                <option value="">—</option>
+                                <option value="0">Deny</option>
+                                <option value="1">Per-contact flags</option>
+                                <option value="2">Allow all</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label" for="nodeTelemLoc">Location Telemetry</label>
+                            <select class="form-select" id="nodeTelemLoc">
+                                <option value="">—</option>
+                                <option value="0">Deny</option>
+                                <option value="1">Per-contact flags</option>
+                                <option value="2">Allow all</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label" for="nodeTelemEnv">Env. Telemetry</label>
+                            <select class="form-select" id="nodeTelemEnv">
+                                <option value="">—</option>
+                                <option value="0">Deny</option>
+                                <option value="1">Per-contact flags</option>
+                                <option value="2">Allow all</option>
+                            </select>
+                        </div>
+                    </div>
+                    <small class="form-text text-muted d-block mt-2">
+                        New-contact handling is managed by <code>[Bot] auto_manage_contacts</code>
+                        in config.ini. Extra ACKs improve delivery at the cost of airtime.
+                        Telemetry permissions control who may request each reading type.
+                    </small>
+                    <div class="mt-3">
+                        <button type="button" class="btn btn-warning" id="saveMeshBtn">
+                            <span class="spinner-border spinner-border-sm me-1" id="saveMeshSpinner" style="display:none" role="status"></span>
+                            <i class="fas fa-upload me-1"></i>Write Mesh Behavior
+                        </button>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <!-- Advanced Tuning -->
+                    <details>
+                        <summary class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;cursor:pointer;">
+                            Advanced Tuning
+                        </summary>
+                        <div class="row g-3 mt-1 align-items-end">
+                            <div class="col-md-2">
+                                <label class="form-label" for="nodeRxDelay">RX Delay Base (s)</label>
+                                <input type="number" class="form-control" id="nodeRxDelay" step="0.1" min="0" max="20" placeholder="e.g. 0">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" for="nodeAirtimeFactor">Airtime Factor</label>
+                                <input type="number" class="form-control" id="nodeAirtimeFactor" step="0.1" min="0" max="9" placeholder="e.g. 1">
+                            </div>
+                            <div class="col-md-auto">
+                                <button type="button" class="btn btn-outline-warning" id="applyTuningBtn">
+                                    <span class="spinner-border spinner-border-sm me-1" id="applyTuningSpinner" style="display:none" role="status"></span>
+                                    <i class="fas fa-wrench me-1"></i>Apply Tuning
+                                </button>
+                            </div>
+                        </div>
+                        <small class="form-text text-muted d-block mt-2">
+                            <i class="fas fa-exclamation-triangle text-warning me-1"></i>
+                            Write-only: current values cannot be read back from the device. Both
+                            fields are required and affect relay timing/duty-cycle behavior.
+                        </small>
+                    </details>
+                </div>
+            </div>
+
             <!-- Channel Management -->
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
@@ -240,7 +425,9 @@ class RadioManager {
         await this.loadRadioStatus();
         this.setupEventHandlers();
         this.setupRadioParamsHandlers();
+        this.setupNodeSettingsHandlers();
         this.readRadioParams({ silent: true });
+        this.readFirmwareConfig({ silent: true });
 
         // Auto-refresh every 30 seconds
         setInterval(() => this.loadChannels(), 30000);
@@ -857,6 +1044,7 @@ class RadioManager {
             const result = await this.pollRadioParamsOp(data.operation_id);
             if (result && result.status === 'completed' && result.result_data) {
                 this.fillRadioParamsForm(result.result_data);
+                this.fillNodeSettingsForm(result.result_data);
                 if (!silent) this.setParamsAlert('success', 'Radio parameters read successfully.');
             } else {
                 const msg = result?.error_message || 'Read failed';
@@ -968,6 +1156,212 @@ class RadioManager {
         el.className = `alert alert-${type}`;
         el.textContent = message;
         el.style.display = 'block';
+    }
+
+    setupNodeSettingsHandlers() {
+        document.getElementById('readNodeSettingsBtn').addEventListener('click', () => {
+            this.readRadioParams();
+            this.readFirmwareConfig();
+        });
+        document.getElementById('savePathHashBtn').addEventListener('click', () => this.savePathHash());
+        document.getElementById('saveIdentityBtn').addEventListener('click', () => this.saveIdentity());
+        document.getElementById('saveMeshBtn').addEventListener('click', () => this.saveMesh());
+        document.getElementById('applyTuningBtn').addEventListener('click', () => this.applyTuning());
+        document.getElementById('sendAdvertZeroBtn').addEventListener('click', () => this.sendAdvert(false));
+        document.getElementById('sendAdvertFloodBtn').addEventListener('click', () => this.sendAdvert(true));
+    }
+
+    setNodeAlert(type, message) {
+        const el = document.getElementById('nodeSettingsAlert');
+        if (!type || !message) { el.style.display = 'none'; return; }
+        el.className = `alert alert-${type}`;
+        el.textContent = message;
+        el.style.display = 'block';
+    }
+
+    // Queue an operation via POST (or GET when payload is null), poll it, and
+    // return the completed/failed operation record.
+    async queueAndPoll(url, payload) {
+        const options = payload === null
+            ? undefined
+            : {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body: JSON.stringify(payload)
+            };
+        const resp = await fetch(url, options);
+        const data = await resp.json();
+        if (!resp.ok || !data.operation_id) {
+            return { status: 'failed', error_message: data.error || 'Failed to queue operation' };
+        }
+        return await this.pollRadioParamsOp(data.operation_id);
+    }
+
+    // Run an async write action with button/spinner state and shared alert handling.
+    async runNodeAction(btnId, spinnerId, action) {
+        const btn = document.getElementById(btnId);
+        const spinner = document.getElementById(spinnerId);
+        btn.disabled = true;
+        spinner.style.display = 'inline-block';
+        this.setNodeAlert('', '');
+        try {
+            await action();
+        } catch (e) {
+            this.setNodeAlert('danger', 'Error: ' + e.message);
+        } finally {
+            btn.disabled = false;
+            spinner.style.display = 'none';
+        }
+    }
+
+    async readFirmwareConfig({ silent = false } = {}) {
+        try {
+            const result = await this.queueAndPoll('/api/radio/firmware/config/read', {});
+            if (result && result.status === 'completed' && result.result_data) {
+                this.fillFirmwareConfigForm(result.result_data);
+                if (!silent) this.setNodeAlert('success', 'Node settings read successfully.');
+            } else {
+                const msg = result?.error_message || 'Firmware config read failed';
+                if (silent && msg.toLowerCase().includes('not connected')) return;
+                this.setNodeAlert('danger', msg);
+            }
+        } catch (e) {
+            if (!silent) this.setNodeAlert('danger', 'Error: ' + e.message);
+        }
+    }
+
+    fillNodeSettingsForm(params) {
+        if (params.name != null) document.getElementById('nodeName').value = params.name;
+        if (params.adv_lat != null) document.getElementById('nodeLat').value = params.adv_lat;
+        if (params.adv_lon != null) document.getElementById('nodeLon').value = params.adv_lon;
+        if (params.adv_loc_policy != null) document.getElementById('nodeAdvLocPolicy').value = String(params.adv_loc_policy);
+        if (params.multi_acks != null) document.getElementById('nodeMultiAcks').value = String(params.multi_acks);
+        if (params.telemetry_mode_base != null) document.getElementById('nodeTelemBase').value = String(params.telemetry_mode_base);
+        if (params.telemetry_mode_loc != null) document.getElementById('nodeTelemLoc').value = String(params.telemetry_mode_loc);
+        if (params.telemetry_mode_env != null) document.getElementById('nodeTelemEnv').value = String(params.telemetry_mode_env);
+    }
+
+    fillFirmwareConfigForm(data) {
+        if (data.path_hash_mode != null && data.path_hash_mode >= 0) {
+            document.getElementById('nodePathHashMode').value = String(data.path_hash_mode);
+        }
+    }
+
+    async savePathHash() {
+        const mode = document.getElementById('nodePathHashMode').value;
+        if (mode === '') {
+            this.setNodeAlert('danger', 'No path settings to write.');
+            return;
+        }
+        const payload = { path_hash_mode: parseInt(mode) };
+        if (!confirm('Change the path hash size? Responses may fail to route until other nodes on the mesh run firmware that understands this hash size.')) {
+            return;
+        }
+        await this.runNodeAction('savePathHashBtn', 'savePathHashSpinner', async () => {
+            const result = await this.queueAndPoll('/api/radio/firmware/config/write', payload);
+            if (result && result.status === 'completed') {
+                this.setNodeAlert('success', 'Path settings written successfully.');
+            } else {
+                this.setNodeAlert('danger', result?.error_message || 'Write failed');
+            }
+        });
+    }
+
+    async saveIdentity() {
+        const nameInput = document.getElementById('nodeName');
+        // A disabled name field is config-managed ([Bot] bot_name); never write it.
+        const name = nameInput.disabled ? '' : nameInput.value.trim();
+        const lat = document.getElementById('nodeLat').value.trim();
+        const lon = document.getElementById('nodeLon').value.trim();
+        const policy = document.getElementById('nodeAdvLocPolicy').value;
+
+        if ((lat === '') !== (lon === '')) {
+            this.setNodeAlert('danger', 'Latitude and longitude must be provided together.');
+            return;
+        }
+        const payload = {};
+        if (name) payload.name = name;
+        if (lat !== '') {
+            payload.lat = parseFloat(lat);
+            payload.lon = parseFloat(lon);
+        }
+        if (policy !== '') payload.adv_loc_policy = parseInt(policy);
+        if (!Object.keys(payload).length) {
+            this.setNodeAlert('danger', 'No identity settings to write.');
+            return;
+        }
+        await this.runNodeAction('saveIdentityBtn', 'saveIdentitySpinner', async () => {
+            const result = await this.queueAndPoll('/api/radio/params', payload);
+            if (result && result.status === 'completed') {
+                this.setNodeAlert('success', 'Identity written successfully. Send an advert to announce the changes.');
+            } else {
+                this.setNodeAlert('danger', result?.error_message || 'Write failed');
+            }
+        });
+    }
+
+    async saveMesh() {
+        const multiAcks = document.getElementById('nodeMultiAcks').value;
+        const telemBase = document.getElementById('nodeTelemBase').value;
+        const telemLoc = document.getElementById('nodeTelemLoc').value;
+        const telemEnv = document.getElementById('nodeTelemEnv').value;
+
+        const payload = {};
+        if (multiAcks !== '') payload.multi_acks = parseInt(multiAcks);
+        if (telemBase !== '') payload.telemetry_mode_base = parseInt(telemBase);
+        if (telemLoc !== '') payload.telemetry_mode_loc = parseInt(telemLoc);
+        if (telemEnv !== '') payload.telemetry_mode_env = parseInt(telemEnv);
+        if (!Object.keys(payload).length) {
+            this.setNodeAlert('danger', 'No mesh behavior settings to write.');
+            return;
+        }
+        await this.runNodeAction('saveMeshBtn', 'saveMeshSpinner', async () => {
+            const result = await this.queueAndPoll('/api/radio/params', payload);
+            if (result && result.status === 'completed') {
+                this.setNodeAlert('success', 'Mesh behavior written successfully.');
+            } else {
+                this.setNodeAlert('danger', result?.error_message || 'Write failed');
+            }
+        });
+    }
+
+    async applyTuning() {
+        const rxDelay = document.getElementById('nodeRxDelay').value.trim();
+        const airtimeFactor = document.getElementById('nodeAirtimeFactor').value.trim();
+        if (rxDelay === '' || airtimeFactor === '') {
+            this.setNodeAlert('danger', 'RX delay and airtime factor must both be provided.');
+            return;
+        }
+        if (!confirm('Apply tuning parameters? These affect relay timing and airtime budgeting, and current values cannot be read back from the device.')) {
+            return;
+        }
+        await this.runNodeAction('applyTuningBtn', 'applyTuningSpinner', async () => {
+            const result = await this.queueAndPoll('/api/radio/params', {
+                rx_delay: parseFloat(rxDelay),
+                airtime_factor: parseFloat(airtimeFactor)
+            });
+            if (result && result.status === 'completed') {
+                this.setNodeAlert('success', 'Tuning parameters written successfully.');
+            } else {
+                this.setNodeAlert('danger', result?.error_message || 'Write failed');
+            }
+        });
+    }
+
+    async sendAdvert(flood) {
+        if (flood && !confirm('Send a flood advert? It will be repeated across the whole mesh — use sparingly.')) {
+            return;
+        }
+        const btnId = flood ? 'sendAdvertFloodBtn' : 'sendAdvertZeroBtn';
+        const spinnerId = flood ? 'advertFloodSpinner' : 'advertZeroSpinner';
+        await this.runNodeAction(btnId, spinnerId, async () => {
+            const result = await this.queueAndPoll('/api/radio/advert', { flood });
+            if (result && result.status === 'completed') {
+                this.setNodeAlert('success', flood ? 'Flood advert sent.' : 'Zero-hop advert sent.');
+            } else {
+                this.setNodeAlert('danger', result?.error_message || 'Advert failed');
+            }
+        });
     }
 
     showError(message) {

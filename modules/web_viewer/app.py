@@ -42,12 +42,32 @@ from flask import (
 )
 from flask_socketio import SocketIO, disconnect, emit
 
+from modules.ini_writer import update_ini_values
 from modules.security_utils import (
     VALID_JOURNAL_MODES,
     validate_external_url,
     validate_sql_identifier,
 )
+from modules.settings_schema import (
+    build_plugin_settings_view,
+    to_config_string,
+    validate_field,
+)
+from modules.settings_store import get_settings_store
 from modules.version_info import resolve_runtime_version
+
+
+def _validate_dynamic_key(key: str) -> "str | None":
+    """Validate a dynamic-section row key. Returns an error message or None.
+
+    Keys become INI option names, so they must not contain the separators or
+    comment markers that would corrupt the file on the next read.
+    """
+    if any(ch in key for ch in ('=', ':', '\n', '\r', '[', ']')):
+        return f'Invalid key "{key}": cannot contain = : [ ] or newlines'
+    if key[:1] in ('#', ';'):
+        return f'Invalid key "{key}": cannot start with # or ;'
+    return None
 
 
 def _apply_werkzeug_websocket_fix() -> None:
@@ -95,7 +115,7 @@ from modules.config_snapshot import config_to_redacted_sections
 from modules.feed_manager import FeedManager
 from modules.repeater_manager import RepeaterManager
 from modules.url_shortener import _coerce_url_string
-from modules.utils import calculate_distance, resolve_path
+from modules.utils import resolve_path
 from modules.web_viewer.config_panels import CONFIG_PANELS, PANEL_CATEGORIES
 from modules.web_viewer.integration import normalized_web_viewer_password
 
@@ -444,6 +464,105 @@ class BotDataViewer:
         finally:
             conn.close()
 
+    def _derive_multibyte_evidence_edges(
+        self, days: int | None = None, min_observations: int | None = None
+    ) -> list[dict[str, Any]]:
+        """Derive mesh edges purely from multi-byte path evidence.
+
+        Splits each observed_paths row with bytes_per_hop >= 2 into consecutive
+        hop pairs and aggregates per directed pair. Unlike mesh_connections, this
+        never mixes in single-byte observations, so edge identity is unambiguous
+        (up to 2/3-byte prefix collisions, which are rare).
+
+        Edges observed at 2-byte resolution are coalesced into a 3-byte edge when
+        exactly one 3-byte edge prefix-matches both endpoints — the same
+        unique-match rule MeshGraph.add_edge applies at write time.
+
+        Returns edge dicts matching the /api/mesh/edges schema, plus:
+          path_count — number of distinct observed paths crossing the edge
+          evidence   — always 'multibyte'
+        """
+        query = '''
+            SELECT path_hex, bytes_per_hop, observation_count, first_seen, last_seen
+            FROM observed_paths
+            WHERE bytes_per_hop >= 2
+        '''
+        params: list[Any] = []
+        if days is not None:
+            query += ' AND last_seen >= datetime("now", "-" || ? || " days")'
+            params.append(days)
+
+        with self._with_db_connection() as conn:
+            rows = conn.execute(query, params).fetchall()
+
+        edges: dict[tuple[str, str], dict[str, Any]] = {}
+        for row in rows:
+            step = (row['bytes_per_hop'] or 0) * 2
+            path_hex = (row['path_hex'] or '').lower()
+            if step < 4 or not path_hex or len(path_hex) % step != 0:
+                continue
+            hops = [path_hex[i:i + step] for i in range(0, len(path_hex), step)]
+            obs = row['observation_count'] or 1
+            for i in range(len(hops) - 1):
+                key = (hops[i], hops[i + 1])
+                agg = edges.get(key)
+                if agg is None:
+                    edges[key] = agg = {
+                        'observation_count': 0,
+                        'path_count': 0,
+                        'first_seen': row['first_seen'],
+                        'last_seen': row['last_seen'],
+                        'hop_position_sum': 0.0,
+                    }
+                agg['observation_count'] += obs
+                agg['path_count'] += 1
+                if row['first_seen'] and (agg['first_seen'] is None or row['first_seen'] < agg['first_seen']):
+                    agg['first_seen'] = row['first_seen']
+                if row['last_seen'] and (agg['last_seen'] is None or row['last_seen'] > agg['last_seen']):
+                    agg['last_seen'] = row['last_seen']
+                # hop_position is the 1-based index of the receiving hop (matches
+                # graph_trace_helper semantics); weighted by observation count.
+                agg['hop_position_sum'] += (i + 1) * obs
+
+        # Coalesce 2-byte edges into a 3-byte edge when exactly one matches.
+        # (Hops within a path share one resolution, so keys are homogeneous.)
+        by_truncated_key: dict[tuple[str, str], list[tuple[str, str]]] = {}
+        for key in edges:
+            if len(key[0]) == 6:
+                by_truncated_key.setdefault((key[0][:4], key[1][:4]), []).append(key)
+        for key in [k for k in edges if len(k[0]) == 4]:
+            candidates = by_truncated_key.get(key, [])
+            if len(candidates) == 1:
+                target = edges[candidates[0]]
+                source = edges.pop(key)
+                target['observation_count'] += source['observation_count']
+                target['path_count'] += source['path_count']
+                target['hop_position_sum'] += source['hop_position_sum']
+                if source['first_seen'] and (target['first_seen'] is None or source['first_seen'] < target['first_seen']):
+                    target['first_seen'] = source['first_seen']
+                if source['last_seen'] and (target['last_seen'] is None or source['last_seen'] > target['last_seen']):
+                    target['last_seen'] = source['last_seen']
+
+        result = []
+        for (from_prefix, to_prefix), agg in edges.items():
+            if min_observations is not None and agg['observation_count'] < min_observations:
+                continue
+            result.append({
+                'from_prefix': from_prefix,
+                'to_prefix': to_prefix,
+                'from_public_key': None,
+                'to_public_key': None,
+                'observation_count': agg['observation_count'],
+                'path_count': agg['path_count'],
+                'first_seen': agg['first_seen'],
+                'last_seen': agg['last_seen'],
+                'avg_hop_position': agg['hop_position_sum'] / agg['observation_count'],
+                'geographic_distance': None,
+                'evidence': 'multibyte',
+            })
+        result.sort(key=lambda e: e['last_seen'] or '', reverse=True)
+        return result
+
     def _resolve_path(self, path_input: str) -> dict[str, Any]:
         """Resolve a hex path to repeater names/locations for the mesh map.
 
@@ -542,6 +661,7 @@ class BotDataViewer:
                 "style-src 'self' 'unsafe-inline' "
                 "https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; "
                 "img-src 'self' data: https://*.tile.openstreetmap.org "
+                "https://*.basemaps.cartocdn.com "
                 "https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
                 "connect-src 'self' ws: wss: "
                 "https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; "
@@ -637,8 +757,28 @@ class BotDataViewer:
 
         @self.app.route('/radio')
         def radio():
-            """Radio settings page"""
-            return render_template('radio.html')
+            """Radio settings page.
+
+            Passes config-governance flags so the Node Settings card doesn't
+            offer device settings the bot itself manages from config.ini.
+            """
+            auto_manage = 'false'
+            bot_name = ''
+            name_managed = False
+            if self.config:
+                auto_manage = self.config.get('Bot', 'auto_manage_contacts', fallback='false').lower()
+                bot_name = (self.config.get('Bot', 'bot_name', fallback='') or '').strip()
+                try:
+                    auto_update_name = self.config.getboolean('Bot', 'auto_update_device_name', fallback=True)
+                except ValueError:
+                    auto_update_name = True
+                name_managed = bool(bot_name) and auto_update_name
+            return render_template(
+                'radio.html',
+                auto_manage_contacts=auto_manage,
+                device_name_managed=name_managed,
+                bot_name=bot_name,
+            )
 
         @self.app.route('/config')
         def config_page():
@@ -648,6 +788,207 @@ class BotDataViewer:
                 config_panels=sorted(CONFIG_PANELS, key=lambda panel: panel['order']),
                 panel_categories=PANEL_CATEGORIES,
             )
+
+        # ── Plugins settings panel ───────────────────────────────────────────
+
+        @self.app.route('/plugins')
+        def plugins_page():
+            """Plugin & command settings page."""
+            return render_template('plugins.html')
+
+        @self.app.route('/api/plugins')
+        def api_plugins_get():
+            """Return the settings view for every discovered command/service."""
+            try:
+                # Re-read config from disk so the UI reflects external edits.
+                self.config = self._load_config(self.config_path)
+                view = build_plugin_settings_view(self.config, logger=self.logger)
+                return jsonify({'plugins': view})
+            except Exception:
+                self.logger.exception("Error building plugin settings view")
+                return jsonify({'error': 'Internal error — see server logs'}), 500
+
+        @self.app.route('/api/plugins/<kind>/<name>', methods=['POST'])
+        def api_plugins_save(kind: str, name: str):
+            """Validate and persist one plugin's settings, then queue a reload.
+
+            Body: ``{"section": str, "enabled": bool, "values": {key: raw}}``.
+            Validation mirrors the plugin's ``settings_schema`` server-side.
+            """
+            try:
+                data = request.get_json(silent=True) or {}
+                # Locate the plugin entry so we have its schema + section.
+                self.config = self._load_config(self.config_path)
+                view = build_plugin_settings_view(self.config, logger=self.logger)
+                entry = next(
+                    (e for e in view if e['kind'] == kind and e['name'] == name),
+                    None,
+                )
+                if entry is None:
+                    return jsonify({'success': False, 'error': 'Unknown plugin'}), 404
+
+                section = entry['section']
+                schema_by_key = {f['key']: f for f in entry['fields']}
+                raw_values = data.get('values', {}) or {}
+
+                errors: dict[str, str] = {}
+                # Schema-typed keys are validated and routed to their (possibly
+                # shared) target section; any other submitted key is written raw to
+                # the plugin's own section (covers dynamic/legacy keys not in the
+                # schema, so a partial schema never hides remaining settings).
+                updates: dict[str, dict[str, str]] = {section: {}}
+                deletes: dict[str, list[str]] = {}
+                for key, val in raw_values.items():
+                    field = schema_by_key.get(key)
+                    if field is not None:
+                        ok, coerced, err = validate_field(field, val)
+                        if not ok:
+                            errors[key] = err
+                        else:
+                            tsec = field.get('section') or section
+                            updates.setdefault(tsec, {})[key] = to_config_string(field, coerced)
+                    else:
+                        updates[section][str(key)] = '' if val is None else str(val)
+
+                if errors:
+                    return jsonify({'success': False, 'errors': errors}), 400
+
+                # The enable toggle is always written to the plugin's own section.
+                enabled = bool(data.get('enabled', entry['enabled']))
+                updates[section]['enabled'] = 'true' if enabled else 'false'
+                submitted_dyn = data.get('dynamic_sections', {}) or {}
+                for ds in entry.get('dynamic_sections', []):
+                    dsec = ds['section']
+                    prefix = ds.get('key_prefix', '') or ''
+                    if dsec not in submitted_dyn:
+                        # Payload didn't include this editor's rows (partial or
+                        # scripted save) — leave the managed keys untouched
+                        # rather than treating absence as "delete everything".
+                        continue
+                    rows = submitted_dyn.get(dsec) or []
+                    new_full: dict[str, str] = {}
+                    seen_full: set[str] = set()
+                    seen_disp: set[str] = set()
+                    for row in rows:
+                        rkey = (str(row.get('key', '')) or '').strip()
+                        rval = row.get('value', '')
+                        rval = '' if rval is None else str(rval)
+                        if not rkey:
+                            continue  # skip blank rows
+                        key_err = _validate_dynamic_key(rkey)
+                        if key_err:
+                            return jsonify({'success': False, 'error': key_err}), 400
+                        if rkey.lower() in seen_disp:
+                            return jsonify({'success': False,
+                                            'error': f'Duplicate key "{rkey}" in {ds["label"]}'}), 400
+                        seen_disp.add(rkey.lower())
+                        full = f"{prefix}{rkey}"
+                        new_full[full] = rval
+                        seen_full.add(full.lower())
+                    # Merge into the target section (own section keeps schema fields).
+                    updates.setdefault(dsec, {}).update(new_full)
+                    # Delete existing managed keys that are no longer present.
+                    existing = self.config.items(dsec, raw=True) if self.config.has_section(dsec) else []
+                    pl = prefix.lower()
+                    del_keys = [
+                        k for k, _ in existing
+                        if (not prefix or k.lower().startswith(pl)) and k.lower() not in seen_full
+                    ]
+                    deletes.setdefault(dsec, []).extend(del_keys)
+
+                # Repeating structured blocks (e.g. PacketCapture mqttN_*). Blocks
+                # are renumbered contiguously from 1 (the service stops scanning at
+                # the first missing index), validated per sub-schema, and unknown
+                # sub-keys are passed through so they survive the save.
+                submitted_blocks = data.get('repeating_blocks', {}) or {}
+                for rb in entry.get('repeating_blocks', []):
+                    bid = rb['id']
+                    if bid not in submitted_blocks:
+                        # Same defensive rule as dynamic sections: absent from
+                        # the payload means "don't touch", not "delete all".
+                        continue
+                    enabled_field = rb['enabled_field']
+                    field_by_key = {f['key']: f for f in rb['fields']}
+                    written: set[str] = set()
+                    for i, block in enumerate(submitted_blocks.get(bid) or [], start=1):
+                        bvals = block.get('values', {}) or {}
+                        for k, val in bvals.items():
+                            full = f"{bid}{i}_{k}"
+                            field = field_by_key.get(k)
+                            if field is not None:
+                                ok, coerced, err = validate_field(field, val)
+                                if not ok:
+                                    return jsonify({'success': False,
+                                                    'error': f'{rb["label"]} #{i}: {err}'}), 400
+                                updates[section][full] = to_config_string(field, coerced)
+                            else:
+                                updates[section][full] = '' if val is None else str(val)
+                            written.add(full.lower())
+                        en = f"{bid}{i}_{enabled_field}"
+                        updates[section][en] = 'true' if block.get('enabled', True) else 'false'
+                        written.add(en.lower())
+                    # Delete any existing block keys (old higher indices / removed).
+                    brx = re.compile(rf"^{re.escape(bid)}\d+_", re.IGNORECASE)
+                    existing = self.config.items(section, raw=True) if self.config.has_section(section) else []
+                    for k, _ in existing:
+                        if brx.match(k) and k.lower() not in written:
+                            deletes.setdefault(section, []).append(k)
+
+                store = get_settings_store(self.config, self.config_path, self.db_manager)
+                result = store.write_sections(updates, deletes)
+                backup_path = result.get('backup_path', '') if isinstance(result, dict) else ''
+
+                # A service's start/stop only takes effect on bot restart.
+                restart_required = (kind == 'service' and enabled != entry['enabled'])
+
+                # Queue a hot reload via the channel_operations table (the bot's
+                # scheduler polls this — same pattern as radio reconnect).
+                reload_queued = False
+                try:
+                    with self.db_manager.connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute(
+                            "INSERT INTO channel_operations (operation_type, status) "
+                            "VALUES ('config_reload', 'pending')"
+                        )
+                        conn.commit()
+                    reload_queued = True
+                except Exception:
+                    self.logger.exception("Failed to queue config reload")
+
+                self.logger.info(
+                    "Plugin settings saved: %s [%s] (backup=%s)",
+                    name, section, os.path.basename(backup_path) if backup_path else 'none',
+                )
+                return jsonify({
+                    'success': True,
+                    'backup_path': backup_path,
+                    'reload_queued': reload_queued,
+                    'restart_required': restart_required,
+                })
+            except Exception:
+                self.logger.exception("Error saving plugin settings")
+                return jsonify({'success': False, 'error': 'Internal error — see server logs'}), 500
+
+        @self.app.route('/api/plugins/reload-status')
+        def api_plugins_reload_status():
+            """Return the status of the most recent config_reload operation."""
+            try:
+                rows = self.db_manager.execute_query(
+                    "SELECT status, result_data, processed_at FROM channel_operations "
+                    "WHERE operation_type = 'config_reload' ORDER BY id DESC LIMIT 1"
+                )
+                if not rows:
+                    return jsonify({'status': None})
+                row = rows[0]
+                return jsonify({
+                    'status': row.get('status'),
+                    'result_data': row.get('result_data'),
+                    'processed_at': row.get('processed_at'),
+                })
+            except Exception:
+                self.logger.exception("Error reading reload status")
+                return jsonify({'status': None}), 500
 
         @self.app.route('/api/config/notifications')
         def api_config_notifications_get():
@@ -901,15 +1242,17 @@ class BotDataViewer:
                 try:
                     if not self.config.has_section('Connection'):
                         self.config.add_section('Connection')
+                    ini_updates: dict[str, str] = {}
                     if 'alert_enabled' in data:
-                        self.config.set(
-                            'Connection', 'radio_zombie_alert_enabled',
-                            'true' if str(data['alert_enabled']).lower() == 'true' else 'false',
-                        )
+                        val = 'true' if str(data['alert_enabled']).lower() == 'true' else 'false'
+                        self.config.set('Connection', 'radio_zombie_alert_enabled', val)
+                        ini_updates['radio_zombie_alert_enabled'] = val
                     if 'alert_email' in data:
-                        self.config.set('Connection', 'radio_zombie_alert_email', str(data['alert_email']))
-                    with open(self.config_path, 'w') as fh:
-                        self.config.write(fh)
+                        val = str(data['alert_email'])
+                        self.config.set('Connection', 'radio_zombie_alert_email', val)
+                        ini_updates['radio_zombie_alert_email'] = val
+                    if ini_updates:
+                        update_ini_values(self.config_path, {'Connection': ini_updates})
                     config_saved = True
                     self.logger.info("Zombie alert settings written to config.ini")
                 except OSError as exc:
@@ -989,12 +1332,12 @@ class BotDataViewer:
                     try:
                         if not self.config.has_section('Connection'):
                             self.config.add_section('Connection')
-                        self.config.set('Connection', 'radio_debug', 'true' if enabled else 'false')
-                        with open(self.config_path, 'w') as fh:
-                            self.config.write(fh)
+                        val = 'true' if enabled else 'false'
+                        self.config.set('Connection', 'radio_debug', val)
+                        update_ini_values(self.config_path, {'Connection': {'radio_debug': val}})
                         config_saved = True
                         self.logger.info(
-                            "radio_debug=%s written to config.ini by web UI", 'true' if enabled else 'false'
+                            "radio_debug=%s written to config.ini by web UI", val
                         )
                     except OSError as exc:
                         self.logger.error("Failed to write radio_debug to config.ini: %s", exc)
@@ -1063,8 +1406,10 @@ class BotDataViewer:
                     try:
                         self.config.set('Connection', 'radio_probe_interval_seconds', str(probe_interval))
                         self.config.set('Connection', 'radio_probe_fail_threshold', str(probe_fail_threshold))
-                        with open(self.config_path, 'w') as f:
-                            self.config.write(f)
+                        update_ini_values(self.config_path, {'Connection': {
+                            'radio_probe_interval_seconds': str(probe_interval),
+                            'radio_probe_fail_threshold': str(probe_fail_threshold),
+                        }})
                         config_saved = True
                         self.logger.info("Radio probe settings written to config.ini")
                     except Exception as exc:
@@ -1120,11 +1465,15 @@ class BotDataViewer:
                 config_saved = False
                 if data.get('save_to_config', False):
                     try:
+                        enabled_val = 'true' if alert_enabled else 'false'
                         self.config.set('Connection', 'radio_offline_threshold', str(offline_threshold))
-                        self.config.set('Connection', 'radio_offline_alert_enabled', 'true' if alert_enabled else 'false')
+                        self.config.set('Connection', 'radio_offline_alert_enabled', enabled_val)
                         self.config.set('Connection', 'radio_offline_alert_email', alert_email)
-                        with open(self.config_path, 'w') as f:
-                            self.config.write(f)
+                        update_ini_values(self.config_path, {'Connection': {
+                            'radio_offline_threshold': str(offline_threshold),
+                            'radio_offline_alert_enabled': enabled_val,
+                            'radio_offline_alert_email': alert_email,
+                        }})
                         config_saved = True
                         self.logger.info("Radio offline alert settings written to config.ini")
                     except Exception as exc:
@@ -1769,7 +2118,12 @@ class BotDataViewer:
 
         @self.app.route('/api/mesh/edges')
         def api_mesh_edges():
-            """Get all graph edges with metadata"""
+            """Get all graph edges with metadata.
+
+            evidence=multibyte derives edges purely from unique multi-byte path
+            observations (observed_paths, bytes_per_hop >= 2), bypassing the
+            mesh_connections merge heuristics that single-byte evidence feeds into.
+            """
             conn = None
             try:
                 # Get optional query parameters
@@ -1777,6 +2131,20 @@ class BotDataViewer:
                 days = request.args.get('days', type=int)
                 min_distance = request.args.get('min_distance', type=float)
                 max_distance = request.args.get('max_distance', type=float)
+                evidence = request.args.get('evidence', 'all')
+
+                if evidence == 'multibyte':
+                    edges = self._derive_multibyte_evidence_edges(
+                        days=days, min_observations=min_observations
+                    )
+                    prefix_hex_chars = max(
+                        (len(e['from_prefix']) for e in edges), default=2
+                    )
+                    return jsonify({
+                        'edges': edges,
+                        'prefix_hex_chars': max(2, prefix_hex_chars),
+                        'evidence': 'multibyte',
+                    })
 
                 conn = self._get_db_connection()
                 cursor = conn.cursor()
@@ -1823,6 +2191,10 @@ class BotDataViewer:
                 for row in rows:
                     fp, tp = row['from_prefix'], row['to_prefix']
                     prefix_hex_chars = max(prefix_hex_chars, len(fp) if fp else 0, len(tp) if tp else 0)
+                    # Edges keyed at 4+ hex chars were necessarily created (or promoted)
+                    # by a multi-byte path observation; 2-char keys carry only ambiguous
+                    # single-byte evidence.
+                    is_multibyte = bool(fp) and bool(tp) and len(fp) >= 4 and len(tp) >= 4
                     edges.append({
                         'from_prefix': fp.lower() if fp else '',
                         'to_prefix': tp.lower() if tp else '',
@@ -1832,7 +2204,8 @@ class BotDataViewer:
                         'first_seen': row['first_seen'],
                         'last_seen': row['last_seen'],
                         'avg_hop_position': row['avg_hop_position'],
-                        'geographic_distance': row['geographic_distance']
+                        'geographic_distance': row['geographic_distance'],
+                        'evidence': 'multibyte' if is_multibyte else 'singlebyte'
                     })
 
                 return jsonify({'edges': edges, 'prefix_hex_chars': prefix_hex_chars or 2})
@@ -1874,7 +2247,8 @@ class BotDataViewer:
                         MAX(geographic_distance) as max_distance,
                         COUNT(CASE WHEN from_public_key IS NOT NULL THEN 1 END) as edges_with_from_key,
                         COUNT(CASE WHEN to_public_key IS NOT NULL THEN 1 END) as edges_with_to_key,
-                        COUNT(CASE WHEN from_public_key IS NOT NULL AND to_public_key IS NOT NULL THEN 1 END) as edges_with_both_keys
+                        COUNT(CASE WHEN from_public_key IS NOT NULL AND to_public_key IS NOT NULL THEN 1 END) as edges_with_both_keys,
+                        COUNT(CASE WHEN LENGTH(from_prefix) >= 4 AND LENGTH(to_prefix) >= 4 THEN 1 END) as multibyte_edges
                     FROM mesh_connections
                 ''')
                 edge_stats = cursor.fetchone()
@@ -1920,9 +2294,17 @@ class BotDataViewer:
                     'edges_with_from_key': edge_stats['edges_with_from_key'] or 0,
                     'edges_with_to_key': edge_stats['edges_with_to_key'] or 0,
                     'edges_with_both_keys': edge_stats['edges_with_both_keys'] or 0,
+                    'multibyte_edges': edge_stats['multibyte_edges'] or 0,
                     'top_connected': [{'prefix': prefix, 'count': count} for prefix, count in top_connected],
                     'recent_edges_24h': recent_edges
                 }
+
+                # Bot's own position (config [Bot] bot_latitude/bot_longitude), used by
+                # the mesh page to frame the initial map view on the home mesh
+                bot_lat = self.config.getfloat('Bot', 'bot_latitude', fallback=None)
+                bot_lon = self.config.getfloat('Bot', 'bot_longitude', fallback=None)
+                if bot_lat is not None and bot_lon is not None:
+                    stats['bot_location'] = {'latitude': bot_lat, 'longitude': bot_lon}
 
                 return jsonify(stats)
             except Exception as e:
@@ -3169,7 +3551,7 @@ class BotDataViewer:
 
         @self.app.route('/api/radio/firmware/config/read', methods=['POST'])
         def api_firmware_config_read():
-            """Queue a firmware config read (path.hash.mode + custom vars). Poll /api/channel-operations/<id>."""
+            """Queue a firmware config read (path hash mode). Poll /api/channel-operations/<id>."""
             try:
                 with self.db_manager.connection() as conn:
                     cursor = conn.cursor()
@@ -3185,14 +3567,19 @@ class BotDataViewer:
 
         @self.app.route('/api/radio/firmware/config/write', methods=['POST'])
         def api_firmware_config_write():
-            """Queue a firmware config write. Body: {path_hash_mode?: int, loop_detect?: str}.
+            """Queue a firmware config write. Body: {path_hash_mode: int}.
             Poll /api/channel-operations/<id> for result."""
             try:
                 data = request.get_json(silent=True) or {}
-                allowed = {'path_hash_mode', 'loop_detect'}
+                allowed = {'path_hash_mode'}
                 payload = {k: v for k, v in data.items() if k in allowed}
                 if not payload:
-                    return jsonify({'error': 'No valid fields provided (path_hash_mode, loop_detect)'}), 400
+                    return jsonify({'error': 'No valid fields provided (path_hash_mode)'}), 400
+                if 'path_hash_mode' in payload:
+                    mode = int(payload['path_hash_mode'])
+                    if not (0 <= mode <= 2):
+                        return jsonify({'error': 'path_hash_mode must be 0-2 (bytes per hop = mode + 1)'}), 400
+                    payload['path_hash_mode'] = mode
                 with self.db_manager.connection() as conn:
                     cursor = conn.cursor()
                     cursor.execute(
@@ -3224,14 +3611,24 @@ class BotDataViewer:
 
         @self.app.route('/api/radio/params', methods=['POST'])
         def api_radio_params_write():
-            """Queue a radio parameter write. Body: {freq, bw, sf, cr, tx_power}.
+            """Queue a radio/node parameter write. Body may mix: freq/bw/sf/cr
+            (together), tx_power, name, lat/lon (together), adv_loc_policy,
+            multi_acks, telemetry_mode_base/loc/env, and rx_delay/airtime_factor
+            (together). manual_add_contacts is deliberately not writable here —
+            it is owned by [Bot] auto_manage_contacts in config.ini.
             Poll /api/channel-operations/<id> for result."""
             try:
                 data = request.get_json(silent=True) or {}
-                allowed = {'freq', 'bw', 'sf', 'cr', 'tx_power'}
+                allowed = {
+                    'freq', 'bw', 'sf', 'cr', 'tx_power',
+                    'name', 'lat', 'lon', 'adv_loc_policy',
+                    'multi_acks',
+                    'telemetry_mode_base', 'telemetry_mode_loc', 'telemetry_mode_env',
+                    'rx_delay', 'airtime_factor',
+                }
                 payload = {k: v for k, v in data.items() if k in allowed}
                 if not payload:
-                    return jsonify({'error': 'No valid fields (freq, bw, sf, cr, tx_power)'}), 400
+                    return jsonify({'error': f"No valid fields (expected one of: {', '.join(sorted(allowed))})"}), 400
 
                 if 'freq' in payload:
                     freq = float(payload['freq'])
@@ -3258,6 +3655,49 @@ class BotDataViewer:
                     if not (1 <= tx <= 30):
                         return jsonify({'error': 'tx_power must be 1–30 dBm'}), 400
                     payload['tx_power'] = tx
+                if 'name' in payload:
+                    name = str(payload['name']).strip()
+                    if not name or len(name.encode('utf-8')) > 32:
+                        return jsonify({'error': 'name must be 1–32 bytes'}), 400
+                    payload['name'] = name
+                if ('lat' in payload) != ('lon' in payload):
+                    return jsonify({'error': 'lat and lon must be provided together'}), 400
+                if 'lat' in payload:
+                    lat = float(payload['lat'])
+                    lon = float(payload['lon'])
+                    if not (-90.0 <= lat <= 90.0):
+                        return jsonify({'error': 'lat must be -90 to 90'}), 400
+                    if not (-180.0 <= lon <= 180.0):
+                        return jsonify({'error': 'lon must be -180 to 180'}), 400
+                    payload['lat'] = lat
+                    payload['lon'] = lon
+                if 'adv_loc_policy' in payload:
+                    policy = int(payload['adv_loc_policy'])
+                    if policy not in (0, 1):
+                        return jsonify({'error': 'adv_loc_policy must be 0 (private) or 1 (share)'}), 400
+                    payload['adv_loc_policy'] = policy
+                if 'multi_acks' in payload:
+                    acks = int(payload['multi_acks'])
+                    if not (0 <= acks <= 3):
+                        return jsonify({'error': 'multi_acks must be 0–3'}), 400
+                    payload['multi_acks'] = acks
+                for telem_key in ('telemetry_mode_base', 'telemetry_mode_loc', 'telemetry_mode_env'):
+                    if telem_key in payload:
+                        mode = int(payload[telem_key])
+                        if not (0 <= mode <= 2):
+                            return jsonify({'error': f'{telem_key} must be 0 (deny), 1 (per-contact), or 2 (allow all)'}), 400
+                        payload[telem_key] = mode
+                if ('rx_delay' in payload) != ('airtime_factor' in payload):
+                    return jsonify({'error': 'rx_delay and airtime_factor must be provided together'}), 400
+                if 'rx_delay' in payload:
+                    rx_delay = float(payload['rx_delay'])
+                    airtime_factor = float(payload['airtime_factor'])
+                    if not (0.0 <= rx_delay <= 20.0):
+                        return jsonify({'error': 'rx_delay must be 0–20 seconds'}), 400
+                    if not (0.0 <= airtime_factor <= 9.0):
+                        return jsonify({'error': 'airtime_factor must be 0–9'}), 400
+                    payload['rx_delay'] = rx_delay
+                    payload['airtime_factor'] = airtime_factor
 
                 radio_fields = {'freq', 'bw', 'sf', 'cr'}
                 if radio_fields & set(payload) and not radio_fields <= set(payload):
@@ -3274,6 +3714,28 @@ class BotDataViewer:
                 return jsonify({'success': True, 'operation_id': op_id})
             except Exception as e:
                 self.logger.error(f"Error queuing radio params write: {e}")
+                return jsonify({'error': str(e)}), 500
+
+        @self.app.route('/api/radio/advert', methods=['POST'])
+        def api_radio_advert():
+            """Queue a self-advertisement. Body: {flood: bool} (default false =
+            zero-hop). Poll /api/channel-operations/<id> for result."""
+            try:
+                data = request.get_json(silent=True) or {}
+                flood = data.get('flood', False)
+                if not isinstance(flood, bool):
+                    return jsonify({'error': 'flood must be true or false'}), 400
+                with self.db_manager.connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "INSERT INTO channel_operations (operation_type, payload_data, status) VALUES ('radio_advert', ?, 'pending')",
+                        (json.dumps({'flood': flood}),)
+                    )
+                    conn.commit()
+                    op_id = cursor.lastrowid
+                return jsonify({'success': True, 'operation_id': op_id})
+            except Exception as e:
+                self.logger.error(f"Error queuing radio advert: {e}")
                 return jsonify({'error': str(e)}), 500
 
     def _setup_socketio_handlers(self):

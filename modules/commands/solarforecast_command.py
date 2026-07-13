@@ -57,6 +57,18 @@ class SolarforecastCommand(BaseCommand):
     # Cache duration in seconds (30 minutes)
     CACHE_DURATION = 30 * 60
 
+    # Web-viewer settings schema (see modules/settings_schema.py).
+    settings_schema = [
+        {"key": "forecast_solar_api_key", "label": "Forecast.Solar API key", "type": "str",
+         "section": "External_Data", "default": "",
+         "help": "Optional API key for forecast.solar. Free tier (2-day) works without one; "
+                 "a paid key unlocks 3-6 day forecasts."},
+        {"key": "default_state", "label": "Default state", "type": "str", "section": "Weather",
+         "default": "", "help": "2-letter state for city disambiguation (e.g. WA). Shared weather setting."},
+        {"key": "default_country", "label": "Default country", "type": "str", "section": "Weather",
+         "default": "US", "help": "2-letter country code (e.g. US). Shared weather setting."},
+    ]
+
     def __init__(self, bot):
         super().__init__(bot)
         self.solarforecast_enabled = self.get_config_value('Solarforecast_Command', 'enabled', fallback=True, value_type='bool')

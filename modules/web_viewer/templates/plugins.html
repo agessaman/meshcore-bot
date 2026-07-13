@@ -1,0 +1,879 @@
+{% extends "base.html" %}
+
+{% block title %}Plugins - MeshCore Bot{% endblock %}
+
+{% block extra_css %}
+<style>
+    .plugins-toolbar {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        background-color: var(--bg-color, #fff);
+        padding: 0.5rem 0;
+        border-bottom: 1px solid var(--border-color);
+    }
+    [data-theme="dark"] .plugins-toolbar { background-color: var(--bg-color, #1a1a1a); }
+
+    .plugin-card {
+        border: 1px solid var(--border-color);
+        background-color: var(--card-bg);
+        border-left: 3px solid #0d6efd;
+    }
+    [data-theme="dark"] .plugin-card { border-left-color: #6ea8fe; }
+    .plugin-card.disabled { border-left-color: var(--border-color); }
+    .plugin-card.disabled .plugin-title { color: var(--text-muted, #6c757d); }
+
+    /* Compact, clickable header */
+    .plugin-header {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        cursor: pointer;
+        padding: 0.5rem 0.85rem;
+        user-select: none;
+    }
+    .plugin-header .form-switch { cursor: pointer; }
+    .plugin-title { font-weight: 600; }
+    .plugin-headtext { min-width: 0; }                 /* allow truncation */
+    .plugin-desc {
+        color: var(--text-muted, #6c757d);
+        font-size: 0.8rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .plugin-section-label {
+        font-family: var(--bs-font-monospace, monospace);
+        font-size: 0.72rem;
+        color: var(--text-muted, #6c757d);
+        margin-left: 0.4rem;
+    }
+    .plugin-chevron { color: var(--text-muted, #6c757d); transition: transform 0.15s ease; }
+    .plugin-card.expanded .plugin-chevron { transform: rotate(180deg); }
+
+    .plugin-save-status { margin-left: 0.5rem; font-size: 0.85rem; }
+    .plugin-group-heading { margin: 1.25rem 0 0.6rem; }
+    .form-text { font-size: 0.76rem; margin-top: 0.1rem; }
+    .plugin-card .card-body { padding: 0.85rem; }
+    .plugin-card .form-label { margin-bottom: 0.2rem; font-size: 0.85rem; }
+    .restart-note { font-size: 0.78rem; color: #b8860b; }
+    [data-theme="dark"] .restart-note { color: #e0b84d; }
+    .plugin-count-badge { font-size: 0.7rem; }
+    .dynamic-section { border-top: 1px solid var(--border-color); padding-top: 0.75rem; }
+    .dynamic-row .dyn-key { font-family: var(--bs-font-monospace, monospace); }
+    .repeating-section { border-top: 1px solid var(--border-color); padding-top: 0.75rem; }
+    .rb-block { border: 1px solid var(--border-color); background-color: var(--bg-secondary, #f8f9fa); }
+    [data-theme="dark"] .rb-block { background-color: rgba(255,255,255,0.03); }
+    .rb-block .card-header { background-color: transparent; }
+    .field-group > summary {
+        cursor: pointer;
+        padding: 0.35rem 0;
+        border-top: 1px dashed var(--border-color);
+        list-style-position: inside;
+    }
+    .field-group > summary:hover { color: var(--text-color); }
+    .section-badge {
+        font-family: var(--bs-font-monospace, monospace);
+        font-weight: 500;
+        font-size: 0.66rem;
+        color: var(--text-muted, #6c757d);
+        background-color: var(--bg-secondary, #f1f3f5);
+        border: 1px solid var(--border-color);
+        vertical-align: middle;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h1 class="h3 mb-0"><i class="fas fa-puzzle-piece me-2"></i>Plugins</h1>
+        <button class="btn btn-outline-secondary btn-sm" id="plugins-refresh-btn">
+            <i class="fas fa-sync-alt me-1"></i>Refresh
+        </button>
+    </div>
+    <p class="text-muted small mb-2">
+        Toggle commands and services on or off and edit their settings. Changes are
+        written to <code>config.ini</code> (a timestamped backup is taken on each save)
+        and the bot hot-reloads command settings within a few seconds.
+    </p>
+
+    <div class="plugins-toolbar mb-3">
+        <div class="row g-2 align-items-center">
+            <div class="col-12 col-md">
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text"><i class="fas fa-search"></i></span>
+                    <input type="text" class="form-control" id="plugins-filter"
+                           placeholder="Filter by name, section, or description…" autocomplete="off">
+                    <button class="btn btn-outline-secondary" id="plugins-filter-clear" title="Clear">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="col-auto">
+                <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" id="plugins-enabled-only">
+                    <label class="form-check-label small" for="plugins-enabled-only">Enabled only</label>
+                </div>
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-outline-secondary btn-sm" id="plugins-expand-all">
+                    <i class="fas fa-angle-double-down me-1"></i>Expand all
+                </button>
+                <button class="btn btn-outline-secondary btn-sm" id="plugins-collapse-all">
+                    <i class="fas fa-angle-double-up me-1"></i>Collapse all
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="plugins-loading" class="text-center py-5">
+        <div class="spinner-border text-primary" role="status"></div>
+        <div class="mt-2 text-muted">Loading plugins…</div>
+    </div>
+    <div id="plugins-error" class="alert alert-danger d-none"></div>
+    <div id="plugins-empty" class="text-muted fst-italic d-none py-3">No plugins match your filter.</div>
+
+    <div id="commands-group" class="d-none">
+        <h2 class="h5 plugin-group-heading">
+            <i class="fas fa-terminal me-2"></i>Commands
+            <span class="badge bg-secondary plugin-count-badge" id="commands-count"></span>
+        </h2>
+        <div id="commands-list"></div>
+    </div>
+    <div id="services-group" class="d-none">
+        <h2 class="h5 plugin-group-heading">
+            <i class="fas fa-server me-2"></i>Services
+            <span class="badge bg-secondary plugin-count-badge" id="services-count"></span>
+        </h2>
+        <div id="services-list"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+class PluginsManager {
+    constructor() {
+        this.loadingEl = document.getElementById('plugins-loading');
+        this.errorEl = document.getElementById('plugins-error');
+        this.emptyEl = document.getElementById('plugins-empty');
+        this.commandsGroup = document.getElementById('commands-group');
+        this.servicesGroup = document.getElementById('services-group');
+        this.commandsList = document.getElementById('commands-list');
+        this.servicesList = document.getElementById('services-list');
+        this.commandsCount = document.getElementById('commands-count');
+        this.servicesCount = document.getElementById('services-count');
+        this.filterInput = document.getElementById('plugins-filter');
+        this.enabledOnly = document.getElementById('plugins-enabled-only');
+        this.cards = [];  // { el, collapse, kind, enabled, searchText }
+
+        document.getElementById('plugins-refresh-btn').addEventListener('click', () => this.load());
+        document.getElementById('plugins-expand-all').addEventListener('click', () => this.setAll(true));
+        document.getElementById('plugins-collapse-all').addEventListener('click', () => this.setAll(false));
+        document.getElementById('plugins-filter-clear').addEventListener('click', () => {
+            this.filterInput.value = ''; this.applyFilter();
+        });
+        this.filterInput.addEventListener('input', () => this.applyFilter());
+        this.enabledOnly.addEventListener('change', () => this.applyFilter());
+    }
+
+    async load() {
+        this.loadingEl.classList.remove('d-none');
+        this.errorEl.classList.add('d-none');
+        this.commandsList.innerHTML = '';
+        this.servicesList.innerHTML = '';
+        this.cards = [];
+        try {
+            const resp = await fetch('/api/plugins');
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Failed to load plugins');
+            const plugins = data.plugins || [];
+            const commands = plugins.filter(p => p.kind === 'command');
+            const services = plugins.filter(p => p.kind === 'service');
+            commands.forEach(p => this.commandsList.appendChild(this.renderCard(p)));
+            services.forEach(p => this.servicesList.appendChild(this.renderCard(p)));
+            this.commandsCount.textContent = commands.length;
+            this.servicesCount.textContent = services.length;
+            this.commandsGroup.classList.toggle('d-none', commands.length === 0);
+            this.servicesGroup.classList.toggle('d-none', services.length === 0);
+            this.applyFilter();
+        } catch (err) {
+            this.errorEl.textContent = 'Error: ' + err.message;
+            this.errorEl.classList.remove('d-none');
+        } finally {
+            this.loadingEl.classList.add('d-none');
+        }
+    }
+
+    setAll(expand) {
+        this.cards.forEach(c => {
+            // Expand only affects visible cards (don't blow open a filtered list);
+            // collapse clears everything so nothing stays open while hidden.
+            if (expand) {
+                if (c.el.classList.contains('d-none')) return;
+                c.collapse.show(); c.el.classList.add('expanded');
+            } else {
+                c.collapse.hide(); c.el.classList.remove('expanded');
+            }
+        });
+    }
+
+    applyFilter() {
+        const q = this.filterInput.value.trim().toLowerCase();
+        const enabledOnly = this.enabledOnly.checked;
+        let visibleCommands = 0, visibleServices = 0;
+        this.cards.forEach(c => {
+            const matches = (!q || c.searchText.includes(q)) && (!enabledOnly || c.enabled);
+            c.el.classList.toggle('d-none', !matches);
+            if (matches) { c.kind === 'command' ? visibleCommands++ : visibleServices++; }
+        });
+        this.commandsCount.textContent = visibleCommands;
+        this.servicesCount.textContent = visibleServices;
+        this.commandsGroup.classList.toggle('d-none', visibleCommands === 0);
+        this.servicesGroup.classList.toggle('d-none', visibleServices === 0);
+        const nothing = (visibleCommands + visibleServices) === 0 && this.cards.length > 0;
+        this.emptyEl.classList.toggle('d-none', !nothing);
+    }
+
+    // Render a single plugin card (collapsed by default).
+    renderCard(plugin) {
+        const card = document.createElement('section');
+        card.className = 'card mb-2 plugin-card' + (plugin.enabled ? '' : ' disabled');
+
+        const toggleId = `enable-${plugin.kind}-${plugin.name}`;
+        const bodyId = `body-${plugin.kind}-${plugin.name}`;
+
+        const header = document.createElement('div');
+        header.className = 'plugin-header';
+        header.innerHTML = `
+            <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" role="switch" id="${toggleId}" ${plugin.enabled ? 'checked' : ''}>
+            </div>
+            <div class="flex-grow-1 plugin-headtext">
+                <span class="plugin-title">${escapeHtml(plugin.label)}</span>
+                <span class="plugin-section-label">[${escapeHtml(plugin.section)}]</span>
+                <div class="plugin-desc">${escapeHtml(plugin.description || '')}</div>
+            </div>
+            <i class="fas fa-chevron-down plugin-chevron"></i>
+        `;
+        card.appendChild(header);
+
+        const body = document.createElement('div');
+        body.className = 'collapse';
+        body.id = bodyId;
+
+        const inner = document.createElement('div');
+        inner.className = 'card-body border-top';
+
+        const form = document.createElement('form');
+        form.setAttribute('novalidate', '');
+
+        // Inputs keyed by config key, with their schema field for validation.
+        const inputs = [];
+
+        // Field grid: dense responsive columns sized to field type.
+        const grid = document.createElement('div');
+        grid.className = 'row g-2';
+        form.appendChild(grid);
+
+        const addField = (field, value, targetGrid = grid) => {
+            const col = document.createElement('div');
+            col.className = fieldColClass(field);
+            const { wrapper, input } = renderField(field, value);
+            col.appendChild(wrapper);
+            targetGrid.appendChild(col);
+            // Capture the original value so saves only send changed fields
+            // (keeps config.ini minimal and preserves preset-driven defaults).
+            inputs.push({ field, input, original: readInput(field, input) });
+        };
+
+        // Render grouped fields ("group" attr) inside a collapsed <details> so
+        // advanced settings are present but tucked away.
+        const addGroupedFields = (fields) => {
+            const groupNames = [...new Set(fields.map(f => f.group))];
+            groupNames.forEach(gname => {
+                const details = document.createElement('details');
+                details.className = 'col-12 field-group mt-1';
+                const summary = document.createElement('summary');
+                summary.className = 'fw-semibold small text-muted';
+                summary.textContent = gname;
+                details.appendChild(summary);
+                const gGrid = document.createElement('div');
+                gGrid.className = 'row g-2 mt-1';
+                details.appendChild(gGrid);
+                grid.appendChild(details);
+                fields.filter(f => f.group === gname).forEach(field => addField(field, undefined, gGrid));
+            });
+        };
+
+        const schemaKeys = new Set((plugin.fields || []).map(f => f.key));
+        const values = plugin.values || {};
+        // Keys managed by a dynamic editor on this same section (by prefix) are
+        // excluded from the raw "Other config values" list to avoid duplication.
+        const ownPrefixes = (plugin.dynamic_sections || [])
+            .filter(d => d.section === plugin.section && d.key_prefix)
+            .map(d => d.key_prefix.toLowerCase());
+        // Repeating blocks (e.g. mqtt1_*, mqtt2_*) are managed by their own editor.
+        const blockPatterns = (plugin.repeating_blocks || [])
+            .map(rb => new RegExp('^' + rb.id.toLowerCase() + '\\d+_'));
+        const extraKeys = Object.keys(values).filter(k =>
+            !schemaKeys.has(k)
+            && !ownPrefixes.some(p => k.toLowerCase().startsWith(p))
+            && !blockPatterns.some(rx => rx.test(k.toLowerCase())));
+
+        if (plugin.has_schema) {
+            plugin.fields.filter(f => !f.group).forEach(field => addField(field));
+            addGroupedFields(plugin.fields.filter(f => f.group));
+            if (extraKeys.length) {
+                const sub = document.createElement('div');
+                sub.className = 'col-12 text-muted small mt-1';
+                sub.textContent = 'Other config values';
+                grid.appendChild(sub);
+                extraKeys.forEach(key => addField({ key, label: key, type: 'str' }, values[key]));
+            }
+        } else if (extraKeys.length === 0) {
+            // Nothing beyond the on/off toggle in the header.
+            const note = document.createElement('p');
+            note.className = 'text-muted small fst-italic mb-0';
+            note.textContent = 'This command has no additional settings — use the on/off toggle above.';
+            form.insertBefore(note, grid);
+        } else {
+            const note = document.createElement('p');
+            note.className = 'text-muted small mb-2';
+            note.textContent = 'No typed schema for this plugin; editing raw values.';
+            form.insertBefore(note, grid);
+            extraKeys.forEach(key => addField({ key, label: key, type: 'str' }, values[key]));
+        }
+
+        // Dynamic key/value section editors (add/edit/delete rows).
+        const dynamicEditors = [];
+        (plugin.dynamic_sections || []).forEach(ds => {
+            const editor = buildDynamicEditor(ds);
+            form.appendChild(editor.el);
+            dynamicEditors.push(editor);
+        });
+
+        // Repeating structured-block editors (e.g. PacketCapture MQTT brokers).
+        const blockEditors = [];
+        (plugin.repeating_blocks || []).forEach(rb => {
+            const editor = buildRepeatingBlockEditor(rb);
+            form.appendChild(editor.el);
+            blockEditors.push(editor);
+        });
+
+        // Service restart caveat.
+        if (plugin.kind === 'service') {
+            const restart = document.createElement('div');
+            restart.className = 'restart-note mt-3';
+            restart.innerHTML = '<i class="fas fa-info-circle me-1"></i>' +
+                'Turning a service on or off takes effect after the next bot restart. ' +
+                'Setting changes apply on reload.';
+            form.appendChild(restart);
+        }
+
+        const actions = document.createElement('div');
+        actions.className = 'd-flex align-items-center mt-3';
+        const saveBtn = document.createElement('button');
+        saveBtn.type = 'button';
+        saveBtn.className = 'btn btn-primary btn-sm';
+        saveBtn.innerHTML = '<i class="fas fa-save me-1"></i>Save';
+        const status = document.createElement('span');
+        status.className = 'plugin-save-status';
+        actions.appendChild(saveBtn);
+        actions.appendChild(status);
+        form.appendChild(actions);
+
+        inner.appendChild(form);
+        body.appendChild(inner);
+        card.appendChild(body);
+
+        const toggle = header.querySelector('#' + CSS.escape(toggleId));
+        const collapse = new bootstrap.Collapse(body, { toggle: false });
+
+        // Header click expands/collapses; clicking the enable switch must not.
+        header.addEventListener('click', (e) => {
+            if (e.target.closest('.form-switch')) return;
+            const isOpen = card.classList.toggle('expanded');
+            if (isOpen) collapse.show(); else collapse.hide();
+        });
+        // The enable switch only changes enabled state + dim style.
+        toggle.addEventListener('change', () => {
+            card.classList.toggle('disabled', !toggle.checked);
+        });
+
+        saveBtn.addEventListener('click', () =>
+            this.save(plugin, toggle, inputs, saveBtn, status, dynamicEditors, blockEditors));
+
+        const searchText = `${plugin.label} ${plugin.section} ${plugin.description || ''}`.toLowerCase();
+        this.cards.push({ el: card, collapse, kind: plugin.kind, enabled: plugin.enabled, searchText,
+                          setEnabled: (v) => { card.classList.toggle('disabled', !v); } });
+
+        return card;
+    }
+
+    async save(plugin, toggle, inputs, saveBtn, status, dynamicEditors = [], blockEditors = []) {
+        // Validate + collect only fields that changed from their loaded value.
+        const values = {};
+        let firstError = null;
+        let changedCount = 0;
+        inputs.forEach(({ field, input, original }) => {
+            clearInvalid(input);
+            const raw = readInput(field, input);
+            if (String(raw) === String(original)) return;  // unchanged → skip
+            changedCount++;
+            const err = validateClient(field, raw);
+            if (err) {
+                markInvalid(input, err);
+                if (!firstError) firstError = err;
+            }
+            values[field.key] = raw;
+        });
+
+        // Dynamic sections: collect rows, validate keys, detect changes.
+        const dynamicPayload = {};
+        dynamicEditors.forEach(ed => {
+            const rows = ed.getRows();
+            const err = validateDynamicRows(rows);
+            if (err && !firstError) firstError = err;
+            if (JSON.stringify(rows) !== ed.original) changedCount++;
+            dynamicPayload[ed.section] = rows;
+        });
+
+        // Repeating blocks: collect blocks, detect changes.
+        const blocksPayload = {};
+        blockEditors.forEach(ed => {
+            const blocks = ed.getBlocks();
+            if (JSON.stringify(blocks) !== ed.original) changedCount++;
+            blocksPayload[ed.id] = blocks;
+        });
+
+        if (firstError) {
+            this.setStatus(status, firstError, 'danger');
+            return;
+        }
+        const enableChanged = (toggle.checked !== plugin.enabled);
+        if (changedCount === 0 && !enableChanged) {
+            this.setStatus(status, 'No changes to save.', 'muted');
+            return;
+        }
+
+        saveBtn.disabled = true;
+        const original = saveBtn.innerHTML;
+        saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
+        this.setStatus(status, '', '');
+        try {
+            const resp = await fetch(`/api/plugins/${plugin.kind}/${plugin.name}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({
+                    section: plugin.section,
+                    enabled: toggle.checked,
+                    values: values,
+                    dynamic_sections: dynamicPayload,
+                    repeating_blocks: blocksPayload,
+                }),
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                if (data.errors) {
+                    inputs.forEach(({ field, input }) => {
+                        if (data.errors[field.key]) markInvalid(input, data.errors[field.key]);
+                    });
+                    throw new Error('Please fix the highlighted fields');
+                }
+                throw new Error(data.error || 'Save failed');
+            }
+            let msg = 'Saved.';
+            if (data.restart_required) msg += ' Restart the bot to start/stop this service.';
+            else if (data.reload_queued) msg += ' Bot will reload shortly.';
+            this.setStatus(status, msg, 'success');
+            // Keep filter state (enabled-only) accurate.
+            plugin.enabled = toggle.checked;
+            const entry = this.cards.find(c => c.el.contains(saveBtn));
+            if (entry) entry.enabled = toggle.checked;
+            // Reset baselines so an immediate re-save is a no-op.
+            inputs.forEach(io => { io.original = readInput(io.field, io.input); });
+            dynamicEditors.forEach(ed => { ed.original = JSON.stringify(ed.getRows()); });
+            blockEditors.forEach(ed => { ed.original = JSON.stringify(ed.getBlocks()); });
+        } catch (err) {
+            this.setStatus(status, err.message, 'danger');
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = original;
+        }
+    }
+
+    setStatus(el, msg, type) {
+        el.textContent = msg;
+        el.className = 'plugin-save-status' + (type ? ' text-' + type : '');
+        if (type === 'success') {
+            setTimeout(() => { el.textContent = ''; el.className = 'plugin-save-status'; }, 5000);
+        }
+    }
+}
+
+// --- Field rendering & validation helpers -------------------------------
+
+function renderField(field, overrideValue) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'mb-1';
+    const value = overrideValue !== undefined ? overrideValue : field.value;
+
+    let input;
+    if (field.type === 'bool') {
+        // Label on top (like every other field) so the switch lines up with
+        // adjacent inputs when fields share a row.
+        const uid = 'sw-' + Math.random().toString(36).slice(2, 9);
+        const label = document.createElement('label');
+        label.className = 'form-label d-block';
+        label.htmlFor = uid;
+        label.textContent = field.label;
+        if (field.section) label.appendChild(sectionBadge(field.section));
+        wrapper.appendChild(label);
+        const sw = document.createElement('div');
+        sw.className = 'form-check form-switch mb-0';
+        input = document.createElement('input');
+        input.className = 'form-check-input';
+        input.type = 'checkbox';
+        input.role = 'switch';
+        input.id = uid;
+        input.checked = (value === true || value === 'true');
+        sw.appendChild(input);
+        wrapper.appendChild(sw);
+        if (field.help) wrapper.appendChild(helpText(field.help));
+        return { wrapper, input };
+    }
+
+    const label = document.createElement('label');
+    label.className = 'form-label';
+    label.textContent = field.label + (field.required ? ' *' : '');
+    if (field.section) label.appendChild(sectionBadge(field.section));
+    wrapper.appendChild(label);
+
+    if (field.type === 'enum') {
+        input = document.createElement('select');
+        input.className = 'form-select form-select-sm';
+        (field.options || []).forEach(opt => {
+            const o = document.createElement('option');
+            o.value = opt.value;
+            o.textContent = opt.label || opt.value;
+            if (String(value) === String(opt.value)) o.selected = true;
+            input.appendChild(o);
+        });
+        wrapper.appendChild(input);
+    } else if (field.type === 'int' || field.type === 'float') {
+        const group = document.createElement('div');
+        group.className = 'input-group input-group-sm has-validation';
+        input = document.createElement('input');
+        input.className = 'form-control';
+        input.type = 'number';
+        if (field.min !== undefined && field.min !== null) input.min = field.min;
+        if (field.max !== undefined && field.max !== null) input.max = field.max;
+        input.step = field.type === 'float' ? 'any' : '1';
+        input.value = (value !== undefined && value !== null) ? value : '';
+        group.appendChild(input);
+        if (field.unit) {
+            const unit = document.createElement('span');
+            unit.className = 'input-group-text';
+            unit.textContent = field.unit;
+            group.appendChild(unit);
+        }
+        const fb = document.createElement('div');
+        fb.className = 'invalid-feedback';
+        group.appendChild(fb);
+        wrapper.appendChild(group);
+        if (field.help) wrapper.appendChild(helpText(field.help));
+        return { wrapper, input };
+    } else {
+        input = document.createElement('input');
+        input.className = 'form-control form-control-sm';
+        input.type = 'text';
+        if (field.pattern) input.pattern = field.pattern;
+        input.value = (value !== undefined && value !== null)
+            ? (Array.isArray(value) ? value.join(', ') : value) : '';
+        if (field.type === 'list') input.placeholder = 'comma, separated, values';
+        wrapper.appendChild(input);
+    }
+
+    const feedback = document.createElement('div');
+    feedback.className = 'invalid-feedback';
+    wrapper.appendChild(feedback);
+    if (field.help) wrapper.appendChild(helpText(field.help));
+    return { wrapper, input };
+}
+
+function helpText(text) {
+    const el = document.createElement('div');
+    el.className = 'form-text';
+    el.textContent = text;
+    return el;
+}
+
+// Choose a responsive grid width for a field so short controls pack densely.
+// A field may override with "width": sm | md | lg | full.
+function fieldColClass(field) {
+    switch (field.width) {
+        case 'full': return 'col-12';
+        case 'lg':   return 'col-12 col-lg-8';
+        case 'md':   return 'col-12 col-sm-6 col-xl-4';
+        case 'sm':   return 'col-6 col-md-4 col-xl-3';
+    }
+    if (field.type === 'bool') return 'col-12 col-sm-6 col-lg-4';
+    if (field.type === 'int' || field.type === 'float' || field.type === 'enum') {
+        return 'col-6 col-md-4 col-xl-3';
+    }
+    return 'col-12 col-sm-6 col-xl-4';  // str / list — medium
+}
+
+// Badge marking a field that reads/writes a shared section (not the plugin's own).
+function sectionBadge(section) {
+    const b = document.createElement('span');
+    b.className = 'badge section-badge ms-2';
+    b.title = 'Shared setting in [' + section + '] — changing it affects all commands that use it';
+    b.textContent = '[' + section + ']';
+    return b;
+}
+
+// --- Dynamic key/value section editor (add/edit/delete rows) -------------
+
+function buildDynamicEditor(ds) {
+    const el = document.createElement('div');
+    el.className = 'dynamic-section mt-3';
+
+    const head = document.createElement('div');
+    head.innerHTML = `<div class="fw-semibold small mb-1">${escapeHtml(ds.label)}</div>`;
+    if (ds.help) head.appendChild(helpText(ds.help));
+    el.appendChild(head);
+
+    // Column headers
+    const colhead = document.createElement('div');
+    colhead.className = 'row g-2 text-muted small mt-1 d-none d-md-flex';
+    colhead.innerHTML =
+        `<div class="col-md-5">${escapeHtml(ds.key_label)}</div>` +
+        `<div class="col-md-6">${escapeHtml(ds.value_label)}</div>`;
+    el.appendChild(colhead);
+
+    const rowsContainer = document.createElement('div');
+    rowsContainer.className = 'dynamic-rows';
+    el.appendChild(rowsContainer);
+
+    const addRow = (key = '', value = '') => {
+        const row = document.createElement('div');
+        row.className = 'row g-2 align-items-center mb-1 dynamic-row';
+        const kc = document.createElement('div'); kc.className = 'col-12 col-md-5';
+        const ki = document.createElement('input');
+        ki.type = 'text'; ki.className = 'form-control form-control-sm dyn-key';
+        ki.placeholder = ds.key_placeholder || ''; ki.value = key;
+        kc.appendChild(ki);
+        const vc = document.createElement('div'); vc.className = 'col-10 col-md-6';
+        const vi = document.createElement('input');
+        vi.type = 'text'; vi.className = 'form-control form-control-sm dyn-value';
+        vi.placeholder = ds.value_placeholder || ''; vi.value = value;
+        vc.appendChild(vi);
+        const bc = document.createElement('div'); bc.className = 'col-2 col-md-1 text-end';
+        const rm = document.createElement('button');
+        rm.type = 'button'; rm.className = 'btn btn-outline-danger btn-sm';
+        rm.title = 'Remove'; rm.innerHTML = '<i class="fas fa-trash"></i>';
+        rm.addEventListener('click', () => row.remove());
+        bc.appendChild(rm);
+        row.appendChild(kc); row.appendChild(vc); row.appendChild(bc);
+        rowsContainer.appendChild(row);
+        return row;
+    };
+
+    (ds.items || []).forEach(it => addRow(it.key, it.value));
+
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'btn btn-outline-secondary btn-sm mt-1';
+    addBtn.innerHTML = '<i class="fas fa-plus me-1"></i>Add';
+    addBtn.addEventListener('click', () => {
+        const row = addRow('', '');
+        row.querySelector('.dyn-key').focus();
+    });
+    el.appendChild(addBtn);
+
+    const getRows = () => {
+        const out = [];
+        rowsContainer.querySelectorAll('.dynamic-row').forEach(r => {
+            const key = r.querySelector('.dyn-key').value.trim();
+            const value = r.querySelector('.dyn-value').value;
+            if (key === '' && value.trim() === '') return;  // skip blank rows
+            out.push({ key, value });
+        });
+        return out;
+    };
+
+    // Snapshot via getRows() so change-detection matches the save serialization.
+    return { section: ds.section, el, getRows, original: JSON.stringify(getRows()) };
+}
+
+function validateDynamicRows(rows) {
+    const seen = new Set();
+    for (const { key } of rows) {
+        if (key === '') return 'A list row is missing its key';
+        if (/[=:\[\]\n\r]/.test(key)) return `Invalid key "${key}": cannot contain = : [ ] or newlines`;
+        if (key[0] === '#' || key[0] === ';') return `Invalid key "${key}": cannot start with # or ;`;
+        if (seen.has(key.toLowerCase())) return `Duplicate key "${key}"`;
+        seen.add(key.toLowerCase());
+    }
+    return null;
+}
+
+// --- Repeating structured-block editor (add/remove numbered blocks) ------
+
+function buildRepeatingBlockEditor(rb) {
+    const el = document.createElement('div');
+    el.className = 'repeating-section mt-3';
+    const head = document.createElement('div');
+    head.innerHTML = `<div class="fw-semibold small mb-1">${escapeHtml(rb.label)}</div>`;
+    if (rb.help) head.appendChild(helpText(rb.help));
+    el.appendChild(head);
+
+    const blocksContainer = document.createElement('div');
+    el.appendChild(blocksContainer);
+    const schemaKeys = new Set(rb.fields.map(f => f.key));
+
+    const renumber = () => {
+        blocksContainer.querySelectorAll('.rb-block').forEach((card, i) => {
+            const t = card.querySelector('.rb-block-title');
+            if (t) t.textContent = `${rb.item_label} ${i + 1}`;
+        });
+    };
+
+    const addBlock = (block) => {
+        const values = (block && block.values) || {};
+        // Preserve sub-keys not covered by the schema (e.g. jwt overrides).
+        const extras = {};
+        Object.keys(values).forEach(k => { if (!schemaKeys.has(k)) extras[k] = values[k]; });
+
+        const card = document.createElement('div');
+        card.className = 'card mb-2 rb-block';
+
+        const header = document.createElement('div');
+        header.className = 'card-header d-flex align-items-center gap-2 py-2';
+        const swWrap = document.createElement('div');
+        swWrap.className = 'form-check form-switch mb-0';
+        const sw = document.createElement('input');
+        sw.className = 'form-check-input'; sw.type = 'checkbox'; sw.role = 'switch';
+        sw.checked = (block ? block.enabled !== false : true);
+        swWrap.appendChild(sw);
+        const title = document.createElement('span');
+        title.className = 'rb-block-title fw-semibold flex-grow-1';
+        const rm = document.createElement('button');
+        rm.type = 'button'; rm.className = 'btn btn-outline-danger btn-sm';
+        rm.title = 'Remove'; rm.innerHTML = '<i class="fas fa-trash"></i>';
+        rm.addEventListener('click', () => { card.remove(); renumber(); });
+        header.append(swWrap, title, rm);
+        card.appendChild(header);
+
+        const body = document.createElement('div');
+        body.className = 'card-body py-2';
+        const grid = document.createElement('div');
+        grid.className = 'row g-2';
+        const inputs = [];
+        rb.fields.forEach(field => {
+            const col = document.createElement('div');
+            col.className = fieldColClass(field);
+            const { wrapper, input } = renderField(field, values[field.key]);
+            col.appendChild(wrapper);
+            grid.appendChild(col);
+            inputs.push({ field, input });
+        });
+        body.appendChild(grid);
+        card.appendChild(body);
+
+        // Dim the body when the block is disabled.
+        const applyDim = () => { body.style.opacity = sw.checked ? '' : '0.55'; };
+        sw.addEventListener('change', applyDim); applyDim();
+
+        card._rb = { sw, inputs, extras };
+        blocksContainer.appendChild(card);
+        renumber();
+    };
+
+    (rb.blocks || []).forEach(addBlock);
+
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'btn btn-outline-secondary btn-sm mt-1';
+    addBtn.innerHTML = `<i class="fas fa-plus me-1"></i>Add ${escapeHtml(rb.item_label)}`;
+    addBtn.addEventListener('click', () => addBlock({ enabled: true, values: {} }));
+    el.appendChild(addBtn);
+
+    const getBlocks = () => {
+        const out = [];
+        blocksContainer.querySelectorAll('.rb-block').forEach(card => {
+            const { sw, inputs, extras } = card._rb;
+            const values = { ...extras };
+            inputs.forEach(({ field, input }) => { values[field.key] = readInput(field, input); });
+            out.push({ enabled: sw.checked, values });
+        });
+        return out;
+    };
+
+    return { id: rb.id, el, getBlocks, original: JSON.stringify(getBlocks()) };
+}
+
+// Locate a field's wrapper so we can find its .invalid-feedback even when the
+// input is nested inside an .input-group (number fields with a unit suffix).
+function fieldWrapper(input) {
+    return input.closest('.input-group, .mb-1, .form-check') || input.parentElement;
+}
+
+function markInvalid(input, message) {
+    input.classList.add('is-invalid');
+    const fb = fieldWrapper(input).querySelector('.invalid-feedback');
+    if (fb) { fb.textContent = message; fb.style.display = 'block'; }
+}
+
+function clearInvalid(input) {
+    input.classList.remove('is-invalid');
+    const fb = fieldWrapper(input).querySelector('.invalid-feedback');
+    if (fb) { fb.textContent = ''; fb.style.display = ''; }
+}
+
+function readInput(field, input) {
+    if (field.type === 'bool') return input.checked;
+    return input.value.trim();
+}
+
+function validateClient(field, raw) {
+    const empty = (raw === '' || raw === null || raw === undefined);
+    if (field.type === 'bool') return null;
+    if (empty) {
+        return field.required ? `${field.label} is required` : null;
+    }
+    if (field.type === 'int' || field.type === 'float') {
+        const num = Number(raw);
+        if (Number.isNaN(num)) return `${field.label} must be a number`;
+        if (field.type === 'int' && !Number.isInteger(num)) return `${field.label} must be a whole number`;
+        if (field.min !== undefined && field.min !== null && num < field.min) return `${field.label} must be ≥ ${field.min}`;
+        if (field.max !== undefined && field.max !== null && num > field.max) return `${field.label} must be ≤ ${field.max}`;
+    }
+    if (field.type === 'enum') {
+        const allowed = (field.options || []).map(o => String(o.value));
+        if (!allowed.includes(String(raw))) return `${field.label} is invalid`;
+    }
+    if (field.type === 'str' && field.pattern) {
+        if (!new RegExp('^(?:' + field.pattern + ')$').test(raw)) return `${field.label} has an invalid format`;
+    }
+    return null;
+}
+
+function escapeHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    window.pluginsManager = new PluginsManager();
+    window.pluginsManager.load();
+});
+</script>
+{% endblock %}

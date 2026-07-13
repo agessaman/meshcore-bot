@@ -1158,6 +1158,12 @@ graph_capture_enabled = true
 # Default: 2.5 (starred repeaters get 2.5x their normal score)
 # Set to 1.0 to disable star bias
 star_bias_multiplier = 2.5
+
+# Symbols shown next to inferred repeater names to indicate confidence
+# in the path guess (high / medium / low).
+high_confidence_symbol = 🎯
+medium_confidence_symbol = 📍
+low_confidence_symbol = ❓
 [Joke_Command]
 # Enable or disable the joke command (true/false)
 enabled = true
@@ -1290,6 +1296,12 @@ levenshtein_distance = 0
 # Enable or disable the alert command (true/false)
 enabled = false
 
+# Only report incidents within this distance of the bot (kilometers)
+max_distance_km = 20.0
+
+# Only report incidents newer than this (hours)
+max_incident_age_hours = 24.0
+
 # PulsePoint agency IDs by city or county
 # Format: agency.city.<name> = comma-separated agency IDs
 #         agency.county.<name> = comma-separated agency IDs
@@ -1357,6 +1369,12 @@ url_timeout = 10
 # Command stubs (enable/channels only; omit to use global monitor_channels)
 [Wx_Command]
 enabled = true
+
+# Temperature unit for weather reports: fahrenheit (default) or celsius
+temperature_unit = fahrenheit
+
+# Wind speed unit for weather reports: mph (default) or kmh
+wind_speed_unit = mph
 # channels =
 # aliases = comma-separated additional trigger words, e.g.: aliases = weather, w
 
@@ -1643,6 +1661,10 @@ raw_duplicate_window = 2.0
 
 # Keep RX_LOG SNR/RSSI keyed by packet prefix this long for RAW_DATA correlation (seconds).
 rf_data_cache_timeout = 15.0
+
+# Master switch for MQTT publishing (true/false). When false, packets are only
+# written to output_file (if set) and no MQTT connections are made.
+mqtt_enabled = true
 
 # If true, do not publish packet JSON to MQTT when content hash is 0000000000000000
 # (strict path_len reject, too-short buffer, or other unparseable cases). File output is unchanged.

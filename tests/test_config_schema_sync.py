@@ -452,3 +452,29 @@ class TestQuickstartExample:
         example_sections = set(get_example_sections(EXAMPLE_PATH))
         quickstart_sections = set(get_example_sections(QUICKSTART_PATH))
         assert quickstart_sections <= example_sections
+
+
+class TestSettingsSchemaValidationSync:
+    """The web settings UI and config validation must agree on known keys.
+
+    Every key a plugin declares in settings_schema is written to config.ini by
+    the /api/plugins save endpoint; if validation doesn't recognize it, users
+    get 'unknown key' warnings for settings the bot's own UI wrote.
+    """
+
+    def test_every_settings_schema_key_is_known_to_validation(self):
+        from modules.settings_schema import build_plugin_settings_view
+
+        cfg = configparser.ConfigParser()
+        view = build_plugin_settings_view(cfg)
+        documented = load_documented_keys_from_example(EXAMPLE_PATH)
+        unknown = []
+        for entry in view:
+            for f in entry["fields"]:
+                section = f.get("section") or entry["section"]
+                if not is_known_config_key(section, f["key"], documented):
+                    unknown.append((entry["kind"], entry["name"], section, f["key"]))
+        assert unknown == [], (
+            "settings_schema keys unknown to config validation — document them "
+            f"in config.ini.example: {unknown}"
+        )

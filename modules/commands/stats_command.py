@@ -32,6 +32,25 @@ class StatsCommand(BaseCommand):
         {"name": "type", "description": "messages, channels, or paths (optional)"}
     ]
 
+    # Web-viewer settings schema (see modules/settings_schema.py)
+    settings_schema = [
+        {"key": "data_retention_days", "label": "Data retention", "type": "int",
+         "min": 1, "default": 7, "unit": "days",
+         "help": "Days of stats data to keep (recommended 7-30)."},
+        {"key": "auto_cleanup", "label": "Auto cleanup", "type": "bool",
+         "default": True,
+         "help": "Automatically delete data older than the retention window."},
+        {"key": "track_all_messages", "label": "Track all messages", "type": "bool",
+         "default": True,
+         "help": "On: record all messages. Off: only command executions."},
+        {"key": "track_command_details", "label": "Track command details", "type": "bool",
+         "default": True,
+         "help": "Record detailed command execution info."},
+        {"key": "anonymize_users", "label": "Anonymize users", "type": "bool",
+         "default": False,
+         "help": "Replace user IDs with anonymous identifiers in stats."},
+    ]
+
     def __init__(self, bot: Any):
         """Initialize the stats command.
 

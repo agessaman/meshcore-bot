@@ -28,6 +28,39 @@ class TraceCommand(BaseCommand):
     usage = "trace [path]  or  tracer [path]"
     examples = ["trace 01,7a,55", "trace feed,6ddf,feed", "tracer", "tracer 01,7a,55"]
 
+    # Web-viewer settings schema (see modules/settings_schema.py)
+    settings_schema = [
+        {"key": "maximum_hops", "label": "Maximum hops", "type": "int",
+         "min": 1, "max": 64, "default": 5,
+         "help": "Cap on path length (hops) for manual or reciprocal paths."},
+        {"key": "trace_mode", "label": "Trace mode", "type": "enum",
+         "options": [
+             {"value": "one_byte", "label": "One byte (default)"},
+             {"value": "two_byte", "label": "Two byte (firmware permitting)"},
+         ],
+         "default": "one_byte",
+         "help": "Trace encoding mode."},
+        {"key": "timeout_per_hop_seconds", "label": "Timeout per hop", "type": "float",
+         "min": 0.1, "default": 1.5, "unit": "s",
+         "help": "Per-hop timeout added to the base timeout."},
+        {"key": "output_format", "label": "Output format", "type": "enum",
+         "options": [
+             {"value": "inline", "label": "Inline (default)"},
+             {"value": "vertical", "label": "Vertical"},
+         ],
+         "default": "inline",
+         "help": "How trace results are formatted."},
+        {"key": "bot_label", "label": "Bot label", "type": "str",
+         "default": "",
+         "help": "Emoji/string for the bot in trace output. Empty uses the [Bot] name."},
+        {"key": "update_graph_one_byte", "label": "Update graph (1-byte)", "type": "bool",
+         "default": True,
+         "help": "Add a bidirectional mesh-graph link when a 1-byte trace succeeds."},
+        {"key": "update_graph_two_byte", "label": "Update graph (2-byte)", "type": "bool",
+         "default": True,
+         "help": "Add a 2-byte link identification to the mesh graph when supported."},
+    ]
+
     def __init__(self, bot):
         super().__init__(bot)
         self.trace_enabled = self.get_config_value("Trace_Command", "enabled", fallback=True, value_type="bool")

@@ -51,6 +51,15 @@ class AqiCommand(BaseCommand):
     ERROR_FETCHING_DATA = "Error fetching AQI data"
     NO_DATA_AVAILABLE = "No AQI data available"
 
+    # Web-viewer settings schema (see modules/settings_schema.py).
+    # These are shared [Weather] defaults used by all weather commands.
+    settings_schema = [
+        {"key": "default_state", "label": "Default state", "type": "str", "section": "Weather",
+         "default": "", "help": "2-letter state for city disambiguation (e.g. WA). Shared weather setting."},
+        {"key": "default_country", "label": "Default country", "type": "str", "section": "Weather",
+         "default": "US", "help": "2-letter country code (e.g. US). Shared weather setting."},
+    ]
+
     def __init__(self, bot):
         super().__init__(bot)
         self.aqi_enabled = self.get_config_value('Aqi_Command', 'enabled', fallback=True, value_type='bool')

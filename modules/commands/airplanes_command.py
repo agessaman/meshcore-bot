@@ -41,6 +41,22 @@ class AirplanesCommand(BaseCommand):
         {"name": "filters", "description": "alt=, type=, military, closest, etc."}
     ]
 
+    # Web-viewer settings schema (see modules/settings_schema.py)
+    settings_schema = [
+        {"key": "api_url", "label": "API URL", "type": "str",
+         "default": "http://api.airplanes.live/v2/",
+         "help": "ADS-B API endpoint (readsb/airplanes.live format)."},
+        {"key": "default_radius", "label": "Default radius", "type": "float",
+         "min": 1, "max": 250, "default": 25, "unit": "nm",
+         "help": "Default search radius in nautical miles (max 250)."},
+        {"key": "max_results", "label": "Max results", "type": "int",
+         "min": 1, "max": 10, "default": 3,
+         "help": "Maximum aircraft to return in default list results."},
+        {"key": "url_timeout", "label": "Request timeout", "type": "int",
+         "min": 1, "default": 10, "unit": "s",
+         "help": "API request timeout in seconds."},
+    ]
+
     def __init__(self, bot):
         super().__init__(bot)
         self.airplanes_enabled = self.get_config_value('Airplanes_Command', 'enabled', fallback=True, value_type='bool')
