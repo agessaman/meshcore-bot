@@ -10,14 +10,14 @@ from .base_command import BaseCommand
 
 
 class TimeSyncCommand(BaseCommand):
-    """Expose local/admin-only time-sync status and public key export."""
+    """Expose local/admin-only time-sync status, send, and public key export."""
 
     name = "timesync"
     keywords = ["timesync", "time-sync", "time_sync"]
-    description = "Show authenticated time-sync source status and public key (DM only, admin only)"
+    description = "Manage authenticated time-sync source operations (DM only, admin only)"
     short_description = "Manage authenticated time-sync source"
-    usage = "timesync <status|publickey>"
-    examples = ["timesync status", "timesync publickey"]
+    usage = "timesync <status|send|publickey>"
+    examples = ["timesync status", "timesync send", "timesync publickey"]
     requires_dm = True
     cooldown_seconds = 2
     category = "admin"
@@ -31,8 +31,9 @@ class TimeSyncCommand(BaseCommand):
     def get_help_text(self) -> str:
         """Return usage text for command help."""
         return (
-            "Usage: timesync <status|publickey>\n"
+            "Usage: timesync <status|send|publickey>\n"
             "status: show redacted time-sync source state.\n"
+            "send: broadcast one signed time-sync datagram now.\n"
             "publickey: show the full 32-byte Ed25519 public key as 64 lowercase hex characters."
         )
 
@@ -51,10 +52,12 @@ class TimeSyncCommand(BaseCommand):
 
         if subcommand in ("status", "st"):
             await self._handle_status(message)
+        elif subcommand in ("send", "broadcast", "now"):
+            await self._handle_send(message)
         elif subcommand in ("publickey", "pubkey", "key"):
             await self._handle_public_key(message)
         else:
-            await self.send_response(message, "Usage: timesync <status|publickey>")
+            await self.send_response(message, "Usage: timesync <status|send|publickey>")
         return True
 
     async def _handle_status(self, message: MeshMessage) -> None:
@@ -72,6 +75,20 @@ class TimeSyncCommand(BaseCommand):
             f"public_key_fingerprint: {fingerprint}"
         )
         await self.send_response(message, text)
+
+    async def _handle_send(self, message: MeshMessage) -> None:
+        """Broadcast one time-sync datagram immediately and report the result."""
+        try:
+            sent = await self._get_service().send_once()
+        except Exception as exc:
+            self.logger.warning("Manual time-sync broadcast failed: %s", exc)
+            await self.send_response(message, f"Time sync broadcast failed: {exc}")
+            return
+
+        if sent:
+            await self.send_response(message, "Time sync broadcast sent.")
+        else:
+            await self.send_response(message, "Time sync broadcast failed; check logs.")
 
     async def _handle_public_key(self, message: MeshMessage) -> None:
         """Send the full Ed25519 public key for repeater pinning."""
