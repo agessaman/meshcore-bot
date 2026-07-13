@@ -352,6 +352,19 @@ class TestPluginsApi:
         )
         assert rows and rows[0]["status"] == "pending"
 
+    def test_saving_timesync_full_flood_forces_scope_star(self, viewer, tmp_path):
+        client = viewer.app.test_client()
+        resp = client.post(
+            "/api/plugins/service/timesync",
+            json={"enabled": True, "values": {"full_flood_enabled": True}},
+        )
+
+        assert resp.status_code == 200, resp.get_json()
+        cfg = configparser.ConfigParser()
+        cfg.read(tmp_path / "config.ini", encoding="utf-8")
+        assert cfg.getboolean("Time_Sync", "full_flood_enabled") is True
+        assert cfg.get("Time_Sync", "flood_scope") == "*"
+
     def test_timesync_send_queues_service_operation(self, viewer):
         client = viewer.app.test_client()
         resp = client.post("/api/plugins/service/timesync/send", json={})

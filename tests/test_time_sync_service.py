@@ -160,6 +160,40 @@ async def test_send_once_uses_group_datagram_and_advances_sequence():
     assert kwargs["scope"] == "#local"
 
 
+@pytest.mark.asyncio
+async def test_manual_send_once_reloads_full_flood_setting_before_send():
+    bot = _make_bot(flood_scope="#local")
+    service = TimeSyncService(bot)
+    service._settings = service._load_settings()
+    service._sequence = 7
+
+    bot.config.set("Time_Sync", "full_flood_enabled", "true")
+    bot.config.set("Time_Sync", "flood_scope", "")
+
+    sent = await service.send_once(timestamp=1783862400)
+
+    assert sent is True
+    kwargs = bot.command_manager.send_group_datagram.await_args.kwargs
+    assert kwargs["scope"] == "*"
+
+
+@pytest.mark.asyncio
+async def test_periodic_send_once_can_keep_loaded_settings():
+    bot = _make_bot(flood_scope="#local")
+    service = TimeSyncService(bot)
+    service._settings = service._load_settings()
+    service._sequence = 8
+
+    bot.config.set("Time_Sync", "full_flood_enabled", "true")
+    bot.config.set("Time_Sync", "flood_scope", "")
+
+    sent = await service.send_once(timestamp=1783862400, reload_settings=False)
+
+    assert sent is True
+    kwargs = bot.command_manager.send_group_datagram.await_args.kwargs
+    assert kwargs["scope"] == "#local"
+
+
 def test_default_time_sync_requires_regional_flood_scope():
     bot = _make_bot(flood_scope="")
     service = TimeSyncService(bot)

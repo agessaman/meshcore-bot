@@ -327,6 +327,7 @@ class PluginsManager {
         if (plugin.has_schema) {
             plugin.fields.filter(f => !f.group).forEach(field => addField(field));
             addGroupedFields(plugin.fields.filter(f => f.group));
+            this.applyTimeSyncFullFloodBehaviour(plugin, inputs);
             if (extraKeys.length) {
                 const sub = document.createElement('div');
                 sub.className = 'col-12 text-muted small mt-1';
@@ -417,6 +418,27 @@ class PluginsManager {
                           setEnabled: (v) => { card.classList.toggle('disabled', !v); } });
 
         return card;
+    }
+
+    applyTimeSyncFullFloodBehaviour(plugin, inputs) {
+        if (plugin.kind !== 'service' || plugin.name !== 'timesync') return;
+
+        const fullFlood = inputs.find(io => io.field.key === 'full_flood_enabled');
+        const floodScope = inputs.find(io => io.field.key === 'flood_scope');
+        if (!fullFlood || !floodScope) return;
+
+        const sync = () => {
+            if (!fullFlood.input.checked) {
+                floodScope.input.disabled = false;
+                return;
+            }
+            floodScope.input.value = '*';
+            floodScope.input.disabled = true;
+            clearInvalid(floodScope.input);
+        };
+
+        fullFlood.input.addEventListener('change', sync);
+        sync();
     }
 
     renderTimeSyncActions() {

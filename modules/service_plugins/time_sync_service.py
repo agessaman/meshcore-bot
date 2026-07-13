@@ -72,7 +72,7 @@ class TimeSyncService(BaseServicePlugin):
             "type": "str",
             "default": "",
             "required": False,
-            "help": "Required unless full flood is enabled. Use a regional scope such as #west.",
+            "help": "Required unless full flood is enabled. Full flood uses * and ignores regional scope.",
             "width": "md",
         },
         {
@@ -80,7 +80,7 @@ class TimeSyncService(BaseServicePlugin):
             "label": "Allow full flood",
             "type": "bool",
             "default": False,
-            "help": "Opt in to global/full-flood time broadcasts instead of regional scope.",
+            "help": "Opt in to global/full-flood time broadcasts; flood_scope is forced to *.",
             "width": "md",
         },
         {
@@ -430,14 +430,19 @@ class TimeSyncService(BaseServicePlugin):
         assert self._settings is not None
         while self._running:
             try:
-                await self.send_once()
+                await self.send_once(reload_settings=False)
             except Exception as exc:
                 self.logger.error("Time sync send failed: %s", exc)
             await asyncio.sleep(self._settings.interval_seconds)
 
-    async def send_once(self, *, timestamp: int | None = None) -> bool:
-        """Build, sign, and enqueue one binary time-sync datagram."""
-        if self._settings is None:
+    async def send_once(self, *, timestamp: int | None = None, reload_settings: bool = True) -> bool:
+        """Build, sign, and enqueue one binary time-sync datagram.
+
+        Manual sends reload settings by default so a just-saved full-flood or
+        regional-scope change is used immediately. The periodic loop opts out
+        because its sleep interval is tied to the settings loaded at startup.
+        """
+        if reload_settings or self._settings is None:
             self._settings = self._load_settings()
         settings = self._settings
 

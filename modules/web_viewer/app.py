@@ -853,6 +853,24 @@ class BotDataViewer:
                 if errors:
                     return jsonify({'success': False, 'errors': errors}), 400
 
+                # Time-sync full flood has one unambiguous wire behaviour:
+                # no regional scope is set, represented in config as "*".
+                # The UI only submits changed fields, so normalise server-side
+                # as well to prevent a stale regional flood_scope from surviving
+                # when the operator only toggles full_flood_enabled.
+                if section == 'Time_Sync':
+                    full_flood_raw = updates.get(section, {}).get('full_flood_enabled')
+                    if full_flood_raw is None and self.config.has_section(section):
+                        full_flood_raw = self.config.get(section, 'full_flood_enabled', fallback='false')
+                    try:
+                        full_flood_enabled = str(full_flood_raw).strip().lower() in {
+                            '1', 'yes', 'true', 'on',
+                        }
+                    except Exception:
+                        full_flood_enabled = False
+                    if full_flood_enabled:
+                        updates.setdefault(section, {})['flood_scope'] = '*'
+
                 # The enable toggle is always written to the plugin's own section.
                 enabled = bool(data.get('enabled', entry['enabled']))
                 updates[section]['enabled'] = 'true' if enabled else 'false'
