@@ -803,6 +803,7 @@ class BotDataViewer:
                 # Re-read config from disk so the UI reflects external edits.
                 self.config = self._load_config(self.config_path)
                 view = build_plugin_settings_view(self.config, logger=self.logger)
+                self._attach_timesync_runtime_status(view)
                 return jsonify({'plugins': view})
             except Exception:
                 self.logger.exception("Error building plugin settings view")
@@ -1015,6 +1016,50 @@ class BotDataViewer:
             except Exception as exc:
                 self.logger.error("Error queuing time-sync broadcast: %s", exc)
                 return jsonify({'success': False, 'error': str(exc)}), 500
+
+        def _normalise_sequence_indicator(value, *, source: str) -> dict[str, object] | None:
+            """Return a UI-safe sequence indicator when the value is a uint16."""
+            try:
+                sequence = int(str(value).strip())
+            except (TypeError, ValueError):
+                return None
+            if sequence < 0 or sequence > 0xFFFF:
+                return None
+            return {
+                'value': sequence,
+                'source': source,
+                'label': (
+                    f"Current saved: {sequence}"
+                    if source == 'metadata'
+                    else f"Current initial: {sequence}"
+                ),
+            }
+
+        def _attach_timesync_runtime_status(view):
+            """Attach persisted time-sync sequence state to the settings view."""
+            for entry in view:
+                if entry.get('kind') != 'service' or entry.get('name') != 'timesync':
+                    continue
+
+                indicator = None
+                try:
+                    persisted = self.db_manager.get_metadata('time_sync.sequence')
+                except Exception as exc:
+                    self.logger.debug("Could not read persisted time-sync sequence for UI: %s", exc)
+                    persisted = None
+
+                if persisted not in (None, ''):
+                    indicator = _normalise_sequence_indicator(persisted, source='metadata')
+
+                if indicator is None:
+                    initial = self.config.get('Time_Sync', 'sequence', fallback='0')
+                    indicator = _normalise_sequence_indicator(initial, source='config')
+
+                if indicator is not None:
+                    entry.setdefault('runtime', {})['sequence_indicator'] = indicator
+                break
+
+        self._attach_timesync_runtime_status = _attach_timesync_runtime_status
 
         @self.app.route('/api/plugins/reload-status')
         def api_plugins_reload_status():

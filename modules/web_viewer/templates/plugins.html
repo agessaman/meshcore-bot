@@ -280,6 +280,10 @@ class PluginsManager {
         form.appendChild(grid);
 
         const addField = (field, value, targetGrid = grid) => {
+            if (plugin.kind === 'service' && plugin.name === 'timesync' && field.key === 'sequence') {
+                const indicator = plugin.runtime?.sequence_indicator;
+                if (indicator) field = { ...field, indicator };
+            }
             const col = document.createElement('div');
             col.className = fieldColClass(field);
             const { wrapper, input } = renderField(field, value);
@@ -693,6 +697,7 @@ function renderField(field, overrideValue) {
             unit.textContent = field.unit;
             group.appendChild(unit);
         }
+        appendFieldIndicator(group, field);
         const fb = document.createElement('div');
         fb.className = 'invalid-feedback';
         group.appendChild(fb);
@@ -715,6 +720,15 @@ function renderField(field, overrideValue) {
     wrapper.appendChild(feedback);
     if (field.help) wrapper.appendChild(helpText(field.help));
     return { wrapper, input };
+}
+
+function appendFieldIndicator(container, field) {
+    if (!field.indicator) return;
+
+    const indicator = document.createElement('span');
+    indicator.className = 'input-group-text text-muted';
+    indicator.textContent = field.indicator.label;
+    container.appendChild(indicator);
 }
 
 function helpText(text) {

@@ -194,6 +194,21 @@ async def test_periodic_send_once_can_keep_loaded_settings():
     assert kwargs["scope"] == "#local"
 
 
+@pytest.mark.asyncio
+async def test_manual_send_once_force_persists_current_sequence():
+    bot = _make_bot()
+    service = TimeSyncService(bot)
+    service._settings = service._load_settings()
+    service._sequence = 20
+    service._last_sequence_persist = 1783862399
+
+    sent = await service.send_once(timestamp=1783862400)
+
+    assert sent is True
+    assert service._sequence == 21
+    bot.db_manager.set_metadata.assert_called_with("time_sync.sequence", "21")
+
+
 def test_default_time_sync_requires_regional_flood_scope():
     bot = _make_bot(flood_scope="")
     service = TimeSyncService(bot)

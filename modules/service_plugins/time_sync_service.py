@@ -486,7 +486,7 @@ class TimeSyncService(BaseServicePlugin):
             if settings.text_broadcast_enabled:
                 await self._send_text_broadcast(settings, unix_seconds, sequence)
             self._sequence = next_sequence(sequence)
-            self._persist_sequence()
+            self._persist_sequence(force=reload_settings)
         return sent
 
     @staticmethod

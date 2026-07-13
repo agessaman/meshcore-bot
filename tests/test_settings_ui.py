@@ -320,6 +320,38 @@ class TestPluginsApi:
         data = resp.get_json()
         assert "plugins" in data and len(data["plugins"]) > 20
 
+    def test_get_plugins_includes_timesync_sequence_indicator_from_metadata(self, viewer):
+        viewer.db_manager.set_metadata("time_sync.sequence", "42")
+
+        client = viewer.app.test_client()
+        resp = client.get("/api/plugins")
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        entry = next(
+            e for e in data["plugins"]
+            if e["kind"] == "service" and e["name"] == "timesync"
+        )
+        indicator = entry["runtime"]["sequence_indicator"]
+        assert indicator["value"] == 42
+        assert indicator["source"] == "metadata"
+        assert indicator["label"] == "Current saved: 42"
+
+    def test_get_plugins_timesync_sequence_indicator_falls_back_to_config(self, viewer):
+        client = viewer.app.test_client()
+        resp = client.get("/api/plugins")
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        entry = next(
+            e for e in data["plugins"]
+            if e["kind"] == "service" and e["name"] == "timesync"
+        )
+        indicator = entry["runtime"]["sequence_indicator"]
+        assert indicator["value"] == 0
+        assert indicator["source"] == "config"
+        assert indicator["label"] == "Current initial: 0"
+
     def test_save_unknown_plugin_404(self, viewer):
         client = viewer.app.test_client()
         resp = client.post("/api/plugins/command/nope", json={"values": {}})
