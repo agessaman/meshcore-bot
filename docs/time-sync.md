@@ -33,8 +33,12 @@ Repeaters must be configured with the full 32-byte Ed25519 public key correspond
 DM the bot as an admin:
 
 ```text
+timesync status
+timesync send
 timesync publickey
 ```
+
+`timesync send` broadcasts one signed time-sync datagram immediately. The periodic sender still runs on `interval_seconds`.
 
 The response is exactly 64 lowercase hexadecimal characters. Normal status output shows only a public-key fingerprint.
 
