@@ -617,6 +617,14 @@ class MessageScheduler:
                         lambda f: self.logger.exception("Error processing config operations: %s", f.exception())
                         if not f.cancelled() and f.exception() else None
                     )
+                    service_future = asyncio.run_coroutine_threadsafe(
+                        self._process_service_operations(),
+                        self.bot.main_event_loop
+                    )
+                    service_future.add_done_callback(
+                        lambda f: self.logger.exception("Error processing service operations: %s", f.exception())
+                        if not f.cancelled() and f.exception() else None
+                    )
                 self.last_radio_ops_check_time = time.time()
 
             # Process feed message queue (every 2 seconds, fire-and-forget)
@@ -1099,6 +1107,87 @@ class MessageScheduler:
 
         except Exception as e:
             self.logger.exception(f"Error in _process_config_operations: {e}")
+
+    async def _process_service_operations(self):
+        """Process pending service action requests queued by the web viewer."""
+        try:
+            with self.bot.db_manager.connection() as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT id, operation_type
+                    FROM channel_operations
+                    WHERE status = 'pending'
+                      AND operation_type IN ('time_sync_send')
+                    ORDER BY created_at ASC
+                    LIMIT 1
+                ''')
+                op = cursor.fetchone()
+
+            if not op:
+                return
+
+            op_id = op['id']
+            op_type = op['operation_type']
+            self.logger.info("Processing service operation %s: %s", op_id, op_type)
+
+            try:
+                success = False
+                result_payload: dict[str, object] = {}
+                error_msg = "Service operation returned False"
+
+                if op_type == 'time_sync_send':
+                    service = getattr(self.bot, "services", {}).get("timesync")
+                    if service is None or not hasattr(service, "send_once"):
+                        error_msg = "Time sync service is not loaded"
+                    else:
+                        success = bool(await service.send_once())
+                        if success:
+                            result_payload = {
+                                "success": True,
+                                "message": "Time sync broadcast sent.",
+                            }
+                        else:
+                            error_msg = "Time sync broadcast failed"
+
+                with self.bot.db_manager.connection() as conn:
+                    cursor = conn.cursor()
+                    if success:
+                        cursor.execute('''
+                            UPDATE channel_operations
+                            SET status = 'completed',
+                                processed_at = CURRENT_TIMESTAMP,
+                                result_data = ?
+                            WHERE id = ?
+                        ''', (json.dumps(result_payload), op_id))
+                    else:
+                        cursor.execute('''
+                            UPDATE channel_operations
+                            SET status = 'failed',
+                                processed_at = CURRENT_TIMESTAMP,
+                                error_message = ?
+                            WHERE id = ?
+                        ''', (error_msg, op_id))
+                    conn.commit()
+
+            except Exception as e:
+                self.logger.error("Error executing service operation %s: %s", op_id, e)
+                try:
+                    with self.bot.db_manager.connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute('''
+                            UPDATE channel_operations
+                            SET status = 'failed',
+                                processed_at = CURRENT_TIMESTAMP,
+                                error_message = ?
+                            WHERE id = ?
+                        ''', (str(e), op_id))
+                        conn.commit()
+                except Exception as update_error:
+                    self.logger.error("Error updating service operation status: %s", update_error)
+
+        except Exception as e:
+            self.logger.exception(f"Error in _process_service_operations: {e}")
 
     async def _firmware_read_op(self):
         """Read the path hash mode from radio firmware (device query)."""
@@ -1645,4 +1734,3 @@ class MessageScheduler:
             self.bot.logger.error(f"Failed to send radio-offline alert email: {e}")
 
     # ── Maintenance helpers ──────────────────────────────────────────────────
-

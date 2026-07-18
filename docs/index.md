@@ -39,5 +39,6 @@ Documentation for the MeshCore bot: setup, configuration, commands, and services
 | [Packet Capture](packet-capture.md) | Packet capture and MQTT |
 | [Map Uploader](map-uploader.md) | Uploading to map.meshcore.dev |
 | [Weather Service](weather-service.md) | Scheduled weather and alerts |
+| [Authenticated Time Sync](time-sync.md) | Signed binary repeater time-sync source |
 | [Repeater Prefix Collision Service](repeater-prefix-collision-service.md) | Detect repeater prefix collisions |
 | [World Cup](worldcup.md) | World Cup command and live match announcements |

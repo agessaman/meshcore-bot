@@ -62,6 +62,8 @@
     .dynamic-section { border-top: 1px solid var(--border-color); padding-top: 0.75rem; }
     .dynamic-row .dyn-key { font-family: var(--bs-font-monospace, monospace); }
     .repeating-section { border-top: 1px solid var(--border-color); padding-top: 0.75rem; }
+    .plugin-action-section { border-top: 1px solid var(--border-color); padding-top: 0.75rem; }
+    .plugin-action-status { margin-left: 0.5rem; font-size: 0.85rem; }
     .rb-block { border: 1px solid var(--border-color); background-color: var(--bg-secondary, #f8f9fa); }
     [data-theme="dark"] .rb-block { background-color: rgba(255,255,255,0.03); }
     .rb-block .card-header { background-color: transparent; }
@@ -278,6 +280,10 @@ class PluginsManager {
         form.appendChild(grid);
 
         const addField = (field, value, targetGrid = grid) => {
+            if (plugin.kind === 'service' && plugin.name === 'timesync' && field.key === 'sequence') {
+                const indicator = plugin.runtime?.sequence_indicator;
+                if (indicator) field = { ...field, indicator };
+            }
             const col = document.createElement('div');
             col.className = fieldColClass(field);
             const { wrapper, input } = renderField(field, value);
@@ -325,6 +331,7 @@ class PluginsManager {
         if (plugin.has_schema) {
             plugin.fields.filter(f => !f.group).forEach(field => addField(field));
             addGroupedFields(plugin.fields.filter(f => f.group));
+            this.applyTimeSyncFullFloodBehaviour(plugin, inputs);
             if (extraKeys.length) {
                 const sub = document.createElement('div');
                 sub.className = 'col-12 text-muted small mt-1';
@@ -361,6 +368,11 @@ class PluginsManager {
             form.appendChild(editor.el);
             blockEditors.push(editor);
         });
+
+        // Service-specific actions that execute through queued bot operations.
+        if (plugin.kind === 'service' && plugin.name === 'timesync') {
+            form.appendChild(this.renderTimeSyncActions());
+        }
 
         // Service restart caveat.
         if (plugin.kind === 'service') {
@@ -410,6 +422,109 @@ class PluginsManager {
                           setEnabled: (v) => { card.classList.toggle('disabled', !v); } });
 
         return card;
+    }
+
+    applyTimeSyncFullFloodBehaviour(plugin, inputs) {
+        if (plugin.kind !== 'service' || plugin.name !== 'timesync') return;
+
+        const fullFlood = inputs.find(io => io.field.key === 'full_flood_enabled');
+        const floodScope = inputs.find(io => io.field.key === 'flood_scope');
+        if (!fullFlood || !floodScope) return;
+
+        const sync = () => {
+            if (!fullFlood.input.checked) {
+                floodScope.input.disabled = false;
+                return;
+            }
+            floodScope.input.value = '*';
+            floodScope.input.disabled = true;
+            clearInvalid(floodScope.input);
+        };
+
+        fullFlood.input.addEventListener('change', sync);
+        sync();
+    }
+
+    renderTimeSyncActions() {
+        const section = document.createElement('div');
+        section.className = 'plugin-action-section mt-3';
+
+        const label = document.createElement('div');
+        label.className = 'form-label fw-semibold mb-1';
+        label.textContent = 'Manual broadcast';
+        section.appendChild(label);
+
+        const row = document.createElement('div');
+        row.className = 'd-flex align-items-center flex-wrap gap-1';
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn btn-outline-primary btn-sm';
+        button.innerHTML = '<i class="fas fa-broadcast-tower me-1"></i>Send broadcast now';
+
+        const status = document.createElement('span');
+        status.className = 'plugin-action-status text-muted';
+
+        row.appendChild(button);
+        row.appendChild(status);
+        section.appendChild(row);
+
+        button.addEventListener('click', () => this.sendTimeSyncBroadcast(button, status));
+        return section;
+    }
+
+    async sendTimeSyncBroadcast(button, status) {
+        const original = button.innerHTML;
+        button.disabled = true;
+        button.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Sending…';
+        this.setActionStatus(status, '', '');
+        try {
+            const resp = await fetch('/api/plugins/service/timesync/send', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({}),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Could not queue broadcast');
+            this.setActionStatus(status, 'Queued.', 'muted');
+            await this.pollOperationStatus(data.operation_id, status);
+        } catch (err) {
+            this.setActionStatus(status, err.message, 'danger');
+        } finally {
+            button.disabled = false;
+            button.innerHTML = original;
+        }
+    }
+
+    async pollOperationStatus(operationId, status) {
+        if (!operationId) {
+            this.setActionStatus(status, 'Queued.', 'success');
+            return;
+        }
+        for (let attempt = 0; attempt < 30; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            const resp = await fetch(`/api/channel-operations/${operationId}`);
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Could not read broadcast status');
+            if (data.status === 'completed') {
+                const message = data.result_data?.message || 'Time sync broadcast sent.';
+                this.setActionStatus(status, message, 'success');
+                return;
+            }
+            if (data.status === 'failed') {
+                throw new Error(data.error_message || 'Time sync broadcast failed');
+            }
+            this.setActionStatus(status, 'Waiting for bot…', 'muted');
+        }
+        this.setActionStatus(status, 'Still pending; check logs.', 'warning');
+    }
+
+    setActionStatus(el, msg, type) {
+        el.textContent = msg;
+        el.className = 'plugin-action-status' + (type ? ' text-' + type : '');
     }
 
     async save(plugin, toggle, inputs, saveBtn, status, dynamicEditors = [], blockEditors = []) {
@@ -582,6 +697,7 @@ function renderField(field, overrideValue) {
             unit.textContent = field.unit;
             group.appendChild(unit);
         }
+        appendFieldIndicator(group, field);
         const fb = document.createElement('div');
         fb.className = 'invalid-feedback';
         group.appendChild(fb);
@@ -604,6 +720,15 @@ function renderField(field, overrideValue) {
     wrapper.appendChild(feedback);
     if (field.help) wrapper.appendChild(helpText(field.help));
     return { wrapper, input };
+}
+
+function appendFieldIndicator(container, field) {
+    if (!field.indicator) return;
+
+    const indicator = document.createElement('span');
+    indicator.className = 'input-group-text text-muted';
+    indicator.textContent = field.indicator.label;
+    container.appendChild(indicator);
 }
 
 function helpText(text) {

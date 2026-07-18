@@ -9,6 +9,7 @@ Service plugins extend the bot with background services that run alongside the m
 | [Packet Capture](packet-capture.md) | Capture packets from the mesh and publish them to MQTT brokers |
 | [Map Uploader](map-uploader.md) | Upload node advertisements to [map.meshcore.dev](https://map.meshcore.dev) for network visualization |
 | [Weather Service](weather-service.md) | Scheduled weather forecasts, weather alerts, and lightning detection |
+| [Authenticated Time Sync](time-sync.md) | Signed binary repeater time-sync source |
 | MQTT Weather Relay (`MqttWeather`) | Relay weather data to custom MQTT topics configured under `[Weather]` |
 | Webhook Service (`Webhook`) | Accept inbound HTTP POST payloads and relay to mesh channels or DMs |
 | [Earthquake Service](earthquake-service.md) | Earthquake alerts for a configured region (USGS API, defaults: California) |

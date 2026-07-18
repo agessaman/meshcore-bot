@@ -8,6 +8,7 @@ import os
 import queue
 import re
 import secrets
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -85,12 +86,10 @@ class BotIntegration:
         # Initialize HTTP session with connection pooling for efficient reuse
         self._init_http_session()
         # Generate a shared secret for authenticating internal /api/stream_data calls.
-        # Stored in DB metadata so the web viewer can validate it.
+        # Stored in the same DB metadata that the web viewer reads so it can validate
+        # bot-originated stream injections without exposing the token to browsers.
         self._stream_token = secrets.token_hex(32)
-        try:
-            self.bot.db_manager.set_metadata('internal.stream_token', self._stream_token)
-        except Exception as e:
-            self.bot.logger.debug(f"Could not persist stream token: {e}")
+        self._persist_stream_token()
         if getattr(self, 'http_session', None):
             self.http_session.headers['X-Stream-Token'] = self._stream_token
         # Start background drain thread after table is confirmed to exist
@@ -210,6 +209,54 @@ class BotIntegration:
             if raw:
                 return resolve_path(raw, base_dir)
         return str(Path(self.bot.db_manager.db_path).resolve())
+
+    def _persist_stream_token(self) -> None:
+        """Persist the internal stream token where the web viewer will read it.
+
+        The bot normally uses the same database as the web viewer, but deployments
+        can set [Web_Viewer] db_path.  In that split-DB mode, /api/stream_data
+        validates against the viewer DB, so writing only through bot.db_manager
+        leaves the route with no matching token and every bot POST is rejected.
+        """
+        try:
+            self.bot.db_manager.set_metadata('internal.stream_token', self._stream_token)
+        except Exception as e:
+            self.bot.logger.debug(f"Could not persist stream token in bot database: {e}")
+
+        try:
+            viewer_db_path = self._get_web_viewer_db_path()
+            bot_db_path = getattr(self.bot.db_manager, 'db_path', '')
+
+            # In the normal shared-DB case, set_metadata() above has already written
+            # the token.  Avoid a second direct sqlite write, and avoid resolving
+            # sqlite's in-memory sentinel as if it were a filesystem path.
+            if not viewer_db_path or str(bot_db_path) == ":memory:":
+                return
+            if Path(str(viewer_db_path)).resolve() == Path(str(bot_db_path)).resolve():
+                return
+
+            # Split-DB deployments need the token in the viewer database because the
+            # Flask subprocess creates its own DBManager against that path.
+            with closing(sqlite3.connect(str(viewer_db_path), timeout=self.sqlite_connect_timeout_sec)) as conn:
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS bot_metadata (
+                        key TEXT PRIMARY KEY,
+                        value TEXT NOT NULL,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO bot_metadata (key, value, updated_at)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                    """,
+                    ('internal.stream_token', self._stream_token),
+                )
+                conn.commit()
+        except Exception as e:
+            self.bot.logger.debug(f"Could not persist stream token in web viewer database: {e}")
 
     def _init_packet_stream_table(self):
         """Backward-compatible initializer (now handled by migrations).
@@ -546,7 +593,12 @@ class BotIntegration:
             }
             if self.http_session:
                 try:
-                    self.http_session.post(url, json=payload, timeout=self.edge_post_timeout_sec)
+                    self.http_session.post(
+                        url,
+                        json=payload,
+                        timeout=self.edge_post_timeout_sec,
+                        headers=headers,
+                    )
                     self._record_web_viewer_result(True)
                 except Exception:
                     self._record_web_viewer_result(False)

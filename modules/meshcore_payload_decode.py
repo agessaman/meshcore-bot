@@ -55,6 +55,9 @@ PT_PATH = 0x08
 PT_TRACE = 0x09
 PT_MULTIPART = 0x0A
 PT_RAW_CUSTOM = 0x0F
+TIME_SYNC_DATA_TYPE = 0x0121
+TIME_SYNC_MARKER = b"Tv1"
+TIME_SYNC_SIGNATURE_BYTES = 64
 
 PAYLOAD_TYPE_NAMES = {
     PT_REQ: "REQ",
@@ -158,12 +161,8 @@ class ChannelKeyStore:
         return sum(len(v) for v in self._by_hash.values())
 
 
-def decrypt_group_text(ciphertext: bytes, cipher_mac: bytes, key16: bytes) -> Optional[dict[str, Any]]:
-    """Verify+decrypt a GRP_TXT ciphertext with a single channel key.
-
-    Returns ``{timestamp, flags, sender, text}`` on success, or ``None`` if the
-    MAC fails or the plaintext is malformed.
-    """
+def decrypt_group_ciphertext(ciphertext: bytes, cipher_mac: bytes, key16: bytes) -> Optional[bytes]:
+    """Verify MeshCore channel MAC and decrypt GRP_TXT/GRP_DATA ciphertext."""
     if len(ciphertext) < 16 or len(ciphertext) % 16 != 0:
         return None
 
@@ -179,6 +178,19 @@ def decrypt_group_text(ciphertext: bytes, cipher_mac: bytes, key16: bytes) -> Op
         plaintext = decryptor.update(ciphertext) + decryptor.finalize()
     except Exception as e:  # pragma: no cover - defensive
         logger.debug("AES decrypt failed: %s", e)
+        return None
+
+    return plaintext
+
+
+def decrypt_group_text(ciphertext: bytes, cipher_mac: bytes, key16: bytes) -> Optional[dict[str, Any]]:
+    """Verify+decrypt a GRP_TXT ciphertext with a single channel key.
+
+    Returns ``{timestamp, flags, sender, text}`` on success, or ``None`` if the
+    MAC fails or the plaintext is malformed.
+    """
+    plaintext = decrypt_group_ciphertext(ciphertext, cipher_mac, key16)
+    if plaintext is None:
         return None
 
     if len(plaintext) < 5:
@@ -240,6 +252,85 @@ def decode_group_text(payload: bytes, key_store: Optional[ChannelKeyStore]) -> d
                 result["flags"] = decrypted["flags"]
                 result["msg_timestamp"] = _iso_utc(decrypted["timestamp"])
                 break
+
+    return result
+
+
+def parse_time_sync_payload(data: bytes) -> dict[str, Any] | None:
+    """Parse a MeshCore-Time-v1 ``Tv1`` application payload."""
+    if not data.startswith(TIME_SYNC_MARKER) or len(data) < 10 + TIME_SYNC_SIGNATURE_BYTES:
+        return None
+
+    timestamp = int.from_bytes(data[3:7], "little", signed=False)
+    sequence = int.from_bytes(data[7:9], "little", signed=False)
+    name_len = data[9]
+    name_start = 10
+    name_end = name_start + name_len
+    sig_end = name_end + TIME_SYNC_SIGNATURE_BYTES
+    if name_end > len(data) or sig_end > len(data):
+        return None
+
+    identity_name = data[name_start:name_end].decode("utf-8", errors="replace")
+    signature = data[name_end:sig_end]
+    return {
+        "kind": "TIME_SYNC",
+        "format": "MeshCore-Time-v1",
+        "marker": TIME_SYNC_MARKER.decode("ascii"),
+        "timestamp": timestamp,
+        "timestamp_iso": _iso_utc(timestamp),
+        "sequence": sequence,
+        "identity_name": identity_name,
+        "signature_len": len(signature),
+        "signature_fingerprint": hashlib.sha256(signature).hexdigest()[:16],
+    }
+
+
+def decode_group_data(payload: bytes, key_store: Optional[ChannelKeyStore]) -> dict[str, Any]:
+    """Decode and, if a key matches, decrypt a GRP_DATA payload."""
+    if len(payload) < 3:
+        return {"kind": "GRP_DATA", "decrypted": False, "error": "payload_too_short"}
+
+    channel_hash = f"{payload[0]:02x}"
+    cipher_mac = payload[1:3]
+    ciphertext = payload[3:]
+
+    result: dict[str, Any] = {
+        "kind": "GRP_DATA",
+        "channel_hash": channel_hash,
+        "cipher_mac": cipher_mac.hex(),
+        "ciphertext_len": len(ciphertext),
+        "decrypted": False,
+    }
+
+    if key_store and key_store.has(channel_hash):
+        for key16, name in key_store.keys_for(channel_hash):
+            decrypted = decrypt_group_ciphertext(ciphertext, cipher_mac, key16)
+            if decrypted is None or len(decrypted) < 3:
+                continue
+
+            data_type = int.from_bytes(decrypted[0:2], "little", signed=False)
+            data_len = decrypted[2]
+            data_end = 3 + data_len
+            if data_end > len(decrypted):
+                continue
+
+            app_data = decrypted[3:data_end]
+            result.update(
+                {
+                    "decrypted": True,
+                    "channel": name,
+                    "data_type": data_type,
+                    "data_type_hex": f"0x{data_type:04x}",
+                    "data_len": data_len,
+                    "data_hex": app_data.hex(),
+                }
+            )
+
+            if data_type == TIME_SYNC_DATA_TYPE:
+                time_sync = parse_time_sync_payload(app_data)
+                if time_sync:
+                    result["application"] = time_sync
+            break
 
     return result
 
@@ -322,6 +413,8 @@ def decode_payload(
     """
     if payload_type_value == PT_GRP_TXT:
         return decode_group_text(payload, key_store)
+    if payload_type_value == PT_GRP_DATA:
+        return decode_group_data(payload, key_store)
     if payload_type_value == PT_ADVERT:
         return parse_advert(payload)
     if payload_type_value == PT_TXT_MSG:

@@ -9,12 +9,18 @@ from __future__ import annotations
 
 import asyncio
 import configparser
+import hashlib
+import hmac
 import json
 import logging
 from unittest.mock import MagicMock
 
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
 from modules.meshcore_payload_decode import (
     DEFAULT_PUBLIC_CHANNEL_KEY,
+    TIME_SYNC_DATA_TYPE,
     ChannelKeyStore,
     channel_hash_for_key,
     decode_payload,
@@ -101,6 +107,41 @@ def test_txt_msg_marked_not_decryptable():
     result = decode_payload(2, b"\x00" * 20, None)
     assert result["kind"] == "TXT_MSG"
     assert result["encrypted"] is True
+
+
+def _encrypt_group_payload(key16: bytes, plaintext: bytes) -> bytes:
+    """Build a GRP_DATA/GRP_TXT encrypted payload body for decoder tests."""
+    padded = plaintext + (b"\x00" * ((16 - (len(plaintext) % 16)) % 16))
+    encryptor = Cipher(algorithms.AES(key16), modes.ECB(), backend=default_backend()).encryptor()
+    ciphertext = encryptor.update(padded) + encryptor.finalize()
+    cipher_mac = hmac.new(key16 + (b"\x00" * 16), ciphertext, hashlib.sha256).digest()[:2]
+    return bytes([int(channel_hash_for_key(key16), 16)]) + cipher_mac + ciphertext
+
+
+def test_group_data_time_sync_decrypts_and_identifies_application():
+    store = ChannelKeyStore()
+    store.add_secret(BOT_KEY, "#bot")
+    tv1 = (
+        b"Tv1"
+        + (1_783_898_163).to_bytes(4, "little")
+        + (42).to_bytes(2, "little")
+        + bytes([7])
+        + b"TimeBot"
+        + (b"\x33" * 64)
+    )
+    plaintext = TIME_SYNC_DATA_TYPE.to_bytes(2, "little") + bytes([len(tv1)]) + tv1
+    payload = _encrypt_group_payload(BOT_KEY, plaintext)
+
+    result = decode_payload(6, payload, store)
+
+    assert result["kind"] == "GRP_DATA"
+    assert result["decrypted"] is True
+    assert result["channel"] == "#bot"
+    assert result["data_type"] == TIME_SYNC_DATA_TYPE
+    assert result["data_len"] == len(tv1)
+    assert result["application"]["kind"] == "TIME_SYNC"
+    assert result["application"]["identity_name"] == "TimeBot"
+    assert result["application"]["sequence"] == 42
 
 
 def test_parse_advert_extracts_fields():

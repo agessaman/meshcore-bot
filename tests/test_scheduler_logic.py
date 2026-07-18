@@ -997,6 +997,54 @@ class TestGetMeshInfo:
 
 
 # ---------------------------------------------------------------------------
+# Test service operations
+# ---------------------------------------------------------------------------
+
+
+class TestServiceOperations:
+    """Tests for web-viewer queued service actions."""
+
+    def test_time_sync_send_operation_calls_service_and_marks_completed(self):
+        scheduler = _make_scheduler()
+        scheduler.bot.services = {"timesync": MagicMock()}
+        scheduler.bot.services["timesync"].send_once = AsyncMock(return_value=True)
+
+        conn_mock = MagicMock()
+        conn_mock.__enter__ = Mock(return_value=conn_mock)
+        conn_mock.__exit__ = Mock(return_value=False)
+        cursor_mock = MagicMock()
+        cursor_mock.fetchone.return_value = {"id": 123, "operation_type": "time_sync_send"}
+        conn_mock.cursor.return_value = cursor_mock
+        scheduler.bot.db_manager.connection.return_value = conn_mock
+
+        asyncio.run(scheduler._process_service_operations())
+
+        scheduler.bot.services["timesync"].send_once.assert_awaited_once_with()
+        update_calls = [call for call in cursor_mock.execute.call_args_list if "UPDATE channel_operations" in call.args[0]]
+        assert update_calls
+        assert "completed" in update_calls[-1].args[0]
+
+    def test_time_sync_send_operation_marks_missing_service_failed(self):
+        scheduler = _make_scheduler()
+        scheduler.bot.services = {}
+
+        conn_mock = MagicMock()
+        conn_mock.__enter__ = Mock(return_value=conn_mock)
+        conn_mock.__exit__ = Mock(return_value=False)
+        cursor_mock = MagicMock()
+        cursor_mock.fetchone.return_value = {"id": 124, "operation_type": "time_sync_send"}
+        conn_mock.cursor.return_value = cursor_mock
+        scheduler.bot.db_manager.connection.return_value = conn_mock
+
+        asyncio.run(scheduler._process_service_operations())
+
+        update_calls = [call for call in cursor_mock.execute.call_args_list if "UPDATE channel_operations" in call.args[0]]
+        assert update_calls
+        assert "failed" in update_calls[-1].args[0]
+        assert update_calls[-1].args[1][0] == "Time sync service is not loaded"
+
+
+# ---------------------------------------------------------------------------
 # TestSendScheduledMessageAsync
 # ---------------------------------------------------------------------------
 

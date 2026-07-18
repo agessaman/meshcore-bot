@@ -320,6 +320,38 @@ class TestPluginsApi:
         data = resp.get_json()
         assert "plugins" in data and len(data["plugins"]) > 20
 
+    def test_get_plugins_includes_timesync_sequence_indicator_from_metadata(self, viewer):
+        viewer.db_manager.set_metadata("time_sync.sequence", "42")
+
+        client = viewer.app.test_client()
+        resp = client.get("/api/plugins")
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        entry = next(
+            e for e in data["plugins"]
+            if e["kind"] == "service" and e["name"] == "timesync"
+        )
+        indicator = entry["runtime"]["sequence_indicator"]
+        assert indicator["value"] == 42
+        assert indicator["source"] == "metadata"
+        assert indicator["label"] == "Current saved: 42"
+
+    def test_get_plugins_timesync_sequence_indicator_falls_back_to_config(self, viewer):
+        client = viewer.app.test_client()
+        resp = client.get("/api/plugins")
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        entry = next(
+            e for e in data["plugins"]
+            if e["kind"] == "service" and e["name"] == "timesync"
+        )
+        indicator = entry["runtime"]["sequence_indicator"]
+        assert indicator["value"] == 0
+        assert indicator["source"] == "config"
+        assert indicator["label"] == "Current initial: 0"
+
     def test_save_unknown_plugin_404(self, viewer):
         client = viewer.app.test_client()
         resp = client.post("/api/plugins/command/nope", json={"values": {}})
@@ -351,6 +383,33 @@ class TestPluginsApi:
             "WHERE operation_type = 'config_reload'"
         )
         assert rows and rows[0]["status"] == "pending"
+
+    def test_saving_timesync_full_flood_forces_scope_star(self, viewer, tmp_path):
+        client = viewer.app.test_client()
+        resp = client.post(
+            "/api/plugins/service/timesync",
+            json={"enabled": True, "values": {"full_flood_enabled": True}},
+        )
+
+        assert resp.status_code == 200, resp.get_json()
+        cfg = configparser.ConfigParser()
+        cfg.read(tmp_path / "config.ini", encoding="utf-8")
+        assert cfg.getboolean("Time_Sync", "full_flood_enabled") is True
+        assert cfg.get("Time_Sync", "flood_scope") == "*"
+
+    def test_timesync_send_queues_service_operation(self, viewer):
+        client = viewer.app.test_client()
+        resp = client.post("/api/plugins/service/timesync/send", json={})
+
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["success"] is True
+        rows = viewer.db_manager.execute_query(
+            "SELECT operation_type, status FROM channel_operations WHERE id = ?",
+            (body["operation_id"],),
+        )
+        assert rows[0]["operation_type"] == "time_sync_send"
+        assert rows[0]["status"] == "pending"
 
     def test_omitted_dynamic_sections_do_not_wipe_managed_keys(self, viewer, tmp_path):
         """A payload without dynamic_sections must leave [Channels_List] alone."""

@@ -2,6 +2,7 @@
 
 import json
 import queue
+import sqlite3
 import time
 from configparser import ConfigParser
 from pathlib import Path
@@ -62,6 +63,42 @@ class TestResetCircuitBreaker:
         bi.reset_circuit_breaker()
         assert bi.circuit_breaker_open is False
         assert bi.circuit_breaker_failures == 0
+
+
+# ---------------------------------------------------------------------------
+# stream_data authentication
+# ---------------------------------------------------------------------------
+
+
+class TestStreamDataAuthentication:
+    def test_mesh_edge_update_passes_stream_token_with_pooled_session(self):
+        bi = _make_bot_integration()
+        bi.http_session = MagicMock()
+
+        bi.send_mesh_edge_update({"from": "aa", "to": "bb"})
+
+        bi.http_session.post.assert_called_once()
+        kwargs = bi.http_session.post.call_args.kwargs
+        assert kwargs["headers"]["X-Stream-Token"] == bi._stream_token
+        assert kwargs["headers"]["X-Requested-With"] == "BotIntegration"
+
+    def test_stream_token_is_persisted_to_explicit_viewer_database(self, tmp_path):
+        bot = _make_bot()
+        bot_db_path = tmp_path / "bot.db"
+        viewer_db_path = tmp_path / "viewer.db"
+        bot.db_manager.db_path = str(bot_db_path)
+        bot.config.set("Web_Viewer", "db_path", str(viewer_db_path))
+
+        bi = _make_bot_integration(bot)
+
+        bot.db_manager.set_metadata.assert_called_with("internal.stream_token", bi._stream_token)
+        with sqlite3.connect(str(viewer_db_path)) as conn:
+            row = conn.execute(
+                "SELECT value FROM bot_metadata WHERE key = ?",
+                ("internal.stream_token",),
+            ).fetchone()
+
+        assert row == (bi._stream_token,)
 
 
 # ---------------------------------------------------------------------------
