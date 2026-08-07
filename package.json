@@ -11,7 +11,8 @@
   },
   "devDependencies": {
     "eslint": "^10.8.0",
-    "eslint-plugin-html": "^8.1.1",
+    "eslint-plugin-html": "^8.1.4",
+    "globals": "^16.5.0",
     "htmlhint": "^1.1.4"
   }
 }
