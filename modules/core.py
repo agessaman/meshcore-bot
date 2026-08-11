@@ -283,12 +283,15 @@ class MeshCoreBot:
             if self.config.has_section('Localization'):
                 language = self.config.get('Localization', 'language', fallback='en')
                 translation_path = self.config.get('Localization', 'translation_path', fallback='translations/')
+                local_translation_path = self.config.get('Localization', 'local_translation_path', fallback='local/translations/')
             else:
                 language = 'en'
                 translation_path = 'translations/'
+                local_translation_path = 'local/translations/'
             self.translation_path = translation_path
+            self.local_translation_path = local_translation_path
             self._translator_cache: dict[str, Any] = {}
-            self.translator = Translator(language, translation_path)
+            self.translator = Translator(language, translation_path, local_translation_path)
             self._translator_cache[language] = self.translator
             self.logger.info(f"Localization initialized: {language}")
         except (OSError, ValueError, FileNotFoundError, json.JSONDecodeError) as e:

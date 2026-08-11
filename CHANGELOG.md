@@ -221,6 +221,10 @@ semantic versioning.
   from the MeshCore RF node, which is useful when one bot name is already taken
   by the radio's advertised name. Unset (the default) keeps the previous
   behavior: the connected device name, falling back to `[Bot] bot_name`.
+- Localization extended to read and merge local translation files with distributed
+  translation files. Defaults to `local/translations/` and allows translation
+  files to be build for local commands.
+
 
 ## [1.0.0] — 2026-08-07
 
