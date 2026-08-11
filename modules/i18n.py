@@ -5,15 +5,17 @@ Provides translation functionality for bot commands and responses
 """
 
 import json
+import logging
 from importlib import resources
 from pathlib import Path
 from typing import Any
 
+logger = logging.getLogger("MeshCoreBot")
 
 class Translator:
     """Handles translation loading and lookup for the bot"""
 
-    def __init__(self, language: str = 'en', translation_path: str = 'translations/'):
+    def __init__(self, language: str = 'en', translation_path: str = 'translations/', local_translation_path: str = 'local/translations/'):
         """
         Initialize translator
 
@@ -24,6 +26,7 @@ class Translator:
         """
         self.language = language
         self.translation_path = translation_path
+        self.local_translation_path = local_translation_path
         self.base_language = self._extract_base_language(language)
         self.translations: dict[str, Any] = {}
         self.fallback_translations: dict[str, Any] = {}
@@ -98,9 +101,34 @@ class Translator:
         merge_dict(result, primary)
         return result
 
+    def _deep_merge_translations(self, primary: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+        """
+        Perform a deep merge of translations with overrides taking precedence
+
+        Args:
+            primary: Primary translation dictionary (may be empty)
+            override: Translation dictionary to apply to Primary and override
+                      just values, not sub-dictionaries
+
+        Returns:
+            Merged dictionary with primary values overridden by override dictionary
+        """
+        # Start with a copy of the first dictionary to avoid side effects
+        result = primary.copy()
+
+        for key, value in override.items():
+            # If both values are dictionaries, merge them recursively
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                result[key] = self._deep_merge_translations(result[key], value)
+            else:
+                # Otherwise, overwrite the value or add the new key
+                result[key] = value
+
+        return result
+
     def _load_file(self, lang: str) -> dict[str, Any]:
         """
-        Load a single translation file
+        Load translation files from distribution then local
 
         Args:
             lang: Language code
@@ -109,13 +137,20 @@ class Translator:
             Dictionary of translations, empty dict if file not found
         """
         file_path = Path(self.translation_path) / f"{lang}.json"
+        local_file_path = Path(self.local_translation_path) / f"{lang}.json"
         try:
             # An explicitly configured filesystem catalog always wins.  The
             # package fallback makes the defaults work from an installed wheel
             # (where ``translations/`` is not relative to the current cwd).
-            if file_path.is_file():
-                with open(file_path, encoding='utf-8') as f:
-                    return json.load(f)
+            xlate_table: dict[str, str] = {}
+            for xlate_file in (file_path, local_file_path):
+                if xlate_file.is_file():
+                    logger.info(f"Loading translation file: {xlate_file}")
+                    with open(xlate_file, encoding='utf-8') as f:
+                        xlate_table = self._deep_merge_translations(xlate_table, json.load(f))
+            if xlate_table:
+                # if xlate_table has been built, return it
+                return xlate_table
 
             if not self._uses_bundled_defaults():
                 return {}
