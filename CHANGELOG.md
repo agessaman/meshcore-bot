@@ -262,6 +262,8 @@ semantic versioning.
   that had never been time-synced was the *first* candidate for eviction. Unknown
   staleness is no longer grounds for removal.
 
+- Add traceback information to errors gathered from command executions
+
 ### Changed
 
 - Response templates are parsed by a character-by-character state machine rather
