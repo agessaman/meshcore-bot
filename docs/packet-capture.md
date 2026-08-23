@@ -317,6 +317,8 @@ Note that `rc=` on a *disconnect* is a paho `MQTT_ERR_*` code, not a CONNACK cod
 `rc=7` is a lost connection and `rc=2` is a protocol error. They do not mean the same
 thing as the numbers in a `Failed to connect` line.
 
+**Note**: If the MQTT connection that is failing is attempting to connect to waev.app brokers, please see the [Status Publishing and MQTT auth (JWT)](#status-publishing-and-mqtt-auth-jwt) section.
+
 ### No Packets Being Published
 
 1. **Verify MQTT connection** - Check logs for "Connected to MQTT broker"
