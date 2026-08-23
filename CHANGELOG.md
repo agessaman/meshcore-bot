@@ -158,6 +158,7 @@ semantic versioning.
   and Configuration now sit under a single **Settings** gear menu, leaving Dashboard,
   Real-time, Contacts, Mesh Graph and Logs on the bar. The current page is highlighted,
   including the gear when a settings page is open.
+- Added notes on connecting to waev.app MQTT brokers to the `packet_capture.md` file.
 
 ### Added
 
