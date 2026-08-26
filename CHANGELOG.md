@@ -6,6 +6,22 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Localized proactive weather messages (daily forecasts, rain nowcasts, weather
+  alerts) via `services.weather_service.*` translation keys. `WeatherService` now
+  uses the bot's `translator` instead of hardcoded English strings, so proactive
+  outputs respect the configured `language` setting — the same mechanism already
+  used by `!wx`, `!gwx`, `!rain` and other commands.
+
+- Russian (`ru`) translation for the full bot UI, including all weather service
+  keys, command keys, categories, and common strings.
+
+- `format_temperature_high_low()` now accepts an optional `translator` parameter.
+  When provided, the `H`/`L` temperature labels and compass wind directions are
+  locale-aware (`H`/`L` → `В`/`Н` in Russian; `WNW` → `ЗСЗ`). Passed from
+  `WeatherService`, `!wx`, and `!gwx` callers.
+
 ### Fixed
 
 - Startup config-lint findings now go to the log file. They were printed to stderr
