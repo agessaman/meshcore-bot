@@ -114,18 +114,26 @@ def format_temperature_high_low(
     low: Optional[Union[int, float]],
     units_str: str,
     logger: Optional[Any] = None,
+    translator: Any = None,
 ) -> str:
     """Format a daily high/low pair (or single value) using [Weather] templates.
 
     Config keys (optional; defaults match prior bot behavior):
-      temperature_high_low_format — both values: {high}, {low}, {units}
-      temperature_high_only_format — {high}, {units}
-      temperature_low_only_format — {low}, {units}
+      temperature_high_low_format — both values: {high}, {low}, {units}, {high_label}, {low_label}
+      temperature_high_only_format — {high}, {units}, {high_label}
+      temperature_low_only_format — {low}, {units}, {low_label}
     """
+    if translator is not None:
+        high_label = translator.translate("common.temp_high_label")
+        low_label = translator.translate("common.temp_low_label")
+    else:
+        high_label = "H"
+        low_label = "L"
+
     section = "Weather"
-    default_pair = "H:{high}{units} L:{low}{units}"
-    default_high_only = "H:{high}{units}"
-    default_low_only = "L:{low}{units}"
+    default_pair = f"{high_label}:{{high}}{{units}} {low_label}:{{low}}{{units}}"
+    default_high_only = f"{high_label}:{{high}}{{units}}"
+    default_low_only = f"{low_label}:{{low}}{{units}}"
 
     def _norm(v: Optional[Union[int, float]]) -> Optional[int]:
         if v is None:

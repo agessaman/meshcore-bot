@@ -177,7 +177,8 @@ class WxCommand(BaseCommand):
 
     def _format_high_low(self, high: Optional[float], low: Optional[float], temp_symbol: str) -> str:
         """Format high/low using [Weather] temperature_*_format templates."""
-        return format_temperature_high_low(self.bot.config, high, low, temp_symbol, self.logger)
+        return format_temperature_high_low(self.bot.config, high, low, temp_symbol, self.logger,
+                                           translator=getattr(self.bot, 'translator', None))
 
     @staticmethod
     def _noaa_period_temp_symbol(period: dict) -> str:
@@ -3342,7 +3343,8 @@ class WxCommand(BaseCommand):
                     low_val = int(low)
                     if _pair_ok(high_val, low_val):
                         return format_temperature_high_low(
-                            self.bot.config, high_val, low_val, units_str, self.logger
+                            self.bot.config, high_val, low_val, units_str, self.logger,
+                            translator=getattr(self.bot, 'translator', None),
                         )
                 except ValueError:
                     continue
@@ -3353,7 +3355,8 @@ class WxCommand(BaseCommand):
                 low_val = int(low_match.group(1))
                 if _single_ok(low_val):
                     return format_temperature_high_low(
-                        self.bot.config, None, low_val, units_str, self.logger
+                        self.bot.config, None, low_val, units_str, self.logger,
+                        translator=getattr(self.bot, 'translator', None),
                     )
             except ValueError:
                 pass
@@ -3364,7 +3367,8 @@ class WxCommand(BaseCommand):
                 high_val = int(high_match.group(1))
                 if _single_ok(high_val):
                     return format_temperature_high_low(
-                        self.bot.config, high_val, None, units_str, self.logger
+                        self.bot.config, high_val, None, units_str, self.logger,
+                        translator=getattr(self.bot, 'translator', None),
                     )
             except ValueError:
                 pass

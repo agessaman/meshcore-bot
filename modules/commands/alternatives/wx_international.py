@@ -110,7 +110,8 @@ class GlobalWxCommand(BaseCommand):
 
     def _format_high_low(self, high: Optional[Union[int, float]], low: Optional[Union[int, float]], temp_symbol: str) -> str:
         """Format high/low using [Weather] temperature_*_format templates."""
-        return format_temperature_high_low(self.bot.config, high, low, temp_symbol, self.logger)
+        return format_temperature_high_low(self.bot.config, high, low, temp_symbol, self.logger,
+                                           translator=getattr(self.bot, 'translator', None))
 
     def _load_weather_model(self) -> Optional[str]:
         """Load and normalize Open-Meteo model selection from config.
