@@ -1514,6 +1514,12 @@
         "WNW": "WNW",
         "NW": "NW",
         "NNW": "NNW"
+      },
+      "wind_speed_units": {
+        "ms": "m/s",
+        "mph": "mph",
+        "kmh": "km/h",
+        "kn": "kn"
       }
     }
   }

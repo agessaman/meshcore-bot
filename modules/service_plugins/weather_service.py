@@ -643,7 +643,8 @@ class WeatherService(BaseServicePlugin):
             forecast_text = f"{location_name}: {weather_emoji}{weather_desc} {temp}{temp_symbol}"
             if wind_speed > 0:
                 wind_dir_str = f"{wind_direction} " if wind_direction else ""
-                forecast_text += f" {wind_dir_str}{wind_speed}{self.wind_speed_unit}"
+                wind_unit_label = self._translate(f'services.weather_service.wind_speed_units.{self.wind_speed_unit}')
+                forecast_text += f" {wind_dir_str}{wind_speed}{wind_unit_label}"
 
             today_high = int(daily['temperature_2m_max'][0])
             today_low = int(daily['temperature_2m_min'][0])
