@@ -198,6 +198,21 @@ class WeatherService(BaseServicePlugin):
 
         self.logger.info(f"Weather service initialized: position=({self.my_position_lat}, {self.my_position_lon}), alarm={self.weather_alarm_time}")
 
+    def _translate(self, key: str, **kwargs: Any) -> str:
+        """Translate a key using the bot's translator.
+
+        Args:
+            key: Dot-separated key path (e.g., 'services.weather_service.daily_weather').
+            **kwargs: Formatting parameters for str.format().
+
+        Returns:
+            Translated string, or key if translation not found.
+        """
+        translator = getattr(self.bot, 'translator', None)
+        if translator is not None:
+            return translator.translate(key, **kwargs)
+        return key
+
     def _load_weather_model(self) -> Optional[str]:
         """Load and normalize Open-Meteo model selection from config.
 
@@ -518,11 +533,13 @@ class WeatherService(BaseServicePlugin):
             # Get weather forecast
             forecast_text = await self._get_weather_forecast()
 
-            if forecast_text and forecast_text != "Error fetching weather data":
+            error_label = self._translate('services.weather_service.error_fetching')
+            if forecast_text and forecast_text != error_label:
                 # Send to configured channel
+                daily_label = self._translate('services.weather_service.daily_weather')
                 await self.bot.command_manager.send_channel_message(
                     self.weather_channel,
-                    f"🌤️ Daily Weather: {forecast_text}",
+                    f"🌤️ {daily_label}: {forecast_text}",
                     scope=self.get_mesh_flood_scope(),
                 )
                 self.logger.info(f"Daily weather forecast sent to {self.weather_channel}")
@@ -564,17 +581,17 @@ class WeatherService(BaseServicePlugin):
                 )
                 if not response.ok:
                     self.logger.warning(f"Error fetching weather from Open-Meteo: HTTP {response.status_code}")
-                    return "Error fetching weather data"
+                    return self._translate('services.weather_service.error_fetching')
             except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
                 self.logger.warning(f"Timeout/connection error fetching weather: {e}")
-                return "Error fetching weather data"
+                return self._translate('services.weather_service.error_fetching')
 
             # Extract current conditions
             current = data.get('current', {})
             daily = data.get('daily', {})
 
             if not current or not daily:
-                return "No forecast data available"
+                return self._translate('services.weather_service.no_data')
 
             # Current conditions
             temp = int(current.get('temperature_2m', 0))
@@ -625,7 +642,7 @@ class WeatherService(BaseServicePlugin):
             # Format current forecast
             forecast_text = f"{location_name}: {weather_emoji}{weather_desc} {temp}{temp_symbol}"
             if wind_speed > 0:
-                wind_dir_str = f"{wind_direction}" if wind_direction else ""
+                wind_dir_str = f"{wind_direction} " if wind_direction else ""
                 forecast_text += f" {wind_dir_str}{wind_speed}{self.wind_speed_unit}"
 
             today_high = int(daily['temperature_2m_max'][0])
@@ -633,7 +650,8 @@ class WeatherService(BaseServicePlugin):
             forecast_text += (
                 " | "
                 + format_temperature_high_low(
-                    self.bot.config, today_high, today_low, temp_symbol, self.logger
+                    self.bot.config, today_high, today_low, temp_symbol, self.logger,
+                    translator=getattr(self.bot, 'translator', None),
                 )
             )
 
@@ -651,6 +669,7 @@ class WeatherService(BaseServicePlugin):
                 tomorrow_emoji = self._get_weather_emoji(tomorrow_code)
 
                 if tomorrow_max is not None:
+                    tomorrow_label = self._translate('services.weather_service.tomorrow')
                     if tomorrow_min is not None and tomorrow_min != tomorrow_max:
                         hl = format_temperature_high_low(
                             self.bot.config,
@@ -658,8 +677,9 @@ class WeatherService(BaseServicePlugin):
                             tomorrow_min,
                             temp_symbol,
                             self.logger,
+                            translator=getattr(self.bot, 'translator', None),
                         )
-                        forecast_text += f" | Tomorrow: {tomorrow_emoji}{tomorrow_desc} {hl}"
+                        forecast_text += f" | {tomorrow_label}: {tomorrow_emoji}{tomorrow_desc} {hl}"
                     else:
                         hl = format_temperature_high_low(
                             self.bot.config,
@@ -667,8 +687,9 @@ class WeatherService(BaseServicePlugin):
                             None,
                             temp_symbol,
                             self.logger,
+                            translator=getattr(self.bot, 'translator', None),
                         )
-                        forecast_text += f" | Tomorrow: {tomorrow_emoji}{tomorrow_desc} {hl}"
+                        forecast_text += f" | {tomorrow_label}: {tomorrow_emoji}{tomorrow_desc} {hl}"
 
             return forecast_text
 
@@ -676,7 +697,7 @@ class WeatherService(BaseServicePlugin):
             self.logger.error(f"Error getting weather forecast: {e}")
             import traceback
             self.logger.debug(traceback.format_exc())
-            return "Error fetching weather data"
+            return self._translate('services.weather_service.error_fetching')
 
     def _degrees_to_direction(self, degrees: float) -> str:
         """Convert wind direction in degrees to compass direction.
@@ -685,7 +706,7 @@ class WeatherService(BaseServicePlugin):
             degrees: Wind direction in degrees (0-360).
 
         Returns:
-            str: Compass direction (e.g., 'N', 'NE', 'SW').
+            str: Compass direction (e.g., 'N', 'NE', 'SW') in the current language.
         """
         if degrees is None:
             return ""
@@ -693,7 +714,8 @@ class WeatherService(BaseServicePlugin):
         directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
                      'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
         index = int((degrees + 11.25) / 22.5) % 16
-        return directions[index]
+        key = directions[index]
+        return self._translate(f'services.weather_service.wind_directions.{key}')
 
     def _get_weather_description(self, code: int) -> str:
         """Get weather description from WMO weather code.
@@ -704,20 +726,7 @@ class WeatherService(BaseServicePlugin):
         Returns:
             str: Human-readable weather description.
         """
-        # WMO Weather interpretation codes (WW)
-        codes = {
-            0: "Clear", 1: "Mostly Clear", 2: "Partly Cloudy", 3: "Overcast",
-            45: "Foggy", 48: "Depositing Rime Fog",
-            51: "Light Drizzle", 53: "Moderate Drizzle", 55: "Dense Drizzle",
-            56: "Light Freezing Drizzle", 57: "Dense Freezing Drizzle",
-            61: "Slight Rain", 63: "Moderate Rain", 65: "Heavy Rain",
-            66: "Light Freezing Rain", 67: "Heavy Freezing Rain",
-            71: "Slight Snow", 73: "Moderate Snow", 75: "Heavy Snow",
-            77: "Snow Grains", 80: "Slight Rain Showers", 81: "Moderate Rain Showers",
-            82: "Violent Rain Showers", 85: "Slight Snow Showers", 86: "Heavy Snow Showers",
-            95: "Thunderstorm", 96: "Thunderstorm w/Hail", 99: "Severe Thunderstorm"
-        }
-        return codes.get(code, "Unknown")
+        return self._translate(f'services.weather_service.weather_descriptions.{code}')
 
     def _get_weather_emoji(self, code: int) -> str:
         """Get weather emoji from WMO weather code.
@@ -1005,7 +1014,8 @@ class WeatherService(BaseServicePlugin):
         kind is "starting" (rain incoming) or "ending" (rain about to stop).
         prob/temp_f add a probability and a borderline-temperature tag.
         """
-        emoji, ptype = precip_descriptor(result.bucket)
+        emoji, _ptype_en = precip_descriptor(result.bucket)
+        ptype = self._translate(f'commands.rain.precip_types.{result.bucket or "rain"}')
 
         # City + state/country (same labeling as the !rain command), reverse-
         # geocoded once and cached. Kept separate from the daily-forecast cache.
@@ -1018,7 +1028,8 @@ class WeatherService(BaseServicePlugin):
                 ),
             )
             self._cached_rain_location = join_location(city, suffix)
-        location = f" near {self._cached_rain_location}" if self._cached_rain_location else ""
+        near_label = self._translate('services.weather_service.near')
+        location = f" {near_label} {self._cached_rain_location}" if self._cached_rain_location else ""
 
         parts = []
         if self.rain_nowcast_show_amount:
@@ -1026,17 +1037,24 @@ class WeatherService(BaseServicePlugin):
                 result.bucket, result.amount_mm, result.snow_cm, self.rain_nowcast_amount_unit
             )
             if amt:
-                parts.append(f"est {amt}")
+                est_label = self._translate('services.weather_service.est')
+                parts.append(f"{est_label} {amt}")
         if prob is not None:
             parts.append(f"{prob}%")
         est = f" ({', '.join(parts)})" if parts else ""
         temp = f" {temp_f}°F" if (temp_f is not None and 30 <= temp_f <= 38) else ""
         if kind == "ending":
-            return f"{emoji} Heads up — {ptype} ending in ~{result.minutes}min{est}{temp}{location}"
+            return self._translate(
+                'services.weather_service.rain_ending',
+                emoji=emoji, ptype=ptype, minutes=result.minutes, est=est, temp=temp, location=location,
+            )
         # Flag prolonged rain ("steady") rather than a numeric duration, which
         # would sit confusingly next to the minutes-until-start value.
-        steady = " (steady)" if result.open_ended else ""
-        return f"{emoji} Heads up — {ptype} starting in ~{result.minutes}min{est}{steady}{temp}{location}"
+        steady_label = f" ({self._translate('services.weather_service.steady')})" if result.open_ended else ""
+        return self._translate(
+            'services.weather_service.rain_starting',
+            emoji=emoji, ptype=ptype, minutes=result.minutes, est=est, steady=steady_label, temp=temp, location=location,
+        )
 
     async def _connect_blitzortung_mqtt(self) -> None:
         """Connect to Blitzortung MQTT broker and subscribe to lightning data.
@@ -1615,12 +1633,9 @@ class WeatherService(BaseServicePlugin):
         }.get(severity, '⚪')
 
         # Format event type abbreviation
-        event_type_abbrev = {
-            'Warning': 'Warn',
-            'Watch': 'Watch',
-            'Advisory': 'Adv',
-            'Statement': 'Stmt'
-        }.get(event_type, event_type)
+        event_type_abbrev = self._translate(
+            f'services.weather_service.event_types.{event_type}', event_type=event_type
+        )
 
         # Build compact alert string
         if include_details:
@@ -1674,35 +1689,37 @@ class WeatherService(BaseServicePlugin):
 
             # Add expiration time if available
             if expires:
+                til_label = self._translate('services.weather_service.til')
                 expires_compact = self._compact_time(expires)
                 if any(month in expires_compact for month in ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]):
                     time_match = re.search(r'(\d+)(AM|PM)', expires_compact, re.IGNORECASE)
                     if time_match:
                         hour = time_match.group(1)
                         am_pm = time_match.group(2)
-                        expires_short = f" til {hour}{am_pm}"
+                        expires_short = f" {til_label} {hour}{am_pm}"
                     else:
-                        expires_short = f" til {expires_compact[:15]}"
+                        expires_short = f" {til_label} {expires_compact[:15]}"
                 else:
                     time_match = re.search(r'(\d+):?(\d+)?(AM|PM)', expires_compact, re.IGNORECASE)
                     if time_match:
                         hour = time_match.group(1)
                         am_pm = time_match.group(3)
-                        expires_short = f" til {hour}{am_pm}"
+                        expires_short = f" {til_label} {hour}{am_pm}"
                     else:
-                        expires_short = f" til {expires_compact[:15]}"
+                        expires_short = f" {til_label} {expires_compact[:15]}"
                 result += expires_short
 
             # Add office if available (abbreviate city name)
             if office:
+                by_label = self._translate('services.weather_service.by')
                 office_parts = office.split()
                 if len(office_parts) >= 2:
                     office_org = office_parts[0]
                     city = office_parts[1] if len(office_parts) > 1 else ""
                     city_abbrev = self._abbreviate_city_name(city)
-                    office_short = f" by {office_org} {city_abbrev}"
+                    office_short = f" {by_label} {office_org} {city_abbrev}"
                 else:
-                    office_short = f" by {office[:10]}"
+                    office_short = f" {by_label} {office[:10]}"
                 result += office_short
 
             # Add shortened URL if available and there's space (within 130 char limit)
@@ -1736,26 +1753,24 @@ class WeatherService(BaseServicePlugin):
         if 'T' in time_str and re.match(r'\d{4}-\d{2}-\d{2}T', time_str):
             try:
                 dt = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
-                month_abbrevs = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-                month = month_abbrevs[dt.month - 1]
+                month = self._translate(f'services.weather_service.months.{["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][dt.month - 1]}')
                 day = dt.day
                 hour = dt.hour
 
                 if hour == 0:
                     hour_12 = 12
-                    am_pm = "AM"
+                    am_pm = self._translate('services.weather_service.am')
                 elif hour < 12:
                     hour_12 = hour
-                    am_pm = "AM"
+                    am_pm = self._translate('services.weather_service.am')
                 elif hour == 12:
                     hour_12 = 12
-                    am_pm = "PM"
+                    am_pm = self._translate('services.weather_service.pm')
                 else:
                     hour_12 = hour - 12
-                    am_pm = "PM"
+                    am_pm = self._translate('services.weather_service.pm')
 
-                return f"{month} {day} {hour_12}{am_pm}"
+                return f"{month} {day} {hour_12} {am_pm}"
             except Exception:
                 pass
 
@@ -1763,13 +1778,11 @@ class WeatherService(BaseServicePlugin):
         time_str = re.sub(r'(\d+):00(AM|PM)', r'\1\2', time_str)
 
         # Abbreviate month names
-        month_abbrev_map = {
-            "January": "Jan", "February": "Feb", "March": "Mar", "April": "Apr",
-            "May": "May", "June": "Jun", "July": "Jul", "August": "Aug",
-            "September": "Sep", "October": "Oct", "November": "Nov", "December": "Dec"
-        }
-        for full, abbrev in month_abbrev_map.items():
-            time_str = time_str.replace(full, abbrev)
+        month_abbrevs = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        for abbrev in month_abbrevs:
+            translated = self._translate(f'services.weather_service.months.{abbrev}')
+            time_str = time_str.replace(abbrev, translated)
 
         # Remove "at" before time
         time_str = re.sub(r'\s+at\s+', ' ', time_str)
