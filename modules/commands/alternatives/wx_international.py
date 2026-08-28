@@ -1055,16 +1055,19 @@ class GlobalWxCommand(BaseCommand):
 
             # Add feels like if significantly different
             if abs(feels_like - temp) >= 5:
-                weather += f" (feels {feels_like}{temp_symbol})"
+                feels_str = self.translate('commands.gwx.feels_like', value=feels_like, unit=temp_symbol)
+                weather += f" {feels_str}"
 
             # Add wind info (always show if >= 3 mph, show gusts if significant)
             if wind_speed >= 3:
                 weather += f" {wind_direction}{wind_speed}"
                 if wind_gusts > wind_speed + 3:
-                    weather += f"G{wind_gusts}"
+                    gust_str = self.translate('commands.gwx.gust', value=wind_gusts)
+                    weather += gust_str
 
             # Add humidity
-            weather += f" {humidity}%RH"
+            humidity_str = self.translate('commands.gwx.humidity', value=humidity)
+            weather += f" {humidity_str}"
 
             # Add additional conditions if space allows
             conditions = []
@@ -1072,7 +1075,8 @@ class GlobalWxCommand(BaseCommand):
             # Add dew point
             if dewpoint is not None:
                 dewpoint_val = int(dewpoint)
-                conditions.append(f"💧{dewpoint_val}{temp_symbol}")
+                dew_str = self.translate('commands.gwx.dew_point', value=dewpoint_val, unit=temp_symbol)
+                conditions.append(dew_str)
 
             # Add visibility (already converted to miles above)
             if visibility_mi is not None and visibility_mi > 0:
@@ -1080,12 +1084,14 @@ class GlobalWxCommand(BaseCommand):
                 visibility_display = int(visibility_mi)
                 if visibility_display > 20:
                     visibility_display = 20
-                conditions.append(f"👁️{visibility_display}mi")
+                vis_str = self.translate('commands.gwx.visibility', value=visibility_display)
+                conditions.append(vis_str)
 
             # Add pressure (convert from hPa to display format)
             if pressure is not None:
                 pressure_hpa = int(pressure)
-                conditions.append(f"📊{pressure_hpa}hPa")
+                press_str = self.translate('commands.gwx.pressure', value=pressure_hpa)
+                conditions.append(press_str)
 
             # Add conditions to weather string if space allows
             # Reserve space for forecast data (high/low and tomorrow)
@@ -1177,7 +1183,8 @@ class GlobalWxCommand(BaseCommand):
                     if len(daily.get('wind_gusts_10m_max', [])) > 1:
                         wind_gusts = int(daily['wind_gusts_10m_max'][1])
                         if wind_gusts > wind_speed + 3:
-                            wind_info += f"G{wind_gusts}"
+                            gust_str = self.translate('commands.gwx.gust', value=wind_gusts)
+                            wind_info += gust_str
 
             # Get precipitation probability and amount
             precip_info = ""
@@ -1231,13 +1238,13 @@ class GlobalWxCommand(BaseCommand):
 
             # Map day names to 1-2 letter abbreviations
             day_abbrev_map = {
-                'Monday': 'M',
-                'Tuesday': 'T',
-                'Wednesday': 'W',
-                'Thursday': 'Th',
-                'Friday': 'F',
-                'Saturday': 'Sa',
-                'Sunday': 'Su'
+                'Monday': self.translate('commands.gwx.day_abbrev.Monday'),
+                'Tuesday': self.translate('commands.gwx.day_abbrev.Tuesday'),
+                'Wednesday': self.translate('commands.gwx.day_abbrev.Wednesday'),
+                'Thursday': self.translate('commands.gwx.day_abbrev.Thursday'),
+                'Friday': self.translate('commands.gwx.day_abbrev.Friday'),
+                'Saturday': self.translate('commands.gwx.day_abbrev.Saturday'),
+                'Sunday': self.translate('commands.gwx.day_abbrev.Sunday')
             }
 
             parts = []
@@ -1360,20 +1367,24 @@ class GlobalWxCommand(BaseCommand):
         if degrees is None:
             return ""
 
-        directions = [
-            (0, "⬆️N"), (22.5, "↗️NE"), (45, "↗️NE"), (67.5, "➡️E"),
-            (90, "➡️E"), (112.5, "↘️SE"), (135, "↘️SE"), (157.5, "⬇️S"),
-            (180, "⬇️S"), (202.5, "↙️SW"), (225, "↙️SW"), (247.5, "⬅️W"),
-            (270, "⬅️W"), (292.5, "↖️NW"), (315, "↖️NW"), (337.5, "⬆️N"),
-            (360, "⬆️N")
+        dir_emojis = [
+            (0, "⬆️", "N"), (22.5, "↗️", "NE"), (45, "↗️", "NE"), (67.5, "➡️", "E"),
+            (90, "➡️", "E"), (112.5, "↘️", "SE"), (135, "↘️", "SE"), (157.5, "⬇️", "S"),
+            (180, "⬇️", "S"), (202.5, "↙️", "SW"), (225, "↙️", "SW"), (247.5, "⬅️", "W"),
+            (270, "⬅️", "W"), (292.5, "↖️", "NW"), (315, "↖️", "NW"), (337.5, "⬆️", "N"),
+            (360, "⬆️", "N")
         ]
 
         # Find closest direction
-        for i in range(len(directions) - 1):
-            if directions[i][0] <= degrees < directions[i + 1][0]:
-                return directions[i][1]
+        for i in range(len(dir_emojis) - 1):
+            if dir_emojis[i][0] <= degrees < dir_emojis[i + 1][0]:
+                emoji, key = dir_emojis[i][1], dir_emojis[i][2]
+                translated = self.translate(f"services.weather_service.wind_directions.{key}")
+                return f"{emoji}{translated}"
 
-        return "⬆️N"  # Default to North
+        emoji, key = dir_emojis[-1][1], dir_emojis[-1][2]
+        translated = self.translate(f"services.weather_service.wind_directions.{key}")
+        return f"{emoji}{translated}"
 
     def _get_weather_description(self, code: int) -> str:
         """Convert WMO weather code to description.
