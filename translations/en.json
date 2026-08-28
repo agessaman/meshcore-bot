@@ -253,6 +253,7 @@
     "humidity": "{value}%RH",
     "dew_point": "💧{value}{unit}",
     "visibility": "👁️{value}mi",
+    "visibility_km": "👁️{value}km",
     "pressure": "📊{value}hPa",
     "gust": "G{value}",
     "day_abbrev": {

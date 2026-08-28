@@ -19,7 +19,7 @@ from ...utils import (
     get_nominatim_geocoder,
     rate_limited_nominatim_reverse_sync,
 )
-from ..base_command import BaseCommand
+from ..base_command import BaseCommand, _response_translator
 
 # Import WXSIM parser for custom weather sources
 try:
@@ -1080,11 +1080,23 @@ class GlobalWxCommand(BaseCommand):
 
             # Add visibility (already converted to miles above)
             if visibility_mi is not None and visibility_mi > 0:
-                # Cap visibility at 20 miles for display (beyond that is essentially unlimited)
-                visibility_display = int(visibility_mi)
-                if visibility_display > 20:
-                    visibility_display = 20
-                vis_str = self.translate('commands.gwx.visibility', value=visibility_display)
+                # Determine if the response locale uses metric (km) vs imperial (mi)
+                translator = _response_translator.get() or getattr(self.bot, 'translator', None)
+                base_lang = getattr(translator, 'base_language', 'en') or 'en'
+                metric = base_lang != 'en'
+                if metric:
+                    # Convert miles to kilometers and cap at ~32 km (equivalent to 20 mi)
+                    visibility_km = visibility_mi * 1.609344
+                    visibility_display = int(visibility_km)
+                    if visibility_display > 32:
+                        visibility_display = 32
+                    vis_str = self.translate('commands.gwx.visibility_km', value=visibility_display)
+                else:
+                    # Cap visibility at 20 miles for display (beyond that is essentially unlimited)
+                    visibility_display = int(visibility_mi)
+                    if visibility_display > 20:
+                        visibility_display = 20
+                    vis_str = self.translate('commands.gwx.visibility', value=visibility_display)
                 conditions.append(vis_str)
 
             # Add pressure (convert from hPa to display format)

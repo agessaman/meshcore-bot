@@ -104,7 +104,8 @@
     "feels_like": "(ош.{value}{unit})",
     "humidity": "{value}%",
     "dew_point": "💧{value}{unit}",
-    "visibility": "👁️{value}миль",
+    "visibility": "👁️{value}км",
+    "visibility_km": "👁️{value}км",
     "pressure": "📊{value}гПа",
     "gust": "G{value}",
     "day_abbrev": {
