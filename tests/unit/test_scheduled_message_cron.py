@@ -9,8 +9,8 @@ import re
 import pytest
 
 from modules.scheduled_message_cron import (
-    encode_schedule_key_for_ini,
     decode_schedule_key_from_ini,
+    encode_schedule_key_for_ini,
     is_valid_legacy_hhmm,
     parse_flexible_cron,
     parse_schedule_key,
@@ -160,7 +160,7 @@ class TestParseFlexibleCron:
             "start_date": "2027-01-01"
         }
 
-    def test_start_date_detected(self):
+    def test_end_date_detected(self):
         assert parse_flexible_cron("end:2027-01-01") == {
             "end_date": "2027-01-01"
         }

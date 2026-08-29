@@ -16,7 +16,6 @@ Day-of-week uses APScheduler numbering (0=Monday … 6=Sunday), not Vixie cron
 from __future__ import annotations
 
 import re
-
 from dataclasses import dataclass
 from typing import Optional
 
@@ -138,7 +137,7 @@ def is_valid_legacy_hhmm(time_str: str) -> bool:
 def parse_flexible_cron(time_str: str) -> dict[str, str]:
     """Return a dictionary of CronTrigger parameters by parsing time_str.
     If time_str does not parse as a valid time expression return None."""
-    params = dict();
+    params = dict()
 
     # Is a start date being specified
     match = start_date_re.search(time_str)
@@ -235,7 +234,7 @@ def parse_schedule_key(
     """
     raw = (schedule_key or "").strip()
     if not raw:
-        return ScheduleParseResult(None, "", False, None)
+        return ScheduleParseResult(None, "", False, "")
 
     lowered = raw.lower()
 
@@ -245,7 +244,7 @@ def parse_schedule_key(
         minute = int(raw[2:])
         trigger = CronTrigger(hour=hour, minute=minute, timezone=timezone)
         display = f"{hour:02d}:{minute:02d}"
-        return ScheduleParseResult(trigger, display, True, None)
+        return ScheduleParseResult(trigger, display, True, "")
 
     # 2) @preset aliases
     if lowered in _SPECIAL_PRESET_TO_CRON:
@@ -253,13 +252,13 @@ def parse_schedule_key(
         try:
             trigger = CronTrigger.from_crontab(cron_expr, timezone=timezone)
         except ValueError as e:
-            return ScheduleParseResult(None, raw, False, e)
-        return ScheduleParseResult(trigger, raw, False, None)
+            return ScheduleParseResult(None, raw, False, str(e))
+        return ScheduleParseResult(trigger, raw, False, "")
 
     # 3) Standard 5-field crontab
     if re.match(cron_re, raw):
         trigger = CronTrigger.from_crontab(raw, timezone=timezone)
-        return ScheduleParseResult(trigger, raw, False, None)
+        return ScheduleParseResult(trigger, raw, False, "")
 
     # 4) Flexible crontab
     cron_trigger_kw = parse_flexible_cron(raw)
@@ -268,7 +267,7 @@ def parse_schedule_key(
             return ScheduleParseResult(None, raw, False, cron_trigger_kw['error'])
 
         trigger = CronTrigger(**cron_trigger_kw, timezone=timezone)
-        return ScheduleParseResult(trigger, raw, False, None)
+        return ScheduleParseResult(trigger, raw, False, "")
 
     # Crontab entry not recognized
     return ScheduleParseResult(None, raw, False, "crontab entry not recognized or parsable")

@@ -61,6 +61,7 @@ nav:
     - Check-in API: checkin-api.md
     - Path Command: path-command-config.md
     - Config validation: config-validation.md
+    - Scheduled messages: scheduled-messages.md
   - Web Viewer: web-viewer.md
   - Command Reference:
     - Overview: command-reference.md
