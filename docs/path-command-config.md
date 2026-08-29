@@ -33,6 +33,11 @@ reply_prefix = "{path_distance|prefix_if_nonempty:📏 }\n"
 reply_prefix = {packet_hash|if_nonempty:"https://scope.example.net/#/packets/{packet_hash}"}
 ```
   The `LITERAL` argument may itself be a double-quoted string containing nested `{field}` placeholders (expanded before the filter runs), so the link above still carries the packet hash even though the field being gated on (`packet_hash`) and the field inside the literal are the same one.
+- `urlencode` percent-encodes a value for safe interpolation into a URL. A quoted literal substitutes nested fields verbatim, which is correct for prose and wrong for links: `{sender}` is whatever name a remote node advertises, so an unencoded `&`, `#`, `?` or space rewrites the query, truncates the URL at a fragment, or malforms it. `{packet_hash}` is hex and needs no encoding, but anything a remote node controls does:
+
+```ini
+reply_prefix = {sender|if_nonempty:"https://scope.example.net/#/nodes/{sender|urlencode}"|shorten_url}
+```
 - `shorten_url` replaces the value with a short link from the shortener configured under `[External_Data]` (`short_url_website`, `short_url_website_service` — `gd` for v.gd/is.gd-compatible or `shlink`, and `short_url_website_api_key`, which shlink requires). Chain it after building the link so only the final URL is sent over RF:
 
 ```ini

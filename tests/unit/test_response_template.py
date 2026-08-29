@@ -493,3 +493,122 @@ async def test_resolve_template_async_skips_a_gated_clause():
 @pytest.mark.asyncio
 async def test_resolve_template_async_is_a_noop_without_config():
     assert await resolve_template_async(_LINK_TEMPLATE, {"packet_hash": "A"}) == {}
+
+
+@pytest.fixture(autouse=True)
+def _fresh_warn_state():
+    """Reset the module-level warn-once cache around every test in this file.
+
+    `_UNRESOLVED_WARNED` deduplicates the unresolved-template warning across the
+    process, so without this a test that renders such a template silently suppresses
+    the warning in whichever test runs next — an order-dependent failure. Autouse
+    because any future test here could trip on it.
+    """
+    from modules import response_template
+
+    response_template._UNRESOLVED_WARNED.clear()
+    yield
+    response_template._UNRESOLVED_WARNED.clear()
+
+
+@pytest.mark.unit
+def test_urlencode_escapes_a_field_interpolated_into_a_url():
+    """`sender` is whatever a remote node advertises; unencoded it rewrites the URL."""
+    template = '{sender|if_nonempty:"https://x.example/u/{sender|urlencode}"}'
+    out = format_piped_template(template, {"sender": "bob&admin=1 #frag"})
+    assert out == "https://x.example/u/bob%26admin%3D1%20%23frag"
+
+
+@pytest.mark.unit
+def test_urlencode_escapes_slashes_too():
+    """An interpolated field is one path segment, not a path."""
+    assert format_piped_template('{"p/{a|urlencode}"}', {"a": "x/../y"}) == "p/x%2F..%2Fy"
+
+
+@pytest.mark.unit
+def test_urlencode_leaves_an_empty_value_empty():
+    assert format_piped_template("{missing|urlencode}", {}) == ""
+
+
+@pytest.mark.unit
+def test_unresolved_shorten_url_warns_once_per_template():
+    """This runs on the inbound message path; an unconditional warning would be one
+    log line per message forever."""
+    logger = Mock()
+    for _ in range(5):
+        assert format_piped_template(_LINK_TEMPLATE, {"packet_hash": "AB"}, logger=logger) == ""
+    assert logger.warning.call_count == 1
+
+
+@pytest.mark.unit
+def test_a_second_distinct_template_still_warns():
+    logger = Mock()
+    format_piped_template(_LINK_TEMPLATE, {"packet_hash": "AB"}, logger=logger)
+    format_piped_template('{a|shorten_url}', {"a": "https://other.example"}, logger=logger)
+    assert logger.warning.call_count == 2
+
+
+@pytest.mark.unit
+def test_a_resolved_mapping_that_misses_does_not_warn():
+    """A pre-pass that ran but could not shorten is a transient network condition,
+    not a misconfiguration — it must not escalate to WARNING on the message path."""
+    logger = Mock()
+    out = format_piped_template(
+        _LINK_TEMPLATE, {"packet_hash": "AB"}, logger=logger, shortened={}
+    )
+    assert out == ""
+    logger.warning.assert_not_called()
+    logger.debug.assert_called()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_resolve_template_async_warns_when_config_is_missing():
+    """Regression: this used to return {} indistinguishably from 'nothing to do', so
+    the render dropped the clause with no diagnostic anywhere."""
+    logger = Mock()
+    assert await resolve_template_async(_LINK_TEMPLATE, {"packet_hash": "AB"}, logger=logger) == {}
+    logger.warning.assert_called_once()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_resolve_template_async_does_not_warn_without_shorten_url():
+    logger = Mock()
+    assert await resolve_template_async("{d|hops_min:1}", {"d": "1km"}, logger=logger) == {}
+    logger.warning.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_resolve_template_async_propagates_cancellation():
+    """`return_exceptions=True` captures CancelledError like any other exception;
+    swallowing it would let a cancelled render carry on and transmit at shutdown."""
+    import asyncio
+
+    cfg = configparser.ConfigParser()
+    cfg.add_section("External_Data")
+
+    async def _cancelled(*a, **k):
+        raise asyncio.CancelledError()
+
+    with patch("modules.response_template.shorten_url", _cancelled):
+        with pytest.raises(asyncio.CancelledError):
+            await resolve_template_async(
+                _LINK_TEMPLATE, {"packet_hash": "AB"}, config=cfg
+            )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_resolve_template_async_still_swallows_ordinary_failures():
+    cfg = configparser.ConfigParser()
+    cfg.add_section("External_Data")
+
+    async def _boom(*a, **k):
+        raise RuntimeError("shortener exploded")
+
+    with patch("modules.response_template.shorten_url", _boom):
+        assert await resolve_template_async(
+            _LINK_TEMPLATE, {"packet_hash": "AB"}, config=cfg
+        ) == {}

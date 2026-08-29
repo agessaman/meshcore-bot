@@ -22,6 +22,9 @@ semantic versioning.
   a packet on a full URL. The request is made off the event loop before rendering
   starts; if it fails the clause is dropped rather than sent unshortened, so a
   shortener outage costs the link instead of a second transmission.
+- `urlencode` percent-encodes a value before it is interpolated into a URL built by
+  a quoted literal, for fields a remote node controls (`sender`, and anything derived
+  from message content) where a stray `&` or `#` would otherwise rewrite the link.
 - Shlink is supported as a URL shortener backend alongside v.gd / is.gd, selected
   with `short_url_website_service` under `[External_Data]` (`gd`, the default, or
   `shlink`). Shlink authenticates with `short_url_website_api_key`.

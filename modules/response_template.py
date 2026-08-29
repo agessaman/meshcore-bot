@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any, Callable
+from urllib.parse import quote
 
 from .url_shortener import shorten_url
 from .utils import message_hop_count, message_path_bytes_per_hop
@@ -96,14 +97,22 @@ def _filter_shorten_url(value: str, ctx: dict[str, Any], args: str) -> str:
         return value
 
     if isinstance(resolved, dict):
-        return resolved.get(value, '')
+        short = resolved.get(value)
+        if short:
+            return short
+        # A resolved mapping that lacks this URL means the pre-pass ran and the
+        # shortener could not answer. Debug, not warning: that is a transient
+        # network condition on the message path, not a misconfiguration.
+        logger = ctx.get('logger')
+        if logger is not None:
+            logger.debug("No shortened form for %r; dropping the clause", value)
+        return ''
 
-    logger = ctx.get('logger')
-    if logger is not None:
-        logger.warning(
-            "shorten_url used in a template rendered without resolve_template_async(); "
-            "dropping the clause rather than blocking the event loop"
-        )
+    _warn_unresolved_once(
+        ctx.get('logger'),
+        str(ctx.get('template') or ''),
+        'the caller did not run resolve_template_async()',
+    )
     return ''
 
 
@@ -114,12 +123,27 @@ def _filter_if_nonempty(value: str, ctx: dict[str, Any], args: str) -> str:
     return args
 
 
+def _filter_urlencode(value: str, ctx: dict[str, Any], args: str) -> str:
+    """Percent-encode *value* for safe interpolation into a URL.
+
+    A quoted literal substitutes nested field values verbatim, which is right for
+    prose but wrong the moment the literal is a URL: ``sender`` is whatever name a
+    remote node advertises, so an unencoded ``&``, ``#``, ``?`` or space silently
+    rewrites the link's query, truncates it at a fragment, or malforms it outright.
+    Encodes ``/`` too, since an interpolated field is a single path segment.
+    """
+    if not value:
+        return ''
+    return quote(value, safe='')
+
+
 RESPONSE_TEMPLATE_FILTERS: dict[str, FilterFn] = {
     'pathbytes_min': _filter_pathbytes_min,
     'pathbytes': _filter_pathbytes_min,
     'hops_min': _filter_hops_min,
     'prefix_if_nonempty': _filter_prefix_if_nonempty,
     'if_nonempty': _filter_if_nonempty,
+    'urlencode': _filter_urlencode,
     'shorten_url': _filter_shorten_url,
 }
 
@@ -128,6 +152,25 @@ RESPONSE_TEMPLATE_FILTERS: dict[str, FilterFn] = {
 # placeholder's closing '}' as one literal argument. It must therefore be last in
 # a chain whenever its literal needs a pipe.
 _GREEDY_ARG_FILTERS = frozenset({'prefix_if_nonempty'})
+
+# Templates already warned about, so a misconfiguration is reported once rather than
+# once per inbound message. Bounded by the number of templates in config.
+_UNRESOLVED_WARNED: set[str] = set()
+
+
+def _warn_unresolved_once(logger: Any, template: str, reason: str) -> None:
+    """Warn that ``shorten_url`` cannot resolve here, at most once per template.
+
+    This filter runs on the inbound message path, so an unconditional warning is one
+    log line per message forever on a device writing to a rotating 5 MB file.
+    """
+    if logger is None or template in _UNRESOLVED_WARNED:
+        return
+    _UNRESOLVED_WARNED.add(template)
+    logger.warning(
+        "shorten_url in template %r cannot resolve (%s); dropping the clause rather "
+        "than blocking the event loop", template, reason,
+    )
 
 
 class _TemplateParser:
@@ -310,6 +353,7 @@ def format_piped_template(
         'prefix_hex_chars': prefix_hex_chars,
         'config': config,
         'shortened': shortened,
+        'template': template,
     }
     if logger is not None:
         logger.debug("Rendering response template %r with fields %r", template, fields)
@@ -345,7 +389,10 @@ async def resolve_template_async(
     Returns an empty mapping when there is nothing to do, which renders exactly as
     an unresolved template would.
     """
-    if config is None or not template_needs_resolution(template):
+    if not template_needs_resolution(template):
+        return {}
+    if config is None:
+        _warn_unresolved_once(logger, template, 'no config was supplied to resolve it')
         return {}
 
     pending: set[str] = set()
@@ -355,6 +402,7 @@ async def resolve_template_async(
         'prefix_hex_chars': prefix_hex_chars,
         'config': config,
         'shortened': pending,
+        'template': template,
     }
     _TemplateParser(template, fields, ctx, logger).render()
     if not pending:
@@ -367,6 +415,11 @@ async def resolve_template_async(
     )
     resolved: dict[str, str] = {}
     for url, short in zip(urls, results, strict=True):
+        # Cancellation is not a shortening failure. `return_exceptions=True` captures
+        # it like any other, so swallowing it here would let a cancelled render carry
+        # on and transmit during shutdown.
+        if isinstance(short, asyncio.CancelledError):
+            raise short
         if isinstance(short, BaseException):
             if logger is not None:
                 logger.debug("Shortening %r failed: %s", url, short)
