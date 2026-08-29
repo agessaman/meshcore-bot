@@ -11,9 +11,10 @@ chain, evaluated left to right.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Callable
 
-from .url_shortener import shorten_url_sync
+from .url_shortener import shorten_url
 from .utils import message_hop_count, message_path_bytes_per_hop
 
 FilterFn = Callable[[str, dict[str, Any], str], str]
@@ -70,30 +71,55 @@ def _filter_prefix_if_nonempty(value: str, ctx: dict[str, Any], args: str) -> st
         return ''
     return args + value
 
-def _filter_shorten_url(value: str, ctx: dict[str, Any], args: str) -> str:
-    """Shorten *value* URL using configured URL shortener (v.gd / is.gd compatible)."""
-    logger = ctx.get('logger')
-    config = ctx.get('config')
-    if logger is not None:
-        logger.debug("Shortening URL %r", value)
-    if config is None or value == '':
-        if logger is not None:
-            logger.debug("Abandoning shorten url due to empty value or config")
-        return value
-    return shorten_url_sync(value, config=config, logger=logger) or value
 
-def _filter_if_notempty(value: str, ctx: dict[str, Any], args: str) -> str:
+def _filter_shorten_url(value: str, ctx: dict[str, Any], args: str) -> str:
+    """Swap *value* for its shortened form, resolved ahead of time.
+
+    Rendering is synchronous and runs on the event loop, so this filter never
+    performs the HTTP request itself: a 5 s shortener timeout here would stall the
+    radio transport along with everything else. :func:`resolve_template_async`
+    does the network work off-thread first and leaves the answers in ``ctx``.
+
+    On a miss the clause is dropped rather than falling back to the long URL. A
+    v.gd link is ~19 bytes against a 158-160 byte message budget where a real
+    analyzer URL is ~59, and ``_send_path_response`` subtracts the prefix from the
+    first segment's budget — so falling back would quietly turn one transmission
+    into two every time the shortener was unreachable.
+    """
+    if not value:
+        return ''
+    resolved = ctx.get('shortened')
+
+    # Collection pass: record what needs shortening, change nothing.
+    if isinstance(resolved, set):
+        resolved.add(value)
+        return value
+
+    if isinstance(resolved, dict):
+        return resolved.get(value, '')
+
+    logger = ctx.get('logger')
+    if logger is not None:
+        logger.warning(
+            "shorten_url used in a template rendered without resolve_template_async(); "
+            "dropping the clause rather than blocking the event loop"
+        )
+    return ''
+
+
+def _filter_if_nonempty(value: str, ctx: dict[str, Any], args: str) -> str:
     """Return *args* literal only when *value* is non-empty after prior filters."""
     if not value:
         return ''
     return args
+
 
 RESPONSE_TEMPLATE_FILTERS: dict[str, FilterFn] = {
     'pathbytes_min': _filter_pathbytes_min,
     'pathbytes': _filter_pathbytes_min,
     'hops_min': _filter_hops_min,
     'prefix_if_nonempty': _filter_prefix_if_nonempty,
-    'if_notempty': _filter_if_notempty,
+    'if_nonempty': _filter_if_nonempty,
     'shorten_url': _filter_shorten_url,
 }
 
@@ -257,6 +283,7 @@ def format_piped_template(
     message: Any = None,
     logger: Any = None,
     config: Any = None,
+    shortened: dict[str, str] | None = None,
     prefix_hex_chars: int = 2,
 ) -> str:
     """Replace ``{field}``, ``{"literal {field}"}``, and their piped filter chains.
@@ -268,6 +295,10 @@ def format_piped_template(
             lets ``prefix_if_nonempty`` drop its literal label too.
         message: Triggering mesh message; required for ``pathbytes`` / ``pathbytes_min`` filters.
         logger: Optional logger for unknown filter warnings.
+        config: Bot config, for filters that read ``[External_Data]``.
+        shortened: Long-URL to short-URL mapping from :func:`resolve_template_async`.
+            Required by the ``shorten_url`` filter, which will not make a network
+            call from this synchronous path.
         prefix_hex_chars: Bot prefix width for inferring bytes per hop from legacy path text.
 
     Returns:
@@ -278,7 +309,68 @@ def format_piped_template(
         'logger': logger,
         'prefix_hex_chars': prefix_hex_chars,
         'config': config,
+        'shortened': shortened,
     }
-    if (logger is not None) and (config is not None):
+    if logger is not None:
         logger.debug("Rendering response template %r with fields %r", template, fields)
     return _TemplateParser(template, fields, ctx, logger).render()
+
+
+def template_needs_resolution(template: str) -> bool:
+    """True if *template* uses a filter that needs :func:`resolve_template_async`.
+
+    A cheap substring test so the common template pays nothing for a feature it
+    does not use; the collection pass below is what actually decides.
+    """
+    return 'shorten_url' in template
+
+
+async def resolve_template_async(
+    template: str,
+    fields: dict[str, Any],
+    *,
+    message: Any = None,
+    logger: Any = None,
+    config: Any = None,
+    prefix_hex_chars: int = 2,
+) -> dict[str, str]:
+    """Resolve *template*'s network-backed filters off the event loop.
+
+    Renders the template once with ``shorten_url`` in collection mode, which walks
+    the real filter chain — so gating filters such as ``hops_min`` have already had
+    their say and a suppressed clause costs no request — then shortens whatever
+    survived, concurrently and in a worker thread. Pass the result to
+    :func:`format_piped_template` as ``shortened``.
+
+    Returns an empty mapping when there is nothing to do, which renders exactly as
+    an unresolved template would.
+    """
+    if config is None or not template_needs_resolution(template):
+        return {}
+
+    pending: set[str] = set()
+    ctx: dict[str, Any] = {
+        'message': message,
+        'logger': logger,
+        'prefix_hex_chars': prefix_hex_chars,
+        'config': config,
+        'shortened': pending,
+    }
+    _TemplateParser(template, fields, ctx, logger).render()
+    if not pending:
+        return {}
+
+    urls = sorted(pending)
+    results = await asyncio.gather(
+        *(shorten_url(u, config=config, logger=logger) for u in urls),
+        return_exceptions=True,
+    )
+    resolved: dict[str, str] = {}
+    for url, short in zip(urls, results, strict=True):
+        if isinstance(short, BaseException):
+            if logger is not None:
+                logger.debug("Shortening %r failed: %s", url, short)
+            continue
+        if short:
+            resolved[url] = short
+    return resolved

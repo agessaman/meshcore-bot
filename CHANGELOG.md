@@ -6,12 +6,27 @@ semantic versioning.
 
 ## [Unreleased]
 
-### Fixed
+### Added
 
-- Refactor response_template parsing to use finite state machine when processing
-  templates adding additional flexibility such as the use of nested fields. Added
-  support for shlink to External_Data configuration. Added url_shortener filter and
-  if_notempty filter to response_template.
+- Response templates now parse with a character-by-character state machine instead of
+  a regular expression, which lifts the restriction that a placeholder could contain
+  no `{}` of its own. A placeholder may now hold a double-quoted string literal with
+  further `{field}` placeholders nested inside it, so a whole URL can be assembled in
+  config rather than hard-coded: `{packet_hash|if_nonempty:"https://scope.example.net/#/packets/{packet_hash}"}`.
+  Every template shipped in `config.ini.example` renders identically to before.
+- `if_nonempty:LITERAL` renders `LITERAL` when the value survives the preceding
+  filters and nothing at all otherwise — the counterpart to `prefix_if_nonempty`,
+  for when the whole clause should be the literal rather than a label plus the value.
+- `shorten_url` shortens a value through the shortener configured under
+  `[External_Data]`, for putting a link in `path`'s `reply_prefix` without spending
+  a packet on a full URL. The request is made off the event loop before rendering
+  starts; if it fails the clause is dropped rather than sent unshortened, so a
+  shortener outage costs the link instead of a second transmission.
+- Shlink is supported as a URL shortener backend alongside v.gd / is.gd, selected
+  with `short_url_website_service` under `[External_Data]` (`gd`, the default, or
+  `shlink`). Shlink authenticates with `short_url_website_api_key`.
+
+### Fixed
 
 - `path` no longer answers "No path information available in current message" on a
   busy mesh (#255). Verifying a channel message against the RF cache only ever

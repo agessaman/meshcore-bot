@@ -9,6 +9,7 @@ Configure base URL and optional API key under [External_Data] in config.ini.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import Any
 from urllib.parse import quote
@@ -104,7 +105,13 @@ def _build_create_gd_url(long_url: str, base: str, api_key: str) -> str:
     return rebuilt
 
 
-def _build_create_shlink_url(long_url: str, base: str, api_key: str) -> str:
+def _build_create_shlink_url(base: str) -> str:
+    """Build the Shlink create endpoint from *base*.
+
+    Shlink authenticates with an ``X-Api-Key`` header, so unlike the v.gd builder
+    this takes neither the long URL nor the key — nothing about them belongs in
+    the URL, and passing them in invited the assumption that they did.
+    """
     from urllib.parse import urlparse, urlunparse
 
     root = _normalize_base(base)
@@ -130,10 +137,8 @@ def _shorten_url_with_shlink(
     timeout: float = 5.0,
     logger: logging.Logger | None = None,
 ) -> str:
-    """Shorten a URL using Shlink API."""
-    import json
-
-    shortener_url = _build_create_shlink_url(long_url, base, api_key)
+    """Shorten a URL using the Shlink API."""
+    shortener_url = _build_create_shlink_url(base)
     headers = {
         "Content-Type": "application/json",
         "X-Api-Key": api_key,
@@ -142,16 +147,24 @@ def _shorten_url_with_shlink(
         {"longUrl": long_url, "findIfExists": True, "tags": ["meshcore-bot"]}
     )
 
-    get = session.post if session is not None else requests.post
-    response = get(shortener_url, headers=headers, data=payload, timeout=timeout)
-    if logger:
-        logger.debug("Shlink response: %s", response.text)
+    post = session.post if session is not None else requests.post
+    response = post(shortener_url, headers=headers, data=payload, timeout=timeout)
+    if not response.ok:
+        # A bad API key is a 401 with a JSON problem-details body; without this the
+        # misconfiguration is indistinguishable from "the shortener had nothing".
+        if logger:
+            logger.debug("Error shortening URL: HTTP %s", response.status_code)
+        return ""
+
     data = response.json()
-    short_url = data.get("shortUrl") or data.get("shortUrlSlug")
-
+    # Shlink's create response carries `shortUrl` (and `shortCode`, which is a bare
+    # slug, not a URL). Anything else means we did not get a usable link.
+    short_url = data.get("shortUrl")
     if short_url:
-        return short_url
+        return str(short_url)
 
+    if logger:
+        logger.debug("Shlink response had no shortUrl: %s", str(data)[:200])
     return ""
 
 
@@ -169,10 +182,17 @@ def _shorten_url_with_gd(
     get = session.get if session is not None else requests.get
 
     response = get(shortener_url, timeout=timeout)
+    if not response.ok:
+        if logger:
+            logger.debug("Error shortening URL: HTTP %s", response.status_code)
+        return ""
+
     short = _parse_simple_response(response.text)
     if short:
         return short
 
+    if logger:
+        logger.debug("URL shortener returned error: %s", response.text.strip()[:200])
     return ""
 
 
@@ -232,9 +252,15 @@ def shorten_url_sync(
             logger=logger,
         )
 
+    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+        # A mesh node's uplink drops out routinely; that is not an error worth
+        # raising the log level for, and it used to be logged at debug.
+        if logger:
+            logger.debug("Error shortening URL: %s", e)
+        return ""
     except Exception as e:
         if logger:
-            logger.error("Unexpected error shortening URL: %s", e)
+            logger.debug("shorten_url_sync failed: %s", e)
         return ""
 
 

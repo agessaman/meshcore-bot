@@ -27,17 +27,21 @@ These options only affect the **path** command’s reply text and whether repeat
 reply_prefix = "{path_distance|prefix_if_nonempty:📏 }\n"
 ```
 - `hops_min:N` clears a field unless the message actually travelled at least N hops. `{path_distance}` renders `N/A` on a direct message, which `prefix_if_nonempty` treats as a value, so gate it first: `{path_distance|hops_min:1|prefix_if_nonempty:📏 }`. Unlike `pathbytes_min:N`, which asks how the path is *encoded*, this keeps a measurable one-byte multi-hop path.
-- `if_notempty:LITERAL` renders `LITERAL` when the value is non-empty after prior filters, and clears entirely otherwise — the opposite pairing of `prefix_if_nonempty`, useful when the whole output should be a fixed (or field-built) literal rather than the value with a label prepended. Since `{packet_hash}` is empty whenever RF correlation fails, gating on it hides the whole clause instead of printing a broken link:
+- `if_nonempty:LITERAL` renders `LITERAL` when the value is non-empty after prior filters, and clears entirely otherwise — the opposite pairing of `prefix_if_nonempty`, useful when the whole output should be a fixed (or field-built) literal rather than the value with a label prepended. Since `{packet_hash}` is empty whenever RF correlation fails, gating on it hides the whole clause instead of printing a broken link:
 
 ```ini
-reply_prefix = {packet_hash|if_notempty:"https://scope.example.net/#/packets/{packet_hash}"}
+reply_prefix = {packet_hash|if_nonempty:"https://scope.example.net/#/packets/{packet_hash}"}
 ```
   The `LITERAL` argument may itself be a double-quoted string containing nested `{field}` placeholders (expanded before the filter runs), so the link above still carries the packet hash even though the field being gated on (`packet_hash`) and the field inside the literal are the same one.
-- `shorten_url` runs the value through the shared shortener configured under `[External_Data]` (`short_url_website`, `short_url_website_service` — `gd` for v.gd/is.gd-compatible or `shlink`, and `short_url_website_api_key` where required). It falls back to the original, unshortened value if shortening fails or isn't configured, so a clause never silently disappears because of a network error. Chain it after building the link so only the final URL is sent over RF:
+- `shorten_url` replaces the value with a short link from the shortener configured under `[External_Data]` (`short_url_website`, `short_url_website_service` — `gd` for v.gd/is.gd-compatible or `shlink`, and `short_url_website_api_key`, which shlink requires). Chain it after building the link so only the final URL is sent over RF:
 
 ```ini
-reply_prefix = {packet_hash|if_notempty:"https://scope.example.net/#/packets/{packet_hash}"|shorten_url}
+reply_prefix = {packet_hash|if_nonempty:"https://scope.example.net/#/packets/{packet_hash}"|shorten_url}
 ```
+
+  If shortening fails or isn't configured, **the clause is dropped rather than sent unshortened**. A v.gd link costs about 19 bytes; the analyzer URL above is about 59, against a per-message budget of roughly 158–160 bytes that the reply prefix is subtracted from before the route list is packed. Falling back to the long URL would quietly turn one transmission into two every time the shortener was unreachable, so an outage costs you the link, not extra airtime.
+
+  `shorten_url` is currently supported in `path`'s `reply_prefix` only. Rendering is synchronous and happens on the event loop, so the HTTP request is made ahead of the render by `resolve_template_async()`, which the `path` command awaits. Used in a template that has no such pre-pass — the test command's `response_format`, for example — the filter logs a warning and drops the clause instead of blocking the bot for the length of the shortener's timeout.
 
 **`minimum_path_bytes`** (integer `0`–`3`, default `0`)
 

@@ -644,7 +644,9 @@ log_max_bytes = 5242880
 # log_backup_count: number of rotated backup files to keep (e.g. meshcore_bot.log.1 … .3)
 log_backup_count = 3
 [External_Data]
-# URL shortener Service (gd,shlink). Default: gd
+# URL shortener backend: gd (v.gd / is.gd-compatible create.php) or shlink.
+# shlink posts to <short_url_website>/rest/v3/short-urls and requires
+# short_url_website_api_key below. Default: gd
 short_url_website_service = gd
 # URL shortener API base (v.gd / is.gd-compatible create.php). Default: https://v.gd
 # See https://v.gd/apishorteningreference.php

@@ -2,13 +2,17 @@
 """Unit tests for piped response templates and message_path_bytes_per_hop."""
 
 import configparser
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
 from modules.commands.test_command import TestCommand as MeshTestCommand
 from modules.models import MeshMessage
-from modules.response_template import format_piped_template
+from modules.response_template import (
+    format_piped_template,
+    resolve_template_async,
+    template_needs_resolution,
+)
 from modules.utils import message_path_bytes_per_hop
 
 
@@ -389,16 +393,103 @@ def test_nested_placeholder_inside_a_quoted_literal_can_carry_its_own_filter():
     assert format_piped_template('{"Dist: {d|hops_min:5}"}', {"d": "12.4km"}, message=msg) == "Dist: "
 
 
+_LINK_TEMPLATE = (
+    '{packet_hash | if_nonempty: '
+    '"https://analyzer.example.net/#/packets/{packet_hash}?obs=1620457" '
+    '| shorten_url}'
+)
+_LONG_LINK = "https://analyzer.example.net/#/packets/ABCDEF12?obs=1620457"
+
+
 @pytest.mark.unit
 def test_quoted_filter_argument_with_a_nested_placeholder_does_not_close_early():
     """Regression: a quoted filter arg's own '}' (from a nested {field}) must not be
     mistaken for the placeholder's closing brace and truncate the rest of the chain."""
     template = (
-        '{packet_hash | if_notempty: '
-        '"https://analyzer.example.net/#/packets/{packet_hash}?obs=1620457" '
-        '| shorten_url}'
+        '{packet_hash | if_nonempty: '
+        '"https://analyzer.example.net/#/packets/{packet_hash}?obs=1620457"}'
     )
     assert format_piped_template(template, {"packet_hash": ""}) == ""
-    assert format_piped_template(template, {"packet_hash": "ABCDEF12"}) == (
-        "https://analyzer.example.net/#/packets/ABCDEF12?obs=1620457"
+    assert format_piped_template(template, {"packet_hash": "ABCDEF12"}) == _LONG_LINK
+
+
+@pytest.mark.unit
+def test_shorten_url_uses_the_preresolved_mapping():
+    out = format_piped_template(
+        _LINK_TEMPLATE,
+        {"packet_hash": "ABCDEF12"},
+        shortened={_LONG_LINK: "https://v.gd/abc"},
     )
+    assert out == "https://v.gd/abc"
+
+
+@pytest.mark.unit
+def test_shorten_url_never_calls_the_network_from_the_sync_render():
+    """The render path runs on the event loop; a blocking shortener call here would
+    stall the radio transport for the length of its timeout."""
+    with patch("modules.url_shortener.requests.get") as get, \
+         patch("modules.url_shortener.requests.post") as post:
+        format_piped_template(_LINK_TEMPLATE, {"packet_hash": "ABCDEF12"}, logger=Mock())
+    get.assert_not_called()
+    post.assert_not_called()
+
+
+@pytest.mark.unit
+def test_unresolved_shorten_url_drops_the_clause_and_warns():
+    """A 59-byte URL against a ~158-byte budget would push a path reply into a second
+    transmission, so an unresolved link is dropped rather than sent long."""
+    logger = Mock()
+    out = format_piped_template(_LINK_TEMPLATE, {"packet_hash": "ABCDEF12"}, logger=logger)
+    assert out == ""
+    logger.warning.assert_called_once()
+
+
+@pytest.mark.unit
+def test_template_needs_resolution_only_for_network_filters():
+    assert template_needs_resolution(_LINK_TEMPLATE)
+    assert not template_needs_resolution("{path_distance|prefix_if_nonempty: | Dist: }")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_resolve_template_async_shortens_the_built_link():
+    cfg = configparser.ConfigParser()
+    cfg.add_section("External_Data")
+    cfg.set("External_Data", "short_url_website", "https://v.gd")
+    resp = MagicMock()
+    resp.ok = True
+    resp.text = "https://v.gd/abc"
+    session = MagicMock()
+    session.get.return_value = resp
+
+    with patch("modules.url_shortener.requests.get", session.get):
+        resolved = await resolve_template_async(
+            _LINK_TEMPLATE, {"packet_hash": "ABCDEF12"}, config=cfg
+        )
+
+    assert resolved == {_LONG_LINK: "https://v.gd/abc"}
+    assert format_piped_template(
+        _LINK_TEMPLATE, {"packet_hash": "ABCDEF12"}, shortened=resolved
+    ) == "https://v.gd/abc"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_resolve_template_async_skips_a_gated_clause():
+    """hops_min has already suppressed the clause during the collection pass, so no
+    request is made for a link that would never have been sent."""
+    cfg = configparser.ConfigParser()
+    cfg.add_section("External_Data")
+    template = '{d|hops_min:5|if_nonempty:"https://x.example/{d}"|shorten_url}'
+    with patch("modules.url_shortener.requests.get") as get:
+        resolved = await resolve_template_async(
+            template, {"d": "12.4km"}, message=_msg(path="Direct", hops=0), config=cfg
+        )
+    assert resolved == {}
+    get.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_resolve_template_async_is_a_noop_without_config():
+    assert await resolve_template_async(_LINK_TEMPLATE, {"packet_hash": "A"}) == {}

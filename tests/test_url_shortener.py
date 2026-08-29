@@ -43,21 +43,16 @@ class TestBuildCreateGdUrl:
 
 class TestBuildCreateShlinkUrl:
     def test_appends_rest_v3_short_urls_path(self):
-        u = _build_create_shlink_url("http://a.com", "https://short.example", "k1")
+        u = _build_create_shlink_url("https://short.example")
         assert u == "https://short.example/rest/v3/short-urls"
 
     def test_strips_trailing_slash_on_base(self):
-        u = _build_create_shlink_url("http://a.com", "https://short.example/", "k1")
+        u = _build_create_shlink_url("https://short.example/")
         assert u == "https://short.example/rest/v3/short-urls"
 
     def test_bare_hostname_gets_https_scheme(self):
-        u = _build_create_shlink_url("http://a.com", "short.example", "k1")
+        u = _build_create_shlink_url("short.example")
         assert u == "https://short.example/rest/v3/short-urls"
-
-    def test_api_key_never_appears_in_the_url(self):
-        """Shlink authenticates via the X-Api-Key header, not a query param."""
-        u = _build_create_shlink_url("http://a.com", "https://short.example", "super-secret")
-        assert "super-secret" not in u
 
 
 class TestCoerceUrlString:
@@ -185,10 +180,14 @@ class TestShortenUrlSync:
         assert call_url.startswith("https://v.gd/create.php")
 
     def test_http_error_returns_empty(self):
+        """Regression: the body is only trusted once the status says it is a real
+        answer. A captive portal or CDN error page can return 503 with a URL in the
+        body, and that URL is not a short link."""
         cfg = _minimal_config()
         mock_resp = MagicMock()
         mock_resp.ok = False
         mock_resp.status_code = 503
+        mock_resp.text = "http://portal.example/login?next=1"
         session = MagicMock()
         session.get.return_value = mock_resp
 
@@ -243,6 +242,7 @@ class TestShortenUrlSyncShlink:
     def test_success_returns_short_url(self):
         cfg = self._shlink_config()
         mock_resp = MagicMock()
+        mock_resp.ok = True
         mock_resp.json.return_value = {"shortUrl": "https://short.example/abc123"}
         session = MagicMock()
         session.post.return_value = mock_resp
@@ -255,6 +255,7 @@ class TestShortenUrlSyncShlink:
     def test_posts_to_rest_v3_short_urls_with_api_key_header(self):
         cfg = self._shlink_config()
         mock_resp = MagicMock()
+        mock_resp.ok = True
         mock_resp.json.return_value = {"shortUrl": "https://short.example/abc123"}
         session = MagicMock()
         session.post.return_value = mock_resp
@@ -269,19 +270,22 @@ class TestShortenUrlSyncShlink:
         assert payload["longUrl"] == "https://example.com/long/path"
         assert payload["findIfExists"] is True
 
-    def test_falls_back_to_short_url_slug(self):
+    def test_bare_short_code_is_not_treated_as_a_link(self):
+        """Shlink returns `shortCode` alongside `shortUrl`, but a slug on its own is
+        not a URL — emitting one would put `abc123` in a mesh message."""
         cfg = self._shlink_config()
         mock_resp = MagicMock()
-        mock_resp.json.return_value = {"shortUrlSlug": "abc123"}
+        mock_resp.ok = True
+        mock_resp.json.return_value = {"shortCode": "abc123"}
         session = MagicMock()
         session.post.return_value = mock_resp
 
-        out = shorten_url_sync("http://a.com", config=cfg, session=session)
-        assert out == "abc123"
+        assert shorten_url_sync("http://a.com", config=cfg, session=session) == ""
 
     def test_missing_short_url_in_response_returns_empty(self):
         cfg = self._shlink_config()
         mock_resp = MagicMock()
+        mock_resp.ok = True
         mock_resp.json.return_value = {"unexpected": "shape"}
         session = MagicMock()
         session.post.return_value = mock_resp
@@ -299,6 +303,19 @@ class TestShortenUrlSyncShlink:
         assert out == ""
         session.post.assert_not_called()
 
+    def test_http_error_returns_empty(self):
+        """A rejected API key comes back as 401 with a problem-details body; without
+        a status check that is indistinguishable from an empty result."""
+        cfg = self._shlink_config()
+        mock_resp = MagicMock()
+        mock_resp.ok = False
+        mock_resp.status_code = 401
+        session = MagicMock()
+        session.post.return_value = mock_resp
+
+        assert shorten_url_sync("http://a.com", config=cfg, session=session) == ""
+        mock_resp.json.assert_not_called()
+
     def test_request_exception_returns_empty(self):
         cfg = self._shlink_config()
         session = MagicMock()
@@ -309,6 +326,7 @@ class TestShortenUrlSyncShlink:
     def test_malformed_json_response_returns_empty(self):
         cfg = self._shlink_config()
         mock_resp = MagicMock()
+        mock_resp.ok = True
         mock_resp.json.side_effect = ValueError("not json")
         session = MagicMock()
         session.post.return_value = mock_resp
@@ -319,6 +337,7 @@ class TestShortenUrlSyncShlink:
     def test_no_session_uses_requests_post(self, mock_post):
         cfg = self._shlink_config()
         mock_resp = MagicMock()
+        mock_resp.ok = True
         mock_resp.json.return_value = {"shortUrl": "https://short.example/xyz"}
         mock_post.return_value = mock_resp
 
@@ -352,6 +371,7 @@ async def test_shorten_url_async_shlink():
         short_url_website_api_key="test-api-key",
     )
     mock_resp = MagicMock()
+    mock_resp.ok = True
     mock_resp.json.return_value = {"shortUrl": "https://short.example/async1"}
     session = MagicMock()
     session.post.return_value = mock_resp

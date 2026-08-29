@@ -15,7 +15,7 @@ from ..path_inference import (
     select_node_repeater,
     select_repeater_by_graph,
 )
-from ..response_template import format_piped_template
+from ..response_template import format_piped_template, resolve_template_async
 from ..utils import (
     bytes_per_hop_from_routing_and_nodes,
     calculate_distance,
@@ -415,17 +415,29 @@ class PathCommand(BaseCommand):
             return ''
         return f"{distance:.1f}km"
 
-    def _format_path_reply_prefix(self, message: MeshMessage) -> str:
+    async def _format_path_reply_prefix(self, message: MeshMessage) -> str:
         if not self.path_reply_prefix:
             return ''
         fields = self.get_standard_placeholder_fields(message)
         fields['path_distance'] = self._format_path_distance(message)
-        formatted = format_piped_template(
+        str_fields = {k: str(v) for k, v in fields.items()}
+        # Any URL shortening happens here, off the event loop, before the
+        # synchronous render runs. See modules.response_template.
+        shortened = await resolve_template_async(
             self.path_reply_prefix,
-            {k: str(v) for k, v in fields.items()},
+            str_fields,
             message=message,
             logger=self.logger,
             config=self.bot.config,
+            prefix_hex_chars=getattr(self.bot, 'prefix_hex_chars', 2),
+        )
+        formatted = format_piped_template(
+            self.path_reply_prefix,
+            str_fields,
+            message=message,
+            logger=self.logger,
+            config=self.bot.config,
+            shortened=shortened,
             prefix_hex_chars=getattr(self.bot, 'prefix_hex_chars', 2),
         ).rstrip()
         if not formatted:
@@ -1057,7 +1069,7 @@ class PathCommand(BaseCommand):
 
     async def _send_path_response(self, message: MeshMessage, response: str):
         """Send path response, splitting into multiple messages if necessary"""
-        prefix = self._format_path_reply_prefix(message)
+        prefix = await self._format_path_reply_prefix(message)
         self.last_response = prefix + response if prefix else response
 
         max_length = self.get_max_message_length(message)
