@@ -4025,6 +4025,8 @@ class BotDataViewer:
                     _schedule_tz(),
                     message=data.get('message', ''),
                     count=count,
+                    start=(data.get('start') or '').strip() or None,
+                    end=(data.get('end') or '').strip() or None,
                 ))
             except Exception as e:
                 self.logger.error(f"Error previewing schedule: {e}")
@@ -4040,12 +4042,17 @@ class BotDataViewer:
             channel = (data.get('channel') or '').strip()
             message = (data.get('message') or '').strip()
             scope = (data.get('scope') or '').strip() or None
+            # Optional date bounds; they live on the value, not the schedule key.
+            start = (data.get('start') or '').strip() or None
+            end = (data.get('end') or '').strip() or None
 
-            field_error = validate_entry(channel, message, scope)
+            field_error = validate_entry(channel, message, scope, start, end)
             if field_error:
                 return jsonify({'success': False, 'error': field_error}), 400
 
-            described = describe_schedule(schedule, _schedule_tz(), message=message)
+            described = describe_schedule(
+                schedule, _schedule_tz(), message=message, start=start, end=end
+            )
             if not described.get('valid'):
                 return jsonify({'success': False, 'error': described.get('error')}), 400
 
@@ -4070,7 +4077,11 @@ class BotDataViewer:
                     ),
                 }), 409
 
-            updates = {SCHEDULED_MESSAGES_SECTION: {schedule: compose_value(channel, message, scope)}}
+            updates = {
+                SCHEDULED_MESSAGES_SECTION: {
+                    schedule: compose_value(channel, message, scope, start, end)
+                }
+            }
             deletes = None
             if replacing and replacing != schedule:
                 deletes = {SCHEDULED_MESSAGES_SECTION: [replacing]}

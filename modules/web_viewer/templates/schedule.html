@@ -101,6 +101,8 @@
                             Five fields: minute hour day-of-month month day-of-week.
                             Day-of-week is 0=Monday here, not Sunday. Presets like
                             <code>@daily</code> and <code>@hourly</code> also work.
+                            Day-of-month also takes <code>last-fri</code>,
+                            <code>4th-tue</code> or <code>1st-tue,3rd-tue</code>.
                         </div>
                     </div>
                 </div>
@@ -114,6 +116,21 @@
                     <label class="form-label" for="scheduleScope">Flood scope <span class="text-muted">(optional)</span></label>
                     <input type="text" class="form-control" id="scheduleScope" placeholder="#sea">
                     <div class="form-text">Leave blank for global flood.</div>
+                </div>
+
+                <div class="row g-2 mb-3">
+                    <div class="col-sm-6">
+                        <label class="form-label" for="scheduleStart">Start date <span class="text-muted">(optional)</span></label>
+                        <input type="date" class="form-control" id="scheduleStart">
+                    </div>
+                    <div class="col-sm-6">
+                        <label class="form-label" for="scheduleEnd">End date <span class="text-muted">(optional)</span></label>
+                        <input type="date" class="form-control" id="scheduleEnd">
+                    </div>
+                    <div class="form-text">
+                        Limit this schedule to a date range. The end date is included in full.
+                        Leave both blank to run indefinitely.
+                    </div>
                 </div>
 
                 <div class="mb-3">
@@ -265,7 +282,13 @@
         try {
             const data = await api('/api/scheduled-messages/preview', {
                 method: 'POST',
-                body: JSON.stringify({ schedule: cron, message: $('scheduleMessage').value, count: 5 })
+                body: JSON.stringify({
+                    schedule: cron,
+                    message: $('scheduleMessage').value,
+                    start: $('scheduleStart').value,
+                    end: $('scheduleEnd').value,
+                    count: 5
+                })
             });
             if (data.valid) {
                 $('previewRuns').innerHTML = (data.next_runs || [])
@@ -287,6 +310,8 @@
         $('scheduleChannel').value = entry ? entry.channel : '';
         $('scheduleScope').value = entry && entry.scope ? entry.scope : '';
         $('scheduleMessage').value = entry ? entry.message : '';
+        $('scheduleStart').value = entry && entry.start ? entry.start : '';
+        $('scheduleEnd').value = entry && entry.end ? entry.end : '';
         // Existing entries open in Advanced so the stored cron is never silently
         // rewritten into something the friendly controls happen to produce.
         $('scheduleMode').value = entry ? 'advanced' : 'daily';
@@ -301,7 +326,9 @@
             schedule: cron,
             channel: $('scheduleChannel').value,
             scope: $('scheduleScope').value,
-            message: $('scheduleMessage').value
+            message: $('scheduleMessage').value,
+            start: $('scheduleStart').value,
+            end: $('scheduleEnd').value
         };
         const editing = editingSchedule !== null;
         if (editing) payload.original_schedule = editingSchedule;
@@ -355,8 +382,14 @@
         let scheduleCell = '<span class="font-monospace">' + escapeHtml(entry.schedule) + '</span>';
         if (entry.error) {
             scheduleCell += '<br><span class="badge bg-danger">Not scheduled</span>';
+        } else if (entry.finished) {
+            scheduleCell += '<br><span class="badge bg-secondary">Finished</span>';
         } else if (entry.deprecated) {
             scheduleCell += '<br><span class="badge bg-warning text-dark">Deprecated format</span>';
+        }
+        if (entry.start || entry.end) {
+            scheduleCell += '<br><span class="small text-muted">'
+                + escapeHtml((entry.start || '…') + ' → ' + (entry.end || '…')) + '</span>';
         }
 
         const scopeBadge = entry.scope
@@ -403,7 +436,7 @@
         $('saveScheduleBtn').addEventListener('click', save);
         $('scheduleMode').addEventListener('change', syncModeFields);
         ['scheduleTime', 'scheduleTimes', 'scheduleEveryHours', 'scheduleEveryMinutes',
-         'scheduleCron', 'scheduleMessage'].forEach((id) =>
+         'scheduleCron', 'scheduleMessage', 'scheduleStart', 'scheduleEnd'].forEach((id) =>
             $(id).addEventListener('input', schedulePreview));
         syncModeFields();
         load();

@@ -6,6 +6,27 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Added
+
+- **Nth and last weekday of the month in `[Scheduled_Messages]` keys.** The day-of-month
+  field now accepts APScheduler's positional expressions with `-` (or `_`) standing in for
+  the space that would otherwise split the crontab fields: `0 19 last-fri * *` is the last
+  Friday, `0 19 4th-tue * *` the fourth Tuesday, and `0 19 1st-tue,3rd-tue * *` the first
+  and third — patterns recurring nets need and plain 5-field cron cannot express, which
+  previously forced a hand-rolled day-of-month list that drifts across months of different
+  lengths. Expressions without one of these prefixes are passed to APScheduler untouched,
+  so every crontab form that worked before still parses identically. Positional
+  expressions are valid only in the day-of-month field; `0 19 * * last-fri` is rejected.
+- **Optional `start=` / `end=` date bounds on `[Scheduled_Messages]` values**, for a
+  schedule that should only run over a date range: `0 19 last-fri * * = start=2027-01-01
+  end=2027-03-31 Public:Winter net`. They sit on the value rather than the schedule key,
+  ahead of the channel and keyed with `=`, so they never collide with the `:` separating
+  channel from message and a body mentioning `start=` is never misread as a bound. Either
+  may be omitted and order does not matter; the end date is inclusive of that whole day.
+  A schedule with no runs left is skipped at startup with a log line saying why, and the
+  web viewer's schedule page gains start/end pickers, shows a bounded entry's window and
+  marks an exhausted one **Finished**.
+
 ### Fixed
 
 - `path` no longer answers "No path information available in current message" on a

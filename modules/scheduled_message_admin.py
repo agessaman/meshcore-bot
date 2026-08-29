@@ -17,7 +17,11 @@ import configparser
 import datetime
 from typing import Any
 
-from .scheduled_message_cron import parse_schedule_key, parse_scheduled_message_value
+from .scheduled_message_cron import (
+    parse_schedule_key,
+    parse_scheduled_message_value,
+    split_schedule_bounds,
+)
 
 SECTION = "Scheduled_Messages"
 
@@ -55,7 +59,12 @@ def next_run_times(trigger: Any, tz: Any, count: int = 5) -> list[str]:
 
 
 def describe_schedule(
-    schedule: str, tz: Any, message: str = "", count: int = 5
+    schedule: str,
+    tz: Any,
+    message: str = "",
+    count: int = 5,
+    start: str | None = None,
+    end: str | None = None,
 ) -> dict[str, Any]:
     """Validate a schedule key and describe when it would fire.
 
@@ -64,6 +73,8 @@ def describe_schedule(
         tz: Timezone the bot schedules in.
         message: Message body, only needed to apply the ``{cmd:...}`` airtime floor.
         count: How many upcoming runs to return.
+        start: Optional ISO date the schedule starts on (from the entry's value).
+        end: Optional ISO date it runs through, inclusive.
 
     Returns:
         ``valid``, a human ``label``, ``next_runs``, ``interval_seconds`` (tightest gap),
@@ -74,7 +85,7 @@ def describe_schedule(
         return {"valid": False, "error": "Schedule is required", "next_runs": []}
 
     try:
-        parsed = parse_schedule_key(raw, tz)
+        parsed = parse_schedule_key(raw, tz, start, end)
     except Exception as exc:  # noqa: BLE001 - any parser error is just an invalid schedule
         return {"valid": False, "error": f"Could not parse schedule: {exc}", "next_runs": []}
 
@@ -83,7 +94,8 @@ def describe_schedule(
             "valid": False,
             "error": (
                 "Not a valid schedule. Use 5-field cron (minute hour day-of-month "
-                "month day-of-week), or a preset like @daily or @hourly."
+                "month day-of-week), a positional day-of-month such as last-fri or "
+                "4th-tue, or a preset like @daily or @hourly."
             ),
             "next_runs": [],
         }
@@ -97,11 +109,21 @@ def describe_schedule(
         "deprecated": bool(parsed.is_deprecated_hhmm),
         "error": None,
     }
+    warnings: list[str] = []
     if parsed.is_deprecated_hhmm:
-        result["warning"] = (
+        warnings.append(
             f"{raw} is the deprecated HHMM form and will stop working in a future "
             "release. Use 5-field cron instead."
         )
+    if (start or end) and not result["next_runs"]:
+        # Well-formed, just outside its window -- distinct from a malformed schedule.
+        result["finished"] = True
+        warnings.append(
+            f"This schedule has no runs left: it is bounded to "
+            f"{start or 'any date'} .. {end or 'any date'}."
+        )
+    if warnings:
+        result["warning"] = " ".join(warnings)
 
     # Same floor the scheduler enforces at startup, applied here so the UI refuses it
     # up front rather than letting it be saved and silently dropped on reload.
@@ -131,20 +153,54 @@ def _humanize_seconds(seconds: float) -> str:
     return f"{seconds} seconds"
 
 
-def compose_value(channel: str, message: str, scope: str | None = None) -> str:
-    """Build the config value for an entry, matching parse_scheduled_message_value."""
+def compose_value(
+    channel: str,
+    message: str,
+    scope: str | None = None,
+    start: str | None = None,
+    end: str | None = None,
+) -> str:
+    """Build the config value for an entry, matching parse_scheduled_message_value.
+
+    Date bounds lead, so they cannot be confused with a message body, and are read
+    back off by :func:`~modules.scheduled_message_cron.split_schedule_bounds`.
+    """
     channel = (channel or "").strip()
     message = (message or "").strip()
     scope = (scope or "").strip()
+    starts_on = (start or "").strip()
+    ends_on = (end or "").strip()
+    prefix = ""
+    if starts_on:
+        prefix += f"start={starts_on} "
+    if ends_on:
+        prefix += f"end={ends_on} "
     if scope:
         if not scope.startswith("#"):
             scope = f"#{scope}"
-        return f"{channel}:{scope}:{message}"
-    return f"{channel}:{message}"
+        return f"{prefix}{channel}:{scope}:{message}"
+    return f"{prefix}{channel}:{message}"
 
 
-def validate_entry(channel: str, message: str, scope: str | None) -> str | None:
+def validate_entry(
+    channel: str,
+    message: str,
+    scope: str | None,
+    start: str | None = None,
+    end: str | None = None,
+) -> str | None:
     """Return an error string for an unusable entry, or None when it is fine."""
+    starts_on = (start or "").strip()
+    ends_on = (end or "").strip()
+    for label, value in (("Start date", starts_on), ("End date", ends_on)):
+        if not value:
+            continue
+        try:
+            datetime.date.fromisoformat(value)
+        except ValueError:
+            return f"{label} must be an ISO date (YYYY-MM-DD)"
+    if starts_on and ends_on and ends_on < starts_on:
+        return "End date is before the start date"
     if not (channel or "").strip():
         return "Channel is required"
     if not (message or "").strip():
@@ -187,10 +243,15 @@ def read_entries(config_path: str, tz: Any) -> list[dict[str, Any]]:
             "channel": "",
             "scope": None,
             "message": "",
+            "start": None,
+            "end": None,
         }
         try:
-            channel, message, scope = parse_scheduled_message_value(raw_value)
-            entry.update(channel=channel, message=message, scope=scope)
+            start, end, rest = split_schedule_bounds(raw_value)
+            channel, message, scope = parse_scheduled_message_value(rest)
+            entry.update(
+                channel=channel, message=message, scope=scope, start=start, end=end
+            )
         except ValueError as exc:
             # Keep the same shape as a described entry so callers never have to
             # special-case a malformed row to find out it is not running.
@@ -199,6 +260,8 @@ def read_entries(config_path: str, tz: Any) -> list[dict[str, Any]]:
             entry["next_runs"] = []
             entries.append(entry)
             continue
-        entry.update(describe_schedule(schedule, tz, message=message))
+        entry.update(
+            describe_schedule(schedule, tz, message=message, start=start, end=end)
+        )
         entries.append(entry)
     return entries

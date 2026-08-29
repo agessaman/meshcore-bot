@@ -509,11 +509,31 @@ category.funfact = fun
 #   0 18 * * * = Public:Hello! ...
 #   0 18 * * * = Public:#sea:Hello! ...   (same channel text, sent with #sea flood scope)
 #
+# Optional date bounds limit a schedule to a range. They lead the value, ahead of the
+# channel, and use "=" so they cannot be confused with the channel:message separator or
+# with a message body that happens to mention "start=".
+#   <schedule> = start=YYYY-MM-DD end=YYYY-MM-DD channel:message
+# Either may be omitted, and they may appear in either order. The end date is inclusive:
+# "end=2027-03-31" runs through the whole of the 31st. A schedule with no runs left is
+# skipped at startup with a log line saying so.
+# Examples:
+#   0 19 last-fri * * = start=2027-01-01 end=2027-03-31 Public:Winter net starts now
+#   0 8 * * *         = end=2026-12-25 Public:#sea:Countdown to the holidays
+#
 # <schedule> is one of:
 #   - 5-field crontab (minute hour day-of-month month day-of-week), e.g.
 #       0 8 * * *     = every day at 08:00 (in [Bot] timezone)
 #       30 12 * * mon = every Monday at 12:30
 #       30 12 * * 0   = same (Monday) — see APScheduler note below
+#   - Positional day-of-month, in the day-of-month field only. Write the space as
+#     "-" (or "_") so it does not read as a field separator:
+#       0 19 last-fri * *        = 19:00 on the last Friday of every month
+#       0 19 4th-tue * *         = 19:00 on the fourth Tuesday
+#       0 19 1st-tue,3rd-tue * * = 19:00 on the first and third Tuesday
+#       0 19 last * *            = 19:00 on the last day of the month (no weekday)
+#     Prefixes are 1st 2nd 3rd 4th 5th last, followed by mon–sun. Note that a month
+#     may have no 5th Tuesday, and that "1st and 3rd" is a 14/14/21-day cadence, not
+#     a strict fortnight — crontab has no way to express "every 14 days".
 #   - Preset aliases (@yearly @annually @monthly @weekly @daily @midnight @hourly).
 #     These expand to the 5-field forms above; @weekly is Monday 00:00 (not Sunday).
 #   - Deprecated (still accepted, logs a warning): HHMM = daily at that 24h clock time
