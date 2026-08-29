@@ -324,3 +324,81 @@ def test_hops_min_with_an_unusable_argument_passes_the_value_through():
     msg = _msg(path="Direct", hops=0)
     assert format_piped_template("{d|hops_min:abc}", {"d": "x"}, message=msg) == "x"
     assert format_piped_template("{d|hops_min:-1}", {"d": "x"}, message=msg) == "x"
+
+
+@pytest.mark.unit
+def test_unknown_filter_passes_value_through_and_warns():
+    logger = Mock()
+    out = format_piped_template("{x|nope:1}", {"x": "hi"}, logger=logger)
+    assert out == "hi"
+    logger.warning.assert_called_once()
+
+
+@pytest.mark.unit
+def test_empty_braces_are_left_literal():
+    assert format_piped_template("a{}b", {}) == "a{}b"
+
+
+@pytest.mark.unit
+def test_unterminated_placeholder_is_left_literal():
+    assert format_piped_template("a {oops no close", {"x": "hi"}) == "a {oops no close"
+
+
+@pytest.mark.unit
+def test_a_malformed_placeholder_does_not_block_a_later_valid_one():
+    assert format_piped_template("{} then {x}", {"x": "hi"}) == "{} then hi"
+
+
+@pytest.mark.unit
+def test_quoted_string_literal_is_used_verbatim():
+    assert format_piped_template('{"hello world"}', {}) == "hello world"
+
+
+@pytest.mark.unit
+def test_quoted_string_literal_substitutes_a_nested_field():
+    assert format_piped_template('{"Hello {name}!"}', {"name": "Alice"}) == "Hello Alice!"
+
+
+@pytest.mark.unit
+def test_quoted_string_literal_substitutes_multiple_nested_fields():
+    assert format_piped_template('{"{a}-{b}"}', {"a": "x", "b": "y"}) == "x-y"
+
+
+@pytest.mark.unit
+def test_quoted_string_literal_nested_field_missing_renders_empty():
+    assert format_piped_template('{"Hi {ghost}"}', {}) == "Hi "
+
+
+@pytest.mark.unit
+def test_quoted_string_literal_supports_escaped_quotes_and_backslashes():
+    assert format_piped_template('{"She said \\"hi\\""}', {}) == 'She said "hi"'
+    assert format_piped_template('{"a\\\\b"}', {}) == "a\\b"
+
+
+@pytest.mark.unit
+def test_quoted_string_literal_can_be_filtered():
+    msg = _msg(path="01,02 (2 hops)", hops=2)
+    assert format_piped_template('{"{d}"|hops_min:1}', {"d": "12.4km"}, message=msg) == "12.4km"
+    assert format_piped_template('{"{d}"|hops_min:5}', {"d": "12.4km"}, message=msg) == ""
+
+
+@pytest.mark.unit
+def test_nested_placeholder_inside_a_quoted_literal_can_carry_its_own_filter():
+    msg = _msg(path="01,02 (2 hops)", hops=2)
+    assert format_piped_template('{"Dist: {d|hops_min:1}"}', {"d": "12.4km"}, message=msg) == "Dist: 12.4km"
+    assert format_piped_template('{"Dist: {d|hops_min:5}"}', {"d": "12.4km"}, message=msg) == "Dist: "
+
+
+@pytest.mark.unit
+def test_quoted_filter_argument_with_a_nested_placeholder_does_not_close_early():
+    """Regression: a quoted filter arg's own '}' (from a nested {field}) must not be
+    mistaken for the placeholder's closing brace and truncate the rest of the chain."""
+    template = (
+        '{packet_hash | if_notempty: '
+        '"https://analyzer.example.net/#/packets/{packet_hash}?obs=1620457" '
+        '| shorten_url}'
+    )
+    assert format_piped_template(template, {"packet_hash": ""}) == ""
+    assert format_piped_template(template, {"packet_hash": "ABCDEF12"}) == (
+        "https://analyzer.example.net/#/packets/ABCDEF12?obs=1620457"
+    )

@@ -674,6 +674,7 @@ class TestCommand(BaseCommand):
                 fields,
                 message=message,
                 logger=self.logger,
+                config=self.bot.config,
                 prefix_hex_chars=getattr(self.bot, 'prefix_hex_chars', 2),
             )
         except (KeyError, ValueError) as e:

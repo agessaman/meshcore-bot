@@ -8,6 +8,11 @@ semantic versioning.
 
 ### Fixed
 
+- Refactor response_template parsing to use finite state machine when processing
+  templates adding additional flexibility such as the use of nested fields. Added
+  support for shlink to External_Data configuration. Added url_shortener filter and
+  if_notempty filter to response_template.
+
 - `path` no longer answers "No path information available in current message" on a
   busy mesh (#255). Verifying a channel message against the RF cache only ever
   checked the newest row, which assumes the RF log row and the decoded CHAN event

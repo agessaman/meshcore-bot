@@ -425,6 +425,7 @@ class PathCommand(BaseCommand):
             {k: str(v) for k, v in fields.items()},
             message=message,
             logger=self.logger,
+            config=self.bot.config,
             prefix_hex_chars=getattr(self.bot, 'prefix_hex_chars', 2),
         ).rstrip()
         if not formatted:
