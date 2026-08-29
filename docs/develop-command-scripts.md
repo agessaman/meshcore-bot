@@ -2,6 +2,8 @@
 
 This guide covers how to develop custom command scripts (plugins) for the MeshCore Bot. Commands are Python classes that inherit from `BaseCommand` and respond to user messages on the mesh network.
 
+Local commands should be placed in the `local/commands/` directory, which allows you to add custom functionality without modifying the core bot code.
+
 ## Table of Contents
 
 - [Getting Started](#getting-started)
@@ -22,7 +24,7 @@ This guide covers how to develop custom command scripts (plugins) for the MeshCo
 
 ### Basic Command Template
 
-Create a new file in `modules/commands/` with the following structure:
+Create a new file in `local/commands/` with the following structure:
 
 ```python
 #!/usr/bin/env python3
@@ -30,8 +32,8 @@ Create a new file in `modules/commands/` with the following structure:
 Your Command - Brief description of what it does
 """
 
-from ..models import MeshMessage
-from .base_command import BaseCommand
+from modules.models import MeshMessage
+from modules.commands.base_command import BaseCommand
 
 
 class YourCommand(BaseCommand):
@@ -90,8 +92,8 @@ All commands must inherit from `BaseCommand` located in `modules/commands/base_c
 ### Required Imports
 
 ```python
-from ..models import MeshMessage
-from .base_command import BaseCommand
+from modules.models import MeshMessage
+from modules.commands.base_command import BaseCommand
 ```
 
 ### Optional Common Imports
@@ -109,10 +111,10 @@ import aiohttp
 # (available via self.bot.db_manager)
 
 # For external API clients
-from ..clients.your_client import YourClient
+from modules.clients.your_client import YourClient
 
 # For utilities
-from ..utils import (
+from modules.utils import (
     geocode_city_sync,
     geocode_zipcode_sync,
     get_config_timezone,
@@ -930,13 +932,13 @@ async def test_execute_invalid_input(command, mock_bot):
 
 ### Manual Testing
 
-1. **Install your command**: Place the file in `modules/commands/`
+1. **Install your command**: Place the file in `local/commands/`
 2. **Configure**: Add section to `config.ini`:
    ```ini
    [YourCommand_Command]
    enabled = true
    ```
-3. **Restart bot**: The command will be auto-discovered
+3. **Restart bot**: The command will be auto-discovered from the local commands directory
 4. **Test**: Send messages to the bot to trigger your command
 
 ### Testing Checklist
@@ -971,7 +973,7 @@ async def test_execute_invalid_input(command, mock_bot):
 
 ```python
 # From modules.utils
-from ..utils import (
+from modules.utils import (
     geocode_city_sync,           # Geocode city name
     geocode_zipcode_sync,        # Geocode US ZIP code
     get_config_timezone,         # Get timezone from config
@@ -998,16 +1000,38 @@ api_key = your_api_key_here
 
 ---
 
+## Local Commands Directory
+
+Custom commands should be placed in the `local/commands/` directory:
+
+```
+meshcore-bot/
+├── modules/
+│   └── commands/          # Core distributed commands (do not modify)
+│       └── base_command.py
+├── local/
+│   └── commands/          # Your custom commands go here
+│       ├── __init__.py
+│       └── yourcommand_command.py
+└── config.ini
+```
+
+The bot automatically discovers and loads commands from the `local/commands/` directory at startup, allowing you to extend functionality without modifying core bot files. This separation ensures your custom commands won't be overwritten during bot updates.
+
+---
+
 ## Summary
 
 Developing commands for MeshCore Bot involves:
 
-1. **Inherit from BaseCommand** and set class-level metadata
-2. **Implement `execute()`** with your command logic
-3. **Use `send_response()`** to reply to users
-4. **Access database** via `self.bot.db_manager`
-5. **Offload blocking I/O** with `asyncio.to_thread()`
-6. **Handle errors gracefully** and log appropriately
-7. **Test thoroughly** in both DM and channel contexts
+1. **Create file in `local/commands/`** with your command class
+2. **Inherit from BaseCommand** and set class-level metadata
+3. **Use absolute imports** from `modules.*` packages
+4. **Implement `execute()`** with your command logic
+5. **Use `send_response()`** to reply to users
+6. **Access database** via `self.bot.db_manager`
+7. **Offload blocking I/O** with `asyncio.to_thread()`
+8. **Handle errors gracefully** and log appropriately
+9. **Test thoroughly** in both DM and channel contexts
 
 Follow the patterns in existing commands and refer to this guide when implementing new functionality. The framework handles most of the complexity around message routing, rate limiting, and channel management, allowing you to focus on your command's core functionality.
