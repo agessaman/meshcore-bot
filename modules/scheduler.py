@@ -25,6 +25,7 @@ from meshcore.events import EventType
 from .maintenance import MaintenanceRunner
 from .models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD
 from .scheduled_message_cron import (
+    decode_schedule_key_from_ini,
     is_valid_legacy_hhmm,
     parse_schedule_key,
     parse_scheduled_message_value,
@@ -113,7 +114,10 @@ class MessageScheduler:
 
         if self.bot.config.has_section('Scheduled_Messages'):
             self.logger.info("Found Scheduled_Messages section")
-            for schedule_key, message_info in self.bot.config.items('Scheduled_Messages'):
+            for raw_schedule_key, message_info in self.bot.config.items('Scheduled_Messages'):
+                # config.ini stores flexible-cron HH:MM times as HH!MM (":" is the
+                # INI key/value separator); decode back to HH:MM before parsing.
+                schedule_key = decode_schedule_key_from_ini(raw_schedule_key)
                 self.logger.info(f"Processing scheduled message: '{schedule_key}' -> '{message_info}'")
                 try:
                     parsed = parse_schedule_key(schedule_key, tz)

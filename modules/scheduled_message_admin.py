@@ -17,7 +17,12 @@ import configparser
 import datetime
 from typing import Any
 
-from .scheduled_message_cron import parse_schedule_key, parse_scheduled_message_value
+from .scheduled_message_cron import (
+    decode_schedule_key_from_ini,
+    encode_schedule_key_for_ini,
+    parse_schedule_key,
+    parse_scheduled_message_value,
+)
 
 SECTION = "Scheduled_Messages"
 
@@ -81,9 +86,9 @@ def describe_schedule(
     if parsed.trigger is None:
         return {
             "valid": False,
-            "error": (
+            "error": parsed.error or (
                 "Not a valid schedule. Use 5-field cron (minute hour day-of-month "
-                "month day-of-week), or a preset like @daily or @hourly."
+                "month day-of-week), flexible cron or a preset like @daily or @hourly."
             ),
             "next_runs": [],
         }
@@ -180,7 +185,10 @@ def read_entries(config_path: str, tz: Any) -> list[dict[str, Any]]:
         return []
 
     entries: list[dict[str, Any]] = []
-    for schedule, raw_value in parser.items(SECTION):
+    for raw_schedule, raw_value in parser.items(SECTION):
+        # config.ini stores flexible-cron HH:MM times as HH!MM (":" is the INI
+        # key/value separator); decode back to HH:MM for display/parsing.
+        schedule = decode_schedule_key_from_ini(raw_schedule)
         entry: dict[str, Any] = {
             "schedule": schedule,
             "raw_value": raw_value,

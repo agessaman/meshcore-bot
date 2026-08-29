@@ -63,6 +63,7 @@ from modules.scheduled_message_admin import (
     read_entries,
     validate_entry,
 )
+from modules.scheduled_message_cron import encode_schedule_key_for_ini
 from modules.security_utils import (
     SafeUrlPolicy,
     create_safe_requests_session,
@@ -4070,10 +4071,17 @@ class BotDataViewer:
                     ),
                 }), 409
 
-            updates = {SCHEDULED_MESSAGES_SECTION: {schedule: compose_value(channel, message, scope)}}
+            # config.ini uses ":" as the key/value separator, so a flexible-cron
+            # key containing HH:MM (e.g. "4th tue 14:00 jan-oct") must be encoded
+            # as HH!MM to survive the round-trip; read_entries() decodes it back.
+            updates = {
+                SCHEDULED_MESSAGES_SECTION: {
+                    encode_schedule_key_for_ini(schedule): compose_value(channel, message, scope)
+                }
+            }
             deletes = None
             if replacing and replacing != schedule:
-                deletes = {SCHEDULED_MESSAGES_SECTION: [replacing]}
+                deletes = {SCHEDULED_MESSAGES_SECTION: [encode_schedule_key_for_ini(replacing)]}
 
             try:
                 summary = update_ini_values(self.config_path, updates, deletes)
@@ -4152,7 +4160,9 @@ class BotDataViewer:
                         }), 404
                     try:
                         update_ini_values(
-                            self.config_path, {}, {SCHEDULED_MESSAGES_SECTION: [schedule]}
+                            self.config_path,
+                            {},
+                            {SCHEDULED_MESSAGES_SECTION: [encode_schedule_key_for_ini(schedule)]},
                         )
                     except OSError as exc:
                         self.logger.error("Failed to delete scheduled message: %s", exc)

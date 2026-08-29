@@ -22,11 +22,24 @@ TZ = datetime.timezone.utc
 
 @pytest.mark.unit
 class TestDescribeSchedule:
-    @pytest.mark.parametrize("cron", ["0 8 * * *", "0 6,12,18 * * *", "*/30 * * * *", "@daily"])
+    @pytest.mark.parametrize("cron", ["0 8 * * *", "0 6,12,18 * * *", "*/30 * * * *", "@daily",
+                                      "0 8 * * sun", "0 8 * * mon,wed,fri", "0 8 15 jan *",
+                                      "0 8 15 oct-dec *", "0 8 * jun,jul,sep *", "0 8 * jan,mar wed",
+                                      "0 8 * may-oct,dec *", "0 8 * * mon-wed,sat,sun",
+                                      "1st tue 10:00", "last sat 9h */15m", "mon jun-jul 0815",
+                                      "5,15,25d 15m", "feb 10-20d 23:30", "3w 7-15h 45m"])
     def test_accepts_valid_schedules(self, cron):
         assert describe_schedule(cron, TZ)["valid"] is True
 
-    @pytest.mark.parametrize("bad", ["", "   ", "nonsense", "0 8 * *", "99 99 * * *"])
+    @pytest.mark.parametrize("Cron", ["0 8 * * SUN", "0 8 * * Mon,Wed", "0 8 15 JAN *",
+                                          "0 8 15 Oct-Dec *", "0 8 * jUn,jUl,sEp *",
+                                          "1ST Tue 10:00", "lASt sAt 9h */15m", "mon jun-jul 0815",
+                                          "5,15,25D 15M", "FEB 10-20d 23:30", "3W 7-15H 45M"])
+    def test_accepts_valid_case_insensitive_schedules(self, Cron):
+        assert describe_schedule(Cron, TZ)["valid"] is True
+
+    @pytest.mark.parametrize("bad", ["", "   ", "nonsense", "0 8 * *", "99 99 * * *",
+                                     "0 8 * tue *", "0 8 * * jan"])
     def test_rejects_invalid_schedules(self, bad):
         result = describe_schedule(bad, TZ)
         assert result["valid"] is False
@@ -49,7 +62,6 @@ class TestDescribeSchedule:
         assert result["valid"] is True
         assert result["deprecated"] is True
         assert "deprecated" in result["warning"].lower()
-
 
 @pytest.mark.unit
 class TestCommandPlaceholderFloor:
