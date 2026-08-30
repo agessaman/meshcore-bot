@@ -24,6 +24,16 @@ def _minimal_config(**external_data):
     return c
 
 
+@pytest.fixture(autouse=True)
+def _fresh_config_warning_state():
+    """Keep warn-once diagnostics independent of test order."""
+    from modules import url_shortener
+
+    url_shortener._CONFIG_WARNINGS_EMITTED.clear()
+    yield
+    url_shortener._CONFIG_WARNINGS_EMITTED.clear()
+
+
 class TestBuildCreateGdUrl:
     def test_vgd_no_key_in_query(self):
         u = _build_create_gd_url("http://example.com/path?q=1", "https://v.gd", "secret")
@@ -265,6 +275,7 @@ class TestShortenUrlSyncShlink:
         call = session.post.call_args
         assert call[0][0] == "https://short.example/rest/v3/short-urls"
         assert call.kwargs["headers"]["X-Api-Key"] == "test-api-key"
+        assert call.kwargs["headers"]["Accept"] == "application/json"
         assert call.kwargs["headers"]["Content-Type"] == "application/json"
         payload = json.loads(call.kwargs["data"])
         assert payload["longUrl"] == "https://example.com/long/path"
@@ -292,6 +303,39 @@ class TestShortenUrlSyncShlink:
 
         assert shorten_url_sync("http://a.com", config=cfg, session=session) == ""
 
+    def test_non_dict_json_body_returns_empty(self):
+        """A proxy/health-check shim can return HTTP 200 with a JSON array or bare
+        string; that must not raise AttributeError from .get()."""
+        cfg = self._shlink_config()
+        session = MagicMock()
+        for body in ([{"shortUrl": "https://short.example/x"}], "ok", 42):
+            mock_resp = MagicMock()
+            mock_resp.ok = True
+            mock_resp.json.return_value = body
+            session.post.return_value = mock_resp
+            assert shorten_url_sync("http://a.com", config=cfg, session=session) == ""
+
+    @pytest.mark.parametrize(
+        "short_url",
+        [
+            ["https://short.example/x"],
+            {"href": "https://short.example/x"},
+            42,
+            "abc123",
+            "javascript:alert(1)",
+            "https:///missing-host",
+        ],
+    )
+    def test_invalid_short_url_value_returns_empty(self, short_url):
+        cfg = self._shlink_config()
+        mock_resp = MagicMock()
+        mock_resp.ok = True
+        mock_resp.json.return_value = {"shortUrl": short_url}
+        session = MagicMock()
+        session.post.return_value = mock_resp
+
+        assert shorten_url_sync("http://a.com", config=cfg, session=session) == ""
+
     def test_missing_api_key_skips_the_request(self):
         """Regression: shlink genuinely needs an API key, unlike v.gd/is.gd, so it
         must not attempt the call (and must not crash) when one isn't configured."""
@@ -301,6 +345,17 @@ class TestShortenUrlSyncShlink:
         out = shorten_url_sync("http://a.com", config=cfg, session=session)
 
         assert out == ""
+        session.post.assert_not_called()
+
+    def test_missing_api_key_warns_once_for_repeated_calls(self):
+        cfg = self._shlink_config(short_url_website_api_key="")
+        logger = MagicMock()
+        session = MagicMock()
+
+        for _ in range(5):
+            shorten_url_sync("http://a.com", config=cfg, session=session, logger=logger)
+
+        logger.warning.assert_called_once()
         session.post.assert_not_called()
 
     def test_http_error_returns_empty(self):
@@ -344,6 +399,75 @@ class TestShortenUrlSyncShlink:
         out = shorten_url_sync("http://a.com", config=cfg, session=None)
         assert out == "https://short.example/xyz"
         mock_post.assert_called_once()
+
+
+class TestShortenUrlSyncUnknownService:
+    """A misspelled service must fail closed: it used to fall through to the v.gd
+    path, which either posted a (possibly internal) URL to the public v.gd host or
+    appended the Shlink API key as a &key= query param to the operator's own host."""
+
+    def test_typo_with_self_hosted_base_sends_nothing(self):
+        """The API key must not reach the self-hosted host's query string on a typo."""
+        cfg = _minimal_config(
+            short_url_website="https://short.internal.corp",
+            short_url_website_service="shlnik",
+            short_url_website_api_key="secret-token",
+        )
+        session = MagicMock()
+
+        out = shorten_url_sync("https://internal.corp/private", config=cfg, session=session)
+
+        assert out == ""
+        session.get.assert_not_called()
+        session.post.assert_not_called()
+
+    def test_typo_with_vgd_base_does_not_leak_url_to_vgd(self):
+        """Half-migrated config (service typo'd, base still the shipped v.gd default)
+        must not post the URL to the public v.gd service."""
+        cfg = _minimal_config(
+            short_url_website="https://v.gd",
+            short_url_website_service="shlnik",
+        )
+        session = MagicMock()
+
+        out = shorten_url_sync("https://internal.corp/private", config=cfg, session=session)
+
+        assert out == ""
+        session.get.assert_not_called()
+        session.post.assert_not_called()
+
+    def test_unknown_service_logs_a_warning(self):
+        cfg = _minimal_config(short_url_website_service="shlnik")
+        logger = MagicMock()
+
+        shorten_url_sync("http://a.com", config=cfg, session=MagicMock(), logger=logger)
+
+        logger.warning.assert_called_once()
+
+    def test_unknown_service_warning_is_deduplicated(self):
+        cfg = _minimal_config(short_url_website_service="shlnik")
+        logger = MagicMock()
+        session = MagicMock()
+
+        for _ in range(5):
+            shorten_url_sync("http://a.com", config=cfg, session=session, logger=logger)
+
+        logger.warning.assert_called_once()
+
+    def test_empty_service_still_defaults_to_gd(self):
+        """Failing closed must not break the documented default: an unset or blank
+        service is v.gd, not an error."""
+        cfg = _minimal_config(short_url_website="https://v.gd", short_url_website_service="")
+        mock_resp = MagicMock()
+        mock_resp.ok = True
+        mock_resp.text = "https://v.gd/ok"
+        session = MagicMock()
+        session.get.return_value = mock_resp
+
+        out = shorten_url_sync("http://a.com", config=cfg, session=session)
+
+        assert out == "https://v.gd/ok"
+        session.get.assert_called_once()
 
 
 @pytest.mark.asyncio

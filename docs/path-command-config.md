@@ -46,7 +46,7 @@ reply_prefix = {packet_hash|if_nonempty:"https://scope.example.net/#/packets/{pa
 
   If shortening fails or isn't configured, **the clause is dropped rather than sent unshortened**. A v.gd link costs about 19 bytes; the analyzer URL above is about 59, against a per-message budget of roughly 158–160 bytes that the reply prefix is subtracted from before the route list is packed. Falling back to the long URL would quietly turn one transmission into two every time the shortener was unreachable, so an outage costs you the link, not extra airtime.
 
-  `shorten_url` is currently supported in `path`'s `reply_prefix` only. Rendering is synchronous and happens on the event loop, so the HTTP request is made ahead of the render by `resolve_template_async()`, which the `path` command awaits. Used in a template that has no such pre-pass — the test command's `response_format`, for example — the filter logs a warning and drops the clause instead of blocking the bot for the length of the shortener's timeout.
+  `shorten_url` is supported in both `path`'s `reply_prefix` and the test command's `response_format`. The command paths use `format_piped_template_async()`, which performs HTTP work in a worker thread before the synchronous render, so a shortener timeout never blocks the radio event loop. A direct call to the synchronous formatter cannot resolve the filter and drops the clause with a warning.
 
 **`minimum_path_bytes`** (integer `0`–`3`, default `0`)
 

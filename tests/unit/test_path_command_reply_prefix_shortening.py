@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""PathCommand wires the shorten_url pre-pass into its reply prefix.
-
-_format_path_reply_prefix is the only place resolve_template_async() is called, so
-without these a dropped `await` or a missing `shortened=` would disable shortening
-silently: the clause just stops appearing and nothing fails.
-"""
+"""PathCommand uses the safe async template formatter for its reply prefix."""
 
 from unittest.mock import MagicMock, patch
 

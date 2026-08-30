@@ -1774,7 +1774,7 @@ class TestRespondToMentions:
         bot.command_manager.monitor_channels = ["general"]
         bot.command_manager.is_user_banned = Mock(return_value=False)
         bot.command_manager.commands = {}
-        bot.command_manager.check_keywords = Mock(return_value=[])
+        bot.command_manager.check_keywords_async = AsyncMock(return_value=[])
         bot.command_manager.match_randomline = Mock(return_value=None)
         bot.command_manager.execute_commands = AsyncMock()
         return bot
@@ -1868,7 +1868,9 @@ class TestProcessMessageDmKeywordRouting:
     async def test_keyword_reply_uses_pubkey_for_dm_send(self, handler):
         """DM keyword flow should route reply via send_response using pubkey identity."""
         handler.should_process_message = Mock(return_value=True)
-        handler.bot.command_manager.check_keywords = Mock(return_value=[("test", "ack")])
+        handler.bot.command_manager.check_keywords_async = AsyncMock(
+            return_value=[("test", "ack")]
+        )
         handler.bot.command_manager.match_randomline = Mock(return_value=None)
         handler.bot.command_manager.execute_commands = AsyncMock()
         handler.bot.command_manager.get_rate_limit_key = Mock(return_value="ab12deadbeef")
@@ -1897,7 +1899,9 @@ class TestProcessMessageChannelKeywordFloodScope:
     @pytest.mark.asyncio
     async def test_keyword_channel_reply_passes_message_with_reply_scope(self, handler, bot):
         handler.should_process_message = Mock(return_value=True)
-        bot.command_manager.check_keywords = Mock(return_value=[("wx", "sunny")])
+        bot.command_manager.check_keywords_async = AsyncMock(
+            return_value=[("wx", "sunny")]
+        )
         bot.command_manager.match_randomline = Mock(return_value=None)
         bot.command_manager.execute_commands = AsyncMock()
         bot.command_manager.send_response = AsyncMock(return_value=True)

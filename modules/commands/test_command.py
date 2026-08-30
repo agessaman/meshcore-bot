@@ -10,7 +10,11 @@ from datetime import datetime
 from typing import Any, Optional
 
 from ..models import MeshMessage
-from ..response_template import format_piped_template
+from ..response_template import (
+    format_piped_template,
+    format_piped_template_async,
+    template_needs_resolution,
+)
 from ..utils import calculate_distance, extract_path_node_ids_from_message
 from .base_command import BaseCommand
 
@@ -636,9 +640,39 @@ class TestCommand(BaseCommand):
 
         return f"{distance:.1f}km"
 
+    def _response_fields(
+        self, message: MeshMessage, extra: Optional[dict[str, Any]] = None
+    ) -> dict[str, Any]:
+        """Build the field mapping shared by sync and async template renders."""
+        content = self.clean_content(message.content)
+        trigger, args = self.split_trigger_and_args(content)
+        # Phrase is whatever follows the matched stem (test, t, or a config alias),
+        # so an alias carries a phrase the same way the built-in stems do.
+        phrase = args if trigger is not None else ""
+
+        fields = self.get_standard_placeholder_fields(message)
+        phrase_part = f": {phrase}" if phrase else ""
+        fields.update({
+            'sender': message.sender_id or self.translate('common.unknown_sender'),
+            'phrase': phrase,
+            'phrase_part': phrase_part,
+            'elapsed': self.format_elapsed(message),
+            'snr': str(message.snr) if message.snr is not None else self.translate('common.unknown'),
+            'rssi': str(message.rssi) if message.rssi is not None else self.translate('common.unknown'),
+            'path_distance': self._calculate_path_distance(message) or '',
+            'firstlast_distance': self._calculate_firstlast_distance(message) or '',
+        })
+        if extra:
+            fields.update(extra)
+        return fields
+
+    def response_format_needs_async_resolution(self, response_format: str) -> bool:
+        """Whether *response_format* needs the command manager's async path."""
+        return template_needs_resolution(response_format)
+
     def format_response(self, message: MeshMessage, response_format: str,
                         extra: Optional[dict[str, Any]] = None) -> str:
-        """Override to handle phrase extraction.
+        """Override to handle phrase extraction for synchronous templates.
 
         Args:
             message: The original message.
@@ -648,28 +682,30 @@ class TestCommand(BaseCommand):
         Returns:
             str: Formatted response string.
         """
-        content = self.clean_content(message.content)
-        trigger, args = self.split_trigger_and_args(content)
-        # Phrase is whatever follows the matched stem (test, t, or a config alias),
-        # so an alias carries a phrase the same way the built-in stems do.
-        phrase = args if trigger is not None else ""
-
         try:
-            fields = self.get_standard_placeholder_fields(message)
-            phrase_part = f": {phrase}" if phrase else ""
-            fields.update({
-                'sender': message.sender_id or self.translate('common.unknown_sender'),
-                'phrase': phrase,
-                'phrase_part': phrase_part,
-                'elapsed': self.format_elapsed(message),
-                'snr': str(message.snr) if message.snr is not None else self.translate('common.unknown'),
-                'rssi': str(message.rssi) if message.rssi is not None else self.translate('common.unknown'),
-                'path_distance': self._calculate_path_distance(message) or '',
-                'firstlast_distance': self._calculate_firstlast_distance(message) or '',
-            })
-            if extra:
-                fields.update(extra)
+            fields = self._response_fields(message, extra)
             return format_piped_template(
+                response_format,
+                fields,
+                message=message,
+                logger=self.logger,
+                config=self.bot.config,
+                prefix_hex_chars=getattr(self.bot, 'prefix_hex_chars', 2),
+            )
+        except (KeyError, ValueError) as e:
+            self.logger.warning(f"Error formatting test response: {e}")
+            return response_format
+
+    async def format_response_async(
+        self,
+        message: MeshMessage,
+        response_format: str,
+        extra: Optional[dict[str, Any]] = None,
+    ) -> str:
+        """Format a test response, resolving network-backed filters off-thread."""
+        try:
+            fields = self._response_fields(message, extra)
+            return await format_piped_template_async(
                 response_format,
                 fields,
                 message=message,
@@ -695,4 +731,8 @@ class TestCommand(BaseCommand):
 
         # Store the current message for use in location lookups
         self._current_message = message
-        return await self.handle_keyword_match(message)
+        response_format = self.get_response_format()
+        if not response_format:
+            return False
+        response = await self.format_response_async(message, response_format)
+        return await self.send_response(message, response)

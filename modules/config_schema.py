@@ -236,6 +236,14 @@ SECTIONS: dict[str, SectionMeta] = {
         "max_message_length": KeyMeta(type="int", default="130"),
         "default_check_interval_seconds": KeyMeta(type="int", default="300"),
     }),
+    "External_Data": SectionMeta(keys={
+        # Only these two select a backend; any other value used to fall through to
+        # the v.gd path silently (see shorten_url_sync). The other External_Data
+        # keys are undeclared here on purpose — they fall through to
+        # config.ini.example via is_known_config_key, so listing only this one does
+        # not flag its siblings as unknown.
+        "short_url_website_service": KeyMeta(type="enum", values=("gd", "shlink")),
+    }),
     "Weather_Service": SectionMeta(keys={
         "enabled": KeyMeta(type="bool"),
         "rain_nowcast_cache_seconds": KeyMeta(type="int", default="300"),

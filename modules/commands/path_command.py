@@ -15,7 +15,7 @@ from ..path_inference import (
     select_node_repeater,
     select_repeater_by_graph,
 )
-from ..response_template import format_piped_template, resolve_template_async
+from ..response_template import format_piped_template_async
 from ..utils import (
     bytes_per_hop_from_routing_and_nodes,
     calculate_distance,
@@ -421,24 +421,15 @@ class PathCommand(BaseCommand):
         fields = self.get_standard_placeholder_fields(message)
         fields['path_distance'] = self._format_path_distance(message)
         str_fields = {k: str(v) for k, v in fields.items()}
-        # Any URL shortening happens here, off the event loop, before the
-        # synchronous render runs. See modules.response_template.
-        shortened = await resolve_template_async(
-            self.path_reply_prefix,
-            str_fields,
-            message=message,
-            logger=self.logger,
-            config=self.bot.config,
-            prefix_hex_chars=getattr(self.bot, 'prefix_hex_chars', 2),
-        )
-        formatted = format_piped_template(
-            self.path_reply_prefix,
-            str_fields,
-            message=message,
-            logger=self.logger,
-            config=self.bot.config,
-            shortened=shortened,
-            prefix_hex_chars=getattr(self.bot, 'prefix_hex_chars', 2),
+        formatted = (
+            await format_piped_template_async(
+                self.path_reply_prefix,
+                str_fields,
+                message=message,
+                logger=self.logger,
+                config=self.bot.config,
+                prefix_hex_chars=getattr(self.bot, 'prefix_hex_chars', 2),
+            )
         ).rstrip()
         if not formatted:
             return ''

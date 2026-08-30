@@ -288,6 +288,46 @@ class TestCheckKeywords:
         matches = manager.check_keywords(mock_message(content="help", channel="general", is_dm=False))
         assert any(trigger == "help" for trigger, _ in matches)
 
+    @pytest.mark.asyncio
+    async def test_async_response_formatter_is_awaited(self, cm_bot):
+        command = MagicMock()
+        command.should_execute.return_value = True
+        command.can_execute.return_value = True
+        command.keywords = ["test"]
+        command.requires_internet = False
+        command.cooldown_seconds = 0
+        command.get_response_format.return_value = "{packet_hash|shorten_url}"
+        command.response_format_needs_async_resolution.return_value = True
+        command.format_response_async = AsyncMock(return_value="https://v.gd/one")
+        manager = make_manager(cm_bot, commands={"test": command})
+        msg = mock_message(content="test", channel="general", is_dm=False)
+
+        matches = await manager.check_keywords_async(msg)
+
+        assert matches == [("test", "https://v.gd/one")]
+        command.format_response.assert_not_called()
+        command.format_response_async.assert_awaited_once_with(
+            msg, "{packet_hash|shorten_url}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_async_keyword_check_keeps_sync_commands_unchanged(self, cm_bot):
+        command = MagicMock()
+        command.should_execute.return_value = True
+        command.can_execute.return_value = True
+        command.keywords = ["test"]
+        command.requires_internet = False
+        command.cooldown_seconds = 0
+        command.get_response_format.return_value = "ack"
+        command.response_format_needs_async_resolution.return_value = False
+        command.format_response.return_value = "ack"
+        manager = make_manager(cm_bot, commands={"test": command})
+        msg = mock_message(content="test", channel="general", is_dm=False)
+
+        assert await manager.check_keywords_async(msg) == [("test", "ack")]
+        command.format_response.assert_called_once_with(msg, "ack")
+        command.format_response_async.assert_not_called()
+
 
 class TestGetHelpForCommand:
     """Tests for command-specific help."""

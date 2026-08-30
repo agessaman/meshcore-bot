@@ -18,10 +18,11 @@ semantic versioning.
   filters and nothing at all otherwise — the counterpart to `prefix_if_nonempty`,
   for when the whole clause should be the literal rather than a label plus the value.
 - `shorten_url` shortens a value through the shortener configured under
-  `[External_Data]`, for putting a link in `path`'s `reply_prefix` without spending
-  a packet on a full URL. The request is made off the event loop before rendering
-  starts; if it fails the clause is dropped rather than sent unshortened, so a
-  shortener outage costs the link instead of a second transmission.
+  `[External_Data]` in both `path`'s `reply_prefix` and the test command's
+  `response_format`, without spending a packet on a full URL. The request is made
+  off the event loop before rendering starts; if it fails the clause is dropped
+  rather than sent unshortened, so a shortener outage costs the link instead of a
+  second transmission.
 - `urlencode` percent-encodes a value before it is interpolated into a URL built by
   a quoted literal, for fields a remote node controls (`sender`, and anything derived
   from message content) where a stray `&` or `#` would otherwise rewrite the link.

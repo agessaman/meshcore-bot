@@ -87,6 +87,9 @@ def _filter_shorten_url(value: str, ctx: dict[str, Any], args: str) -> str:
     first segment's budget — so falling back would quietly turn one transmission
     into two every time the shortener was unreachable.
     """
+    _warn_ignored_filter_arg_once(
+        ctx.get('logger'), str(ctx.get('template') or ''), 'shorten_url', args
+    )
     if not value:
         return ''
     resolved = ctx.get('shortened')
@@ -156,6 +159,7 @@ _GREEDY_ARG_FILTERS = frozenset({'prefix_if_nonempty'})
 # Templates already warned about, so a misconfiguration is reported once rather than
 # once per inbound message. Bounded by the number of templates in config.
 _UNRESOLVED_WARNED: set[str] = set()
+_IGNORED_FILTER_ARGS_WARNED: set[tuple[str, str]] = set()
 
 
 def _warn_unresolved_once(logger: Any, template: str, reason: str) -> None:
@@ -170,6 +174,24 @@ def _warn_unresolved_once(logger: Any, template: str, reason: str) -> None:
     logger.warning(
         "shorten_url in template %r cannot resolve (%s); dropping the clause rather "
         "than blocking the event loop", template, reason,
+    )
+
+
+def _warn_ignored_filter_arg_once(
+    logger: Any, template: str, filter_name: str, args: str
+) -> None:
+    """Warn once when an argumentless filter is given an ignored argument."""
+    if logger is None or not args.strip():
+        return
+    key = (template, filter_name)
+    if key in _IGNORED_FILTER_ARGS_WARNED:
+        return
+    _IGNORED_FILTER_ARGS_WARNED.add(key)
+    logger.warning(
+        "Response template filter %r does not accept an argument; ignoring %r in %r",
+        filter_name,
+        args,
+        template,
     )
 
 
@@ -404,7 +426,11 @@ async def resolve_template_async(
         'shortened': pending,
         'template': template,
     }
-    _TemplateParser(template, fields, ctx, logger).render()
+    # The collection pass exists only to discover network-backed values; its output
+    # is discarded and the real render below is responsible for syntax diagnostics.
+    # Keeping the parser logger silent prevents every unknown-filter warning from
+    # appearing twice for one response.
+    _TemplateParser(template, fields, ctx, None).render()
     if not pending:
         return {}
 
@@ -427,3 +453,37 @@ async def resolve_template_async(
         if short:
             resolved[url] = short
     return resolved
+
+
+async def format_piped_template_async(
+    template: str,
+    fields: dict[str, Any],
+    *,
+    message: Any = None,
+    logger: Any = None,
+    config: Any = None,
+    prefix_hex_chars: int = 2,
+) -> str:
+    """Resolve network-backed filters off-thread, then render *template*.
+
+    This is the safe entry point for async command paths. It keeps the template,
+    fields, message and prefix width identical across collection and rendering so a
+    caller cannot accidentally omit the resolved mapping or resolve different data.
+    """
+    shortened = await resolve_template_async(
+        template,
+        fields,
+        message=message,
+        logger=logger,
+        config=config,
+        prefix_hex_chars=prefix_hex_chars,
+    )
+    return format_piped_template(
+        template,
+        fields,
+        message=message,
+        logger=logger,
+        config=config,
+        shortened=shortened,
+        prefix_hex_chars=prefix_hex_chars,
+    )

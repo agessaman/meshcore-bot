@@ -10,6 +10,7 @@ from modules.commands.test_command import TestCommand as MeshTestCommand
 from modules.models import MeshMessage
 from modules.response_template import (
     format_piped_template,
+    format_piped_template_async,
     resolve_template_async,
     template_needs_resolution,
 )
@@ -272,6 +273,39 @@ def test_test_command_response_omits_missing_packet_hash():
     assert out == "hash=."
 
 
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_test_command_async_response_shortens_url():
+    bot = MagicMock()
+    bot.logger = Mock()
+    bot.config = configparser.ConfigParser()
+    bot.config.read_dict({
+        "Bot": {"bot_name": "TestBot"},
+        "Channels": {"monitor_channels": "general", "respond_to_dms": "true"},
+        "Test_Command": {"enabled": "true"},
+        "Path_Command": {"recency_weight": "0.2"},
+        "External_Data": {"short_url_website": "https://v.gd"},
+    })
+    bot.translator.translate = Mock(side_effect=lambda key, **kwargs: key)
+    bot.prefix_hex_chars = 2
+    cmd = MeshTestCommand(bot)
+    msg = MeshMessage(
+        content="test",
+        sender_id="Alice",
+        path="Direct (0 hops)",
+        hops=0,
+        routing_info={"path_length": 0, "packet_hash": "ABCDEF0123456789"},
+    )
+    template = (
+        '{packet_hash|if_nonempty:"https://scope.example/p/{packet_hash}"|shorten_url}'
+    )
+
+    with patch("modules.response_template.shorten_url", return_value="https://v.gd/one"):
+        out = await cmd.format_response_async(msg, template)
+
+    assert out == "https://v.gd/one"
+
+
 def _msg(**kw):
     base = dict(content="test", channel="c")
     base.update(kw)
@@ -507,8 +541,10 @@ def _fresh_warn_state():
     from modules import response_template
 
     response_template._UNRESOLVED_WARNED.clear()
+    response_template._IGNORED_FILTER_ARGS_WARNED.clear()
     yield
     response_template._UNRESOLVED_WARNED.clear()
+    response_template._IGNORED_FILTER_ARGS_WARNED.clear()
 
 
 @pytest.mark.unit
@@ -612,3 +648,54 @@ async def test_resolve_template_async_still_swallows_ordinary_failures():
         assert await resolve_template_async(
             _LINK_TEMPLATE, {"packet_hash": "AB"}, config=cfg
         ) == {}
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_format_piped_template_async_resolves_and_renders_in_one_call():
+    cfg = configparser.ConfigParser()
+    cfg.add_section("External_Data")
+    with patch("modules.response_template.shorten_url", return_value="https://v.gd/one"):
+        out = await format_piped_template_async(
+            _LINK_TEMPLATE, {"packet_hash": "ABCDEF12"}, config=cfg
+        )
+    assert out == "https://v.gd/one"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_collection_pass_does_not_duplicate_unknown_filter_warning():
+    cfg = configparser.ConfigParser()
+    cfg.add_section("External_Data")
+    logger = Mock()
+    template = '{a|typo|if_nonempty:"https://x.example/{a}"|shorten_url}'
+
+    with patch("modules.response_template.shorten_url", return_value="https://v.gd/one"):
+        assert await format_piped_template_async(
+            template, {"a": "value"}, config=cfg, logger=logger
+        ) == "https://v.gd/one"
+
+    unknown_warnings = [
+        call for call in logger.warning.call_args_list
+        if "Unknown response template filter" in str(call)
+    ]
+    assert len(unknown_warnings) == 1
+
+
+@pytest.mark.unit
+def test_shorten_url_argument_warns_once_and_is_ignored():
+    logger = Mock()
+    template = "{a|shorten_url:custom-slug}"
+    for _ in range(3):
+        assert format_piped_template(
+            template,
+            {"a": "https://x.example"},
+            logger=logger,
+            shortened={"https://x.example": "https://v.gd/one"},
+        ) == "https://v.gd/one"
+
+    ignored_arg_warnings = [
+        call for call in logger.warning.call_args_list
+        if "does not accept an argument" in str(call)
+    ]
+    assert len(ignored_arg_warnings) == 1

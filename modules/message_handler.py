@@ -3572,7 +3572,7 @@ class MessageHandler:
             return
 
         # Check for keywords and custom syntax
-        keyword_matches = self.bot.command_manager.check_keywords(message)
+        keyword_matches = await self.bot.command_manager.check_keywords_async(message)
 
         help_response_sent = False
         plugin_command_with_response_matched = False

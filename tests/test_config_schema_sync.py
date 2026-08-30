@@ -224,6 +224,20 @@ monitor_channels = general
         assert any("hostname" in r[1] for r in warnings)
         assert any("tcp_port" in r[1] for r in warnings)
 
+    def test_invalid_short_url_service_warns(self):
+        cfg = configparser.ConfigParser()
+        cfg.read_string("""[External_Data]
+short_url_website_service = shlnik
+""")
+
+        warnings = validate_config_keys(cfg)
+
+        assert warnings == [(
+            SEVERITY_WARNING,
+            "[External_Data] 'short_url_website_service' must be one of: "
+            "gd, shlink (got 'shlnik').",
+        )]
+
 
 class TestTuiCommandStandardKeys:
     def test_channels_not_unknown_on_worldcup_command(self):

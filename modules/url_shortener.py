@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""
-Shared URL shortening for MeshCore Bot and web viewer.
+"""Shared URL shortening for MeshCore Bot and web viewer.
 
-Uses the v.gd / is.gd-compatible API (GET .../create.php?format=simple&url=...).
-Configure base URL and optional API key under [External_Data] in config.ini.
+Supports v.gd / is.gd-compatible ``create.php`` services and Shlink's JSON REST
+API. Select the backend, base URL and credentials under ``[External_Data]``.
 """
 
 from __future__ import annotations
@@ -11,8 +10,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import threading
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import requests
 
@@ -51,6 +51,13 @@ def _safe_config_get(config: Any, section: str, option: str, fallback: str = "")
 
 DEFAULT_SHORT_URL_BASE = "https://v.gd"
 
+# Accepted values for [External_Data] short_url_website_service. Keep in sync with
+# the enum in modules/config_schema.py (which lints the same key at startup / in
+# --strict CI). Anything else is treated as a misconfiguration and fails closed.
+_KNOWN_SERVICES = frozenset({"gd", "shlink"})
+_CONFIG_WARNINGS_EMITTED: set[tuple[str, str]] = set()
+_CONFIG_WARNING_LOCK = threading.Lock()
+
 # Hostnames that use the public create.php API without an API key query param.
 _VGD_COMPAT_HOSTS = frozenset(
     {
@@ -82,6 +89,37 @@ def _parse_simple_response(body: str) -> str | None:
     if text.startswith("http"):
         return text
     return None
+
+
+def _warn_config_once(
+    logger: logging.Logger | None,
+    kind: str,
+    value: str,
+    message: str,
+    *args: object,
+) -> None:
+    """Emit one warning per persistent shortener misconfiguration."""
+    if logger is None:
+        return
+    key = (kind, value)
+    with _CONFIG_WARNING_LOCK:
+        if key in _CONFIG_WARNINGS_EMITTED:
+            return
+        _CONFIG_WARNINGS_EMITTED.add(key)
+    logger.warning(message, *args)
+
+
+def _parse_http_url(value: Any) -> str | None:
+    """Return a normalized HTTP(S) URL string, or ``None`` for an invalid value."""
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    parsed = urlparse(text)
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+        return None
+    return text
 
 
 def _build_create_gd_url(long_url: str, base: str, api_key: str) -> str:
@@ -140,6 +178,7 @@ def _shorten_url_with_shlink(
     """Shorten a URL using the Shlink API."""
     shortener_url = _build_create_shlink_url(base)
     headers = {
+        "Accept": "application/json",
         "Content-Type": "application/json",
         "X-Api-Key": api_key,
     }
@@ -157,11 +196,19 @@ def _shorten_url_with_shlink(
         return ""
 
     data = response.json()
+    # A proxy or health-check shim can return HTTP 200 with a JSON array or bare
+    # string; calling .get() on that raises AttributeError, which surfaces to the
+    # operator as an opaque "'list' object has no attribute 'get'" instead of
+    # "the shortener returned an unexpected body".
+    if not isinstance(data, dict):
+        if logger:
+            logger.debug("Shlink response was not a JSON object: %s", str(data)[:200])
+        return ""
     # Shlink's create response carries `shortUrl` (and `shortCode`, which is a bare
     # slug, not a URL). Anything else means we did not get a usable link.
-    short_url = data.get("shortUrl")
+    short_url = _parse_http_url(data.get("shortUrl"))
     if short_url:
-        return str(short_url)
+        return short_url
 
     if logger:
         logger.debug("Shlink response had no shortUrl: %s", str(data)[:200])
@@ -218,19 +265,40 @@ def shorten_url_sync(
             _safe_config_get(config, "External_Data", "short_url_website_service", "gd")
             .strip()
             .lower()
-        )
+        ) or "gd"
         api_key = (
             _safe_config_get(config, "External_Data", "short_url_website_api_key", "")
             or ""
         ).strip()
         base = _normalize_base(base)
 
+        # Fail closed on an unrecognized service. Without this, a typo like
+        # "shlnik" fell through to the v.gd branch, which — depending on the
+        # configured base — either posted the (possibly internal) URL to the
+        # public v.gd host or appended the Shlink API key as a &key= query param
+        # to the operator's own host, where it lands in access logs. Neither the
+        # URL nor the key should leave the box on a misconfiguration.
+        if service not in _KNOWN_SERVICES:
+            _warn_config_once(
+                logger,
+                "unknown-service",
+                service,
+                "Unknown short_url_website_service=%r; expected one of %s. "
+                "Skipping URL shortening.",
+                service,
+                ", ".join(sorted(_KNOWN_SERVICES)),
+            )
+            return ""
+
         if service == "shlink":
             if not api_key:
-                if logger:
-                    logger.warning(
-                        "short_url_website_service=shlink requires short_url_website_api_key; skipping."
-                    )
+                _warn_config_once(
+                    logger,
+                    "missing-shlink-key",
+                    base,
+                    "short_url_website_service=shlink requires "
+                    "short_url_website_api_key; skipping.",
+                )
                 return ""
             return _shorten_url_with_shlink(
                 url_str,

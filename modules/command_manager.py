@@ -706,7 +706,9 @@ class CommandManager:
             max_length -= CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD
         return max_length
 
-    def check_keywords(self, message: MeshMessage) -> list[tuple]:
+    def check_keywords(
+        self, message: MeshMessage, *, _defer_async_formats: bool = False
+    ) -> list[tuple]:
         """Check message content for keywords and return matching responses.
 
         Evaluates the message against configured keywords, custom syntax patterns,
@@ -816,8 +818,21 @@ class CommandManager:
                 # Get response format and generate response
                 response_format = command.get_response_format()
                 if response_format:
-                    response = command.format_response(message, response_format)
-                    matches.append((command_name, response))
+                    needs_async = getattr(
+                        command, "response_format_needs_async_resolution", None
+                    )
+                    if (
+                        _defer_async_formats
+                        and callable(needs_async)
+                        and needs_async(response_format)
+                    ):
+                        # check_keywords_async() resolves this before returning it to
+                        # the message handler. None is also the established marker for
+                        # a matched command whose response is deferred.
+                        matches.append((command_name, None))
+                    else:
+                        response = command.format_response(message, response_format)
+                        matches.append((command_name, response))
                 else:
                     # For commands without response format, they handle their own response
                     # We'll mark them as matched but let execute_commands handle the actual execution
@@ -869,6 +884,50 @@ class CommandManager:
                         matches.append((keyword, response_format))
 
         return matches
+
+    async def check_keywords_async(self, message: MeshMessage) -> list[tuple]:
+        """Check keywords and resolve commands with async response-template filters.
+
+        The public synchronous :meth:`check_keywords` remains available for callers
+        that cannot await and behaves exactly as before. Runtime message handling uses
+        this method so network-backed filters never block the event loop.
+        """
+        matches = self.check_keywords(message, _defer_async_formats=True)
+        resolved: list[tuple[str, str | None]] = []
+        for command_name, response in matches:
+            command = self.commands.get(command_name)
+            if response is not None or command is None:
+                resolved.append((command_name, response))
+                continue
+
+            response_format = command.get_response_format()
+            needs_async = getattr(
+                command, "response_format_needs_async_resolution", None
+            )
+            format_async = getattr(command, "format_response_async", None)
+            if not (
+                response_format
+                and callable(needs_async)
+                and needs_async(response_format)
+                and callable(format_async)
+            ):
+                resolved.append((command_name, response))
+                continue
+
+            try:
+                rendered = await format_async(message, response_format)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger.warning(
+                    "Async response formatting failed for %r: %s; using the "
+                    "synchronous fallback",
+                    command_name,
+                    e,
+                )
+                rendered = command.format_response(message, response_format)
+            resolved.append((command_name, rendered))
+        return resolved
 
     def _normalize_trigger_text(self, raw: str) -> str:
         """
