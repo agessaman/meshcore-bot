@@ -255,6 +255,7 @@
     "visibility": "👁️{value}mi",
     "visibility_km": "👁️{value}km",
     "pressure": "📊{value}hPa",
+    "pressure_mmhg": "📊{value}мм рт. ст.",
     "gust": "G{value}",
     "day_abbrev": {
       "Monday": "M",

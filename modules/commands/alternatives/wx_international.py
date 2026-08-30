@@ -1102,7 +1102,14 @@ class GlobalWxCommand(BaseCommand):
             # Add pressure (convert from hPa to display format)
             if pressure is not None:
                 pressure_hpa = int(pressure)
-                press_str = self.translate('commands.gwx.pressure', value=pressure_hpa)
+                # Use mmHg for metric (non-English) locales; hPa for imperial/English
+                translator = _response_translator.get() or getattr(self.bot, 'translator', None)
+                base_lang = getattr(translator, 'base_language', 'en') or 'en'
+                if base_lang != 'en':
+                    pressure_mmhg = round(pressure_hpa * 0.750062)
+                    press_str = self.translate('commands.gwx.pressure_mmhg', value=pressure_mmhg)
+                else:
+                    press_str = self.translate('commands.gwx.pressure', value=pressure_hpa)
                 conditions.append(press_str)
 
             # Add conditions to weather string if space allows

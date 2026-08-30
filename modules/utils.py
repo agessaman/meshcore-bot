@@ -165,22 +165,24 @@ def format_temperature_high_low(
                 logger.warning("Invalid temperature format template %r: %s", fmt, e)
             return None
 
+    labels = {"high_label": high_label, "low_label": low_label}
+
     if hi is not None and lo is not None:
-        out = _try_format(pair_fmt, high=hi, low=lo, units=units_str)
+        out = _try_format(pair_fmt, high=hi, low=lo, units=units_str, **labels)
         if out is not None:
             return out
-        return _try_format(default_pair, high=hi, low=lo, units=units_str) or f"H:{hi}{units_str} L:{lo}{units_str}"
+        return _try_format(default_pair, high=hi, low=lo, units=units_str, **labels) or f"{high_label}:{hi}{units_str} {low_label}:{lo}{units_str}"
 
     if hi is not None:
-        out = _try_format(high_only_fmt, high=hi, low=lo, units=units_str)
+        out = _try_format(high_only_fmt, high=hi, low=lo, units=units_str, **labels)
         if out is not None:
             return out
-        return _try_format(default_high_only, high=hi, low=lo, units=units_str) or f"H:{hi}{units_str}"
+        return _try_format(default_high_only, high=hi, low=lo, units=units_str, **labels) or f"{high_label}:{hi}{units_str}"
 
-    out = _try_format(low_only_fmt, high=hi, low=lo, units=units_str)
+    out = _try_format(low_only_fmt, high=hi, low=lo, units=units_str, **labels)
     if out is not None:
         return out
-    return _try_format(default_low_only, high=hi, low=lo, units=units_str) or f"L:{lo}{units_str}"
+    return _try_format(default_low_only, high=hi, low=lo, units=units_str, **labels) or f"{low_label}:{lo}{units_str}"
 
 
 def abbreviate_location(location: str, max_length: int = 20) -> str:
