@@ -24,6 +24,47 @@ semantic versioning.
 
 ### Fixed
 
+- `path` no longer answers "No path information available in current message" on a
+  busy mesh (#255). Verifying a channel message against the RF cache only ever
+  checked the newest row, which assumes the RF log row and the decoded CHAN event
+  for one reception arrive back to back with nothing in between. On a dense mesh
+  they do not: a repeater's echo of the very same packet is routinely logged in the
+  gap. The reporter's message was heard directly (`SNR 13.25`, 0 hops) and again via
+  repeater `f0` 185 ms later (`SNR 12.0`, 1 hop); both rows carry packet hash
+  `392926C85DCB87D0`, but the check saw only the echo, disagreed on path length and
+  SNR, and left the route unresolved — so the bot withheld a path it had decoded
+  correctly. The cache is now searched for the row the payload matches instead of
+  testing just the most recent one. Rows that agree must resolve to a single packet
+  hash, so two unrelated packets that happen to agree stay a fallback and #80's
+  guarantee is unchanged: a route is still only ever attributed on evidence. SNR and
+  RSSI now come from the message's own reception too, rather than from whichever
+  packet was heard last.
+
+- MQTT brokers no longer flap in a reconnect storm (#248). Three things stacked up.
+  First, the packet-capture watchdog ran `client.reconnect()` from its own thread
+  every 30 seconds whenever `is_connected()` was false — which includes every moment
+  paho's network thread is inside its own backoff. Two threads driving one client's
+  socket produced duplicate CONNACKs, spurious `MQTT_ERR_PROTOCOL` disconnects, and a
+  fixed-interval retry that flattened paho's 1→120s backoff into a hot loop. The
+  watchdog now observes, refreshes an expiring auth token so paho's next attempt can
+  succeed, and only intervenes when the network thread is gone and nothing is
+  retrying at all. Second, the generated client ID had no per-broker component, so
+  every broker in the process connected under the same ID; two hostnames belonging to
+  one cluster (`mqtt-a` and `mqtt-b` of the same service) evicted each other's session
+  on a six-second cycle. IDs are now distinct per broker. Third, a disconnect logged a
+  bare `rc=`, which reads against the CONNACK table even though paho reports
+  `MQTT_ERR_*` there — `rc=2` is a protocol error, not "client identifier rejected" —
+  so it now names the code.
+
+- A renewed MQTT auth token is now actually put in force. MQTT presents credentials
+  once, at CONNECT, so `username_pw_set` on a live session changed nothing and the
+  connection kept running on the token it was opened with until the broker evicted it
+  at that token's `exp`. Renewal is now followed by a clean, serialized reconnect
+  (`disconnect` → `loop_stop` → `reconnect` → `loop_start`, in that order, so the
+  network thread is joined before anything else touches the socket). Set
+  `mqttN_jwt_reconnect_on_renew = false` for a broker that ignores expiry on live
+  sessions.
+
 - Startup config-lint findings now go to the log file. They were printed to stderr
   before the bot (and therefore its logger) existed, so under systemd they reached
   only the journal and never `logs/meshcore_bot.log`. The linter had correctly
@@ -133,8 +174,13 @@ semantic versioning.
   and Configuration now sit under a single **Settings** gear menu, leaving Dashboard,
   Real-time, Contacts, Mesh Graph and Logs on the bar. The current page is highlighted,
   including the gear when a settings page is open.
+- Added notes on connecting to waev.app MQTT brokers to the `packet_capture.md` file.
 
 ### Added
+
+- `mqttN_keepalive` (default 60) sets the MQTT PINGREQ interval per broker. It was
+  hardcoded at 60 before, which is long for websockets through a proxy that drops
+  idle connections.
 
 - `hops_min:N` response-template filter, alongside `pathbytes_min:N`. It clears a
   field unless the message actually travelled at least N hops, so

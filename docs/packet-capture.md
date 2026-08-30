@@ -94,6 +94,20 @@ mqtt2_username = user
 mqtt2_password = pass
 ```
 
+#### Connection tuning
+
+| Key | Default | What it does |
+|-----|---------|--------------|
+| `mqttN_keepalive` | `60` | Seconds between PINGREQs. Lower it to `30` for websockets through a proxy that drops idle connections. |
+| `mqttN_client_id` | generated | MQTT client ID. One is generated per broker; set this only if the broker requires a fixed value. |
+
+**Two brokers must never share a client ID.** A broker evicts an existing session
+when a second connection arrives under the same ID, so brokers that sit behind one
+cluster — `mqtt-a.example` and `mqtt-b.example` of the same service — will kick each
+other off in a loop, seconds apart, forever. The generated IDs already differ per
+broker; you only reintroduce the problem by setting `mqtt1_client_id` and
+`mqtt2_client_id` to the same string.
+
 #### Filtering by packet type
 
 You can limit which packet types are uploaded to each broker with `mqttN_upload_packet_types`. Use a comma-separated list of type numbers; if unset or empty, all packet types are uploaded.
@@ -140,6 +154,13 @@ Two separate settings:
 - **`jwt_ttl_seconds`** (global) / **`mqttN_jwt_ttl_seconds`** (per broker): lifetime of the JWT in the `exp` claim (`exp = iat + ttl`). Use this when the broker enforces a maximum token lifetime (e.g. 60 minutes → `3600`).
 - **`jwt_renewal_interval`** (global) / **`mqttN_jwt_renewal_interval`** (per broker): how often the bot refreshes the MQTT password for that broker. Set **less than** the TTL (e.g. TTL 3600s and renewal every 1800s) so the connection does not outlive the token.
 
+- **`mqttN_jwt_reconnect_on_renew`** (per broker, default `true`): reconnect right
+  after minting a new token. MQTT presents credentials once, at CONNECT, so a
+  renewed token does nothing for a session that is already open — brokers that
+  enforce the JWT's `exp` drop that session the moment the *original* token
+  expires. Reconnecting on renewal turns that eviction into one clean, scheduled
+  reconnect. Turn it off only if your broker ignores expiry on live sessions.
+
 Per-broker keys override the global values for that broker only. Omit them to inherit globals.
 
 ```ini
@@ -152,6 +173,13 @@ jwt_renewal_interval = 43200      # Default proactive refresh cadence (12 hours)
 # Example on a broker that requires 60-minute tokens and refresh halfway through:
 # mqtt1_jwt_ttl_seconds = 3600
 # mqtt1_jwt_renewal_interval = 1800
+```
+
+**Note**: When connecting to waev.app brokers the default settings will cause the connection not to authenticate properly. Please use the following settings on the MQTT connection for the waev.app brokers.
+
+```ini
+mqttN_jwt_ttl_seconds = 3600
+mqttN_jwt_renewal_interval = 3500
 ```
 
 ---
@@ -267,6 +295,27 @@ Common issues:
    ```
 3. **Check authentication** - Verify JWT token generation
 4. **Check logs** - Look for connection errors
+
+### MQTT Connecting and Disconnecting in a Loop
+
+Repeated `Disconnected from MQTT broker ... (rc=7: The connection was lost.)`
+followed immediately by `✓ Connected to MQTT broker`, over and over:
+
+1. **Check for a shared client ID** — if two brokers alternate (one connects as the
+   other drops, every few seconds), they are almost certainly one cluster behind two
+   hostnames, evicting each other's session. Give them distinct `mqttN_client_id`
+   values, or leave the key empty so one is generated per broker.
+2. **Check whether it lines up with your JWT TTL** — roughly one disconnect per
+   broker per `mqttN_jwt_ttl_seconds` means the broker is enforcing token expiry.
+   Leave `mqttN_jwt_reconnect_on_renew` on and set the renewal interval below the
+   TTL so the reconnect happens on your schedule instead of theirs.
+3. **Check for a second client on the same identity** — another capture tool running
+   against the same brokers with the same node public key can compete with the bot.
+4. **Lower `mqttN_keepalive`** to `30` if you are on websockets through a proxy.
+
+Note that `rc=` on a *disconnect* is a paho `MQTT_ERR_*` code, not a CONNACK code:
+`rc=7` is a lost connection and `rc=2` is a protocol error. They do not mean the same
+thing as the numbers in a `Failed to connect` line.
 
 ### No Packets Being Published
 

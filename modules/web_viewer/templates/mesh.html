@@ -342,6 +342,8 @@
 
 <!-- Leaflet CSS -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<!-- MapLibre GL CSS (dark basemap is a vector style; see TILE_LAYERS) -->
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css" />
 <!-- vis-network CSS -->
 <link rel="stylesheet" href="https://unpkg.com/vis-network@9.1.9/styles/vis-network.min.css" />
 
@@ -524,6 +526,16 @@
     .mesh-dark .leaflet-container {
         background: #1a1a1a;
     }
+    /* Raster fallback only (see setBaseTileLayer): invert the OSM tiles the way
+       openstreetmap.org itself did for dark mode.  Scoped to the tiles so node
+       markers, edges and popups keep their real colors.
+       This must target .leaflet-tile and not the enclosing .leaflet-tile-container:
+       the container is a 0x0 element that its absolutely-positioned tiles overflow,
+       so a filter there has an empty reference box and paints nothing.  Every
+       function here is pointwise, so filtering per tile leaves no visible seams. */
+    .mesh-basemap-fallback .leaflet-tile {
+        filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9);
+    }
     .mesh-dark .leaflet-popup-content-wrapper,
     .mesh-dark .leaflet-popup-tip {
         background: #2d2d2d;
@@ -621,6 +633,10 @@
 
 <!-- Leaflet JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- MapLibre GL + Leaflet bridge, for the vector dark basemap. Must load after Leaflet:
+     the bridge binds against both globals. -->
+<script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js"></script>
 <!-- vis-network JS -->
 <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
 
@@ -785,25 +801,67 @@
         return meshThemeOverride || getSiteTheme();
     }
 
+    // Light is OSM raster.  Dark is OpenFreeMap's vector 'dark' style rendered through
+    // MapLibre GL: CARTO's raster dark_all now requires an API key and is being retired,
+    // and OSM itself hosts no dark tiles (its Standard layer is light only).
     const TILE_LAYERS = {
         light: {
             url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
             attribution: '© OpenStreetMap contributors'
         },
         dark: {
-            url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-            attribution: '© OpenStreetMap contributors © CARTO'
+            styleUrl: 'https://tiles.openfreemap.org/styles/dark',
+            // Used only by the raster fallback below; the vector style carries its own
+            // attribution, which the bridge reads off the style once it loads.
+            url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+            attribution: '© OpenStreetMap contributors'
         }
     };
     let baseTileLayer = null;
 
+    // The vector basemap needs both the bridge and a working WebGL context.  Either can be
+    // missing (CDN blocked, software renderer, GPU blocklist), and a blank map is a worse
+    // failure than a filtered one, so fall back to inverted OSM raster tiles.
+    let vectorBasemapSupported = null; // cached: the probe allocates a GL context
+    function canUseVectorBasemap() {
+        if (vectorBasemapSupported !== null) return vectorBasemapSupported;
+        vectorBasemapSupported = false;
+        try {
+            if (typeof L.maplibreGL === 'function' && typeof maplibregl !== 'undefined') {
+                // MapLibre GL dropped maplibregl.supported() in v3 and requires WebGL 2
+                // as of v5, so probe for a webgl2 context directly.
+                vectorBasemapSupported = Boolean(
+                    document.createElement('canvas').getContext('webgl2')
+                );
+            }
+        } catch (error) {
+            console.debug('Vector basemap unavailable, using raster fallback:', error);
+        }
+        return vectorBasemapSupported;
+    }
+
     function setBaseTileLayer() {
         if (!map) return;
-        const cfg = TILE_LAYERS[getMeshTheme()];
+        const theme = getMeshTheme();
+        const cfg = TILE_LAYERS[theme];
         if (baseTileLayer) {
             map.removeLayer(baseTileLayer);
+            baseTileLayer = null;
         }
-        baseTileLayer = L.tileLayer(cfg.url, { attribution: cfg.attribution }).addTo(map);
+        const useVector = Boolean(cfg.styleUrl) && canUseVectorBasemap();
+        if (useVector) {
+            // The bridge renders into tilePane, so marker/overlay z-order is unchanged.
+            baseTileLayer = L.maplibreGL({ style: cfg.styleUrl });
+        } else {
+            baseTileLayer = L.tileLayer(cfg.url, { attribution: cfg.attribution });
+        }
+        // Drives the CSS inversion that stands in for dark cartography when we had to
+        // fall back to raster.  Never set when the vector style rendered.
+        const container = document.getElementById('mesh-graph-container');
+        if (container) {
+            container.classList.toggle('mesh-basemap-fallback', theme === 'dark' && !useVector);
+        }
+        baseTileLayer.addTo(map);
     }
 
     function applyMeshTheme() {
@@ -1963,7 +2021,7 @@
                     markerZoomAnimation: true // Enable zoom animation for markers
                 }).setView([0, 0], 2);
 
-                setBaseTileLayer(); // theme-aware basemap (light OSM / dark CARTO)
+                setBaseTileLayer(); // theme-aware basemap (light OSM raster / dark OpenFreeMap vector)
 
                 // Disable popup auto-pan globally to prevent bounding boxes
                 L.Popup.prototype.options.autoPan = false;

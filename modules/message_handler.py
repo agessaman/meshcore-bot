@@ -1540,11 +1540,21 @@ class MessageHandler:
 
         # A channel message has no packet prefix or pubkey to match on, so everything
         # above lands on the most-recent-packet fallback. The decoded payload carries
-        # its own copies of fields the RF row also has, though, so the fallback can be
-        # checked rather than assumed.
+        # its own copies of fields the RF row also has, though, so the cache can be
+        # searched for this message's own packet rather than assuming the newest row.
         if recent_rf_data is not None and not rf_data_is_correlated(recent_rf_data):
-            if self._rf_data_matches_chan_payload(recent_rf_data, payload):
-                recent_rf_data = {**recent_rf_data, RF_MATCH_KEY: RF_MATCH_PAYLOAD}
+            verified = self._find_rf_row_matching_chan_payload(
+                payload, scope_eligible_only=scope_eligible_only
+            )
+            if verified is not None:
+                if verified.get("packet_prefix") != recent_rf_data.get("packet_prefix"):
+                    self.logger.debug(
+                        "Most recent RF row %s is not this message's packet (a later "
+                        "reception of another packet); the payload matches %s instead",
+                        (recent_rf_data.get("packet_prefix") or "?")[:16],
+                        (verified.get("packet_prefix") or "?")[:16],
+                    )
+                recent_rf_data = {**verified, RF_MATCH_KEY: RF_MATCH_PAYLOAD}
                 self.logger.debug(
                     "Verified RF row %s against the channel payload (GRP_TXT, path_len=%s, "
                     "SNR=%s); treating it as this message's packet",
@@ -1554,6 +1564,48 @@ class MessageHandler:
                 )
 
         return recent_rf_data
+
+    def _find_rf_row_matching_chan_payload(
+        self, payload: dict[str, Any] | None, *, scope_eligible_only: bool = False
+    ) -> dict[str, Any] | None:
+        """Return the cached RF row this channel message was received on, or None.
+
+        Checking only the newest row assumes the RF log row and the decoded CHAN
+        event for one reception arrive back to back with nothing in between. On a
+        dense mesh they do not: a repeater's echo of the very same packet is
+        routinely logged in the gap, so the newest row is that echo — a different
+        path length and a different measured SNR — and the message loses its route
+        even though its own row is sitting in the cache (#255). Search the cache
+        instead, and let _rf_data_matches_chan_payload decide which row is ours.
+
+        Two rows can only both match when they are receptions of the same packet
+        (same hash) that also agree on path length and SNR; anything else is
+        ambiguous and keeps the fallback tag, because a guess is what #80 cost.
+        """
+        if not payload:
+            return None
+
+        matches = [
+            row
+            for row in self.recent_rf_data
+            if self._rf_data_matches_chan_payload(row, payload)
+            and (not scope_eligible_only or self._is_rf_data_scope_eligible(row))
+        ]
+        if not matches:
+            return None
+
+        if len(matches) > 1:
+            hashes = {row.get("packet_hash") for row in matches}
+            if len(hashes) != 1 or not all(hashes):
+                self.logger.debug(
+                    "%d cached RF rows agree with the channel payload across %d packet(s); "
+                    "leaving the route unresolved rather than guessing",
+                    len(matches),
+                    len(hashes),
+                )
+                return None
+
+        return max(matches, key=lambda row: row["timestamp"])
 
     def _rf_data_matches_chan_payload(
         self, rf_data: dict[str, Any] | None, payload: dict[str, Any] | None
@@ -1573,6 +1625,10 @@ class MessageHandler:
         a checked hypothesis. SNR is the discriminating one: it is the measured
         value of a single reception, quantised to 0.25 dB, so an unrelated packet
         matching all three is improbable rather than merely unlikely.
+
+        _find_rf_row_matching_chan_payload applies this to every cached row rather
+        than only the newest, so a repeater echo logged in between cannot displace
+        the message's own row (#255).
         """
         if not rf_data or not payload:
             return False

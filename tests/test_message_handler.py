@@ -2426,3 +2426,95 @@ class TestChannelPayloadCorrelation:
         assert result[RF_MATCH_KEY] == RF_MATCH_PAYLOAD
         assert RF_MATCH_KEY not in row
         assert RF_MATCH_KEY not in handler.recent_rf_data[0]
+
+    def test_repeater_echo_does_not_displace_the_message_row(self, handler):
+        """#255: on a dense mesh a repeater's echo of the same packet is logged
+        between the reception and its CHAN event, so the newest row is the echo —
+        different path length, different measured SNR. The message's own row is
+        still in the cache and must be the one that is matched."""
+        heard = self._row(
+            timestamp=time.time() - 0.2,
+            packet_prefix="35e01500595cdf2fd7e580897cdae64a",
+            snr=13.25,
+            rssi=-32,
+            routing_info={"path_length": 0, "path_nodes": [], "packet_hash": "392926C85DCB87D0"},
+            packet_hash="392926C85DCB87D0",
+        )
+        echo = self._row(
+            packet_prefix="30f61501f0595cdf2fd7e580897cdae6",
+            snr=12.0,
+            rssi=-10,
+            routing_info={"path_length": 1, "path_nodes": ["F0"], "packet_hash": "392926C85DCB87D0"},
+            packet_hash="392926C85DCB87D0",
+        )
+        chan = {**self.CHAN, "SNR": 13.25, "path_len": 0}
+
+        handler.rf_data_timeout = 15.0
+        handler.message_timeout = 10.0
+        handler.enhanced_correlation = False
+        handler.recent_rf_data = [heard, echo]
+        result = asyncio.run(
+            handler._correlate_channel_message_rf_data(
+                None, "", chan, scope_eligible_only=False, extended_timeout=30.0
+            )
+        )
+
+        assert result[RF_MATCH_KEY] == RF_MATCH_PAYLOAD
+        assert rf_data_is_correlated(result) is True
+        assert result["packet_prefix"] == "35e01500595cdf2fd7e580897cdae64a"
+        # SNR/RSSI come from the message's own reception, not the echo's.
+        assert result["snr"] == 13.25
+        assert result["rssi"] == -32
+
+    def test_same_packet_heard_twice_alike_takes_the_newest(self, handler):
+        older = self._row(timestamp=time.time() - 0.2, packet_prefix="aa" * 16)
+        newer = self._row(packet_prefix="bb" * 16)
+        result = self._correlate(handler, [older, newer])
+        assert result[RF_MATCH_KEY] == RF_MATCH_PAYLOAD
+        assert result["packet_prefix"] == "bb" * 16
+
+    def test_two_packets_agreeing_is_ambiguous_and_stays_a_fallback(self, handler):
+        """Different packets that happen to agree on all three fields are a
+        coincidence, not evidence; #80 is what taking the guess cost."""
+        other = self._row(packet_hash="0123456789ABCDEF")
+        other["routing_info"] = {"path_length": 0, "packet_hash": "0123456789ABCDEF"}
+        result = self._correlate(handler, [self._row(timestamp=time.time() - 0.2), other])
+        assert result[RF_MATCH_KEY] == RF_MATCH_FALLBACK
+        assert rf_data_is_correlated(result) is False
+
+    def test_matching_rows_without_a_hash_are_ambiguous(self, handler):
+        rows = [
+            self._row(timestamp=time.time() - 0.2, packet_hash=None),
+            self._row(packet_hash=None),
+        ]
+        result = self._correlate(handler, rows)
+        assert result[RF_MATCH_KEY] == RF_MATCH_FALLBACK
+
+    def test_search_respects_scope_eligibility(self, handler):
+        """The scope correlation asks for TC_FLOOD rows usable for HMAC matching, so
+        the search must not hand back an ineligible row just because it matches."""
+        from modules.enums import RouteType
+
+        matching_but_ineligible = self._row(timestamp=time.time() - 0.2)
+        eligible_but_unmatched = self._row(
+            snr=-7.5,  # disagrees with the payload
+            packet_prefix="cc" * 16,
+            route_type_int=int(RouteType.TRANSPORT_FLOOD.value),
+            transport_code1=18583,
+            scope_payload_hex="ca37f40824e44f7c",
+        )
+        assert handler._is_rf_data_scope_eligible(eligible_but_unmatched) is True
+        assert handler._is_rf_data_scope_eligible(matching_but_ineligible) is False
+
+        handler.rf_data_timeout = 15.0
+        handler.message_timeout = 10.0
+        handler.enhanced_correlation = False
+        handler.recent_rf_data = [matching_but_ineligible, eligible_but_unmatched]
+        result = asyncio.run(
+            handler._correlate_channel_message_rf_data(
+                None, "", self.CHAN, scope_eligible_only=True, extended_timeout=30.0
+            )
+        )
+
+        assert result[RF_MATCH_KEY] == RF_MATCH_FALLBACK
+        assert result["packet_prefix"] == "cc" * 16

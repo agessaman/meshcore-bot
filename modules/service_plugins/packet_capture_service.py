@@ -275,6 +275,11 @@ class PacketCaptureService(BaseServicePlugin):
                  "help": "Authenticate with a signed JWT instead of username/password."},
                 {"key": "token_audience", "label": "Token audience", "type": "str", "default": "",
                  "help": "JWT audience claim (when using auth token)."},
+                {"key": "jwt_reconnect_on_renew", "label": "Reconnect on token renewal",
+                 "type": "bool", "default": True,
+                 "help": "Reconnect right after renewing the token, so the fresh one is in "
+                         "force. Brokers that enforce the JWT's expiry drop the session "
+                         "otherwise. Turn off only if your broker ignores expiry."},
                 {"key": "topic_status", "label": "Status topic", "type": "str", "default": ""},
                 {"key": "topic_packets", "label": "Packets topic", "type": "str", "default": ""},
                 {"key": "neighbors", "label": "Publish neighbours", "type": "bool", "default": True,
@@ -286,7 +291,13 @@ class PacketCaptureService(BaseServicePlugin):
                          "'neighbors', else <topic prefix>/neighbors."},
                 {"key": "websocket_path", "label": "WebSocket path", "type": "str", "default": "/mqtt",
                  "help": "Path when transport is websockets."},
-                {"key": "client_id", "label": "Client ID", "type": "str", "default": ""},
+                {"key": "client_id", "label": "Client ID", "type": "str", "default": "",
+                 "help": "Leave empty to generate one per broker. Set explicitly only if the "
+                         "broker requires a fixed ID; two brokers must never share one."},
+                {"key": "keepalive", "label": "Keepalive", "type": "int", "min": 5, "max": 3600,
+                 "default": 60,
+                 "help": "Seconds between PINGREQs. Lower it (30) for websockets through a proxy "
+                         "that drops idle connections."},
                 {"key": "upload_packet_types", "label": "Upload packet types", "type": "str", "default": "",
                  "help": "Comma-separated type numbers (e.g. 2,4). Empty = upload all."},
             ],
@@ -742,6 +753,7 @@ class PacketCaptureService(BaseServicePlugin):
                 ),
                 "broker_num": broker_num,
                 "websocket_path": config.get("PacketCapture", f"mqtt{broker_num}_websocket_path", fallback="/mqtt"),
+                "keepalive": config.getint("PacketCapture", f"mqtt{broker_num}_keepalive", fallback=60),
                 "client_id": config.get("PacketCapture", f"mqtt{broker_num}_client_id", fallback=None),
                 "upload_packet_types": upload_packet_types,
                 "include_decoded": config.getboolean(
@@ -751,6 +763,9 @@ class PacketCaptureService(BaseServicePlugin):
                 ),
                 "jwt_renewal_interval": jwt_renewal_interval,
                 "jwt_ttl_seconds": jwt_ttl_seconds,
+                "jwt_reconnect_on_renew": config.getboolean(
+                    "PacketCapture", f"mqtt{broker_num}_jwt_reconnect_on_renew", fallback=True
+                ),
             }
 
             # Set default topic_prefix if not set
@@ -838,6 +853,19 @@ class PacketCaptureService(BaseServicePlugin):
     def _utc_iso_timestamp() -> str:
         """UTC ISO 8601 timestamp with Z suffix for broad consumer compatibility."""
         return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    @staticmethod
+    def _disconnect_reason(rc: int) -> str:
+        """Describe an on_disconnect return code.
+
+        paho reports MQTT_ERR_* here, not CONNACK codes, so a bare number reads
+        as the wrong thing entirely: rc=2 is a protocol error, not "client
+        identifier rejected".
+        """
+        try:
+            return f"rc={rc}: {mqtt.error_string(rc)}"
+        except Exception:
+            return f"rc={rc}"
 
     @staticmethod
     def _jwt_ttl_log_phrase(ttl_seconds: int) -> str:
@@ -1632,7 +1660,11 @@ class PacketCaptureService(BaseServicePlugin):
                 if not client_id:
                     # Sanitize bot name for MQTT client ID (alphanumeric and hyphens only)
                     safe_name = "".join(c if c.isalnum() or c == "-" else "-" for c in bot_name)
-                    client_id = f"{safe_name}-packet-capture-{os.getpid()}"
+                    # The broker number keeps the ID distinct per broker. Two hosts that
+                    # share a session store — mqtt-a and mqtt-b of one cluster — evict
+                    # each other's session when both connect under the same ID, which
+                    # reads in the log as the two brokers flapping in lockstep.
+                    client_id = f"{safe_name}-packet-capture-{broker_config.get('broker_num', 1)}-{os.getpid()}"
 
                 # Create client based on transport type
                 transport = broker_config.get("transport", "tcp").lower()
@@ -1680,6 +1712,7 @@ class PacketCaptureService(BaseServicePlugin):
                 # Set username/password if provided
                 username = broker_config.get("username")
                 password = broker_config.get("password")
+                token_exp = None
 
                 if broker_config.get("use_auth_token"):
                     # Use auth token with audience if specified
@@ -1738,6 +1771,7 @@ class PacketCaptureService(BaseServicePlugin):
                         )
                         if token:
                             password = token
+                            token_exp = exp
                             ttl_phrase = self._jwt_ttl_log_phrase(ttl_used)
                             self.logger.debug(
                                 f"Created auth token for {broker_config['host']} "
@@ -1769,11 +1803,14 @@ class PacketCaptureService(BaseServicePlugin):
                         for mqtt_info in self.mqtt_clients:
                             if mqtt_info["client"] == client:
                                 mqtt_info["connected"] = True
+                                mqtt_info["down_since"] = None
+                                mqtt_info["stall_warned"] = False
                                 break
                         # Set global connected flag if any broker is connected
                         self.mqtt_connected = any(m.get("connected", False) for m in self.mqtt_clients)
                     else:
-                        # MQTT error codes: 0=success, 1=protocol, 2=client, 3=network, 4=transport, 5=auth
+                        # CONNACK return codes (MQTT 3.1.1 §3.2.2.3). These are NOT the
+                        # MQTT_ERR_* codes on_disconnect reports — see _disconnect_reason.
                         error_messages = {
                             1: "protocol version rejected",
                             2: "client identifier rejected",
@@ -1799,7 +1836,9 @@ class PacketCaptureService(BaseServicePlugin):
                             cfg = mqtt_info["config"]
                             host = cfg["host"]
                             if rc != 0:
-                                self.logger.warning(f"Disconnected from MQTT broker {host} (rc={rc})")
+                                self.logger.warning(
+                                    f"Disconnected from MQTT broker {host} ({self._disconnect_reason(rc)})"
+                                )
                             else:
                                 self.logger.debug(f"Disconnected from MQTT broker {host}")
                             break
@@ -1813,6 +1852,7 @@ class PacketCaptureService(BaseServicePlugin):
                 try:
                     host = broker_config["host"]
                     port = broker_config["port"]
+                    keepalive = int(broker_config.get("keepalive", 60))
 
                     # Validate hostname (basic check)
                     if not host or not host.strip():
@@ -1839,6 +1879,15 @@ class PacketCaptureService(BaseServicePlugin):
                             "client": client,
                             "config": broker_config,
                             "connected": False,  # Track connection status per broker
+                            # Expiry of the credential currently set on the client, so
+                            # the monitor can refresh it before paho's next retry.
+                            "token_exp": token_exp,
+                            # Set when the client first goes down; cleared on connect.
+                            "down_since": None,
+                            "stall_warned": False,
+                            # Serializes disconnect/loop_stop/reconnect/loop_start so
+                            # the renewal task and the monitor cannot overlap.
+                            "cycle_lock": asyncio.Lock(),
                         }
                     )
 
@@ -1852,7 +1901,7 @@ class PacketCaptureService(BaseServicePlugin):
                         # Run connect in executor to avoid blocking the event loop
                         loop = asyncio.get_event_loop()
                         try:
-                            await loop.run_in_executor(None, client.connect, host, port, 60)
+                            await loop.run_in_executor(None, client.connect, host, port, keepalive)
                         except Exception as connect_error:
                             # Connection failed, but don't block - let loop_start handle retries
                             self.logger.debug(f"Initial connect() call failed (non-blocking): {connect_error}")
@@ -1863,7 +1912,7 @@ class PacketCaptureService(BaseServicePlugin):
                         # Run connect in executor to avoid blocking the event loop
                         loop = asyncio.get_event_loop()
                         try:
-                            await loop.run_in_executor(None, client.connect, host, port, 60)
+                            await loop.run_in_executor(None, client.connect, host, port, keepalive)
                         except Exception as connect_error:
                             # Connection failed, but don't block - let loop_start handle retries
                             self.logger.debug(f"Initial connect() call failed (non-blocking): {connect_error}")
@@ -2895,14 +2944,21 @@ class PacketCaptureService(BaseServicePlugin):
             except Exception as e:
                 self.logger.error(f"Error publishing status to MQTT: {e}")
 
-    async def _renew_mqtt_auth_token(self, mqtt_client_info: dict[str, Any]) -> None:
-        """Mint a new auth token and apply it to one MQTT client (per-broker TTL)."""
+    async def _renew_mqtt_auth_token(self, mqtt_client_info: dict[str, Any]) -> bool:
+        """Mint a new auth token and apply it to one MQTT client (per-broker TTL).
+
+        Only updates the credentials used by the next CONNECT; it does not touch
+        the socket, so it is safe to call while paho's network thread is running.
+
+        Returns:
+            bool: True if a new token was minted and applied.
+        """
         config = mqtt_client_info["config"]
         client = mqtt_client_info["client"]
         broker_host = config.get("host", "unknown")
 
         if not config.get("use_auth_token"):
-            return
+            return False
 
         self.logger.debug(f"Renewing auth token for MQTT broker {broker_host}...")
 
@@ -2924,7 +2980,7 @@ class PacketCaptureService(BaseServicePlugin):
 
         if not device_public_key_hex:
             self.logger.warning(f"No device public key available for token renewal (broker: {broker_host})")
-            return
+            return False
 
         token_audience = config.get("token_audience") or broker_host
         username = f"v1_{device_public_key_hex.upper()}"
@@ -2950,12 +3006,14 @@ class PacketCaptureService(BaseServicePlugin):
 
             if token:
                 client.username_pw_set(username, token)
+                mqtt_client_info["token_exp"] = exp
                 ttl_phrase = self._jwt_ttl_log_phrase(ttl_used)
                 self.logger.info(f"✓ Renewed auth token for MQTT broker {broker_host} (TTL {ttl_phrase})")
-            else:
-                self.logger.warning(f"Failed to renew auth token for MQTT broker {broker_host}")
+                return True
+            self.logger.warning(f"Failed to renew auth token for MQTT broker {broker_host}")
         except Exception as e:
             self.logger.error(f"Error renewing token for MQTT broker {broker_host}: {e}")
+        return False
 
     async def jwt_renewal_scheduler_for_client(self, mqtt_client_info: dict[str, Any]) -> None:
         """Background task: renew JWT on one broker every config jwt_renewal_interval seconds."""
@@ -2972,7 +3030,17 @@ class PacketCaptureService(BaseServicePlugin):
                     break
                 if not config.get("use_auth_token"):
                     continue
-                await self._renew_mqtt_auth_token(mqtt_client_info)
+                renewed = await self._renew_mqtt_auth_token(mqtt_client_info)
+                # username_pw_set only affects the next CONNECT, so without this the
+                # session keeps running on the token it was opened with. Brokers that
+                # enforce the JWT's exp then evict us mid-stream (issue #248); cycling
+                # here turns that into one clean, scheduled reconnect instead.
+                if (
+                    renewed
+                    and config.get("jwt_reconnect_on_renew", True)
+                    and mqtt_client_info["client"].is_connected()
+                ):
+                    await self._cycle_mqtt_client(mqtt_client_info, "auth token renewed")
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -3005,16 +3073,140 @@ class PacketCaptureService(BaseServicePlugin):
                 self.logger.error(f"Error in health check loop: {e}")
                 await asyncio.sleep(60)
 
-    async def mqtt_reconnection_monitor(self) -> None:
-        """Proactive MQTT reconnection monitor - checks and reconnects disconnected brokers.
+    async def _cycle_mqtt_client(self, mqtt_client_info: dict[str, Any], reason: str) -> bool:
+        """Take one MQTT client down and bring it back up, serialized.
 
-        Periodically checks connectivity of all configured MQTT brokers and attempts
-        reconnection if disconnected.
+        The steps must not overlap. disconnect() lets paho's network thread wind
+        down cleanly, loop_stop() joins it, and only then is it safe for this
+        thread to drive reconnect(). Calling reconnect() while that thread is
+        still running is what produces two sockets on one client.
+
+        Returns:
+            bool: True if the client is connected when this returns.
+        """
+        client = mqtt_client_info["client"]
+        broker_host = mqtt_client_info["config"].get("host", "unknown")
+        loop = asyncio.get_event_loop()
+
+        async with mqtt_client_info["cycle_lock"]:
+            self.logger.info(f"Cycling MQTT connection to {broker_host} ({reason})")
+            try:
+                await loop.run_in_executor(None, client.disconnect)
+            except Exception as e:
+                self.logger.debug(f"disconnect() during cycle of {broker_host}: {e}")
+            try:
+                await loop.run_in_executor(None, client.loop_stop)
+            except Exception as e:
+                self.logger.debug(f"loop_stop() during cycle of {broker_host}: {e}")
+
+            try:
+                await loop.run_in_executor(None, client.reconnect)
+            except Exception as e:
+                # Not fatal: loop_start() below hands the retries back to paho.
+                self.logger.debug(f"reconnect() during cycle of {broker_host} failed: {e}")
+
+            try:
+                client.loop_start()
+            except Exception as e:
+                self.logger.warning(f"Could not restart network loop for {broker_host}: {e}")
+                return False
+
+            # CONNACK arrives on the network thread; give it a moment to land.
+            await asyncio.sleep(2)
+            connected = client.is_connected()
+            mqtt_client_info["connected"] = connected
+            self.mqtt_connected = any(m.get("connected", False) for m in self.mqtt_clients)
+            if connected:
+                self.logger.info(f"✓ Reconnected to MQTT broker {broker_host}")
+            else:
+                self.logger.debug(f"Cycle of {broker_host} did not connect yet; paho will keep retrying")
+            return connected
+
+    @staticmethod
+    def _loop_thread_alive(client) -> bool:
+        """Whether paho's network thread is still running for this client.
+
+        While it lives, that thread owns reconnection and nothing else may drive
+        the socket. Reading the private attribute is deliberate: paho 1.x exposes
+        no public equivalent, and guessing wrong here is what caused the storm.
+        """
+        thread = getattr(client, "_thread", None)
+        if thread is None:
+            return False
+        try:
+            return bool(thread.is_alive())
+        except Exception:
+            return True
+
+    # How long a broker may stay down before the log says so at warning level.
+    MQTT_STALL_WARN_AFTER = 300
+    # Refresh the token this far ahead of its expiry, so paho's next retry carries
+    # a credential the broker will still accept.
+    MQTT_TOKEN_REFRESH_MARGIN = 120
+
+    async def _check_mqtt_client(self, mqtt_client_info: dict[str, Any], now: float) -> None:
+        """One watchdog pass over a single client.
+
+        Observes, keeps the auth token fresh for paho's next attempt, and
+        intervenes only when paho's network thread is gone. It must never call
+        connect()/reconnect() while that thread is alive.
+        """
+        client = mqtt_client_info["client"]
+        config = mqtt_client_info["config"]
+        broker_host = config.get("host", "unknown")
+
+        if client.is_connected():
+            mqtt_client_info["connected"] = True
+            mqtt_client_info["down_since"] = None
+            mqtt_client_info["stall_warned"] = False
+            return
+
+        mqtt_client_info["connected"] = False
+        down_since = mqtt_client_info.get("down_since")
+        if down_since is None:
+            down_since = now
+            mqtt_client_info["down_since"] = down_since
+        downtime = now - down_since
+
+        # Keep the credential valid so paho's retries can succeed. This only sets
+        # the fields used by the next CONNECT; it does not touch the socket, so it
+        # is safe alongside the network thread.
+        if config.get("use_auth_token"):
+            token_exp = mqtt_client_info.get("token_exp")
+            if token_exp is None or token_exp - now < self.MQTT_TOKEN_REFRESH_MARGIN:
+                await self._renew_mqtt_auth_token(mqtt_client_info)
+
+        if self._loop_thread_alive(client):
+            # paho is retrying with backoff. Say so once when the outage stops
+            # looking transient, then stay quiet.
+            if downtime >= self.MQTT_STALL_WARN_AFTER and not mqtt_client_info.get("stall_warned"):
+                self.logger.warning(
+                    f"MQTT broker {broker_host} has been disconnected for "
+                    f"{int(downtime // 60)}m; paho is still retrying"
+                )
+                mqtt_client_info["stall_warned"] = True
+            elif self.debug:
+                self.logger.debug(
+                    f"MQTT broker {broker_host} disconnected for {int(downtime)}s (paho retrying)"
+                )
+            return
+
+        # No network thread: nothing is retrying, so this one is ours to fix.
+        self.logger.info(f"MQTT network loop for {broker_host} is not running, restarting it")
+        await self._cycle_mqtt_client(mqtt_client_info, "network loop stopped")
+
+    async def mqtt_reconnection_monitor(self) -> None:
+        """Watch the MQTT clients and recover only what paho cannot recover itself.
+
+        paho owns reconnection here: reconnect_delay_set() plus loop_start() give
+        each client a network thread that retries with backoff. This loop must not
+        call connect()/reconnect() alongside that thread — two threads driving one
+        client's socket produce duplicate CONNACKs, spurious protocol errors, and a
+        fixed-interval retry that flattens paho's backoff into a storm (issue #248).
         """
         if not self.mqtt_enabled:
             return
 
-        # Reconnection check interval (check every 30 seconds)
         check_interval = 30
 
         while not self.should_exit:
@@ -3024,102 +3216,17 @@ class PacketCaptureService(BaseServicePlugin):
                 if not self.mqtt_clients:
                     continue
 
-                # Check each broker's connection status
+                now = time.time()
                 for mqtt_client_info in self.mqtt_clients:
-                    client = mqtt_client_info["client"]
-                    config = mqtt_client_info["config"]
-                    broker_host = config.get("host", "unknown")
+                    try:
+                        await self._check_mqtt_client(mqtt_client_info, now)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as e:
+                        host = mqtt_client_info["config"].get("host", "unknown")
+                        self.logger.debug(f"Error checking MQTT broker {host}: {e}")
 
-                    # Check if client is connected
-                    if not client.is_connected():
-                        # Client is disconnected - attempt reconnection
-                        try:
-                            self.logger.info(f"MQTT broker {broker_host} is disconnected, attempting reconnection...")
-
-                            # If using auth tokens, try to renew the token before reconnecting
-                            if config.get("use_auth_token"):
-                                # Get device's public key for username
-                                device_public_key_hex = None
-                                if self.meshcore and hasattr(self.meshcore, "self_info"):
-                                    try:
-                                        self_info = self.meshcore.self_info
-                                        if isinstance(self_info, dict):
-                                            device_public_key_hex = self_info.get("public_key", "")
-                                        elif hasattr(self_info, "public_key"):
-                                            device_public_key_hex = self_info.public_key
-
-                                        # Convert to hex string if bytes
-                                        if isinstance(device_public_key_hex, bytes):
-                                            device_public_key_hex = device_public_key_hex.hex()
-                                        elif isinstance(device_public_key_hex, bytearray):
-                                            device_public_key_hex = bytes(device_public_key_hex).hex()
-                                    except Exception:
-                                        pass
-
-                                if device_public_key_hex:
-                                    # Create new auth token
-                                    token_audience = config.get("token_audience") or broker_host
-                                    username = f"v1_{device_public_key_hex.upper()}"
-
-                                    use_device = (
-                                        self.auth_token_method == "device"
-                                        and self.meshcore
-                                        and self.meshcore.is_connected
-                                    )
-                                    meshcore_for_key_fetch = (
-                                        self.meshcore if self.meshcore and self.meshcore.is_connected else None
-                                    )
-
-                                    try:
-                                        iat, exp = self._auth_token_iat_exp(config)
-                                        token = await create_auth_token_async(
-                                            meshcore_instance=meshcore_for_key_fetch,
-                                            public_key_hex=device_public_key_hex,
-                                            private_key_hex=self.private_key_hex,
-                                            iata=self.global_iata,
-                                            timestamp=iat,
-                                            audience=token_audience,
-                                            exp=exp,
-                                            owner_public_key=self.owner_public_key,
-                                            owner_email=self.owner_email,
-                                            use_device=use_device,
-                                        )
-                                        if token:
-                                            # Update credentials
-                                            client.username_pw_set(username, token)
-                                            self.logger.debug(
-                                                f"Renewed auth token for {broker_host} before reconnection"
-                                            )
-                                    except Exception as e:
-                                        self.logger.debug(f"Error renewing auth token for {broker_host}: {e}")
-
-                            # Attempt reconnection (non-blocking to avoid blocking event loop)
-                            config["host"]
-                            config["port"]
-                            loop = asyncio.get_event_loop()
-                            try:
-                                await loop.run_in_executor(None, client.reconnect)
-                            except Exception as reconnect_error:
-                                # Reconnection failed, but don't block - will retry on next cycle
-                                self.logger.debug(f"Reconnect() call failed (non-blocking): {reconnect_error}")
-
-                            # Give it a moment to connect
-                            await asyncio.sleep(2)
-
-                            # Check if reconnection succeeded
-                            if client.is_connected():
-                                self.logger.info(f"✓ Successfully reconnected to MQTT broker {broker_host}")
-                                mqtt_client_info["connected"] = True
-                                # Update global flag
-                                self.mqtt_connected = any(m.get("connected", False) for m in self.mqtt_clients)
-                            else:
-                                if self.debug:
-                                    self.logger.debug(
-                                        f"Reconnection attempt to {broker_host} still in progress or failed"
-                                    )
-
-                        except Exception as e:
-                            self.logger.debug(f"Error attempting MQTT reconnection to {broker_host}: {e}")
+                self.mqtt_connected = any(m.get("connected", False) for m in self.mqtt_clients)
 
             except asyncio.CancelledError:
                 break

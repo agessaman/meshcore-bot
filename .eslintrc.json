@@ -7,6 +7,7 @@
   "settings": {
     "html/html-extensions": [".html"]
   },
+  "root": true,
   "rules": {
     "no-undef": "warn",
     "no-unused-vars": "warn",

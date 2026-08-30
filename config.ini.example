@@ -1937,6 +1937,8 @@ observer_name =
 #                                     # Default false. Only for self-signed brokers on a
 #                                     # trusted network — otherwise credentials are MITMable.
 # mqttN_websocket_path = /mqtt        # WebSocket path (for websockets transport)
+# mqttN_keepalive = 60                # Seconds between PINGREQs. Lower (30) for websockets
+#                                     # through a proxy that drops idle connections.
 # mqttN_username =                     # MQTT username (optional, auto-generated for auth tokens)
 # mqttN_password =                     # MQTT password (optional, auto-generated for auth tokens)
 # mqttN_use_auth_token = true/false   # Use JWT auth token instead of username/password
@@ -1944,7 +1946,9 @@ observer_name =
 # mqttN_topic_status =                # Status topic template (uses placeholders below)
 # mqttN_topic_packets =               # Packets topic template (uses placeholders below)
 # mqttN_topic_prefix =                # Legacy topic prefix (fallback if topic_status/topic_packets not set)
-# mqttN_client_id =                   # MQTT client ID (optional, auto-generated from bot name)
+# mqttN_client_id =                   # MQTT client ID (optional; one is generated per broker).
+#                                     # Two brokers must never share an ID — brokers behind one
+#                                     # cluster (mqtt-a/mqtt-b) will evict each other's session.
 # mqttN_upload_packet_types =         # Comma-separated packet types to upload (e.g. 2,4); empty = all
 # mqttN_include_decoded = true/false  # Publish the decoded object to this broker (default: include_decoded)
 # mqttN_neighbors = true/false        # Publish the zero-hop neighbours snapshot to this broker.
@@ -1983,6 +1987,9 @@ mqtt1_upload_packet_types =
 # Optional per-broker JWT (inherit globals if omitted):
 # mqtt1_jwt_ttl_seconds = 3600           # JWT exp claim: iat + this many seconds
 # mqtt1_jwt_renewal_interval = 1800      # Refresh password this often; use < ttl; 0 = no renewal loop
+# mqtt1_jwt_reconnect_on_renew = true    # Reconnect after renewing so the fresh token is in force.
+#                                        # Default true. Brokers that enforce the JWT's expiry drop
+#                                        # the session otherwise. Off only if yours ignores expiry.
 
 # MQTT Broker 2 - Let's Mesh Analyzer (EU)
 mqtt2_enabled = true

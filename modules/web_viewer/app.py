@@ -1256,11 +1256,16 @@ class BotDataViewer:
                 "style-src 'self' 'unsafe-inline' "
                 "https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com "
                 "https://fonts.googleapis.com; "
-                "img-src 'self' data: https://*.tile.openstreetmap.org "
-                "https://*.basemaps.cartocdn.com "
+                "img-src 'self' data: blob: https://*.tile.openstreetmap.org "
+                "https://tiles.openfreemap.org "
                 "https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
-                "connect-src 'self' ws: wss: "
+                "connect-src 'self' ws: wss: https://tiles.openfreemap.org "
                 "https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; "
+                # MapLibre GL runs its renderer in a worker spawned from a blob: URL.
+                # Without these it falls back to default-src 'self' and the dark
+                # basemap fails to start.
+                "worker-src 'self' blob:; "
+                "child-src 'self' blob:; "
                 "font-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com "
                 "https://fonts.gstatic.com"
             )
