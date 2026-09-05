@@ -41,6 +41,13 @@ class MeshMessage:
     # can be run for its text alone (e.g. a {cmd:...} placeholder in a scheduled
     # message) without spending airtime. A synthetic message only.
     capture_sink: Optional[list[str]] = None
+    # On-air body at construction. Mention/prefix cleanup may rewrite ``content``
+    # for command matching; display and web-viewer capture must use this snapshot.
+    original_content: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.original_content:
+            self.original_content = self.content
 
     def effective_outgoing_flood_scope(self, bot: Any) -> str:
         """Resolve outbound flood scope the same way as ``CommandManager.send_channel_message``.

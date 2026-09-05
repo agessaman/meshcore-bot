@@ -1804,6 +1804,7 @@ class TestRespondToMentions:
         msg = self._channel_msg("@[TestBot] ping")
         await mention_handler.process_message(msg)
         assert msg.content == "ping"
+        assert msg.original_content == "@[TestBot] ping"
 
     async def test_also_case_insensitive_strip(self, mention_handler, mention_bot):
         """'also': bot name match is case-insensitive."""

@@ -150,8 +150,13 @@ class GlobalWxCommand(BaseCommand):
         Returns:
             bool: True if message matches a keyword, False otherwise.
         """
-        content_lower = self.cleanup_message_for_matching(message)
-        return any(content_lower.startswith(keyword + ' ') or content_lower == keyword for keyword in self.keywords)
+        return self._cleaned_content_matches(
+            message,
+            lambda content_lower: any(
+                content_lower.startswith(keyword + ' ') or content_lower == keyword
+                for keyword in self.keywords
+            ),
+        )
 
     def _get_companion_location(self, message: MeshMessage) -> Optional[tuple[float, float]]:
         """Get companion/sender location from database.

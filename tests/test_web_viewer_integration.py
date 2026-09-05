@@ -9,6 +9,8 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
+from modules.models import MeshMessage
+
 # ---------------------------------------------------------------------------
 # Factory helpers
 # ---------------------------------------------------------------------------
@@ -282,6 +284,22 @@ class TestCaptureCommand:
         assert parsed["command"] == "ping"
         assert parsed["success"] is True
 
+    def test_user_input_prefers_original_content(self):
+        """#267: command stream must show the on-air body, not mention-stripped content."""
+        bi = _make_bot_integration()
+        msg = MeshMessage(
+            content="hi",
+            original_content="@[AlphaBot👾] hi",
+            sender_id="Howl 🦾",
+            channel="#alphabot",
+        )
+        bi.capture_command(msg, "hello", "Dobryy vecher, earthling.", True)
+        _, data, row_type, *_dims = bi._write_queue.get_nowait()
+        assert row_type == "command"
+        parsed = json.loads(data)
+        assert parsed["user_input"] == "@[AlphaBot👾] hi"
+        assert parsed["command"] == "hello"
+
     def test_no_transmission_tracker(self):
         bi = _make_bot_integration()
         bi.bot.transmission_tracker = None
@@ -318,6 +336,23 @@ class TestCaptureChannelMessage:
         parsed = json.loads(data)
         assert parsed["type"] == "message"
         assert parsed["content"] == "hello"
+
+    def test_prefers_original_content_over_stripped_body(self):
+        """#267: capture must store the on-air body, not mention-stripped content."""
+        bi = _make_bot_integration()
+        msg = MeshMessage(
+            content="ack | 9d12,aa11,4039 (3 hops)",
+            original_content="ack @[IU1IPB-1] | 9d12,aa11,4039 (3 hops)",
+            sender_id="IW1PTV-BOT-Savona",
+            channel="#bot",
+            hops=4,
+            is_dm=False,
+        )
+        bi.capture_channel_message(msg)
+        _, data, row_type, *_dims = bi._write_queue.get_nowait()
+        assert row_type == "message"
+        parsed = json.loads(data)
+        assert parsed["content"] == "ack @[IU1IPB-1] | 9d12,aa11,4039 (3 hops)"
 
     def test_dm_message_captured(self):
         bi = _make_bot_integration()

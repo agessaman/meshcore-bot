@@ -242,8 +242,13 @@ class WxCommand(BaseCommand):
         if self.delegate_command:
             return self.delegate_command.matches_keyword(message)
 
-        content_lower = self.cleanup_message_for_matching(message)
-        return any(content_lower.startswith(keyword + ' ') or content_lower == keyword for keyword in self.keywords)
+        return self._cleaned_content_matches(
+            message,
+            lambda content_lower: any(
+                content_lower.startswith(keyword + ' ') or content_lower == keyword
+                for keyword in self.keywords
+            ),
+        )
 
     def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Override to delegate or use base class cooldown"""

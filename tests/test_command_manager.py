@@ -288,6 +288,21 @@ class TestCheckKeywords:
         matches = manager.check_keywords(mock_message(content="help", channel="general", is_dm=False))
         assert any(trigger == "help" for trigger, _ in matches)
 
+    def test_overheard_self_mention_not_stripped_issue_267(self, cm_bot):
+        """Keyword scan must not delete @[bot] from overheard non-command traffic (#267)."""
+        from modules.commands.ping_command import PingCommand
+
+        cm_bot.config.set("Bot", "bot_name", "IU1IPB-1")
+        cm_bot.config.set("Bot", "respond_to_mentions", "also")
+        ping = PingCommand(cm_bot)
+        manager = make_manager(cm_bot, commands={"ping": ping})
+        body = "ack @[IU1IPB-1] | 9d12,aa11,4039 (3 hops)"
+        msg = mock_message(content=body, channel="general", is_dm=False)
+        matches = manager.check_keywords(msg)
+        assert not any(trigger == "ping" for trigger, _ in matches)
+        assert msg.content == body
+        assert msg.original_content == body
+
 
 class TestGetHelpForCommand:
     """Tests for command-specific help."""

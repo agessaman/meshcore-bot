@@ -491,6 +491,8 @@ class TestCleanupMessageForMatching:
         cmd = self._cmd(command_mock_bot)
         msg = mock_message(content="@[TestBot] testcmd")
         assert cmd.matches_keyword(msg) is True
+        assert msg.content == "testcmd"
+        assert msg.original_content == "@[TestBot] testcmd"
 
     def test_matches_keyword_other_mention_blocked(self, command_mock_bot):
         """matches_keyword returns False when only another user is mentioned."""
@@ -498,3 +500,64 @@ class TestCleanupMessageForMatching:
         cmd = self._cmd(command_mock_bot)
         msg = mock_message(content="@[Alice] testcmd")
         assert cmd.matches_keyword(msg) is False
+        assert msg.content == "@[Alice] testcmd"
+
+
+class TestIssue267OverheardMentions:
+    """Mention stripping must not rewrite overheard traffic that names this radio (#267)."""
+
+    def _cmd(self, bot):
+        bot.meshcore = None
+        bot.config.set("Bot", "bot_name", "IU1IPB-1")
+        bot.config.set("Bot", "respond_to_mentions", "also")
+        return _TestCommand(bot)
+
+    def test_ack_self_mention_not_stripped_when_unmatched(self, command_mock_bot):
+        cmd = self._cmd(command_mock_bot)
+        body = "ack @[IU1IPB-1] | 9d12,aa11,4039 (3 hops)"
+        msg = mock_message(content=body)
+        assert cmd.matches_keyword(msg) is False
+        assert msg.content == body
+        assert msg.original_content == body
+
+    def test_leading_self_mention_not_stripped_when_unmatched(self, command_mock_bot):
+        cmd = self._cmd(command_mock_bot)
+        body = "@[IU1IPB-1] 3 hops dffd→0d28→8dbb"
+        msg = mock_message(content=body)
+        assert cmd.matches_keyword(msg) is False
+        assert msg.content == body
+        assert msg.original_content == body
+
+    def test_bare_at_callsign_unchanged(self, command_mock_bot):
+        cmd = self._cmd(command_mock_bot)
+        body = "[BOT_0531] @IU1IPB-1 | Hops: 2 | Path: Menconico T03>M.te Boletto>my-station"
+        msg = mock_message(content=body)
+        assert cmd.matches_keyword(msg) is False
+        assert msg.content == body
+        assert "@IU1IPB-1" in msg.content
+
+    def test_self_mention_command_still_matches(self, command_mock_bot):
+        cmd = self._cmd(command_mock_bot)
+        msg = mock_message(content="@[IU1IPB-1] testcmd")
+        assert cmd.matches_keyword(msg) is True
+        assert msg.content == "testcmd"
+        assert msg.original_content == "@[IU1IPB-1] testcmd"
+
+    def test_cleanup_does_not_rewrite_original_content(self, command_mock_bot):
+        cmd = self._cmd(command_mock_bot)
+        msg = mock_message(content="@[IU1IPB-1] testcmd")
+        cmd.cleanup_message_for_matching(msg)
+        assert msg.content == "testcmd"
+        assert msg.original_content == "@[IU1IPB-1] testcmd"
+
+    def test_overridden_matches_keyword_restores_unmatched(self, command_mock_bot):
+        """Subclass matchers that call cleanup must still restore overheard @[bot] text."""
+        from modules.commands.webviewer_command import WebViewerCommand
+
+        self._cmd(command_mock_bot)  # set bot_name / mention mode
+        cmd = WebViewerCommand(command_mock_bot)
+        body = "ack @[IU1IPB-1] | 9d12,aa11,4039 (3 hops)"
+        msg = mock_message(content=body)
+        assert cmd.matches_keyword(msg) is False
+        assert msg.content == body
+        assert msg.original_content == body

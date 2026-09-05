@@ -66,19 +66,17 @@ class RollCommand(BaseCommand):
 
     def matches_keyword(self, message: MeshMessage) -> bool:
         """Match ``roll`` / aliases; with args, only when the arg is a valid max."""
-        content_lower = self.cleanup_message_for_matching(message)
-        if not content_lower:
+        def _matches(content_lower: str) -> bool:
+            for keyword in self.keywords:
+                kw = keyword.lower()
+                if content_lower == kw:
+                    return True
+                if content_lower.startswith(kw + " "):
+                    roll_part = content_lower[len(kw):].strip()
+                    return self.parse_roll_notation(roll_part) is not None
             return False
 
-        for keyword in self.keywords:
-            kw = keyword.lower()
-            if content_lower == kw:
-                return True
-            if content_lower.startswith(kw + " "):
-                roll_part = content_lower[len(kw):].strip()
-                return self.parse_roll_notation(roll_part) is not None
-
-        return False
+        return self._cleaned_content_matches(message, _matches)
 
     def parse_roll_notation(self, roll_input: str) -> Optional[int]:
         """Parse roll notation and return the maximum number.

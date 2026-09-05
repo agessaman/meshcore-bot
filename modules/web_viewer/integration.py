@@ -517,6 +517,20 @@ class BotIntegration:
             _number('bytes_per_hop'),
         )
 
+    @staticmethod
+    def _on_air_content(message, fallback: str = "") -> str:
+        """Return the on-air body for web-viewer capture.
+
+        Command matching may have stripped @[mentions] from ``message.content``
+        (#267). Prefer ``original_content``. Mocks may lack that field
+        (MagicMock would invent a non-str attribute), so only honor a real string.
+        """
+        original = getattr(message, "original_content", None)
+        if isinstance(original, str) and original:
+            return original
+        content = getattr(message, "content", fallback)
+        return content if isinstance(content, str) else fallback
+
     def capture_command(self, message, command_name, response, success, command_id=None):
         """Capture command data and store in database for web viewer"""
         try:
@@ -526,7 +540,7 @@ class BotIntegration:
             # Extract data from message object
             user = getattr(message, 'sender_id', 'Unknown')
             channel = getattr(message, 'channel', 'Unknown')
-            user_input = getattr(message, 'content', f'/{command_name}')
+            user_input = self._on_air_content(message, fallback=f'/{command_name}')
 
             # Get repeat information if transmission tracker is available
             repeat_count = 0
@@ -574,7 +588,7 @@ class BotIntegration:
                 'timestamp': time.time(),
                 'sender': getattr(message, 'sender_id', ''),
                 'channel': getattr(message, 'channel', ''),
-                'content': getattr(message, 'content', ''),
+                'content': self._on_air_content(message),
                 'snr': str(getattr(message, 'snr', '')),
                 'hops': getattr(message, 'hops', None),
                 'path': getattr(message, 'path', ''),
