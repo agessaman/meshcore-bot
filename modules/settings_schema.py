@@ -304,6 +304,7 @@ def build_plugin_settings_view(
     commands_dir: Optional[str] = None,
     services_dir: Optional[str] = None,
     local_commands_dir: Optional[str] = None,
+    local_services_dir: Optional[str] = None,
 ) -> list[dict]:
     """Assemble the per-plugin settings view for the web UI.
 
@@ -315,6 +316,10 @@ def build_plugin_settings_view(
     ``fields`` is the plugin's ``settings_schema`` with a resolved ``value`` on
     each field.  ``values`` is the raw current config section (minus ``enabled``)
     used by the generic editor for plugins without a schema.
+
+    ``local_commands_dir`` and ``local_services_dir`` auto-detect the
+    ``local/commands`` and ``local/service_plugins`` directories (relative to
+    the project root) when not supplied, and are tagged with ``source="local"``.
     """
     # Import bases lazily so this module stays import-light.
     from modules.commands.base_command import BaseCommand
@@ -390,6 +395,30 @@ def build_plugin_settings_view(
         except Exception as exc:  # noqa: BLE001 - one bad plugin must not break the list
             if logger:
                 logger.warning("Skipping service %s in settings view: %s", name, exc)
+
+    # --- Local Services (from local/service_plugins directory) ---
+    if local_services_dir is None:
+        # Auto-detect local/service_plugins directory relative to the project root
+        local_services_path = os.path.join(here, "..", "local", "service_plugins")
+        if os.path.isdir(local_services_path):
+            local_services_dir = local_services_path
+
+    if local_services_dir and os.path.isdir(local_services_dir):
+        for cls in _discover_local_classes(BaseServicePlugin, local_services_dir, logger):
+            section = service_section_name(cls)
+            name = getattr(cls, "name", "") or cls.__name__.lower().replace("service", "")
+            try:
+                view.append(_assemble_entry(
+                    config, cls, kind="service", name=name, section=section,
+                    label=section.replace("_", " "),
+                    description=getattr(cls, "description", "") or "",
+                    category="service",
+                    enabled_default=bool(getattr(cls, "settings_enabled_default", False)),
+                    source="local",
+                ))
+            except Exception as exc:  # noqa: BLE001 - one bad plugin must not break the list
+                if logger:
+                    logger.warning("Skipping local service %s in settings view: %s", name, exc)
 
     view.sort(key=lambda e: (e["kind"], e["label"].lower()))
     return view
