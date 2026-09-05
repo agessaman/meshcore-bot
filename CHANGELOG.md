@@ -304,6 +304,18 @@ semantic versioning.
   `prefix_if_nonempty` argument still consumes the rest of the placeholder, which is
   what lets its literal contain `|`, so that form must stay last in its chain.
 
+- `password` field type for a plugin's `settings_schema`, so a secret like
+  a password for a command renders masked in the web viewer's Plugins page
+  instead of as plain text. It validates and serializes exactly like `str`
+  (the value is still stored in plaintext in `config.ini`); the masking is a
+  UI concern only. The plaintext secret never reaches the browser — the view
+  blanks the value and reports only `has_value`, matching the key-name
+  redaction already used elsewhere — and the field renders as a
+  `type="password"` input with a show/hide toggle. When a value is already
+  saved the field shows a `(saved — enter new value to change)` placeholder
+  and leaving it untouched keeps the stored secret, so an edit elsewhere on
+  the form does not blank it.
+
 - `mqttN_keepalive` (default 60) sets the MQTT PINGREQ interval per broker. It was
   hardcoded at 60 before, which is long for websockets through a proxy that drops
   idle connections.
