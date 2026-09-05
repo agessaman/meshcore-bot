@@ -239,6 +239,42 @@ class TestBuildView:
                     f"{e['name']} is missing the injected channels field"
                 )
 
+    def test_builtin_commands_and_services_are_base_source(self, view):
+        for e in view:
+            if e["kind"] in ("command", "service"):
+                assert e["source"] == "base", f"{e['name']} should be source='base'"
+
+
+class TestBuildViewLocalCommandSource:
+    """Local commands (discovered via _discover_local_classes) must be tagged
+    source='local' so the web viewer's save endpoint writes to the local
+    config overlay instead of the base config.ini."""
+
+    def test_local_command_gets_local_source(self, tmp_path):
+        local_dir = tmp_path / "local_commands"
+        local_dir.mkdir()
+        (local_dir / "dummy_command.py").write_text(
+            "from modules.commands.base_command import BaseCommand\n\n"
+            "class DummyCommand(BaseCommand):\n"
+            "    name = 'dummy'\n"
+            "    keywords = ['dummy']\n\n"
+            "    async def execute(self, message):\n"
+            "        return None\n",
+            encoding="utf-8",
+        )
+        cfg = configparser.ConfigParser()
+        view = build_plugin_settings_view(cfg, local_commands_dir=str(local_dir))
+        entry = next(
+            (e for e in view if e["kind"] == "command" and e["name"] == "dummy"), None
+        )
+        assert entry is not None
+        assert entry["source"] == "local"
+        # Sanity: built-ins discovered in the same view stay 'base'.
+        ping = next(
+            (e for e in view if e["kind"] == "command" and e["name"] == "ping"), None
+        )
+        assert ping is not None and ping["source"] == "base"
+
 
 # ---------------------------------------------------------------------------
 # settings_store

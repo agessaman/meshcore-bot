@@ -257,9 +257,6 @@ class BotDataViewer:
         if not os.path.isabs(config_path):
             config_path = str(self.bot_root / config_path)
 
-        # Load configuration before logging so [Logging] log_file can select
-        # journal/console-only vs file logging (same rules as the main bot).
-        self.config = self._load_config(config_path)
         self.config_path = config_path  # kept for config.ini write-back endpoints
 
         # Resolve db_path relative to the config file's directory — matches core.py's bot_root
@@ -268,6 +265,10 @@ class BotDataViewer:
         # elsewhere (e.g. a separate deployment directory), resulting in a blank realtime monitor
         # because the web viewer and bot opened different database files.
         self._config_base = Path(config_path).parent.resolve() if os.path.exists(config_path) else self.bot_root
+
+        # Load configuration before logging so [Logging] log_file can select
+        # journal/console-only vs file logging (same rules as the main bot).
+        self.config = self._load_merged_config()
 
         self._setup_logging()
 
@@ -507,6 +508,37 @@ class BotDataViewer:
         if os.path.exists(config_path):
             config.read(config_path)
         return config
+
+    def _load_merged_config(self):
+        """Load base config.ini plus its local overlay, mirroring core.py.
+
+        core.py's ``_read_config_snapshot`` reads the base ``config.ini``,
+        looks up ``[Bot] local_dir_path`` (fallback ``"local"``), resolves it
+        relative to the bot root, and — if ``<local_dir_path>/config.ini``
+        exists — reads it into the *same* parser so it overlays the base
+        values section-by-section/key-by-key. The web viewer needs the same
+        merged view so settings edited via the local overlay show up here.
+        """
+        base_parser = configparser.ConfigParser()
+        if os.path.exists(self.config_path):
+            base_parser.read(self.config_path, encoding="utf-8")
+        base_sections = set(base_parser.sections())
+
+        local_dir_path_str = base_parser.get("Bot", "local_dir_path", fallback="local")
+        self.local_dir = Path(resolve_path(local_dir_path_str, self._config_base))
+        self.local_config_path = str(self.local_dir / "config.ini")
+
+        local_only = configparser.ConfigParser()
+        if os.path.exists(self.local_config_path):
+            local_only.read(self.local_config_path, encoding="utf-8")
+        local_sections = set(local_only.sections())
+
+        if os.path.exists(self.local_config_path):
+            base_parser.read(self.local_config_path, encoding="utf-8")
+
+        self._base_sections = base_sections
+        self._local_sections = local_sections
+        return base_parser
 
     def _get_version_info(self) -> dict[str, str | None]:
         """Get version info for footer via centralized version resolver. Never raises."""
@@ -1418,8 +1450,12 @@ class BotDataViewer:
             """Return the settings view for every discovered command/service."""
             try:
                 # Re-read config from disk so the UI reflects external edits.
-                self.config = self._load_config(self.config_path)
-                view = build_plugin_settings_view(self.config, logger=self.logger)
+                self.config = self._load_merged_config()
+                view = build_plugin_settings_view(
+                    self.config,
+                    logger=self.logger,
+                    local_commands_dir=str(self.local_dir / "commands"),
+                )
                 return jsonify({'plugins': view})
             except Exception:
                 self.logger.exception("Error building plugin settings view")
@@ -1435,8 +1471,12 @@ class BotDataViewer:
             try:
                 data = request.get_json(silent=True) or {}
                 # Locate the plugin entry so we have its schema + section.
-                self.config = self._load_config(self.config_path)
-                view = build_plugin_settings_view(self.config, logger=self.logger)
+                self.config = self._load_merged_config()
+                view = build_plugin_settings_view(
+                    self.config,
+                    logger=self.logger,
+                    local_commands_dir=str(self.local_dir / "commands"),
+                )
                 entry = next(
                     (e for e in view if e['kind'] == kind and e['name'] == name),
                     None,
@@ -1551,7 +1591,26 @@ class BotDataViewer:
                         if brx.match(k) and k.lower() not in written:
                             deletes.setdefault(section, []).append(k)
 
-                store = get_settings_store(self.config, self.config_path, self.db_manager)
+                if section in self._local_sections:
+                    target_path = self.local_config_path
+                elif section in self._base_sections:
+                    target_path = self.config_path
+                else:
+                    # Brand-new section: local commands default into the local
+                    # overlay, everything else into the base config.
+                    target_path = (
+                        self.local_config_path if entry.get('source') == 'local' else self.config_path
+                    )
+
+                if target_path == self.local_config_path and not os.path.exists(target_path):
+                    # update_ini_values() requires the target file to already
+                    # exist (it reads + backs up before writing) — local/config.ini
+                    # may not exist yet on a fresh install.
+                    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+                    with open(target_path, 'w', encoding='utf-8') as f:
+                        f.write('')
+
+                store = get_settings_store(self.config, target_path, self.db_manager)
                 result = store.write_sections(updates, deletes)
                 backup_path = result.get('backup_path', '') if isinstance(result, dict) else ''
 
