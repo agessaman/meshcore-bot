@@ -50,11 +50,12 @@
 #     Docker install - nothing to do. The published linux/arm/v7 image ships everything
 #       prebuilt. Just pull it; do not build the image on the Pi.
 #
-#     Native install - install-service.sh handles this automatically. On a 32-bit ARM host it
-#       adds the piwheels index and applies constraints-armv7.txt, which resolves the entire
-#       dependency set to wheels (measured: 75/75, zero compiled). Raspberry Pi OS already
-#       configures piwheels in /etc/pip.conf; the explicit flag also covers Ubuntu armhf and
-#       DietPi, which do not.
+#     Native install - install-service.sh and the .deb postinst handle this automatically.
+#       On a 32-bit ARM host they add the piwheels index and apply constraints-armv7.txt,
+#       which resolves the entire dependency set to wheels (measured: 75/75, zero compiled).
+#       Raspberry Pi OS already configures piwheels in /etc/pip.conf; the explicit flag also
+#       covers Ubuntu armhf and DietPi, which do not. Without the constraints file, pip can
+#       pick a listed-but-undownloadable brotli 1.2.0 wheel and abort (issue #269).
 #
 #     Manual pip install - pass both yourself:
 #       pip install --extra-index-url https://www.piwheels.org/simple \

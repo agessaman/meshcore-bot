@@ -233,10 +233,14 @@ find "${LOG_DIR}" -type f -exec chmod 0600 {} +
 VENV_BUILD="${INSTALL_ROOT}/.venv-build-$$"
 VENV_OLD="${INSTALL_ROOT}/.venv-old-$$"
 rm -rf "${VENV_BUILD}" "${VENV_OLD}"
+# 32-bit ARM: piwheels + constraints-armv7.txt (issue #269).  No-op elsewhere.
+# shellcheck source=/opt/meshcore-bot/scripts/armv7_pip_args.sh
+. "${INSTALL_ROOT}/scripts/armv7_pip_args.sh"
+configure_armv7_pip_args "${INSTALL_ROOT}/requirements.txt"
 echo "Building fresh Python virtualenv…"
 python3 -m venv "${VENV_BUILD}"
 "${VENV_BUILD}/bin/python" -m pip install --quiet --upgrade pip
-"${VENV_BUILD}/bin/python" -m pip install --quiet -r "${INSTALL_ROOT}/requirements.txt"
+"${VENV_BUILD}/bin/python" -m pip install --quiet "${ARMV7_PIP_ARGS[@]}" -r "${INSTALL_ROOT}/requirements.txt"
 if [ -d "${INSTALL_ROOT}/venv" ]; then
     mv "${INSTALL_ROOT}/venv" "${VENV_OLD}"
 fi
