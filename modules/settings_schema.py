@@ -242,12 +242,68 @@ def _discover_classes(base_class: type, package: str, directory: str, logger=Non
     return found
 
 
+def _discover_local_classes(base_class: type, directory: str, logger=None) -> list[type]:
+    """Import every ``*.py`` in local commands directory and collect ``base_class`` subclasses.
+
+    Uses dynamic file-based loading similar to plugin_loader.load_plugin_from_path.
+    """
+    import importlib.util
+    import sys
+    import types
+    from pathlib import Path
+
+    found: list[type] = []
+    if not os.path.isdir(directory):
+        return found
+
+    local_path = Path(directory)
+
+    # Ensure parent package exists for relative imports
+    if "local_plugins" not in sys.modules:
+        pkg = types.ModuleType("local_plugins")
+        pkg.__path__ = [str(local_path)]
+        sys.modules["local_plugins"] = pkg
+
+    for fpath in sorted(local_path.glob("*.py")):
+        if fpath.name == "__init__.py":
+            continue
+        stem = fpath.stem
+        module_name = f"local_plugins.{stem}"
+
+        try:
+            spec = importlib.util.spec_from_file_location(module_name, fpath)
+            if spec is None or spec.loader is None:
+                if logger:
+                    logger.warning("Could not create spec for local plugin %s", fpath)
+                continue
+
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[module_name] = module
+            spec.loader.exec_module(module)
+
+            for _n, obj in inspect.getmembers(module, inspect.isclass):
+                if (
+                    issubclass(obj, base_class)
+                    and obj is not base_class
+                    and obj.__module__ == module_name
+                ):
+                    found.append(obj)
+                    break
+        except Exception as exc:  # noqa: BLE001 - never let one bad plugin break the list
+            if logger:
+                logger.warning("Could not import local plugin %s for settings discovery: %s", stem, exc)
+            continue
+
+    return found
+
+
 def build_plugin_settings_view(
     config: configparser.ConfigParser,
     *,
     logger=None,
     commands_dir: Optional[str] = None,
     services_dir: Optional[str] = None,
+    local_commands_dir: Optional[str] = None,
 ) -> list[dict]:
     """Assemble the per-plugin settings view for the web UI.
 
@@ -290,6 +346,31 @@ def build_plugin_settings_view(
         except Exception as exc:  # noqa: BLE001 - one bad plugin must not break the list
             if logger:
                 logger.warning("Skipping command %s in settings view: %s", name, exc)
+
+    # --- Local Commands (from local/commands directory) ---
+    if local_commands_dir is None:
+        # Auto-detect local/commands directory relative to the project root
+        local_path = os.path.join(here, "..", "local", "commands")
+        if os.path.isdir(local_path):
+            local_commands_dir = local_path
+
+    if local_commands_dir and os.path.isdir(local_commands_dir):
+        for cls in _discover_local_classes(BaseCommand, local_commands_dir, logger):
+            name = getattr(cls, "name", "") or cls.__name__.lower().replace("command", "")
+            if not name:
+                continue
+            section = command_section_name(name)
+            try:
+                view.append(_assemble_entry(
+                    config, cls, kind="command", name=name, section=section,
+                    label=name.replace("_", " ").title(),
+                    description=getattr(cls, "description", "") or "",
+                    category=getattr(cls, "category", "general") or "general",
+                    enabled_default=bool(getattr(cls, "settings_enabled_default", True)),
+                ))
+            except Exception as exc:  # noqa: BLE001 - one bad plugin must not break the list
+                if logger:
+                    logger.warning("Skipping local command %s in settings view: %s", name, exc)
 
     # --- Services (default enabled = False; must opt in) ---
     for cls in _discover_classes(BaseServicePlugin, "modules.service_plugins", services_dir, logger):
