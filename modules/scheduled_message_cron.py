@@ -41,8 +41,8 @@ dow_re = re.compile(r'\b'+dow_pattern+r'\b', re.I)
 dow_prefix_re = re.compile(fr'\b{dow_prefix_pattern}\b', re.I)
 week_re = re.compile(r'\b(?:\d{1,2}|\*)(?:(?:[\/\-]\d{1,2})|(?:,\d{1,2})+)?w\b', re.I)
 hhmm_re = re.compile(r'\b(?P<hour>(?:[0-1]\d|2[0-3])):?(?P<min>[0-5]\d)\b')
-start_date_re = re.compile(r'\bstart:(?P<date>[\d\-]+)\b')
-end_date_re = re.compile(r'\bend:(?P<date>[\d\-]+)\b')
+start_date_re = re.compile(r'\bstart[:=](?P<date>[\d\-]+)\b')
+end_date_re = re.compile(r'\bend[:=](?P<date>[\d\-]+)\b')
 iso_date_re = re.compile(r'\d{4}-\d{1,2}-\d{1,2}')
 
 def parse_scheduled_message_value(raw: str) -> tuple[str, str, str | None]:
