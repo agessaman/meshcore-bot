@@ -272,11 +272,13 @@ class _TemplateParser:
             # A quote immediately after ':' opts into the quoted-argument grammar.
             # Anything else stays greedy, so existing unquoted literals keep their
             # pipes and their leading/trailing whitespace exactly as written.
+            # An *unterminated* quote is not a quoted argument at all: falling back
+            # to greedy keeps `prefix_if_nonempty:"` prepending a literal quote the
+            # way it always has, rather than voiding the placeholder to raw text.
             if i < self.n and self.s[i] == '"':
                 value, j = self._parse_quoted_string(i)
-                if value is None:
-                    return None, '', j
-                return name, value, j
+                if value is not None:
+                    return name, value, j
             close = self.s.find('}', i)
             if close == -1:
                 return None, '', self.n

@@ -569,8 +569,12 @@ async def test_async_render_does_not_warn_about_the_event_loop():
     logger = MagicMock()
 
     with pytest.MonkeyPatch.context() as mp:
+        import modules.response_template as rt
         import modules.url_shortener as us
         mp.setattr(us.requests, "get", lambda *a, **k: resp)
+        # Without this reset the assertion below passes vacuously whenever an
+        # earlier test has already tripped the warn-once flag.
+        mp.setattr(rt, "_warned_blocking_render", False)
         out = await format_piped_template_async(
             "{link|shorten_url}",
             {"link": "https://example.com/long"},
@@ -580,3 +584,24 @@ async def test_async_render_does_not_warn_about_the_event_loop():
 
     assert out == "https://v.gd/abc123"
     logger.warning.assert_not_called()
+
+
+@pytest.mark.unit
+def test_a_bare_quote_argument_is_still_a_greedy_literal():
+    """Regression: opting into quoted args must not void an unterminated quote.
+
+    `prefix_if_nonempty:"` prepends a literal quote character and always has. Reading
+    it as the start of a quoted argument leaves the string unterminated, which would
+    reject the whole placeholder and emit raw template text over RF.
+    """
+    assert format_piped_template('{d|prefix_if_nonempty:"}', {"d": "12.4km"}) == '"12.4km'
+    assert format_piped_template(
+        '{d|prefix_if_nonempty:"unterminated}', {"d": "12.4km"}
+    ) == '"unterminated12.4km'
+
+
+@pytest.mark.unit
+def test_a_quote_after_whitespace_is_a_greedy_literal_not_a_quoted_argument():
+    """Only a quote *immediately* after ':' opts in, so spacing is preserved."""
+    out = format_piped_template('{d|prefix_if_nonempty: "L" }', {"d": "12.4km"})
+    assert out == ' "L" 12.4km'
