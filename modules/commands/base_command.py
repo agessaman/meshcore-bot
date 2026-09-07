@@ -101,6 +101,20 @@ class BaseCommand(ABC):
         # Load translated keywords after initialization
         self._load_translated_keywords()
 
+    @property
+    def response_translator(self) -> Any:
+        """The translator for the reply being built, or the bot default.
+
+        ``respond_in_sender_language`` binds a per-message translator for the
+        duration of one reply, so helpers that format part of a response need
+        this rather than ``bot.translator`` — otherwise one line of a reply
+        comes back in the sender's language and the next in the bot's default.
+
+        Returns:
+            Any: Translator object, or None when the bot has none.
+        """
+        return _response_translator.get() or getattr(self.bot, 'translator', None)
+
     def translate(self, key: str, **kwargs: Any) -> str:
         """Translate a key using the bot's translator.
 
@@ -111,7 +125,7 @@ class BaseCommand(ABC):
         Returns:
             str: Translated string, or key if translation not found.
         """
-        translator = _response_translator.get() or getattr(self.bot, 'translator', None)
+        translator = self.response_translator
         if translator is not None:
             return translator.translate(key, **kwargs)
         # Fallback if translator not available
@@ -126,7 +140,7 @@ class BaseCommand(ABC):
         Returns:
             Any: The value at the key path, or None if not found.
         """
-        translator = _response_translator.get() or getattr(self.bot, 'translator', None)
+        translator = self.response_translator
         if translator is not None:
             return translator.get_value(key)
         return None

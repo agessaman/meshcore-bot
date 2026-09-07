@@ -38,6 +38,12 @@ from ...clients.mqtt_weather import (
 # Multiday: plain digits, 7day/7-day, or suffix form 7d/10d (min 2, max below). Open-Meteo allows up to 16 forecast days.
 GWX_MULTIDAY_MAX_DAYS = 16
 
+MI_TO_KM = 1.609344
+HPA_TO_MMHG = 0.750062
+# Past ~20 mi / 32 km, visibility is reported as unlimited anyway.
+VISIBILITY_CAP_MI = 20
+VISIBILITY_CAP_KM = 32
+
 
 class GlobalWxCommand(BaseCommand):
     """Handles global weather commands with city/location support"""
@@ -108,9 +114,21 @@ class GlobalWxCommand(BaseCommand):
         # Get database manager for geocoding cache
         self.db_manager = bot.db_manager
 
+    @property
+    def metric_distance(self) -> bool:
+        """Whether distances should be shown in kilometers.
+
+        Derived from [Weather] temperature_unit rather than the response
+        language so every unit in one reply agrees: a bot configured for
+        Fahrenheit should not print kilometers just because it answers in
+        Russian.
+        """
+        return self.temperature_unit == 'celsius'
+
     def _format_high_low(self, high: Optional[Union[int, float]], low: Optional[Union[int, float]], temp_symbol: str) -> str:
         """Format high/low using [Weather] temperature_*_format templates."""
-        return format_temperature_high_low(self.bot.config, high, low, temp_symbol, self.logger)
+        return format_temperature_high_low(self.bot.config, high, low, temp_symbol, self.logger,
+                                           translator=self.response_translator)
 
     def _load_weather_model(self) -> Optional[str]:
         """Load and normalize Open-Meteo model selection from config.
@@ -1059,16 +1077,19 @@ class GlobalWxCommand(BaseCommand):
 
             # Add feels like if significantly different
             if abs(feels_like - temp) >= 5:
-                weather += f" (feels {feels_like}{temp_symbol})"
+                feels_str = self.translate('commands.gwx.feels_like', value=feels_like, unit=temp_symbol)
+                weather += f" {feels_str}"
 
             # Add wind info (always show if >= 3 mph, show gusts if significant)
             if wind_speed >= 3:
                 weather += f" {wind_direction}{wind_speed}"
                 if wind_gusts > wind_speed + 3:
-                    weather += f"G{wind_gusts}"
+                    gust_str = self.translate('commands.gwx.gust', value=wind_gusts)
+                    weather += gust_str
 
             # Add humidity
-            weather += f" {humidity}%RH"
+            humidity_str = self.translate('commands.gwx.humidity', value=humidity)
+            weather += f" {humidity_str}"
 
             # Add additional conditions if space allows
             conditions = []
@@ -1076,25 +1097,38 @@ class GlobalWxCommand(BaseCommand):
             # Add dew point
             if dewpoint is not None:
                 dewpoint_val = int(dewpoint)
-                conditions.append(f"💧{dewpoint_val}{temp_symbol}")
+                dew_str = self.translate('commands.gwx.dew_point', value=dewpoint_val, unit=temp_symbol)
+                conditions.append(dew_str)
 
             # Add visibility (already converted to miles above)
             if visibility_mi is not None and visibility_mi > 0:
-                # Cap visibility at 20 miles for display (beyond that is essentially unlimited)
-                visibility_display = int(visibility_mi)
-                if visibility_display > 20:
-                    visibility_display = 20
-                conditions.append(f"👁️{visibility_display}mi")
+                # Beyond ~20 mi visibility is essentially unlimited, so cap the
+                # display at that in whichever unit we are showing.
+                if self.metric_distance:
+                    visibility_display = min(int(visibility_mi * MI_TO_KM), VISIBILITY_CAP_KM)
+                    vis_str = self.translate('commands.gwx.visibility_km', value=visibility_display)
+                else:
+                    visibility_display = min(int(visibility_mi), VISIBILITY_CAP_MI)
+                    vis_str = self.translate('commands.gwx.visibility', value=visibility_display)
+                conditions.append(vis_str)
 
             # Add pressure (convert from hPa to display format)
             if pressure is not None:
                 pressure_hpa = int(pressure)
-                conditions.append(f"📊{pressure_hpa}hPa")
+                # Which pressure unit reads as normal is a locale convention, not
+                # a metric/imperial split: Russia uses mmHg, most of metric
+                # Europe uses hPa. The catalog names its own.
+                if self.translate('commands.gwx.pressure_unit').strip().lower() == 'mmhg':
+                    press_str = self.translate('commands.gwx.pressure_mmhg',
+                                               value=round(pressure_hpa * HPA_TO_MMHG))
+                else:
+                    press_str = self.translate('commands.gwx.pressure', value=pressure_hpa)
+                conditions.append(press_str)
 
             # Add conditions to weather string if space allows
             # Reserve space for forecast data (high/low and tomorrow)
             conditions_max_length = max_length - 80  # Reserve ~80 chars for forecast data
-            if conditions and len(weather) < conditions_max_length:
+            if conditions and self._count_display_width(weather) < conditions_max_length:
                 weather += " " + " ".join(conditions)
 
             # Add forecast high/low for today (without repeating period name since current conditions already show it)
@@ -1181,7 +1215,8 @@ class GlobalWxCommand(BaseCommand):
                     if len(daily.get('wind_gusts_10m_max', [])) > 1:
                         wind_gusts = int(daily['wind_gusts_10m_max'][1])
                         if wind_gusts > wind_speed + 3:
-                            wind_info += f"G{wind_gusts}"
+                            gust_str = self.translate('commands.gwx.gust', value=wind_gusts)
+                            wind_info += gust_str
 
             # Get precipitation probability and amount
             precip_info = ""
@@ -1235,13 +1270,13 @@ class GlobalWxCommand(BaseCommand):
 
             # Map day names to 1-2 letter abbreviations
             day_abbrev_map = {
-                'Monday': 'M',
-                'Tuesday': 'T',
-                'Wednesday': 'W',
-                'Thursday': 'Th',
-                'Friday': 'F',
-                'Saturday': 'Sa',
-                'Sunday': 'Su'
+                'Monday': self.translate('commands.gwx.day_abbrev.Monday'),
+                'Tuesday': self.translate('commands.gwx.day_abbrev.Tuesday'),
+                'Wednesday': self.translate('commands.gwx.day_abbrev.Wednesday'),
+                'Thursday': self.translate('commands.gwx.day_abbrev.Thursday'),
+                'Friday': self.translate('commands.gwx.day_abbrev.Friday'),
+                'Saturday': self.translate('commands.gwx.day_abbrev.Saturday'),
+                'Sunday': self.translate('commands.gwx.day_abbrev.Sunday')
             }
 
             parts = []
@@ -1364,20 +1399,24 @@ class GlobalWxCommand(BaseCommand):
         if degrees is None:
             return ""
 
-        directions = [
-            (0, "⬆️N"), (22.5, "↗️NE"), (45, "↗️NE"), (67.5, "➡️E"),
-            (90, "➡️E"), (112.5, "↘️SE"), (135, "↘️SE"), (157.5, "⬇️S"),
-            (180, "⬇️S"), (202.5, "↙️SW"), (225, "↙️SW"), (247.5, "⬅️W"),
-            (270, "⬅️W"), (292.5, "↖️NW"), (315, "↖️NW"), (337.5, "⬆️N"),
-            (360, "⬆️N")
+        dir_emojis = [
+            (0, "⬆️", "N"), (22.5, "↗️", "NE"), (45, "↗️", "NE"), (67.5, "➡️", "E"),
+            (90, "➡️", "E"), (112.5, "↘️", "SE"), (135, "↘️", "SE"), (157.5, "⬇️", "S"),
+            (180, "⬇️", "S"), (202.5, "↙️", "SW"), (225, "↙️", "SW"), (247.5, "⬅️", "W"),
+            (270, "⬅️", "W"), (292.5, "↖️", "NW"), (315, "↖️", "NW"), (337.5, "⬆️", "N"),
+            (360, "⬆️", "N")
         ]
 
         # Find closest direction
-        for i in range(len(directions) - 1):
-            if directions[i][0] <= degrees < directions[i + 1][0]:
-                return directions[i][1]
+        for i in range(len(dir_emojis) - 1):
+            if dir_emojis[i][0] <= degrees < dir_emojis[i + 1][0]:
+                emoji, key = dir_emojis[i][1], dir_emojis[i][2]
+                translated = self.translate(f"common.wind_directions.{key}")
+                return f"{emoji}{translated}"
 
-        return "⬆️N"  # Default to North
+        emoji, key = dir_emojis[-1][1], dir_emojis[-1][2]
+        translated = self.translate(f"common.wind_directions.{key}")
+        return f"{emoji}{translated}"
 
     def _get_weather_description(self, code: int) -> str:
         """Convert WMO weather code to description.

@@ -1,0 +1,932 @@
+{
+  "keywords": {
+    "help": [
+      "help"
+    ],
+    "ping": [
+      "ping"
+    ],
+    "test": [
+      "test",
+      "t"
+    ],
+    "wx": [
+      "wx",
+      "weather",
+      "wxa",
+      "wxalert"
+    ],
+    "gwx": [
+      "gwx",
+      "globalweather",
+      "gwxa"
+    ],
+    "aqi": [
+      "aqi",
+      "air",
+      "airquality",
+      "air_quality"
+    ],
+    "rain": [
+      "rain",
+      "nowcast",
+      "snow"
+    ],
+    "aurora": [
+      "aurora",
+      "kp"
+    ],
+    "solar": [
+      "solar"
+    ],
+    "sun": [
+      "sun"
+    ],
+    "moon": [
+      "moon"
+    ],
+    "hfcond": [
+      "hfcond",
+      "hf"
+    ],
+    "satpass": [
+      "satpass"
+    ],
+    "sports": [
+      "sports",
+      "score",
+      "scores"
+    ],
+    "worldcup": [
+      "wc",
+      "worldcup"
+    ],
+    "stats": [
+      "stats"
+    ],
+    "channels": [
+      "channels",
+      "channel"
+    ],
+    "path": [
+      "path",
+      "decode",
+      "route"
+    ],
+    "prefix": [
+      "prefix",
+      "repeater",
+      "lookup"
+    ],
+    "repeater": [
+      "repeater",
+      "repeaters",
+      "rp"
+    ],
+    "solarforecast": [
+      "sf",
+      "solarforecast"
+    ],
+    "dice": [
+      "dice"
+    ],
+    "roll": [
+      "roll"
+    ],
+    "joke": [
+      "joke",
+      "jokes"
+    ],
+    "dadjoke": [
+      "dadjoke",
+      "dad joke",
+      "dadjokes",
+      "dad jokes"
+    ],
+    "catfact": [
+      "catfact",
+      "cat",
+      "meow",
+      "purr",
+      "kitten"
+    ],
+    "hacker": [
+      "hacker",
+      "sudo",
+      "ps aux",
+      "grep",
+      "ls -l",
+      "ls -la",
+      "echo $PATH"
+    ],
+    "hello": [
+      "hello",
+      "hi",
+      "hey",
+      "howdy",
+      "greetings",
+      "salutations",
+      "good morning",
+      "good afternoon",
+      "good evening",
+      "good night",
+      "yo",
+      "sup",
+      "whats up",
+      "what's up",
+      "morning",
+      "afternoon",
+      "evening",
+      "night",
+      "gday",
+      "g'day",
+      "hola",
+      "bonjour",
+      "ciao",
+      "namaste",
+      "aloha",
+      "shalom",
+      "konnichiwa",
+      "guten tag",
+      "buenos dias",
+      "buenas tardes",
+      "buenas noches"
+    ],
+    "webviewer": [
+      "webviewer",
+      "web",
+      "viewer",
+      "wv"
+    ],
+    "cmd": [
+      "cmd",
+      "commands"
+    ],
+    "advert": [
+      "advert"
+    ],
+    "neighbors": [
+      "neighbors",
+      "neighbours"
+    ],
+    "multitest": [
+      "multitest",
+      "mt"
+    ],
+    "trace": [
+      "trace",
+      "tracer"
+    ]
+  },
+  "commands": {
+    "help": {
+      "description": "Показывает команды. Используйте 'help <command>' для подробностей.",
+      "general": "Помощь MeshCore Bot\n\nДоступные команды:\n{commands_list}",
+      "unknown": "Неизвестная команда: '{command}'\n\nДоступные команды:\n{available}",
+      "specific": "Помощь для '{command}':\n{help_text}",
+      "no_help": "Справка недоступна",
+      "usage_examples": "\nПримеры:\n• `help @` - Справка по синтаксису @{string}\n• `help t` - Справка по синтаксису t {string}\n• `help advert` - Справка по команде advert\n• `help test` - Справка по команде test\n• `help ping` - Справка по команде ping",
+      "custom_syntax": "\nПользовательский синтаксис:\n• `t phrase` - Подтверждение с фразой (каналы и ЛС)\n• `@{string}` - Подтверждение со строкой (только ЛС)\n• `advert` - Отправить flood advert (только ЛС, кулдаун 1 час)"
+    },
+    "ping": {
+      "description": "Отвечает на 'ping' сообщением 'Pong!'",
+      "response": "Pong!"
+    },
+    "test": {
+      "description": "Отвечает на 'test' или 't' информацией о подключении",
+      "help": "Отвечает на 'test' или 't' информацией о подключении"
+    },
+    "wx": {
+      "description": "Получить погоду по почтовому индексу (использование: wx 12345)",
+      "usage": "Использование: wx <индекс|город> - Пример: wx 12345 или wx seattle или wx paris, tx",
+      "subcommands": [
+        {
+          "name": "tomorrow",
+          "description": "Прогноз на завтра"
+        },
+        {
+          "name": "Nd",
+          "description": "Прогноз на N дней (напр. 7d, 10d)"
+        },
+        {
+          "name": "hourly",
+          "description": "Почасовой прогноз"
+        },
+        {
+          "name": "alerts",
+          "description": "Полныеweather-оповещения"
+        }
+      ],
+      "error_fetching": "Ошибка получения данных погоды из NOAA",
+      "no_location_zipcode": "Не удалось найти локацию для индекса {location}",
+      "no_location_city": "Не удалось найти город '{location}' в {state}",
+      "error": "Ошибка получения данных погоды: {error}",
+      "alerts": "{count} оповещений: {text}",
+      "tomorrow_not_available": "Прогноз на завтра недоступен",
+      "tomorrow_error": "Ошибка форматирования прогноза на завтра",
+      "multiday_not_available": "Прогноз на {num_days} дней недоступен",
+      "multiday_error": "Ошибка форматирования прогноза на {num_days} дней",
+      "mqtt_forecast_not_supported": "Расширенный прогноз недоступен для MQTT-источников погоды",
+      "mqtt_weather_no_subscriber": "MQTT-подписчик погоды не активен (включите [MqttWeather] и custom.mqtt_weather.* темы)",
+      "mqtt_weather_no_data": "Сообщение MQTT-погоды для этой темы ещё не получено",
+      "mqtt_weather_stale": "Данные MQTT-погоды слишком старые",
+      "mqtt_weather_payload_error": "Ошибка полезной нагрузки MQTT-погоды: {detail}"
+    },
+    "gwx": {
+      "description": "Получить погоду для любой точки мира (использование: gwx Tokyo)",
+      "help": "Использование: gwx <локация> - Погода для любой точки мира (город, страна или координаты)",
+      "usage": "Использование: gwx <локация> - Пример: gwx Tokyo или gwx Paris, France",
+      "error_fetching": "Ошибка получения данных погоды",
+      "error_fetching_api": "Ошибка получения данных погоды из Open-Meteo",
+      "no_location": "Не удалось найти локацию '{location}'",
+      "error": "Ошибка получения данных погоды: {error}",
+      "tomorrow_not_available": "Прогноз на завтра недоступен",
+      "tomorrow_error": "Ошибка форматирования прогноза на завтра",
+      "multiday_not_available": "Прогноз на {num_days} дней недоступен",
+      "multiday_error": "Ошибка форматирования прогноза на {num_days} дней",
+      "mqtt_forecast_not_supported": "Расширенный прогноз недоступен для MQTT-источников погоды",
+      "mqtt_weather_no_subscriber": "MQTT-подписчик погоды не активен",
+      "mqtt_weather_no_data": "Сообщение MQTT-погоды ещё не получено",
+      "mqtt_weather_stale": "Данные MQTT-погоды устарели",
+      "mqtt_weather_payload_error": "Ошибка полезной нагрузки MQTT: {detail}",
+      "feels_like": "(ош.{value}{unit})",
+      "humidity": "{value}%",
+      "dew_point": "💧{value}{unit}",
+      "visibility": "👁️{value} миль",
+      "visibility_km": "👁️{value}км",
+      "pressure": "📊{value}гПа",
+      "pressure_mmhg": "📊{value} мм рт. ст.",
+      "gust": "G{value}",
+      "day_abbrev": {
+        "Monday": "Пн",
+        "Tuesday": "Вт",
+        "Wednesday": "Ср",
+        "Thursday": "Чт",
+        "Friday": "Пт",
+        "Saturday": "Сб",
+        "Sunday": "Вс"
+      },
+      "periods": {
+        "today": "Сегодня",
+        "tonight": "Сегодня ночью",
+        "tomorrow": "Завтра"
+      },
+      "weather_descriptions": {
+        "0": "Ясно",
+        "1": "Преим.ясно",
+        "2": "Перем.облач.",
+        "3": "Пасмурно",
+        "45": "Туман",
+        "48": "Туман",
+        "51": "Лёгк.морось",
+        "53": "Морось",
+        "55": "Сильн.морось",
+        "56": "Лёгк.лед.морось",
+        "57": "Лед.морось",
+        "61": "Небол.дождь",
+        "63": "Дождь",
+        "65": "Сильн.дождь",
+        "66": "Слаб.лед.дождь",
+        "67": "Лед.дождь",
+        "71": "Небол.снег",
+        "73": "Снег",
+        "75": "Сильн.снег",
+        "77": "Снеж.зерна",
+        "80": "Небол.ливень",
+        "81": "Ливень",
+        "82": "Сильн.ливень",
+        "85": "Слаб.снеж.ливень",
+        "86": "Снеж.ливень",
+        "95": "Гроза",
+        "96": "Гроза+град",
+        "99": "Сильн.гроза",
+        "unknown": "Неизвестно"
+      },
+      "warnings": {
+        "extreme_heat": "⚠️ Экстремальная жара",
+        "extreme_cold": "⚠️ Экстремальный холод",
+        "heavy_rain": "⚠️ Сильный дождь",
+        "thunderstorms": "⚠️ Грозы",
+        "heavy_snow": "⚠️ Сильный снегопад",
+        "high_winds": "⚠️ Сильный ветер ({wind_speed} м/ч)"
+      },
+      "pressure_unit": "mmhg"
+    },
+    "sports": {
+      "description": "Получить спортивные результаты (использование: sports [команда/лига])",
+      "help": "Спортивные результаты. 'sports' для команд по умолчанию, 'sports [команда]' для конкретной команды.",
+      "error_fetching": "Ошибка получения спортивных данных",
+      "error_fetching_league": "Ошибка получения данных {sport}",
+      "error_fetching_team": "Ошибка получения данных для {team}",
+      "no_default_teams": "Команды по умолчанию не настроены",
+      "no_games_default": "Игры для команд по умолчанию не найдены",
+      "no_teams_city": "Команды для {city} не найдены",
+      "no_games_city": "Игры для команд {city} не найдены",
+      "no_games_league": "Игры для {sport} не найдены",
+      "no_games_team": "Игры для {team} не найдены",
+      "team_not_found": "Команда/Лига '{team}' не найдена. Попробуйте: seahawks, mariners, lfc, mlb, nfl и т.д."
+    },
+    "worldcup": {
+      "description": "Счёт чемпионата мира FIFA, турнирная таблица",
+      "help": "Счёт чемпионата мира. 'wc' - сегодняшние игры, 'wc group A' - таблица, 'wc [страна]' - матчи команды.",
+      "not_in_season": "Чемпионат мира сейчас не проводится.",
+      "no_games_today": "Сегодня нет игр чемпионата мира.",
+      "no_games_nation": "Матчи для {nation} не найдены.",
+      "groups_list": "Группы ЧМ: {groups}. Попробуйте 'wc group A'.",
+      "group_not_found": "Группа '{group}' не найдена. Попробуйте букву группы, напр. 'wc group A'.",
+      "nation_not_found": "Страна '{nation}' не найдена в текущем чемпионате мира.",
+      "error_fetching": "Ошибка получения данных чемпионата мира"
+    },
+    "stats": {
+      "description": "Статистика за 24 часа. 'stats messages', 'stats channels', 'stats paths' или 'stats adverts'.",
+      "help": "Статистика за 24ч. 'stats' (базовая), 'stats messages', 'stats channels', 'stats paths', 'stats adverts'",
+      "subcommands": [
+        {
+          "name": "messages",
+          "description": "Статистика сообщений пользователей"
+        },
+        {
+          "name": "channels",
+          "description": "Активность каналов"
+        },
+        {
+          "name": "paths",
+          "description": "Самые длинные маршруты"
+        },
+        {
+          "name": "adverts",
+          "description": "Топ узлов по advert-пакетам"
+        }
+      ],
+      "disabled": "Команда stats отключена",
+      "unknown_subcommand": "Неизвестно: {subcommand}. Используйте 'stats', 'stats messages', 'stats channels', 'stats paths' или 'stats adverts'",
+      "error": "Ошибка получения статистики: {error}",
+      "error_bot_users": "Ошибка получения статистики пользователей: {error}",
+      "error_channels": "Ошибка получения статистики каналов: {error}",
+      "error_paths": "Ошибка получения статистики маршрутов: {error}",
+      "basic": {
+        "header": "Статистика бота (24ч):",
+        "commands": "Cmds: {count} | Ответов: {replies}",
+        "top_command": "Топ команда: {command}",
+        "top_user": "Топ пользователь: {user}",
+        "none": "Нет"
+      },
+      "users": {
+        "header": "Пользователи бота (24ч):",
+        "none": "Нет пользователей"
+      },
+      "channels": {
+        "header": "Топ каналов (24ч)",
+        "none": "Нет активности каналов",
+        "msg_singular": "сообщ.",
+        "msg_plural": "сообщ.",
+        "user_singular": "пользователь",
+        "user_plural": "пользователей",
+        "format": "{rank}. {channel}: {msg_count} {msg_text} | {user_count} {user_text}"
+      },
+      "paths": {
+        "none": "Нет данных маршрутов",
+        "format": "{rank} {sender} {path}",
+        "synopsis": "{rank} {sender}: {hops} хопов"
+      },
+      "adverts": {
+        "header": "Топ advert-узлов (24ч):",
+        "none": "Нет advert-активности",
+        "advert_singular": "advert",
+        "advert_plural": "adverts",
+        "format": "{rank}. {name}: {count} {advert_text}",
+        "hashes_label": "Хэши: {hashes}"
+      },
+      "error_adverts": "Ошибка получения advert-статистики: {error}"
+    },
+    "solarforecast": {
+      "description": "Прогноз выработки солнечных панелей",
+      "usage": "Использование: sf <локация|повторитель|координаты|индекс> [мощность] [азимут] [угол]",
+      "usage_short": "Использование: sf <локация> [Вт] [азимут] [угол]",
+      "panel_size_range": "Мощность панели должна быть 1-1000Вт",
+      "azimuth_range": "Азимут должен быть от -180 до 180 (0=юг)",
+      "angle_range": "Угол должен быть 0-90 градусов",
+      "no_location": "Не удалось найти локацию: {location}",
+      "error_fetching": "Ошибка получения прогноза",
+      "no_data": "Нет данных прогноза",
+      "error": "Ошибка: {error}",
+      "rate_limit": "Лимит запросов: попробуйте через 5 мин",
+      "labels": {
+        "today": "Сегодня:{wh:.0f}Wh",
+        "tomorrow": "Завтра:{wh:.0f}Wh",
+        "day_format": "{day}:{wh:.0f}Wh",
+        "peak": "Пик: {watts:.0f}Вт@{time}",
+        "peak_past": "Пик: {watts:.0f}Вт (прошёл)",
+        "hours_util": " ({hours}ч,{util:.0f}%)",
+        "hours_percent": " ({hours}ч,{percent:.0f}%)",
+        "hours_only": " ({hours}ч)",
+        "separator": " | "
+      }
+    },
+    "advert": {
+      "description": "Отправить flood advert (только ЛС, кулдаун 1ч)",
+      "cooldown_active": "Кулдаун advert. Подождите {minutes} мин.",
+      "success": "Flood advert успешно отправлен!",
+      "error": "Ошибка отправки flood advert: {error}"
+    },
+    "neighbors": {
+      "description": "Запуск цикла обнаружения соседей (только ЛС)",
+      "disabled": "Обнаружение соседей не включено. Установите neighbors_enabled = true в [PacketCapture].",
+      "busy": "Цикл обнаружения уже запущен. Попробуйте позже.",
+      "cooldown_active": "Цикл обнаружения недавно завершился. Подождите {minutes} мин.",
+      "started": "Обнаружение соседей - слушаем ~{seconds}с. Сообщу по завершении.",
+      "success": "Услышано {count} сосед(ей), лучший SNR {best_snr}. Записано {recorded} связь(ей).",
+      "published": "Опубликовано в {succeeded}/{attempted} брокер(ов).",
+      "none": "Обнаружение завершено, но ни один повторитель не ответил.",
+      "failed": "Обнаружение не запущено: {reason}.",
+      "error": "Ошибка обнаружения соседей: {error}"
+    },
+    "path": {
+      "description": "Декодировать hex-данные маршрута",
+      "help": "Path: path [hex] - Декодировать маршрут. path - текущий маршрут.",
+      "no_valid_hex": "Не найдены валидные hex-значения.",
+      "no_path": "Нет информации о маршруте",
+      "error": "Ошибка обработки маршрута: {error}",
+      "error_decoding": "Ошибка декодирования маршрута: {error}",
+      "error_extracting": "Ошибка извлечения маршрута: {error}",
+      "path_prefix": "Маршрут: {path_string}",
+      "direct_connection": "Прямое соединение (0 хопов)",
+      "node_format": "{node_id}: {name}",
+      "node_unknown": "{node_id}: Неизвестно",
+      "node_collision": "{node_id}: {matches} повторителей",
+      "node_geographic": "{node_id}: {name} {confidence}",
+      "continuation_start": "...\n{line}",
+      "continuation_end": "\n...",
+      "truncation": "...",
+      "unknown_name": "Неизвестно",
+      "repeater_resolution_deferred": "Маршрут: {path}\n\nПодсказка: Идентификация повторителей требует {minimum_path_bytes}-битные маршруты."
+    },
+    "multitest": {
+      "description": "Слушает 6 сек и собирает уникальные пути от входящих сообщений с тем же хэшем",
+      "help": "Слушает 6 сек и собирает уникальные пути от входящих сообщений с тем же хэшем"
+    },
+    "trace": {
+      "description": "Трассировка ссылки (trace=ручной путь, tracer=круговой)",
+      "help": "trace [path] - ручной путь. tracer [path] - круговой. Путь: запятые 2-хекс. (напр. 01,7a,55)."
+    },
+    "prefix": {
+      "description": "Поиск повторителей по двухсимвольному префиксу",
+      "help_api": "Поиск повторителей по префиксу. Использование: 'prefix 1A'.",
+      "help_no_api": "Поиск повторителей по префиксу (только локальная БД).",
+      "location_note": " (с названиями городов)",
+      "refresh_not_available": "Обновление недоступно - нет API. Только локальная БД.",
+      "cache_refreshed": "Кэш префиксов обновлён!",
+      "unable_determine_free": "Не удалось определить свободные префиксы. Попробуйте 'prefix refresh'.",
+      "invalid_format": "Неверный формат префикса. Ожидается {prefix_hex_chars} hex-символа.",
+      "no_repeaters_found": "Повторители с префиксом '{prefix}' не найдены",
+      "no_free_prefixes": "Свободные префиксы не найдены",
+      "available_prefixes": "Доступные префиксы ({shown} из {total} свободных):",
+      "generate_key": "Сгенерировать ключ: https://gessaman.com/mc-keygen",
+      "prefix_db_all": "Префикс {prefix}: {count} повторитель(ей)",
+      "prefix_db_recent": "Префикс {prefix}: {count} повторитель(ей) ({days})",
+      "older_entries_note": "(Записи могут быть старше {days} дней)",
+      "prefix_api": "Префикс {prefix} ({count} повторитель(ей)):",
+      "item_format": "{index}. {name}",
+      "source_domain": "Источник: {domain}",
+      "source_api": "Источник: API",
+      "device_repeater": " (Повторитель)",
+      "device_roomserver": " (Сервер комнат)"
+    },
+    "repeater": {
+      "description": "Управление контактами повторителей (только ЛС)",
+      "admin_only": "Команда repeater требует прав администратора"
+    },
+    "airplanes": {
+      "description": "Самолёты над головой",
+      "usage": "Использование: airplanes [локация] [опции]",
+      "subcommands": [
+        {
+          "name": "overhead",
+          "description": "Ближайший самолёт над головой"
+        }
+      ],
+      "no_location": "Нет локации. Укажите координаты: airplanes 47.6,-122.3",
+      "overhead_no_location": "Локация неизвестна. Отправьте 'advert' или укажите координаты.",
+      "no_aircraft": "Самолёты в радиусе {radius}мм не найдены",
+      "no_aircraft_filtered": "Самолёты по фильтрам в радиусе {radius}мм не найдены",
+      "api_error": "Не удалось получить данные. API может быть недоступен.",
+      "invalid_coords": "Неверные координаты. Формат: широта,долгота (напр. 47.6,-122.3)",
+      "error": "Ошибка: {error}"
+    },
+    "aqi": {
+      "description": "Индекс качества воздуха для локации",
+      "usage": "Использование: aqi <город|район|координаты>",
+      "usage_help": "Использование: aqi <город|координаты|help>",
+      "error_fetching": "Ошибка получения данных IQВ",
+      "error_fetching_openmeteo": "Ошибка получения данных IQВ из OpenMeteo",
+      "no_data": "Данные IQВ недоступны",
+      "no_location": "Не удалось найти локацию: {location}",
+      "no_location_city": "Не удалось найти город '{location}' в {state}",
+      "no_location_city_international": "Не удалось найти город '{location}'",
+      "no_location_zipcode": "Не удалось найти индекс '{zipcode}'",
+      "error": "Ошибка получения данных IQВ: {error}",
+      "error_geocoding_zipcode": "Ошибка геокодирования индекса: {error}",
+      "error_formatting": "Ошибка форматирования данных IQВ",
+      "invalid_latitude": "Неверная широта: {lat}. Должна быть от -90 до 90.",
+      "invalid_longitude": "Неверная долгота: {lon}. Должна быть от -180 до 180.",
+      "invalid_coordinates_format": "Неверный формат координат: {location}. Формат: широта,долгота",
+      "pollutant_help": "IQВ: PM2.5=мелкие частицы, PM10=крупные, O3=озон, NO2=азот, CO=угарный, SO2=серный",
+      "categories": {
+        "good": "Хорошо",
+        "moderate": "Умеренно",
+        "unhealthy_sensitive": "Вредно для чувствительных",
+        "unhealthy": "Вредно",
+        "very_unhealthy": "Очень вредно",
+        "hazardous": "Опасно",
+        "fair": "Нормально",
+        "poor": "Плохо",
+        "very_poor": "Очень плохо",
+        "na": "Н/Д"
+      }
+    },
+    "rain": {
+      "description": "Радар осадков: когда начнётся/прекратится дождь в ближайшие ~2ч",
+      "help_rain": "Радар дождя: когда начнётся/прекратится ~2ч. rain [город|индекс|координаты]. Также: snow",
+      "help_snow": "Радар снега: когда начнётся/прекратится ~2ч. snow [город|индекс|координаты]. Также: rain",
+      "usage": "Использование: rain|snow [город|индекс|координаты]",
+      "usage_short": "Использование: rain|snow [город|индекс|координаты]",
+      "starting": "{emoji} {ptype} начнётся через ~{minutes}мин{extra} в {location}",
+      "stopping": "{emoji} {ptype} прекратится через ~{minutes}мин в {location}",
+      "continuing": "{emoji} {ptype} продолжается {window}+ в {location}",
+      "clear": "☀️ Без {precip} в ближайшие {window} в {location}",
+      "changeover": "{from_emoji}→{to_emoji} {first} {when} → {second} через ~{minutes}мин в {location}",
+      "now": "сейчас",
+      "duration_for": " (~{duration}мин)",
+      "duration_open": " (непрерывно)",
+      "error_fetching": "Ошибка получения данных радара",
+      "no_location": "Использование: rain [город|индекс|координаты].",
+      "no_location_city": "Не удалось найти город '{location}' в {state}",
+      "no_location_zipcode": "Не удалось найти индекс '{location}'",
+      "error": "Ошибка: {error}",
+      "precip_types": {
+        "drizzle": "Морось",
+        "rain": "Дождь",
+        "heavy_rain": "Сильный дождь",
+        "freezing": "Ледяной дождь",
+        "snow": "Снег",
+        "showers": "Ливень",
+        "thunder": "Гроза"
+      }
+    },
+    "aurora": {
+      "description": "Прогноз полярного сияния (индекс KP)",
+      "usage": "Использование: aurora [город|индекс|координаты]",
+      "usage_short": "Использование: aurora [город|индекс|координаты]",
+      "response": "Вероятность полярного сияния: {prob_indicator} {prob}% для {location}\nKp {kp} (на {kp_time}) | {status}",
+      "error_fetching": "Ошибка получения данных авроры",
+      "no_location": "Использование: aurora [город|индекс|координаты].",
+      "no_location_city": "Не удалось найти город '{location}' в {state}",
+      "no_location_zipcode": "Не удалось найти индекс '{location}'",
+      "error": "Ошибка: {error}",
+      "status": {
+        "quiet": "Спокойно",
+        "unsettled": "Нестабильно",
+        "g1_g2": "G1/G2",
+        "g3_severe": "G3+ Сильная буря"
+      }
+    },
+    "solar": {
+      "description": "Солнечная активность и 상태 HF-диапазонов",
+      "response": "Солнце: {info}",
+      "error": "Ошибка получения солнечной информации: {error}",
+      "labels": {
+        "a_index": "A-индекс",
+        "k_index": "K-индекс",
+        "sunspots": "Солнечные пятна",
+        "xray_flux": "Рентгеновский поток",
+        "solar_flux": "Солнечный поток",
+        "signal_noise": "Шум сигнала",
+        "error_fetching": "Ошибка получения данных",
+        "no_xray_data": "Нет данных по рентгену",
+        "not_configured": "не настроено, обратитесь к администратору"
+      },
+      "condensed_format": "A:{a_index} K:{k_index} Сп:{sunspots} Пот:{solar_flux} Рент:{xray_flux} Шум:{signal_noise}"
+    },
+    "sun": {
+      "description": "Время восхода/заката",
+      "help": "Время восхода/заката и позиция солнца",
+      "response": "Солнце:\n{info}",
+      "error": "Ошибка получения информации о солнце: {error}",
+      "labels": {
+        "sunset": "Закат",
+        "sunrise": "Восход",
+        "rise": "Восход",
+        "set": "Закат",
+        "daylight": "Дневной свет",
+        "remaining": "Осталось",
+        "azimuth": "Азимут",
+        "altitude": "Высота"
+      }
+    },
+    "moon": {
+      "description": "Фаза луны и время восхода/заката",
+      "error": "Ошибка получения информации о луне: {error}",
+      "format": "{phase} {illum}\nВосход:{rise} Заход:{set}",
+      "format_with_dates": "{phase} {illum}\nВосход:{rise} Заход:{set}\nПолнолуние:{full} Новолуние:{new}",
+      "fallback": "{info}",
+      "unknown_phase": "Неизвестно",
+      "unknown_illum": "Н/Д",
+      "labels": {
+        "moonrise": "Восход луны",
+        "set": "Заход",
+        "phase": "Фаза",
+        "fullmoon": "Полнолуние",
+        "newmoon": "Новолуние",
+        "az": "Азимут",
+        "alt": "Высота"
+      },
+      "phases": {
+        "new_moon": "Новолуние🌑",
+        "waxing_crescent": "Растущий серп🌒",
+        "first_quarter": "Первая четверть🌓",
+        "waxing_gibbous": "Растущая луна🌔",
+        "full_moon": "Полнолуние🌕",
+        "waning_gibbous": "Убывающая луна🌖",
+        "last_quarter": "Последняя четверть🌗",
+        "waning_crescent": "Убывающий серп🌘"
+      }
+    },
+    "hfcond": {
+      "description": "Условия распространения HF",
+      "help": "HF-условия для любительской радиосвязи",
+      "header": "HF-условия:\n{info}",
+      "error": "Ошибка получения HF-условий: {error}"
+    },
+    "satpass": {
+      "description": "Информация о пролёте спутника",
+      "help": "Прогноз пролётов спутников",
+      "header": "Пролёт спутника:\n{pass_info}",
+      "error": "Ошибка получения информации о пролёте: {error}",
+      "no_satellite": "Укажите NORAD-номер или сокращение. Пример: satpass iss",
+      "usage_short": "satpass <спутник|NORAD> [visual]",
+      "help_header": "Информация о пролётах спутников\n\nИспользование: satpass <NORAD_номер>",
+      "category_weather": "Погода: ",
+      "category_stations": "Станции: ",
+      "category_telescopes": "Телескопы: ",
+      "category_other": "Другое: ",
+      "examples": "\nПримеры:\n• satpass iss\n• satpass noaa15\n• satpass 25544",
+      "labels": {
+        "geostationary": "{satname}: ГЕО (нет LEO пролёта)",
+        "no_passes": "{satname}: нет пролётов в ближайшие 10 дней",
+        "invalid_norad": "Укажите NORAD#. Пример: satpass 25544"
+      }
+    },
+    "channels": {
+      "description": "Список каналов",
+      "help": "Список каналов. 'channels' - основные, 'channels list' - по категориям.",
+      "subcommands": [
+        {
+          "name": "list",
+          "description": "Список каналов в категории"
+        }
+      ],
+      "no_channels_for_category": "Каналы для '{category}' не настроены. Используйте 'channels'.",
+      "no_channels_configured": "Каналы не настроены. Обратитесь к администратору.",
+      "error_retrieving_channels": "Ошибка получения каналов: {error}",
+      "no_categories_configured": "Категории каналов не настроены.",
+      "error_retrieving_categories": "Ошибка получения категорий: {error}",
+      "no_description_available": "Описание отсутствует",
+      "channel_not_found": "Канал {channel} не найден. Используйте 'channels list'.",
+      "error_retrieving_channel_info": "Ошибка получения информации о канале: {error}",
+      "no_category_channels": "Каналы {category} не настроены",
+      "headers": {
+        "common_channels": "Основные каналы: ",
+        "common_channels_cont": "Основные каналы: ",
+        "available_categories": "Доступные категории: ",
+        "channels_cont": "Каналы (продолжение): ",
+        "category": "{category}: ",
+        "category_channels": "Каналы {category}: "
+      },
+      "category_count": "{category} ({count} каналов)"
+    },
+    "dice": {
+      "description": "Бросок кубика",
+      "help": "Бросок кубика. 'dice' - d6, 'dice d20' - d20, 'dice 2d6'.",
+      "invalid_dice_type": "Неверный тип кубика.",
+      "single_die": "d{sides}: {result}",
+      "multiple_dice": "{count}d{sides}: [{results}] = {total}"
+    },
+    "roll": {
+      "description": "Случайное число от 1 до X (по умолчанию 100)",
+      "help": "Случайное число от 1 до X. 'roll' - 1-100, 'roll 50' - 1-50.",
+      "result": "Бросок 1-{max}: {result}",
+      "invalid_number": "Неверное число."
+    },
+    "roll_old": {
+      "description": "Бросок кубика"
+    },
+    "joke": {
+      "description": "Случайная шутка"
+    },
+    "dadjoke": {
+      "description": "Случайная папаша-шутка"
+    },
+    "catfact": {
+      "description": "Случайный факт о котах",
+      "error": "Мяу? Что-то пошло не так!"
+    },
+    "hacker": {
+      "description": "Симуляция взлома с юмористическими ошибками"
+    },
+    "hello": {
+      "description": "Отвечает на приветствия",
+      "help": "Отвечает на приветствия роботизированными ответами",
+      "response_format": "Я {bot_name}."
+    },
+    "webviewer": {
+      "description": "Управление веб-просмотрщиком (только админ)"
+    },
+    "cmd": {
+      "description": "Список доступных команд"
+    }
+  },
+  "elapsed": {
+    "sync_device_clock": "Синхронизация часов устройства"
+  },
+  "errors": {
+    "rate_limited": "Ограничение частоты. Подождите {seconds:.1f} сек",
+    "cooldown": "Команда '{command}' на кулдауне. Подождите {seconds} сек.",
+    "access_denied": "Доступ запрещён: команда '{command}' требует прав администратора",
+    "dm_only": "Команда '{command}' доступна только в ЛС",
+    "execution_error": "Ошибка выполнения {command}: {error}",
+    "unknown_command": "Неизвестная команда: {command}",
+    "no_response": "Нет ответа",
+    "generic_error": "Ошибка: {error}"
+  },
+  "messages": {
+    "processing": "Обработка сообщения: {content}",
+    "command_executed": "Команда выполнена",
+    "keyword_matched": "Ключевое слово '{keyword}' совпало, отвечаю"
+  },
+  "common": {
+    "unknown": "Неизвестно",
+    "unknown_routing": "Неизвестная маршрутизация",
+    "unknown_sender": "Неизвестно",
+    "unknown_path": "Неизвестно",
+    "unknown_timestamp": "Неизвестно",
+    "no_help_available": "Справка для этой команды недоступна.",
+    "snr_label": "SNR: {value} дБ",
+    "rssi_label": "RSSI: {value} дБм",
+    "temp_high_label": "В",
+    "temp_low_label": "Н",
+    "date_time": {
+      "day_abbreviations": {
+        "Mon": "Пн",
+        "Tue": "Вт",
+        "Wed": "Ср",
+        "Thu": "Чт",
+        "Fri": "Пт",
+        "Sat": "Сб",
+        "Sun": "Вс"
+      },
+      "days": {
+        "Monday": "Понедельник",
+        "Tuesday": "Вторник",
+        "Wednesday": "Среда",
+        "Thursday": "Четверг",
+        "Friday": "Пятница",
+        "Saturday": "Суббота",
+        "Sunday": "Воскресенье"
+      },
+      "month_abbreviations": {
+        "Jan": "янв",
+        "Feb": "фев",
+        "Mar": "мар",
+        "Apr": "апр",
+        "May": "май",
+        "Jun": "июн",
+        "Jul": "июл",
+        "Aug": "авг",
+        "Sep": "сен",
+        "Oct": "окт",
+        "Nov": "ноя",
+        "Dec": "дек"
+      },
+      "months": {
+        "January": "Январь",
+        "February": "Февраль",
+        "March": "Март",
+        "April": "Апрель",
+        "May": "Май",
+        "June": "Июнь",
+        "July": "Июль",
+        "August": "Август",
+        "September": "Сентябрь",
+        "October": "Октябрь",
+        "November": "Ноябрь",
+        "December": "Декабрь"
+      }
+    },
+    "alerts": {
+      "event_types": {
+        "Warning": "Предупр.",
+        "Watch": "Наблюд.",
+        "Advisory": "Реком.",
+        "Statement": "Заявл."
+      },
+      "til": "до",
+      "by": "от",
+      "from": "с",
+      "am": "утра",
+      "pm": "дня",
+      "time_12h": "{hour} {meridiem}",
+      "date_12h": "{month} {day} {time}"
+    },
+    "wind_directions": {
+      "N": "С",
+      "NNE": "ССВ",
+      "NE": "СВ",
+      "ENE": "ВСВ",
+      "E": "В",
+      "ESE": "ВЮВ",
+      "SE": "ЮВ",
+      "SSE": "ЮЮВ",
+      "S": "Ю",
+      "SSW": "ЮЮЗ",
+      "SW": "ЮЗ",
+      "WSW": "ЗЮЗ",
+      "W": "З",
+      "WNW": "ЗСЗ",
+      "NW": "СЗ",
+      "NNW": "ССЗ"
+    }
+  },
+  "categories": {
+    "basic": "Основные команды",
+    "custom_syntax": "Пользовательский синтаксис",
+    "special": "Специальные команды",
+    "weather": "Погода",
+    "solar": "Солнце",
+    "sports": "Спорт",
+    "analytics": "Аналитика",
+    "meshcore_info": "Информация MeshCore",
+    "management": "Управление"
+  },
+  "services": {
+    "darcmowas": {
+      "messagetype": {
+        "eu-alert-level-1": "Экстренное оповещение",
+        "eu-alert-level-2": "Экстремальная опасность",
+        "eu-alert-level-3": "Значительная опасность",
+        "eu-alert-level-4": "Информация об опасности",
+        "eu-test": "Тестовое оповещение"
+      },
+      "fields": {
+        "sender": "Отправитель: {sender}",
+        "area": "Район: {areas}"
+      }
+    },
+    "weather_service": {
+      "daily_weather": "Погода",
+      "tomorrow": "Завтра",
+      "error_fetching": "Ошибка получения данных погоды",
+      "no_data": "Данные прогноза недоступны",
+      "near": "в районе",
+      "est": "ориент.",
+      "steady": "непрерывно",
+      "rain_starting": "{emoji} {ptype} начнётся через ~{minutes}мин{est}{steady}{temp}{location}",
+      "rain_ending": "{emoji} {ptype} прекратится через ~{minutes}мин{est}{temp}{location}",
+      "weather_descriptions": {
+        "0": "Ясно",
+        "1": "Преим.ясно",
+        "2": "Перем.облач.",
+        "3": "Пасмурно",
+        "45": "Туман",
+        "48": "Изморось",
+        "51": "Лёгк.морось",
+        "53": "Морось",
+        "55": "Сильн.морось",
+        "56": "Лёгк.лед.морось",
+        "57": "Лед.морось",
+        "61": "Небол.дождь",
+        "63": "Дождь",
+        "65": "Сильн.дождь",
+        "66": "Слаб.лед.дождь",
+        "67": "Лед.дождь",
+        "71": "Небол.снег",
+        "73": "Снег",
+        "75": "Сильн.снег",
+        "77": "Снеж.зерна",
+        "80": "Небол.ливень",
+        "81": "Ливень",
+        "82": "Сильн.ливень",
+        "85": "Слаб.снеж.ливень",
+        "86": "Снеж.ливень",
+        "95": "Гроза",
+        "96": "Гроза+град",
+        "99": "Сильн.гроза"
+      },
+      "wind_speed_units": {
+        "ms": "м/с",
+        "mph": "mph",
+        "kmh": "км/ч",
+        "kn": "уз"
+      }
+    }
+  }
+}

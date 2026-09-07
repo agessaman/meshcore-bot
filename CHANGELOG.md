@@ -6,7 +6,117 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Localized proactive weather messages (daily forecasts, rain nowcasts, weather
+  alerts) via `services.weather_service.*` translation keys. `WeatherService` now
+  uses the bot's `translator` instead of hardcoded English strings, so proactive
+  outputs respect the configured `language` setting — the same mechanism already
+  used by `!wx`, `!gwx`, `!rain` and other commands.
+
+- Russian (`ru`) translation for the full bot UI, including all weather service
+  keys, command keys, categories, and common strings.
+
+- `format_temperature_high_low()` now accepts an optional `translator` parameter.
+  When provided, the `H`/`L` temperature labels and compass wind directions are
+  locale-aware (`H`/`L` → `В`/`Н` in Russian; `WNW` → `ЗСЗ`). Passed from
+  `WeatherService`, `!wx`, and `!gwx` callers.
+
+- `modules/alert_format.py` holds one NWS alert formatter, shared by `!wx alerts`
+  and the proactive `WeatherService` broadcasts. Both now localize from the same
+  code path, so a Russian bot no longer answers `!wx alerts` in English while its
+  proactive alerts are Russian. It replaces four copies of the event-type
+  abbreviation table and two of the time compactor, which had already drifted
+  apart. Alert strings moved to `common.alerts.*` and wind directions to
+  `common.wind_directions.*`, since a command and a service both read them.
+
+- `BaseCommand.response_translator` exposes the per-message translator that
+  `respond_in_sender_language` binds. Command helpers that format part of a reply
+  need it so one line does not come back in the sender's language and the next in
+  the bot's default; `wx_international` was reaching for the private
+  `_response_translator` ContextVar to do this.
+
 ### Fixed
+
+- Weather output no longer leaks translation key paths into mesh broadcasts. The
+  localization pass replaced several `dict.get(key, fallback)` lookups with bare
+  `translate()` calls, and `Translator.translate` returns the dotted key path when
+  a key is missing from both the locale and the English fallback — deliberate, so
+  missing translations are visible in development, but it reaches the air in
+  production. An NWS title we cannot classify (`event_type = "Unknown"`, e.g.
+  "Hazardous Weather Outlook") rendered as
+  `⚪Hazardous services.weather_service.event_types.Unknown`; an unmapped WMO code
+  rendered as `services.weather_service.weather_descriptions.4`; and a
+  `wind_speed_unit` with unexpected casing rendered as
+  `services.weather_service.wind_speed_units.KMH`. `alert_format.translate_or()`
+  now carries an English default for each, and `WeatherService` normalizes and
+  validates its three `[Weather]` unit settings the way `GlobalWxCommand` already
+  did.
+
+- Alert expiry times render correctly in every locale. `_format_alert_compact`
+  formatted a timestamp to a string and then re-parsed it with `(\d+)(AM|PM)` and a
+  hardcoded English month list, so any locale with translated months took the wrong
+  branch and then failed the regex, truncating mid-string:
+  `🟠Flood Warning King до июн 28 6 дн от NWS SEA`. Adding a space before AM/PM —
+  needed because Russian writes "6 дня", not "6дня" — broke the same regex for
+  English too, spending 8 characters of a 130-byte budget on a redundant date and
+  pushing the shortened URL out. Times are now carried as parsed parts and rendered
+  through a per-locale `common.alerts.time_12h` template, so nothing re-parses
+  localized output.
+
+- Month names are abbreviated again, and no longer corrupted. The rewritten
+  `_compact_time` iterated over month *abbreviations* and replaced them in the
+  string rather than mapping full names to abbreviations, so English stopped
+  shortening ("June 28" stayed long) and Russian replaced the "Jun" inside "June",
+  leaving a stray Latin "e": `июнe 28`. The full-name mapping is restored, reusing
+  the existing `common.date_time.month_abbreviations` instead of the duplicate
+  `services.weather_service.months` block the pass had added.
+
+- `!gwx` display units follow the `[Weather]` unit config instead of the response
+  language. Visibility and pressure were switched on `base_language != 'en'`, so a
+  bot with `language = ru` and the default `temperature_unit = fahrenheit` printed
+  Fahrenheit temperatures beside kilometers, and `en-GB` was forced to miles. Which
+  pressure unit reads as normal is a locale convention rather than a
+  metric/imperial split, so each catalog now names its own via
+  `commands.gwx.pressure_unit` (`mmhg` for `ru`, `hpa` elsewhere) — previously
+  every non-English locale inherited mmHg from the English catalog, whose
+  `pressure_mmhg` string contained Russian text ("мм рт. ст."), giving German and
+  French users Cyrillic pressure units. The Russian `visibility` string, which the
+  imperial branch uses, said "км" and now says "миль".
+
+- Localized `H`/`L` temperature labels reach a standard install. `config.ini.example`
+  shipped `temperature_high_low_format` and its two siblings uncommented with
+  literal `H:`/`L:`, and a config value always beats the new locale-aware default —
+  so a Russian bot built from the documented example still rendered `H:47°C L:33°C`.
+  The example now uses the `{high_label}`/`{low_label}` placeholders, which were
+  documented in the function docstring but not in the file, and hardcoding `H:`/`L:`
+  remains available for operators who want English labels regardless of language.
+
+- `!gwx` high/low labels follow the reply's language. `_format_high_low` passed
+  `bot.translator` rather than the per-message translator, so with
+  `auto_detect_language` on, an English-default bot answering a Russian sender
+  localized the rest of the line but not `H:`/`L:`. The same call in `wx_command`
+  is fixed alongside it.
+
+- `!gwx` no longer overruns the RF byte limit on multi-byte locales. The check
+  guarding the extra conditions block compared a character count against a budget
+  derived from bytes, while the rest of the function used `_count_display_width`
+  (UTF-8 bytes). Cyrillic is two bytes per character, so the check saw roughly half
+  the real size and appended the block after the budget was already spent.
+
+- `!wx hourly` no longer answers `commands.wx.hourly_not_available` when NOAA
+  returns no hourly periods. The key was never in any catalog, so the raw key
+  path reached the user; predates this branch, found while auditing every
+  translation key the weather modules reference.
+
+- Restored nine `commands.gwx` English strings that the localization pass reworded
+  for no functional reason, including the configuration hint in
+  `mqtt_weather_no_subscriber` — "MQTT weather subscriber is not active (enable
+  [MqttWeather] and custom.mqtt_weather.* topics)" had become "MQTT weather
+  subscriber not active", dropping the only pointer to the two keys a
+  mis-configured operator needs. The rewordings had also diverged from the
+  identical `commands.wx.*` strings and from the nine other catalogs still carrying
+  the old English as their fallback text.
 
 - `path` no longer answers "No path information available in current message" on a
   busy mesh (#255). Verifying a channel message against the RF cache only ever

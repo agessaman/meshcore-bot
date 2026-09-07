@@ -15,6 +15,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+from .. import alert_format
 from ..models import MeshMessage
 from ..utils import (
     format_temperature_high_low,
@@ -177,7 +178,8 @@ class WxCommand(BaseCommand):
 
     def _format_high_low(self, high: Optional[float], low: Optional[float], temp_symbol: str) -> str:
         """Format high/low using [Weather] temperature_*_format templates."""
-        return format_temperature_high_low(self.bot.config, high, low, temp_symbol, self.logger)
+        return format_temperature_high_low(self.bot.config, high, low, temp_symbol, self.logger,
+                                           translator=self.response_translator)
 
     @staticmethod
     def _noaa_period_temp_symbol(period: dict) -> str:
@@ -2639,120 +2641,24 @@ class WxCommand(BaseCommand):
     def _format_alert_compact(self, alert: dict, include_details: bool = True) -> str:
         """Format a single alert compactly
 
+        Shares its formatting with the proactive WeatherService broadcasts via
+        ``modules.alert_format``, so both localize from one code path.
+
         Args:
             alert: Alert dict with event, event_type, severity, expires, office, etc.
             include_details: If True, include expiration time and office
 
         Returns:
-            Formatted alert string
+            Formatted alert string, e.g. "🟠High Wind Warn til 6AM by NWS SEA"
         """
-        event = alert.get('event', '')
-        event_type = alert.get('event_type', '')
-        severity = alert.get('severity', 'Unknown')
-        expires = alert.get('expires', '')
-        office = alert.get('office', '')
-
-        # Get severity emoji
-        severity_emoji = {
-            'Extreme': '🔴',
-            'Severe': '🟠',
-            'Moderate': '🟡',
-            'Minor': '⚪',
-            'Unknown': '⚪'
-        }.get(severity, '⚪')
-
-        # Get event type emoji/indicator
-        {
-            'Warning': '⚠️',
-            'Watch': '👁️',
-            'Advisory': 'ℹ️',
-            'Statement': '📢'
-        }.get(event_type, '')
-
-        # Format event type abbreviation
-        event_type_abbrev = {
-            'Warning': 'Warn',
-            'Watch': 'Watch',
-            'Advisory': 'Adv',
-            'Statement': 'Stmt'
-        }.get(event_type, event_type)
-
-        # Build compact alert string
-        if include_details:
-            # Full format: "🟠High Wind Warn til 6AM by NWS SEA"
-            # Start with emoji directly concatenated to text (no space)
-            result = severity_emoji
-
-            # Add event and type
-            if event:
-                # Check if event already contains the event type to avoid duplication
-                event_lower = event.lower()
-                event_type_lower = event_type.lower()
-                if event_type_lower in event_lower:
-                    # Event already contains type (e.g., "High Wind Warning"), just use event
-                    event_short = event
-                    if len(event) > 15:
-                        # Take first words
-                        words = event.split()
-                        event_short = ' '.join(words[:2]) if len(words) > 2 else event[:15]
-                    result += event_short
-                else:
-                    # Event doesn't contain type, add it
-                    event_short = event
-                    if len(event) > 15:
-                        # Take first words
-                        words = event.split()
-                        event_short = ' '.join(words[:2]) if len(words) > 2 else event[:15]
-                    result += f"{event_short} {event_type_abbrev}"
-            else:
-                result += event_type_abbrev
-
-            # Add expiration time if available
-            if expires:
-                expires_compact = self.compact_time(expires)
-                # Extract just the time part
-                # "Dec 17 1AM" -> "til 1AM" (prefer just time for compactness)
-                # Check if it's in compact format with month name (from ISO parsing)
-                if any(month in expires_compact for month in ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]):
-                    # Has date, extract just time part for compactness
-                    time_match = re.search(r'(\d+)(AM|PM)', expires_compact, re.IGNORECASE)
-                    if time_match:
-                        hour = time_match.group(1)
-                        am_pm = time_match.group(2)
-                        expires_short = f" til {hour}{am_pm}"
-                    else:
-                        # Fallback: use compact version but limit length
-                        expires_short = f" til {expires_compact[:15]}"
-                else:
-                    # Try to extract time pattern from other formats
-                    time_match = re.search(r'(\d+):?(\d+)?(AM|PM)', expires_compact, re.IGNORECASE)
-                    if time_match:
-                        hour = time_match.group(1)
-                        am_pm = time_match.group(3)
-                        expires_short = f" til {hour}{am_pm}"
-                    else:
-                        # If no time pattern found, use compact version (truncated)
-                        expires_short = f" til {expires_compact[:15]}"
-                result += expires_short
-
-            # Add office if available (abbreviate city name)
-            if office:
-                # Extract city from office (e.g., "NWS Seattle WA" -> "NWS SEA")
-                office_parts = office.split()
-                if len(office_parts) >= 2:
-                    # Assume format: "NWS Seattle WA" or "NWS Seattle"
-                    office_org = office_parts[0]  # "NWS"
-                    city = office_parts[1] if len(office_parts) > 1 else ""
-                    city_abbrev = self.abbreviate_city_name(city)
-                    office_short = f" by {office_org} {city_abbrev}"
-                else:
-                    office_short = f" by {office[:10]}"  # Truncate
-                result += office_short
-
-            return result
-        else:
-            # Abbreviated format: just event type and severity
-            return f"{severity_emoji}{event} {event_type_abbrev}" if event else f"{severity_emoji}{event_type_abbrev}"
+        return alert_format.format_alert_compact(
+            alert,
+            self.response_translator,
+            include_details=include_details,
+            # !wx alerts has never shown the area description; the proactive
+            # broadcast does, so the shared helper keeps it optional.
+            include_location=False,
+        )
 
     def _format_alerts_compact_summary(self, alerts: list, alert_count: int, max_length: int = 130) -> str:
         """Format multiple alerts with prioritized first alert and summary of others
@@ -2786,27 +2692,14 @@ class WxCommand(BaseCommand):
             event = alert.get('event', '')
             event_type = alert.get('event_type', '')
 
-            # Get event type abbreviation
-            event_type_abbrev = {
-                'Warning': 'Warn',
-                'Watch': 'Watch',
-                'Advisory': 'Adv',
-                'Statement': 'Stmt'
-            }.get(event_type, event_type)
-
             # Get emoji for event type
             event_emoji = self._get_event_emoji(event, event_type)
 
-            # Build compact event string
+            # Build compact event string. Trimmed harder than the lead alert:
+            # first word only, since these are a comma-joined tail.
+            event_short = alert_format.shorten_event(event, limit=12, max_words=1)
+            event_type_abbrev = alert_format.event_type_abbrev(event_type, self.response_translator)
             if event:
-                # Abbreviate long event names
-                event_short = event
-                if len(event) > 12:
-                    words = event.split()
-                    if len(words) > 1:
-                        event_short = words[0]  # Just first word
-                    else:
-                        event_short = event[:12]
                 remaining_parts.append(f"{event_emoji}{event_short} {event_type_abbrev}")
             else:
                 remaining_parts.append(f"{event_emoji}{event_type_abbrev}")
@@ -2883,96 +2776,28 @@ class WxCommand(BaseCommand):
         Returns:
             Formatted alert string with start/stop times
         """
-        event = alert.get('event', '')
-        event_type = alert.get('event_type', '')
-        severity = alert.get('severity', 'Unknown')
-        effective = alert.get('effective', '')
-        expires = alert.get('expires', '')
-        office = alert.get('office', '')
-
-        # Get severity emoji
-        severity_emoji = {
-            'Extreme': '🔴',
-            'Severe': '🟠',
-            'Moderate': '🟡',
-            'Minor': '⚪',
-            'Unknown': '⚪'
-        }.get(severity, '⚪')
-
-        # Format event type
-        event_type_abbrev = {
-            'Warning': 'Warn',
-            'Watch': 'Watch',
-            'Advisory': 'Adv',
-            'Statement': 'Stmt'
-        }.get(event_type, event_type)
-
-        # Build parts
+        translator = self.response_translator
         parts = []
 
-        # Add index if provided
         if index is not None:
             parts.append(f"{index}.")
 
-        # Add severity emoji and event
-        if event:
-            # Check if event already contains the event type to avoid duplication
-            event_lower = event.lower()
-            event_type_lower = event_type.lower()
-            if event_type_lower in event_lower:
-                # Event already contains type (e.g., "High Wind Warning"), just use event
-                parts.append(f"{severity_emoji}{event}")
-            else:
-                # Event doesn't contain type, add it
-                parts.append(f"{severity_emoji}{event} {event_type_abbrev}")
-        else:
-            parts.append(f"{severity_emoji}{event_type_abbrev}")
+        # No trimming here — this form is sent across as many messages as it needs.
+        parts.append(
+            alert_format.severity_emoji(alert.get('severity', 'Unknown'))
+            + alert_format.format_event_label(
+                alert.get('event', ''), alert.get('event_type', ''), translator, limit=None
+            )
+        )
 
-        # Add times
-        time_parts = []
-        if effective:
-            effective_compact = self.compact_time(effective)
-            # Extract just the essential time info
-            # Try pattern: "December 16 at 3:12PM" or "Dec 16 3:12PM"
-            time_match = re.search(r'(\w+\s+\d+)\s+(?:at\s+)?(\d+):?(\d+)?(AM|PM)', effective_compact, re.IGNORECASE)
-            if time_match:
-                date_part = time_match.group(1)
-                hour = time_match.group(2)
-                am_pm = time_match.group(4)
-                time_parts.append(f"from {date_part} {hour}{am_pm}")
-            else:
-                # Fallback: just use compacted version, truncate if needed
-                effective_short = effective_compact[:25]
-                time_parts.append(f"from {effective_short}")
+        window = alert_format.format_alert_window(alert, translator)
+        if window:
+            parts.append(window)
 
-        if expires:
-            expires_compact = self.compact_time(expires)
-            # Extract time part
-            # Try pattern: "December 17 at 6:00AM" or "Dec 17 6AM"
-            time_match = re.search(r'(\w+\s+\d+)\s+(?:at\s+)?(\d+):?(\d+)?(AM|PM)', expires_compact, re.IGNORECASE)
-            if time_match:
-                date_part = time_match.group(1)
-                hour = time_match.group(2)
-                am_pm = time_match.group(4)
-                time_parts.append(f"til {date_part} {hour}{am_pm}")
-            else:
-                # Fallback: just use compacted version, truncate if needed
-                expires_short = expires_compact[:25]
-                time_parts.append(f"til {expires_short}")
-
-        if time_parts:
-            parts.append(" ".join(time_parts))
-
-        # Add office (abbreviated)
+        # The full form is not length-capped, so it keeps the longer fallback.
+        office = alert_format.format_office(alert.get('office', ''), translator, limit=15)
         if office:
-            office_parts = office.split()
-            if len(office_parts) >= 2:
-                office_org = office_parts[0]
-                city = office_parts[1]
-                city_abbrev = self.abbreviate_city_name(city)
-                parts.append(f"by {office_org} {city_abbrev}")
-            else:
-                parts.append(f"by {office[:15]}")
+            parts.append(office)
 
         return " ".join(parts)
 
@@ -3102,155 +2927,12 @@ class WxCommand(BaseCommand):
 
     def abbreviate_city_name(self, city: str) -> str:
         """Abbreviate city names for compact display (e.g., Seattle -> SEA)"""
-        if not city:
-            return city
-
-        # Common city abbreviations
-        city_abbrevs = {
-            "Seattle": "SEA",
-            "Portland": "PDX",
-            "San Francisco": "SF",
-            "Los Angeles": "LA",
-            "New York": "NYC",
-            "Chicago": "CHI",
-            "Houston": "HOU",
-            "Phoenix": "PHX",
-            "Philadelphia": "PHL",
-            "San Antonio": "SAT",
-            "San Diego": "SAN",
-            "Dallas": "DAL",
-            "San Jose": "SJC",
-            "Austin": "AUS",
-            "Jacksonville": "JAX",
-            "Columbus": "CMH",
-            "Fort Worth": "FTW",
-            "Charlotte": "CLT",
-            "Denver": "DEN",
-            "Washington": "DC",
-            "Boston": "BOS",
-            "El Paso": "ELP",
-            "Detroit": "DTW",
-            "Nashville": "BNA",
-            "Oklahoma City": "OKC",
-            "Las Vegas": "LAS",
-            "Memphis": "MEM",
-            "Louisville": "SDF",
-            "Baltimore": "BWI",
-            "Milwaukee": "MKE",
-            "Albuquerque": "ABQ",
-            "Tucson": "TUS",
-            "Fresno": "FAT",
-            "Sacramento": "SAC",
-            "Kansas City": "KC",
-            "Mesa": "MSC",
-            "Atlanta": "ATL",
-            "Omaha": "OMA",
-            "Colorado Springs": "COS",
-            "Raleigh": "RDU",
-            "Virginia Beach": "ORF",
-            "Miami": "MIA",
-            "Oakland": "OAK",
-            "Minneapolis": "MSP",
-            "Tulsa": "TUL",
-            "Cleveland": "CLE",
-            "Wichita": "ICT",
-            "Arlington": "ARL",
-            "Tampa": "TPA",
-            "New Orleans": "MSY",
-            "Honolulu": "HNL",
-            "Anchorage": "ANC",
-            "Bellingham": "BLI",
-            "Everett": "EVE",
-            "Spokane": "GEG",
-            "Tacoma": "TAC",
-            "Yakima": "YKM",
-            "Olympia": "OLM",
-            "Vancouver": "YVR",
-            "Victoria": "YYJ"
-        }
-
-        # Check for exact match first
-        if city in city_abbrevs:
-            return city_abbrevs[city]
-
-        # Check for partial matches (e.g., "Seattle WA" -> "SEA")
-        for full_name, abbrev in city_abbrevs.items():
-            if full_name in city:
-                return abbrev
-
-        # If no match, try to create abbreviation from first letters of words
-        words = city.split()
-        if len(words) > 1:
-            # Take first letter of each word, up to 3-4 letters
-            abbrev = ''.join([w[0].upper() for w in words[:3]])
-            if len(abbrev) <= 4:
-                return abbrev
-
-        # Fallback: return first 3-4 uppercase letters
-        return city[:4].upper() if len(city) >= 4 else city.upper()
+        return alert_format.abbreviate_city_name(city)
 
     def compact_time(self, time_str: str) -> str:
         """Compact time format: '6:00AM' -> '6AM', 'December 16 at 3:12PM' -> 'Dec 16 3:12PM'
         Also handles ISO format: '2025-12-17T01:00:00-08:00' -> 'Dec 17 1AM'"""
-        if not time_str:
-            return time_str
-
-        # Check if it's ISO format (contains 'T' and looks like datetime)
-        if 'T' in time_str and re.match(r'\d{4}-\d{2}-\d{2}T', time_str):
-            try:
-                from datetime import datetime
-                # Parse ISO format
-                # Handle various ISO formats: 2025-12-17T01:00:00-08:00, 2025-12-17T01:0, etc.
-                # Try to parse with timezone info first
-                try:
-                    dt = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
-                except:
-                    # Try without timezone
-                    dt_str = time_str.split('T')[0] + 'T' + time_str.split('T')[1].split('-')[0].split('+')[0]
-                    dt = datetime.fromisoformat(dt_str)
-
-                # Format as "Dec 17 1AM"
-                month_abbrevs = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-                month = month_abbrevs[dt.month - 1]
-                day = dt.day
-                hour = dt.hour
-
-                # Convert to 12-hour format
-                if hour == 0:
-                    hour_12 = 12
-                    am_pm = "AM"
-                elif hour < 12:
-                    hour_12 = hour
-                    am_pm = "AM"
-                elif hour == 12:
-                    hour_12 = 12
-                    am_pm = "PM"
-                else:
-                    hour_12 = hour - 12
-                    am_pm = "PM"
-
-                return f"{month} {day} {hour_12}{am_pm}"
-            except Exception:
-                # If parsing fails, fall through to regular processing
-                pass
-
-        # Remove leading zeros from hours: "6:00AM" -> "6AM", "10:00PM" -> "10PM"
-        time_str = re.sub(r'(\d+):00(AM|PM)', r'\1\2', time_str)
-
-        # Abbreviate month names
-        month_abbrevs = {
-            "January": "Jan", "February": "Feb", "March": "Mar", "April": "Apr",
-            "May": "May", "June": "Jun", "July": "Jul", "August": "Aug",
-            "September": "Sep", "October": "Oct", "November": "Nov", "December": "Dec"
-        }
-        for full, abbrev in month_abbrevs.items():
-            time_str = time_str.replace(full, abbrev)
-
-        # Remove "at" before time: "December 16 at 3:12PM" -> "December 16 3:12PM"
-        time_str = re.sub(r'\s+at\s+', ' ', time_str)
-
-        return time_str
+        return alert_format.compact_time(time_str, self.response_translator)
 
     def abbreviate_wind_direction(self, direction: str) -> str:
         """Abbreviate wind direction to emoji + 2-3 characters"""
@@ -3347,7 +3029,8 @@ class WxCommand(BaseCommand):
                     low_val = int(low)
                     if _pair_ok(high_val, low_val):
                         return format_temperature_high_low(
-                            self.bot.config, high_val, low_val, units_str, self.logger
+                            self.bot.config, high_val, low_val, units_str, self.logger,
+                            translator=self.response_translator,
                         )
                 except ValueError:
                     continue
@@ -3358,7 +3041,8 @@ class WxCommand(BaseCommand):
                 low_val = int(low_match.group(1))
                 if _single_ok(low_val):
                     return format_temperature_high_low(
-                        self.bot.config, None, low_val, units_str, self.logger
+                        self.bot.config, None, low_val, units_str, self.logger,
+                        translator=self.response_translator,
                     )
             except ValueError:
                 pass
@@ -3369,7 +3053,8 @@ class WxCommand(BaseCommand):
                 high_val = int(high_match.group(1))
                 if _single_ok(high_val):
                     return format_temperature_high_low(
-                        self.bot.config, high_val, None, units_str, self.logger
+                        self.bot.config, high_val, None, units_str, self.logger,
+                        translator=self.response_translator,
                     )
             except ValueError:
                 pass
