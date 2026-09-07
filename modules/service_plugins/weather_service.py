@@ -31,6 +31,7 @@ except ImportError:
 
 import contextlib
 
+from .. import alert_format
 from ..commands.rain_command import (
     analyze_precip_nowcast,
     decide_rain_notification,
@@ -131,10 +132,21 @@ class WeatherService(BaseServicePlugin):
         # serialized without making the event loop wait on a threading lock.
         self._api_session_lock = threading.Lock()
 
-        # Get temperature/wind units from config (for Open-Meteo)
-        self.temperature_unit = self.bot.config.get('Weather', 'temperature_unit', fallback='fahrenheit')
-        self.wind_speed_unit = self.bot.config.get('Weather', 'wind_speed_unit', fallback='mph')
-        self.precipitation_unit = self.bot.config.get('Weather', 'precipitation_unit', fallback='inch')
+        # Get temperature/wind units from config (for Open-Meteo). Normalized and
+        # validated the same way GlobalWxCommand does, so the unit also works as
+        # a translation key for its display label.
+        self.temperature_unit = self.bot.config.get('Weather', 'temperature_unit', fallback='fahrenheit').lower()
+        self.wind_speed_unit = self.bot.config.get('Weather', 'wind_speed_unit', fallback='mph').lower()
+        self.precipitation_unit = self.bot.config.get('Weather', 'precipitation_unit', fallback='inch').lower()
+        if self.temperature_unit not in ('fahrenheit', 'celsius'):
+            self.logger.warning(f"Invalid temperature_unit '{self.temperature_unit}', using 'fahrenheit'")
+            self.temperature_unit = 'fahrenheit'
+        if self.wind_speed_unit not in ('mph', 'kmh', 'ms', 'kn'):
+            self.logger.warning(f"Invalid wind_speed_unit '{self.wind_speed_unit}', using 'mph'")
+            self.wind_speed_unit = 'mph'
+        if self.precipitation_unit not in ('inch', 'mm'):
+            self.logger.warning(f"Invalid precipitation_unit '{self.precipitation_unit}', using 'inch'")
+            self.precipitation_unit = 'inch'
 
         # Proactive rain nowcast ("rain incoming" push). Reuses the rain command's
         # Open-Meteo 15-minutely logic for the bot's own position.
@@ -642,9 +654,12 @@ class WeatherService(BaseServicePlugin):
             # Format current forecast
             forecast_text = f"{location_name}: {weather_emoji}{weather_desc} {temp}{temp_symbol}"
             if wind_speed > 0:
-                wind_dir_str = f"{wind_direction} " if wind_direction else ""
-                wind_unit_label = self._translate(f'services.weather_service.wind_speed_units.{self.wind_speed_unit}')
-                forecast_text += f" {wind_dir_str}{wind_speed}{wind_unit_label}"
+                wind_unit_label = alert_format.translate_or(
+                    getattr(self.bot, 'translator', None),
+                    f'services.weather_service.wind_speed_units.{self.wind_speed_unit}',
+                    self.wind_speed_unit,
+                )
+                forecast_text += f" {wind_direction}{wind_speed}{wind_unit_label}"
 
             today_high = int(daily['temperature_2m_max'][0])
             today_low = int(daily['temperature_2m_min'][0])
@@ -716,7 +731,9 @@ class WeatherService(BaseServicePlugin):
                      'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
         index = int((degrees + 11.25) / 22.5) % 16
         key = directions[index]
-        return self._translate(f'services.weather_service.wind_directions.{key}')
+        return alert_format.translate_or(
+            getattr(self.bot, 'translator', None), f'common.wind_directions.{key}', key
+        )
 
     def _get_weather_description(self, code: int) -> str:
         """Get weather description from WMO weather code.
@@ -725,9 +742,14 @@ class WeatherService(BaseServicePlugin):
             code: WMO weather code integer.
 
         Returns:
-            str: Human-readable weather description.
+            str: Human-readable weather description, or the localized 'Unknown'
+                for a code we have no description for.
         """
-        return self._translate(f'services.weather_service.weather_descriptions.{code}')
+        translator = getattr(self.bot, 'translator', None)
+        unknown = alert_format.translate_or(translator, 'common.unknown', 'Unknown')
+        return alert_format.translate_or(
+            translator, f'services.weather_service.weather_descriptions.{code}', unknown
+        )
 
     def _get_weather_emoji(self, code: int) -> str:
         """Get weather emoji from WMO weather code.
@@ -1607,238 +1629,37 @@ class WeatherService(BaseServicePlugin):
             return None
 
     async def _format_alert_compact(self, alert: dict[str, Any], include_details: bool = True) -> str:
-        """Format a single alert compactly (same as wx_command).
+        """Format a single alert compactly, appending a shortened link if it fits.
+
+        Shares its formatting with ``!wx alerts`` via ``modules.alert_format``;
+        only the link shortening (which needs async work) lives here.
 
         Args:
             alert: Alert dict with event, event_type, severity, expires, office, etc.
-            include_details: If True, include expiration time and office.
+            include_details: If True, include location, expiration time and office.
 
         Returns:
             str: Formatted alert string.
         """
-        event = alert.get('event', '')
-        event_type = alert.get('event_type', '')
-        severity = alert.get('severity', 'Unknown')
-        expires = alert.get('expires', '')
-        office = alert.get('office', '')
-        link_url = alert.get('link', '')
-        area_desc = alert.get('area_desc', '')
-
-        # Get severity emoji
-        severity_emoji = {
-            'Extreme': '🔴',
-            'Severe': '🟠',
-            'Moderate': '🟡',
-            'Minor': '⚪',
-            'Unknown': '⚪'
-        }.get(severity, '⚪')
-
-        # Format event type abbreviation
-        event_type_abbrev = self._translate(
-            f'services.weather_service.event_types.{event_type}', event_type=event_type
+        result = alert_format.format_alert_compact(
+            alert, getattr(self.bot, 'translator', None), include_details=include_details
         )
-
-        # Build compact alert string
-        if include_details:
-            result = severity_emoji
-
-            # Add event and type
-            if event:
-                event_lower = event.lower()
-                event_type_lower = event_type.lower()
-                if event_type_lower in event_lower:
-                    event_short = event
-                    if len(event) > 15:
-                        words = event.split()
-                        event_short = ' '.join(words[:2]) if len(words) > 2 else event[:15]
-                    result += event_short
-                else:
-                    event_short = event
-                    if len(event) > 15:
-                        words = event.split()
-                        event_short = ' '.join(words[:2]) if len(words) > 2 else event[:15]
-                    result += f"{event_short} {event_type_abbrev}"
-            else:
-                result += event_type_abbrev
-
-            # Add location (area description) if available - compact format
-            if area_desc:
-                # Extract first location from area_desc (often contains multiple locations)
-                # Format: "Seattle, WA" or "King County; Snohomish County" etc.
-                locations = [loc.strip() for loc in area_desc.split(';')]
-                first_location = locations[0]
-
-                # Try to extract just city/area name if it's long
-                # e.g., "Seattle, WA" -> "Seattle" or "King County" -> "King"
-                if ',' in first_location:
-                    # Has state/country - take just the city part
-                    location_parts = first_location.split(',')
-                    location_short = location_parts[0].strip()
-                else:
-                    # No comma, might be "King County" -> take first word
-                    location_words = first_location.split()
-                    if len(location_words) > 1 and location_words[-1].lower() in ['county', 'parish', 'borough']:
-                        location_short = location_words[0]
-                    else:
-                        location_short = first_location
-
-                # Limit location length to keep message compact
-                if len(location_short) > 20:
-                    location_short = location_short[:20]
-
-                result += f" {location_short}"
-
-            # Add expiration time if available
-            if expires:
-                til_label = self._translate('services.weather_service.til')
-                expires_compact = self._compact_time(expires)
-                if any(month in expires_compact for month in ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]):
-                    time_match = re.search(r'(\d+)(AM|PM)', expires_compact, re.IGNORECASE)
-                    if time_match:
-                        hour = time_match.group(1)
-                        am_pm = time_match.group(2)
-                        expires_short = f" {til_label} {hour}{am_pm}"
-                    else:
-                        expires_short = f" {til_label} {expires_compact[:15]}"
-                else:
-                    time_match = re.search(r'(\d+):?(\d+)?(AM|PM)', expires_compact, re.IGNORECASE)
-                    if time_match:
-                        hour = time_match.group(1)
-                        am_pm = time_match.group(3)
-                        expires_short = f" {til_label} {hour}{am_pm}"
-                    else:
-                        expires_short = f" {til_label} {expires_compact[:15]}"
-                result += expires_short
-
-            # Add office if available (abbreviate city name)
-            if office:
-                by_label = self._translate('services.weather_service.by')
-                office_parts = office.split()
-                if len(office_parts) >= 2:
-                    office_org = office_parts[0]
-                    city = office_parts[1] if len(office_parts) > 1 else ""
-                    city_abbrev = self._abbreviate_city_name(city)
-                    office_short = f" {by_label} {office_org} {city_abbrev}"
-                else:
-                    office_short = f" {by_label} {office[:10]}"
-                result += office_short
-
-            # Add shortened URL if available and there's space (within 130 char limit)
-            if link_url and len(result) < 100:  # Leave ~30 chars for shortened URL
-                short_url = await self._shorten_url(link_url)
-                if short_url:
-                    test_result = result + f" {short_url}"
-                    if len(test_result) <= 130:  # Mesh message limit
-                        result = test_result
-                    # If even shortened doesn't fit, try with just a link indicator
-                    elif len(result) < 120:
-                        result = result + " 🔗"
-
+        if not include_details:
             return result
-        else:
-            return f"{severity_emoji}{event} {event_type_abbrev}" if event else f"{severity_emoji}{event_type_abbrev}"
 
-    def _compact_time(self, time_str: str) -> str:
-        """Compact time format (same as wx_command).
+        link_url = alert.get('link', '')
+        # Leave ~30 chars for the shortened URL inside the 130-char mesh limit.
+        if link_url and len(result) < 100:
+            short_url = await self._shorten_url(link_url)
+            if short_url:
+                with_url = f"{result} {short_url}"
+                if len(with_url) <= 130:
+                    result = with_url
+                elif len(result) < 120:
+                    # Even shortened it does not fit; signal that a link exists.
+                    result += " 🔗"
 
-        Args:
-            time_str: Time string to format.
-
-        Returns:
-            str: Compact formatted time string.
-        """
-        if not time_str:
-            return time_str
-
-        # Check if it's ISO format
-        if 'T' in time_str and re.match(r'\d{4}-\d{2}-\d{2}T', time_str):
-            try:
-                dt = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
-                month = self._translate(f'services.weather_service.months.{["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][dt.month - 1]}')
-                day = dt.day
-                hour = dt.hour
-
-                if hour == 0:
-                    hour_12 = 12
-                    am_pm = self._translate('services.weather_service.am')
-                elif hour < 12:
-                    hour_12 = hour
-                    am_pm = self._translate('services.weather_service.am')
-                elif hour == 12:
-                    hour_12 = 12
-                    am_pm = self._translate('services.weather_service.pm')
-                else:
-                    hour_12 = hour - 12
-                    am_pm = self._translate('services.weather_service.pm')
-
-                return f"{month} {day} {hour_12} {am_pm}"
-            except Exception:
-                pass
-
-        # Remove leading zeros from hours
-        time_str = re.sub(r'(\d+):00(AM|PM)', r'\1\2', time_str)
-
-        # Abbreviate month names
-        month_abbrevs = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-        for abbrev in month_abbrevs:
-            translated = self._translate(f'services.weather_service.months.{abbrev}')
-            time_str = time_str.replace(abbrev, translated)
-
-        # Remove "at" before time
-        time_str = re.sub(r'\s+at\s+', ' ', time_str)
-
-        return time_str
-
-    def _abbreviate_city_name(self, city: str) -> str:
-        """Abbreviate city names for compact display (same as wx_command).
-
-        Args:
-            city: Full city name.
-
-        Returns:
-            str: Abbreviated city name.
-        """
-        if not city:
-            return city
-
-        city_abbrevs = {
-            "Seattle": "SEA", "Portland": "PDX", "San Francisco": "SF",
-            "Los Angeles": "LA", "New York": "NYC", "Chicago": "CHI",
-            "Houston": "HOU", "Phoenix": "PHX", "Philadelphia": "PHL",
-            "San Antonio": "SAT", "San Diego": "SAN", "Dallas": "DAL",
-            "San Jose": "SJC", "Austin": "AUS", "Jacksonville": "JAX",
-            "Columbus": "CMH", "Fort Worth": "FTW", "Charlotte": "CLT",
-            "Denver": "DEN", "Washington": "DC", "Boston": "BOS",
-            "El Paso": "ELP", "Detroit": "DTW", "Nashville": "BNA",
-            "Oklahoma City": "OKC", "Las Vegas": "LAS", "Memphis": "MEM",
-            "Louisville": "SDF", "Baltimore": "BWI", "Milwaukee": "MKE",
-            "Albuquerque": "ABQ", "Tucson": "TUS", "Fresno": "FAT",
-            "Sacramento": "SAC", "Kansas City": "KC", "Mesa": "MSC",
-            "Atlanta": "ATL", "Omaha": "OMA", "Colorado Springs": "COS",
-            "Raleigh": "RDU", "Virginia Beach": "ORF", "Miami": "MIA",
-            "Oakland": "OAK", "Minneapolis": "MSP", "Tulsa": "TUL",
-            "Cleveland": "CLE", "Wichita": "ICT", "Arlington": "ARL",
-            "Tampa": "TPA", "New Orleans": "MSY", "Honolulu": "HNL",
-            "Anchorage": "ANC", "Bellingham": "BLI", "Everett": "EVE",
-            "Spokane": "GEG", "Tacoma": "TAC", "Yakima": "YKM",
-            "Olympia": "OLM", "Vancouver": "YVR", "Victoria": "YYJ"
-        }
-
-        if city in city_abbrevs:
-            return city_abbrevs[city]
-
-        for full_name, abbrev in city_abbrevs.items():
-            if full_name in city:
-                return abbrev
-
-        words = city.split()
-        if len(words) > 1:
-            abbrev = ''.join([w[0].upper() for w in words[:3]])
-            if len(abbrev) <= 4:
-                return abbrev
-
-        return city[:4].upper() if len(city) >= 4 else city.upper()
+        return result
 
     def _parse_iso_time(self, time_str: str) -> Optional[float]:
         """Parse ISO 8601 timestamp to Unix timestamp.

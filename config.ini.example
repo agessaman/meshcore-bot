@@ -806,11 +806,18 @@ wind_speed_unit = mph
 # Default: inch
 precipitation_unit = inch
 
+# Note: gwx shows visibility in km when temperature_unit = celsius, miles
+# otherwise. The pressure unit follows the language instead (mmHg for ru,
+# hPa elsewhere) since that is a locale convention, not a metric/imperial split.
+
 # How to show daily high/low temperatures (wx, gwx, Weather_Service).
 # Placeholders: {high} {low} {units}  ({units} is °F or °C)
-temperature_high_low_format = H:{high}{units} L:{low}{units}
-temperature_high_only_format = H:{high}{units}
-temperature_low_only_format = L:{low}{units}
+#               {high_label} {low_label}  (localized H/L, per [Localization] language)
+# Keep {high_label}/{low_label} to follow the configured language; hardcode
+# H:/L: only if you want English labels regardless of language.
+temperature_high_low_format = {high_label}:{high}{units} {low_label}:{low}{units}
+temperature_high_only_format = {high_label}:{high}{units}
+temperature_low_only_format = {low_label}:{low}{units}
 # Examples:
 # temperature_high_low_format = ↓{low}°↑{high}{units}
 # temperature_high_low_format = H:{high}{units} L:{low}{units}

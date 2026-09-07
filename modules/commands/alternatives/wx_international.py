@@ -19,7 +19,7 @@ from ...utils import (
     get_nominatim_geocoder,
     rate_limited_nominatim_reverse_sync,
 )
-from ..base_command import BaseCommand, _response_translator
+from ..base_command import BaseCommand
 
 # Import WXSIM parser for custom weather sources
 try:
@@ -37,6 +37,12 @@ from ...clients.mqtt_weather import (
 
 # Multiday: plain digits, 7day/7-day, or suffix form 7d/10d (min 2, max below). Open-Meteo allows up to 16 forecast days.
 GWX_MULTIDAY_MAX_DAYS = 16
+
+MI_TO_KM = 1.609344
+HPA_TO_MMHG = 0.750062
+# Past ~20 mi / 32 km, visibility is reported as unlimited anyway.
+VISIBILITY_CAP_MI = 20
+VISIBILITY_CAP_KM = 32
 
 
 class GlobalWxCommand(BaseCommand):
@@ -108,10 +114,21 @@ class GlobalWxCommand(BaseCommand):
         # Get database manager for geocoding cache
         self.db_manager = bot.db_manager
 
+    @property
+    def metric_distance(self) -> bool:
+        """Whether distances should be shown in kilometers.
+
+        Derived from [Weather] temperature_unit rather than the response
+        language so every unit in one reply agrees: a bot configured for
+        Fahrenheit should not print kilometers just because it answers in
+        Russian.
+        """
+        return self.temperature_unit == 'celsius'
+
     def _format_high_low(self, high: Optional[Union[int, float]], low: Optional[Union[int, float]], temp_symbol: str) -> str:
         """Format high/low using [Weather] temperature_*_format templates."""
         return format_temperature_high_low(self.bot.config, high, low, temp_symbol, self.logger,
-                                           translator=getattr(self.bot, 'translator', None))
+                                           translator=self.response_translator)
 
     def _load_weather_model(self) -> Optional[str]:
         """Load and normalize Open-Meteo model selection from config.
@@ -1080,34 +1097,25 @@ class GlobalWxCommand(BaseCommand):
 
             # Add visibility (already converted to miles above)
             if visibility_mi is not None and visibility_mi > 0:
-                # Determine if the response locale uses metric (km) vs imperial (mi)
-                translator = _response_translator.get() or getattr(self.bot, 'translator', None)
-                base_lang = getattr(translator, 'base_language', 'en') or 'en'
-                metric = base_lang != 'en'
-                if metric:
-                    # Convert miles to kilometers and cap at ~32 km (equivalent to 20 mi)
-                    visibility_km = visibility_mi * 1.609344
-                    visibility_display = int(visibility_km)
-                    if visibility_display > 32:
-                        visibility_display = 32
+                # Beyond ~20 mi visibility is essentially unlimited, so cap the
+                # display at that in whichever unit we are showing.
+                if self.metric_distance:
+                    visibility_display = min(int(visibility_mi * MI_TO_KM), VISIBILITY_CAP_KM)
                     vis_str = self.translate('commands.gwx.visibility_km', value=visibility_display)
                 else:
-                    # Cap visibility at 20 miles for display (beyond that is essentially unlimited)
-                    visibility_display = int(visibility_mi)
-                    if visibility_display > 20:
-                        visibility_display = 20
+                    visibility_display = min(int(visibility_mi), VISIBILITY_CAP_MI)
                     vis_str = self.translate('commands.gwx.visibility', value=visibility_display)
                 conditions.append(vis_str)
 
             # Add pressure (convert from hPa to display format)
             if pressure is not None:
                 pressure_hpa = int(pressure)
-                # Use mmHg for metric (non-English) locales; hPa for imperial/English
-                translator = _response_translator.get() or getattr(self.bot, 'translator', None)
-                base_lang = getattr(translator, 'base_language', 'en') or 'en'
-                if base_lang != 'en':
-                    pressure_mmhg = round(pressure_hpa * 0.750062)
-                    press_str = self.translate('commands.gwx.pressure_mmhg', value=pressure_mmhg)
+                # Which pressure unit reads as normal is a locale convention, not
+                # a metric/imperial split: Russia uses mmHg, most of metric
+                # Europe uses hPa. The catalog names its own.
+                if self.translate('commands.gwx.pressure_unit').strip().lower() == 'mmhg':
+                    press_str = self.translate('commands.gwx.pressure_mmhg',
+                                               value=round(pressure_hpa * HPA_TO_MMHG))
                 else:
                     press_str = self.translate('commands.gwx.pressure', value=pressure_hpa)
                 conditions.append(press_str)
@@ -1115,7 +1123,7 @@ class GlobalWxCommand(BaseCommand):
             # Add conditions to weather string if space allows
             # Reserve space for forecast data (high/low and tomorrow)
             conditions_max_length = max_length - 80  # Reserve ~80 chars for forecast data
-            if conditions and len(weather) < conditions_max_length:
+            if conditions and self._count_display_width(weather) < conditions_max_length:
                 weather += " " + " ".join(conditions)
 
             # Add forecast high/low for today (without repeating period name since current conditions already show it)
@@ -1398,11 +1406,11 @@ class GlobalWxCommand(BaseCommand):
         for i in range(len(dir_emojis) - 1):
             if dir_emojis[i][0] <= degrees < dir_emojis[i + 1][0]:
                 emoji, key = dir_emojis[i][1], dir_emojis[i][2]
-                translated = self.translate(f"services.weather_service.wind_directions.{key}")
+                translated = self.translate(f"common.wind_directions.{key}")
                 return f"{emoji}{translated}"
 
         emoji, key = dir_emojis[-1][1], dir_emojis[-1][2]
-        translated = self.translate(f"services.weather_service.wind_directions.{key}")
+        translated = self.translate(f"common.wind_directions.{key}")
         return f"{emoji}{translated}"
 
     def _get_weather_description(self, code: int) -> str:

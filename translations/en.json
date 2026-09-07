@@ -223,6 +223,7 @@
       "error": "Error getting weather data: {error}",
       "alerts": "{count} alerts: {text}",
       "tomorrow_not_available": "Tomorrow's forecast not available",
+      "hourly_not_available": "Hourly forecast not available",
       "tomorrow_error": "Error formatting tomorrow's forecast",
       "multiday_not_available": "{num_days}-day forecast not available",
       "multiday_error": "Error formatting {num_days}-day forecast",
@@ -232,41 +233,41 @@
       "mqtt_weather_stale": "MQTT weather data is too old",
       "mqtt_weather_payload_error": "MQTT weather payload error: {detail}"
     },
-  "gwx": {
-    "description": "Get weather for any worldwide location (use: gwx Tokyo)",
-    "help": "Usage: gwx <location> - Weather for any location worldwide (city, country, or coordinates)",
-    "usage": "Usage: gwx <location> - Example: gwx Tokyo or gwx Paris, France",
-    "error_fetching": "Error fetching weather data",
-    "error_fetching_api": "Error fetching weather data from Open-Meteo",
-    "no_location": "Could not find location '{location}'",
-    "error": "Error fetching weather data: {error}",
-    "tomorrow_not_available": "Tomorrow forecast not available",
-    "tomorrow_error": "Error formatting tomorrow forecast",
-    "multiday_not_available": "{num_days}-day forecast not available",
-    "multiday_error": "Error formatting {num_days}-day forecast",
-    "mqtt_forecast_not_supported": "Extended forecast not supported for MQTT weather sources",
-    "mqtt_weather_no_subscriber": "MQTT weather subscriber not active",
-    "mqtt_weather_no_data": "MQTT weather message not yet received",
-    "mqtt_weather_stale": "MQTT weather data is stale",
-    "mqtt_weather_payload_error": "MQTT weather payload error: {detail}",
-    "feels_like": "(feels {value}{unit})",
-    "humidity": "{value}%RH",
-    "dew_point": "💧{value}{unit}",
-    "visibility": "👁️{value}mi",
-    "visibility_km": "👁️{value}km",
-    "pressure": "📊{value}hPa",
-    "pressure_mmhg": "📊{value}мм рт. ст.",
-    "gust": "G{value}",
-    "day_abbrev": {
-      "Monday": "M",
-      "Tuesday": "T",
-      "Wednesday": "W",
-      "Thursday": "Th",
-      "Friday": "F",
-      "Saturday": "Sa",
-      "Sunday": "Su"
-    },
-    "periods": {
+    "gwx": {
+      "description": "Get weather information for any global location (usage: gwx Tokyo)",
+      "help": "Usage: gwx <location> - Get weather for any global location (city, country, or coordinates)",
+      "usage": "Usage: gwx <location> - Example: gwx Tokyo or gwx Paris, France",
+      "error_fetching": "Error fetching weather data",
+      "error_fetching_api": "Error fetching weather data from Open-Meteo",
+      "no_location": "Could not find location '{location}'",
+      "error": "Error getting weather data: {error}",
+      "tomorrow_not_available": "Tomorrow's forecast not available",
+      "tomorrow_error": "Error formatting tomorrow's forecast",
+      "multiday_not_available": "{num_days}-day forecast not available",
+      "multiday_error": "Error formatting {num_days}-day forecast",
+      "mqtt_forecast_not_supported": "Extended forecast is not available for MQTT weather sources",
+      "mqtt_weather_no_subscriber": "MQTT weather subscriber is not active (enable [MqttWeather] and custom.mqtt_weather.* topics)",
+      "mqtt_weather_no_data": "No MQTT weather message received for this topic yet",
+      "mqtt_weather_stale": "MQTT weather data is too old",
+      "mqtt_weather_payload_error": "MQTT weather payload error: {detail}",
+      "feels_like": "(feels {value}{unit})",
+      "humidity": "{value}%RH",
+      "dew_point": "💧{value}{unit}",
+      "visibility": "👁️{value}mi",
+      "visibility_km": "👁️{value}km",
+      "pressure": "📊{value}hPa",
+      "pressure_mmhg": "📊{value}mmHg",
+      "gust": "G{value}",
+      "day_abbrev": {
+        "Monday": "M",
+        "Tuesday": "T",
+        "Wednesday": "W",
+        "Thursday": "Th",
+        "Friday": "F",
+        "Saturday": "Sa",
+        "Sunday": "Su"
+      },
+      "periods": {
         "today": "Today",
         "tonight": "Tonight",
         "tomorrow": "Tomorrow"
@@ -309,7 +310,8 @@
         "thunderstorms": "⚠️ Thunderstorms",
         "heavy_snow": "⚠️ Heavy snow",
         "high_winds": "⚠️ High winds ({wind_speed} mph)"
-      }
+      },
+      "pressure_unit": "hpa"
     },
     "sports": {
       "description": "Get sports scores and schedules (usage: sports [team/league])",
@@ -1423,6 +1425,39 @@
         "November": "November",
         "December": "December"
       }
+    },
+    "alerts": {
+      "event_types": {
+        "Warning": "Warn",
+        "Watch": "Watch",
+        "Advisory": "Adv",
+        "Statement": "Stmt"
+      },
+      "til": "til",
+      "by": "by",
+      "from": "from",
+      "am": "AM",
+      "pm": "PM",
+      "time_12h": "{hour}{meridiem}",
+      "date_12h": "{month} {day} {time}"
+    },
+    "wind_directions": {
+      "N": "N",
+      "NNE": "NNE",
+      "NE": "NE",
+      "ENE": "ENE",
+      "E": "E",
+      "ESE": "ESE",
+      "SE": "SE",
+      "SSE": "SSE",
+      "S": "S",
+      "SSW": "SSW",
+      "SW": "SW",
+      "WSW": "WSW",
+      "W": "W",
+      "WNW": "WNW",
+      "NW": "NW",
+      "NNW": "NNW"
     }
   },
   "categories": {
@@ -1489,48 +1524,6 @@
         "95": "Thunderstorm",
         "96": "Thunderstorm w/Hail",
         "99": "Severe Thunderstorm"
-      },
-      "event_types": {
-        "Warning": "Warn",
-        "Watch": "Watch",
-        "Advisory": "Adv",
-        "Statement": "Stmt"
-      },
-      "months": {
-        "Jan": "Jan",
-        "Feb": "Feb",
-        "Mar": "Mar",
-        "Apr": "Apr",
-        "May": "May",
-        "Jun": "Jun",
-        "Jul": "Jul",
-        "Aug": "Aug",
-        "Sep": "Sep",
-        "Oct": "Oct",
-        "Nov": "Nov",
-        "Dec": "Dec"
-      },
-      "am": "AM",
-      "pm": "PM",
-      "til": "til",
-      "by": "by",
-      "wind_directions": {
-        "N": "N",
-        "NNE": "NNE",
-        "NE": "NE",
-        "ENE": "ENE",
-        "E": "E",
-        "ESE": "ESE",
-        "SE": "SE",
-        "SSE": "SSE",
-        "S": "S",
-        "SSW": "SSW",
-        "SW": "SW",
-        "WSW": "WSW",
-        "W": "W",
-        "WNW": "WNW",
-        "NW": "NW",
-        "NNW": "NNW"
       },
       "wind_speed_units": {
         "ms": "m/s",

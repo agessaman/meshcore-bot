@@ -146,6 +146,7 @@ strict_optional = true
 # New modules written with full type annotations get strict treatment.
 [[tool.mypy.overrides]]
 module = [
+    "modules.alert_format",
     "modules.commands.schedule_command",
     "modules.service_plugins.webhook_service",
     "modules.service_plugins.base_service",

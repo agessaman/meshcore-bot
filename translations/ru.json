@@ -1,46 +1,182 @@
 {
   "keywords": {
-    "help": ["help"],
-    "ping": ["ping"],
-    "test": ["test", "t"],
-    "wx": ["wx", "weather", "wxa", "wxalert"],
-    "gwx": ["gwx", "globalweather", "gwxa"],
-    "aqi": ["aqi", "air", "airquality", "air_quality"],
-    "rain": ["rain", "nowcast", "snow"],
-    "aurora": ["aurora", "kp"],
-    "solar": ["solar"],
-    "sun": ["sun"],
-    "moon": ["moon"],
-    "hfcond": ["hfcond", "hf"],
-    "satpass": ["satpass"],
-    "sports": ["sports", "score", "scores"],
-    "worldcup": ["wc", "worldcup"],
-    "stats": ["stats"],
-    "channels": ["channels", "channel"],
-    "path": ["path", "decode", "route"],
-    "prefix": ["prefix", "repeater", "lookup"],
-    "repeater": ["repeater", "repeaters", "rp"],
-    "solarforecast": ["sf", "solarforecast"],
-    "dice": ["dice"],
-    "roll": ["roll"],
-    "joke": ["joke", "jokes"],
-    "dadjoke": ["dadjoke", "dad joke", "dadjokes", "dad jokes"],
-    "catfact": ["catfact", "cat", "meow", "purr", "kitten"],
-    "hacker": ["hacker", "sudo", "ps aux", "grep", "ls -l", "ls -la", "echo $PATH"],
-    "hello": [
-      "hello", "hi", "hey", "howdy", "greetings", "salutations",
-      "good morning", "good afternoon", "good evening", "good night",
-      "yo", "sup", "whats up", "what's up", "morning", "afternoon",
-      "evening", "night", "gday", "g'day", "hola", "bonjour", "ciao",
-      "namaste", "aloha", "shalom", "konnichiwa", "guten tag",
-      "buenos dias", "buenas tardes", "buenas noches"
+    "help": [
+      "help"
     ],
-    "webviewer": ["webviewer", "web", "viewer", "wv"],
-    "cmd": ["cmd", "commands"],
-    "advert": ["advert"],
-    "neighbors": ["neighbors", "neighbours"],
-    "multitest": ["multitest", "mt"],
-    "trace": ["trace", "tracer"]
+    "ping": [
+      "ping"
+    ],
+    "test": [
+      "test",
+      "t"
+    ],
+    "wx": [
+      "wx",
+      "weather",
+      "wxa",
+      "wxalert"
+    ],
+    "gwx": [
+      "gwx",
+      "globalweather",
+      "gwxa"
+    ],
+    "aqi": [
+      "aqi",
+      "air",
+      "airquality",
+      "air_quality"
+    ],
+    "rain": [
+      "rain",
+      "nowcast",
+      "snow"
+    ],
+    "aurora": [
+      "aurora",
+      "kp"
+    ],
+    "solar": [
+      "solar"
+    ],
+    "sun": [
+      "sun"
+    ],
+    "moon": [
+      "moon"
+    ],
+    "hfcond": [
+      "hfcond",
+      "hf"
+    ],
+    "satpass": [
+      "satpass"
+    ],
+    "sports": [
+      "sports",
+      "score",
+      "scores"
+    ],
+    "worldcup": [
+      "wc",
+      "worldcup"
+    ],
+    "stats": [
+      "stats"
+    ],
+    "channels": [
+      "channels",
+      "channel"
+    ],
+    "path": [
+      "path",
+      "decode",
+      "route"
+    ],
+    "prefix": [
+      "prefix",
+      "repeater",
+      "lookup"
+    ],
+    "repeater": [
+      "repeater",
+      "repeaters",
+      "rp"
+    ],
+    "solarforecast": [
+      "sf",
+      "solarforecast"
+    ],
+    "dice": [
+      "dice"
+    ],
+    "roll": [
+      "roll"
+    ],
+    "joke": [
+      "joke",
+      "jokes"
+    ],
+    "dadjoke": [
+      "dadjoke",
+      "dad joke",
+      "dadjokes",
+      "dad jokes"
+    ],
+    "catfact": [
+      "catfact",
+      "cat",
+      "meow",
+      "purr",
+      "kitten"
+    ],
+    "hacker": [
+      "hacker",
+      "sudo",
+      "ps aux",
+      "grep",
+      "ls -l",
+      "ls -la",
+      "echo $PATH"
+    ],
+    "hello": [
+      "hello",
+      "hi",
+      "hey",
+      "howdy",
+      "greetings",
+      "salutations",
+      "good morning",
+      "good afternoon",
+      "good evening",
+      "good night",
+      "yo",
+      "sup",
+      "whats up",
+      "what's up",
+      "morning",
+      "afternoon",
+      "evening",
+      "night",
+      "gday",
+      "g'day",
+      "hola",
+      "bonjour",
+      "ciao",
+      "namaste",
+      "aloha",
+      "shalom",
+      "konnichiwa",
+      "guten tag",
+      "buenos dias",
+      "buenas tardes",
+      "buenas noches"
+    ],
+    "webviewer": [
+      "webviewer",
+      "web",
+      "viewer",
+      "wv"
+    ],
+    "cmd": [
+      "cmd",
+      "commands"
+    ],
+    "advert": [
+      "advert"
+    ],
+    "neighbors": [
+      "neighbors",
+      "neighbours"
+    ],
+    "multitest": [
+      "multitest",
+      "mt"
+    ],
+    "trace": [
+      "trace",
+      "tracer"
+    ]
   },
   "commands": {
     "help": {
@@ -64,10 +200,22 @@
       "description": "Получить погоду по почтовому индексу (использование: wx 12345)",
       "usage": "Использование: wx <индекс|город> - Пример: wx 12345 или wx seattle или wx paris, tx",
       "subcommands": [
-        {"name": "tomorrow", "description": "Прогноз на завтра"},
-        {"name": "Nd", "description": "Прогноз на N дней (напр. 7d, 10d)"},
-        {"name": "hourly", "description": "Почасовой прогноз"},
-        {"name": "alerts", "description": "Полныеweather-оповещения"}
+        {
+          "name": "tomorrow",
+          "description": "Прогноз на завтра"
+        },
+        {
+          "name": "Nd",
+          "description": "Прогноз на N дней (напр. 7d, 10d)"
+        },
+        {
+          "name": "hourly",
+          "description": "Почасовой прогноз"
+        },
+        {
+          "name": "alerts",
+          "description": "Полныеweather-оповещения"
+        }
       ],
       "error_fetching": "Ошибка получения данных погоды из NOAA",
       "no_location_zipcode": "Не удалось найти локацию для индекса {location}",
@@ -84,76 +232,76 @@
       "mqtt_weather_stale": "Данные MQTT-погоды слишком старые",
       "mqtt_weather_payload_error": "Ошибка полезной нагрузки MQTT-погоды: {detail}"
     },
-  "gwx": {
-    "description": "Получить погоду для любой точки мира (использование: gwx Tokyo)",
-    "help": "Использование: gwx <локация> - Погода для любой точки мира (город, страна или координаты)",
-    "usage": "Использование: gwx <локация> - Пример: gwx Tokyo или gwx Paris, France",
-    "error_fetching": "Ошибка получения данных погоды",
-    "error_fetching_api": "Ошибка получения данных погоды из Open-Meteo",
-    "no_location": "Не удалось найти локацию '{location}'",
-    "error": "Ошибка получения данных погоды: {error}",
-    "tomorrow_not_available": "Прогноз на завтра недоступен",
-    "tomorrow_error": "Ошибка форматирования прогноза на завтра",
-    "multiday_not_available": "Прогноз на {num_days} дней недоступен",
-    "multiday_error": "Ошибка форматирования прогноза на {num_days} дней",
-    "mqtt_forecast_not_supported": "Расширенный прогноз недоступен для MQTT-источников погоды",
-    "mqtt_weather_no_subscriber": "MQTT-подписчик погоды не активен",
-    "mqtt_weather_no_data": "Сообщение MQTT-погоды ещё не получено",
-    "mqtt_weather_stale": "Данные MQTT-погоды устарели",
-    "mqtt_weather_payload_error": "Ошибка полезной нагрузки MQTT: {detail}",
-    "feels_like": "(ош.{value}{unit})",
-    "humidity": "{value}%",
-    "dew_point": "💧{value}{unit}",
-    "visibility": "👁️{value}км",
-    "visibility_km": "👁️{value}км",
-    "pressure": "📊{value}гПа",
-    "pressure_mmhg": "📊{value} мм рт. ст.",
-    "gust": "G{value}",
-    "day_abbrev": {
-      "Monday": "Пн",
-      "Tuesday": "Вт",
-      "Wednesday": "Ср",
-      "Thursday": "Чт",
-      "Friday": "Пт",
-      "Saturday": "Сб",
-      "Sunday": "Вс"
-    },
-    "periods": {
-      "today": "Сегодня",
-      "tonight": "Сегодня ночью",
-      "tomorrow": "Завтра"
-    },
-  "weather_descriptions": {
-    "0": "Ясно",
-    "1": "Преим.ясно",
-    "2": "Перем.облач.",
-    "3": "Пасмурно",
-    "45": "Туман",
-    "48": "Туман",
-    "51": "Лёгк.морось",
-    "53": "Морось",
-    "55": "Сильн.морось",
-    "56": "Лёгк.лед.морось",
-    "57": "Лед.морось",
-    "61": "Небол.дождь",
-    "63": "Дождь",
-    "65": "Сильн.дождь",
-    "66": "Слаб.лед.дождь",
-    "67": "Лед.дождь",
-    "71": "Небол.снег",
-    "73": "Снег",
-    "75": "Сильн.снег",
-    "77": "Снеж.зерна",
-    "80": "Небол.ливень",
-    "81": "Ливень",
-    "82": "Сильн.ливень",
-    "85": "Слаб.снеж.ливень",
-    "86": "Снеж.ливень",
-    "95": "Гроза",
-    "96": "Гроза+град",
-    "99": "Сильн.гроза",
-    "unknown": "Неизвестно"
-  },
+    "gwx": {
+      "description": "Получить погоду для любой точки мира (использование: gwx Tokyo)",
+      "help": "Использование: gwx <локация> - Погода для любой точки мира (город, страна или координаты)",
+      "usage": "Использование: gwx <локация> - Пример: gwx Tokyo или gwx Paris, France",
+      "error_fetching": "Ошибка получения данных погоды",
+      "error_fetching_api": "Ошибка получения данных погоды из Open-Meteo",
+      "no_location": "Не удалось найти локацию '{location}'",
+      "error": "Ошибка получения данных погоды: {error}",
+      "tomorrow_not_available": "Прогноз на завтра недоступен",
+      "tomorrow_error": "Ошибка форматирования прогноза на завтра",
+      "multiday_not_available": "Прогноз на {num_days} дней недоступен",
+      "multiday_error": "Ошибка форматирования прогноза на {num_days} дней",
+      "mqtt_forecast_not_supported": "Расширенный прогноз недоступен для MQTT-источников погоды",
+      "mqtt_weather_no_subscriber": "MQTT-подписчик погоды не активен",
+      "mqtt_weather_no_data": "Сообщение MQTT-погоды ещё не получено",
+      "mqtt_weather_stale": "Данные MQTT-погоды устарели",
+      "mqtt_weather_payload_error": "Ошибка полезной нагрузки MQTT: {detail}",
+      "feels_like": "(ош.{value}{unit})",
+      "humidity": "{value}%",
+      "dew_point": "💧{value}{unit}",
+      "visibility": "👁️{value} миль",
+      "visibility_km": "👁️{value}км",
+      "pressure": "📊{value}гПа",
+      "pressure_mmhg": "📊{value} мм рт. ст.",
+      "gust": "G{value}",
+      "day_abbrev": {
+        "Monday": "Пн",
+        "Tuesday": "Вт",
+        "Wednesday": "Ср",
+        "Thursday": "Чт",
+        "Friday": "Пт",
+        "Saturday": "Сб",
+        "Sunday": "Вс"
+      },
+      "periods": {
+        "today": "Сегодня",
+        "tonight": "Сегодня ночью",
+        "tomorrow": "Завтра"
+      },
+      "weather_descriptions": {
+        "0": "Ясно",
+        "1": "Преим.ясно",
+        "2": "Перем.облач.",
+        "3": "Пасмурно",
+        "45": "Туман",
+        "48": "Туман",
+        "51": "Лёгк.морось",
+        "53": "Морось",
+        "55": "Сильн.морось",
+        "56": "Лёгк.лед.морось",
+        "57": "Лед.морось",
+        "61": "Небол.дождь",
+        "63": "Дождь",
+        "65": "Сильн.дождь",
+        "66": "Слаб.лед.дождь",
+        "67": "Лед.дождь",
+        "71": "Небол.снег",
+        "73": "Снег",
+        "75": "Сильн.снег",
+        "77": "Снеж.зерна",
+        "80": "Небол.ливень",
+        "81": "Ливень",
+        "82": "Сильн.ливень",
+        "85": "Слаб.снеж.ливень",
+        "86": "Снеж.ливень",
+        "95": "Гроза",
+        "96": "Гроза+град",
+        "99": "Сильн.гроза",
+        "unknown": "Неизвестно"
+      },
       "warnings": {
         "extreme_heat": "⚠️ Экстремальная жара",
         "extreme_cold": "⚠️ Экстремальный холод",
@@ -161,7 +309,8 @@
         "thunderstorms": "⚠️ Грозы",
         "heavy_snow": "⚠️ Сильный снегопад",
         "high_winds": "⚠️ Сильный ветер ({wind_speed} м/ч)"
-      }
+      },
+      "pressure_unit": "mmhg"
     },
     "sports": {
       "description": "Получить спортивные результаты (использование: sports [команда/лига])",
@@ -192,10 +341,22 @@
       "description": "Статистика за 24 часа. 'stats messages', 'stats channels', 'stats paths' или 'stats adverts'.",
       "help": "Статистика за 24ч. 'stats' (базовая), 'stats messages', 'stats channels', 'stats paths', 'stats adverts'",
       "subcommands": [
-        {"name": "messages", "description": "Статистика сообщений пользователей"},
-        {"name": "channels", "description": "Активность каналов"},
-        {"name": "paths", "description": "Самые длинные маршруты"},
-        {"name": "adverts", "description": "Топ узлов по advert-пакетам"}
+        {
+          "name": "messages",
+          "description": "Статистика сообщений пользователей"
+        },
+        {
+          "name": "channels",
+          "description": "Активность каналов"
+        },
+        {
+          "name": "paths",
+          "description": "Самые длинные маршруты"
+        },
+        {
+          "name": "adverts",
+          "description": "Топ узлов по advert-пакетам"
+        }
       ],
       "disabled": "Команда stats отключена",
       "unknown_subcommand": "Неизвестно: {subcommand}. Используйте 'stats', 'stats messages', 'stats channels', 'stats paths' или 'stats adverts'",
@@ -338,7 +499,12 @@
     "airplanes": {
       "description": "Самолёты над головой",
       "usage": "Использование: airplanes [локация] [опции]",
-      "subcommands": [{"name": "overhead", "description": "Ближайший самолёт над головой"}],
+      "subcommands": [
+        {
+          "name": "overhead",
+          "description": "Ближайший самолёт над головой"
+        }
+      ],
       "no_location": "Нет локации. Укажите координаты: airplanes 47.6,-122.3",
       "overhead_no_location": "Локация неизвестна. Отправьте 'advert' или укажите координаты.",
       "no_aircraft": "Самолёты в радиусе {radius}мм не найдены",
@@ -513,7 +679,12 @@
     "channels": {
       "description": "Список каналов",
       "help": "Список каналов. 'channels' - основные, 'channels list' - по категориям.",
-      "subcommands": [{"name": "list", "description": "Список каналов в категории"}],
+      "subcommands": [
+        {
+          "name": "list",
+          "description": "Список каналов в категории"
+        }
+      ],
       "no_channels_for_category": "Каналы для '{category}' не настроены. Используйте 'channels'.",
       "no_channels_configured": "Каналы не настроены. Обратитесь к администратору.",
       "error_retrieving_channels": "Ошибка получения каналов: {error}",
@@ -605,23 +776,84 @@
     "temp_low_label": "Н",
     "date_time": {
       "day_abbreviations": {
-        "Mon": "Пн", "Tue": "Вт", "Wed": "Ср", "Thu": "Чт", "Fri": "Пт", "Sat": "Сб", "Sun": "Вс"
+        "Mon": "Пн",
+        "Tue": "Вт",
+        "Wed": "Ср",
+        "Thu": "Чт",
+        "Fri": "Пт",
+        "Sat": "Сб",
+        "Sun": "Вс"
       },
       "days": {
-        "Monday": "Понедельник", "Tuesday": "Вторник", "Wednesday": "Среда",
-        "Thursday": "Четверг", "Friday": "Пятница", "Saturday": "Суббота", "Sunday": "Воскресенье"
+        "Monday": "Понедельник",
+        "Tuesday": "Вторник",
+        "Wednesday": "Среда",
+        "Thursday": "Четверг",
+        "Friday": "Пятница",
+        "Saturday": "Суббота",
+        "Sunday": "Воскресенье"
       },
       "month_abbreviations": {
-        "Jan": "янв", "Feb": "фев", "Mar": "мар", "Apr": "апр",
-        "May": "май", "Jun": "июн", "Jul": "июл", "Aug": "авг",
-        "Sep": "сен", "Oct": "окт", "Nov": "ноя", "Dec": "дек"
+        "Jan": "янв",
+        "Feb": "фев",
+        "Mar": "мар",
+        "Apr": "апр",
+        "May": "май",
+        "Jun": "июн",
+        "Jul": "июл",
+        "Aug": "авг",
+        "Sep": "сен",
+        "Oct": "окт",
+        "Nov": "ноя",
+        "Dec": "дек"
       },
       "months": {
-        "January": "Январь", "February": "Февраль", "March": "Март",
-        "April": "Апрель", "May": "Май", "June": "Июнь",
-        "July": "Июль", "August": "Август", "September": "Сентябрь",
-        "October": "Октябрь", "November": "Ноябрь", "December": "Декабрь"
+        "January": "Январь",
+        "February": "Февраль",
+        "March": "Март",
+        "April": "Апрель",
+        "May": "Май",
+        "June": "Июнь",
+        "July": "Июль",
+        "August": "Август",
+        "September": "Сентябрь",
+        "October": "Октябрь",
+        "November": "Ноябрь",
+        "December": "Декабрь"
       }
+    },
+    "alerts": {
+      "event_types": {
+        "Warning": "Предупр.",
+        "Watch": "Наблюд.",
+        "Advisory": "Реком.",
+        "Statement": "Заявл."
+      },
+      "til": "до",
+      "by": "от",
+      "from": "с",
+      "am": "утра",
+      "pm": "дня",
+      "time_12h": "{hour} {meridiem}",
+      "date_12h": "{month} {day} {time}"
+    },
+    "wind_directions": {
+      "N": "С",
+      "NNE": "ССВ",
+      "NE": "СВ",
+      "ENE": "ВСВ",
+      "E": "В",
+      "ESE": "ВЮВ",
+      "SE": "ЮВ",
+      "SSE": "ЮЮВ",
+      "S": "Ю",
+      "SSW": "ЮЮЗ",
+      "SW": "ЮЗ",
+      "WSW": "ЗЮЗ",
+      "W": "З",
+      "WNW": "ЗСЗ",
+      "NW": "СЗ",
+      "NNW": "ССЗ"
     }
   },
   "categories": {
@@ -688,39 +920,6 @@
         "95": "Гроза",
         "96": "Гроза+град",
         "99": "Сильн.гроза"
-      },
-      "event_types": {
-        "Warning": "Предупреждение",
-        "Watch": "Наблюдение",
-        "Advisory": "Рекомендация",
-        "Statement": "Заявление"
-      },
-      "months": {
-        "Jan": "янв", "Feb": "фев", "Mar": "мар", "Apr": "апр",
-        "May": "май", "Jun": "июн", "Jul": "июл", "Aug": "авг",
-        "Sep": "сен", "Oct": "окт", "Nov": "ноя", "Dec": "дек"
-      },
-      "am": "утра",
-      "pm": "дня",
-      "til": "до",
-      "by": "от",
-      "wind_directions": {
-        "N": "С",
-        "NNE": "ССВ",
-        "NE": "СВ",
-        "ENE": "ВСВ",
-        "E": "В",
-        "ESE": "ВЮВ",
-        "SE": "ЮВ",
-        "SSE": "ЮЮВ",
-        "S": "Ю",
-        "SSW": "ЮЮЗ",
-        "SW": "ЮЗ",
-        "WSW": "ЗЮЗ",
-        "W": "З",
-        "WNW": "ЗСЗ",
-        "NW": "СЗ",
-        "NNW": "ССЗ"
       },
       "wind_speed_units": {
         "ms": "м/с",
