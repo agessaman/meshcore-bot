@@ -644,10 +644,15 @@ log_max_bytes = 5242880
 # log_backup_count: number of rotated backup files to keep (e.g. meshcore_bot.log.1 … .3)
 log_backup_count = 3
 [External_Data]
-# URL shortener API base (v.gd / is.gd-compatible create.php). Default: https://v.gd
-# See https://v.gd/apishorteningreference.php
+# URL shortener service: gd (v.gd / is.gd-compatible) or shlink. Default: gd
+short_url_website_service = gd
+# URL shortener API base. For gd this is the create.php host (default https://v.gd,
+# see https://v.gd/apishorteningreference.php). For shlink it is your own instance's
+# base URL and is REQUIRED -- there is no default, and the bot refuses to shorten
+# rather than send your API key to a host you did not configure.
 short_url_website = https://v.gd
-# Optional API key for alternate shortener hosts (unused for public v.gd/is.gd)
+# API key. Optional for gd (unused for public v.gd/is.gd, appended as ?key= for
+# alternate hosts). Required for shlink, where it is sent as an X-Api-Key header.
 short_url_website_api_key = 
 
 # Weather API key (future feature)
@@ -1050,6 +1055,8 @@ enable_p_shortcut = true
 # Only the first RF chunk includes the prefix when the reply is split.
 # Example: @[{sender}]
 # Example: {path_distance|prefix_if_nonempty:\U0001F4CF }
+# Filter arguments may be double-quoted to end them explicitly and allow further
+# filters afterwards: {path_distance|prefix_if_nonempty:"\U0001F4CF "|hops_min:1}
 reply_prefix =
 
 # Bytes per hop required before resolving repeater names from the database.
@@ -1564,7 +1571,9 @@ require_path_bytes_failure_response =
 # {firstlast_distance} requires at least two path nodes with stored repeater/roomserver coordinates.
 # Pipe filters (feed-style), e.g. only show cumulative path distance when hops are multibyte (2+ bytes per hop):
 # response_format = ack @[{sender}]{phrase_part} | {connection_info}{path_distance|pathbytes_min:2|prefix_if_nonempty: | Path Dist: }| F/L Dist: {firstlast_distance} | {elapsed} | Rec: {timestamp}
-# Filters: pathbytes_min:N (alias pathbytes:N) clears the field unless bytes_per_hop >= N; hops_min:N clears it unless the message travelled at least N hops; prefix_if_nonempty:L prepends literal L when value non-empty after prior filters. If L contains |, put prefix_if_nonempty last in that placeholder (it consumes the rest of the chain as its literal).
+# Filters: pathbytes_min:N (alias pathbytes:N) clears the field unless bytes_per_hop >= N; hops_min:N clears it unless the message travelled at least N hops; prefix_if_nonempty:L prepends literal L when value non-empty after prior filters; if_nonempty:L (alias if_notempty:L) replaces the value with literal L when non-empty; shorten (alias shorten_url) runs the value through the [External_Data] shortener, falling back to the original on failure.
+# A filter argument may be double-quoted, which ends it at the closing quote so more filters can follow, and may contain nested {field} placeholders: prefix_if_nonempty:"Dist {sender}: "|hops_min:1
+# An UNQUOTED prefix_if_nonempty:L consumes the rest of the chain as its literal, so L may contain | but the filter must come last in that placeholder.
 # hops_min asks about the route, pathbytes_min about how it is encoded. Use hops_min:1 to drop a
 # distance clause on a direct message without also dropping a measurable one-byte multi-hop path.
 # The distance placeholders render "N/A" on a direct message, which is non-empty, so
