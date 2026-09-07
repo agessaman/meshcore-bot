@@ -1098,3 +1098,52 @@ class TestGetMaxMessageLength:
             m_len = mgr.get_max_message_length(msg)
             b_len = cmd.get_max_message_length(msg)
             assert m_len == b_len, (bot_name, username, is_dm, reply_scope, m_len, b_len)
+
+
+class TestExecuteCommandsErrorPath:
+    """The `except Exception` branch in execute_commands (PR #243)."""
+
+    @staticmethod
+    def _failing_command(exc):
+        command = MagicMock()
+        command.is_channel_allowed = Mock(return_value=True)
+        command.should_execute = Mock(return_value=True)
+        command.get_response_format = Mock(return_value=None)
+        command.can_execute_now = Mock(return_value=True)
+        command.requires_internet = False
+        command.cooldown_seconds = 0
+        command.last_response = None
+        command._record_execution = Mock()
+        command.execute = AsyncMock(side_effect=exc)
+        command.translate = Mock(side_effect=lambda key, **kw: f"{key}: {kw['error']}")
+        return command
+
+    @pytest.mark.asyncio
+    async def test_failure_is_logged_with_traceback(self, cm_bot):
+        manager = make_manager(cm_bot, commands={"boom": self._failing_command(RuntimeError("kaboom"))})
+        manager.send_response = AsyncMock(return_value=True)
+
+        await manager.execute_commands(mock_message(content="!boom", is_dm=True))
+
+        # logger.exception, not logger.error — the traceback is the whole point.
+        cm_bot.logger.exception.assert_called_once()
+        assert "kaboom" in cm_bot.logger.exception.call_args.args[0]
+
+    @pytest.mark.asyncio
+    async def test_mesh_reply_carries_only_the_exception_text(self, cm_bot):
+        """The reply goes out over RF, so it must not carry a filesystem path.
+
+        An earlier revision of #243 interpolated `file:line` from the traceback into
+        both the log line and this reply, which leaked the install path over the air
+        and spent airtime on the error path, where retries are most likely.
+        """
+        command = self._failing_command(RuntimeError("kaboom"))
+        manager = make_manager(cm_bot, commands={"boom": command})
+        manager.send_response = AsyncMock(return_value=True)
+
+        await manager.execute_commands(mock_message(content="!boom", is_dm=True))
+
+        assert command.translate.call_args.kwargs["error"] == "kaboom"
+        sent = manager.send_response.await_args.args[1]
+        assert sent == "errors.execution_error: kaboom"
+        assert ".py" not in sent and "command_manager" not in sent

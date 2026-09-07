@@ -7,7 +7,6 @@ Handles all bot commands, keyword matching, and response generation
 import asyncio
 import random
 import time
-import traceback
 from dataclasses import dataclass
 from datetime import datetime
 from hashlib import sha256
@@ -2174,16 +2173,11 @@ class CommandManager:
                             self.logger.debug(f"Failed to capture command data for web viewer: {e}")
 
                 except Exception as e:
-                    tb = traceback.TracebackException.from_exception(e)
-
-                    # Grab the last frame in the stack trace (where the error occurred)
-                    last_frame = list(tb.stack)[-1]
-                    file_name = last_frame.filename
-                    line_number = last_frame.lineno
-                    err_desc = f"{e} ({file_name}:{line_number})"
-                    self.logger.error(f"Error executing command '{command_name}': {err_desc}")
+                    # exception() carries the traceback into the log; the reply below stays
+                    # str(e) so no filesystem path or extra airtime goes out over the mesh.
+                    self.logger.exception(f"Error executing command '{command_name}': {e}")
                     # Send error message to user
-                    error_msg = command.translate('errors.execution_error', command=command_name, error=err_desc)
+                    error_msg = command.translate('errors.execution_error', command=command_name, error=str(e))
                     await self.send_response(message, error_msg)
 
                     # Record command execution in stats database (error response was sent)
