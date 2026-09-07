@@ -262,6 +262,11 @@ semantic versioning.
   that had never been time-synced was the *first* candidate for eviction. Unknown
   staleness is no longer grounds for removal.
 
+- Command execution failures log a full traceback instead of a bare exception
+  message, so the failing file and line are visible without reproducing the error.
+  The reply sent over the mesh is unchanged — it still carries only the exception
+  text, with no filesystem path and no extra airtime.
+
 ### Changed
 
 - Response templates are parsed by a character-by-character state machine rather
