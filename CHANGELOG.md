@@ -8,11 +8,6 @@ semantic versioning.
 
 ### Fixed
 
-- Refactor response_template parsing to use finite state machine when processing
-  templates adding additional flexibility such as the use of nested fields. Added
-  support for shlink to External_Data configuration. Added url_shortener filter and
-  if_notempty filter to response_template.
-
 - `path` no longer answers "No path information available in current message" on a
   busy mesh (#255). Verifying a channel message against the RF cache only ever
   checked the newest row, which assumes the RF log row and the decoded CHAN event
@@ -159,12 +154,39 @@ semantic versioning.
 
 ### Changed
 
+- Response templates are parsed by a character-by-character state machine rather
+  than by splitting on delimiters. Placeholders can now nest (`{"Dist: {d|hops_min:1}"}`)
+  and filter arguments can be quoted. Field values are substituted into the output
+  and never re-scanned, so a sender-supplied phrase still cannot inject a placeholder.
+
 - Web viewer navigation is grouped: Radio, Scheduled Messages, Greeter, Feeds, Plugins
   and Configuration now sit under a single **Settings** gear menu, leaving Dashboard,
   Real-time, Contacts, Mesh Graph and Logs on the bar. The current page is highlighted,
   including the gear when a settings page is open.
 
 ### Added
+
+- Shlink is now supported as a URL shortener alongside v.gd / is.gd, selected with
+  `short_url_website_service = shlink` under `[External_Data]`. It authenticates with
+  `short_url_website_api_key` in an `X-Api-Key` header and needs `short_url_website`
+  set to your own instance — there is no default, and the bot skips shortening rather
+  than sending the key to a host you did not configure.
+
+- `shorten` and `if_nonempty` response-template filters. `shorten` runs a value
+  through the configured shortener and falls back to the original URL when shortening
+  fails, so a clause is never lost to a network error. `if_nonempty:L` replaces a
+  non-empty value with literal `L` and clears otherwise, which is how a whole clause
+  is hidden rather than labelled: `{packet_hash|if_nonempty:"https://…/{packet_hash}"|shorten}`
+  prints nothing at all when RF correlation fails, instead of a broken link. Both
+  filters also answer to their other spellings — `shorten_url` in a template,
+  `shorten_url` in a feed format, `if_notempty` — so a chain copied between a feed
+  format and a command `response_format` works unchanged either way.
+
+- Response-template filter arguments may be double-quoted, and a quoted argument may
+  contain nested `{field}` placeholders: `{d|prefix_if_nonempty:"Dist {sender}: "}`.
+  The quote ends the argument, so further filters can follow it. An unquoted
+  `prefix_if_nonempty` argument still consumes the rest of the placeholder, which is
+  what lets its literal contain `|`, so that form must stay last in its chain.
 
 - `mqttN_keepalive` (default 60) sets the MQTT PINGREQ interval per broker. It was
   hardcoded at 60 before, which is long for websockets through a proxy that drops

@@ -2,8 +2,11 @@
 """
 Shared URL shortening for MeshCore Bot and web viewer.
 
-Uses the v.gd / is.gd-compatible API (GET .../create.php?format=simple&url=...).
-Configure base URL and optional API key under [External_Data] in config.ini.
+Two backends are supported, selected by ``short_url_website_service``:
+``gd`` (default) uses the v.gd / is.gd-compatible API
+(GET .../create.php?format=simple&url=...), and ``shlink`` POSTs to a self-hosted
+Shlink instance's /rest/v3/short-urls with an ``X-Api-Key`` header. Configure the
+base URL, service, and optional API key under [External_Data] in config.ini.
 """
 
 from __future__ import annotations
@@ -66,10 +69,25 @@ def _normalize_base(base: str) -> str:
     return b if b else DEFAULT_SHORT_URL_BASE
 
 
+def _is_vgd_compat_host(host: str) -> bool:
+    """True for the public v.gd / is.gd hosts, which take no API key."""
+    return (host or "").lower().split(":")[0] in _VGD_COMPAT_HOSTS
+
+
 def _host_allows_key_in_query(host: str) -> bool:
     """True if we may append api_key for this host. v.gd/is.gd public API: False."""
-    h = (host or "").lower().split(":")[0]
-    return h not in _VGD_COMPAT_HOSTS
+    return not _is_vgd_compat_host(host)
+
+
+def _base_host(base: str) -> str:
+    """Hostname of *base*, tolerating a scheme-less value like ``example.com/x``."""
+    from urllib.parse import urlparse
+
+    root = (base or "").strip()
+    if "://" not in root:
+        root = f"https://{root}"
+    parsed = urlparse(root)
+    return (parsed.hostname or "").lower()
 
 
 def _parse_simple_response(body: str) -> str | None:
@@ -104,7 +122,12 @@ def _build_create_gd_url(long_url: str, base: str, api_key: str) -> str:
     return rebuilt
 
 
-def _build_create_shlink_url(long_url: str, base: str, api_key: str) -> str:
+def _build_create_shlink_url(base: str) -> str:
+    """Build the Shlink create endpoint from *base*.
+
+    Only the base is needed: the long URL travels in the POST body and the API key
+    in an ``X-Api-Key`` header, never in the URL.
+    """
     from urllib.parse import urlparse, urlunparse
 
     root = _normalize_base(base)
@@ -115,11 +138,7 @@ def _build_create_shlink_url(long_url: str, base: str, api_key: str) -> str:
     if not netloc and parsed.path:
         netloc = parsed.path.split("/")[0]
     path = (parsed.path or "").rstrip("/") + "/rest/v3/short-urls"
-    if not path.startswith("/"):
-        path = "/" + path
-    query = ""
-    rebuilt = urlunparse((parsed.scheme or "https", netloc, path, "", query, ""))
-    return rebuilt
+    return urlunparse((parsed.scheme or "https", netloc, path, "", "", ""))
 
 
 def _shorten_url_with_shlink(
@@ -133,7 +152,7 @@ def _shorten_url_with_shlink(
     """Shorten a URL using Shlink API."""
     import json
 
-    shortener_url = _build_create_shlink_url(long_url, base, api_key)
+    shortener_url = _build_create_shlink_url(base)
     headers = {
         "Content-Type": "application/json",
         "X-Api-Key": api_key,
@@ -142,16 +161,36 @@ def _shorten_url_with_shlink(
         {"longUrl": long_url, "findIfExists": True, "tags": ["meshcore-bot"]}
     )
 
-    get = session.post if session is not None else requests.post
-    response = get(shortener_url, headers=headers, data=payload, timeout=timeout)
+    post = session.post if session is not None else requests.post
+    response = post(shortener_url, headers=headers, data=payload, timeout=timeout)
     if logger:
         logger.debug("Shlink response: %s", response.text)
-    data = response.json()
-    short_url = data.get("shortUrl") or data.get("shortUrlSlug")
 
+    # Shlink reports failures as RFC 7807 problem details, which parse as JSON just
+    # fine and simply lack shortUrl. Without this check a bad API key looks
+    # identical to a URL that could not be shortened, at DEBUG only.
+    if not response.ok:
+        if logger:
+            logger.warning(
+                "Shlink shortener returned HTTP %s: %s",
+                getattr(response, "status_code", "?"),
+                (response.text or "")[:200],
+            )
+        return ""
+
+    try:
+        data = response.json()
+    except ValueError:
+        if logger:
+            logger.warning("Shlink shortener returned a non-JSON body; not shortening.")
+        return ""
+
+    short_url = (data or {}).get("shortUrl")
     if short_url:
-        return short_url
+        return str(short_url)
 
+    if logger:
+        logger.warning("Shlink response carried no shortUrl; not shortening.")
     return ""
 
 
@@ -169,6 +208,15 @@ def _shorten_url_with_gd(
     get = session.get if session is not None else requests.get
 
     response = get(shortener_url, timeout=timeout)
+    # A failing proxy or maintenance page can return a body that looks like a URL.
+    # Without this check that body is returned as the short link and transmitted.
+    if not response.ok:
+        if logger:
+            logger.warning(
+                "URL shortener returned HTTP %s", getattr(response, "status_code", "?")
+            )
+        return ""
+
     short = _parse_simple_response(response.text)
     if short:
         return short
@@ -193,7 +241,7 @@ def shorten_url_sync(
         if not url_str:
             return ""
 
-        base = _safe_config_get(config, "External_Data", "short_url_website", "")
+        raw_base = _safe_config_get(config, "External_Data", "short_url_website", "")
         service = (
             _safe_config_get(config, "External_Data", "short_url_website_service", "gd")
             .strip()
@@ -203,13 +251,30 @@ def shorten_url_sync(
             _safe_config_get(config, "External_Data", "short_url_website_api_key", "")
             or ""
         ).strip()
-        base = _normalize_base(base)
 
         if service == "shlink":
+            # Deliberately not _normalize_base: its v.gd fallback would POST the
+            # operator's API key to an unrelated third party when the base is unset.
+            base = (raw_base or "").strip().rstrip("/")
+            if not base:
+                if logger:
+                    logger.warning(
+                        "short_url_website_service=shlink requires short_url_website "
+                        "(there is no default Shlink instance); skipping."
+                    )
+                return ""
             if not api_key:
                 if logger:
                     logger.warning(
                         "short_url_website_service=shlink requires short_url_website_api_key; skipping."
+                    )
+                return ""
+            if _is_vgd_compat_host(_base_host(base)):
+                if logger:
+                    logger.warning(
+                        "short_url_website_service=shlink points at the public %s API, "
+                        "which is not Shlink; skipping rather than sending the API key there.",
+                        _base_host(base),
                     )
                 return ""
             return _shorten_url_with_shlink(
@@ -225,13 +290,19 @@ def shorten_url_sync(
         # only appended for self-hosted alternates via _host_allows_key_in_query).
         return _shorten_url_with_gd(
             url_str,
-            base,
+            _normalize_base(raw_base),
             api_key,
             session=session,
             timeout=timeout,
             logger=logger,
         )
 
+    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+        # Routine on a mesh node with an intermittent uplink. Logging these at ERROR
+        # as "unexpected" floods the log and buries the errors that do need triage.
+        if logger:
+            logger.debug("URL shortener unreachable: %s", e)
+        return ""
     except Exception as e:
         if logger:
             logger.error("Unexpected error shortening URL: %s", e)

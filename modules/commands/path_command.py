@@ -15,7 +15,7 @@ from ..path_inference import (
     select_node_repeater,
     select_repeater_by_graph,
 )
-from ..response_template import format_piped_template
+from ..response_template import format_piped_template_async
 from ..utils import (
     bytes_per_hop_from_routing_and_nodes,
     calculate_distance,
@@ -415,19 +415,24 @@ class PathCommand(BaseCommand):
             return ''
         return f"{distance:.1f}km"
 
-    def _format_path_reply_prefix(self, message: MeshMessage) -> str:
+    async def _format_path_reply_prefix(self, message: MeshMessage) -> str:
+        """Render the configured reply prefix off the event loop.
+
+        Async because the prefix may carry a ``shorten`` filter, whose HTTP call
+        would otherwise block radio RX and every other handler for its full timeout.
+        """
         if not self.path_reply_prefix:
             return ''
         fields = self.get_standard_placeholder_fields(message)
         fields['path_distance'] = self._format_path_distance(message)
-        formatted = format_piped_template(
+        formatted = (await format_piped_template_async(
             self.path_reply_prefix,
             {k: str(v) for k, v in fields.items()},
             message=message,
             logger=self.logger,
             config=self.bot.config,
             prefix_hex_chars=getattr(self.bot, 'prefix_hex_chars', 2),
-        ).rstrip()
+        )).rstrip()
         if not formatted:
             return ''
         return formatted + '\n'
@@ -1057,7 +1062,7 @@ class PathCommand(BaseCommand):
 
     async def _send_path_response(self, message: MeshMessage, response: str):
         """Send path response, splitting into multiple messages if necessary"""
-        prefix = self._format_path_reply_prefix(message)
+        prefix = await self._format_path_reply_prefix(message)
         self.last_response = prefix + response if prefix else response
 
         max_length = self.get_max_message_length(message)

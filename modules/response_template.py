@@ -11,6 +11,8 @@ chain, evaluated left to right.
 
 from __future__ import annotations
 
+import asyncio
+from functools import partial
 from typing import Any, Callable
 
 from .url_shortener import shorten_url_sync
@@ -70,19 +72,52 @@ def _filter_prefix_if_nonempty(value: str, ctx: dict[str, Any], args: str) -> st
         return ''
     return args + value
 
+
+# The event-loop warning below is worth saying once, not once per reply.
+_warned_blocking_render = False
+
+
+def _on_event_loop() -> bool:
+    """True when called on a thread with a running asyncio loop.
+
+    Rendering in the default executor (see :func:`format_piped_template_async`) puts
+    the work on a worker thread, where this is False. It is True only when a blocking
+    filter is about to stall the bot, which is worth saying out loud.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return False
+    return True
+
+
 def _filter_shorten_url(value: str, ctx: dict[str, Any], args: str) -> str:
-    """Shorten *value* URL using configured URL shortener (v.gd / is.gd compatible)."""
+    """Shorten *value* through the configured shortener (v.gd / is.gd, or Shlink).
+
+    Falls back to *value* unchanged whenever shortening is unavailable or fails, so a
+    misconfigured shortener costs a longer message rather than a broken one. Needs
+    ``config`` on the render call; without it the value passes through untouched.
+
+    Blocking: this issues an HTTP request. Async callers must reach it through
+    :func:`format_piped_template_async`, not :func:`format_piped_template`.
+    """
     logger = ctx.get('logger')
     config = ctx.get('config')
-    if logger is not None:
-        logger.debug("Shortening URL %r", value)
     if config is None or value == '':
         if logger is not None:
-            logger.debug("Abandoning shorten url due to empty value or config")
+            logger.debug("Not shortening: no config on the render call, or empty value")
         return value
+    global _warned_blocking_render
+    if logger is not None and not _warned_blocking_render and _on_event_loop():
+        _warned_blocking_render = True
+        logger.warning(
+            "Rendering a shorten filter on the event loop; the bot will stall for up "
+            "to the shortener timeout on each reply. Render via "
+            "format_piped_template_async. This is logged once."
+        )
     return shorten_url_sync(value, config=config, logger=logger) or value
 
-def _filter_if_notempty(value: str, ctx: dict[str, Any], args: str) -> str:
+def _filter_if_nonempty(value: str, ctx: dict[str, Any], args: str) -> str:
     """Return *args* literal only when *value* is non-empty after prior filters."""
     if not value:
         return ''
@@ -93,14 +128,22 @@ RESPONSE_TEMPLATE_FILTERS: dict[str, FilterFn] = {
     'pathbytes': _filter_pathbytes_min,
     'hops_min': _filter_hops_min,
     'prefix_if_nonempty': _filter_prefix_if_nonempty,
-    'if_notempty': _filter_if_notempty,
+    'if_nonempty': _filter_if_nonempty,
+    # `if_notempty` and `shorten_url` are aliases. One operation should not have two
+    # names in an operator-facing DSL, but feed formats already document `shorten`
+    # (docs/FEEDS.md) and this module already ships `prefix_if_nonempty`, so both
+    # spellings resolve rather than silently passing the value through.
+    'if_notempty': _filter_if_nonempty,
+    'shorten': _filter_shorten_url,
     'shorten_url': _filter_shorten_url,
 }
 
-# prefix_if_nonempty's literal argument may itself contain '|', so once the parser
-# sees this filter name it stops splitting on '|' and takes everything up to the
-# placeholder's closing '}' as one literal argument. It must therefore be last in
-# a chain whenever its literal needs a pipe.
+# prefix_if_nonempty's literal argument may itself contain '|', and shipped configs
+# rely on that (config.ini.example: `prefix_if_nonempty: | Path Dist: `), so for an
+# *unquoted* argument the parser stops splitting on '|' and takes everything up to
+# the placeholder's closing '}' as one literal. Such a filter must be last in its
+# chain. Quoting the argument (`prefix_if_nonempty:"L | "`) is the way to keep
+# filtering afterwards; a quote immediately after the ':' selects that branch.
 _GREEDY_ARG_FILTERS = frozenset({'prefix_if_nonempty'})
 
 
@@ -226,6 +269,14 @@ class _TemplateParser:
             return name, '', i
         i += 1  # consume ':'
         if name in _GREEDY_ARG_FILTERS:
+            # A quote immediately after ':' opts into the quoted-argument grammar.
+            # Anything else stays greedy, so existing unquoted literals keep their
+            # pipes and their leading/trailing whitespace exactly as written.
+            if i < self.n and self.s[i] == '"':
+                value, j = self._parse_quoted_string(i)
+                if value is None:
+                    return None, '', j
+                return name, value, j
             close = self.s.find('}', i)
             if close == -1:
                 return None, '', self.n
@@ -268,10 +319,15 @@ def format_piped_template(
             lets ``prefix_if_nonempty`` drop its literal label too.
         message: Triggering mesh message; required for ``pathbytes`` / ``pathbytes_min`` filters.
         logger: Optional logger for unknown filter warnings.
+        config: Bot config, required by ``shorten`` / ``shorten_url``. Without it those
+            filters pass the long URL through unchanged.
         prefix_hex_chars: Bot prefix width for inferring bytes per hop from legacy path text.
 
     Returns:
         Fully expanded string.
+
+    Blocking: ``shorten`` issues an HTTP request. Call
+    :func:`format_piped_template_async` from async code so the event loop keeps running.
     """
     ctx: dict[str, Any] = {
         'message': message,
@@ -279,6 +335,39 @@ def format_piped_template(
         'prefix_hex_chars': prefix_hex_chars,
         'config': config,
     }
-    if (logger is not None) and (config is not None):
-        logger.debug("Rendering response template %r with fields %r", template, fields)
+    if logger is not None:
+        # Field values carry sender IDs and user-supplied phrases; log the template
+        # being rendered and the field names, not the values.
+        logger.debug(
+            "Rendering response template %r with fields %s", template, sorted(fields)
+        )
     return _TemplateParser(template, fields, ctx, logger).render()
+
+
+async def format_piped_template_async(
+    template: str,
+    fields: dict[str, Any],
+    *,
+    message: Any = None,
+    logger: Any = None,
+    config: Any = None,
+    prefix_hex_chars: int = 2,
+) -> str:
+    """Async wrapper for :func:`format_piped_template`, run in the default executor.
+
+    The ``shorten`` filter makes a blocking HTTP call with a 5s timeout. Rendering a
+    template inline on the event loop stalls radio RX, other command handlers, MQTT
+    and heartbeats for that whole timeout, and the reply misses its RF window.
+    """
+    return await asyncio.get_running_loop().run_in_executor(
+        None,
+        partial(
+            format_piped_template,
+            template,
+            fields,
+            message=message,
+            logger=logger,
+            config=config,
+            prefix_hex_chars=prefix_hex_chars,
+        ),
+    )

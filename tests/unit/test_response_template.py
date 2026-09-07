@@ -8,7 +8,7 @@ import pytest
 
 from modules.commands.test_command import TestCommand as MeshTestCommand
 from modules.models import MeshMessage
-from modules.response_template import format_piped_template
+from modules.response_template import format_piped_template, format_piped_template_async
 from modules.utils import message_path_bytes_per_hop
 
 
@@ -402,3 +402,181 @@ def test_quoted_filter_argument_with_a_nested_placeholder_does_not_close_early()
     assert format_piped_template(template, {"packet_hash": "ABCDEF12"}) == (
         "https://analyzer.example.net/#/packets/ABCDEF12?obs=1620457"
     )
+
+
+def _shortener_config(**external_data):
+    """Config a real shorten_url_sync call will accept, defaulting to v.gd."""
+    c = configparser.ConfigParser()
+    c["External_Data"] = {}
+    for k, v in external_data.items():
+        c["External_Data"][k] = v
+    return c
+
+
+@pytest.mark.unit
+def test_prefix_if_nonempty_accepts_a_quoted_argument_with_a_nested_placeholder():
+    """Regression: the greedy branch used to win over the quoted-argument grammar.
+
+    prefix_if_nonempty is the one filter already in shipped configs, so without this
+    the documented quoted syntax emitted raw template text over RF instead.
+    """
+    out = format_piped_template(
+        '{path_distance|prefix_if_nonempty:"Dist {sender}: "}',
+        {"path_distance": "5km", "sender": "y"},
+    )
+    assert out == "Dist y: 5km"
+
+
+@pytest.mark.unit
+def test_prefix_if_nonempty_with_a_quoted_argument_can_be_chained():
+    """A quoted arg ends at its closing quote, so a later filter is not swallowed."""
+    out = format_piped_template(
+        '{d|prefix_if_nonempty:"L "|if_nonempty:Z}',
+        {"d": "5km"},
+    )
+    assert out == "Z"
+
+
+@pytest.mark.unit
+def test_prefix_if_nonempty_keeps_greedy_parsing_for_unquoted_literals():
+    """config.ini.example ships `prefix_if_nonempty: | Path Dist: ` -- a literal
+    containing a pipe, which only parses if unquoted args stay greedy."""
+    out = format_piped_template(
+        "ack{path_distance|pathbytes_min:2|prefix_if_nonempty: | Path Dist: }",
+        {"path_distance": "12.4km"},
+        message=_msg(path="0102 (1 hop)", hops=1,
+                     routing_info={"path_length": 1, "bytes_per_hop": 2}),
+    )
+    assert out == "ack | Path Dist: 12.4km"
+
+
+@pytest.mark.unit
+def test_shorten_url_filter_shortens_through_the_configured_service():
+    """End-to-end: the filter reaches shorten_url_sync via ctx['config']."""
+    cfg = _shortener_config(short_url_website="https://v.gd")
+    resp = MagicMock()
+    resp.ok = True
+    resp.text = "https://v.gd/abc123"
+
+    with pytest.MonkeyPatch.context() as mp:
+        import modules.url_shortener as us
+        mp.setattr(us.requests, "get", lambda *a, **k: resp)
+        out = format_piped_template(
+            "{link|shorten_url}",
+            {"link": "https://example.com/a/very/long/path"},
+            config=cfg,
+        )
+    assert out == "https://v.gd/abc123"
+
+
+@pytest.mark.unit
+def test_shorten_is_an_alias_for_shorten_url():
+    """Feed formats document `shorten`; the same name must work here."""
+    cfg = _shortener_config(short_url_website="https://v.gd")
+    resp = MagicMock()
+    resp.ok = True
+    resp.text = "https://v.gd/abc123"
+
+    with pytest.MonkeyPatch.context() as mp:
+        import modules.url_shortener as us
+        mp.setattr(us.requests, "get", lambda *a, **k: resp)
+        out = format_piped_template(
+            "{link|shorten}", {"link": "https://example.com/long"}, config=cfg
+        )
+    assert out == "https://v.gd/abc123"
+
+
+@pytest.mark.unit
+def test_shorten_url_falls_back_to_the_long_url_when_shortening_fails():
+    """A failing shortener costs a longer message, never a broken one."""
+    cfg = _shortener_config(short_url_website="https://v.gd")
+    resp = MagicMock()
+    resp.ok = False
+    resp.status_code = 502
+    resp.text = "http://short.example/maintenance"
+
+    with pytest.MonkeyPatch.context() as mp:
+        import modules.url_shortener as us
+        mp.setattr(us.requests, "get", lambda *a, **k: resp)
+        out = format_piped_template(
+            "{link|shorten_url}", {"link": "https://example.com/long"}, config=cfg
+        )
+    assert out == "https://example.com/long"
+
+
+@pytest.mark.unit
+def test_shorten_url_without_a_config_passes_the_value_through():
+    out = format_piped_template("{link|shorten_url}", {"link": "https://example.com/long"})
+    assert out == "https://example.com/long"
+
+
+@pytest.mark.unit
+def test_if_notempty_is_an_alias_for_if_nonempty():
+    assert format_piped_template("{d|if_nonempty:Z}", {"d": "x"}) == "Z"
+    assert format_piped_template("{d|if_notempty:Z}", {"d": "x"}) == "Z"
+    assert format_piped_template("{d|if_nonempty:Z}", {"d": ""}) == ""
+    assert format_piped_template("{d|if_notempty:Z}", {"d": ""}) == ""
+
+
+@pytest.mark.asyncio
+async def test_format_piped_template_async_matches_the_sync_render():
+    """The async wrapper exists so a shorten filter cannot block the event loop."""
+    cfg = _shortener_config(short_url_website="https://v.gd")
+    resp = MagicMock()
+    resp.ok = True
+    resp.text = "https://v.gd/abc123"
+
+    with pytest.MonkeyPatch.context() as mp:
+        import modules.url_shortener as us
+        mp.setattr(us.requests, "get", lambda *a, **k: resp)
+        out = await format_piped_template_async(
+            "{link|shorten_url}", {"link": "https://example.com/long"}, config=cfg
+        )
+    assert out == "https://v.gd/abc123"
+
+
+@pytest.mark.asyncio
+async def test_shorten_url_warns_when_rendered_on_the_event_loop():
+    """A blocking HTTP call on the loop stalls radio RX and every other handler."""
+    cfg = _shortener_config(short_url_website="https://v.gd")
+    resp = MagicMock()
+    resp.ok = True
+    resp.text = "https://v.gd/abc123"
+    logger = MagicMock()
+
+    with pytest.MonkeyPatch.context() as mp:
+        import modules.response_template as rt
+        import modules.url_shortener as us
+        mp.setattr(us.requests, "get", lambda *a, **k: resp)
+        mp.setattr(rt, "_warned_blocking_render", False)
+        format_piped_template(
+            "{link|shorten_url}",
+            {"link": "https://example.com/long"},
+            config=cfg,
+            logger=logger,
+        )
+
+    warned = " ".join(str(c) for c in logger.warning.call_args_list)
+    assert "event loop" in warned
+
+
+@pytest.mark.asyncio
+async def test_async_render_does_not_warn_about_the_event_loop():
+    cfg = _shortener_config(short_url_website="https://v.gd")
+    resp = MagicMock()
+    resp.ok = True
+    resp.text = "https://v.gd/abc123"
+    logger = MagicMock()
+
+    with pytest.MonkeyPatch.context() as mp:
+        import modules.url_shortener as us
+        mp.setattr(us.requests, "get", lambda *a, **k: resp)
+        out = await format_piped_template_async(
+            "{link|shorten_url}",
+            {"link": "https://example.com/long"},
+            config=cfg,
+            logger=logger,
+        )
+
+    assert out == "https://v.gd/abc123"
+    logger.warning.assert_not_called()
