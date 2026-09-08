@@ -328,11 +328,11 @@ language = en
 # Default: translations/
 translation_path = translations/
 
-# Path to local translation files directory (relative to bot root)
-# These translation files are merged with the translation files that
-# are distributed with the bot sources.
-# Default: local/translations/
-local_translation_path = local/translations/
+# Path to your own translation files, merged over the distributed ones key by key.
+# Use it to translate local commands, or to override individual strings, without
+# editing a shipped file. Defaults to the translations/ directory inside
+# [Bot] local_dir_path.
+# local_translation_path = local/translations/
 
 # Automatically reply in the language of the incoming message.
 # When enabled, greeting-style commands detect the sender's language (from a
@@ -562,7 +562,6 @@ category.funfact = fun
 #     Schedules without a command placeholder are unaffected.
 #   - The command's own cooldown still applies. If it is on cooldown when the schedule
 #     fires, the placeholder expands to nothing that round.
-#
 #
 # Available placeholders for mesh network information:
 #
