@@ -1049,11 +1049,40 @@ def test_mesh_refresh_coordinator_handles_bursts_visibility_and_failures():
     async function loadStats() {{ statsCount++; }}
     function applyFilters() {{}}
 
+    const SETTLE_TIMEOUT_MS = 2000;
+
+    function coordinatorIdle() {{
+        return !meshLiveRefreshPending
+            && !meshLiveRefreshRunning
+            && meshLiveRefreshTimer === null
+            && meshLoadInFlight === null
+            && pendingMeshLoad === null;
+    }}
+
+    // Wait for the coordinator to come to rest instead of sleeping a fixed span.
+    // A 10ms timer on a loaded CI runner can fire tens of ms late, so a fixed wait
+    // samples the state machine mid-retry and reports a half-finished count as a
+    // logic failure. Two consecutive idle observations are required so the gap
+    // between a load settling and its retry being armed is not read as rest.
+    async function waitForIdle(label) {{
+        const deadline = Date.now() + SETTLE_TIMEOUT_MS;
+        let idleStreak = 0;
+        while (idleStreak < 2) {{
+            idleStreak = coordinatorIdle() ? idleStreak + 1 : 0;
+            if (idleStreak < 2 && Date.now() > deadline) {{
+                throw new Error(
+                    `timed out after ${{SETTLE_TIMEOUT_MS}}ms waiting for ${{label}} to settle`
+                );
+            }}
+            await new Promise(resolve => setTimeout(resolve, 1));
+        }}
+    }}
+
     {coordinator}
 
     (async () => {{
         for (let i = 0; i < 100; i++) scheduleMeshLiveRefresh(false);
-        await new Promise(resolve => setTimeout(resolve, 40));
+        await waitForIdle('burst coalescing');
         const burst = {{loadCount, statsCount, maxConcurrent}};
 
         loadCount = 0;
@@ -1094,7 +1123,7 @@ def test_mesh_refresh_coordinator_handles_bursts_visibility_and_failures():
         scheduleMeshLiveRefresh(true, 10);
         await firstStarted;
         firstReleaseResolve();
-        await new Promise(resolve => setTimeout(resolve, 35));
+        await waitForIdle('scheduled retry');
         const scheduledRetry = {{
             loadCount,
             statsCount,
@@ -1110,7 +1139,7 @@ def test_mesh_refresh_coordinator_handles_bursts_visibility_and_failures():
         failBlockedFirst = false;
         scheduleMeshLiveRefresh(false, 20);
         await refreshData();
-        await new Promise(resolve => setTimeout(resolve, 30));
+        await waitForIdle('manual refresh absorbing the timer');
         const manualAbsorbsTimer = {{
             loadCount,
             statsCount,
@@ -1130,7 +1159,7 @@ def test_mesh_refresh_coordinator_handles_bursts_visibility_and_failures():
         await firstStarted;
         firstReleaseResolve();
         await failedManualPromise;
-        await new Promise(resolve => setTimeout(resolve, 35));
+        await waitForIdle('failed manual refresh retry');
         const failedManualRetries = {{
             loadCount,
             forcedLoads,
@@ -1150,7 +1179,7 @@ def test_mesh_refresh_coordinator_handles_bursts_visibility_and_failures():
         const activeManualPromise = refreshData();
         firstReleaseResolve();
         await activeManualPromise;
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await waitForIdle('manual refresh reusing the active load');
         const manualReusesActiveRefresh = {{
             loadCount,
             forcedLoads,
@@ -1179,7 +1208,10 @@ def test_mesh_refresh_coordinator_handles_bursts_visibility_and_failures():
         text=True,
         capture_output=True,
         check=True,
-        timeout=5,
+        # Generous: the script now waits on coordinator state rather than the clock,
+        # so a genuine stall reports which phase failed to settle instead of dying
+        # here with no detail.
+        timeout=60,
     )
     result = json.loads(completed.stdout.strip())
 
