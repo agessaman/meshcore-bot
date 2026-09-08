@@ -11,6 +11,16 @@ class TestMeshMessageDefaults:
         msg = MeshMessage(content="hello")
         assert msg.content == "hello"
 
+    def test_original_content_snapshots_body(self):
+        msg = MeshMessage(content="ack @[IU1IPB-1] | 9d12")
+        assert msg.original_content == "ack @[IU1IPB-1] | 9d12"
+        msg.content = "ack | 9d12"
+        assert msg.original_content == "ack @[IU1IPB-1] | 9d12"
+
+    def test_explicit_original_content_preserved(self):
+        msg = MeshMessage(content="ping", original_content="@[Bot] ping")
+        assert msg.original_content == "@[Bot] ping"
+
     def test_optional_fields_default_to_none(self):
         msg = MeshMessage(content="test")
         assert msg.sender_id is None

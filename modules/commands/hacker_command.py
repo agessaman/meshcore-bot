@@ -494,37 +494,38 @@ class HackerCommand(BaseCommand):
         if not self.enabled:
             return False
 
-        content_lower = self.cleanup_message_for_matching(message)
+        def _matches(content_lower: str) -> bool:
+            # Commands that should match exactly (no arguments)
+            exact_match_commands = ['ls -l', 'ls -la', 'echo $PATH', 'df -h', 'whoami', 'history',
+                                    'top', 'htop', 'free', 'uname -a']
 
-        # Commands that should match exactly (no arguments)
-        exact_match_commands = ['ls -l', 'ls -la', 'echo $PATH', 'df -h', 'whoami', 'history',
-                                'top', 'htop', 'free', 'uname -a']
+            # Commands that should match as prefixes (can have arguments)
+            # Note: Longer prefixes must come first (e.g., 'rm -rf' before 'rm')
+            prefix_match_commands = ['sudo', 'ps aux', 'grep', 'rm -rf', 'rm -r', 'rm', 'cat',
+                                    'netstat', 'ss', 'killall', 'kill', 'chmod', 'find', 'passwd',
+                                    'su', 'ssh', 'wget', 'curl', 'df', 'ifconfig', 'ip addr', 'uname']
 
-        # Commands that should match as prefixes (can have arguments)
-        # Note: Longer prefixes must come first (e.g., 'rm -rf' before 'rm')
-        prefix_match_commands = ['sudo', 'ps aux', 'grep', 'rm -rf', 'rm -r', 'rm', 'cat',
-                                'netstat', 'ss', 'killall', 'kill', 'chmod', 'find', 'passwd',
-                                'su', 'ssh', 'wget', 'curl', 'df', 'ifconfig', 'ip addr', 'uname']
-
-        # Check for exact matches first
-        for keyword in exact_match_commands:
-            if keyword.lower() == content_lower:
-                return True
-
-        # Check for prefix matches
-        for keyword in prefix_match_commands:
-            if content_lower.startswith(keyword.lower()):
-                # Check if it's followed by a space or is the end of the message
-                if len(content_lower) == len(keyword.lower()) or content_lower[len(keyword.lower())] == ' ':
+            # Check for exact matches first
+            for keyword in exact_match_commands:
+                if keyword.lower() == content_lower:
                     return True
 
-        # Config aliases (keywords not already covered by the comedy lists above)
-        known = {k.lower() for k in exact_match_commands + prefix_match_commands}
-        for keyword in self.keywords:
-            kw = keyword.lower()
-            if kw in known:
-                continue
-            if content_lower == kw or content_lower.startswith(kw + ' '):
-                return True
+            # Check for prefix matches
+            for keyword in prefix_match_commands:
+                if content_lower.startswith(keyword.lower()):
+                    # Check if it's followed by a space or is the end of the message
+                    if len(content_lower) == len(keyword.lower()) or content_lower[len(keyword.lower())] == ' ':
+                        return True
 
-        return False
+            # Config aliases (keywords not already covered by the comedy lists above)
+            known = {k.lower() for k in exact_match_commands + prefix_match_commands}
+            for keyword in self.keywords:
+                kw = keyword.lower()
+                if kw in known:
+                    continue
+                if content_lower == kw or content_lower.startswith(kw + ' '):
+                    return True
+
+            return False
+
+        return self._cleaned_content_matches(message, _matches)

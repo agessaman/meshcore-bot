@@ -16,6 +16,7 @@ import asyncio
 import configparser
 from unittest.mock import Mock
 
+from modules.i18n import Translator
 from modules.service_plugins.weather_service import WeatherService
 from tests.unit._rain_harness import make_series
 
@@ -47,6 +48,7 @@ def build_service(series, monkeypatch, *, overrides=None):
     bot.logger = Mock()
     bot.config = cfg
     bot.db_manager = Mock()
+    bot.translator = Translator("en", "translations/")
 
     sends: list[tuple[str, str]] = []
 
@@ -116,6 +118,7 @@ def test_nws_path_accepts_cache_ttl_without_crashing(monkeypatch):
     bot.logger = Mock()
     bot.config = cfg
     bot.db_manager = Mock()
+    bot.translator = Translator("en", "translations/")
 
     sends: list[tuple[str, str]] = []
 

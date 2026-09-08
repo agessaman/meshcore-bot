@@ -223,6 +223,7 @@
       "error": "Error getting weather data: {error}",
       "alerts": "{count} alerts: {text}",
       "tomorrow_not_available": "Tomorrow's forecast not available",
+      "hourly_not_available": "Hourly forecast not available",
       "tomorrow_error": "Error formatting tomorrow's forecast",
       "multiday_not_available": "{num_days}-day forecast not available",
       "multiday_error": "Error formatting {num_days}-day forecast",
@@ -249,6 +250,23 @@
       "mqtt_weather_no_data": "No MQTT weather message received for this topic yet",
       "mqtt_weather_stale": "MQTT weather data is too old",
       "mqtt_weather_payload_error": "MQTT weather payload error: {detail}",
+      "feels_like": "(feels {value}{unit})",
+      "humidity": "{value}%RH",
+      "dew_point": "💧{value}{unit}",
+      "visibility": "👁️{value}mi",
+      "visibility_km": "👁️{value}km",
+      "pressure": "📊{value}hPa",
+      "pressure_mmhg": "📊{value}mmHg",
+      "gust": "G{value}",
+      "day_abbrev": {
+        "Monday": "M",
+        "Tuesday": "T",
+        "Wednesday": "W",
+        "Thursday": "Th",
+        "Friday": "F",
+        "Saturday": "Sa",
+        "Sunday": "Su"
+      },
       "periods": {
         "today": "Today",
         "tonight": "Tonight",
@@ -292,7 +310,8 @@
         "thunderstorms": "⚠️ Thunderstorms",
         "heavy_snow": "⚠️ Heavy snow",
         "high_winds": "⚠️ High winds ({wind_speed} mph)"
-      }
+      },
+      "pressure_unit": "hpa"
     },
     "sports": {
       "description": "Get sports scores and schedules (usage: sports [team/league])",
@@ -1357,6 +1376,8 @@
     "no_help_available": "No help available for this command.",
     "snr_label": "SNR: {value} dB",
     "rssi_label": "RSSI: {value} dBm",
+    "temp_high_label": "H",
+    "temp_low_label": "L",
     "date_time": {
       "day_abbreviations": {
         "Mon": "Mon",
@@ -1404,6 +1425,39 @@
         "November": "November",
         "December": "December"
       }
+    },
+    "alerts": {
+      "event_types": {
+        "Warning": "Warn",
+        "Watch": "Watch",
+        "Advisory": "Adv",
+        "Statement": "Stmt"
+      },
+      "til": "til",
+      "by": "by",
+      "from": "from",
+      "am": "AM",
+      "pm": "PM",
+      "time_12h": "{hour}{meridiem}",
+      "date_12h": "{month} {day} {time}"
+    },
+    "wind_directions": {
+      "N": "N",
+      "NNE": "NNE",
+      "NE": "NE",
+      "ENE": "ENE",
+      "E": "E",
+      "ESE": "ESE",
+      "SE": "SE",
+      "SSE": "SSE",
+      "S": "S",
+      "SSW": "SSW",
+      "SW": "SW",
+      "WSW": "WSW",
+      "W": "W",
+      "WNW": "WNW",
+      "NW": "NW",
+      "NNW": "NNW"
     }
   },
   "categories": {
@@ -1429,6 +1483,53 @@
       "fields": {
         "sender": "Sender: {sender}",
         "area": "Area: {areas}"
+      }
+    },
+    "weather_service": {
+      "daily_weather": "Daily Weather",
+      "tomorrow": "Tomorrow",
+      "error_fetching": "Error fetching weather data",
+      "no_data": "No forecast data available",
+      "near": "near",
+      "est": "est",
+      "steady": "steady",
+      "rain_starting": "{emoji} Heads up — {ptype} starting in ~{minutes}min{est}{steady}{temp}{location}",
+      "rain_ending": "{emoji} Heads up — {ptype} ending in ~{minutes}min{est}{temp}{location}",
+      "weather_descriptions": {
+        "0": "Clear",
+        "1": "Mostly Clear",
+        "2": "Partly Cloudy",
+        "3": "Overcast",
+        "45": "Foggy",
+        "48": "Depositing Rime Fog",
+        "51": "Light Drizzle",
+        "53": "Moderate Drizzle",
+        "55": "Dense Drizzle",
+        "56": "Light Freezing Drizzle",
+        "57": "Dense Freezing Drizzle",
+        "61": "Slight Rain",
+        "63": "Moderate Rain",
+        "65": "Heavy Rain",
+        "66": "Light Freezing Rain",
+        "67": "Heavy Freezing Rain",
+        "71": "Slight Snow",
+        "73": "Moderate Snow",
+        "75": "Heavy Snow",
+        "77": "Snow Grains",
+        "80": "Slight Rain Showers",
+        "81": "Moderate Rain Showers",
+        "82": "Violent Rain Showers",
+        "85": "Slight Snow Showers",
+        "86": "Heavy Snow Showers",
+        "95": "Thunderstorm",
+        "96": "Thunderstorm w/Hail",
+        "99": "Severe Thunderstorm"
+      },
+      "wind_speed_units": {
+        "ms": "m/s",
+        "mph": "mph",
+        "kmh": "km/h",
+        "kn": "kn"
       }
     }
   }

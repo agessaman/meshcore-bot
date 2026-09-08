@@ -130,16 +130,14 @@ class SportsCommand(BaseCommand):
         if not self.keywords:
             return False
 
-        content_lower = self.cleanup_message_for_matching(message)
+        def _matches(content_lower: str) -> bool:
+            words = content_lower.split()
+            if not words:
+                return False
+            first_word = words[0]
+            return any(first_word == keyword.lower() for keyword in self.keywords)
 
-        # Split into words and check if first word matches any keyword
-        words = content_lower.split()
-        if not words:
-            return False
-
-        first_word = words[0]
-
-        return any(first_word == keyword.lower() for keyword in self.keywords)
+        return self._cleaned_content_matches(message, _matches)
 
     def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Check if this command can execute with the given message"""
