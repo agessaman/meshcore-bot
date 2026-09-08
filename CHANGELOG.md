@@ -158,7 +158,7 @@ semantic versioning.
   and Configuration now sit under a single **Settings** gear menu, leaving Dashboard,
   Real-time, Contacts, Mesh Graph and Logs on the bar. The current page is highlighted,
   including the gear when a settings page is open.
-- Added notes on connecting to waev.app MQTT brokers to the `packet_capture.md` file.
+- Added notes on connecting to waev.app MQTT brokers to `docs/packet-capture.md`.
 
 ### Added
 
@@ -221,10 +221,12 @@ semantic versioning.
   from the MeshCore RF node, which is useful when one bot name is already taken
   by the radio's advertised name. Unset (the default) keeps the previous
   behavior: the connected device name, falling back to `[Bot] bot_name`.
-- Localization extended to read and merge local translation files with distributed
-  translation files. Defaults to `local/translations/` and allows translation
-  files to be build for local commands.
-
+- `local_translation_path` in `[Localization]` points at your own translation
+  catalog, merged over the distributed one key by key, so you can translate a
+  local command or override a single shipped string without editing a file that
+  an upgrade will replace. Defaults to the `translations/` directory inside
+  `[Bot] local_dir_path`, resolved to an absolute path so it does not depend on
+  the working directory.
 
 ## [1.0.0] — 2026-08-07
 

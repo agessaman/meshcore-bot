@@ -22,7 +22,10 @@ class Translator:
         Args:
             language: Language code (e.g., 'en', 'es', 'es-MX', 'es-ES', 'fr', 'de')
                       Supports locale codes like 'es-MX' for Mexican Spanish or 'es-ES' for Spain Spanish
-            translation_path: Path to translation files directory
+            translation_path: Path to the distributed translation files directory
+            local_translation_path: Path to the operator's own translation files, merged
+                      over the distributed ones key by key. Defaults to
+                      ``<local_dir_path>/translations`` when set from config.
         """
         self.language = language
         self.translation_path = translation_path
@@ -89,52 +92,29 @@ class Translator:
             return fallback.copy()
 
         result = fallback.copy()
-
-        def merge_dict(target: dict, source: dict):
-            """Recursively merge source into target"""
-            for key, value in source.items():
-                if key in target and isinstance(target[key], dict) and isinstance(value, dict):
-                    merge_dict(target[key], value)
-                else:
-                    target[key] = value
-
-        merge_dict(result, primary)
-        return result
-
-    def _deep_merge_translations(self, primary: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
-        """
-        Perform a deep merge of translations with overrides taking precedence
-
-        Args:
-            primary: Primary translation dictionary (may be empty)
-            override: Translation dictionary to apply to Primary and override
-                      just values, not sub-dictionaries
-
-        Returns:
-            Merged dictionary with primary values overridden by override dictionary
-        """
-        # Start with a copy of the first dictionary to avoid side effects
-        result = primary.copy()
-
-        for key, value in override.items():
-            # If both values are dictionaries, merge them recursively
-            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-                result[key] = self._deep_merge_translations(result[key], value)
+        for key, value in primary.items():
+            existing = result.get(key)
+            if isinstance(existing, dict) and isinstance(value, dict):
+                # Rebuild the sub-dict rather than mutating it in place: it is still
+                # shared with `fallback`, which the caller keeps using.
+                result[key] = self._merge_translations(value, existing)
             else:
-                # Otherwise, overwrite the value or add the new key
                 result[key] = value
-
         return result
 
     def _load_file(self, lang: str) -> dict[str, Any]:
         """
-        Load translation files from distribution then local
+        Load a language's catalog: the distributed file, overlaid with the local one
+
+        The local catalog is merged key by key over the distributed one, so an operator
+        can translate their own local commands, or override individual strings, without
+        editing a shipped file.
 
         Args:
             lang: Language code
 
         Returns:
-            Dictionary of translations, empty dict if file not found
+            Dictionary of translations, empty dict if no catalog was found
         """
         file_path = Path(self.translation_path) / f"{lang}.json"
         local_file_path = Path(self.local_translation_path) / f"{lang}.json"
@@ -142,15 +122,20 @@ class Translator:
             # An explicitly configured filesystem catalog always wins.  The
             # package fallback makes the defaults work from an installed wheel
             # (where ``translations/`` is not relative to the current cwd).
-            xlate_table: dict[str, str] = {}
-            for xlate_file in (file_path, local_file_path):
-                if xlate_file.is_file():
-                    logger.info(f"Loading translation file: {xlate_file}")
-                    with open(xlate_file, encoding='utf-8') as f:
-                        xlate_table = self._deep_merge_translations(xlate_table, json.load(f))
-            if xlate_table:
-                # if xlate_table has been built, return it
-                return xlate_table
+            catalog: dict[str, Any] = {}
+            found = False
+            for path in (file_path, local_file_path):
+                if not path.is_file():
+                    continue
+                logger.info("Loading translation catalog: %s", path)
+                with open(path, encoding='utf-8') as f:
+                    # Later file wins on overlapping keys.
+                    catalog = self._merge_translations(json.load(f), catalog)
+                found = True
+            if found:
+                # A configured catalog wins even when it is empty, so an operator can
+                # deliberately blank one out without the bundled defaults reappearing.
+                return catalog
 
             if not self._uses_bundled_defaults():
                 return {}
@@ -159,10 +144,10 @@ class Translator:
                 return {}
             return json.loads(bundled.read_text(encoding="utf-8"))
         except json.JSONDecodeError as e:
-            print(f"Error parsing translation file {file_path}: {e}")
+            logger.error("Error parsing translation file for %r: %s", lang, e)
             return {}
         except Exception as e:
-            print(f"Error loading translation file {file_path}: {e}")
+            logger.error("Error loading translation file for %r: %s", lang, e)
             return {}
 
     def translate(self, key: str, **kwargs) -> str:
