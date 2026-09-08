@@ -280,15 +280,21 @@ class MeshCoreBot:
         # Initialize translator for localization BEFORE CommandManager
         # This ensures translated keywords are available when commands are loaded
         try:
+            default_local_translations = self._default_local_translation_path(self.config)
             if self.config.has_section('Localization'):
                 language = self.config.get('Localization', 'language', fallback='en')
                 translation_path = self.config.get('Localization', 'translation_path', fallback='translations/')
+                local_translation_path = self.config.get(
+                    'Localization', 'local_translation_path', fallback=default_local_translations
+                )
             else:
                 language = 'en'
                 translation_path = 'translations/'
+                local_translation_path = default_local_translations
             self.translation_path = translation_path
+            self.local_translation_path = local_translation_path
             self._translator_cache: dict[str, Any] = {}
-            self.translator = Translator(language, translation_path)
+            self.translator = Translator(language, translation_path, local_translation_path)
             self._translator_cache[language] = self.translator
             self.logger.info(f"Localization initialized: {language}")
         except (OSError, ValueError, FileNotFoundError, json.JSONDecodeError) as e:
@@ -309,6 +315,9 @@ class MeshCoreBot:
 
             self.translator = DummyTranslator()
             self.translation_path = 'translations/'
+            # get_translator() reads both paths when it builds a per-language
+            # translator, so neither may be left unset here.
+            self.local_translation_path = 'local/translations/'
             self._translator_cache = {}
 
         # Initialize solar conditions configuration
@@ -430,6 +439,17 @@ class MeshCoreBot:
                 'Connection', 'command_min_interval_ms', fallback=30.0
             ) / 1000.0,
         )
+
+    def _default_local_translation_path(self, config: configparser.ConfigParser) -> str:
+        """Default local catalog directory: ``<local_dir_path>/translations``.
+
+        ``local_dir_path`` already selects where an operator's own commands, service
+        plugins and config overlay live, so the local translation catalog belongs in
+        that same tree rather than in a second, separately-configured location. The
+        result is absolute, so it does not depend on the process's cwd.
+        """
+        local_dir = config.get('Bot', 'local_dir_path', fallback='local')
+        return str(Path(resolve_path(local_dir, self.bot_root)) / 'translations')
 
     @property
     def bot_root(self) -> Path:
@@ -621,7 +641,9 @@ class MeshCoreBot:
         if cached is not None:
             return cached
         try:
-            translator = Translator(resolved_language, self.translation_path)
+            translator = Translator(
+                resolved_language, self.translation_path, self.local_translation_path
+            )
         except (OSError, ValueError, FileNotFoundError, json.JSONDecodeError) as e:
             self.logger.warning(
                 "Failed to build translator for %r: %s", resolved_language, e
@@ -845,7 +867,14 @@ class MeshCoreBot:
                 new_translation_path = new_config.get(
                     'Localization', 'translation_path', fallback='translations/'
                 )
-                new_translator = Translator(new_language, new_translation_path)
+                new_local_translation_path = new_config.get(
+                    'Localization',
+                    'local_translation_path',
+                    fallback=self._default_local_translation_path(new_config),
+                )
+                new_translator = Translator(
+                    new_language, new_translation_path, new_local_translation_path
+                )
                 new_translator_cache = {new_language: new_translator}
 
                 old_state = {
@@ -860,6 +889,7 @@ class MeshCoreBot:
                     "tx_delay_ms": self.tx_delay_ms,
                     "translator": self.translator,
                     "translation_path": self.translation_path,
+                    "local_translation_path": self.local_translation_path,
                     "translator_cache": self._translator_cache,
                     "command_config_state": self._command_config_state(
                         self.command_manager
@@ -882,6 +912,7 @@ class MeshCoreBot:
                     self.channel_rate_limiter = new_channel_rate_limiter
                     self.tx_delay_ms = new_tx_delay_ms
                     self.translation_path = new_translation_path
+                    self.local_translation_path = new_local_translation_path
                     self._translator_cache = new_translator_cache
                     self.translator = new_translator
                     # Commands and nested delegates require the real bot. They
@@ -930,6 +961,7 @@ class MeshCoreBot:
                     self.tx_delay_ms = old_state["tx_delay_ms"]
                     self.translator = old_state["translator"]
                     self.translation_path = old_state["translation_path"]
+                    self.local_translation_path = old_state["local_translation_path"]
                     self._translator_cache = old_state["translator_cache"]
                     self._apply_command_config_state(
                         self.command_manager, old_state["command_config_state"]

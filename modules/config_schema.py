@@ -213,6 +213,7 @@ SECTIONS: dict[str, SectionMeta] = {
     "Localization": SectionMeta(keys={
         "language": KeyMeta(default="en"),
         "translation_path": KeyMeta(default="translations/"),
+        "local_translation_path": KeyMeta(default="<local_dir_path>/translations"),
         "auto_detect_language": KeyMeta(type="bool", default="false"),
     }),
     "Webhook": SectionMeta(keys={

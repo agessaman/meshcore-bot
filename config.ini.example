@@ -328,6 +328,12 @@ language = en
 # Default: translations/
 translation_path = translations/
 
+# Path to your own translation files, merged over the distributed ones key by key.
+# Use it to translate local commands, or to override individual strings, without
+# editing a shipped file. Defaults to the translations/ directory inside
+# [Bot] local_dir_path.
+# local_translation_path = local/translations/
+
 # Automatically reply in the language of the incoming message.
 # When enabled, greeting-style commands detect the sender's language (from a
 # built-in keyword list, plus the optional langdetect package for longer text:
