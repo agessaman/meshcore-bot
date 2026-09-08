@@ -2,9 +2,10 @@
 """
 Unit tests for TestCommand distance units.
 
-The {path_distance} and {firstlast_distance} placeholders are kilometres for
-every locale except US English, which gets miles. en-GB shares the "en" catalog
-but not the units, so it stays metric.
+[Test_Command] distance_unit decides the unit for the {path_distance} and
+{firstlast_distance} placeholders. Under the default 'auto' it follows the reply
+language: miles for US English, kilometres everywhere else — en-GB shares the
+"en" catalog but not the units, so it stays metric.
 """
 
 import pytest
@@ -14,16 +15,34 @@ from tests.conftest import mock_message
 
 
 @pytest.fixture
-def test_command(mock_bot):
-    """TestCommand whose repeater lookups resolve to fixed, known coordinates."""
-    if not mock_bot.config.has_section('Localization'):
-        mock_bot.config.add_section('Localization')
-    cmd = MeshTestCommand(mock_bot)
-    # Two hops one degree of longitude apart at 47N (~75.8 km/deg), so the
-    # distance is large enough that km and mi cannot be confused.
-    coords = {'AA': (47.0, -122.0), 'BB': (47.0, -121.0)}
-    cmd._lookup_repeater_location = lambda node_id, path_context=None: coords.get(node_id)
-    return cmd
+def build_command(mock_bot):
+    """Build a TestCommand whose repeater lookups resolve to fixed coordinates.
+
+    distance_unit is read once at construction, so it is a build-time argument.
+    """
+    for section in ('Localization', 'Test_Command'):
+        if not mock_bot.config.has_section(section):
+            mock_bot.config.add_section(section)
+
+    def _build(distance_unit=None):
+        if distance_unit is None:
+            mock_bot.config.remove_option('Test_Command', 'distance_unit')
+        else:
+            mock_bot.config.set('Test_Command', 'distance_unit', distance_unit)
+        cmd = MeshTestCommand(mock_bot)
+        # Two hops one degree of longitude apart at 47N (~75.8 km/deg), so the
+        # distance is large enough that km and mi cannot be confused.
+        coords = {'AA': (47.0, -122.0), 'BB': (47.0, -121.0)}
+        cmd._lookup_repeater_location = lambda node_id, path_context=None: coords.get(node_id)
+        return cmd
+
+    return _build
+
+
+@pytest.fixture
+def test_command(build_command):
+    """TestCommand with the default distance_unit ('auto')."""
+    return build_command()
 
 
 def _two_hop_message():
@@ -38,8 +57,54 @@ def _set_language(cmd, language):
 
 
 @pytest.mark.unit
-class TestFormatDistance:
-    """_format_distance picks its unit from the Localization language."""
+class TestDistanceUnitConfig:
+    """distance_unit overrides the language-derived unit."""
+
+    def test_defaults_to_auto(self, test_command):
+        assert test_command.distance_unit == 'auto'
+
+    def test_km_forces_metric_for_english(self, build_command):
+        cmd = build_command('km')
+        _set_language(cmd, 'en')
+        assert cmd._format_distance(100.0) == "100.0km"
+
+    def test_mi_forces_miles_for_german(self, build_command):
+        cmd = build_command('mi')
+        _set_language(cmd, 'de')
+        assert cmd._format_distance(100.0) == "62.1mi"
+
+    def test_value_is_normalized(self, build_command):
+        cmd = build_command('  MI  ')
+        _set_language(cmd, 'de')
+        assert cmd.distance_unit == 'mi'
+        assert cmd._format_distance(100.0) == "62.1mi"
+
+    def test_invalid_value_falls_back_to_auto(self, build_command):
+        cmd = build_command('furlongs')
+        assert cmd.distance_unit == 'auto'
+        _set_language(cmd, 'en')
+        assert cmd._format_distance(100.0) == "62.1mi"
+        _set_language(cmd, 'de')
+        assert cmd._format_distance(100.0) == "100.0km"
+
+    def test_invalid_value_warns_once_at_startup(self, build_command):
+        cmd = build_command('furlongs')
+        warnings = [str(call) for call in cmd.logger.warning.call_args_list]
+        assert any('distance_unit' in w and 'furlongs' in w for w in warnings)
+        # Rendering must not re-warn on every reply.
+        cmd.logger.warning.reset_mock()
+        cmd._format_distance(100.0)
+        cmd.logger.warning.assert_not_called()
+
+    def test_explicit_unit_reaches_the_placeholders(self, build_command):
+        cmd = build_command('km')
+        _set_language(cmd, 'en')
+        assert cmd._calculate_firstlast_distance(_two_hop_message()) == "75.8km"
+
+
+@pytest.mark.unit
+class TestAutoUnitFollowsLanguage:
+    """Under 'auto', _format_distance picks its unit from the reply language."""
 
     def test_english_converts_to_miles(self, test_command):
         _set_language(test_command, 'en')

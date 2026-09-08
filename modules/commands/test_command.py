@@ -37,11 +37,20 @@ class TestCommand(BaseCommand):
     settings_schema = [
         {"key": "response_format", "label": "Response format", "type": "str", "default": "",
          "help": "Template for the test reply. Empty uses the default format."},
+        {"key": "distance_unit", "label": "Distance unit", "type": "enum",
+         "options": [
+             {"value": "auto", "label": "Auto (follow reply language)"},
+             {"value": "km", "label": "Kilometres"},
+             {"value": "mi", "label": "Miles"},
+         ],
+         "default": "auto",
+         "help": "Unit for {path_distance} and {firstlast_distance}."},
     ]
 
     def __init__(self, bot):
         super().__init__(bot)
         self.test_enabled = self.get_config_value('Test_Command', 'enabled', fallback=True, value_type='bool')
+        self.distance_unit = self._read_distance_unit()
         # Get bot location from config for geographic proximity calculations
         self.geographic_guessing_enabled = False
         self.bot_latitude = None
@@ -536,13 +545,30 @@ class TestCommand(BaseCommand):
 
         return best_repeater
 
-    # Display units follow the reply's language rather than a unit config: the
-    # test reply has no [Weather]-style unit setting of its own, and the only
-    # locale that reads kilometres as foreign is US English. en-GB is deliberately
-    # excluded — it shares the "en" catalog but not the units (see !gwx, which was
-    # switched off locale-driven units for exactly that reason).
+    # Whether a reply reads in kilometres or miles is an operator choice, so
+    # [Test_Command] distance_unit decides it — the same call !gwx makes with its
+    # [Weather] unit config. 'auto' keeps the language as a proxy for the operator
+    # not having stated one: only US English gets miles, and en-GB is deliberately
+    # excluded because it shares the "en" catalog but not the units.
     KM_TO_MILES = 0.621371
+    DISTANCE_UNITS = frozenset({'auto', 'km', 'mi'})
     MILES_LANGUAGES = frozenset({'en', 'en-us'})
+
+    def _read_distance_unit(self) -> str:
+        """Read and validate ``[Test_Command] distance_unit``.
+
+        Returns:
+            str: One of 'auto', 'km' or 'mi'; 'auto' when unset or invalid.
+        """
+        raw = self.get_config_value('Test_Command', 'distance_unit', fallback='auto')
+        unit = str(raw or 'auto').strip().lower()
+        if unit not in self.DISTANCE_UNITS:
+            self.logger.warning(
+                f"Invalid distance_unit '{raw}' in [Test_Command]; "
+                f"expected one of {sorted(self.DISTANCE_UNITS)}. Falling back to 'auto'."
+            )
+            return 'auto'
+        return unit
 
     def _response_language(self) -> str:
         """Get the normalized language code the current reply is rendered in.
@@ -565,8 +591,11 @@ class TestCommand(BaseCommand):
         """Check whether distances should be rendered in miles.
 
         Returns:
-            bool: True when the reply language is US English.
+            bool: True when ``distance_unit`` is 'mi', or when it is 'auto' and
+            the reply language is US English.
         """
+        if self.distance_unit != 'auto':
+            return self.distance_unit == 'mi'
         return self._response_language() in self.MILES_LANGUAGES
 
     def _format_distance(self, distance_km: float) -> str:
