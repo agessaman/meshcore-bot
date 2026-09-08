@@ -17,14 +17,15 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date
 from typing import Optional
 
 from apscheduler.triggers.cron import CronTrigger
 
 dow_names = r'(?:mon|tue|wed|thu|fri|sat|sun)'
 month_names = r'(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)'
-hour_pattern = r'(?:[0-1]?\d|2[0-3]|\*)(?:(?:[\/-](?:[0-1]?\d|2[0-3]))|(?:,(?:[0-1]?\d|2[0-3]))+)?'
-minute_pattern = r'(?:[0-5]?\d|\*)(?:(?:[\/\-][0-5]?\d)|(?:,[0-5]?\d)+)?'
+hour_pattern = r'(?:\d+|\*)(?:[\/-]\d+|(?:,\d+)+)?'
+minute_pattern = r'(?:\d+|\*)(?:[\/\-]\d+|(?:,\d+)+)?'
 day_pattern = r'(?:[0-2]?\d|3[01]|\*)(?:(?:[\/\-](?:[0-2]?\d|3[01]))|(?:,(?:[0-2]?\d|3[01]))+)?'
 month_pattern = fr'(?:[1-9]|1[0-2]|{month_names}|\*)(?:(?:[\/\-,](?:[1-9]|1[0-2]|{month_names}))+)?'
 dow_pattern = fr'(?:[0-6]|{dow_names}|\*)(?:(?:[\/\-,](?:[0-6]|{dow_names}))+)?'
@@ -33,13 +34,13 @@ dow_prefix_pattern = r'(?:(?:1st|2nd|3rd|4th|5th|last))'
 cron_re = re.compile(fr'^{minute_pattern}\s+{hour_pattern}\s+{day_pattern}\s+{month_pattern}\s+{dow_pattern}$', re.I)
 
 # regexs use to parse flexible cron
-hour_re = re.compile(fr'\b{hour_pattern}h\b', re.I)
-minute_re = re.compile(fr'\b{minute_pattern}m\b', re.I)
+hour_re = re.compile(fr'(?:\s?){hour_pattern}h\b', re.I)
+minute_re = re.compile(fr'(?:\s?){minute_pattern}m\b', re.I)
 day_re = re.compile(fr'\b{day_pattern}d\b', re.I)
 month_re = re.compile(fr'\b{month_pattern}\b', re.I)
 dow_re = re.compile(r'\b'+dow_pattern+r'\b', re.I)
 dow_prefix_re = re.compile(fr'\b{dow_prefix_pattern}\b', re.I)
-week_re = re.compile(r'\b(?:\d{1,2}|\*)(?:(?:[\/\-]\d{1,2})|(?:,\d{1,2})+)?w\b', re.I)
+week_re = re.compile(r'(?:\s?)(?:\d{1,2}|\*)(?:(?:[\/\-]\d{1,2})|(?:,\d{1,2})+)?w\b', re.I)
 hhmm_re = re.compile(r'\b(?P<hour>(?:[0-1]\d|2[0-3])):?(?P<min>[0-5]\d)\b')
 start_date_re = re.compile(r'\bstart[:=](?P<date>[\d\-]+)\b')
 end_date_re = re.compile(r'\bend[:=](?P<date>[\d\-]+)\b')
@@ -101,7 +102,7 @@ class ScheduleParseResult:
     is_deprecated_hhmm: bool
     """True when the legacy HHMM daily form was used."""
 
-    error: str
+    error: Optional[str]
     """When trigger is None, error can include reason for invalid trigger."""
 
 
@@ -145,6 +146,9 @@ def parse_flexible_cron(time_str: str) -> dict[str, str]:
         date_match = iso_date_re.search(match.group(0))
         if date_match:
             params['start_date'] = date_match.group(0)
+            if params['start_date'].startswith('0000-'):
+                # insert the current year
+                params['start_date'] = re.sub(r'^0000', str(date.today().year), params['start_date'])
             time_str = start_date_re.sub('', time_str)
         else:
             params['error'] = 'Invalid ISO date (YYYY-MM-DD)'
@@ -155,6 +159,9 @@ def parse_flexible_cron(time_str: str) -> dict[str, str]:
         date_match = iso_date_re.search(match.group(0))
         if date_match:
             params['end_date'] = date_match.group(0)
+            if params['end_date'].startswith('0000-'):
+                # insert the current year
+                params['end_date'] = re.sub(r'^0000', str(date.today().year), params['end_date'])
             time_str = end_date_re.sub('', time_str)
         else:
             params['error'] = 'Invalid ISO date (YYYY-MM-DD)'
@@ -169,18 +176,21 @@ def parse_flexible_cron(time_str: str) -> dict[str, str]:
         # Look for hours
         match = hour_re.search(time_str)
         if match:
-            params['hour'] = match.group(0)[:-1]
+            # [:-1] removes the 'h' from the expression
+            params['hour'] = match.group(0)[:-1].strip()
             time_str = hour_re.sub('', time_str)
 
         # Look for mins
         match = minute_re.search(time_str)
         if match:
-            params['minute'] = match.group(0)[:-1]
+            # [:-1] removes the 'm' from the expression
+            params['minute'] = match.group(0)[:-1].strip()
             time_str = minute_re.sub('', time_str)
 
     # Look for day of month
     match = day_re.search(time_str)
     if match:
+        # [:-1] removes the 'd' form the expression
         params['day'] = match.group(0)[:-1]
         time_str = day_re.sub('', time_str)
 
@@ -214,7 +224,7 @@ def parse_flexible_cron(time_str: str) -> dict[str, str]:
     # If anything left in time_str (other than whitespace) is
     # considered an error condition and return empty dictionary
     if time_str.strip() and 'error' not in params:
-        return dict(error=f'Unparsable component: {time_str}')
+        return dict(error=f'Unparsable component: "{time_str}" parsed: {params=}')
     return params
 
 
@@ -234,7 +244,7 @@ def parse_schedule_key(
     """
     raw = (schedule_key or "").strip()
     if not raw:
-        return ScheduleParseResult(None, "", False, "")
+        return ScheduleParseResult(None, "", False, "No schedule_key specified")
 
     lowered = raw.lower()
 
@@ -244,7 +254,7 @@ def parse_schedule_key(
         minute = int(raw[2:])
         trigger = CronTrigger(hour=hour, minute=minute, timezone=timezone)
         display = f"{hour:02d}:{minute:02d}"
-        return ScheduleParseResult(trigger, display, True, "")
+        return ScheduleParseResult(trigger, display, True, None)
 
     # 2) @preset aliases
     if lowered in _SPECIAL_PRESET_TO_CRON:
@@ -253,12 +263,12 @@ def parse_schedule_key(
             trigger = CronTrigger.from_crontab(cron_expr, timezone=timezone)
         except ValueError as e:
             return ScheduleParseResult(None, raw, False, str(e))
-        return ScheduleParseResult(trigger, raw, False, "")
+        return ScheduleParseResult(trigger, raw, False, None)
 
     # 3) Standard 5-field crontab
     if re.match(cron_re, raw):
         trigger = CronTrigger.from_crontab(raw, timezone=timezone)
-        return ScheduleParseResult(trigger, raw, False, "")
+        return ScheduleParseResult(trigger, raw, False, None)
 
     # 4) Flexible crontab
     cron_trigger_kw = parse_flexible_cron(raw)
@@ -267,7 +277,10 @@ def parse_schedule_key(
             return ScheduleParseResult(None, raw, False, cron_trigger_kw['error'])
 
         trigger = CronTrigger(**cron_trigger_kw, timezone=timezone)
-        return ScheduleParseResult(trigger, raw, False, "")
+        print(f"{trigger=}")
+        if not trigger:
+            return ScheduleParseResult(trigger, raw, False, "Unparsable time specification")
+        return ScheduleParseResult(trigger, raw, False, None)
 
     # Crontab entry not recognized
     return ScheduleParseResult(None, raw, False, "crontab entry not recognized or parsable")

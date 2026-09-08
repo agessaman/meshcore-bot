@@ -3,8 +3,8 @@
 Unit tests for the scheduled-message cron helpers.
 """
 
-import datetime
 import re
+from datetime import date, timezone
 
 import pytest
 
@@ -16,7 +16,7 @@ from modules.scheduled_message_cron import (
     parse_schedule_key,
 )
 
-TZ = datetime.timezone.utc
+TZ = timezone.utc
 
 
 @pytest.mark.unit
@@ -84,10 +84,6 @@ class TestParseFlexibleCron:
     def test_parses_hour_and_minute_suffix_forms(self, case):
         assert parse_flexible_cron(case[0]) == case[1]
 
-    @pytest.mark.parametrize("spec", ["34h", "75m", "12,30h", "2-25h", "15,61m", "0-100m"])
-    def test_invalid_hour_and_minute_suffix_forms(self, spec):
-        assert parse_flexible_cron(spec)["error"].startswith("Unparsable component: ")
-
     @pytest.mark.parametrize("mon", ["jan", "feb", "mar", "apr", "may", "jun",
                                      "jul", "aug", "sep", "oct", "nov", "dec",
                                      "1", "2", "3", "4", "5", "6",
@@ -103,7 +99,8 @@ class TestParseFlexibleCron:
 
     @pytest.mark.parametrize("mon", ["march", "april", "june", "july", "13"])
     def test_invalid_month(self, mon):
-        assert parse_flexible_cron(mon) == {"error": f"Unparsable component: {mon}"}
+        result = parse_flexible_cron(mon)
+        assert re.match(fr'^Unparsable component: "{mon}"', result["error"])
 
     @pytest.mark.parametrize("day", ["15d", "10-15d", "5,15,25d"])
     def test_parses_day_of_month(self, day):
@@ -119,7 +116,8 @@ class TestParseFlexibleCron:
 
     @pytest.mark.parametrize("dow", ["tues", "thur"])
     def test_invalid_day_of_week(self, dow):
-        assert parse_flexible_cron(dow) == {"error": f"Unparsable component: {dow}"}
+        result = parse_flexible_cron(dow)
+        assert re.match(fr'^Unparsable component: "{dow}"', result["error"])
 
     @pytest.mark.parametrize("dow", ["1st mon", "2nd tue", "3rd wed", "4th thu",
                                      "5th fri", "last sat"])
@@ -160,18 +158,30 @@ class TestParseFlexibleCron:
             "start_date": "2027-01-01"
         }
 
+    def test_start_date_detected_for_current_year(self):
+        current_year = date.today().year
+        assert parse_flexible_cron("start:0000-01-01") == {
+            "start_date": f"{current_year}-01-01"
+        }
+
     def test_end_date_detected(self):
         assert parse_flexible_cron("end:2027-01-01") == {
             "end_date": "2027-01-01"
+        }
+
+    def test_end_date_detected_for_current_year(self):
+        current_year = date.today().year
+        assert parse_flexible_cron("end:0000-01-01") == {
+            "end_date": f"{current_year}-01-01"
         }
 
     def test_empty_string_returns_empty_dict(self):
         assert parse_flexible_cron("") == {}
 
     def test_unrecognized_text_returns_error_attribute(self):
-        assert parse_flexible_cron("nonsense") == {
-            "error": "Unparsable component: nonsense"
-        }
+        result = parse_flexible_cron("nonsense")
+        assert re.match(r'^Unparsable component: "nonsense"', result["error"])
+
 
 
 @pytest.mark.unit
@@ -181,7 +191,7 @@ class TestParseScheduleKey:
         assert result.trigger is None
         assert result.display_label == ""
         assert result.is_deprecated_hhmm is False
-        assert result.error is None
+        assert result.error == "No schedule_key specified"
 
     def test_legacy_hhmm_is_flagged_deprecated(self):
         result = parse_schedule_key("0800", TZ)
@@ -216,15 +226,20 @@ class TestParseScheduleKey:
         # this; an encoded key on its own does not parse as a valid time.
         result = parse_schedule_key("4th tue 14!00 jan-oct", TZ)
         assert result.trigger is None
-        assert re.match(r'Unparsable component:\s+14!00', result.error.strip())
+        assert re.match(r'^Unparsable component: "\s*14!00\s*"', result.error)
 
     def test_unrecognized_text_returns_no_trigger(self):
         result = parse_schedule_key("nonsense", TZ)
         assert result.trigger is None
         assert result.display_label == "nonsense"
-        assert result.error == "Unparsable component: nonsense"
+        assert re.match(r'^Unparsable component: "nonsense"', result.error)
 
     def test_whitespace_only_returns_no_trigger(self):
         result = parse_schedule_key("   ", TZ)
         assert result.trigger is None
-        assert result.error is None
+        assert result.error == "No schedule_key specified"
+
+    @pytest.mark.parametrize("spec", ["34h", "75m", "12,30h", "2-25h", "15,61m", "0-69m", "0-200m"])
+    def test_invalid_hour_and_minute_suffix_forms(self, spec):
+        with pytest.raises(ValueError, match=r"^Error validating expression"):
+            parse_schedule_key(spec, TZ)

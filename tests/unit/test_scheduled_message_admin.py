@@ -27,7 +27,8 @@ class TestDescribeSchedule:
                                       "0 8 15 oct-dec *", "0 8 * jun,jul,sep *", "0 8 * jan,mar wed",
                                       "0 8 * may-oct,dec *", "0 8 * * mon-wed,sat,sun",
                                       "1st tue 10:00", "last sat 9h */15m", "mon jun-jul 0815",
-                                      "5,15,25d 15m", "feb 10-20d 23:30", "3w 7-15h 45m"])
+                                      "5,15,25d 15m", "feb 10-20d 23:30", "3w 7-15h 45m",
+                                      "*/30m thu", "*/4h", "mon-fri */6h", "jan *h", "*h"])
     def test_accepts_valid_schedules(self, cron):
         assert describe_schedule(cron, TZ)["valid"] is True
 

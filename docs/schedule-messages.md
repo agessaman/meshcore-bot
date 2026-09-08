@@ -9,7 +9,7 @@ The scheduled message subsystem uses APScheduler (a Python scheduling library) t
 You can specify schedules in three ways:
 1. **Simplified modes** (web UI only) — templates for common patterns like daily, weekly, or interval-based schedules
 2. **Standard cron** — the traditional 5-field cron syntax used in Unix/Linux systems
-3. **Flexible cron** — a more human-readable format that allows fields in any order with intuitive suffixes
+3. **Flexible cron** — a more human-readable format that allows fields in any order with intuitive qualifiers
 
 All three approaches ultimately create the same underlying schedule representation, but offer different levels of convenience and expressiveness.
 
@@ -163,6 +163,8 @@ Flexible cron is a more readable alternative to standard cron that allows you to
 
 **Note:** Use three-letter month and day-of-week names (`jan`, `mon`) for clarity. While numeric values are technically supported, names are strongly preferred to avoid confusion.
 
+**Note:** The use of `*` for the month or day of week is invalid when using a flexible cron entry. Not specifying a month or day of week is the same as `*` for the field.
+
 ### Time Specification
 
 You can specify time in several ways:
@@ -202,7 +204,7 @@ last fri     → Last Friday of the month
 last         → Last day of the month (28th, 29th, 30th, or 31st depending on the month)
 ```
 
-This is particularly useful for end-of-month schedules without worrying about month length.
+This is particularly useful for end-of-month schedules without worrying about the number of days in a month.
 
 **Examples:**
 - `last 15:00` → 3:00 PM on the last day of every month
@@ -210,7 +212,9 @@ This is particularly useful for end-of-month schedules without worrying about mo
 
 ### Date Range Constraints
 
-You can limit when a schedule is active using start and end dates. This is useful for seasonal schedules or time-limited events.
+You can limit when a schedule is active using start and end dates. This is useful for seasonal schedules or time-limited events. The start and end date needs to be specified as an ISO 8601 date (YYYY-MM-DD).
+
+Special case when using the year of '0000'. The year will be replaced with the current year. This allows the constraint to be reused each year without having to create or update the scheduled message entry every year.
 
 **Start date only:**
 ```
@@ -230,14 +234,13 @@ mon 14:00 start:2026-06-01 end:2026-12-31
 ```
 Schedule runs only from June 1 through December 31, 2026.
 
-**Date format:** Use ISO 8601 format: `YYYY-MM-DD`
-
 **Examples:**
 - `4th tue 19:00 jan-oct start:2026-01-01 end:2026-12-31` → 4th Tuesday at 7 PM, January–October 2026 only
 - `fri 18:00 start:2026-06-01` → Every Friday at 6 PM, starting June 1, 2026
 - `1st mon 09:00 end:2026-05-31` → First Monday at 9 AM, until May 31, 2026
+- `sun 09:00 start:0000-06-01 end:0000-07-31` → Every Sunday at 9 AM, starting June 1 and ending July 31 of every year
 
-### Examples
+### Flexible Cron Examples
 
 **Every 4th Tuesday at 7:00 PM, January through October:**
 ```
@@ -286,16 +289,16 @@ trigger to fire every minute.
 
 ### Field Resolution Order
 
-When the flexible cron parser processes your expression:
+When the flexible cron parser processes your expression the following order is used to identify portions of the expression:
 
 1. **Time** is extracted first (HH:MM or HHMM pattern)
 2. If no combined time, **hour** (`Nh`) and **minute** (`Nm`) are parsed separately
-3. **Month** names/numbers are identified
-4. **Day of month** (with `d` suffix) is parsed
+3. **Day of month** (with `d` suffix) is parsed
+4. **Month** names/numbers are identified
 5. **Week** (with `w` suffix) is parsed
 6. **Day of week** with optional ordinal prefix is parsed last
 
-Fields not specified default to `*` (any value).
+Fields not specified default to `*` (all values).
 
 ---
 
