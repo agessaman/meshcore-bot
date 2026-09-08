@@ -536,6 +536,55 @@ class TestCommand(BaseCommand):
 
         return best_repeater
 
+    # Display units follow the reply's language rather than a unit config: the
+    # test reply has no [Weather]-style unit setting of its own, and the only
+    # locale that reads kilometres as foreign is US English. en-GB is deliberately
+    # excluded — it shares the "en" catalog but not the units (see !gwx, which was
+    # switched off locale-driven units for exactly that reason).
+    KM_TO_MILES = 0.621371
+    MILES_LANGUAGES = frozenset({'en', 'en-us'})
+
+    def _response_language(self) -> str:
+        """Get the normalized language code the current reply is rendered in.
+
+        Prefers the translator bound for this reply (so an auto-detected sender
+        language wins) and falls back to ``[Localization] language``.
+
+        Returns:
+            str: Lowercased language code with ``_`` normalized to ``-`` (e.g. 'en-gb').
+        """
+        language = getattr(self.response_translator, 'language', None)
+        if not isinstance(language, str) or not language:
+            try:
+                language = self.bot.config.get('Localization', 'language', fallback='en')
+            except Exception:
+                language = 'en'
+        return str(language).strip().replace('_', '-').lower() or 'en'
+
+    def _uses_miles(self) -> bool:
+        """Check whether distances should be rendered in miles.
+
+        Returns:
+            bool: True when the reply language is US English.
+        """
+        return self._response_language() in self.MILES_LANGUAGES
+
+    def _format_distance(self, distance_km: float) -> str:
+        """Format a distance for display in the reply's units.
+
+        Only display is converted; proximity scoring stays in kilometres so the
+        repeater-selection thresholds keep their meaning.
+
+        Args:
+            distance_km: Distance in kilometres.
+
+        Returns:
+            str: Distance with its unit suffix, e.g. ``'12.4km'`` or ``'7.7mi'``.
+        """
+        if self._uses_miles():
+            return f"{distance_km * self.KM_TO_MILES:.1f}mi"
+        return f"{distance_km:.1f}km"
+
     def _calculate_path_distance(self, message: MeshMessage) -> str:
         """Calculate total distance along path (sum of distances between consecutive repeaters with locations).
 
@@ -589,10 +638,11 @@ class TestCommand(BaseCommand):
             return ""  # No valid segments found
 
         # Format the result compactly
+        distance_str = self._format_distance(total_distance)
         if skipped_nodes > 0:
-            return f"{total_distance:.1f}km ({valid_segments} segs, {skipped_nodes} no-loc)"
+            return f"{distance_str} ({valid_segments} segs, {skipped_nodes} no-loc)"
         else:
-            return f"{total_distance:.1f}km ({valid_segments} segs)"
+            return f"{distance_str} ({valid_segments} segs)"
 
     def _calculate_firstlast_distance(self, message: MeshMessage) -> str:
         """Calculate straight-line distance between first and last repeater in path.
@@ -634,7 +684,7 @@ class TestCommand(BaseCommand):
             last_location[0], last_location[1]
         )
 
-        return f"{distance:.1f}km"
+        return self._format_distance(distance)
 
     def format_response(self, message: MeshMessage, response_format: str,
                         extra: Optional[dict[str, Any]] = None) -> str:
