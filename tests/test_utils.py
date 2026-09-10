@@ -176,6 +176,7 @@ class TestFormatElapsedDisplay:
         ts = time.time() - 1.5  # 1.5 seconds ago
         result = format_elapsed_display(ts)
         assert "s" in result
+        assert "ms" not in result
         assert "Sync" not in result
 
     def test_future_timestamp_returns_sync_message(self):
