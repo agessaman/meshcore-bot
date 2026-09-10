@@ -2395,6 +2395,8 @@ def format_elapsed_display(ts: Any, translator: Any = None) -> str:
     elapsed_ms = (datetime.now(UTC).timestamp() - ts_f) * 1000
     if elapsed_ms < 0 or elapsed_ms > _ELAPSED_MS_MAX:
         return _sync_str()
+    if elapsed_ms >= 1000:
+        return f"{round(elapsed_ms / 1000, 1)}s"
     return f"{round(elapsed_ms)}ms"
 
 
