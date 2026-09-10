@@ -38,6 +38,14 @@ semantic versioning.
 
 ### Fixed
 
+- Published packet payloads carry UTC in every time field, not just `timestamp`
+  (#278). `time` and `date` came from a local `datetime.now()` while the
+  `timestamp` beside them was UTC, so a consumer reading the pair off a bot in a
+  non-UTC zone saw a skew of exactly that zone's offset and flagged the observer's
+  clock as wrong. The original script took those two fields off the firmware log
+  line, which runs on the device's UTC clock, so a host-local reading was never
+  intended. All three fields now render one UTC instant.
+
 - Weather output no longer leaks translation key paths into mesh broadcasts. The
   localization pass replaced several `dict.get(key, fallback)` lookups with bare
   `translate()` calls, and `Translator.translate` returns the dotted key path when
