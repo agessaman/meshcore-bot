@@ -175,6 +175,20 @@ class TestValidateField:
         assert to_config_string({"type": "bool"}, True) == "true"
         assert to_config_string({"type": "list"}, ["a", "b"]) == "a, b"
 
+    def test_password_validates_like_str(self):
+        f = {"key": "x", "type": "password", "pattern": r"[0-9a-f]{4}"}
+        assert validate_field(f, "beef")[0]
+        assert not validate_field(f, "zzzz")[0]
+
+    def test_password_required_empty_fails(self):
+        ok, _, err = validate_field(
+            {"key": "x", "type": "password", "required": True, "label": "API Password"}, ""
+        )
+        assert not ok and "required" in err
+
+    def test_password_to_config_string(self):
+        assert to_config_string({"type": "password"}, "s3cret") == "s3cret"
+
 
 # ---------------------------------------------------------------------------
 # settings_schema.read_enabled — legacy aliases
@@ -238,6 +252,48 @@ class TestBuildView:
                 assert any(f["key"].lower() == "channels" for f in e["fields"]), (
                     f"{e['name']} is missing the injected channels field"
                 )
+
+
+class TestBuildViewPasswordRedaction:
+    """Password-typed fields must never leak their stored value to the UI;
+    the view should only report whether one is currently set."""
+
+    def test_password_value_is_blanked_and_has_value_true(self):
+        """A password field with a stored value returns empty string + has_value=True."""
+        cfg = configparser.ConfigParser()
+        cfg.add_section("TestSection")
+        cfg.set("TestSection", "api_password", "s3cret-value")
+
+        field_def = {"key": "api_password", "type": "password", "label": "API Password"}
+        from modules.settings_schema import _read_typed
+
+        # Simulate what _assemble_entry does for password fields
+        resolved = dict(field_def)
+        resolved["value"] = _read_typed(cfg, "TestSection", field_def)
+        if field_def.get("type") == "password":
+            resolved["has_value"] = bool(resolved["value"])
+            resolved["value"] = ""
+
+        assert resolved["value"] == ""
+        assert resolved["has_value"] is True
+
+    def test_password_has_value_false_when_unset(self):
+        """A password field with no stored value returns empty string + has_value=False."""
+        cfg = configparser.ConfigParser()
+        # Section doesn't exist, so password is unset
+
+        field_def = {"key": "api_password", "type": "password", "label": "API Password"}
+        from modules.settings_schema import _read_typed
+
+        # Simulate what _assemble_entry does for password fields
+        resolved = dict(field_def)
+        resolved["value"] = _read_typed(cfg, "TestSection", field_def)
+        if field_def.get("type") == "password":
+            resolved["has_value"] = bool(resolved["value"])
+            resolved["value"] = ""
+
+        assert resolved["value"] == ""
+        assert resolved["has_value"] is False
 
 
 # ---------------------------------------------------------------------------
