@@ -340,6 +340,18 @@ semantic versioning.
   options and previews the next five runs; entries the bot cannot run are shown as
   **Not scheduled** with the reason rather than hidden. It edits the same config section
   the bot already uses, so there is no second source of truth.
+- **Flexible cron format for `[Scheduled_Messages]`**, alongside standard 5-field cron.
+  Fields can appear in any order using suffixes (`9h`, `30m`, `15d`, `3w` for ISO week)
+  plus month/day-of-week names, so schedules that plain cron cannot express — "the 4th
+  Tuesday of the month" (`4th tue 19:00`) or "the last Friday" (`last fri`) — no longer
+  need a hand-rolled day-of-month list that drifts across months of different lengths.
+  Optional `start:YYYY-MM-DD` / `end:YYYY-MM-DD` bound a schedule to a date range. The
+  web viewer's schedule builder gets a matching "Flexible (cron)" mode, and the edit
+  modal now detects which mode a stored schedule belongs to instead of always opening in
+  Advanced. Because `:` is the INI key/value separator, a flexible-cron key containing
+  an HH:MM time is stored in `config.ini` with `:` encoded as `!` (e.g.
+  `4th tue 14!00 jan-oct = ...`) and decoded back on every read; `HHMM` without a colon
+  needs no encoding.
 - Documented installing with `pipx`, which sidesteps PEP 668 on Debian 12+, Ubuntu
   23.04+, Fedora and Arch (#222), including where `config.ini`, the database and
   `local/` live — everything resolves relative to the config file's directory, so an

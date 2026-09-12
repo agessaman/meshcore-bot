@@ -213,6 +213,26 @@ class TestSetupScheduledMessages:
         assert len(self._message_jobs(scheduler)) == 1
         self._teardown(scheduler)
 
+    def test_flexible_cron_key_with_encoded_time_is_decoded_and_registered(self, scheduler):
+        """config.ini stores flexible-cron HH:MM as HH!MM (":" is the INI
+        key/value separator); setup_scheduled_messages() must decode it back
+        before parsing, or the entry silently fails to schedule."""
+        scheduler.bot.config.add_section("Scheduled_Messages")
+        scheduler.bot.config.set(
+            "Scheduled_Messages",
+            "4th tue 14!00 jan-oct",
+            "Volusia ARES:ARES meeting tonight",
+        )
+        self._setup_and_call(scheduler)
+        assert "4th tue 14:00 jan-oct" in scheduler.scheduled_messages
+        channel, message, label, scope = scheduler.scheduled_messages["4th tue 14:00 jan-oct"]
+        assert scope is None
+        assert channel == "Volusia ARES"
+        assert "ARES meeting tonight" in message
+        assert label == "4th tue 14:00 jan-oct"
+        assert len(self._message_jobs(scheduler)) == 1
+        self._teardown(scheduler)
+
     def test_invalid_cron_skipped(self, scheduler):
         scheduler.bot.config.add_section("Scheduled_Messages")
         scheduler.bot.config.set(
