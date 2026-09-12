@@ -8,6 +8,16 @@ semantic versioning.
 
 ### Added
 
+- Local commands and local services (dropped into `local/commands` and
+  `local/service_plugins`) now appear in the web viewer's Plugins settings page
+  alongside the built-in ones, tagged with `source: "local"`. Settings edited
+  there route to `local/config.ini` rather than the base `config.ini`, matching
+  the local overlay the bot already merges at startup via `[Bot] local_dir_path`
+  — a section already tracked in the base config keeps saving there. The web
+  viewer previously only read/wrote against `config.ini`, so any local plugin
+  settings actually stored in the overlay were invisible and unsavable from the
+  UI.
+
 - Localized proactive weather messages (daily forecasts, rain nowcasts, weather
   alerts) via `services.weather_service.*` translation keys. `WeatherService` now
   uses the bot's `translator` instead of hardcoded English strings, so proactive

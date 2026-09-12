@@ -10,8 +10,9 @@
     "test:contacts": "node --test tests/js/contacts_manager.test.mjs"
   },
   "devDependencies": {
-    "eslint": "^8.57.0",
-    "eslint-plugin-html": "^8.1.1",
+    "eslint": "^10.8.0",
+    "eslint-plugin-html": "^8.1.4",
+    "globals": "^16.5.0",
     "htmlhint": "^1.1.4"
   }
 }
