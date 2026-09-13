@@ -600,6 +600,36 @@ function renderField(field, overrideValue) {
         wrapper.appendChild(group);
         if (field.help) wrapper.appendChild(helpText(field.help));
         return { wrapper, input };
+    } else if (field.type === 'password') {
+        const group = document.createElement('div');
+        group.className = 'input-group input-group-sm has-validation';
+        input = document.createElement('input');
+        input.className = 'form-control';
+        input.type = 'password';
+        input.autocomplete = 'new-password';
+        if (field.pattern) input.pattern = field.pattern;
+        input.value = (value !== undefined && value !== null) ? value : '';
+        input.placeholder = field.has_value ? '(saved — enter new value to change)' : '';
+        group.appendChild(input);
+        const toggleBtn = document.createElement('button');
+        toggleBtn.type = 'button';
+        toggleBtn.className = 'btn btn-outline-secondary';
+        const toggleIcon = document.createElement('i');
+        toggleIcon.className = 'fas fa-eye';
+        toggleBtn.appendChild(toggleIcon);
+        toggleBtn.addEventListener('click', () => {
+            const showing = input.type === 'text';
+            input.type = showing ? 'password' : 'text';
+            toggleIcon.classList.toggle('fa-eye', showing);
+            toggleIcon.classList.toggle('fa-eye-slash', !showing);
+        });
+        group.appendChild(toggleBtn);
+        const fb = document.createElement('div');
+        fb.className = 'invalid-feedback';
+        group.appendChild(fb);
+        wrapper.appendChild(group);
+        if (field.help) wrapper.appendChild(helpText(field.help));
+        return { wrapper, input };
     } else {
         input = document.createElement('input');
         input.className = 'form-control form-control-sm';
@@ -638,7 +668,7 @@ function fieldColClass(field) {
     if (field.type === 'int' || field.type === 'float' || field.type === 'enum') {
         return 'col-6 col-md-4 col-xl-3';
     }
-    return 'col-12 col-sm-6 col-xl-4';  // str / list — medium
+    return 'col-12 col-sm-6 col-xl-4';  // str / list / password — medium
 }
 
 // Badge marking a field that reads/writes a shared section (not the plugin's own).
@@ -870,6 +900,7 @@ function validateClient(field, raw) {
     const empty = (raw === '' || raw === null || raw === undefined);
     if (field.type === 'bool') return null;
     if (empty) {
+        if (field.type === 'password' && field.has_value) return null;  // leave unchanged
         return field.required ? `${field.label} is required` : null;
     }
     if (field.type === 'int' || field.type === 'float') {
@@ -883,7 +914,7 @@ function validateClient(field, raw) {
         const allowed = (field.options || []).map(o => String(o.value));
         if (!allowed.includes(String(raw))) return `${field.label} is invalid`;
     }
-    if (field.type === 'str' && field.pattern) {
+    if ((field.type === 'str' || field.type === 'password') && field.pattern) {
         if (!new RegExp('^(?:' + field.pattern + ')$').test(raw)) return `${field.label} has an invalid format`;
     }
     return null;

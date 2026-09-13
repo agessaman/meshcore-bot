@@ -14,6 +14,18 @@ semantic versioning.
   which shares the English catalog but not US units. Repeater-selection distances
   stay in kilometres; only the printed placeholders convert.
 
+- `password` field type for a plugin's `settings_schema`, so a secret like
+  a password for a command renders masked in the web viewer's Plugins page
+  instead of as plain text (#273). It validates and serializes exactly like `str`
+  (the value is still stored in plaintext in `config.ini`); the masking is a
+  UI concern only. The plaintext secret never reaches the browser: the view
+  blanks the value and reports only `has_value`, matching the key-name
+  redaction already used elsewhere, and the field renders as a
+  `type="password"` input with a show/hide toggle. When a value is already
+  saved the field shows a `(saved — enter new value to change)` placeholder
+  and leaving it untouched keeps the stored secret, so an edit elsewhere on
+  the form does not blank it.
+
 - Localized proactive weather messages (daily forecasts, rain nowcasts, weather
   alerts) via `services.weather_service.*` translation keys. `WeatherService` now
   uses the bot's `translator` instead of hardcoded English strings, so proactive

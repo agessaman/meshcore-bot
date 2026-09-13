@@ -19,7 +19,7 @@ Schema field format (a list of these dicts on ``settings_schema``)::
     {
         "key": "poll_interval",        # config key within the section
         "label": "Poll interval",      # human label
-        "type": "int",                 # bool|int|float|str|enum|list
+        "type": "int",                 # bool|int|float|str|enum|list|password
         "options": [{"value": "...", "label": "..."}],  # required for enum
         "min": 1000, "max": None,      # numeric bounds (int/float)
         "default": 60000,
@@ -43,7 +43,7 @@ from typing import Any, Optional
 # so a plugin's on/off state displays correctly before the first canonical save.
 from modules.config_schema import LEGACY_ENABLED_ALIASES as _ENABLED_LEGACY_ALIASES
 
-VALID_TYPES = {"bool", "int", "float", "str", "enum", "list"}
+VALID_TYPES = {"bool", "int", "float", "str", "enum", "list", "password"}
 
 # Truthy/falsey string forms accepted for bool fields (configparser-compatible).
 _TRUE = {"1", "true", "yes", "on"}
@@ -122,7 +122,8 @@ def validate_field(field: dict, raw: Any) -> tuple[bool, Any, Optional[str]]:
                     return False, None, f"{label} contains an invalid value: {item}"
         return True, items, None
 
-    # str (default)
+    # str / password (password is a str stored in plaintext in config.ini,
+    # masked only in the web UI — same validation as str)
     s = str(raw)
     pattern = field.get("pattern")
     if pattern and not re.fullmatch(pattern, s):
@@ -330,6 +331,12 @@ def _assemble_entry(
             continue
         resolved = dict(field)
         resolved["value"] = _read_typed(config, section, field)
+        if field.get("type") == "password":
+            # Never send the plaintext secret to the browser; the UI shows a
+            # placeholder when has_value is true and only submits a new value
+            # if the user actually types one.
+            resolved["has_value"] = bool(resolved["value"])
+            resolved["value"] = ""
         fields.append(resolved)
 
     # Every command can restrict which channels it responds in
