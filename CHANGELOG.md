@@ -8,6 +8,12 @@ semantic versioning.
 
 ### Added
 
+- `[Test_Command] distance_unit` (`auto`, `km`, `mi`) for `{path_distance}` and
+  `{firstlast_distance}` (#275). `auto` (the default) follows the reply language:
+  miles for `en` / `en-US`, kilometres for every other locale, including `en-GB`,
+  which shares the English catalog but not US units. Repeater-selection distances
+  stay in kilometres; only the printed placeholders convert.
+
 - Localized proactive weather messages (daily forecasts, rain nowcasts, weather
   alerts) via `services.weather_service.*` translation keys. `WeatherService` now
   uses the bot's `translator` instead of hardcoded English strings, so proactive
@@ -37,6 +43,14 @@ semantic versioning.
   `_response_translator` ContextVar to do this.
 
 ### Fixed
+
+- Published packet payloads carry UTC in every time field, not just `timestamp`
+  (#278). `time` and `date` came from a local `datetime.now()` while the
+  `timestamp` beside them was UTC, so a consumer reading the pair off a bot in a
+  non-UTC zone saw a skew of exactly that zone's offset and flagged the observer's
+  clock as wrong. The original script took those two fields off the firmware log
+  line, which runs on the device's UTC clock, so a host-local reading was never
+  intended. All three fields now render one UTC instant.
 
 - Weather output no longer leaks translation key paths into mesh broadcasts. The
   localization pass replaced several `dict.get(key, fallback)` lookups with bare
@@ -268,6 +282,10 @@ semantic versioning.
   text, with no filesystem path and no extra airtime.
 
 ### Changed
+
+- `{elapsed}` in test/keyword replies renders as seconds once the delay is a
+  second or more (`1.5s` instead of `1500ms`), so a typical ack stays shorter
+  (#275). Sub-second times still print as milliseconds.
 
 - Response templates are parsed by a character-by-character state machine rather
   than by splitting on delimiters. Placeholders can now nest (`{"Dist: {d|hops_min:1}"}`)
