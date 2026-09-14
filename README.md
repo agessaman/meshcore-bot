@@ -135,7 +135,9 @@ sudo dpkg -i dist/meshcore-bot_*.deb
 
 The package installs root-owned code in `/opt/meshcore-bot/`, configuration in
 `/etc/meshcore-bot/`, mutable state in `/var/lib/meshcore-bot/`, logs in
-`/var/log/meshcore-bot/`, and creates a `meshcore-bot` system user.
+`/var/log/meshcore-bot/`, and creates a `meshcore-bot` system user. On 32-bit ARM
+(Raspberry Pi OS armv6l/armv7l) postinst applies the same piwheels index and
+`constraints-armv7.txt` pins as `install-service.sh`.
 
 ### Docker Deployment
 For containerized deployment using Docker:

@@ -256,7 +256,8 @@ class TestResponseTranslators:
         b = object.__new__(MeshCoreBot)
         b.logger = MagicMock()
         b.translation_path = str(translations)
-        b.translator = Translator("en", b.translation_path)
+        b.local_translation_path = str(tmp_path / "local" / "translations")
+        b.translator = Translator("en", b.translation_path, b.local_translation_path)
         b._translator_cache = {"en": b.translator}
 
         assert b.available_languages() == {"en", "fr"}

@@ -79,8 +79,13 @@ class DadJokeCommand(BaseCommand):
         Returns:
             bool: True if message matches a keyword, False otherwise.
         """
-        content_lower = self.cleanup_message_for_matching(message)
-        return any(content_lower == keyword or content_lower.startswith(keyword + ' ') for keyword in self.keywords)
+        return self._cleaned_content_matches(
+            message,
+            lambda content_lower: any(
+                content_lower == keyword or content_lower.startswith(keyword + ' ')
+                for keyword in self.keywords
+            ),
+        )
 
     def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Override to add custom check (dadjoke_enabled) while using base class cooldown.

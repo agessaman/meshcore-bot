@@ -6,7 +6,7 @@ Provides common functionality and interface for command implementations
 
 import re
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime
@@ -101,6 +101,20 @@ class BaseCommand(ABC):
         # Load translated keywords after initialization
         self._load_translated_keywords()
 
+    @property
+    def response_translator(self) -> Any:
+        """The translator for the reply being built, or the bot default.
+
+        ``respond_in_sender_language`` binds a per-message translator for the
+        duration of one reply, so helpers that format part of a response need
+        this rather than ``bot.translator`` — otherwise one line of a reply
+        comes back in the sender's language and the next in the bot's default.
+
+        Returns:
+            Any: Translator object, or None when the bot has none.
+        """
+        return _response_translator.get() or getattr(self.bot, 'translator', None)
+
     def translate(self, key: str, **kwargs: Any) -> str:
         """Translate a key using the bot's translator.
 
@@ -111,7 +125,7 @@ class BaseCommand(ABC):
         Returns:
             str: Translated string, or key if translation not found.
         """
-        translator = _response_translator.get() or getattr(self.bot, 'translator', None)
+        translator = self.response_translator
         if translator is not None:
             return translator.translate(key, **kwargs)
         # Fallback if translator not available
@@ -126,7 +140,7 @@ class BaseCommand(ABC):
         Returns:
             Any: The value at the key path, or None if not found.
         """
-        translator = _response_translator.get() or getattr(self.bot, 'translator', None)
+        translator = self.response_translator
         if translator is not None:
             return translator.get_value(key)
         return None
@@ -924,6 +938,7 @@ class BaseCommand(ABC):
         validates mention rules and strips all @[...] mentions. Also updates
         message.content and message.content_lower with the cleaned text so that
         downstream processing (the execute step) sees the same clean content.
+        Does not touch message.original_content (the on-air body for display).
 
         Args:
             message: The incoming message.
@@ -958,6 +973,25 @@ class BaseCommand(ABC):
         message.content = content
         message.content_lower = content.lower()
         return message.content_lower
+
+    def _cleaned_content_matches(
+        self, message: MeshMessage, matcher: Callable[[str], bool]
+    ) -> bool:
+        """Apply mention/prefix cleanup for matching; restore content on a miss.
+
+        ``matcher`` receives the cleaned lowercased body. On True, ``message.content``
+        stays cleaned for execute. On False (or cleanup reject), the previous
+        content is restored so a keyword scan does not rewrite overheard traffic
+        (#267).
+        """
+        prior_content = message.content
+        prior_lower = message.content_lower
+        content_lower = self.cleanup_message_for_matching(message)
+        if not content_lower or not matcher(content_lower):
+            message.content = prior_content
+            message.content_lower = prior_lower
+            return False
+        return True
 
     def split_trigger_and_args(self, content: str) -> tuple[Optional[str], str]:
         """Split message content into ``(matched_keyword, args)``.
@@ -1019,25 +1053,19 @@ class BaseCommand(ABC):
         if not self.keywords:
             return False
 
-        content_lower = self.cleanup_message_for_matching(message)
-        if not content_lower:
+        def _matches(content_lower: str) -> bool:
+            for keyword in self.keywords:
+                keyword_lower = keyword.lower()
+                if keyword_lower == content_lower:
+                    return True
+                if content_lower.startswith(keyword_lower) and (
+                    len(content_lower) == len(keyword_lower)
+                    or content_lower[len(keyword_lower)] == ' '
+                ):
+                    return True
             return False
 
-        for keyword in self.keywords:
-            keyword_lower = keyword.lower()
-
-            # Check for exact match first
-            if keyword_lower == content_lower:
-                return True
-
-            # Check if the message starts with the keyword (followed by space or end of string)
-            # This ensures the keyword is the first word in the message
-            if content_lower.startswith(keyword_lower):
-                # Check if it's followed by a space or is the end of the message
-                if len(content_lower) == len(keyword_lower) or content_lower[len(keyword_lower)] == ' ':
-                    return True
-
-        return False
+        return self._cleaned_content_matches(message, _matches)
 
     def matches_custom_syntax(self, message: MeshMessage) -> bool:
         """Check if this command matches custom syntax patterns.

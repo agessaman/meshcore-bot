@@ -19,7 +19,7 @@ Schema field format (a list of these dicts on ``settings_schema``)::
     {
         "key": "poll_interval",        # config key within the section
         "label": "Poll interval",      # human label
-        "type": "int",                 # bool|int|float|str|enum|list
+        "type": "int",                 # bool|int|float|str|enum|list|password
         "options": [{"value": "...", "label": "..."}],  # required for enum
         "min": 1000, "max": None,      # numeric bounds (int/float)
         "default": 60000,
@@ -43,7 +43,7 @@ from typing import Any, Optional
 # so a plugin's on/off state displays correctly before the first canonical save.
 from modules.config_schema import LEGACY_ENABLED_ALIASES as _ENABLED_LEGACY_ALIASES
 
-VALID_TYPES = {"bool", "int", "float", "str", "enum", "list"}
+VALID_TYPES = {"bool", "int", "float", "str", "enum", "list", "password"}
 
 # Truthy/falsey string forms accepted for bool fields (configparser-compatible).
 _TRUE = {"1", "true", "yes", "on"}
@@ -122,7 +122,8 @@ def validate_field(field: dict, raw: Any) -> tuple[bool, Any, Optional[str]]:
                     return False, None, f"{label} contains an invalid value: {item}"
         return True, items, None
 
-    # str (default)
+    # str / password (password is a str stored in plaintext in config.ini,
+    # masked only in the web UI — same validation as str)
     s = str(raw)
     pattern = field.get("pattern")
     if pattern and not re.fullmatch(pattern, s):
@@ -242,23 +243,106 @@ def _discover_classes(base_class: type, package: str, directory: str, logger=Non
     return found
 
 
+def _discover_local_classes(
+    base_class: type,
+    directory: str,
+    *,
+    package_name: str,
+    package_paths: Optional[list[str]] = None,
+    local_base_module: Optional[str] = None,
+    logger=None,
+) -> list[type]:
+    """Import local plugin modules and collect ``base_class`` subclasses.
+
+    ``package_name`` mirrors the runtime namespaces (``local_plugins`` for
+    commands and ``local_services`` for services), keeping their relative
+    imports isolated even when files in both directories share a name.
+    """
+    import importlib.util
+    import sys
+    import types
+    from pathlib import Path
+
+    found: list[type] = []
+    if not os.path.isdir(directory):
+        return found
+
+    local_path = Path(directory)
+
+    # Ensure the synthetic parent package exists for relative imports. Refresh
+    # its search path in case local_dir_path changed during a config reload.
+    pkg = sys.modules.get(package_name)
+    if pkg is None:
+        pkg = types.ModuleType(package_name)
+        sys.modules[package_name] = pkg
+    pkg.__path__ = [str(local_path), *(package_paths or [])]
+
+    for fpath in sorted(local_path.glob("*.py")):
+        if fpath.name == "__init__.py":
+            continue
+        stem = fpath.stem
+        module_name = f"{package_name}.{stem}"
+
+        try:
+            spec = importlib.util.spec_from_file_location(module_name, fpath)
+            if spec is None or spec.loader is None:
+                if logger:
+                    logger.warning("Could not create spec for local plugin %s", fpath)
+                continue
+
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[module_name] = module
+            spec.loader.exec_module(module)
+
+            bases = [base_class]
+            if local_base_module:
+                local_base = getattr(
+                    sys.modules.get(f"{package_name}.{local_base_module}"),
+                    base_class.__name__,
+                    None,
+                )
+                if inspect.isclass(local_base):
+                    bases.append(local_base)
+
+            for _n, obj in inspect.getmembers(module, inspect.isclass):
+                if (
+                    obj not in bases
+                    and any(issubclass(obj, candidate) for candidate in bases)
+                    and obj.__module__ == module_name
+                ):
+                    found.append(obj)
+                    break
+        except Exception as exc:  # noqa: BLE001 - never let one bad plugin break the list
+            if logger:
+                logger.warning("Could not import local plugin %s for settings discovery: %s", stem, exc)
+            continue
+
+    return found
+
+
 def build_plugin_settings_view(
     config: configparser.ConfigParser,
     *,
     logger=None,
     commands_dir: Optional[str] = None,
     services_dir: Optional[str] = None,
+    local_commands_dir: Optional[str] = None,
+    local_services_dir: Optional[str] = None,
 ) -> list[dict]:
     """Assemble the per-plugin settings view for the web UI.
 
     Returns a list of dicts, one per discovered command/service::
 
         {name, kind, section, label, description, category,
-         enabled, has_schema, fields, values}
+         enabled, source, has_schema, fields, values}
 
     ``fields`` is the plugin's ``settings_schema`` with a resolved ``value`` on
     each field.  ``values`` is the raw current config section (minus ``enabled``)
     used by the generic editor for plugins without a schema.
+
+    ``local_commands_dir`` and ``local_services_dir`` auto-detect the
+    ``local/commands`` and ``local/service_plugins`` directories (relative to
+    the project root) when not supplied, and are tagged with ``source="local"``.
     """
     # Import bases lazily so this module stays import-light.
     from modules.commands.base_command import BaseCommand
@@ -286,10 +370,50 @@ def build_plugin_settings_view(
                 # declare themselves opt-in (e.g. Announcements, Greeter read
                 # 'enabled' with fallback=False in __init__).
                 enabled_default=bool(getattr(cls, "settings_enabled_default", True)),
+                source="base",
             ))
         except Exception as exc:  # noqa: BLE001 - one bad plugin must not break the list
             if logger:
                 logger.warning("Skipping command %s in settings view: %s", name, exc)
+
+    # --- Local Commands (from local/commands directory) ---
+    if local_commands_dir is None:
+        # Auto-detect local/commands directory relative to the project root
+        local_path = os.path.join(here, "..", "local", "commands")
+        if os.path.isdir(local_path):
+            local_commands_dir = local_path
+
+    if local_commands_dir and os.path.isdir(local_commands_dir):
+        for cls in _discover_local_classes(
+            BaseCommand,
+            local_commands_dir,
+            package_name="local_plugins",
+            local_base_module="base_command",
+            logger=logger,
+        ):
+            name = getattr(cls, "name", "") or cls.__name__.lower().replace("command", "")
+            if not name:
+                continue
+            if any(entry["kind"] == "command" and entry["name"] == name for entry in view):
+                if logger:
+                    logger.warning(
+                        "Local command %s is already present in the settings view; skipping",
+                        name,
+                    )
+                continue
+            section = command_section_name(name)
+            try:
+                view.append(_assemble_entry(
+                    config, cls, kind="command", name=name, section=section,
+                    label=name.replace("_", " ").title(),
+                    description=getattr(cls, "description", "") or "",
+                    category=getattr(cls, "category", "general") or "general",
+                    enabled_default=bool(getattr(cls, "settings_enabled_default", True)),
+                    source="local",
+                ))
+            except Exception as exc:  # noqa: BLE001 - one bad plugin must not break the list
+                if logger:
+                    logger.warning("Skipping local command %s in settings view: %s", name, exc)
 
     # --- Services (default enabled = False; must opt in) ---
     for cls in _discover_classes(BaseServicePlugin, "modules.service_plugins", services_dir, logger):
@@ -302,10 +426,49 @@ def build_plugin_settings_view(
                 description=getattr(cls, "description", "") or "",
                 category="service",
                 enabled_default=bool(getattr(cls, "settings_enabled_default", False)),
+                source="base",
             ))
         except Exception as exc:  # noqa: BLE001 - one bad plugin must not break the list
             if logger:
                 logger.warning("Skipping service %s in settings view: %s", name, exc)
+
+    # --- Local Services (from local/service_plugins directory) ---
+    if local_services_dir is None:
+        # Auto-detect local/service_plugins directory relative to the project root
+        local_services_path = os.path.join(here, "..", "local", "service_plugins")
+        if os.path.isdir(local_services_path):
+            local_services_dir = local_services_path
+
+    if local_services_dir and os.path.isdir(local_services_dir):
+        for cls in _discover_local_classes(
+            BaseServicePlugin,
+            local_services_dir,
+            package_name="local_services",
+            package_paths=[os.path.join(here, "service_plugins"), here],
+            local_base_module="base_service",
+            logger=logger,
+        ):
+            section = service_section_name(cls)
+            name = getattr(cls, "name", "") or cls.__name__.lower().replace("service", "")
+            if any(entry["kind"] == "service" and entry["name"] == name for entry in view):
+                if logger:
+                    logger.warning(
+                        "Local service %s is already present in the settings view; skipping",
+                        name,
+                    )
+                continue
+            try:
+                view.append(_assemble_entry(
+                    config, cls, kind="service", name=name, section=section,
+                    label=section.replace("_", " "),
+                    description=getattr(cls, "description", "") or "",
+                    category="service",
+                    enabled_default=bool(getattr(cls, "settings_enabled_default", False)),
+                    source="local",
+                ))
+            except Exception as exc:  # noqa: BLE001 - one bad plugin must not break the list
+                if logger:
+                    logger.warning("Skipping local service %s in settings view: %s", name, exc)
 
     view.sort(key=lambda e: (e["kind"], e["label"].lower()))
     return view
@@ -322,6 +485,7 @@ def _assemble_entry(
     description: str,
     category: str,
     enabled_default: bool,
+    source: str = "base",
 ) -> dict:
     schema = list(getattr(cls, "settings_schema", []) or [])
     fields: list[dict] = []
@@ -330,6 +494,12 @@ def _assemble_entry(
             continue
         resolved = dict(field)
         resolved["value"] = _read_typed(config, section, field)
+        if field.get("type") == "password":
+            # Never send the plaintext secret to the browser; the UI shows a
+            # placeholder when has_value is true and only submits a new value
+            # if the user actually types one.
+            resolved["has_value"] = bool(resolved["value"])
+            resolved["value"] = ""
         fields.append(resolved)
 
     # Every command can restrict which channels it responds in
@@ -370,6 +540,7 @@ def _assemble_entry(
         "description": description,
         "category": category,
         "enabled": read_enabled(config, section, enabled_default),
+        "source": source,
         "has_schema": bool(fields),
         "fields": fields,
         "values": values,

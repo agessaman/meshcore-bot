@@ -89,35 +89,36 @@ class ChannelsCommand(BaseCommand):
         if not self.keywords:
             return False
 
-        content_lower = self.cleanup_message_for_matching(message)
+        def _matches(content_lower: str) -> bool:
+            # Don't match if this looks like a subcommand of another command
+            # (e.g., "stats channels" should not match "channels" command)
+            # First word must be one of our keywords (including config aliases).
+            if ' ' in content_lower:
+                parts = content_lower.split()
+                keyword_stems = {k.lower() for k in self.keywords}
+                if len(parts) > 1 and parts[0] not in keyword_stems:
+                    return False
 
-        # Don't match if this looks like a subcommand of another command
-        # (e.g., "stats channels" should not match "channels" command)
-        # First word must be one of our keywords (including config aliases).
-        if ' ' in content_lower:
-            parts = content_lower.split()
-            keyword_stems = {k.lower() for k in self.keywords}
-            if len(parts) > 1 and parts[0] not in keyword_stems:
-                return False
+            for keyword in self.keywords:
+                keyword_lower = keyword.lower()
 
-        for keyword in self.keywords:
-            keyword_lower = keyword.lower()
+                # Check for exact match first
+                if keyword_lower == content_lower:
+                    return True
 
-            # Check for exact match first
-            if keyword_lower == content_lower:
-                return True
+                # Check for word boundary matches using regex
+                # Create a regex pattern that matches the keyword at word boundaries
+                # Use custom word boundary that treats underscores as separators
+                # (?<![a-zA-Z0-9]) = negative lookbehind for alphanumeric characters (not underscore)
+                # (?![a-zA-Z0-9]) = negative lookahead for alphanumeric characters (not underscore)
+                # This allows underscores to act as word boundaries
+                pattern = r'(?<![a-zA-Z0-9])' + re.escape(keyword_lower) + r'(?![a-zA-Z0-9])'
+                if re.search(pattern, content_lower):
+                    return True
 
-            # Check for word boundary matches using regex
-            # Create a regex pattern that matches the keyword at word boundaries
-            # Use custom word boundary that treats underscores as separators
-            # (?<![a-zA-Z0-9]) = negative lookbehind for alphanumeric characters (not underscore)
-            # (?![a-zA-Z0-9]) = negative lookahead for alphanumeric characters (not underscore)
-            # This allows underscores to act as word boundaries
-            pattern = r'(?<![a-zA-Z0-9])' + re.escape(keyword_lower) + r'(?![a-zA-Z0-9])'
-            if re.search(pattern, content_lower):
-                return True
+            return False
 
-        return False
+        return self._cleaned_content_matches(message, _matches)
 
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the channels command.

@@ -70,11 +70,14 @@ class WorldCupCommand(BaseCommand):
         """Match only when a keyword is the first word (mirrors SportsCommand)."""
         if not self.keywords:
             return False
-        content_lower = self.cleanup_message_for_matching(message)
-        words = content_lower.split()
-        if not words:
-            return False
-        return any(words[0] == keyword.lower() for keyword in self.keywords)
+
+        def _matches(content_lower: str) -> bool:
+            words = content_lower.split()
+            if not words:
+                return False
+            return any(words[0] == keyword.lower() for keyword in self.keywords)
+
+        return self._cleaned_content_matches(message, _matches)
 
     def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Gate on the enabled flag; season gating happens in execute() (needs network)."""

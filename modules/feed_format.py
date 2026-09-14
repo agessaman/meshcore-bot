@@ -107,6 +107,20 @@ def clean_feed_html_body(body: str) -> str:
     return body.strip()
 
 
+def _canonical_shorten_name(function: str) -> str:
+    """Accept the response_template spelling ``shorten_url`` for ``shorten``.
+
+    Feed formats and response templates are one operator-facing DSL as far as anyone
+    configuring the bot is concerned; the same operation answering to a different
+    name in each is a standing source of config mistakes.
+    """
+    if function == "shorten_url":
+        return "shorten"
+    if function.startswith("shorten_url|"):
+        return "shorten|" + function.split("|", 1)[1]
+    return function
+
+
 def apply_feed_field_function(
     text: str,
     function: str,
@@ -117,7 +131,7 @@ def apply_feed_field_function(
     """Apply a shortening, parsing, or conditional function to text.
 
     Supported functions:
-    - shorten - URL-shorten via [External_Data] short_url_website (v.gd / is.gd API)
+    - shorten (alias shorten_url) - URL-shorten via [External_Data] short_url_website
     - shorten|truncate:N (etc.) - shorten first, then apply the rest
     - truncate:N / truncate_hard:N / substr:N[,M] / word_wrap:N / first_words:N
     - regex:… / if_regex:… / switch:… / regex_cond:…
@@ -125,6 +139,7 @@ def apply_feed_field_function(
     if not function or not str(function).strip():
         return text or ""
     function = str(function).strip()
+    function = _canonical_shorten_name(function)
 
     def _debug(msg: str) -> None:
         if logger is not None:
@@ -441,7 +456,7 @@ def format_feed_message(
 
             if field_name == "link":
                 value = link_original
-                fn = function
+                fn = _canonical_shorten_name(function)
                 if shorten_feed_urls and fn != "shorten" and not fn.startswith("shorten|"):
                     s = shorten_url_sync(
                         link_original,
