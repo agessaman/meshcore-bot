@@ -497,7 +497,7 @@ if cached is None:
     self.bot.db_manager.cache_value(
         cache_key="weather_98101",
         cache_type="weather_data",
-        value=json.dumps(data),
+        cache_value=json.dumps(data),
         cache_hours=1
     )
 ```
@@ -823,9 +823,9 @@ if cached:
 # Fetch and cache
 data = await self.fetch_expensive_data()
 self.bot.db_manager.cache_value(
-    cache_key,
-    cache_type,
-    json.dumps(data),
+    cache_key=cache_key,
+    cache_type=cache_type,
+    cache_value=json.dumps(data),
     cache_hours=24
 )
 ```
@@ -1033,7 +1033,7 @@ from modules.utils import (
 ### Configuration File Structure
 
 ```ini
-[YourCommand_Command]
+[Yourcommand_Command]
 enabled = true
 cooldown_queue_threshold_seconds = 5.0
 channels = #general,#weather  # Optional: restrict to specific channels
