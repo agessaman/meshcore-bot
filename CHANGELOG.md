@@ -161,6 +161,9 @@ semantic versioning.
 
 ### Added
 
+- `docs/develop-command-scripts.md` created to assist developers with creating
+  commands that integrate correctly into the MeshCore Bot framework.
+
 - `mqttN_keepalive` (default 60) sets the MQTT PINGREQ interval per broker. It was
   hardcoded at 60 before, which is long for websockets through a proxy that drops
   idle connections.
