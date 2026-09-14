@@ -1,8 +1,12 @@
 # Developing Command Scripts for MeshCore Bot
 
-This guide covers how to develop custom command scripts (plugins) for the MeshCore Bot. Commands are Python classes that inherit from `BaseCommand` and respond to user messages on the mesh network.
+This guide covers how to develop custom command scripts (plugins) for MeshCore
+Bot. Commands are Python classes that inherit from `BaseCommand` and respond
+to user messages on the mesh network.
 
-Local commands should be placed in the `local/commands/` directory, which allows you to add custom functionality without modifying the core bot code.
+Local commands should be placed in the `local/commands` directory or the
+directory designated by the `local_dir_path` configuration value, which allows
+you to add custom functionality without modifying the core bot code.
 
 ## Table of Contents
 
@@ -24,7 +28,8 @@ Local commands should be placed in the `local/commands/` directory, which allows
 
 ### Basic Command Template
 
-Create a new file in `local/commands/` with the following structure:
+Create a new file (conventions use the form `[base command]_command.py`) in
+`local/commands/` with the following structure:
 
 ```python
 #!/usr/bin/env python3
@@ -44,7 +49,7 @@ class YourCommand(BaseCommand):
     keywords = ["yourcommand", "yc"]
     description = "Brief description for help text"
     category = "general"
-    
+
     # Documentation for website generation
     short_description = "Brief description without usage syntax"
     usage = "yourcommand [options]"
@@ -58,9 +63,9 @@ class YourCommand(BaseCommand):
         super().__init__(bot)
         # Load your configuration here
         self.enabled = self.get_config_value(
-            'YourCommand_Command', 
-            'enabled', 
-            fallback=True, 
+            'YourCommand_Command',
+            'enabled',
+            fallback=True,
             value_type='bool'
         )
 
@@ -87,7 +92,8 @@ class YourCommand(BaseCommand):
 
 ## Command Class Structure
 
-All commands must inherit from `BaseCommand` located in `modules/commands/base_command.py`.
+All commands must inherit from `BaseCommand` located in
+`modules/commands/base_command.py`.
 
 ### Required Imports
 
@@ -113,12 +119,14 @@ import aiohttp
 # For external API clients
 from modules.clients.your_client import YourClient
 
-# For utilities
+# For utilities (see modules/utils.py for more functions)
 from modules.utils import (
     geocode_city_sync,
     geocode_zipcode_sync,
     get_config_timezone,
+    decode_escape_sequences,
     format_elapsed_display,
+    format_location_for_display,
 )
 ```
 
@@ -133,19 +141,54 @@ These variables define your command's metadata and behavior:
 | `name` | `str` | **Yes** | Primary command name (lowercase, used for config section) |
 | `keywords` | `list[str]` | **Yes** | Trigger words for the command (includes name and aliases) |
 | `description` | `str` | **Yes** | Brief description shown in help text |
-| `category` | `str` | No | Category for grouping (e.g., "weather", "entertainment", "admin") |
+| `category` | `str` | No | Category for grouping (see [Command Categories](#command_categories)) |
 | `requires_dm` | `bool` | No | Set to `True` if command only works in direct messages (default: `False`) |
 | `requires_internet` | `bool` | No | Set to `True` if command needs internet access (default: `False`) |
 | `cooldown_seconds` | `int` | No | Per-user cooldown period in seconds (default: `0`) |
 | `render_safe` | `bool` | No | Set to `True` if command can be safely rendered in scheduled messages (default: `False`) |
+| `settings_schema` | `list[dict]` | No | Web viewer settings schema (see [Settings Schema](#settings-schema)) |
+
+### Class-Level Variables for Documentation
+
+One can generate an HTML document that describes all the commands that
+`meshcore-bot` responds to with the command `generate_website.py`. For
+more information please read [[command-reference-website.md]].
+
+The following variables are used to during the generation of the HTML
+document.
+
+| Variable | Type | Required | Description |
+|----------|------|----------|-------------|
 | `short_description` | `str` | No | Brief description for website (without usage syntax) |
 | `usage` | `str` | No | Usage syntax string (e.g., `"wx <zipcode> [tomorrow]"`) |
 | `examples` | `list[str]` | No | Example commands for documentation |
 | `parameters` | `list[dict]` | No | Parameter definitions with `name` and `description` |
-| `settings_schema` | `list[dict]` | No | Web viewer settings schema (see [Settings Schema](#settings-schema)) |
+
+### Command Categories
+
+The `category` class variable allows a user to search for commands based on
+a number of defined categories. Currently the following categories are defined
+and suggested to be used:
+
+| Category      |  Description  |
+|---------------|---------------|
+| basic         | Basic Commands |
+| weather       | Weather Commands |
+| solar         | Solar & Astronomical |
+| sports        | Sports |
+| games         | Games & Entertainment |
+| fun           | Fun Commands |
+| entertainment | Entertainment |
+| meshcore_info | Mesh Network Info |
+| analytics     | Analytics |
+| emergency     | Emergency |
+| special       | Special Commands |
+| general       | General Commands |
 
 ### Settings Schema
 
+The `settings_schema` definition allows a command or a service to define the
+configuration settings that can be set
 Commands can define a `settings_schema` to provide typed configuration in the web viewer:
 
 ```python
@@ -182,7 +225,10 @@ settings_schema = [
 ]
 ```
 
-**Supported types:** `bool`, `int`, `float`, `str`, `enum`, `list`
+**Supported types:** `bool`, `int`, `float`, `str`, `enum`, `list`, `password`
+
+**Note:** `enabled` and `channels` do not need to be defined in the
+          `settings_schema` as they get automatically included.
 
 ---
 
@@ -206,14 +252,14 @@ async def execute(self, message: MeshMessage) -> bool:
     try:
         # Record execution for cooldown tracking
         self.record_execution(message.sender_id)
-        
+
         # Your command logic
         joke_data = await self.get_joke_from_api()
-        
+
         # Format and send response
         response = f"🎭 {joke_data['joke']}"
         await self.send_response(message, response)
-        
+
         return True
     except Exception as e:
         self.logger.error(f"Error in joke command: {e}")
@@ -236,15 +282,15 @@ def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) ->
     # Use base class checks first
     if not super().can_execute(message, skip_channel_check):
         return False
-    
+
     # Check if enabled
     if not self.my_enabled:
         return False
-    
+
     # Custom check: dark jokes only in DM
     if self.is_dark_joke_request(message) and not message.is_dm:
         return False
-    
+
     return True
 ```
 
@@ -264,7 +310,8 @@ def get_help_text(self, message: MeshMessage = None) -> str:
 
 #### `def matches_keyword(self, message: MeshMessage) -> bool`
 
-**Purpose:** Custom keyword matching logic (default implementation usually sufficient).
+**Purpose:** Custom keyword matching logic (default implementation is usually
+             sufficient).
 
 #### `def matches_custom_syntax(self, message: MeshMessage) -> bool`
 
@@ -276,7 +323,7 @@ def matches_custom_syntax(self, message: MeshMessage) -> bool:
     """Match lat,lon coordinate syntax."""
     if not super().matches_custom_syntax(message):
         return False
-    
+
     content = message.content.strip()
     # Match coordinate pattern like "48.08,-121.97"
     return bool(re.match(r'^-?\d+\.?\d*\s*,\s*-?\d+\.?\d*$', content))
@@ -428,7 +475,7 @@ lat, lon = self.bot.db_manager.get_cached_geocoding("Seattle, WA")
 if lat is None or lon is None:
     # Fetch from API
     lat, lon = await geocode_city("Seattle", "WA")
-    
+
     # Cache for 30 days (720 hours)
     self.bot.db_manager.cache_geocoding("Seattle, WA", lat, lon, cache_hours=720)
 ```
@@ -445,7 +492,7 @@ cached = self.bot.db_manager.get_cached_value(
 if cached is None:
     # Fetch fresh data
     data = await fetch_weather_data("98101")
-    
+
     # Cache for 1 hour
     self.bot.db_manager.cache_value(
         cache_key="weather_98101",
@@ -482,11 +529,11 @@ async def get_data_from_api(self, query: str) -> Optional[dict]:
     """Fetch data from external API."""
     url = f"https://api.example.com/data?q={query}"
     timeout = 10  # seconds
-    
+
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                url, 
+                url,
                 timeout=aiohttp.ClientTimeout(total=timeout)
             ) as response:
                 if response.status == 200:
@@ -511,7 +558,7 @@ For blocking I/O operations (geocoding, file operations), use `asyncio.to_thread
 async def execute(self, message: MeshMessage) -> bool:
     """Execute with offloaded blocking operation."""
     location = "Seattle, WA"
-    
+
     # Offload blocking geocode to thread
     lat, lon, address = await asyncio.to_thread(
         geocode_city_sync,
@@ -521,11 +568,11 @@ async def execute(self, message: MeshMessage) -> bool:
         default_country="US",
         timeout=10
     )
-    
+
     if lat is None:
         await self.send_response(message, "Location not found")
         return True
-    
+
     # Continue with result
     response = f"Coordinates: {lat:.2f}, {lon:.2f}"
     await self.send_response(message, response)
@@ -540,11 +587,11 @@ Create client classes in `modules/clients/` for reusable API access:
 # modules/clients/my_api_client.py
 class MyAPIClient:
     """Client for MyAPI service."""
-    
+
     def __init__(self, api_key: str):
         self.api_key = api_key
         self.base_url = "https://api.example.com"
-    
+
     def get_data(self, param: str) -> dict:
         """Fetch data (blocking)."""
         url = f"{self.base_url}/endpoint"
@@ -559,11 +606,11 @@ Use in command with thread offloading:
 async def execute(self, message: MeshMessage) -> bool:
     """Use custom API client."""
     client = MyAPIClient(api_key=self.api_key)
-    
+
     # Offload blocking call
     loop = asyncio.get_event_loop()
     data = await loop.run_in_executor(None, lambda: client.get_data("query"))
-    
+
     # Process data...
 ```
 
@@ -578,7 +625,7 @@ Use `get_config_value()` for type-safe config access with migration support:
 ```python
 def __init__(self, bot):
     super().__init__(bot)
-    
+
     # Load configuration values
     self.enabled = self.get_config_value(
         'MyCommand_Command',  # Section name: CommandName_Command
@@ -586,14 +633,14 @@ def __init__(self, bot):
         fallback=True,        # Default value
         value_type='bool'     # Type: 'bool', 'int', 'float', 'str', 'list'
     )
-    
+
     self.timeout = self.get_config_value(
         'MyCommand_Command',
         'timeout',
         fallback=10,
         value_type='int'
     )
-    
+
     self.categories = self.get_config_value(
         'MyCommand_Command',
         'categories',
@@ -637,7 +684,7 @@ async def execute(self, message: MeshMessage) -> bool:
     with self.respond_in_sender_language(message):
         # All translate() calls use detected language
         response = self.translate('commands.mycommand.response')
-    
+
     await self.send_response(message, response)
     return True
 ```
@@ -654,22 +701,22 @@ async def execute(self, message: MeshMessage) -> bool:
     try:
         # Record execution early for cooldown
         self.record_execution(message.sender_id)
-        
+
         # Main command logic
         result = await self.fetch_data()
-        
+
         if result is None:
             await self.send_response(
-                message, 
+                message,
                 self.translate('commands.mycommand.no_data')
             )
             return True
-        
+
         # Format and send response
         response = self.format_response(result)
         await self.send_response(message, response)
         return True
-        
+
     except asyncio.TimeoutError:
         self.logger.error("Timeout in mycommand")
         await self.send_response(
@@ -677,7 +724,7 @@ async def execute(self, message: MeshMessage) -> bool:
             self.translate('commands.mycommand.timeout')
         )
         return True
-        
+
     except Exception as e:
         self.logger.error(f"Error in mycommand: {e}")
         await self.send_response(
@@ -712,22 +759,22 @@ self.logger.critical(f"Database connection failed: {e}")
 def validate_input(self, message: MeshMessage) -> Optional[str]:
     """Validate and parse command input."""
     content = message.content.strip()
-    
+
     # Remove command prefix if present
     if content.startswith('!'):
         content = content[1:].strip()
-    
+
     # Split into parts
     parts = content.split()
-    
+
     if len(parts) < 2:
         return None
-    
+
     # Validate parameter (e.g., zip code)
     param = parts[1]
     if not re.match(r'^\d{5}$', param):
         return None
-    
+
     return param
 ```
 
@@ -749,7 +796,7 @@ class MyCommand(BaseCommand):
 async def execute(self, message: MeshMessage) -> bool:
     # Record before doing work (for cooldown tracking)
     self.record_execution(message.sender_id)
-    
+
     # Then proceed with command logic
     # ...
 ```
@@ -776,8 +823,8 @@ if cached:
 # Fetch and cache
 data = await self.fetch_expensive_data()
 self.bot.db_manager.cache_value(
-    cache_key, 
-    cache_type, 
+    cache_key,
+    cache_type,
     json.dumps(data),
     cache_hours=24
 )
@@ -813,11 +860,11 @@ def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) ->
     """Allow in DM, restrict in channels."""
     if not super().can_execute(message, skip_channel_check):
         return False
-    
+
     # DM always allowed
     if message.is_dm:
         return True
-    
+
     # Channel-specific logic
     return self.is_channel_allowed(message)
 ```
@@ -828,10 +875,10 @@ def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) ->
 async def execute(self, message: MeshMessage) -> bool:
     """Execute with proper type hints."""
     result: Optional[dict] = await self.fetch_data()
-    
+
     if result is None:
         return True
-    
+
     temperature: float = result.get('temp', 0.0)
     # ...
 ```
@@ -841,16 +888,16 @@ async def execute(self, message: MeshMessage) -> bool:
 ```python
 class AdminCommand(BaseCommand):
     requires_dm = True  # Admin commands should be DM-only
-    
+
     def requires_admin_access(self) -> bool:
         """Mark as requiring admin access."""
         return True
-    
+
     def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Check admin access."""
         if not super().can_execute(message, skip_channel_check):
             return False
-        
+
         # BaseCommand handles admin pubkey verification
         return True
 ```
@@ -860,13 +907,13 @@ class AdminCommand(BaseCommand):
 ```python
 class MyCommand(BaseCommand):
     """Detailed description of what this command does.
-    
+
     Includes information about:
     - What data it fetches
     - What APIs it uses
     - Any special requirements
     """
-    
+
     # Complete metadata
     short_description = "Get data from service"
     usage = "mycommand <param> [option]"
@@ -912,7 +959,7 @@ async def test_execute_success(command, mock_bot):
         sender_id="!12345678",
         is_dm=True
     )
-    
+
     result = await command.execute(message)
     assert result is True
 
@@ -925,7 +972,7 @@ async def test_execute_invalid_input(command, mock_bot):
         sender_id="!12345678",
         is_dm=True
     )
-    
+
     result = await command.execute(message)
     assert result is True  # Should handle gracefully
 ```
@@ -997,6 +1044,10 @@ timeout = 10
 max_results = 5
 api_key = your_api_key_here
 ```
+
+**Note:** The proper section name is `Yourcommand_Command` not
+          `YourCommand_Command`. Using the latter will cause core functions
+          that reference `enabled`, `channels` and `aliases` to fail.
 
 ---
 
