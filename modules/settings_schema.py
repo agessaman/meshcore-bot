@@ -19,7 +19,7 @@ Schema field format (a list of these dicts on ``settings_schema``)::
     {
         "key": "poll_interval",        # config key within the section
         "label": "Poll interval",      # human label
-        "type": "int",                 # bool|int|float|str|enum|list
+        "type": "int",                 # bool|int|float|str|enum|list|password
         "options": [{"value": "...", "label": "..."}],  # required for enum
         "min": 1000, "max": None,      # numeric bounds (int/float)
         "default": 60000,
@@ -43,7 +43,7 @@ from typing import Any, Optional
 # so a plugin's on/off state displays correctly before the first canonical save.
 from modules.config_schema import LEGACY_ENABLED_ALIASES as _ENABLED_LEGACY_ALIASES
 
-VALID_TYPES = {"bool", "int", "float", "str", "enum", "list"}
+VALID_TYPES = {"bool", "int", "float", "str", "enum", "list", "password"}
 
 # Truthy/falsey string forms accepted for bool fields (configparser-compatible).
 _TRUE = {"1", "true", "yes", "on"}
@@ -122,7 +122,8 @@ def validate_field(field: dict, raw: Any) -> tuple[bool, Any, Optional[str]]:
                     return False, None, f"{label} contains an invalid value: {item}"
         return True, items, None
 
-    # str (default)
+    # str / password (password is a str stored in plaintext in config.ini,
+    # masked only in the web UI — same validation as str)
     s = str(raw)
     pattern = field.get("pattern")
     if pattern and not re.fullmatch(pattern, s):
@@ -242,10 +243,20 @@ def _discover_classes(base_class: type, package: str, directory: str, logger=Non
     return found
 
 
-def _discover_local_classes(base_class: type, directory: str, logger=None) -> list[type]:
-    """Import every ``*.py`` in local commands directory and collect ``base_class`` subclasses.
+def _discover_local_classes(
+    base_class: type,
+    directory: str,
+    *,
+    package_name: str,
+    package_paths: Optional[list[str]] = None,
+    local_base_module: Optional[str] = None,
+    logger=None,
+) -> list[type]:
+    """Import local plugin modules and collect ``base_class`` subclasses.
 
-    Uses dynamic file-based loading similar to plugin_loader.load_plugin_from_path.
+    ``package_name`` mirrors the runtime namespaces (``local_plugins`` for
+    commands and ``local_services`` for services), keeping their relative
+    imports isolated even when files in both directories share a name.
     """
     import importlib.util
     import sys
@@ -258,17 +269,19 @@ def _discover_local_classes(base_class: type, directory: str, logger=None) -> li
 
     local_path = Path(directory)
 
-    # Ensure parent package exists for relative imports
-    if "local_plugins" not in sys.modules:
-        pkg = types.ModuleType("local_plugins")
-        pkg.__path__ = [str(local_path)]
-        sys.modules["local_plugins"] = pkg
+    # Ensure the synthetic parent package exists for relative imports. Refresh
+    # its search path in case local_dir_path changed during a config reload.
+    pkg = sys.modules.get(package_name)
+    if pkg is None:
+        pkg = types.ModuleType(package_name)
+        sys.modules[package_name] = pkg
+    pkg.__path__ = [str(local_path), *(package_paths or [])]
 
     for fpath in sorted(local_path.glob("*.py")):
         if fpath.name == "__init__.py":
             continue
         stem = fpath.stem
-        module_name = f"local_plugins.{stem}"
+        module_name = f"{package_name}.{stem}"
 
         try:
             spec = importlib.util.spec_from_file_location(module_name, fpath)
@@ -281,10 +294,20 @@ def _discover_local_classes(base_class: type, directory: str, logger=None) -> li
             sys.modules[module_name] = module
             spec.loader.exec_module(module)
 
+            bases = [base_class]
+            if local_base_module:
+                local_base = getattr(
+                    sys.modules.get(f"{package_name}.{local_base_module}"),
+                    base_class.__name__,
+                    None,
+                )
+                if inspect.isclass(local_base):
+                    bases.append(local_base)
+
             for _n, obj in inspect.getmembers(module, inspect.isclass):
                 if (
-                    issubclass(obj, base_class)
-                    and obj is not base_class
+                    obj not in bases
+                    and any(issubclass(obj, candidate) for candidate in bases)
                     and obj.__module__ == module_name
                 ):
                     found.append(obj)
@@ -361,9 +384,22 @@ def build_plugin_settings_view(
             local_commands_dir = local_path
 
     if local_commands_dir and os.path.isdir(local_commands_dir):
-        for cls in _discover_local_classes(BaseCommand, local_commands_dir, logger):
+        for cls in _discover_local_classes(
+            BaseCommand,
+            local_commands_dir,
+            package_name="local_plugins",
+            local_base_module="base_command",
+            logger=logger,
+        ):
             name = getattr(cls, "name", "") or cls.__name__.lower().replace("command", "")
             if not name:
+                continue
+            if any(entry["kind"] == "command" and entry["name"] == name for entry in view):
+                if logger:
+                    logger.warning(
+                        "Local command %s is already present in the settings view; skipping",
+                        name,
+                    )
                 continue
             section = command_section_name(name)
             try:
@@ -404,9 +440,23 @@ def build_plugin_settings_view(
             local_services_dir = local_services_path
 
     if local_services_dir and os.path.isdir(local_services_dir):
-        for cls in _discover_local_classes(BaseServicePlugin, local_services_dir, logger):
+        for cls in _discover_local_classes(
+            BaseServicePlugin,
+            local_services_dir,
+            package_name="local_services",
+            package_paths=[os.path.join(here, "service_plugins"), here],
+            local_base_module="base_service",
+            logger=logger,
+        ):
             section = service_section_name(cls)
             name = getattr(cls, "name", "") or cls.__name__.lower().replace("service", "")
+            if any(entry["kind"] == "service" and entry["name"] == name for entry in view):
+                if logger:
+                    logger.warning(
+                        "Local service %s is already present in the settings view; skipping",
+                        name,
+                    )
+                continue
             try:
                 view.append(_assemble_entry(
                     config, cls, kind="service", name=name, section=section,
@@ -444,6 +494,12 @@ def _assemble_entry(
             continue
         resolved = dict(field)
         resolved["value"] = _read_typed(config, section, field)
+        if field.get("type") == "password":
+            # Never send the plaintext secret to the browser; the UI shows a
+            # placeholder when has_value is true and only submits a new value
+            # if the user actually types one.
+            resolved["has_value"] = bool(resolved["value"])
+            resolved["value"] = ""
         fields.append(resolved)
 
     # Every command can restrict which channels it responds in

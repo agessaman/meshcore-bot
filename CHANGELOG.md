@@ -16,7 +16,25 @@ semantic versioning.
   — a section already tracked in the base config keeps saving there. The web
   viewer previously only read/wrote against `config.ini`, so any local plugin
   settings actually stored in the overlay were invisible and unsavable from the
-  UI.
+  UI (#272).
+
+- `[Test_Command] distance_unit` (`auto`, `km`, `mi`) for `{path_distance}` and
+  `{firstlast_distance}` (#275). `auto` (the default) follows the reply language:
+  miles for `en` / `en-US`, kilometres for every other locale, including `en-GB`,
+  which shares the English catalog but not US units. Repeater-selection distances
+  stay in kilometres; only the printed placeholders convert.
+
+- `password` field type for a plugin's `settings_schema`, so a secret like
+  a password for a command renders masked in the web viewer's Plugins page
+  instead of as plain text (#273). It validates and serializes exactly like `str`
+  (the value is still stored in plaintext in `config.ini`); the masking is a
+  UI concern only. The plaintext secret never reaches the browser: the view
+  blanks the value and reports only `has_value`, matching the key-name
+  redaction already used elsewhere, and the field renders as a
+  `type="password"` input with a show/hide toggle. When a value is already
+  saved the field shows a `(saved — enter new value to change)` placeholder
+  and leaving it untouched keeps the stored secret, so an edit elsewhere on
+  the form does not blank it.
 
 - Localized proactive weather messages (daily forecasts, rain nowcasts, weather
   alerts) via `services.weather_service.*` translation keys. `WeatherService` now
@@ -47,6 +65,14 @@ semantic versioning.
   `_response_translator` ContextVar to do this.
 
 ### Fixed
+
+- Published packet payloads carry UTC in every time field, not just `timestamp`
+  (#278). `time` and `date` came from a local `datetime.now()` while the
+  `timestamp` beside them was UTC, so a consumer reading the pair off a bot in a
+  non-UTC zone saw a skew of exactly that zone's offset and flagged the observer's
+  clock as wrong. The original script took those two fields off the firmware log
+  line, which runs on the device's UTC clock, so a host-local reading was never
+  intended. All three fields now render one UTC instant.
 
 - Weather output no longer leaks translation key paths into mesh broadcasts. The
   localization pass replaced several `dict.get(key, fallback)` lookups with bare
@@ -278,6 +304,10 @@ semantic versioning.
   text, with no filesystem path and no extra airtime.
 
 ### Changed
+
+- `{elapsed}` in test/keyword replies renders as seconds once the delay is a
+  second or more (`1.5s` instead of `1500ms`), so a typical ack stays shorter
+  (#275). Sub-second times still print as milliseconds.
 
 - Response templates are parsed by a character-by-character state machine rather
   than by splitting on delimiters. Placeholders can now nest (`{"Dist: {d|hops_min:1}"}`)
