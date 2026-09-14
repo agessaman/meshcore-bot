@@ -8,6 +8,16 @@ semantic versioning.
 
 ### Added
 
+- Local commands and local services (dropped into `local/commands` and
+  `local/service_plugins`) now appear in the web viewer's Plugins settings page
+  alongside the built-in ones, tagged with `source: "local"`. Settings edited
+  there route to `local/config.ini` rather than the base `config.ini`, matching
+  the local overlay the bot already merges at startup via `[Bot] local_dir_path`
+  — a section already tracked in the base config keeps saving there. The web
+  viewer previously only read/wrote against `config.ini`, so any local plugin
+  settings actually stored in the overlay were invisible and unsavable from the
+  UI (#272).
+
 - `[Test_Command] distance_unit` (`auto`, `km`, `mi`) for `{path_distance}` and
   `{firstlast_distance}` (#275). `auto` (the default) follows the reply language:
   miles for `en` / `en-US`, kilometres for every other locale, including `en-GB`,
