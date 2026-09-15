@@ -775,7 +775,8 @@ class CommandManager:
 
                     # Channel check passed, process help request
                     if content_lower.startswith(help_keyword + ' '):
-                        command_name = content_lower[len(help_keyword):].strip()  # Remove help keyword prefix
+                        help_topic = content_lower[len(help_keyword):].strip()  # Remove help keyword prefix
+                        command_name = help_topic.split()[0]                    # First word is the command
                         help_text = self.get_help_for_command(command_name, message)
                         # Format the help response with message data (same as other keywords)
                         help_text = self.format_keyword_response(help_text, message)

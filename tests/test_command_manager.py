@@ -238,6 +238,47 @@ class TestCheckKeywords:
         matches = manager.check_keywords(msg)
         assert any(trigger == "help" for trigger, _ in matches)
 
+    def test_help_with_subcommand_extracts_first_word(self, cm_bot):
+        """'help cmd sub-cmd' should call get_help_for_command('cmd'), not 'cmd sub-cmd'."""
+        mock_cmd = MagicMock()
+        mock_cmd.keywords = ["test"]
+        mock_cmd.get_help_text = Mock(return_value="Test command help")
+        manager = make_manager(cm_bot, commands={"test": mock_cmd})
+
+        # Mock get_help_for_command to track what command_name was requested
+        original_get_help = manager.get_help_for_command
+        called_with = []
+
+        def tracking_get_help(command_name, message=None):
+            called_with.append(command_name)
+            return original_get_help(command_name, message)
+
+        manager.get_help_for_command = tracking_get_help
+
+        msg = mock_message(content="help test sub-command", is_dm=False)
+        matches = manager.check_keywords(msg)
+
+        # Should match help trigger
+        assert any(trigger == "help" for trigger, _ in matches)
+        # Should have called get_help_for_command with just "test", not "test sub-command"
+        assert called_with == ["test"]
+
+    def test_help_with_multiple_words_gets_first_word_only(self, cm_bot):
+        """'help command arg1 arg2' should extract only 'command'."""
+        mock_cmd = MagicMock()
+        mock_cmd.keywords = ["wx"]
+        mock_cmd.get_help_text = Mock(return_value="Weather help")
+        manager = make_manager(cm_bot, commands={"wx": mock_cmd})
+
+        with patch.object(manager, 'get_help_for_command', wraps=manager.get_help_for_command) as mock_get_help:
+            msg = mock_message(content="help wx 12345 extra args", is_dm=False)
+            matches = manager.check_keywords(msg)
+
+            assert any(trigger == "help" for trigger, _ in matches)
+            # Verify get_help_for_command was called with just "wx"
+            mock_get_help.assert_called_once()
+            assert mock_get_help.call_args[0][0] == "wx"
+
     def test_help_disabled_no_response(self, cm_bot):
         """[Help_Command] enabled=false must suppress the help response.
 

@@ -303,6 +303,11 @@ semantic versioning.
   The reply sent over the mesh is unchanged — it still carries only the exception
   text, with no filesystem path and no extra airtime.
 
+- `help` command now extracts the first word after "help" as the command to
+  request the help text from. This allows commands to have sub-commands and
+  provide individual help texts for each sub-command by further processing
+  the `MeshMessage` object sent to the command's `get_help_text` method.
+
 ### Changed
 
 - `{elapsed}` in test/keyword replies renders as seconds once the delay is a
