@@ -45,8 +45,13 @@ alerts_channel = #weather         # Channel for weather alerts
 ### Alert Polling
 
 ```ini
-poll_weather_alerts_interval = 600000  # Check for alerts every 10 minutes (milliseconds)
+weather_alerts_enabled = true           # Poll NOAA for alerts (default: true)
+poll_weather_alerts_interval = 600000   # Check every 10 minutes (milliseconds)
 ```
+
+Set `weather_alerts_enabled = false` to stop alert monitoring on its own. Daily
+forecasts, rain nowcasts, storm detection and the weather commands are
+unaffected, and `poll_weather_alerts_interval` is then ignored.
 
 ### Rain Nowcast (Proactive)
 
@@ -141,7 +146,8 @@ Works worldwide (no API key). Set `rain_nowcast_enabled = false` to disable.
 
 ### Weather Alerts (US Only)
 
-Monitors NOAA weather alerts and posts new alerts to `alerts_channel`:
+Monitors NOAA weather alerts and posts new alerts to `alerts_channel`. Set
+`weather_alerts_enabled = false` to disable, as with the rain nowcast above:
 
 **Example Output:**
 ```
@@ -200,6 +206,10 @@ Weather alerts use NOAA API which is **US-only**. For other countries:
 - Weather alerts won't be available
 - Lightning detection works worldwide via Blitzortung
 
+The service stops polling on its own once the NOAA API reports no coverage, so
+leaving alerts enabled outside the US is harmless; `weather_alerts_enabled =
+false` skips the attempt entirely.
+
 ---
 
 ## Troubleshooting
@@ -225,7 +235,8 @@ Common issues:
 ### No Weather Alerts
 
 1. **US only** - NOAA alerts only work in the United States
-2. **Check polling** - Service logs "Starting weather alerts polling"
+2. **Check polling** - Service logs "Starting weather alerts polling". If it logs
+   "Weather alert polling disabled" instead, `weather_alerts_enabled` is false
 3. **New alerts only** - Only alerts issued since last check are sent
 
 ### Lightning Not Working

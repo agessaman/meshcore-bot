@@ -14,6 +14,16 @@ semantic versioning.
 
 ### Added
 
+- `[Weather_Service] weather_alerts_enabled` (default `true`) turns the NOAA
+  weather-alert polling loop off on its own. Alert monitoring previously started
+  unconditionally with the service, so the only way to stop it was to disable
+  `[Weather_Service]` altogether and lose daily forecasts, rain nowcasts, storm
+  detection and the weather commands with it. Set it to `false` where another
+  source already feeds alerts to the mesh, or outside the US where NOAA has no
+  coverage—the service does stop polling on its own once the API reports that,
+  but this skips the attempt entirely. `poll_weather_alerts_interval` is ignored
+  when it is off, and the toggle is exposed in the web viewer's Plugins page.
+
 - Region-code monitoring and an optional automatic warning to senders whose
   channel messages carry no regional flood scope (#279). The bot classifies
   every channel message it hears as scoped, global (unscoped) or unknown and

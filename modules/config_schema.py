@@ -239,6 +239,7 @@ SECTIONS: dict[str, SectionMeta] = {
     }),
     "Weather_Service": SectionMeta(keys={
         "enabled": KeyMeta(type="bool"),
+        "weather_alerts_enabled": KeyMeta(type="bool", default="true"),
         "rain_nowcast_cache_seconds": KeyMeta(type="int", default="300"),
         # Siblings of the documented rain_nowcast_* keys, read but not shown.
         "rain_nowcast_show_amount": KeyMeta(type="bool", default="true"),

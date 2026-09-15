@@ -2219,8 +2219,18 @@ weather_channel = #weather
 # Weather alerts will be sent to this channel
 alerts_channel = #weather
 
+# Poll NOAA for weather alerts and post them to alerts_channel (true/false).
+# Set false to stop alert monitoring on its own — daily forecasts, rain nowcasts,
+# storm detection and the weather commands all keep working. Useful outside the
+# US, where NOAA has no coverage (the service already stops polling after the
+# API reports that, but this skips it entirely), or where another source already
+# feeds alerts to the mesh.
+# Default: true
+weather_alerts_enabled = true
+
 # Weather alert polling interval (milliseconds)
 # How often to check for new weather alerts
+# Ignored when weather_alerts_enabled = false
 # Default: 600000 (10 minutes)
 poll_weather_alerts_interval = 600000
 

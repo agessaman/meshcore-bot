@@ -69,7 +69,8 @@ class WeatherService(BaseServicePlugin):
     """Weather service providing scheduled forecasts and alert monitoring.
 
     Manages daily weather forecasts, polls for NOAA weather alerts, and
-    monitors lightning strikes via MQTT (Blitzortung).
+    monitors lightning strikes via MQTT (Blitzortung). Alert polling is on by
+    default and can be turned off on its own with ``weather_alerts_enabled``.
     """
 
     config_section = 'Weather_Service'
@@ -87,6 +88,10 @@ class WeatherService(BaseServicePlugin):
          "help": "Bot latitude (decimal degrees) for forecasts/alerts."},
         {"key": "my_position_lon", "label": "Longitude", "type": "float", "min": -180, "max": 180, "default": "",
          "help": "Bot longitude (decimal degrees)."},
+        {"key": "weather_alerts_enabled", "label": "Weather alerts", "type": "bool", "default": True,
+         "help": "Poll NOAA for weather alerts and post them to the alerts channel. "
+                 "Turn off to stop alert monitoring without disabling the rest of the service. "
+                 "NOAA alerts are US-only."},
         {"key": "poll_weather_alerts_interval", "label": "Alert poll interval", "type": "int",
          "min": 1000, "default": 600000, "unit": "ms", "help": "How often to check for new alerts."},
         {"key": "rain_nowcast_enabled", "label": "Rain nowcast", "type": "bool", "default": False,
@@ -120,6 +125,10 @@ class WeatherService(BaseServicePlugin):
         self.weather_channel = self.bot.config.get('Weather_Service', 'weather_channel', fallback='general')
         self.alerts_channel = self.bot.config.get('Weather_Service', 'alerts_channel', fallback='general')
         self.weather_model = self._load_weather_model()
+
+        # NOAA alert monitoring. On by default: the loop has always run whenever the
+        # service did, so defaulting off would silently drop alerts on upgrade.
+        self.weather_alerts_enabled = self.bot.config.getboolean('Weather_Service', 'weather_alerts_enabled', fallback=True)
 
         # Polling intervals (in milliseconds, converted to seconds)
         self.blitz_collection_interval = self.bot.config.getint('Weather_Service', 'blitz_collection_interval', fallback=600000) / 1000.0
@@ -362,8 +371,15 @@ class WeatherService(BaseServicePlugin):
             # For fixed times, use APScheduler (BackgroundScheduler + daily cron)
             self._setup_daily_forecast()
 
-        # Start background tasks
-        self._alerts_task = asyncio.create_task(self._poll_weather_alerts_loop())
+        # Start NOAA weather alert polling
+        if self.weather_alerts_enabled:
+            self._alerts_task = asyncio.create_task(self._poll_weather_alerts_loop())
+        else:
+            self._alerts_task = None
+            self.logger.info(
+                "Weather alert polling disabled (weather_alerts_enabled = false); "
+                "daily forecasts and other weather features are unaffected"
+            )
 
         # Start proactive rain nowcast polling
         if self.rain_nowcast_enabled:
