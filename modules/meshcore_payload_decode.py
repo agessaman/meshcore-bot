@@ -161,8 +161,10 @@ class ChannelKeyStore:
 def decrypt_group_text(ciphertext: bytes, cipher_mac: bytes, key16: bytes) -> Optional[dict[str, Any]]:
     """Verify+decrypt a GRP_TXT ciphertext with a single channel key.
 
-    Returns ``{timestamp, flags, sender, text}`` on success, or ``None`` if the
-    MAC fails or the plaintext is malformed.
+    Returns ``{timestamp, flags, sender, text, message}`` on success, or
+    ``None`` if the MAC fails or the plaintext is malformed. ``message`` is
+    the complete decoded text while ``text`` retains the existing
+    sender-prefix-stripped value.
     """
     if len(ciphertext) < 16 or len(ciphertext) % 16 != 0:
         return None
@@ -202,7 +204,13 @@ def decrypt_group_text(ciphertext: bytes, cipher_mac: bytes, key16: bytes) -> Op
             sender = candidate
             content = text[colon + 2:]
 
-    return {"timestamp": timestamp, "flags": flags, "sender": sender, "text": content}
+    return {
+        "timestamp": timestamp,
+        "flags": flags,
+        "sender": sender,
+        "text": content,
+        "message": text,
+    }
 
 
 def _iso_utc(unix_ts: int) -> Optional[str]:
