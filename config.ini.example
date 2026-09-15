@@ -2436,6 +2436,13 @@ port = 8765
 # secret_token = changeme
 
 # Maximum message length in characters (excess is silently truncated). Default: 200
+#
+# This is a cap on the total text accepted per request, NOT a single-message limit.
+# A MeshCore channel body only has about 130 bytes (the firmware's 160-byte text
+# limit less the "<botname>: " prefix), so anything longer is split and sent as
+# several mesh messages, each tagged " (1/2)", " (2/2)" and so on. Raising this
+# value therefore buys more airtime per request rather than longer single
+# messages.
 # max_message_length = 200
 
 # Comma-separated channel whitelist. If set, only these channels may be posted to.
@@ -2461,7 +2468,8 @@ port = 8765
 # Direct message:
 #   {"dm_to": "SomeUser", "message": "Private message"}
 #
-# Response: {"ok": true}  or  {"error": "..."}
+# Response: {"ok": true, "parts": 1}  or  {"error": "..."}
+#   parts = how many mesh messages the text was split into.
 # ---------------------------------------------------------------------------
 [RepeaterPrefixCollision_Service]
 # Enable repeater prefix collision notifications (true/false)

@@ -280,6 +280,36 @@ semantic versioning.
 
 ### Fixed
 
+- Webhook posts longer than one mesh frame are split across several channel
+  messages instead of being handed to the radio whole. `[Webhook]
+  max_message_length` truncated at 200 characters, but a MeshCore channel body
+  only holds the firmware's 160-byte text limit less the `"<botname>: "`
+  prefix—about 130 bytes, and 143 for a 15-byte bot name. The device dropped the
+  oversized payload without emitting the event the send waits for, so
+  `send_channel_message` burned all three of its `no_event_received` retries
+  (~45s), returned 500 to the caller, and left the transport stalled long enough
+  for the poll to read it as dead and bounce the radio. Each reconnect cleared
+  the channel cache, so a retry then failed differently, with
+  `Channel 'x' not found`. `max_message_length` is now documented as a cap on
+  the total text accepted per request rather than a single-message limit, and a
+  successful response reports the part count: `{"ok": true, "parts": 2}`.
+
+- `command_manager.send_channel_message` grew the central length guard that
+  `send_dm` has had all along: a body over the RF budget is split to fit and sent
+  as several messages rather than put on the air undeliverable. Any caller—a
+  service, a scheduled broadcast, a plugin—could previously wedge the radio
+  this way. The shared budget lives in the new `channel_body_budget`, which
+  accounts for the bot name in UTF-8 bytes and for the extra header bytes a
+  regional flood scope costs (including one resolved from
+  `flood_scope.<channel>` or `outgoing_flood_scope_override` after the caller
+  hands the body over). A split's parts are tagged `" (1/2)"`, `" (2/2)"` and so
+  on, since a mesh does not guarantee delivery order and nothing else
+  distinguishes a continuation from a standalone post. The suffix is reserved out
+  of the same byte budget as the body, and because reserving it can force one
+  more part—and crossing ten parts widens the suffix again—the reservation
+  iterates until it covers the count it produced. A message that fits in one part
+  carries no suffix.
+
 - MQTT brokers on `waev.app` now default to a JWT lifetime they accept (#248).
   waev.app refuses a token whose `exp` is more than an hour past its `iat`, so the
   project-wide 24-hour default never authenticated there and the operator saw only a
