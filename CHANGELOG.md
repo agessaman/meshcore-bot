@@ -6,6 +6,8 @@ semantic versioning.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-13
+
 ### Added
 
 - Local commands and local services (dropped into `local/commands` and
@@ -65,6 +67,27 @@ semantic versioning.
   `_response_translator` ContextVar to do this.
 
 ### Fixed
+
+- Service installers no longer leave `venv/bin/pip` and other console scripts
+  pointing at the temporary build environment after an atomic virtualenv swap.
+  `--update-venv` also repairs already-broken shebangs before replacing the old
+  environment (#229).
+
+- Direct messages from newly advertised companions resolve through
+  `pending_contacts` until the next contact snapshot, so a successful command ACK
+  is no longer followed by a failed keyword reply.
+
+- Command matching preserves the original on-air message body while using a
+  cleaned copy for mention and trigger matching. Commands and web-viewer events no
+  longer receive content altered as a side effect of dispatch (#267).
+
+- The dark mesh map uses OpenFreeMap instead of Carto's retired unauthenticated
+  raster tiles. Browsers without the required WebGL support fall back to an
+  inverted OpenStreetMap layer instead of displaying a blank map.
+
+- ARMv7 service and Debian-package installs use the piwheels index and the shipped
+  compatibility constraints consistently, avoiding source builds and incompatible
+  dependency selections on 32-bit Raspberry Pi systems (#269).
 
 - Published packet payloads carry UTC in every time field, not just `timestamp`
   (#278). `time` and `date` came from a local `datetime.now()` while the
@@ -619,12 +642,6 @@ considered stable; breaking changes to them will come with a major version bump.
 
 ### Fixed
 
-- Service installers no longer leave `venv/bin/pip` (and other console scripts)
-  with shebangs pointing at the temporary `.venv-build-$$` path after the atomic
-  virtualenv swap. Optional package prompts and documented pip invocations now
-  use `venv/bin/python -m pip`. `--update-venv` rewrites shebangs in place so
-  already-broken installs heal without a full rebuild, and the previous venv is
-  kept until rewrite succeeds (issue #229).
 - Data retention now runs shortly after startup and then daily. It no longer
   requires 24 hours of uninterrupted uptime before the first cleanup, and its
   timer remains independent from the nightly maintenance email.
@@ -922,6 +939,8 @@ hardening fixes.
   v0.9.0.
 - Discord integration, kg7qin integration notes (`f2936be`, `de6279c`).
 
+[Unreleased]: https://github.com/agessaman/meshcore-bot/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/agessaman/meshcore-bot/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/agessaman/meshcore-bot/compare/v0.9.3...v1.0.0
 [0.9.3]: https://github.com/agessaman/meshcore-bot/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/agessaman/meshcore-bot/compare/v0.9.1...v0.9.2

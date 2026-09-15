@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "meshcore-bot"
-version = "1.0.0"
+version = "1.1.0"
 description = "MeshCore Bot with commands for mesh testing, utilities, and service integration."
 readme = "README.md"
 # Table form rather than the SPDX string form: the string form needs

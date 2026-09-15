@@ -2,7 +2,57 @@
 
 This document describes changes that may affect users upgrading from previous versions. Read the section that matches the version you are upgrading **from** (not the version you are installing).
 
-For a full list of v0.9 changes, see [CHANGELOG.md](https://github.com/agessaman/meshcore-bot/blob/main/CHANGELOG.md).
+For the full release history, see [CHANGELOG.md](https://github.com/agessaman/meshcore-bot/blob/main/CHANGELOG.md).
+
+## Upgrading from v1.0.0 to v1.1.0
+
+v1.1.0 adds features without removing or renaming the stable configuration,
+command, service-plugin, or web-viewer interfaces introduced in v1.0.0. Existing
+configuration files continue to work. Back up `config.ini`, `local/`, and the bot
+database before upgrading, then use the normal installer or container update path.
+
+### Database
+
+Migration 23 adds nullable `snr` and `rssi` columns to `observed_paths`. The bot
+applies it automatically and records it in `schema_version`; existing path rows and
+rows without a direct RF measurement retain `NULL` values. The migration is
+transactional and safe to run more than once.
+
+### Configuration and local extensions
+
+- `[Test_Command] distance_unit` controls printed path distances. Its default,
+  `auto`, uses miles for `en` and `en-US` replies and kilometres for other locales.
+- `[PacketCapture] observer_name` can give MQTT payloads an observer identity that
+  differs from the connected MeshCore node name. Leaving it unset preserves the
+  v1.0.0 behavior.
+- `[Localization] local_translation_path` loads operator-owned catalog overrides
+  from the configured local directory. Existing installations need no new file.
+- `mqttN_keepalive` and `mqttN_jwt_reconnect_on_renew` control broker keepalive and
+  renewed-token reconnect behavior. Their defaults preserve ordinary brokers while
+  making expiring-token sessions reconnect before the broker rejects them.
+- The Plugins page now discovers local commands and services and saves their new
+  sections to `local/config.ini`. A section already present in the base config keeps
+  its existing owner.
+
+### Behavior changes
+
+- Packet-capture `timestamp`, `date`, and `time` fields now describe the same UTC
+  instant. Consumers that interpreted `date` or `time` as host-local values must
+  switch to UTC.
+- Airplanes uses `adsb.lol` by default because the former public endpoint rejects
+  unauthenticated clients. Existing `airplanes.live` defaults are remapped; custom
+  and local readsb URLs are unchanged.
+- The web viewer's former Disconnect action is labelled Stop Bot and asks for
+  confirmation because the action terminates the process rather than only closing
+  the radio connection.
+- Response templates support nested placeholders, quoted filter arguments,
+  `hops_min`, `shorten`, and `if_nonempty`. Existing templates retain their prior
+  syntax, and substituted values are not reparsed as template source.
+- Scheduled messages can be edited in the web viewer and can include bounded
+  `{cmd:...}` output. Schedules using command output must leave at least 15 minutes
+  between runs.
+- Proactive weather output, `!wx`, and `!gwx` share localized alert formatting.
+  Russian is included, and local catalogs can override individual strings.
 
 ## Upgrading from v0.8 → v0.9
 
@@ -15,11 +65,11 @@ v0.9 is a large release focused on operational reliability, observability, and d
 
 ### Config changes
 
-- **Command aliases** — The global **`[Aliases]`** section is removed. Move each alias list to the corresponding command section as `aliases = stem1, stem2` (stems only; no command prefix). See [Configuration](configuration.md#per-command-aliases-v09).
+- **Command aliases** — The global **`[Aliases]`** section is removed. Move each alias list to the corresponding command section as `aliases = stem1, stem2` (stems only; no command prefix). See [Configuration](configuration.md#command-specific-sections).
 - **`max_response_hops`** — Shipped config templates now default to **7** (was 10). The code fallback when unset is still 64. Review this if you relied on the old template default.
 - **New optional sections** (safe to omit):
-  - **`[Rate_Limits]`** — Per-channel minimum seconds between bot messages. See [Configuration](configuration.md#rate-limiting).
-  - **`[Webhook]`** — Inbound HTTP POST relay to channels or DMs. See [Configuration](configuration.md#inbound-webhook).
+  - **`[Rate_Limits]`** — Per-channel minimum seconds between bot messages. See [README](https://github.com/agessaman/meshcore-bot#per-channel-rate-limiting).
+  - **`[Webhook]`** — Inbound HTTP POST relay to channels or DMs. See [README](https://github.com/agessaman/meshcore-bot#inbound-webhook).
   - Radio reliability options under **`[Bot]`** (zombie-radio detection, send suppression during outages, etc.) — see `config.ini.example`.
 
 ### Database
@@ -63,7 +113,7 @@ v0.9 is a large release focused on operational reliability, observability, and d
 
 ## Upgrading from v0.7 → v0.8
 
-If you are coming from v0.7 and skipping v0.8, also read [Upgrading from v0.8 → v0.9](#upgrading-from-v08--v09) above.
+If you are coming from v0.7 and skipping v0.8, also read [Upgrading from v0.8 → v0.9](#upgrading-from-v08-v09) above.
 
 ### Path command and mesh graph
 
