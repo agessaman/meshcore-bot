@@ -14,6 +14,7 @@ from typing import Any, TypedDict
 
 from .enums import AdvertFlags, DeviceRole, PayloadType, PayloadVersion, RouteType
 from .graph_trace_helper import update_mesh_graph_from_trace_data
+from .meshcore_payload_decode import channel_hash_for_key, decrypt_group_text
 from .models import MeshMessage
 from .neighbors_discovery import upsert_zero_hop_observed_path_via_manager
 from .security_utils import sanitize_input, sanitize_name
@@ -36,6 +37,7 @@ RF_MATCH_PARTIAL = "partial"
 # prefix. Channel messages have no prefix to match on, so this is the only positive
 # correlation available to them (see _rf_data_matches_chan_payload).
 RF_MATCH_PAYLOAD = "payload"
+RF_MATCH_CHANNEL_AUTHENTICATED = "channel_authenticated"
 RF_MATCH_FALLBACK = "fallback"
 
 
@@ -75,6 +77,11 @@ class MessageHandler:
 
         # Time-based cache for recent RF log data
         self.recent_rf_data: list[dict[str, Any]] = []
+
+        # Authenticated channel rows outlive the short best-effort RF window.
+        # A queued CHANNEL_MSG_RECV can be delayed while the mesh stays busy.
+        self.channel_rf_data: list[dict[str, Any]] = []
+        self._channel_rf_cache_timeout = max(300.0, self.rf_data_timeout * 4)
 
         # Message correlation system to prevent race conditions
         self.pending_messages: dict[str, PendingMessageEntry] = {}  # Store messages waiting for RF data
@@ -343,6 +350,176 @@ class MessageHandler:
         except (TypeError, ValueError):
             # If we can't parse timestamp, process the message (safer to process than skip)
             return False
+
+    @staticmethod
+    def _channel_message_identity(
+        channel_idx: Any, sender_timestamp: Any, txt_type: Any, text: Any
+    ) -> str | None:
+        """Return the identity shared by an authenticated RF row and CHAN event."""
+        try:
+            idx = int(channel_idx)
+            timestamp = int(sender_timestamp)
+            message_type = int(txt_type)
+        except (TypeError, ValueError):
+            return None
+        if not 0 <= idx <= 0xFFFF or not 0 <= timestamp <= 0xFFFFFFFF:
+            return None
+        if not 0 <= message_type <= 0xFF or not isinstance(text, str):
+            return None
+
+        digest = sha256()
+        digest.update(b"meshcore-channel-message-v1\0")
+        digest.update(idx.to_bytes(2, "little"))
+        digest.update(timestamp.to_bytes(4, "little"))
+        digest.update(bytes([message_type]))
+        digest.update(text.rstrip("\x00").encode("utf-8"))
+        return digest.hexdigest()
+
+    def _channel_secrets(self) -> list[tuple[int, bytes]]:
+        """Return configured channel indexes and keys without logging secrets."""
+        meshcore = getattr(self.bot, "meshcore", None)
+        channels = getattr(meshcore, "channels", None)
+        if isinstance(channels, dict):
+            items = channels.items()
+        elif isinstance(channels, list):
+            items = enumerate(channels)
+        else:
+            return []
+
+        result: list[tuple[int, bytes]] = []
+        for fallback_idx, channel in items:
+            if not isinstance(channel, dict):
+                continue
+            try:
+                channel_idx = int(channel.get("channel_idx", fallback_idx))
+            except (TypeError, ValueError):
+                continue
+
+            secret = channel.get("channel_secret")
+            if isinstance(secret, str):
+                try:
+                    secret = bytes.fromhex(secret)
+                except ValueError:
+                    secret = None
+            if not isinstance(secret, (bytes, bytearray)):
+                key_hex = channel.get("channel_key_hex")
+                if isinstance(key_hex, str):
+                    try:
+                        secret = bytes.fromhex(key_hex)
+                    except ValueError:
+                        secret = None
+            if isinstance(secret, bytearray):
+                secret = bytes(secret)
+            if isinstance(secret, bytes) and len(secret) == 16 and any(secret):
+                result.append((channel_idx, secret))
+        return result
+
+    def _decode_authenticated_channel_identity(
+        self, packet_info: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        """Authenticate a decoded GRP_TXT packet and derive its CHAN identity."""
+        if not packet_info or packet_info.get("payload_type") != self._grp_txt_payload_type_int():
+            return None
+        payload_hex = packet_info.get("payload_hex")
+        if not isinstance(payload_hex, str):
+            return None
+        try:
+            group_payload = bytes.fromhex(payload_hex)
+        except ValueError:
+            return None
+        if len(group_payload) < 3:
+            return None
+
+        channel_hash = f"{group_payload[0]:02x}"
+        cipher_mac = group_payload[1:3]
+        ciphertext = group_payload[3:]
+        for channel_idx, secret in self._channel_secrets():
+            if channel_hash_for_key(secret) != channel_hash:
+                continue
+            decrypted = decrypt_group_text(ciphertext, cipher_mac, secret)
+            if not decrypted:
+                continue
+            txt_type = int(decrypted["flags"]) >> 2
+            identity = self._channel_message_identity(
+                channel_idx,
+                decrypted["timestamp"],
+                txt_type,
+                decrypted["message"],
+            )
+            if identity is None:
+                return None
+            return {
+                "channel_message_id": identity,
+                "channel_idx": channel_idx,
+                "channel_attempt": int(decrypted["flags"]) & 0x03,
+            }
+        return None
+
+    def _cache_authenticated_channel_rf_data(
+        self,
+        rf_data: dict[str, Any],
+        packet_info: dict[str, Any] | None,
+        current_time: float,
+    ) -> None:
+        identity = self._decode_authenticated_channel_identity(packet_info)
+        if identity is None:
+            return
+        rf_data.update(identity)
+        self.channel_rf_data.append(rf_data)
+        cutoff = current_time - self._channel_rf_cache_timeout
+        self.channel_rf_data = [
+            row for row in self.channel_rf_data if row.get("timestamp", 0) >= cutoff
+        ]
+        if len(self.channel_rf_data) > self._max_rf_cache_size:
+            self.channel_rf_data = self.channel_rf_data[-self._max_rf_cache_size :]
+
+    def _find_authenticated_channel_rf_data(
+        self, payload: dict[str, Any] | None
+    ) -> tuple[dict[str, Any] | None, bool]:
+        """Find the first RF reception for an authenticated channel message.
+
+        The companion logs raw RF before duplicate suppression and queues only
+        the first unseen channel packet. Repeater echoes share the packet hash,
+        so the earliest row is the reception represented by CHANNEL_MSG_RECV.
+        The boolean prevents weaker matching after an authenticated ambiguity.
+        """
+        if not payload:
+            return None, False
+        identity = self._channel_message_identity(
+            payload.get("channel_idx"),
+            payload.get("sender_timestamp"),
+            payload.get("txt_type"),
+            payload.get("text"),
+        )
+        if identity is None:
+            return None, False
+        now = time.time()
+        max_age = getattr(
+            self,
+            "_channel_rf_cache_timeout",
+            max(300.0, getattr(self, "rf_data_timeout", 15.0) * 4),
+        )
+        matches = [
+            row
+            for row in getattr(self, "channel_rf_data", [])
+            if row.get("channel_message_id") == identity
+            and isinstance(row.get("timestamp"), (int, float))
+            and now - row["timestamp"] <= max_age
+        ]
+        if not matches:
+            return None, False
+
+        packet_hashes = {row.get("packet_hash") for row in matches}
+        if len(packet_hashes) != 1 or not all(packet_hashes):
+            self.logger.warning(
+                "Authenticated channel message matched %d distinct or unidentified packets; "
+                "leaving RF attribution unresolved",
+                len(packet_hashes),
+            )
+            return None, True
+
+        selected = min(matches, key=lambda row: row.get("timestamp", float("inf")))
+        return {**selected, RF_MATCH_KEY: RF_MATCH_CHANNEL_AUTHENTICATED}, True
 
     async def handle_contact_message(self, event: Any, metadata: dict[str, Any] | None = None) -> None:
         """Handle incoming contact message (DM).
@@ -1300,6 +1477,9 @@ class MessageHandler:
                         if _lib_pkt_hex
                         else (decoded_packet.get("payload_hex") if decoded_packet else None),
                     }
+                    self._cache_authenticated_channel_rf_data(
+                        rf_data, decoded_packet, current_time
+                    )
                     if rf_data.get("route_type_int") == 0:
                         self.logger.debug(
                             "TC_FLOOD scope fields: tc_code1=%s payload_type=%s payload_hex_prefix=%s",
@@ -1500,6 +1680,19 @@ class MessageHandler:
         extended_timeout: float,
     ) -> dict[str, Any] | None:
         """Correlate a channel message with cached RF log rows (strategies 1–4)."""
+        authenticated, authenticated_identity_seen = self._find_authenticated_channel_rf_data(payload)
+        if authenticated_identity_seen:
+            if authenticated is None:
+                return None
+            if scope_eligible_only and not self._is_rf_data_scope_eligible(authenticated):
+                return None
+            self.logger.debug(
+                "Authenticated channel message matched first RF reception %s (packet %s)",
+                (authenticated.get("packet_prefix") or "?")[:16],
+                authenticated.get("packet_hash") or "?",
+            )
+            return authenticated
+
         recent_rf_data: dict[str, Any] | None = None
 
         if message_packet_prefix:
@@ -1516,6 +1709,13 @@ class MessageHandler:
             message_id = f"{correlation_key}_{int(time.time() * 1000)}"
             self.store_message_for_correlation(message_id, payload)
             await asyncio.sleep(0.1)
+            authenticated, authenticated_identity_seen = self._find_authenticated_channel_rf_data(payload)
+            if authenticated_identity_seen:
+                if authenticated is None:
+                    return None
+                if scope_eligible_only and not self._is_rf_data_scope_eligible(authenticated):
+                    return None
+                return authenticated
             recent_rf_data = self.correlate_message_with_rf_data(message_id)
 
         if not recent_rf_data:
