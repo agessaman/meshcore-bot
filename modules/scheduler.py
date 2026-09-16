@@ -782,7 +782,7 @@ class MessageScheduler:
         last_job_count = 0
         last_job_log_time = 0
 
-        while self.bot.connected:
+        while self.bot.keep_running:
             current_time = self.get_current_time()
 
             # Log current time every 5 minutes for debugging
