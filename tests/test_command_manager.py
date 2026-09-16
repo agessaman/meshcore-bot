@@ -362,6 +362,24 @@ class TestGetHelpForCommand:
         mock_cmd.get_help_text.assert_called_once_with(message)
         assert message.content == "help net create"
 
+    def test_multiword_alias_is_checked_before_subcommand_fallback(self, cm_bot):
+        dadjoke_cmd = MagicMock()
+        dadjoke_cmd.keywords = ["dadjoke", "dad joke"]
+        dadjoke_cmd.get_help_text = Mock(return_value="Dad joke help")
+        unrelated_cmd = MagicMock()
+        unrelated_cmd.keywords = ["dad"]
+        unrelated_cmd.get_help_text = Mock(return_value="Wrong help")
+        manager = make_manager(
+            cm_bot,
+            commands={"dadjoke": dadjoke_cmd, "dad": unrelated_cmd},
+        )
+
+        result = manager.get_help_for_command("dad joke")
+
+        assert "Dad joke help" in result
+        dadjoke_cmd.get_help_text.assert_called_once()
+        unrelated_cmd.get_help_text.assert_not_called()
+
 
 class TestInternetStatusCache:
     """Tests for InternetStatusCache."""

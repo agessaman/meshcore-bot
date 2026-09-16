@@ -1470,6 +1470,28 @@ class CommandManager:
                 return False
         return True
 
+    def _find_help_command(self, lookup_name: str) -> Any | None:
+        """Resolve an exact command name or alias."""
+        normalized_name = lookup_name.lower()
+        command = self.commands.get(normalized_name) or self.commands.get(lookup_name)
+        if command:
+            return command
+
+        if hasattr(self, 'plugin_loader') and hasattr(self.plugin_loader, 'keyword_mappings'):
+            mapped_name = self.plugin_loader.keyword_mappings.get(normalized_name)
+            if mapped_name:
+                command = self.commands.get(mapped_name)
+                if command:
+                    return command
+
+        for cmd_instance in self.commands.values():
+            if (
+                hasattr(cmd_instance, 'keywords')
+                and normalized_name in [keyword.lower() for keyword in cmd_instance.keywords]
+            ):
+                return cmd_instance
+        return None
+
     def get_help_for_command(self, command_name: str, message: MeshMessage | None = None) -> str:
         """Get help text for a specific command (LoRa-friendly compact format).
 
@@ -1486,59 +1508,17 @@ class CommandManager:
             return self.get_general_help(message)
 
         requested_name = command_name.strip()
-        # Help may include subcommand arguments (for example, ``help net
-        # create``). Resolve the plugin from the first token, then pass the
-        # unchanged MeshMessage to get_help_text() so the plugin can interpret
-        # the remaining text in its own command-specific way.
-        lookup_name = requested_name.split(maxsplit=1)[0] if requested_name else ""
-        normalized_name = lookup_name.lower()
-
-        # First, try to find a command by exact name
-        command = self.commands.get(normalized_name) or self.commands.get(lookup_name)
+        command = self._find_help_command(requested_name)
+        if not command and requested_name:
+            command = self._find_help_command(requested_name.split(maxsplit=1)[0])
         if command:
-            # Try to pass message context to get_help_text if supported
             try:
                 help_text = command.get_help_text(message)
             except TypeError:
-                # Fallback for commands that don't accept message parameter
                 help_text = command.get_help_text()
-            # Use translator if available
             if hasattr(self.bot, 'translator'):
                 return self.bot.translator.translate('commands.help.specific', command=command_name, help_text=help_text)
             return f"Help {command_name}: {help_text}"
-
-        # Next, consult plugin_loader keyword mappings (if available)
-        mapped_name: str | None = None
-        if hasattr(self, 'plugin_loader') and hasattr(self.plugin_loader, 'keyword_mappings'):
-            mapped_name = self.plugin_loader.keyword_mappings.get(normalized_name)
-        if mapped_name:
-            command = self.commands.get(mapped_name)
-            if command:
-                try:
-                    help_text = command.get_help_text(message)
-                except TypeError:
-                    help_text = command.get_help_text()
-                if hasattr(self.bot, 'translator'):
-                    return self.bot.translator.translate('commands.help.specific', command=command_name, help_text=help_text)
-                return f"Help {command_name}: {help_text}"
-
-        # If still not found, search through all commands and their keywords
-        for _cmd_name, cmd_instance in self.commands.items():
-            # Check if the requested command name matches any of this command's keywords
-            if (
-                hasattr(cmd_instance, 'keywords')
-                and normalized_name in [k.lower() for k in cmd_instance.keywords]
-            ):
-                # Try to pass message context to get_help_text if supported
-                try:
-                    help_text = cmd_instance.get_help_text(message)
-                except TypeError:
-                    # Fallback for commands that don't accept message parameter
-                    help_text = cmd_instance.get_help_text()
-                # Use translator if available
-                if hasattr(self.bot, 'translator'):
-                    return self.bot.translator.translate('commands.help.specific', command=command_name, help_text=help_text)
-                return f"Help {command_name}: {help_text}"
 
         # If still not found, return unknown command message with helpful suggestion
         # Use the help command's method to get popular commands (only primary names, no aliases)
