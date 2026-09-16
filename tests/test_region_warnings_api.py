@@ -157,6 +157,48 @@ class TestRegionWarningsSave:
             json={"delivery": "dm", "message": "line one\nline two"})
         assert resp.status_code == 400
 
+    def test_rejects_percent_in_the_message(self, viewer):
+        """A bare % makes configparser raise on every later read of the section,
+        which would reject the bot's hot reloads until the file was hand-edited."""
+        resp = viewer.app.test_client().post(
+            "/api/region-warnings/settings",
+            json={"delivery": "dm", "message": "100% of the mesh, set a region"})
+        assert resp.status_code == 400
+        assert "%" in resp.get_json()["error"]
+
+    def test_percent_is_never_written_to_config(self, viewer, tmp_path):
+        viewer.app.test_client().post(
+            "/api/region-warnings/settings",
+            json={"delivery": "dm", "message": "50% done"})
+        text = (tmp_path / "config.ini").read_text(encoding="utf-8")
+        assert "50%" not in text
+        # And the file configparser reads back must still be intact.
+        written = configparser.ConfigParser()
+        written.read(tmp_path / "config.ini", encoding="utf-8")
+        if written.has_section("Region_Warnings"):
+            list(written.items("Region_Warnings"))
+
+    def test_rejects_an_overlong_message(self, viewer):
+        resp = viewer.app.test_client().post(
+            "/api/region-warnings/settings",
+            json={"delivery": "dm", "message": "x" * 501})
+        assert resp.status_code == 400
+
+    def test_budget_separates_delivered_from_attempted(self, viewer):
+        with viewer.db_manager.connection() as conn:
+            for action in ("sent", "failed", "failed"):
+                conn.execute(
+                    "INSERT INTO region_warning_events "
+                    "(created_at, sender_id, channel, delivery, action) VALUES (?, ?, ?, ?, ?)",
+                    (datetime.now().isoformat(sep=" ", timespec="seconds"),
+                     "Ann", "#gen", "dm", action),
+                )
+            conn.commit()
+        budget = viewer.app.test_client().get("/api/region-warnings").get_json()["budget"]
+        assert budget["used_today"] == 3
+        assert budget["delivered_today"] == 1
+        assert budget["failed_today"] == 2
+
     def test_empty_message_falls_back_to_the_default(self, viewer):
         resp = viewer.app.test_client().post(
             "/api/region-warnings/settings", json={"delivery": "dm", "message": "   "})

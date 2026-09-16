@@ -19,15 +19,29 @@ Each channel message gets one of three verdicts.
 
 | Verdict | Meaning | Evidence |
 | --- | --- | --- |
-| `scoped` | A region code was set | The message matched a configured `flood_scopes` entry, or the correlated RF packet was a `TC_FLOOD` carrying a transport code |
-| `global` | No region code | The correlated RF packet was an ordinary `FLOOD`, or no scope-eligible packet was heard anywhere in the correlation window |
+| `scoped` | A region code was set | The message matched a configured `flood_scopes` entry, or RF correlated to this message was a `TC_FLOOD` carrying a transport code |
+| `global` | No region code | RF correlated to this message was an ordinary `FLOOD` |
 | `unknown` | The radio could not tell | Anything else |
 
-Only `global` can earn a warning, and only on positive evidence. If the radio did not witness enough to decide, the message counts as `unknown` and no warning is possible. That matters: absence of correlation is not proof that a sender omitted a region, and this feature answers that ambiguity by staying quiet.
+Every verdict requires RF the bot has tied to *this* message, by matching the channel payload's type, path length and SNR against the packets it logged. A most-recent-packet guess is not correlation and yields `unknown`.
+
+Only `global` can earn a warning, and only on that positive evidence. Absence of correlation is not proof that a sender omitted a region, and this feature answers that ambiguity by staying quiet.
+
+`flood_scopes` accepts a weaker inference for its own purposes — "no scope-eligible packet was heard in the window, therefore this message was unscoped" — because the cost of being wrong there is one reply the operator broadly wanted. The cost of being wrong here is an unsolicited message accusing someone of a misconfiguration they may not have, so that route is deliberately not used.
 
 `unknown` is excluded from the unscoped percentage rather than counted as clean, so a mesh the bot cannot classify reads as "no data" instead of "no problem".
 
-A channel message that arrives with no `Name: ` prefix has no attributable sender. It is still counted, but it can never earn anyone a warning — every such message would otherwise share one synthetic identity.
+### Who the sender is
+
+**A channel sender is a display name, not an identity.** MeshCore's `CHANNEL_MSG_RECV` carries no public key: the sender is the `Name: ` prefix of the decrypted text, which anyone holding the channel key can set to anything. Nothing the bot can do authenticates it.
+
+What it does instead is refuse to act on a name with nothing behind it:
+
+- A message with no `Name: ` prefix has no attributable sender at all. It is counted, but can never earn anyone a warning — every such message would otherwise share one synthetic identity.
+- DM delivery requires a contact the radio already knows by that name. That does not prove the message came from that node, but it keeps the bot from messaging someone on a stranger's say-so, and it avoids spending cap slots on sends that would fail anyway.
+- The per-sender cooldown and the daily cap bound how much one forged name can cost.
+
+If that residual risk matters on your mesh, leave warnings in dry run and read the log rather than sending.
 
 Messages the radio cached from before the current connection are skipped entirely — a reconnect replays them as a burst, and counting them would both distort the tallies and let stale traffic earn someone a warning.
 
@@ -47,11 +61,11 @@ The **What the bot does** control has three positions:
 - **Dry run** — warnings are decided and logged exactly as they would be sent, including consuming the cooldowns and the daily cap, but nothing is transmitted. The log underneath shows precisely what going live would put on the air.
 - **Send warnings** — transmits.
 
-Run it in dry run for a few days first. Because dry run spends the same budget, the log is a true preview rather than an upper bound.
+Run it in dry run for a few days first. Because dry run spends the same budget, the log is a true preview rather than an upper bound — with the corollary that a sender the preview already covered stays on their cooldown when you go live, so the first real warnings may lag.
 
 ### Delivery
 
-- **Direct message** (default) — the sender alone sees it, and it is the cheaper of the two.
+- **Direct message** (default) — the sender alone sees it, and it is the cheaper of the two. Only sent to a name the radio already has a contact for; see [Who the sender is](#who-the-sender-is). If your bot does not keep contacts, use channel delivery instead.
 - **Channel reply** — sent at **global** scope on purpose. The recipient is by definition outside any region your bot replies under, so a scoped reply would never reach them. Everyone on the channel sees it.
 
 ### Limits
@@ -65,9 +79,9 @@ Run it in dry run for a few days first. Because dry run spends the same budget, 
 
 Banned users are never warned, and the bot never warns itself (identified by public key, falling back to `[Bot] bot_name`). `channelpause` silences warnings along with everything else on channels.
 
-The daily cap counts **attempts**, failures included: its job is to bound how much unprompted activity this feature can produce in a day, and a send that reported failure may still have put something on the air before it did.
+The daily cap and the per-sender cooldown both count **attempts**, failures included: their job is to bound how much unprompted activity this feature can produce, and a send that reported failure may still have put something on the air before it did. They have to agree — when only the cap counted failures, one unreachable node spent the whole day's budget every day and nobody was ever warned.
 
-A failed send does not start the mesh cooldown — usually nothing was transmitted, so it should not silence the next sender — but it does spend that sender's run, so a permanently unreachable contact is not retried on their every message.
+A failed send does not start the *mesh-wide* cooldown, since usually nothing was transmitted and it should not silence the next sender.
 
 Both cooldowns and the cap read from the database rather than from memory, so restarting the bot does not release a burst of warnings.
 

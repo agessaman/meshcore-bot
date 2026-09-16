@@ -338,11 +338,23 @@ class MessageHandler:
         code), whether or not that code matches one of ours. "Global" means it
         was proven to be an ordinary unscoped FLOOD. Anything else is unknown.
 
-        The scoped tests run first and the global test last, so every ambiguity
-        resolves away from "global". That direction matters: ``global`` is the
+        Every test here needs RF data correlated to *this* message, and the
+        scoped tests run before the global one, so both kinds of ambiguity
+        resolve away from ``global``. That direction matters: ``global`` is the
         verdict that can spend airtime telling someone to fix their config, and
-        a message whose scope the radio simply did not witness is not evidence
-        that the sender omitted a region.
+        a message whose scope the radio did not witness is not evidence that the
+        sender omitted a region.
+
+        In particular this does **not** use ``_is_confirmed_global_flood``'s
+        second route, which infers "unscoped" from the absence of any
+        scope-eligible packet in the window. That inference is sound enough to
+        decide whether a ``*`` entry in ``flood_scopes`` authorizes a reply — the
+        cost of being wrong is one reply the operator broadly wanted — but it is
+        an argument from absence, and the cost of being wrong here is an
+        unsolicited message accusing someone of a misconfiguration they may not
+        have. Channel messages still correlate through
+        ``_find_rf_row_matching_chan_payload`` (payload type, path length and
+        SNR all agreeing), so the ordinary case is unaffected.
         """
         if reply_scope:
             return VERDICT_SCOPED
@@ -362,7 +374,7 @@ class MessageHandler:
             if route_type == int(RouteType.TRANSPORT_FLOOD.value):
                 return VERDICT_SCOPED
 
-        if self._is_confirmed_global_flood(
+        if rf_data_is_correlated(recent_rf_data) and self._is_confirmed_global_flood(
             recent_rf_data,
             packet_info,
             scoped_traffic_in_window=scope_rf_data is not None,

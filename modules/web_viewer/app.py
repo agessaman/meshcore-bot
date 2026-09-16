@@ -4139,6 +4139,16 @@ class BotDataViewer:
                 message = str(data.get('message') or '').strip() or region_warning.DEFAULT_MESSAGE
                 if '\n' in message or '\r' in message:
                     raise ValueError('message must be a single line')
+                if '%' in message:
+                    # config.ini is read with configparser's interpolation on, so a
+                    # bare % raises on every later read of the section — including
+                    # the bot's own config validation, which would then reject every
+                    # hot reload until someone hand-edited the file.
+                    raise ValueError('message cannot contain "%"; write "percent" instead')
+                if len(message) > 500:
+                    # Far above the 158-byte send budget, but this lands in
+                    # config.ini and in every timestamped backup of it.
+                    raise ValueError('message must be 500 characters or fewer')
 
                 channels = data.get('channels')
                 if isinstance(channels, list):
@@ -4184,18 +4194,7 @@ class BotDataViewer:
                 return jsonify({'success': False, 'error': 'Internal error — see server logs'}), 500
 
             backup_path = result.get('backup_path', '') if isinstance(result, dict) else ''
-            reload_queued = False
-            try:
-                with self.db_manager.connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "INSERT INTO channel_operations (operation_type, status) "
-                        "VALUES ('config_reload', 'pending')"
-                    )
-                    conn.commit()
-                reload_queued = True
-            except Exception:
-                self.logger.exception("Failed to queue config reload")
+            reload_queued = _queue_config_reload()
 
             self.logger.info(
                 "Region warning settings saved (enabled=%s, dry_run=%s, delivery=%s)",

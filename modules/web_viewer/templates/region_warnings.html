@@ -5,7 +5,7 @@
 {% block extra_css %}
 <style>
     /* Theme-aware tokens. Bootstrap's .text-warning (#ffc107) is 1.6:1 on a
-       white card, and its chart-friendly oranges/greys are picked for dark
+       white card, and its chart-friendly oranges/grays are picked for dark
        surfaces, so each value is chosen per theme against the surface it
        actually lands on. Fills clear 3:1 against the card; text clears 4.5:1. */
     :root {
@@ -63,6 +63,18 @@
         white-space: nowrap;
         margin-right: 1rem;
     }
+    /* The gray band only appears in the daily columns, so its legend swatch is
+       the one place the channel bars and that chart have to agree. */
+    .rw-unknown-note::before {
+        content: '';
+        display: inline-block;
+        width: .6rem;
+        height: .6rem;
+        border-radius: 2px;
+        margin-right: .3rem;
+        background-color: var(--rw-unknown);
+    }
+
     .rw-legend-dot {
         display: inline-block;
         width: .65rem;
@@ -202,7 +214,7 @@
                 <div class="mb-3 small rw-legend">
                     <span><span class="rw-legend-dot rw-seg-global"></span>No region code</span>
                     <span><span class="rw-legend-dot rw-seg-scoped"></span>Region code set</span>
-                    <span><span class="rw-legend-dot rw-seg-unknown"></span>Couldn't tell</span>
+                    <span><span class="rw-legend-dot rw-seg-unknown"></span>Couldn't tell (not in the bars)</span>
                 </div>
                 <div id="rw-traffic"><div class="loading">Loading traffic…</div></div>
             </div>
@@ -243,7 +255,7 @@
                             <input class="form-check-input" type="radio" name="rw-mode" id="rw-mode-dry" value="dry">
                             <span>
                                 <strong>Dry run</strong>
-                                <span class="d-block text-muted small">Decide warnings and log them below, but transmit nothing. Cooldowns and the daily cap apply, so the log shows exactly what going live would send.</span>
+                                <span class="d-block text-muted small">Decide warnings and log them below, but transmit nothing. Cooldowns and the daily cap apply, so the log shows exactly what going live would send &mdash; which also means a previewed sender stays on cooldown after you go live.</span>
                             </span>
                         </label>
                         <label class="rw-mode-option" for="rw-mode-live">
@@ -534,17 +546,28 @@
 
             el('rw-delivery-help').textContent = delivery === 'channel'
                 ? 'Sent at global scope so it reaches someone outside your region — everyone on the channel sees it.'
-                : 'Costs the least airtime and only the sender sees it.';
+                : 'Costs the least airtime, and only the sender sees it. Only goes to '
+                  + 'senders the radio already has a contact for.';
         }
 
         async save() {
             const mode = this.currentMode();
             if (mode === 'live') {
-                const ok = window.confirm(
-                    'Send warnings for real?\n\n'
+                const unfenced = [
+                    Number(el('rw-mesh-cooldown').value) === 0 && 'no gap between warnings',
+                    Number(el('rw-sender-cooldown').value) === 0 && 'no per-sender cooldown',
+                    Number(el('rw-daily-cap').value) === 0 && 'no daily cap',
+                ].filter(Boolean);
+                let text = 'Send warnings for real?\n\n'
                     + 'The bot will transmit unprompted on the mesh whenever a sender '
-                    + 'meets the limits below.'
-                );
+                    + 'meets the limits below.';
+                if (unfenced.length) {
+                    // All three at zero is three clicks away and would let one
+                    // chatty channel turn into a burst of DMs.
+                    text += '\n\nWith ' + unfenced.join(', ')
+                        + ', nothing bounds how many go out.';
+                }
+                const ok = window.confirm(text);
                 if (!ok) return;
             }
             const payload = {
@@ -639,6 +662,8 @@
                 return;
             }
             const used = budget.used_today || 0;
+            const delivered = budget.delivered_today || 0;
+            const failed = budget.failed_today || 0;
             // The cap is a ceiling on new warnings, not a rewrite of history: a
             // lowered cap can leave today already over it, and "7 of 6" would
             // read as a bug rather than as "no more today".
@@ -653,10 +678,17 @@
             const last = budget.last_warning_at
                 ? 'Last at ' + escapeHtml(budget.last_warning_at)
                 : 'None yet';
+            // The big number is delivered, not attempted: a count of four beside
+            // "last warning: none yet" reads as a bug. Attempts still show,
+            // because they are what the cap actually spends.
             el('rw-status-budget').innerHTML =
-                '<div class="rw-figure">' + used + '</div>'
+                '<div class="rw-figure">' + delivered + '</div>'
                 + '<div class="rw-figure-label">'
-                +   (dryRun ? 'would send today' : 'warnings today') + '</div>'
+                +   (dryRun ? 'would send today' : 'sent today') + '</div>'
+                + (failed
+                    ? '<div class="small rw-alert">' + plural(failed, 'failed attempt')
+                      + ', also counted</div>'
+                    : '')
                 + '<div class="small mt-1">' + capLine + '</div>'
                 + '<div class="small text-muted">' + last + '</div>';
         }
@@ -672,26 +704,34 @@
                 return;
             }
             const rows = channels.map((c) => {
-                const pct = (n) => (c.total ? (100 * n / c.total) : 0).toFixed(2) + '%';
+                // The bar spans the classified messages only, so its orange width
+                // IS the percentage printed beside it. Scaling it over the total
+                // instead put a 28.7% segment next to the label "33.7%".
+                const classified = c.scoped + c.global;
+                const pct = (n) => (classified ? (100 * n / classified) : 0).toFixed(2) + '%';
                 const share = c.unscoped_pct == null
-                    ? '<span class="text-muted">—</span>'
-                    : '<strong>' + c.unscoped_pct + '%</strong>';
+                    ? '<span class="text-muted">not enough data</span>'
+                    : '<strong>' + c.unscoped_pct + '%</strong> with no region code';
+                const coverage = c.total
+                    ? Math.round(100 * c.unknown / c.total) : 0;
                 return ''
                     + '<div class="mb-3">'
                     + '  <div class="d-flex justify-content-between align-items-baseline gap-2">'
                     + '    <span class="rw-channel-name">' + escapeHtml(c.channel) + '</span>'
-                    + '    <span class="small text-muted">' + share + ' with no region code</span>'
+                    + '    <span class="small text-muted">' + share + '</span>'
                     + '  </div>'
                     + '  <div class="rw-bar my-1" role="img" aria-label="'
-                    +      escapeHtml(c.channel) + ': ' + c.global + ' unscoped, ' + c.scoped
-                    +      ' scoped, ' + c.unknown + ' unclassified">'
+                    +      escapeHtml(c.channel) + ': ' + c.global + ' unscoped of '
+                    +      classified + ' classified, ' + c.unknown + ' unclassified">'
                     + '    <span class="rw-seg-global" style="width:' + pct(c.global) + '"></span>'
                     + '    <span class="rw-seg-scoped" style="width:' + pct(c.scoped) + '"></span>'
-                    + '    <span class="rw-seg-unknown" style="width:' + pct(c.unknown) + '"></span>'
                     + '  </div>'
                     + '  <div class="small text-muted">'
-                    +      c.global + ' unscoped &middot; ' + c.scoped + ' scoped &middot; '
-                    +      c.unknown + " couldn't tell"
+                    +      c.global + ' unscoped &middot; ' + c.scoped + ' scoped'
+                    +      (c.unknown
+                            ? ' &middot; <span class="rw-unknown-note">' + c.unknown
+                              + " couldn't tell (" + coverage + '% of traffic)</span>'
+                            : '')
                     + '  </div>'
                     + '</div>';
             });

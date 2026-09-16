@@ -239,7 +239,13 @@ class MaintenanceRunner:
         db_manager = getattr(self.bot, 'db_manager', None)
         if not db_manager or not hasattr(db_manager, 'delete_timestamp_rows_in_chunks'):
             return
-        cutoff_date = (_utc_now() - datetime.timedelta(days=retention_days)).date().isoformat()
+        # These rows are written in [Bot] timezone, not UTC, so the cutoff has to
+        # be too or the window is off by the host's offset.
+        from modules.region_warning import local_now
+        cutoff_date = (
+            local_now(getattr(self.bot, 'config', None), self.logger)
+            - datetime.timedelta(days=retention_days)
+        ).date().isoformat()
         try:
             db_manager.delete_timestamp_rows_in_chunks(
                 'region_scope_daily', 'date', cutoff_date,

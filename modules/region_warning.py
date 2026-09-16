@@ -100,9 +100,18 @@ def normalize_channel(channel: Optional[str]) -> str:
 
 
 def _get(config: Any, key: str, fallback: str = "") -> str:
+    """Read one key, raw.
+
+    ``raw=True`` because configparser's default interpolation raises on a bare
+    ``%`` in a value, and ``message`` is free text an operator types. Without it
+    a message like "100% of the mesh" would throw here, get swallowed, and the
+    bot would silently transmit the default wording instead of theirs. The save
+    endpoint rejects ``%`` outright so a hand-edited config is the only way to
+    get one, but this still has to read it rather than fall back.
+    """
     try:
         if config is not None and config.has_option(CONFIG_SECTION, key):
-            return (config.get(CONFIG_SECTION, key) or "").strip()
+            return (config.get(CONFIG_SECTION, key, raw=True) or "").strip()
     except Exception:
         pass
     return fallback
@@ -118,6 +127,12 @@ def _get_bool(config: Any, key: str, fallback: bool) -> bool:
 
 
 def _get_number(config: Any, key: str, fallback: float, *, minimum: float = 0.0) -> float:
+    """Parse a numeric setting, falling back rather than raising.
+
+    A value below ``minimum`` falls back to the default instead of clamping: on
+    ``max_warnings_per_day`` zero is the "unlimited" sentinel, so clamping a
+    typo of ``-1`` would quietly remove the daily cap.
+    """
     raw = _get(config, key)
     if not raw:
         return fallback
@@ -125,7 +140,9 @@ def _get_number(config: Any, key: str, fallback: float, *, minimum: float = 0.0)
         value = float(raw)
     except ValueError:
         return fallback
-    return max(minimum, value)
+    if value < minimum:
+        return fallback
+    return value
 
 
 def load_settings(config: Any) -> RegionWarningSettings:
@@ -237,13 +254,17 @@ def traffic_summary(
     days = max(1, int(days))
     since = (_local_today(config, logger) - timedelta(days=days - 1)).isoformat()
     try:
+        # Grouped case-insensitively and without a leading '#': the tally stores
+        # the channel name as the radio reported it, and a rename between
+        # "general" and "#General" would otherwise split one channel in two.
         rows = db_manager.execute_query(
-            "SELECT channel, "
+            "SELECT MIN(channel) AS channel, "
             "SUM(scoped_count) AS scoped, "
             "SUM(global_count) AS global_, "
             "SUM(unknown_count) AS unknown "
             "FROM region_scope_daily WHERE date >= ? "
-            "GROUP BY channel ORDER BY (SUM(global_count) + SUM(scoped_count) + SUM(unknown_count)) DESC",
+            "GROUP BY LOWER(LTRIM(TRIM(channel), '#')) "
+            "ORDER BY (SUM(global_count) + SUM(scoped_count) + SUM(unknown_count)) DESC",
             (since,),
         )
     except Exception:
@@ -346,15 +367,18 @@ def warning_budget(
     """
     today = _local_today(config, logger).isoformat()
     used = 0
+    delivered = 0
     last_at: Optional[str] = None
     try:
         rows = db_manager.execute_query(
-            "SELECT COUNT(*) AS used FROM region_warning_events "
-            "WHERE date(created_at) = ?",
-            (today,),
+            "SELECT COUNT(*) AS used, "
+            "SUM(CASE WHEN action IN (?, ?) THEN 1 ELSE 0 END) AS delivered "
+            "FROM region_warning_events WHERE date(created_at) = ?",
+            (ACTION_SENT, ACTION_DRY_RUN, today),
         )
         if rows:
             used = int(rows[0].get("used") or 0)
+            delivered = int(rows[0].get("delivered") or 0)
         rows = db_manager.execute_query(
             "SELECT MAX(created_at) AS last_at FROM region_warning_events WHERE action IN (?, ?)",
             (ACTION_SENT, ACTION_DRY_RUN),
@@ -367,7 +391,12 @@ def warning_budget(
     cap = settings.max_warnings_per_day
     return {
         "date": today,
+        # used_today is attempts (what the cap spends); delivered_today is the
+        # subset that reached the mesh. Reporting only the first put a count of
+        # four beside "last warning: none yet".
         "used_today": used,
+        "delivered_today": delivered,
+        "failed_today": max(0, used - delivered),
         "cap": cap,
         "remaining": None if cap <= 0 else max(0, cap - used),
         "unlimited": cap <= 0,
@@ -389,7 +418,16 @@ class _SenderState:
 
 
 class RegionWarningMonitor:
-    """Tally flood scopes and, when enabled, warn senders who never set one."""
+    """Tally flood scopes and, when enabled, warn senders who never set one.
+
+    **Sender identity is a display name, not an identity.** MeshCore's
+    ``CHANNEL_MSG_RECV`` carries no public key: the sender is the ``"Name: "``
+    prefix of the decrypted text, which anyone holding the channel key can set
+    to anything. Nothing here can authenticate it. What it can do is refuse to
+    act on a name with no node behind it, so DM delivery requires a contact the
+    radio already knows, and both the per-sender cooldown and the daily cap
+    bound how much one forged name can cost.
+    """
 
     #: How long a sender's unscoped-message run survives without new traffic.
     #: A sender who floods three times a year should not accumulate their way
@@ -497,6 +535,15 @@ class RegionWarningMonitor:
         # channelpause silences the bot on channels; a warning is a bot response
         # and has no business being the one thing that keeps talking.
         if not getattr(self.bot, "channel_responses_enabled", True):
+            return
+        if settings.delivery == DELIVERY_DM and not self._is_known_contact(sender_id):
+            # send_dm would fail anyway, and a failed attempt now spends a cap
+            # slot and a cooldown. More to the point, the sender is a display
+            # name off the wire: declining to DM a name with no contact behind
+            # it keeps the bot from messaging a node on a stranger's say-so.
+            self.logger.debug(
+                "Region warning for %s skipped: no contact by that name", sender_id
+            )
             return
 
         state = self._senders.get(sender_id)
@@ -615,8 +662,10 @@ class RegionWarningMonitor:
     def _is_self(self, sender_id: str, sender_pubkey: Optional[str]) -> bool:
         """Whether this message came from the bot's own node.
 
-        Checked by public key first: the configured name can lag the device's,
-        and another node is free to call itself whatever it likes.
+        The public key is checked first where one is available, but MeshCore's
+        CHANNEL_MSG_RECV carries none — see the class docstring — so on the path
+        this monitor actually runs on, the display name is the only signal and
+        the fallback below is what decides.
         """
         own_key = self._own_public_key()
         prefix = (sender_pubkey or "").strip().lower()
@@ -627,6 +676,34 @@ class RegionWarningMonitor:
         except Exception:
             bot_name = ""
         return bool(bot_name) and sender_id.strip().lower() == bot_name.strip().lower()
+
+    def _is_known_contact(self, sender_id: str) -> bool:
+        """Whether a contact by this name is on the radio.
+
+        The bot has no way to authenticate a channel sender, so this does not
+        prove the message came from that node. It does keep a warning pointed at
+        a node the bot already knows, rather than at any name someone types.
+        """
+        meshcore = getattr(self.bot, "meshcore", None)
+        if meshcore is None:
+            return False
+        lookup = getattr(meshcore, "get_contact_by_name", None)
+        if callable(lookup):
+            try:
+                if lookup(sender_id):
+                    return True
+            except Exception:
+                pass
+        contacts = getattr(meshcore, "contacts", None)
+        if isinstance(contacts, dict):
+            wanted = sender_id.strip().lower()
+            for contact in contacts.values():
+                if not isinstance(contact, dict):
+                    continue
+                name = (contact.get("adv_name") or contact.get("name") or "").strip().lower()
+                if name and name == wanted:
+                    return True
+        return False
 
     def _own_public_key(self) -> str:
         """This node's public key as lowercase hex, or "" when unavailable."""
@@ -682,6 +759,14 @@ class RegionWarningMonitor:
         return (now - self._last_warning_monotonic) < window
 
     def _sender_cooldown_active(self, sender_id: str) -> bool:
+        """Whether this sender was warned, or attempted, inside the cooldown.
+
+        Attempts count, matching the daily cap. Counting only successes meant a
+        sender the radio can never reach — an unknown contact, which is exactly
+        what a brand-new client with no region code often is — spent a cap slot
+        every ``min_unscoped_messages`` messages forever, starving the feature
+        while nobody was ever warned.
+        """
         hours = self.settings.per_sender_cooldown_hours
         if hours <= 0:
             return False
@@ -691,8 +776,8 @@ class RegionWarningMonitor:
         try:
             rows = db_manager.execute_query(
                 "SELECT MAX(created_at) AS last_at FROM region_warning_events "
-                "WHERE sender_id = ? AND action IN (?, ?)",
-                (sender_id, ACTION_SENT, ACTION_DRY_RUN),
+                "WHERE sender_id = ?",
+                (sender_id,),
             )
         except Exception:
             return False

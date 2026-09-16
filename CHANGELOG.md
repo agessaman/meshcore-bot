@@ -28,6 +28,12 @@ semantic versioning.
   region. Configure it in `[Region_Warnings]`; retention is governed by
   `[Data_Retention] region_warning_retention_days`.
 
+  A channel sender is a display name, not an identity — MeshCore's channel
+  messages carry no public key — so DM warnings only go to a name the radio
+  already holds a contact for, and a message with no `Name: ` prefix is counted
+  but never warned. `docs/region-warnings.md` says so plainly rather than
+  implying the bot knows who it is talking to.
+
 ### Fixed
 
 - Striped and hovered table rows in the web viewer's dark mode no longer render

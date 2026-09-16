@@ -94,6 +94,9 @@ def _monitor(db=None, **settings_values) -> RegionWarningMonitor:
     bot.db_manager = db if db is not None else _FakeDBManager()
     bot.channel_responses_enabled = True
     bot.meshcore.self_info = {"public_key": "bbbbcccc" * 8}
+    # CHANNEL_MSG_RECV carries no pubkey, so every sender below is a bare name.
+    bot.meshcore.contacts = {}
+    bot.meshcore.get_contact_by_name = lambda name: {"adv_name": name}
     bot.command_manager = MagicMock()
     bot.command_manager.is_user_banned.return_value = False
     bot.command_manager.send_dm = AsyncMock(return_value=True)
@@ -137,12 +140,30 @@ class TestClassifyFloodScope:
             recent_rf_data=_rf(route_type_int=int(RouteType.FLOOD.value)),
         ) == VERDICT_GLOBAL
 
-    def test_no_scoped_traffic_in_window_is_global(self):
-        """An uncorrelated row plus no scope-eligible packet still proves unscoped."""
+    def test_uncorrelated_row_is_never_global(self):
+        """An argument from absence must not spend airtime accusing anyone.
+
+        flood_scopes accepts "no scope-eligible packet in the window" as proof
+        of an unscoped FLOOD, because the cost of being wrong there is one extra
+        reply. Here it would be an unsolicited warning, so the verdict needs RF
+        correlated to this message.
+        """
         assert self._classify(
             recent_rf_data=_rf(False, route_type_int=int(RouteType.FLOOD.value)),
             scope_rf_data=None,
-        ) == VERDICT_GLOBAL
+        ) == VERDICT_UNKNOWN
+
+    def test_uncorrelated_transport_flood_row_is_never_global(self):
+        """A row that says TC_FLOOD must not come back as 'no region code'."""
+        assert self._classify(
+            recent_rf_data=_rf(False, route_type_int=int(RouteType.TRANSPORT_FLOOD.value)),
+            scope_rf_data=None,
+        ) == VERDICT_UNKNOWN
+
+    def test_payload_verified_correlation_counts_as_correlated(self):
+        """The CHAN payload match (#255) is how a channel message correlates at all."""
+        row = {RF_MATCH_KEY: "payload", "route_type_int": int(RouteType.FLOOD.value)}
+        assert self._classify(recent_rf_data=row, scope_rf_data=None) == VERDICT_GLOBAL
 
     def test_uncorrelated_with_scoped_traffic_in_window_is_unknown(self):
         assert self._classify(
@@ -257,9 +278,23 @@ class TestLoadSettings:
         settings = region_warning.load_settings(_config(max_warnings_per_day="soon"))
         assert settings.max_warnings_per_day == 6
 
-    def test_negative_cooldown_clamped_to_zero(self):
+    def test_negative_value_falls_back_rather_than_clamping(self):
+        """Clamping a typo of -1 to 0 would silently mean 'unlimited' on the cap."""
         settings = region_warning.load_settings(_config(mesh_cooldown_minutes="-5"))
-        assert settings.mesh_cooldown_minutes == 0
+        assert settings.mesh_cooldown_minutes == 30.0
+
+    def test_negative_daily_cap_does_not_become_unlimited(self):
+        settings = region_warning.load_settings(_config(max_warnings_per_day="-1"))
+        assert settings.max_warnings_per_day == 6
+
+    def test_percent_in_the_message_is_read_not_swallowed(self):
+        """configparser interpolation would raise on a bare %, losing the wording."""
+        config = configparser.ConfigParser()
+        config.add_section(region_warning.CONFIG_SECTION)
+        config.set(region_warning.CONFIG_SECTION, "message", "100%% of the mesh, really")
+        settings = region_warning.load_settings(config)
+        assert settings.message == "100%% of the mesh, really"
+        assert settings.message != region_warning.DEFAULT_MESSAGE
 
     def test_empty_allowlist_monitors_every_channel(self):
         assert RegionWarningSettings().monitors_channel("#anything") is True
@@ -359,9 +394,10 @@ class TestObservation:
 @pytest.mark.asyncio
 class TestWarningGates:
     async def _flood(self, monitor, count, sender="Ann", channel="#gen"):
+        # sender_pubkey="" matches handle_channel_message: CHANNEL_MSG_RECV has none.
         for _ in range(count):
             await monitor.observe(
-                verdict=VERDICT_GLOBAL, sender_id=sender, sender_pubkey="ab", channel=channel)
+                verdict=VERDICT_GLOBAL, sender_id=sender, sender_pubkey="", channel=channel)
 
     async def test_warns_after_min_unscoped_messages(self):
         monitor = _monitor(
@@ -399,14 +435,14 @@ class TestWarningGates:
         await self._flood(monitor, 3)
         monitor.bot.command_manager.send_dm.assert_not_called()
 
-    async def test_bot_never_warns_itself_by_name(self):
+    async def test_bot_never_warns_itself(self):
+        """The channel path has no pubkey, so the name is what has to catch it."""
         monitor = _monitor(enabled="true", dry_run="false", min_unscoped_messages=1)
-        monitor.bot.meshcore.self_info = {}
         await self._flood(monitor, 3, sender="TestBot")
         monitor.bot.command_manager.send_dm.assert_not_called()
 
-    async def test_bot_never_warns_itself_after_a_rename(self):
-        """The device's key is authoritative; the configured name can lag it."""
+    async def test_bot_is_recognized_by_pubkey_when_one_is_available(self):
+        """Not reachable from CHANNEL_MSG_RECV today; kept for paths that do carry one."""
         monitor = _monitor(enabled="true", dry_run="false", min_unscoped_messages=1)
         for _ in range(3):
             await monitor.observe(
@@ -414,13 +450,23 @@ class TestWarningGates:
                 sender_pubkey="bbbbcccc", channel="#gen")
         monitor.bot.command_manager.send_dm.assert_not_called()
 
-    async def test_another_node_with_our_name_is_still_warned(self):
+    async def test_a_name_with_no_contact_behind_it_is_not_dmed(self):
+        """The sender is a display name off the wire, forgeable by anyone."""
         monitor = _monitor(enabled="true", dry_run="false", min_unscoped_messages=1)
-        for _ in range(3):
-            await monitor.observe(
-                verdict=VERDICT_GLOBAL, sender_id="TestBot",
-                sender_pubkey="deadbeef", channel="#gen")
-        monitor.bot.command_manager.send_dm.assert_called_once()
+        monitor.bot.meshcore.get_contact_by_name = lambda name: None
+        await self._flood(monitor, 3, sender="Victim Node")
+        monitor.bot.command_manager.send_dm.assert_not_called()
+        assert monitor.bot.db_manager.execute_query(
+            "SELECT * FROM region_warning_events") == []
+
+    async def test_channel_delivery_does_not_require_a_contact(self):
+        """A channel reply addresses the channel, so there is no contact to resolve."""
+        monitor = _monitor(
+            enabled="true", dry_run="false", delivery="channel",
+            min_unscoped_messages=1, mesh_cooldown_minutes=0)
+        monitor.bot.meshcore.get_contact_by_name = lambda name: None
+        await self._flood(monitor, 1, sender="Passer By")
+        monitor.bot.command_manager.send_channel_message.assert_called_once()
 
     async def test_channelpause_silences_warnings(self):
         monitor = _monitor(enabled="true", dry_run="false", min_unscoped_messages=1)
@@ -535,6 +581,26 @@ class TestWarningGates:
                 "SELECT action FROM region_warning_events ORDER BY id")
         ]
         assert actions == [ACTION_FAILED, ACTION_SENT]
+
+    async def test_one_failing_sender_cannot_burn_the_cap_every_day(self):
+        """The cap counts attempts, so the per-sender cooldown must too.
+
+        When only the cap counted failures, a sender the radio could not reach
+        was retried every min_unscoped_messages messages forever: the day's
+        whole budget went on one node and nobody was ever warned.
+        """
+        monitor = _monitor(
+            enabled="true", dry_run="false", min_unscoped_messages=1,
+            mesh_cooldown_minutes=0, per_sender_cooldown_hours=168,
+            max_warnings_per_day=3)
+        monitor.bot.command_manager.send_dm = AsyncMock(return_value=False)
+        await self._flood(monitor, 10, sender="Unreachable")
+        assert monitor.bot.command_manager.send_dm.call_count == 1
+
+        # The budget is still there for someone the bot can actually reach.
+        monitor.bot.command_manager.send_dm = AsyncMock(return_value=True)
+        await self._flood(monitor, 1, sender="Real Offender")
+        monitor.bot.command_manager.send_dm.assert_called_once()
 
     async def test_failed_send_still_spends_the_run(self):
         """Otherwise a failing contact is retried on the sender's very next message."""

@@ -324,9 +324,14 @@ max_response_hops = 7
 # day. The Region Warnings page in the web viewer shows the result. Nothing is
 # transmitted unless you also set enabled = true below.
 #
-# A message is only ever counted as global on positive RF evidence that it was
-# an unscoped FLOOD. When the radio did not witness enough to tell, it counts as
-# unknown and can never earn a warning.
+# A message is only ever counted as global on positive RF evidence, correlated
+# to that message, that it was an unscoped FLOOD. When the radio did not witness
+# enough to tell, it counts as unknown and can never earn a warning.
+#
+# Note that a channel sender is a display name, not an identity: MeshCore's
+# channel messages carry no public key, so anyone with the channel key can send
+# under any name. DM warnings therefore only go to a name the radio already has
+# a contact for. See docs/region-warnings.md.
 track_traffic = true
 
 # Send a warning to senders whose messages are confirmed unscoped.
@@ -340,7 +345,8 @@ enabled = false
 dry_run = true
 
 # How the warning reaches the sender:
-#   dm      — a direct message to the sender (default; costs the least airtime)
+#   dm      — a direct message to the sender (default; costs the least airtime).
+#             Only sent to a name the radio already has a contact for.
 #   channel — a reply on the channel they posted to, always at global scope,
 #             because a scoped reply would not reach someone outside your region
 delivery = dm
@@ -352,6 +358,8 @@ delivery = dm
 # The warning text. {sender} and {channel} are substituted. Keep it short: a DM
 # body is 158 bytes and a channel reply is smaller still, and anything longer is
 # truncated. For delivery = channel, include @[{sender}] so they see it.
+# No '%' — configparser reads this file with interpolation on, so a bare percent
+# sign breaks every later read of the section.
 # message = Heads up: your messages have no region code, so they flood the whole mesh. Setting one in your MeshCore app keeps things quiet. Thanks!
 
 # How many confirmed-unscoped messages a sender must send before they earn a
@@ -360,13 +368,15 @@ delivery = dm
 # restart.
 min_unscoped_messages = 3
 
-# Do not warn the same sender again within this many hours. 0 disables.
+# Do not warn the same sender again within this many hours, counting failed
+# attempts as well as delivered ones. 0 disables.
 per_sender_cooldown_hours = 168
 
 # Minimum gap between warnings to anyone, in minutes. 0 disables.
 mesh_cooldown_minutes = 30
 
-# Hard ceiling on warnings per local day. 0 means unlimited (not recommended).
+# Hard ceiling on warning attempts per local day, failures included. 0 means
+# unlimited (not recommended).
 max_warnings_per_day = 6
 
 [Banned_Users]
