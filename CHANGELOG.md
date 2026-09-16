@@ -6,8 +6,34 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Region-code monitoring and an optional automatic warning to senders whose
+  channel messages carry no regional flood scope (#279). The bot classifies
+  every channel message it hears as scoped, global (unscoped) or unknown and
+  tallies the result per channel per day, which costs no airtime and is on by
+  default. A new `Settings -> Region Warnings` page in the web viewer shows how
+  much unscoped traffic the mesh actually carries before any decision to spend
+  airtime on it.
+
+  Warnings themselves are off by default and start in dry run, where every
+  decision is logged and consumes the same cooldowns and daily cap it would
+  when live, so the log is a true preview rather than an upper bound. A sender
+  must send `min_unscoped_messages` confirmed-unscoped messages, and the
+  warning is fenced by a per-sender cooldown, a mesh-wide cooldown and a daily
+  cap, all read from the database so a restart cannot release a burst. Warnings
+  fire only on positive RF evidence of an unscoped FLOOD; a message the radio
+  could not classify is never warned about. Channel-delivered warnings are sent
+  at global scope, because a scoped reply could not reach someone outside the
+  region. Configure it in `[Region_Warnings]`; retention is governed by
+  `[Data_Retention] region_warning_retention_days`.
+
 ### Fixed
 
+- Striped and hovered table rows in the web viewer's dark mode no longer render
+  Bootstrap's light-theme text color on a dark background (about 1.3:1
+  contrast). The dark overrides set a background but not a color, so every
+  `.table-striped` page was affected.
 - Daily Weather Service forecasts now retry transient Open-Meteo failures at
   5, 15, and 30 minutes after the original run (#264). HTTP 429, 500, 502, 503,
   and 504 responses plus transport failures use one replaceable retry job,

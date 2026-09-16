@@ -44,6 +44,7 @@ from flask import (
 )
 from flask_socketio import SocketIO, disconnect, emit
 
+from modules import region_warning
 from modules.database_restore import (
     DEFAULT_MAX_RESTORE_BYTES,
     DatabaseRestoreError,
@@ -1281,6 +1282,7 @@ class BotDataViewer:
                 'contacts',
                 'plugins_page',
                 'greeter',
+                'region_warnings_page',
                 'logs',
                 'multibyte_rollout',
                 'mesh',
@@ -1402,6 +1404,11 @@ class BotDataViewer:
         def greeter():
             """Greeter management page"""
             return render_template('greeter.html')
+
+        @self.app.route('/region-warnings')
+        def region_warnings_page():
+            """Regional flood scope monitoring and warning settings."""
+            return render_template('region_warnings.html')
 
         @self.app.route('/feeds')
         def feeds():
@@ -4040,6 +4047,159 @@ class BotDataViewer:
             finally:
                 if conn:
                     conn.close()
+
+        # ── Region warnings (regional flood scope) ───────────────────────────
+
+        def _region_warning_channel_limit() -> int:
+            """Channel body budget for a global-scope send, mirroring CommandManager."""
+            name = (self.config.get('Bot', 'bot_name', fallback='Bot') or 'Bot').strip() or 'Bot'
+            return max(130, 160 - len(name.encode('utf-8')) - 2)
+
+        @self.app.route('/api/region-warnings')
+        def api_region_warnings():
+            """Settings, traffic tallies, budget and recent decisions for the page."""
+            try:
+                # Re-read from disk so the page reflects edits made elsewhere.
+                self.config = self._load_merged_config()
+                settings = region_warning.load_settings(self.config)
+                try:
+                    days = max(1, min(int(request.args.get('days', 14)), 90))
+                except (TypeError, ValueError):
+                    days = 14
+
+                known_channels = []
+                try:
+                    known_channels = [
+                        c.get('name') for c in self._get_channels() if c.get('name')
+                    ]
+                except Exception:
+                    pass
+
+                return jsonify({
+                    'settings': region_warning.settings_to_config_values(settings),
+                    'defaults': region_warning.settings_to_config_values(
+                        region_warning.RegionWarningSettings()
+                    ),
+                    'default_message': region_warning.DEFAULT_MESSAGE,
+                    'traffic': region_warning.traffic_summary(
+                        self.db_manager, self.config, days, self.logger
+                    ),
+                    'series': region_warning.daily_series(
+                        self.db_manager, self.config, days, self.logger
+                    ),
+                    'budget': region_warning.warning_budget(
+                        self.db_manager, settings, self.config, self.logger
+                    ),
+                    'events': region_warning.recent_events(self.db_manager, 50),
+                    'limits': {
+                        'dm': region_warning.DM_BODY_LIMIT,
+                        'channel': _region_warning_channel_limit(),
+                    },
+                    'known_channels': known_channels,
+                })
+            except Exception:
+                self.logger.exception("Error building region warning view")
+                return jsonify({'error': 'Internal error — see server logs'}), 500
+
+        @self.app.route('/api/region-warnings/settings', methods=['POST'])
+        def api_region_warnings_save():
+            """Persist [Region_Warnings] and queue a hot config reload."""
+            data = request.get_json(silent=True) or {}
+
+            def _as_bool(key, default):
+                raw = data.get(key, default)
+                if isinstance(raw, bool):
+                    return raw
+                return str(raw).strip().lower() in ('1', 'true', 'yes', 'on')
+
+            def _as_number(key, default, minimum=0.0, maximum=None):
+                raw = data.get(key, default)
+                try:
+                    value = float(raw)
+                except (TypeError, ValueError):
+                    raise ValueError(f'{key} must be a number')
+                if value < minimum:
+                    raise ValueError(f'{key} must be at least {minimum:g}')
+                if maximum is not None and value > maximum:
+                    raise ValueError(f'{key} must be at most {maximum:g}')
+                return value
+
+            try:
+                delivery = str(data.get('delivery', 'dm')).strip().lower()
+                if delivery not in (region_warning.DELIVERY_DM, region_warning.DELIVERY_CHANNEL):
+                    raise ValueError('delivery must be "dm" or "channel"')
+
+                message = str(data.get('message') or '').strip() or region_warning.DEFAULT_MESSAGE
+                if '\n' in message or '\r' in message:
+                    raise ValueError('message must be a single line')
+
+                channels = data.get('channels')
+                if isinstance(channels, list):
+                    channel_parts = channels
+                else:
+                    channel_parts = str(channels or '').split(',')
+                normalized_channels = []
+                for part in channel_parts:
+                    name = region_warning.normalize_channel(part)
+                    if name and name not in normalized_channels:
+                        normalized_channels.append(name)
+
+                settings = region_warning.RegionWarningSettings(
+                    enabled=_as_bool('enabled', False),
+                    dry_run=_as_bool('dry_run', True),
+                    delivery=delivery,
+                    channels=tuple(normalized_channels),
+                    message=message,
+                    min_unscoped_messages=int(_as_number('min_unscoped_messages', 3, 1, 100)),
+                    per_sender_cooldown_hours=_as_number('per_sender_cooldown_hours', 168, 0, 8760),
+                    mesh_cooldown_minutes=_as_number('mesh_cooldown_minutes', 30, 0, 10080),
+                    max_warnings_per_day=int(_as_number('max_warnings_per_day', 6, 0, 1000)),
+                    track_traffic=_as_bool('track_traffic', True),
+                )
+            except ValueError as exc:
+                return jsonify({'success': False, 'error': str(exc)}), 400
+
+            section = region_warning.CONFIG_SECTION
+            target_path = (
+                self.local_config_path
+                if section in self._local_sections
+                else self.config_path
+            )
+            try:
+                store = get_settings_store(self.config, target_path, self.db_manager)
+                result = store.write_values(
+                    section, region_warning.settings_to_config_values(settings)
+                )
+            except IniValueError as exc:
+                return jsonify({'success': False, 'error': str(exc)}), 400
+            except Exception:
+                self.logger.exception("Error saving region warning settings")
+                return jsonify({'success': False, 'error': 'Internal error — see server logs'}), 500
+
+            backup_path = result.get('backup_path', '') if isinstance(result, dict) else ''
+            reload_queued = False
+            try:
+                with self.db_manager.connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "INSERT INTO channel_operations (operation_type, status) "
+                        "VALUES ('config_reload', 'pending')"
+                    )
+                    conn.commit()
+                reload_queued = True
+            except Exception:
+                self.logger.exception("Failed to queue config reload")
+
+            self.logger.info(
+                "Region warning settings saved (enabled=%s, dry_run=%s, delivery=%s)",
+                settings.enabled, settings.dry_run, settings.delivery,
+            )
+            return jsonify({
+                'success': True,
+                'backup_path': backup_path,
+                'reload_queued': reload_queued,
+                'settings': region_warning.settings_to_config_values(settings),
+            })
 
         # Feed management API endpoints
         def _schedule_tz():

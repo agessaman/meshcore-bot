@@ -309,6 +309,66 @@ max_response_hops = 7
 # flood_scope.general = #west
 # flood_scope.weather = #sea
 # flood_scope.#local = *
+
+[Region_Warnings]
+# Regional flood scope ("region code") monitoring, and an optional automatic
+# note to senders who never set one.
+#
+# A MeshCore client with no region configured sends every channel message as a
+# plain FLOOD, which every repeater on the mesh rebroadcasts. A client with a
+# region sends a TC_FLOOD whose transport code confines it to repeaters holding
+# that region key. This section is about the first kind.
+#
+# Tallying is free and on by default: the bot classifies each channel message it
+# hears as scoped, global (unscoped) or unknown and counts it per channel per
+# day. The Region Warnings page in the web viewer shows the result. Nothing is
+# transmitted unless you also set enabled = true below.
+#
+# A message is only ever counted as global on positive RF evidence that it was
+# an unscoped FLOOD. When the radio did not witness enough to tell, it counts as
+# unknown and can never earn a warning.
+track_traffic = true
+
+# Send a warning to senders whose messages are confirmed unscoped.
+# This spends airtime automatically. Off by default.
+enabled = false
+
+# Preview mode. While true, warnings are decided and logged exactly as they
+# would be sent — including consuming the cooldowns and the daily cap — but
+# nothing is transmitted. Watch the Region Warnings page for a while before
+# turning this off.
+dry_run = true
+
+# How the warning reaches the sender:
+#   dm      — a direct message to the sender (default; costs the least airtime)
+#   channel — a reply on the channel they posted to, always at global scope,
+#             because a scoped reply would not reach someone outside your region
+delivery = dm
+
+# Only warn about messages on these channels (comma-separated, # optional).
+# Leave empty to consider every channel the bot hears.
+# channels = general, public
+
+# The warning text. {sender} and {channel} are substituted. Keep it short: a DM
+# body is 158 bytes and a channel reply is smaller still, and anything longer is
+# truncated. For delivery = channel, include @[{sender}] so they see it.
+# message = Heads up: your messages have no region code, so they flood the whole mesh. Setting one in your MeshCore app keeps things quiet. Thanks!
+
+# How many confirmed-unscoped messages a sender must send before they earn a
+# warning, so one stray global flood does not cost anyone a DM. The run resets
+# after 24 hours of quiet, when the sender posts a scoped message, and on
+# restart.
+min_unscoped_messages = 3
+
+# Do not warn the same sender again within this many hours. 0 disables.
+per_sender_cooldown_hours = 168
+
+# Minimum gap between warnings to anyone, in minutes. 0 disables.
+mesh_cooldown_minutes = 30
+
+# Hard ceiling on warnings per local day. 0 means unlimited (not recommended).
+max_warnings_per_day = 6
+
 [Banned_Users]
 # List of banned sender names (comma-separated). Matching is prefix (starts-with):
 # "Awful Username" also matches "Awful Username 🍆". No bot responses in channels or DMs.
@@ -1031,6 +1091,10 @@ mesh_connections_retention_days = 7
 # grows very slowly and a long window is cheap. The neighbor_links aggregate that
 # the mesh graph reads is never pruned.
 neighbor_observations_retention_days = 365
+#
+# Regional flood scope tallies and region-warning events (see [Region_Warnings]).
+# Both are tiny — one tally row per channel per day — so a long window is cheap.
+region_warning_retention_days = 90
 [Path_Command]
 # Enable or disable the path command
 enabled = true

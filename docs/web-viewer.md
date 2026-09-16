@@ -307,6 +307,10 @@ window; older days stay frozen at the value recorded then.
 
 The viewer also provides JSON API endpoints:
 
+- `GET /api/region-warnings` - Region-code settings, per-channel scope tallies,
+  the daily series, today's warning budget, and recent warning decisions
+- `POST /api/region-warnings/settings` - Save `[Region_Warnings]` and queue a
+  hot config reload
 - `GET /api/dashboard/summary` - Snapshot-backed dashboard payload, including
   30-day sparkline series and change figures, plus `packet_encoding`: 30 days of
   raw per-payload-type multibyte/total counts for the stacked encoding chart.

@@ -266,6 +266,18 @@ SECTIONS: dict[str, SectionMeta] = {
         "defer_to_human_greeting": KeyMeta(type="bool"),
         "levenshtein_distance": KeyMeta(type="int", default="0"),
     }),
+    "Region_Warnings": SectionMeta(keys={
+        "enabled": KeyMeta(type="bool", default="false"),
+        "dry_run": KeyMeta(type="bool", default="true"),
+        "delivery": KeyMeta(default="dm"),
+        "channels": KeyMeta(),
+        "message": KeyMeta(),
+        "min_unscoped_messages": KeyMeta(type="int", default="3"),
+        "per_sender_cooldown_hours": KeyMeta(type="float", default="168"),
+        "mesh_cooldown_minutes": KeyMeta(type="float", default="30"),
+        "max_warnings_per_day": KeyMeta(type="int", default="6"),
+        "track_traffic": KeyMeta(type="bool", default="true"),
+    }),
     "Announcements_Command": SectionMeta(dynamic_keys=True),
     "Alert_Command": SectionMeta(dynamic_keys=True),
 }

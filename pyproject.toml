@@ -156,6 +156,7 @@ module = [
     "modules.security_utils",
     "modules.commands.base_command",
     "modules.commands.rain_command",
+    "modules.region_warning",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
