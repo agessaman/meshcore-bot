@@ -1144,8 +1144,61 @@ def get_command_popularity(db_path: Optional[str], commands: dict[str, Any]) -> 
     return popularity
 
 
-def filter_commands(commands: dict[str, Any], admin_commands: list[str]) -> dict[str, Any]:
-    """Filter out admin and hidden commands"""
+def is_command_enabled(cmd_instance: Any, config: configparser.ConfigParser) -> bool:
+    """Check if a command is enabled in the config.
+
+    Args:
+        cmd_instance: Command instance to check
+        config: Config parser instance
+
+    Returns:
+        bool: True if command is enabled, False otherwise
+    """
+    # Get command name
+    cmd_name = cmd_instance.name if hasattr(cmd_instance, 'name') else None
+    if not cmd_name:
+        return True  # If no name, assume enabled
+
+    # Derive config section name (e.g., "sports" -> "Sports_Command")
+    # Handle camelCase names
+    camel_case_map = {
+        'dadjoke': 'DadJoke',
+        'webviewer': 'WebViewer',
+    }
+
+    if cmd_name in camel_case_map:
+        base_name = camel_case_map[cmd_name]
+    else:
+        base_name = cmd_name.title()
+
+    section_name = f"{base_name}_Command"
+
+    # Check if section exists
+    if not config.has_section(section_name):
+        return True  # If no config section, assume enabled
+
+    # Check for 'enabled' key (standard)
+    if config.has_option(section_name, 'enabled'):
+        try:
+            return config.getboolean(section_name, 'enabled')
+        except ValueError:
+            # Invalid boolean value, assume enabled
+            return True
+
+    # Check for legacy command-specific enabled keys (e.g., 'sports_enabled')
+    legacy_enabled_key = f"{cmd_name}_enabled"
+    if config.has_option(section_name, legacy_enabled_key):
+        try:
+            return config.getboolean(section_name, legacy_enabled_key)
+        except ValueError:
+            return True
+
+    # No explicit enabled setting, assume enabled
+    return True
+
+
+def filter_commands(commands: dict[str, Any], admin_commands: list[str], config: configparser.ConfigParser) -> dict[str, Any]:
+    """Filter out admin, hidden, and disabled commands"""
     filtered = {}
 
     # Categories to exclude from public reference
@@ -1169,6 +1222,10 @@ def filter_commands(commands: dict[str, Any], admin_commands: list[str]) -> dict
 
         # Skip commands with no keywords (automatic/system commands)
         if hasattr(cmd_instance, 'keywords') and not cmd_instance.keywords:
+            continue
+
+        # Skip commands that are disabled in config
+        if not is_command_enabled(cmd_instance, config):
             continue
 
         filtered[cmd_name] = cmd_instance
@@ -2568,11 +2625,8 @@ def generate_samples(config_file):
     plugin_loader = PluginLoader(minimal_bot, local_commands_dir=local_commands_dir)
     commands = plugin_loader.load_all_plugins()
 
-    # Filter out admin and hidden commands
-    public_commands = {
-        name: cmd for name, cmd in commands.items()
-        if name not in admin_commands and not getattr(cmd, 'hidden', False)
-    }
+    # Filter out admin, hidden, and disabled commands
+    public_commands = filter_commands(commands, admin_commands, config)
     public_commands.update(get_randomline_commands(config))
 
     # Sort commands
@@ -2819,8 +2873,8 @@ def main():
         commands = plugin_loader.load_all_plugins()
         logger.info(f"Loaded {len(commands)} commands")
 
-        # Filter out admin and hidden commands
-        filtered_commands = filter_commands(commands, admin_commands)
+        # Filter out admin, hidden, and disabled commands
+        filtered_commands = filter_commands(commands, admin_commands, config)
         filtered_commands.update(get_randomline_commands(config))
         logger.info(f"Filtered to {len(filtered_commands)} public commands")
 
