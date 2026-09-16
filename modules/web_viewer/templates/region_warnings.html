@@ -415,11 +415,13 @@
                 }
             });
             el('rw-reset-message').addEventListener('click', () => {
-                el('rw-message').value = (this.data && this.data.default_message) || '';
+                if (!this.data) return;
+                el('rw-message').value = this.data.default_message || '';
                 this.refreshPreview();
             });
             el('rw-message').addEventListener('input', () => this.refreshPreview());
             el('rw-delivery').addEventListener('change', () => this.refreshPreview());
+            el('rw-channels').addEventListener('input', () => this.markSelectedChips());
             document.querySelectorAll('input[name="rw-mode"]').forEach((input) => {
                 input.addEventListener('change', () => this.refreshMode());
             });
@@ -467,6 +469,7 @@
             el('rw-daily-cap').value = settings.max_warnings_per_day;
             el('rw-message').value = settings.message || '';
             this.refreshMode();
+            this.markSelectedChips();
         }
 
         refreshMode() {
@@ -553,9 +556,9 @@
                 if (!resp.ok || !result.success) {
                     throw new Error(result.error || 'Save failed');
                 }
-                this.data.settings = result.settings;
-                this.fillForm(result.settings);
-                this.renderStatus();
+                // Re-read rather than patch in place: the status strip's budget
+                // is derived from the cap that was just changed.
+                await this.load();
                 this.setStatus(
                     result.reload_queued
                         ? 'Saved. The bot picks this up shortly.'
@@ -741,14 +744,34 @@
                 button.addEventListener('click', () => {
                     const input = el('rw-channels');
                     const raw = button.dataset.channel.replace(/^#/, '').toLowerCase();
-                    const parts = input.value.split(',')
-                        .map((p) => p.trim().replace(/^#/, '').toLowerCase())
-                        .filter(Boolean);
+                    const parts = this.selectedChannels();
                     const at = parts.indexOf(raw);
                     if (at >= 0) parts.splice(at, 1); else parts.push(raw);
                     input.value = parts.join(', ');
+                    this.markSelectedChips();
                 });
             });
+            this.markSelectedChips();
+        }
+
+        selectedChannels() {
+            return el('rw-channels').value.split(',')
+                .map((p) => p.trim().replace(/^#/, '').toLowerCase())
+                .filter(Boolean);
+        }
+
+        // A chip that is already in the allowlist has to look different from one
+        // that is not, or clicking it is a coin flip between adding and removing.
+        markSelectedChips() {
+            const selected = this.selectedChannels();
+            document.querySelectorAll('#rw-channel-chips button[data-channel]')
+                .forEach((button) => {
+                    const raw = button.dataset.channel.replace(/^#/, '').toLowerCase();
+                    const on = selected.includes(raw);
+                    button.classList.toggle('btn-secondary', on);
+                    button.classList.toggle('btn-outline-secondary', !on);
+                    button.setAttribute('aria-pressed', on ? 'true' : 'false');
+                });
         }
 
         renderEvents() {
