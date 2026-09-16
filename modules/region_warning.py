@@ -519,13 +519,13 @@ class RegionWarningMonitor:
             )
             return
 
-        # The run has been spent whether or not the send itself succeeds; not
-        # resetting it would retry on the sender's very next message.
-        state.unscoped_seen = 0
-
         text = render_message(settings.message, sender_id, channel)
         if not text:
             return
+
+        # The run has been spent whether or not the send itself succeeds; not
+        # resetting it would retry on the sender's very next message.
+        state.unscoped_seen = 0
 
         if settings.dry_run:
             self._record_event(sender_id, sender_pubkey, channel, ACTION_DRY_RUN, text)
@@ -535,16 +535,26 @@ class RegionWarningMonitor:
             )
             return
 
+        # Reserve the slot *before* awaiting the send. Every gate above and this
+        # reservation run without an await between them, so on the single event
+        # loop they are atomic: a second channel message arriving mid-send reads
+        # a cooldown and a cap row that already account for this warning. Doing
+        # it after the send instead let two concurrent messages both pass a cap
+        # of one and both transmit.
+        previous_mark = (self._last_warning_monotonic, self._last_warning_wall)
+        event_id = self._record_event(
+            sender_id, sender_pubkey, channel, ACTION_SENT, text)
+        self._mark_warning_sent(now)
+
         sent, detail = await self._send_warning(sender_id, channel, text)
-        self._record_event(
-            sender_id, sender_pubkey, channel,
-            ACTION_SENT if sent else ACTION_FAILED,
-            detail,
-        )
         if sent:
-            # Only a successful send starts the mesh cooldown; a failed one
-            # spent no airtime and should not silence a sender who would.
-            self._mark_warning_sent(now)
+            return
+        # Correct the optimistic reservation. The event row stays — the attempt
+        # still counts against the daily cap, because a send that reported
+        # failure may have put something on the air before it did — but a
+        # failure should not hold the mesh cooldown against the next sender.
+        self._update_event(event_id, ACTION_FAILED, detail)
+        self._last_warning_monotonic, self._last_warning_wall = previous_mark
 
     async def _send_warning(
         self, sender_id: str, channel: Optional[str], text: str
@@ -714,19 +724,19 @@ class RegionWarningMonitor:
         channel: Optional[str],
         action: str,
         detail: str,
-    ) -> None:
+    ) -> Optional[int]:
+        """Write one decision row; returns its id so the outcome can be corrected."""
         db_manager = getattr(self.bot, "db_manager", None)
         if not db_manager:
-            return
+            return None
         try:
             with db_manager.connection() as conn:
-                conn.execute(
+                cursor = conn.execute(
                     "INSERT INTO region_warning_events "
                     "(created_at, sender_id, sender_pubkey, channel, delivery, action, detail) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?)",
                     (
-                        local_now(getattr(self.bot, "config", None), self.logger)
-                        .isoformat(sep=" ", timespec="seconds"),
+                        self._now().isoformat(sep=" ", timespec="seconds"),
                         sender_id,
                         (sender_pubkey or "")[:64] or None,
                         channel,
@@ -736,8 +746,25 @@ class RegionWarningMonitor:
                     ),
                 )
                 conn.commit()
+                return int(cursor.lastrowid) if cursor.lastrowid else None
         except Exception:
             self.logger.exception("Failed to record region warning event")
+            return None
+
+    def _update_event(self, event_id: Optional[int], action: str, detail: str) -> None:
+        """Replace a reserved row's outcome once the send has resolved."""
+        db_manager = getattr(self.bot, "db_manager", None)
+        if not db_manager or event_id is None:
+            return
+        try:
+            with db_manager.connection() as conn:
+                conn.execute(
+                    "UPDATE region_warning_events SET action = ?, detail = ? WHERE id = ?",
+                    (action, detail[:400] if detail else None, event_id),
+                )
+                conn.commit()
+        except Exception:
+            self.logger.exception("Failed to update region warning event")
 
 
 def _parse_timestamp(raw: Any) -> Optional[datetime]:

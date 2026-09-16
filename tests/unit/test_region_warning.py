@@ -358,6 +358,40 @@ class TestWarningGates:
             await self._flood(monitor, 1, sender=name)
         assert monitor.bot.command_manager.send_dm.call_count == 2
 
+    async def test_concurrent_messages_cannot_both_pass_a_cap_of_one(self):
+        """The slot is reserved before the send awaits, so a second message sees it."""
+        import asyncio
+
+        monitor = _monitor(
+            enabled="true", dry_run="false", min_unscoped_messages=1,
+            mesh_cooldown_minutes=0, per_sender_cooldown_hours=0, max_warnings_per_day=1)
+
+        async def slow_send(*_args, **_kwargs):
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            return True
+
+        monitor.bot.command_manager.send_dm = AsyncMock(side_effect=slow_send)
+        await asyncio.gather(
+            monitor.observe(
+                verdict=VERDICT_GLOBAL, sender_id="Ann", sender_pubkey="ab", channel="#gen"),
+            monitor.observe(
+                verdict=VERDICT_GLOBAL, sender_id="Bob", sender_pubkey="cd", channel="#gen"),
+        )
+        assert monitor.bot.command_manager.send_dm.call_count == 1
+
+    async def test_failed_send_row_is_corrected_not_duplicated(self):
+        monitor = _monitor(
+            enabled="true", dry_run="false", min_unscoped_messages=1,
+            mesh_cooldown_minutes=0, per_sender_cooldown_hours=0)
+        monitor.bot.command_manager.send_dm = AsyncMock(return_value=False)
+        await self._flood(monitor, 1)
+        rows = monitor.bot.db_manager.execute_query(
+            "SELECT action, detail FROM region_warning_events")
+        assert len(rows) == 1
+        assert rows[0]["action"] == ACTION_FAILED
+        assert "failed" in rows[0]["detail"]
+
     async def test_sender_table_stays_bounded(self):
         monitor = _monitor(min_unscoped_messages=99)
         monitor.MAX_TRACKED_SENDERS = 10
