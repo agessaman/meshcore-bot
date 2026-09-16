@@ -5,6 +5,7 @@ Provides scheduled weather forecasts and alert monitoring
 """
 
 import asyncio
+import contextlib
 import json
 import math
 import re
@@ -20,16 +21,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-
-# Try to import MQTT client (use paho-mqtt like packet capture service)
-try:
-    import paho.mqtt.client as mqtt
-    MQTT_AVAILABLE = True
-except ImportError:
-    MQTT_AVAILABLE = False
-    mqtt = None
-
-import contextlib
 
 from .. import alert_format
 from ..commands.rain_command import (
@@ -47,6 +38,17 @@ from ..commands.rain_command import (
 from ..url_shortener import shorten_url_sync
 from ..utils import format_temperature_high_low, get_config_timezone
 from .base_service import BaseServicePlugin
+
+# Try to import MQTT client (use paho-mqtt like packet capture service)
+try:
+    import paho.mqtt.client as mqtt
+    MQTT_AVAILABLE = True
+except ImportError:
+    MQTT_AVAILABLE = False
+    mqtt = None
+
+
+FORECAST_MISFIRE_GRACE_SECONDS = 300
 
 
 class WeatherService(BaseServicePlugin):
@@ -433,7 +435,13 @@ class WeatherService(BaseServicePlugin):
                 self._forecast_scheduler = None
 
             tz, _ = get_config_timezone(self.bot.config, self.logger)
-            self._forecast_scheduler = BackgroundScheduler(timezone=tz)
+            self._forecast_scheduler = BackgroundScheduler(
+                timezone=tz,
+                job_defaults={
+                    'misfire_grace_time': FORECAST_MISFIRE_GRACE_SECONDS,
+                    'coalesce': True,
+                },
+            )
             self._forecast_scheduler.add_job(
                 self._send_daily_forecast,
                 CronTrigger(hour=hour, minute=minute),
