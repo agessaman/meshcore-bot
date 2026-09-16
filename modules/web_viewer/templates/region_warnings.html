@@ -4,12 +4,31 @@
 
 {% block extra_css %}
 <style>
+    /* Theme-aware tokens. Bootstrap's .text-warning (#ffc107) is 1.6:1 on a
+       white card, and its chart-friendly oranges/greys are picked for dark
+       surfaces, so each value is chosen per theme against the surface it
+       actually lands on. Fills clear 3:1 against the card; text clears 4.5:1. */
+    :root {
+        --rw-alert: #b45309;      /* 5.0:1 on white */
+        --rw-global: #e8590c;     /* 3.6:1 on white */
+        --rw-scoped: #198754;     /* 4.5:1 on white */
+        --rw-unknown: #868e96;    /* 3.3:1 on white */
+    }
+    [data-theme="dark"] {
+        --rw-alert: #fdba74;      /* 8.2:1 on the dark card */
+        --rw-global: #fd7e14;     /* 5.4:1 */
+        --rw-scoped: #2fa36b;     /* 4.4:1 */
+        --rw-unknown: #9ca3af;    /* 5.4:1 */
+    }
+
+    .rw-alert { color: var(--rw-alert); }
+
     .rw-status {
         border-left: 4px solid var(--border-color);
     }
     .rw-status.rw-status--off { border-left-color: #6c757d; }
     .rw-status.rw-status--dry { border-left-color: #0d6efd; }
-    .rw-status.rw-status--live { border-left-color: #fd7e14; }
+    .rw-status.rw-status--live { border-left-color: var(--rw-global); }
 
     .rw-figure {
         font-size: 2rem;
@@ -33,10 +52,9 @@
         background-color: var(--bg-tertiary);
     }
     .rw-bar span { display: block; height: 100%; }
-    .rw-seg-global { background-color: #fd7e14; }
-    .rw-seg-scoped { background-color: #198754; }
-    .rw-seg-unknown { background-color: #adb5bd; }
-    [data-theme="dark"] .rw-seg-unknown { background-color: #6c757d; }
+    .rw-seg-global { background-color: var(--rw-global); }
+    .rw-seg-scoped { background-color: var(--rw-scoped); }
+    .rw-seg-unknown { background-color: var(--rw-unknown); }
 
     /* Keep a swatch glued to its label: a wrap between them leaves an
        unlabelled dot at the end of a line on narrow screens. */
@@ -624,9 +642,9 @@
             // read as a bug rather than as "no more today".
             let capLine;
             if (budget.unlimited) {
-                capLine = '<span class="text-warning">No daily cap</span>';
+                capLine = '<span class="rw-alert">No daily cap</span>';
             } else if (used >= budget.cap) {
-                capLine = '<span class="text-warning">Daily cap of ' + budget.cap + ' reached</span>';
+                capLine = '<span class="rw-alert">Daily cap of ' + budget.cap + ' reached</span>';
             } else {
                 capLine = escapeHtml(budget.remaining + ' of ' + budget.cap + ' left today');
             }
@@ -718,7 +736,7 @@
                 return;
             }
             el('rw-totals').innerHTML = ''
-                + '<div class="rw-figure text-warning">'
+                + '<div class="rw-figure rw-alert">'
                 +   (totals.unscoped_pct == null ? '—' : totals.unscoped_pct + '%') + '</div>'
                 + '<div class="text-muted">of classified traffic had no region code</div>'
                 + '<div class="small text-muted mt-2">'
