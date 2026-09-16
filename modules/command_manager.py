@@ -30,6 +30,10 @@ from .config_validation import (
     _channel_name_is_public,
     strip_optional_quotes,
 )
+from .flood_scope import (
+    is_global_marker,
+    normalize_scope_name,
+)
 from .models import (
     CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD,
     DM_BODY_LIMIT,
@@ -170,7 +174,7 @@ class CommandManager:
             return scope_keys
         for entry in (s.strip() for s in raw.split(",") if s.strip()):
             normalized = self._normalize_scope_name(entry)
-            if normalized in ("", "*", "0", "None"):
+            if is_global_marker(normalized):
                 self.flood_scope_allow_global = True
             elif normalized:
                 scope_keys[normalized] = sha256(normalized.encode()).digest()[:16]
@@ -181,16 +185,10 @@ class CommandManager:
             )
         return scope_keys
 
-    @staticmethod
-    def _normalize_scope_name(scope: str) -> str:
-        """Return scope with '#' prepended if it is a non-global named region without one."""
-        if scope in ("", "*", "0", "None") or scope.lower() == "none":
-            if scope.lower() == "none":
-                return "None"
-            return scope
-        if not scope.startswith("#"):
-            return "#" + scope
-        return scope
+    # Canonical implementation lives in modules.flood_scope so the web viewer,
+    # a separate process, can validate what the operator types without
+    # importing the bot's command machinery.
+    _normalize_scope_name = staticmethod(normalize_scope_name)
 
     @staticmethod
     def _normalize_channel_name_for_scope_config(channel: str) -> str:
@@ -1320,7 +1318,10 @@ class CommandManager:
             scope_to_use = (
                 resolved if resolved is not None else self._outgoing_flood_scope_override()
             ) or ""
-            scope_is_global = scope_to_use in ("", "*", "0", "None")
+            # is_global_marker, not a bare membership test: a hand-written
+            # "none" normalizes to the global marker everywhere else, so
+            # treating it as the region "#none" here would send scoped.
+            scope_is_global = is_global_marker(scope_to_use)
             if not scope_is_global:
                 scope_to_use = self._normalize_scope_name(scope_to_use)
             override_cfg = self._outgoing_flood_scope_override()

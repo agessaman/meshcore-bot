@@ -37,8 +37,39 @@ semantic versioning.
   `docs/region-warnings.md` says all of this plainly rather than implying the
   bot knows who it is talking to.
 
+- The Radio page's Node Settings card now reads and writes the radio's own
+  **Default Region Scope** (#283), beside the path hash size. This is the
+  firmware setting (`NodePrefs.default_scope_name` / `default_scope_key`) the
+  radio falls back to for any send the bot does not scope itself. Firmware
+  without the setting is reported as not having answered rather than shown as
+  an empty field, and a stored key that is not the stored name's hash is
+  flagged, because the radio routes by the key and the name beside it is only a
+  label. Clearing it sends the firmware's own bare-frame form rather than the
+  meshcore library's reset helpers, none of which can clear the field: `None`
+  raises, `""` earns ILLEGAL_ARG, and `"*"` only works through a padding
+  off-by-one. The card says plainly that the bot leaves the radio in
+  forced-unscoped mode after any scoped send, so this default stops applying
+  until the bot scopes another one.
+
+- A **Region Scopes** card on the web viewer's Radio page sets the bot's own
+  regional flood scopes (#283), so `[Channels] flood_scopes` and
+  `outgoing_flood_scope_override` no longer have to be edited by hand. It
+  writes `config.ini` and queues a hot config reload, then polls that reload and
+  reports what the bot actually did — including saying plainly when nothing
+  picked the change up. Scope names are normalized on save the way the bot
+  normalizes them (`west` becomes `#west`), and a name containing `,`, `%` or an
+  inner `#` is refused before anything is written, because those are the three
+  characters that do not survive a trip through a comma-separated INI value read
+  with interpolation on. Per-channel `flood_scope.<channel>` entries are listed
+  read-only beside the default, since they are the reason a channel can ignore
+  it.
+
 ### Fixed
 
+- `outgoing_flood_scope_override = none` is now read as global flood on the
+  send path, as it already was everywhere else. `send_channel_message` tested
+  the raw value against a fixed tuple, so the lowercase spelling became the
+  region `#none` and sent scoped.
 - Striped and hovered table rows in the web viewer's dark mode no longer render
   Bootstrap's light-theme text color on a dark background (about 1.3:1
   contrast). The dark overrides set a background but not a color, so every

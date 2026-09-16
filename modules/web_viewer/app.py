@@ -44,7 +44,7 @@ from flask import (
 )
 from flask_socketio import SocketIO, disconnect, emit
 
-from modules import region_warning
+from modules import flood_scope, region_warning
 from modules.database_restore import (
     DEFAULT_MAX_RESTORE_BYTES,
     DatabaseRestoreError,
@@ -4207,25 +4207,220 @@ class BotDataViewer:
                 'settings': region_warning.settings_to_config_values(settings),
             })
 
+        # ── Region scopes ([Channels] flood_scopes) ──────────────────────────
+
+        def _region_scope_target_path():
+            """Where a [Channels] write lands: the local overlay wins if it has
+            the section, because that is the copy the merged config reads last."""
+            return (
+                self.local_config_path
+                if 'Channels' in self._local_sections
+                else self.config_path
+            )
+
+        def _region_scope_view():
+            """Effective region-scope settings, read the way the bot reads them."""
+            # [Channels] is canonical; [Bot] is still honoured with a warning by
+            # CommandManager, so read it the same way or the page would show
+            # "replies to every scope" while the bot enforces an allowlist.
+            raw = ''
+            legacy_section = None
+            for section in ('Channels', 'Bot'):
+                if self.config.has_section(section) and self.config.has_option(
+                    section, 'flood_scopes'
+                ):
+                    candidate = (self.config.get(section, 'flood_scopes') or '').strip()
+                    if not candidate:
+                        continue
+                    raw = candidate
+                    if section != 'Channels':
+                        legacy_section = section
+                    break
+
+            scopes, allow_global = flood_scope.split_allowlist(raw)
+            override_raw = ''
+            if self.config.has_section('Channels') and self.config.has_option(
+                'Channels', 'outgoing_flood_scope_override'
+            ):
+                override_raw = (
+                    self.config.get('Channels', 'outgoing_flood_scope_override') or ''
+                ).strip()
+            override = (
+                '' if flood_scope.is_global_marker(override_raw)
+                else flood_scope.normalize_scope_name(override_raw)
+            )
+
+            # Read-only, but it is the answer to "why does that channel ignore
+            # the default?", so the page shows it rather than making the
+            # operator open config.ini to find out.
+            channel_overrides = []
+            if self.config.has_section('Channels'):
+                for key, value in self.config.items('Channels'):
+                    if not key.startswith('flood_scope.') or len(key) <= len('flood_scope.'):
+                        continue
+                    configured = (value or '').strip()
+                    channel_overrides.append({
+                        'channel': key[len('flood_scope.'):],
+                        'scope': (
+                            '' if flood_scope.is_global_marker(configured)
+                            else flood_scope.normalize_scope_name(configured)
+                        ),
+                    })
+            channel_overrides.sort(key=lambda entry: entry['channel'].lower())
+
+            target = _region_scope_target_path()
+            if target == self.local_config_path:
+                target_label = os.path.join(
+                    os.path.basename(os.path.dirname(target)), os.path.basename(target)
+                )
+            else:
+                target_label = os.path.basename(target)
+
+            return {
+                'allowlist_active': bool(scopes or allow_global),
+                'scopes': scopes,
+                'allow_global': allow_global,
+                'outgoing_override': override,
+                'channel_overrides': channel_overrides,
+                'legacy_section': legacy_section,
+                'target': target_label,
+                'max_name_length': flood_scope.MAX_SCOPE_NAME_LENGTH,
+            }
+
+        @self.app.route('/api/region-scopes')
+        def api_region_scopes_get():
+            """Regional flood scopes from [Channels], as the bot resolves them."""
+            try:
+                # Re-read from disk so the page reflects edits made elsewhere,
+                # and so the local-overlay target is resolved against what is
+                # on disk now rather than at viewer startup.
+                self.config = self._load_merged_config()
+                return jsonify(_region_scope_view())
+            except Exception:
+                self.logger.exception("Error reading region scopes")
+                return jsonify({'error': 'Internal error — see server logs'}), 500
+
+        @self.app.route('/api/region-scopes', methods=['POST'])
+        def api_region_scopes_save():
+            """Persist [Channels] flood_scopes / outgoing_flood_scope_override."""
+            data = request.get_json(silent=True) or {}
+
+            def _as_bool(key, default=False):
+                raw = data.get(key, default)
+                if isinstance(raw, bool):
+                    return raw
+                return str(raw).strip().lower() in ('1', 'true', 'yes', 'on')
+
+            try:
+                submitted = data.get('scopes')
+                if isinstance(submitted, (list, tuple)):
+                    entries = [str(part).strip() for part in submitted if str(part).strip()]
+                else:
+                    entries = flood_scope.parse_scope_list(submitted)
+
+                allow_global = _as_bool('allow_global', False)
+                scopes: list[str] = []
+                for entry in entries:
+                    canonical = flood_scope.validate_scope_name(entry)
+                    # '*' typed into the list box means the same thing as the
+                    # checkbox; fold it in rather than writing it twice.
+                    if flood_scope.is_global_marker(canonical):
+                        allow_global = True
+                    elif canonical not in scopes:
+                        scopes.append(canonical)
+
+                allowlist_enabled = _as_bool('allowlist_enabled', bool(scopes or allow_global))
+                if allowlist_enabled and not scopes and not allow_global:
+                    raise ValueError(
+                        'Add at least one region scope, or turn the allowlist off '
+                        'so the bot replies whatever the scope'
+                    )
+
+                # '*' last, matching the order config.ini.example documents.
+                flood_scopes_value = (
+                    flood_scope.format_scope_list(scopes + (['*'] if allow_global else []))
+                    if allowlist_enabled else ''
+                )
+
+                override_raw = str(data.get('outgoing_override') or '').strip()
+                # Every global marker means the same send path, but only the
+                # empty value keeps send_channel_message from logging "override
+                # was not applied" on each global send. Store the quiet one.
+                override_value = (
+                    '' if flood_scope.is_global_marker(override_raw)
+                    else flood_scope.validate_scope_name(override_raw)
+                )
+            except ValueError as exc:
+                return jsonify({'success': False, 'error': str(exc)}), 400
+
+            try:
+                # Resolve the write target against the config on disk now: the
+                # local overlay may have grown a [Channels] section since the
+                # viewer started, and it would silently win over a base write.
+                self.config = self._load_merged_config()
+                store = get_settings_store(
+                    self.config, _region_scope_target_path(), self.db_manager
+                )
+                result = store.write_values('Channels', {
+                    'flood_scopes': flood_scopes_value,
+                    'outgoing_flood_scope_override': override_value,
+                })
+            except IniValueError as exc:
+                return jsonify({'success': False, 'error': str(exc)}), 400
+            except OSError:
+                self.logger.exception("Error writing region scopes")
+                return jsonify({
+                    'success': False,
+                    'error': 'Could not write config.ini — check file permissions',
+                }), 500
+            except Exception:
+                self.logger.exception("Error saving region scopes")
+                return jsonify({'success': False, 'error': 'Internal error — see server logs'}), 500
+
+            backup_path = result.get('backup_path', '') if isinstance(result, dict) else ''
+            reload_op_id = _queue_config_reload_id()
+
+            self.logger.info(
+                "Region scopes saved: flood_scopes=%r outgoing_flood_scope_override=%r",
+                flood_scopes_value, override_value,
+            )
+            return jsonify({
+                'success': True,
+                'backup_path': backup_path,
+                'reload_queued': reload_op_id is not None,
+                'reload_operation_id': reload_op_id,
+                'settings': _region_scope_view(),
+            })
+
         # Feed management API endpoints
         def _schedule_tz():
             from modules.utils import get_config_timezone
             tz, _name = get_config_timezone(self.config, self.logger)
             return tz
 
-        def _queue_config_reload():
-            """Ask the bot to re-read config.ini; it re-registers scheduled jobs."""
+        def _queue_config_reload_id():
+            """Queue a config reload and return its operation id, or None.
+
+            The id lets a caller poll /api/channel-operations/<id> and report
+            what the bot actually did with the edit, instead of claiming
+            success because a row was inserted.
+            """
             try:
                 with self.db_manager.connection() as conn:
-                    conn.cursor().execute(
+                    cursor = conn.cursor()
+                    cursor.execute(
                         "INSERT INTO channel_operations (operation_type, status) "
                         "VALUES ('config_reload', 'pending')"
                     )
                     conn.commit()
-                return True
+                    return cursor.lastrowid
             except Exception:
                 self.logger.exception("Failed to queue config reload")
-                return False
+                return None
+
+        def _queue_config_reload():
+            """Ask the bot to re-read config.ini; it re-registers scheduled jobs."""
+            return _queue_config_reload_id() is not None
 
         # The duplicate check and the write have to be one critical section, or two
         # concurrent creates for the same schedule both pass the check and the second
@@ -4874,19 +5069,36 @@ class BotDataViewer:
 
         @self.app.route('/api/radio/firmware/config/write', methods=['POST'])
         def api_firmware_config_write():
-            """Queue a firmware config write. Body: {path_hash_mode: int}.
-            Poll /api/channel-operations/<id> for result."""
+            """Queue a firmware config write. Body may carry ``path_hash_mode``
+            and/or ``default_flood_scope`` (a region name, or empty/null to
+            clear the radio's default). Poll /api/channel-operations/<id>."""
             try:
                 data = request.get_json(silent=True) or {}
-                allowed = {'path_hash_mode'}
+                allowed = {'path_hash_mode', 'default_flood_scope'}
                 payload = {k: v for k, v in data.items() if k in allowed}
                 if not payload:
-                    return jsonify({'error': 'No valid fields provided (path_hash_mode)'}), 400
+                    return jsonify({
+                        'error': 'No valid fields provided '
+                                 '(path_hash_mode, default_flood_scope)'
+                    }), 400
                 if 'path_hash_mode' in payload:
                     mode = int(payload['path_hash_mode'])
                     if not (0 <= mode <= 2):
                         return jsonify({'error': 'path_hash_mode must be 0-2 (bytes per hop = mode + 1)'}), 400
                     payload['path_hash_mode'] = mode
+                if 'default_flood_scope' in payload:
+                    raw = str(payload['default_flood_scope'] or '').strip()
+                    try:
+                        # A global marker means "no default scope", which the
+                        # radio spells as a cleared field, so both arrive here
+                        # as the empty string.
+                        canonical = (
+                            '' if flood_scope.is_global_marker(raw)
+                            else flood_scope.validate_device_scope_name(raw)
+                        )
+                    except ValueError as exc:
+                        return jsonify({'error': str(exc)}), 400
+                    payload['default_flood_scope'] = canonical
                 with self.db_manager.connection() as conn:
                     cursor = conn.cursor()
                     cursor.execute(

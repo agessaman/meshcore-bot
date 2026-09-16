@@ -286,6 +286,11 @@ respond_to_dms = true
 # Code default when omitted: 64. This example uses 7 for a tighter local mesh.
 max_response_hops = 7
 
+# The Radio page in the web viewer edits flood_scopes and
+# outgoing_flood_scope_override for you and reloads the bot, so you only need to
+# set them here if you prefer the file. Per-channel flood_scope.<channel> entries
+# below are shown there read-only and still have to be edited here.
+
 # List of region scopes (comma-separated) that the bot will reply to when messages arrive on those scopes.
 # Replies mirror scope via RF correlation (TC_FLOOD / GRP_TXT); stale ADVERT/other packets are not used for scope.
 # Responses will be sent with the same scope hash when correlation succeeds.

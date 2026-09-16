@@ -173,6 +173,44 @@
 
                     <hr class="my-4">
 
+                    <!-- Default Region Scope (device) -->
+                    <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
+                        Default Region Scope
+                    </h6>
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-4">
+                            <label class="form-label" for="nodeDefaultScope">Region</label>
+                            <input type="text" class="form-control" id="nodeDefaultScope"
+                                   maxlength="30" placeholder="blank = unscoped" autocomplete="off">
+                            <small class="form-text text-muted" id="nodeDefaultScopeKey"></small>
+                        </div>
+                        <div class="col-md-auto">
+                            <button type="button" class="btn btn-warning" id="saveDefaultScopeBtn">
+                                <span class="spinner-border spinner-border-sm me-1" id="saveDefaultScopeSpinner"
+                                      style="display:none" role="status"></span>
+                                <i class="fas fa-upload me-1"></i>Write Default Scope
+                            </button>
+                        </div>
+                    </div>
+                    <small class="form-text text-muted d-block mt-2">
+                        The radio's own default region, stored in firmware and used for any
+                        send the bot does not scope itself. Max 30 ASCII characters including
+                        the <code>#</code>, which is added if you omit it. Blank clears it, and
+                        the radio then floods unscoped.
+                    </small>
+                    <small class="form-text text-muted d-block mt-2">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Once the bot sends a scoped message it leaves the radio in forced-unscoped
+                        mode, so this default stops applying until the bot scopes another send.
+                        If the bot should post under a region, set it in
+                        <a href="#region-scopes-card">Region Scopes</a> below rather than relying
+                        on this.
+                    </small>
+                    <div class="alert alert-warning py-2 px-3 small mt-2" id="nodeDefaultScopeNote"
+                         style="display:none"></div>
+
+                    <hr class="my-4">
+
                     <!-- Identity & Adverts -->
                     <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
                         Identity &amp; Adverts
@@ -317,6 +355,108 @@
                 </div>
             </div>
 
+            <!-- Region Scopes -->
+            <div class="card mb-4" id="region-scopes-card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-map-marked-alt me-2"></i>Region Scopes</h5>
+                    <small class="text-muted" id="regionScopeTarget"></small>
+                </div>
+                <div class="card-body">
+                    <div id="regionScopeAlert" style="display:none"></div>
+
+                    <p class="text-muted small mb-4">
+                        A region code confines a channel message to repeaters holding that
+                        region's key, instead of flooding the whole mesh. These are bot
+                        settings in <code>config.ini</code>, not device settings, so they
+                        are not read from or written to the radio — the radio's own
+                        <a href="#node-settings-card">Default Region Scope</a> is above, and
+                        only covers sends the bot does not scope itself. See the
+                        <a href="/region-warnings">Region Warnings</a> page for how much
+                        unscoped traffic this mesh actually carries.
+                    </p>
+
+                    <div class="alert alert-warning py-2 px-3 small" id="regionScopeLegacy"
+                         style="display:none"></div>
+
+                    <!-- Incoming allowlist -->
+                    <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
+                        Which scopes the bot replies to
+                    </h6>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="radio" name="regionScopeMode"
+                               id="regionScopeModeAll" value="all">
+                        <label class="form-check-label" for="regionScopeModeAll">
+                            Reply whatever the scope
+                            <span class="text-muted">— every message the bot hears on a monitored channel.</span>
+                        </label>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="radio" name="regionScopeMode"
+                               id="regionScopeModeList" value="list">
+                        <label class="form-check-label" for="regionScopeModeList">
+                            Only these scopes
+                            <span class="text-muted">— reply mirrors the scope it came in on.</span>
+                        </label>
+                    </div>
+                    <div class="ms-4 ps-2 border-start" id="regionScopeListFields">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label" for="regionScopeList">Region scopes</label>
+                                <input type="text" class="form-control" id="regionScopeList"
+                                       placeholder="e.g. #west, #east" autocomplete="off">
+                                <small class="form-text text-muted">
+                                    Comma-separated. The leading <code>#</code> is added if you omit it.
+                                </small>
+                            </div>
+                            <div class="col-md-6 d-flex align-items-center">
+                                <div class="form-check mt-md-4">
+                                    <input class="form-check-input" type="checkbox" id="regionScopeAllowGlobal">
+                                    <label class="form-check-label" for="regionScopeAllowGlobal">
+                                        Also reply to unscoped (global) messages
+                                        <small class="d-block text-muted">
+                                            Adds <code>*</code>. Without it, a sender with no region set
+                                            gets no reply.
+                                        </small>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <!-- Outgoing default -->
+                    <h6 class="text-uppercase text-muted fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.05em;">
+                        Default outgoing scope
+                    </h6>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label" for="regionScopeOutgoing">Scope</label>
+                            <input type="text" class="form-control" id="regionScopeOutgoing"
+                                   placeholder="blank = global flood" autocomplete="off">
+                            <small class="form-text text-muted">
+                                Used for sends that have no scope of their own — scheduled
+                                messages, feeds, webhooks — and for a reply whose incoming
+                                scope could not be matched. It never overrides a mirrored
+                                reply scope.
+                            </small>
+                        </div>
+                        <div class="col-md-8">
+                            <div id="regionScopeChannelOverrides" class="small text-muted"></div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3 d-flex gap-2 align-items-center flex-wrap">
+                        <button type="button" class="btn btn-warning" id="saveRegionScopesBtn">
+                            <span class="spinner-border spinner-border-sm me-1" id="saveRegionScopesSpinner"
+                                  style="display:none" role="status"></span>
+                            <i class="fas fa-save me-1"></i>Save Region Scopes
+                        </button>
+                        <small id="regionScopeStatus" class="text-muted"></small>
+                    </div>
+                </div>
+            </div>
+
             <!-- Channel Management -->
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
@@ -426,8 +566,10 @@ class RadioManager {
         this.setupEventHandlers();
         this.setupRadioParamsHandlers();
         this.setupNodeSettingsHandlers();
+        this.setupRegionScopeHandlers();
         this.readRadioParams({ silent: true });
         this.readFirmwareConfig({ silent: true });
+        this.loadRegionScopes();
 
         // Auto-refresh every 30 seconds
         setInterval(() => this.loadChannels(), 30000);
@@ -1285,6 +1427,8 @@ class RadioManager {
             this.readFirmwareConfig();
         });
         document.getElementById('savePathHashBtn').addEventListener('click', () => this.savePathHash());
+        document.getElementById('saveDefaultScopeBtn')
+            .addEventListener('click', () => this.saveDefaultScope());
         document.getElementById('saveIdentityBtn').addEventListener('click', () => this.saveIdentity());
         document.getElementById('saveMeshBtn').addEventListener('click', () => this.saveMesh());
         document.getElementById('applyTuningBtn').addEventListener('click', () => this.applyTuning());
@@ -1366,6 +1510,68 @@ class RadioManager {
         if (data.path_hash_mode != null && data.path_hash_mode >= 0) {
             document.getElementById('nodePathHashMode').value = String(data.path_hash_mode);
         }
+        this.fillDefaultScope(data);
+    }
+
+    fillDefaultScope(data) {
+        const field = document.getElementById('nodeDefaultScope');
+        const keyNote = document.getElementById('nodeDefaultScopeKey');
+        const note = document.getElementById('nodeDefaultScopeNote');
+        keyNote.textContent = '';
+        note.style.display = 'none';
+
+        // Absent keys mean the radio never answered — older firmware has no
+        // CMD_GET_DEFAULT_FLOOD_SCOPE. Say so rather than showing an empty box
+        // that reads as "no scope set".
+        if (!data.default_scope_supported) {
+            field.value = '';
+            field.disabled = true;
+            document.getElementById('saveDefaultScopeBtn').disabled = true;
+            note.textContent = 'This radio did not report a default scope. The firmware '
+                + 'is likely older than the setting; nothing was changed.';
+            note.style.display = 'block';
+            return;
+        }
+
+        field.disabled = false;
+        document.getElementById('saveDefaultScopeBtn').disabled = false;
+        const name = data.default_scope_name || '';
+        field.value = name;
+        if (!name) return;
+
+        keyNote.textContent = `Key ${(data.default_scope_key || '').slice(0, 8)}…`;
+        // The name is a label the app wrote; the key is what the radio routes
+        // by. They only disagree if something wrote them separately, and then
+        // the name on screen is not the region this radio is actually in.
+        if (data.default_scope_key && data.default_scope_key_matches === false) {
+            note.textContent = `The stored key does not match ${name}. The radio routes by `
+                + 'the key, so the name shown is only a label. Writing the scope again '
+                + 'puts the two back in step.';
+            note.style.display = 'block';
+        }
+    }
+
+    async saveDefaultScope() {
+        const raw = document.getElementById('nodeDefaultScope').value.trim();
+        if (!raw && !confirm(
+            'Clear the radio\'s default region scope?\n\n'
+            + 'Sends the bot does not scope itself will then flood the whole mesh '
+            + 'instead of staying inside a region.'
+        )) return;
+
+        await this.runNodeAction('saveDefaultScopeBtn', 'saveDefaultScopeSpinner', async () => {
+            const result = await this.queueAndPoll(
+                '/api/radio/firmware/config/write', { default_flood_scope: raw });
+            if (result && result.status === 'completed') {
+                this.setNodeAlert('success', raw
+                    ? `Default scope set to ${raw}.`
+                    : 'Default scope cleared — the radio floods unscoped.');
+                // Read it back: the radio is the authority on what it stored.
+                await this.readFirmwareConfig({ silent: true });
+            } else {
+                this.setNodeAlert('danger', result?.error_message || 'Write failed');
+            }
+        });
     }
 
     async savePathHash() {
@@ -1483,6 +1689,213 @@ class RadioManager {
                 this.setNodeAlert('danger', result?.error_message || 'Advert failed');
             }
         });
+    }
+
+
+    // ── Region scopes ([Channels] flood_scopes) ─────────────────────────────
+
+    setupRegionScopeHandlers() {
+        const sync = () => this.syncRegionScopeMode();
+        document.getElementById('regionScopeModeAll').addEventListener('change', sync);
+        document.getElementById('regionScopeModeList').addEventListener('change', sync);
+        document.getElementById('saveRegionScopesBtn')
+            .addEventListener('click', () => this.saveRegionScopes());
+    }
+
+    // The allowlist inputs are meaningless in "reply whatever the scope" mode,
+    // so disable rather than hide them: a hidden list the operator forgot they
+    // filled in is the version of this that loses their scopes on the next save.
+    syncRegionScopeMode() {
+        const listMode = document.getElementById('regionScopeModeList').checked;
+        document.getElementById('regionScopeList').disabled = !listMode;
+        document.getElementById('regionScopeAllowGlobal').disabled = !listMode;
+        document.getElementById('regionScopeListFields').style.opacity = listMode ? '1' : '.55';
+    }
+
+    async loadRegionScopes() {
+        try {
+            const resp = await fetch('/api/region-scopes', {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                this.setRegionScopeAlert('danger', data.error || 'Could not read region scopes');
+                return;
+            }
+            this.fillRegionScopeForm(data);
+            this.setRegionScopeAlert('', '');
+        } catch (e) {
+            this.setRegionScopeAlert('danger', 'Error: ' + e.message);
+        }
+    }
+
+    fillRegionScopeForm(data) {
+        const scopes = Array.isArray(data.scopes) ? data.scopes : [];
+        document.getElementById('regionScopeList').value = scopes.join(', ');
+        document.getElementById('regionScopeAllowGlobal').checked = !!data.allow_global;
+        document.getElementById('regionScopeOutgoing').value = data.outgoing_override || '';
+        const listMode = !!data.allowlist_active;
+        document.getElementById('regionScopeModeList').checked = listMode;
+        document.getElementById('regionScopeModeAll').checked = !listMode;
+        this.syncRegionScopeMode();
+
+        const target = document.getElementById('regionScopeTarget');
+        target.textContent = data.target ? `[Channels] in ${data.target}` : '';
+
+        const legacy = document.getElementById('regionScopeLegacy');
+        if (data.legacy_section) {
+            // [Channels] is empty, so the bot fell back to the old location.
+            // Saving an allowlist here takes over; saving "reply whatever the
+            // scope" leaves [Channels] empty and hands it straight back.
+            legacy.textContent =
+                `[Channels] has no flood_scopes, so the bot is using the one under `
+                + `[${data.legacy_section}]. Saving a list here writes [Channels], which `
+                + `the bot reads first. Saving "reply whatever the scope" leaves [Channels] `
+                + `empty, and the [${data.legacy_section}] entry takes over again — remove `
+                + 'it from config.ini by hand to turn the allowlist off for good.';
+            legacy.style.display = 'block';
+        } else {
+            legacy.style.display = 'none';
+        }
+
+        this.renderChannelScopeOverrides(data.channel_overrides || []);
+    }
+
+    renderChannelScopeOverrides(overrides) {
+        const host = document.getElementById('regionScopeChannelOverrides');
+        host.replaceChildren();
+        if (!overrides.length) return;
+
+        const heading = document.createElement('div');
+        heading.className = 'fw-semibold mb-1';
+        heading.textContent = 'Per-channel overrides (edit in config.ini)';
+        host.appendChild(heading);
+
+        const list = document.createElement('ul');
+        list.className = 'list-unstyled mb-0';
+        overrides.forEach(entry => {
+            const item = document.createElement('li');
+            const name = document.createElement('code');
+            name.textContent = entry.channel;
+            item.appendChild(name);
+            item.appendChild(document.createTextNode(' → '));
+            const scope = document.createElement('code');
+            scope.textContent = entry.scope || 'global flood';
+            item.appendChild(scope);
+            list.appendChild(item);
+        });
+        host.appendChild(list);
+
+        const note = document.createElement('div');
+        note.className = 'mt-1';
+        note.textContent = 'These win over the default outgoing scope on their channel.';
+        host.appendChild(note);
+    }
+
+    async saveRegionScopes() {
+        const listMode = document.getElementById('regionScopeModeList').checked;
+        const payload = {
+            allowlist_enabled: listMode,
+            scopes: listMode ? document.getElementById('regionScopeList').value : '',
+            allow_global: listMode && document.getElementById('regionScopeAllowGlobal').checked,
+            outgoing_override: document.getElementById('regionScopeOutgoing').value,
+        };
+
+        if (listMode && !payload.allow_global) {
+            const ok = confirm(
+                'Only reply to the listed scopes?\n\n'
+                + 'Anyone whose client has no region set floods unscoped, and the bot '
+                + 'will not answer them at all. Tick "also reply to unscoped messages" '
+                + 'to keep answering those.'
+            );
+            if (!ok) return;
+        }
+
+        const btn = document.getElementById('saveRegionScopesBtn');
+        const spinner = document.getElementById('saveRegionScopesSpinner');
+        btn.disabled = true;
+        spinner.style.display = 'inline-block';
+        this.setRegionScopeAlert('', '');
+        this.setRegionScopeStatus('Saving…', 'text-muted');
+        try {
+            const resp = await fetch('/api/region-scopes', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify(payload)
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.success) {
+                this.setRegionScopeStatus('', '');
+                this.setRegionScopeAlert('danger', data.error || 'Save failed');
+                return;
+            }
+            // Show what was actually written, including the canonical form of
+            // anything typed loosely (west -> #west, * folded into the checkbox).
+            this.fillRegionScopeForm(data.settings || {});
+            this.setRegionScopeStatus('Saved. Waiting for the bot to reload…', 'text-muted');
+            const applied = await this.awaitConfigReload(data.reload_operation_id);
+            this.setRegionScopeStatus(applied.text, applied.cls);
+        } catch (e) {
+            this.setRegionScopeStatus('', '');
+            this.setRegionScopeAlert('danger', 'Error: ' + e.message);
+        } finally {
+            btn.disabled = false;
+            spinner.style.display = 'none';
+        }
+    }
+
+    // A queued reload row only means the request was written down. Poll it so
+    // the page reports what the bot did, and says plainly when nothing picked
+    // it up (a stopped bot, or a reload the bot refused).
+    async awaitConfigReload(operationId) {
+        if (!operationId) {
+            return {
+                text: 'Saved to config.ini. It applies the next time the bot reloads.',
+                cls: 'text-warning'
+            };
+        }
+        for (let attempt = 0; attempt < 15; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            try {
+                const resp = await fetch(`/api/channel-operations/${operationId}`);
+                const data = await resp.json();
+                if (data.status === 'completed') {
+                    return { text: 'Saved and applied — the bot is using it now.', cls: 'text-success' };
+                }
+                if (data.status === 'failed' || data.status === 'interrupted') {
+                    // reload_config's messages already end in a full stop.
+                    const reason = String(data.error_message || 'reason not reported')
+                        .trim().replace(/\.+$/, '');
+                    return {
+                        text: `Saved to config.ini, but the reload failed: ${reason}. `
+                            + 'Restart the bot to apply it.',
+                        cls: 'text-danger'
+                    };
+                }
+            } catch { /* keep polling; the answer is the same either way */ }
+        }
+        return {
+            text: 'Saved to config.ini. The bot has not picked it up — if it is not '
+                + 'running, this applies at startup.',
+            cls: 'text-warning'
+        };
+    }
+
+    setRegionScopeAlert(type, message) {
+        const el = document.getElementById('regionScopeAlert');
+        if (!type || !message) { el.style.display = 'none'; return; }
+        el.className = `alert alert-${type}`;
+        el.textContent = message;
+        el.style.display = 'block';
+    }
+
+    setRegionScopeStatus(text, cls) {
+        const el = document.getElementById('regionScopeStatus');
+        el.className = cls || 'text-muted';
+        el.textContent = text || '';
     }
 
     showError(message) {

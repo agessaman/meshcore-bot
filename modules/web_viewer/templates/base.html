@@ -260,8 +260,14 @@
             color: var(--text-muted) !important;
         }
 
-        /* Dark mode borders */
-        [data-theme="dark"] .border {
+        /* Dark mode borders. The directional utilities need naming too — the
+           all-sides rule does not cover them, so a .border-start divider drew
+           Bootstrap's light #dee2e6 straight onto a dark card. */
+        [data-theme="dark"] .border,
+        [data-theme="dark"] .border-top,
+        [data-theme="dark"] .border-end,
+        [data-theme="dark"] .border-bottom,
+        [data-theme="dark"] .border-start {
             border-color: var(--border-color) !important;
         }
 
