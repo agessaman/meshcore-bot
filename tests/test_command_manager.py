@@ -1431,3 +1431,160 @@ class TestSplitTextIntoNumberedUtf8Chunks:
         text = " ".join(f"tok{i}" for i in range(120))
         chunks = CommandManager.split_text_into_numbered_utf8_chunks(text, 70)
         assert " ".join(_strip_part_suffix(c) for c in chunks).split() == text.split()
+
+
+class TestSplitKeepsLinksIntact:
+    """A link cut across a chunk boundary arrives on the mesh unclickable.
+
+    Whitespace boundaries cannot land inside a link, so the exposure is the
+    hard-split fallback: text with no break opportunity before the link, such as
+    CJK or a punctuation-joined "...40mph|https://...".
+    """
+
+    SHORT_LINK = "https://is.gd/a1B2c3"
+    NWS_LINK = (
+        "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0."
+        "abcdef1234567890abcdef12.001.1"
+    )
+
+    @staticmethod
+    def _bodies(chunks):
+        return [_strip_part_suffix(c) for c in chunks]
+
+    def test_link_after_a_space_survives(self):
+        text = (
+            "\U0001f7e1Wind Adv Lockhart TX til 9PM CDT by NWS Austin/San Antonio, "
+            f"gusts to 40mph this evening {self.SHORT_LINK}"
+        )
+        chunks = CommandManager.split_text_into_numbered_utf8_chunks(text, 60)
+        assert len(chunks) > 1
+        assert any(self.SHORT_LINK in b for b in self._bodies(chunks))
+
+    def test_punctuation_joined_link_survives(self):
+        text = f"Wind Adv Lockhart TX til 9PM by NWS EWX gusts 40mph|{self.SHORT_LINK}"
+        chunks = CommandManager.split_text_into_numbered_utf8_chunks(text, 60)
+        assert any(self.SHORT_LINK in b for b in self._bodies(chunks))
+
+    def test_link_after_unspaced_cjk_survives(self):
+        """The regression case: a hard split cut a link that had room to travel whole."""
+        text = f"大阪の天気{self.SHORT_LINK}"
+        chunks = CommandManager.split_text_into_utf8_chunks(text, 30)
+        assert any(self.SHORT_LINK in c for c in chunks)
+        assert chunks[0] == "大阪の天気"
+
+    def test_hyphenated_text_with_no_spaces_before_the_link(self):
+        """No whitespace anywhere in the window, so only the retreat can save this."""
+        text = f"WindAdv-Lockhart-TX-til-9PM-EWX|{self.SHORT_LINK}"
+        chunks = CommandManager.split_text_into_utf8_chunks(text, 40)
+        assert any(self.SHORT_LINK in c for c in chunks)
+        assert chunks[0] == "WindAdv-Lockhart-TX-til-9PM-EWX|"
+
+    def test_unspaced_www_link_survives(self):
+        link = "www.weather.gov/austin"
+        text = f"Gusts40mph-TakeShelter-CaldwellCounty:{link}"
+        chunks = CommandManager.split_text_into_utf8_chunks(text, 45)
+        assert any(link in c for c in chunks)
+
+    def test_retreat_runs_on_the_second_chunk_too(self):
+        """A message with two unspaced links must keep both, not just the first."""
+        a, b = "https://is.gd/aaa1111", "https://is.gd/bbb2222"
+        text = f"FloodWarn-Hays:{a}|Details-Comal:{b}"
+        chunks = CommandManager.split_text_into_utf8_chunks(text, 40)
+        assert any(a in c for c in chunks), chunks
+        assert any(b in c for c in chunks), chunks
+
+    def test_long_nws_link_survives_a_real_budget(self):
+        text = (
+            "\U0001f534Tornado Warning Caldwell TX til 7:45PM by NWS EWX take shelter "
+            f"now {self.NWS_LINK}"
+        )
+        chunks = CommandManager.split_text_into_numbered_utf8_chunks(text, 143)
+        assert any(self.NWS_LINK in b for b in self._bodies(chunks))
+
+    def test_multiple_links_all_survive(self):
+        a, b = "https://is.gd/aaa1111", "https://is.gd/bbb2222"
+        text = f"Flood Warn {a} details {b} stay clear of low water crossings"
+        bodies = self._bodies(
+            CommandManager.split_text_into_numbered_utf8_chunks(text, 80)
+        )
+        assert any(a in body for body in bodies)
+        assert any(b in body for body in bodies)
+
+    def test_www_link_survives(self):
+        link = "www.weather.gov/austin/warnings"
+        text = f"Details at{link} tonight for Caldwell county and surrounding areas"
+        bodies = self._bodies(
+            CommandManager.split_text_into_numbered_utf8_chunks(text, 45)
+        )
+        assert any(link in body for body in bodies)
+
+    def test_link_at_the_start_survives(self):
+        text = f"{self.SHORT_LINK} flooding reported near the river crossing tonight"
+        bodies = self._bodies(
+            CommandManager.split_text_into_numbered_utf8_chunks(text, 40)
+        )
+        assert any(self.SHORT_LINK in body for body in bodies)
+
+    def test_chunks_still_respect_the_budget(self):
+        text = f"Wind Adv Lockhart TX til 9PM by NWS EWX gusts 40mph|{self.SHORT_LINK}"
+        for budget in (32, 40, 60, 80, 143):
+            for chunk in CommandManager.split_text_into_numbered_utf8_chunks(text, budget):
+                assert len(chunk.encode("utf-8")) <= budget, (budget, chunk)
+
+    def test_retreating_never_produces_an_empty_chunk(self):
+        text = f"a{self.SHORT_LINK}"
+        chunks = CommandManager.split_text_into_utf8_chunks(text, 12)
+        assert all(chunk for chunk in chunks)
+
+    def test_plain_prose_is_not_mistaken_for_a_link(self):
+        """A bare host.tld pattern in prose must not move split points."""
+        text = "Gusts to 40mph.Take shelter now and avoid travel on I-35 through Hays"
+        assert CommandManager.split_text_into_utf8_chunks(
+            text, 40
+        ) == CommandManager.split_text_into_utf8_chunks(text, 40)
+        for chunk in CommandManager.split_text_into_utf8_chunks(text, 40):
+            assert len(chunk.encode("utf-8")) <= 40
+
+
+class TestLinksSplitAcross:
+    """Reporting the one case that cannot be fixed within a fixed frame."""
+
+    def test_reports_a_link_too_long_for_any_chunk(self):
+        link = "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.abcdef.001.1"
+        text = f"Alert {link}"
+        chunks = CommandManager.split_text_into_numbered_utf8_chunks(text, 40)
+        assert CommandManager.links_split_across(text, chunks) == [link]
+
+    def test_reports_nothing_when_links_survive(self):
+        link = "https://is.gd/a1B2c3"
+        text = f"Wind Adv Lockhart TX til 9PM by NWS EWX gusts 40mph {link}"
+        chunks = CommandManager.split_text_into_numbered_utf8_chunks(text, 60)
+        assert CommandManager.links_split_across(text, chunks) == []
+
+    def test_reports_nothing_for_text_without_links(self):
+        text = "Wind Advisory for Lockhart TX until 9PM CDT this evening, gusts 40mph"
+        chunks = CommandManager.split_text_into_numbered_utf8_chunks(text, 40)
+        assert CommandManager.links_split_across(text, chunks) == []
+
+
+class TestLinkSpanStraddling:
+    def test_index_inside_a_link_is_reported(self):
+        text = "abc https://example.com/x def"
+        span = CommandManager._link_span_straddling(text, 12)
+        assert span == (4, 25)
+
+    def test_index_on_a_boundary_is_not_straddling(self):
+        text = "abc https://example.com/x def"
+        assert CommandManager._link_span_straddling(text, 4) is None
+        assert CommandManager._link_span_straddling(text, 25) is None
+
+    def test_index_outside_every_link(self):
+        text = "abc https://example.com/x def"
+        assert CommandManager._link_span_straddling(text, 2) is None
+        assert CommandManager._link_span_straddling(text, 27) is None
+
+    def test_second_of_two_links(self):
+        text = "https://a.example/1 mid https://b.example/22"
+        span = CommandManager._link_span_straddling(text, 30)
+        assert span == (24, len(text))
+        assert text[span[0]:span[1]] == "https://b.example/22"

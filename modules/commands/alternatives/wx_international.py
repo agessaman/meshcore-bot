@@ -684,8 +684,11 @@ class GlobalWxCommand(BaseCommand):
             location_display = self._format_location_display(address_info, geocode_result, location)
             self.logger.debug(f"Formatted location_display: '{location_display}' from location: '{location}'")
 
-            # Calculate the length of the location prefix (location_display + ": ")
-            location_prefix_len = len(f"{location_display}: ")
+            # Calculate the length of the location prefix (location_display + ": ").
+            # In UTF-8 bytes, not characters: the budget it is subtracted from is a
+            # byte budget, and a non-ASCII city name ("München, DE: ") costs more
+            # bytes than it has characters.
+            location_prefix_len = self._count_display_width(f"{location_display}: ")
 
             # Get weather forecast from Open-Meteo based on type
             # Pass location_prefix_len so weather formatting can account for it

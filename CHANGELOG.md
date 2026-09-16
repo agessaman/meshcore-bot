@@ -290,6 +290,34 @@ semantic versioning.
 
 ### Fixed
 
+- Splitting a long message no longer cuts a link in half. A whitespace boundary
+  can never land inside a link, so the exposure was the hard-split fallback —
+  text with no break opportunity before the link, such as CJK (no spaces at all)
+  or a punctuation-joined `"…40mph|https://…"`. The boundary now retreats to where
+  the link starts so it travels whole in the next part. A link too long for a part
+  of its own still has to be cut; that is logged as a warning naming the link,
+  since the remedy is to shorten links before sending rather than a code change.
+  Both the DM and channel split paths get this, as does the webhook.
+
+- `gwx`/`wx` NOAA forecasts no longer overrun the RF frame by the width of their
+  location prefix. `get_weather_for_location` formatted the forecast body to the
+  full byte budget and then prepended `"City, State: "`, so the assembled reply
+  could exceed the frame by the prefix's own length — 17 bytes for
+  `"Lockhart, Texas: "`, 26 for `"Williamson County, Texas: "`. The prefix is now
+  reserved out of the budget before the body is formatted, floored so a long
+  county name cannot starve the forecast. The alert text, which is sent as its own
+  message without a prefix, keeps the full budget.
+
+  This surfaced as an emoji-dense forecast being split into two mesh messages
+  despite looking well under the limit: the budget is 160 UTF-8 **bytes** less the
+  `"<botname>: "` prefix, and `°F`, `☀️`, `💨`, `💧`, `👁️` and `📊` each cost 2–7
+  bytes, so a 124-character forecast measured 152 bytes. Before the channel length
+  guard landed, that message was dropped by the radio instead.
+
+  The international `gwx` path (`wx_international.py`) already reserved its prefix
+  but measured it with `len()`; it now measures UTF-8 bytes, so a non-ASCII city
+  name such as `"München, DE: "` is charged what it actually costs.
+
 - Webhook posts longer than one mesh frame are split across several channel
   messages instead of being handed to the radio whole. `[Webhook]
   max_message_length` truncated at 200 characters, but a MeshCore channel body

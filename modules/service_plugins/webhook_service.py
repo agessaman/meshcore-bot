@@ -395,6 +395,11 @@ class WebhookService(BaseServicePlugin):
             f"Webhook: message for #{channel} is {len(message.encode('utf-8'))} bytes; "
             f"splitting into {len(chunks)} mesh messages ({budget}-byte budget)"
         )
+        for link in cm.links_split_across(message, chunks):
+            self.logger.warning(
+                f"Webhook: link too long for one {budget}-byte message and had to be "
+                f"cut, so it will not be clickable: {link}"
+            )
         ok = await cm.send_channel_messages_chunked(
             channel,
             chunks,

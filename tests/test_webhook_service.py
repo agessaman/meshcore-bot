@@ -46,6 +46,7 @@ def _make_bot(mock_logger, extra_cfg=None):
     bot.command_manager.split_text_into_numbered_utf8_chunks = (
         CommandManager.split_text_into_numbered_utf8_chunks
     )
+    bot.command_manager.links_split_across = CommandManager.links_split_across
     bot.command_manager.channel_body_budget = Mock(return_value=130)
     bot.connected = True
     return bot
@@ -567,3 +568,55 @@ class TestPartNumbering:
         chunks = bot.command_manager.send_channel_messages_chunked.call_args[0][1]
         assert json.loads(resp.text)["parts"] == len(chunks)
         assert chunks[-1].endswith(f" ({len(chunks)}/{len(chunks)})")
+
+
+class TestWebhookLinkIntegrity:
+    """A relayed link must survive the split intact."""
+
+    LINK = "https://is.gd/a1B2c3"
+
+    @pytest.mark.asyncio
+    async def test_link_survives_a_split_relay(self, mock_logger):
+        svc, bot = _make_service(mock_logger)
+        text = (
+            "Flood Warning for Caldwell and Hays counties until 9PM CDT, avoid low "
+            f"water crossings and do not drive through standing water {self.LINK}"
+        )
+        req = _make_request(body={"channel": "ky-wx", "message": text})
+
+        resp = await svc._handle_webhook(req)
+
+        assert resp.status == 200
+        chunks = bot.command_manager.send_channel_messages_chunked.call_args[0][1]
+        assert len(chunks) > 1
+        assert any(self.LINK in chunk for chunk in chunks)
+
+    @pytest.mark.asyncio
+    async def test_unspaced_link_survives_a_split_relay(self, mock_logger):
+        svc, bot = _make_service(mock_logger)
+        text = f"FloodWarn-Caldwell-Hays-til-9PM-avoid-low-water-crossings|{self.LINK}"
+        bot.command_manager.channel_body_budget = Mock(return_value=40)
+        req = _make_request(body={"channel": "ky-wx", "message": text})
+
+        await svc._handle_webhook(req)
+
+        chunks = bot.command_manager.send_channel_messages_chunked.call_args[0][1]
+        assert any(self.LINK in chunk for chunk in chunks)
+
+    @pytest.mark.asyncio
+    async def test_uncuttable_link_still_relays_and_is_warned_about(self, mock_logger):
+        """A link longer than one frame cannot survive; the relay must not fail."""
+        svc, bot = _make_service(mock_logger)
+        long_link = (
+            "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.abcdef.001.1"
+        )
+        bot.command_manager.channel_body_budget = Mock(return_value=40)
+        req = _make_request(body={"channel": "ky-wx", "message": f"Alert {long_link}"})
+
+        resp = await svc._handle_webhook(req)
+
+        assert resp.status == 200
+        assert any(
+            "not be clickable" in str(call)
+            for call in mock_logger.warning.call_args_list
+        )

@@ -7,6 +7,7 @@ Handles all bot commands, keyword matching, and response generation
 import asyncio
 import contextlib
 import random
+import re
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -41,6 +42,23 @@ from .models import (
     MeshMessage,
     channel_body_limit,
 )
+
+# Links the bot puts on the air, for keeping them intact across a chunk boundary.
+# Explicit schemes and "www." only: matching bare "host.tld/path" would take
+# ordinary prose ("gusts 40mph.Take shelter") for a link and move split points for
+# no reason. Shortener output, NWS alert URLs and shlink links all qualify.
+#
+# The body stops at whitespace, at delimiters no emitted link contains, and at the
+# start of the *next* link. That last guard matters: a plain \S+ run swallows
+# "linkA|Details:linkB" whole as one span starting at index 0, and a span starting
+# at 0 cannot be retreated to, so the second link would be cut. Over-matching is
+# harmless here -- it only ever moves a boundary earlier -- while under-matching is
+# what breaks a link.
+_LINK_PATTERN = re.compile(
+    r"(?:https?://|www\.)(?:(?!https?://|www\.)[^\s<>\"'|])*",
+    re.IGNORECASE,
+)
+
 from .plugin_loader import PluginLoader
 from .security_utils import sanitize_name, validate_safe_path
 from .utils import check_internet_connectivity_async, decode_escape_sequences, format_keyword_response_with_placeholders
@@ -728,10 +746,10 @@ class CommandManager:
             scope_to_use = (
                 resolved if resolved is not None else self._outgoing_flood_scope_override()
             ) or ""
-            # Deliberately the same tuple send_channel_message tests, not the looser
-            # MeshMessage.is_global_flood_scope: calling a scope global that the send
-            # then treats as regional would size the body 10 bytes too large.
-            if scope_to_use in ("", "*", "0", "None"):
+            # is_global_marker, exactly as send_channel_message tests it: this
+            # function exists to predict that decision, so any divergence sizes
+            # the body against a scope the send will not use.
+            if is_global_marker(scope_to_use):
                 return None
             return self._normalize_scope_name(scope_to_use)
         except Exception:  # noqa: BLE001 - budgeting must never break a send
@@ -748,6 +766,11 @@ class CommandManager:
         further ``CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD`` bytes. Callers with
         no ``MeshMessage`` in hand -- the webhook, services, the central guard in
         ``send_channel_message`` -- use this instead of ``get_max_message_length``.
+
+        The size itself comes from ``models.channel_body_limit``, the same helper
+        ``get_max_message_length`` and the web viewer use. It has to: a guard that
+        computed a smaller budget than commands size their output against would
+        split replies that were already the right length.
         """
         username = ""
         try:
@@ -768,10 +791,10 @@ class CommandManager:
         if not isinstance(username, str):
             username = ""
 
-        budget = 160 - len(username.encode("utf-8")) - 2
+        budget = channel_body_limit(username)
         if self.effective_channel_send_scope(channel=channel, scope=scope):
             budget -= CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD
-        return max(budget, 32)
+        return budget
 
     def check_keywords(self, message: MeshMessage) -> list[tuple]:
         """Check message content for keywords and return matching responses.
@@ -1365,6 +1388,13 @@ class CommandManager:
                     content_bytes,
                     len(chunks),
                 )
+                for link in self.links_split_across(content, chunks):
+                    self.logger.warning(
+                        "Link too long for one %d-byte message and had to be cut, so it "
+                        "will not be clickable: %s — shorten links before sending",
+                        budget,
+                        link,
+                    )
                 return await self.send_channel_messages_chunked(
                     channel,
                     chunks,
@@ -1848,10 +1878,39 @@ class CommandManager:
         return chunks
 
     @staticmethod
+    def _link_span_straddling(text: str, index: int) -> tuple[int, int] | None:
+        """The ``(start, end)`` of a link in *text* that *index* falls inside.
+
+        Returns ``None`` when *index* is at or outside every link's bounds, so a
+        boundary that already sits between links is left alone.
+        """
+        for match in _LINK_PATTERN.finditer(text):
+            if match.start() < index < match.end():
+                return match.start(), match.end()
+            if match.start() >= index:
+                break  # matches are ordered; nothing later can straddle index
+        return None
+
+    @staticmethod
+    def links_split_across(text: str, chunks: list[str]) -> list[str]:
+        """Links from *text* that no single chunk carries whole.
+
+        Only a link too long for a chunk of its own can end up here, and such a
+        link arrives on the mesh unusable — worth a warning, since the remedy is
+        operational (shorten links before they are sent) rather than a code fix.
+        """
+        return [
+            match.group()
+            for match in _LINK_PATTERN.finditer(text)
+            if not any(match.group() in chunk for chunk in chunks)
+        ]
+
+    @staticmethod
     def split_text_into_utf8_chunks(text: str, max_bytes: int) -> list[str]:
         """Split *text* into chunks each at most *max_bytes* UTF-8 bytes.
 
-        Prefers splitting on newlines, then spaces; never splits mid-codepoint.
+        Prefers splitting on newlines, then spaces; never splits mid-codepoint,
+        and never cuts a link that could travel whole in the next chunk.
         Returns ``[""]`` when *text* is empty.
         """
         if max_bytes < 1:
@@ -1884,6 +1943,17 @@ class CommandManager:
                 split_at = window.rfind(" ")
             if split_at <= 0:
                 split_at = fit
+
+            # Never cut a link where a clean break was available. A whitespace
+            # boundary can't land inside a link (links carry no whitespace), so this
+            # only ever fires on the hard-split fallback above -- text with no break
+            # opportunity before the link, such as CJK or a punctuation-joined
+            # "...40mph|https://...". Retreating to where the link starts sends it
+            # whole in the next chunk. A link too long for a chunk of its own is
+            # still cut; nothing can be done about that within a fixed frame.
+            link_span = CommandManager._link_span_straddling(remaining, split_at)
+            if link_span is not None and link_span[0] > 0:
+                split_at = link_span[0]
 
             chunk = remaining[:split_at].rstrip("\n ")
             if not chunk:
