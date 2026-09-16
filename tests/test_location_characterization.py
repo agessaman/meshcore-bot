@@ -636,8 +636,11 @@ class TestSolarforecastParseLocationOrder:
 
 @pytest.fixture
 def alert_cmd():
+    # Query parsing lives in the PulsePoint alert service now (the alert command
+    # is a thin orchestrator). These characterization tests target the service's
+    # parse_query, which preserves the original heuristics.
     bot = _make_bot(
-        Alert_Command={
+        PulsePoint_Alert_Service={
             "enabled": "true",
             "agency.city.seattle": "1234",
             "agency.county.king": "5678",
@@ -645,8 +648,11 @@ def alert_cmd():
             "agency.everett": "9999",
         }
     )
-    from modules.commands.alert_command import AlertCommand
-    return AlertCommand(bot)
+    from modules.service_plugins.pulsepoint_alert_service import PulsePointAlertService
+    svc = PulsePointAlertService(bot)
+    # Expose parse_query under the historical name used by these tests.
+    svc._parse_query = svc.parse_query
+    return svc
 
 
 @pytest.mark.unit

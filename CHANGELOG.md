@@ -379,6 +379,21 @@ semantic versioning.
   `prefix_if_nonempty` argument still consumes the rest of the placeholder, which is
   what lets its literal contain `|`, so that form must stay last in its chain.
 
+- Alert services: the `alert` command is now a pluggable interface over one or more
+  "alert services" rather than being wired directly to PulsePoint. Each service wraps
+  a single incident source and works two ways — query mode (a user runs `alert
+  seattle`) and polling mode (the service posts new incidents to a channel on its
+  own). `[Alert_Command] services` lists which services are connected; a query fans
+  out to all of them and the results are merged under each source's short `[LABEL]:`
+  header, with a shared `max_incidents_total` budget split evenly across the
+  responders. Running `alert` in a channel a service polls narrows the query to just
+  that service, so a dedicated `#alerts` channel only ever shows its own source.
+  PulsePoint ships as the reference `PulsePoint_Alert_Service` (its agency, distance
+  and age settings moved there from `[Alert_Command]`, with the old keys still
+  honoured). New sources are added by subclassing `BaseAlertService` and dropping the
+  file in `service_plugins/` (bundled) or `local/service_plugins/` (custom); see
+  `docs/alert-service.md` for the authoring guide and query-parameter mapping notes.
+
 - `mqttN_keepalive` (default 60) sets the MQTT PINGREQ interval per broker. It was
   hardcoded at 60 before, which is long for websockets through a proxy that drops
   idle connections.

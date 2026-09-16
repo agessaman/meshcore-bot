@@ -42,6 +42,7 @@ Documentation for the MeshCore bot: setup, configuration, commands, and services
 | [Discord Bridge](discord-bridge.md) | One-way bridge to Discord |
 | [Telegram Bridge](telegram-bridge.md) | One-way bridge to Telegram |
 | [Earthquake Service](earthquake-service.md) | Scheduled earthquake alerts from USGS |
+| [Alert Services](alert-service.md) | PulsePoint incidents + guide to building new alert services |
 | [Packet Capture](packet-capture.md) | Packet capture and MQTT |
 | [Map Uploader](map-uploader.md) | Uploading to map.meshcore.dev |
 | [Weather Service](weather-service.md) | Scheduled weather and alerts |

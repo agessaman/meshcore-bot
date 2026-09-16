@@ -62,8 +62,8 @@ class ServicePluginLoader:
             self.logger.error(f"Services directory does not exist: {self.services_dir}")
             return service_files
 
-        # Scan for Python files (excluding __init__.py, base_service.py, and utility files)
-        excluded_files = ["__init__.py", "base_service.py", "service_plugin_loader.py"]
+        # Scan for Python files (excluding __init__.py, base classes, and utility files)
+        excluded_files = ["__init__.py", "base_service.py", "base_alert_service.py", "service_plugin_loader.py"]
         for file_path in services_path.glob("*.py"):
             if file_path.name not in excluded_files and not file_path.name.endswith("_utils.py"):
                 service_files.append(file_path.stem)
@@ -78,7 +78,7 @@ class ServicePluginLoader:
         path = Path(self.local_services_dir)
         if not path.exists():
             return []
-        excluded = ["__init__.py", "base_service.py"]
+        excluded = ["__init__.py", "base_service.py", "base_alert_service.py"]
         stems = []
         for file_path in path.glob("*.py"):
             if file_path.name not in excluded and not file_path.name.endswith("_utils.py"):
