@@ -1486,10 +1486,15 @@ class CommandManager:
             return self.get_general_help(message)
 
         requested_name = command_name.strip()
-        normalized_name = requested_name.lower()
+        # Help may include subcommand arguments (for example, ``help net
+        # create``). Resolve the plugin from the first token, then pass the
+        # unchanged MeshMessage to get_help_text() so the plugin can interpret
+        # the remaining text in its own command-specific way.
+        lookup_name = requested_name.split(maxsplit=1)[0] if requested_name else ""
+        normalized_name = lookup_name.lower()
 
         # First, try to find a command by exact name
-        command = self.commands.get(normalized_name) or self.commands.get(requested_name)
+        command = self.commands.get(normalized_name) or self.commands.get(lookup_name)
         if command:
             # Try to pass message context to get_help_text if supported
             try:

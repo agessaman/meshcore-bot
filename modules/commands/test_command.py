@@ -11,7 +11,11 @@ from typing import Any, Optional
 
 from ..models import MeshMessage
 from ..response_template import format_piped_template
-from ..utils import calculate_distance, extract_path_node_ids_from_message
+from ..utils import (
+    calculate_distance,
+    decode_escape_sequences,
+    extract_path_node_ids_from_message,
+)
 from .base_command import BaseCommand
 
 
@@ -154,11 +158,13 @@ class TestCommand(BaseCommand):
             if raw:
                 cleaned = self._strip_quotes_from_config(raw).strip()
                 if cleaned:
-                    return cleaned
+                    return decode_escape_sequences(cleaned)
         if self.bot.config.has_section('Keywords'):
             format_str = self.bot.config.get('Keywords', 'test', fallback=None)
             if format_str:
-                return self._strip_quotes_from_config(format_str)
+                return decode_escape_sequences(
+                    self._strip_quotes_from_config(format_str)
+                )
         return self.DEFAULT_FORMAT
 
     def _extract_path_node_ids(self, message: MeshMessage) -> list[str]:

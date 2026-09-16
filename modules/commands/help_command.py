@@ -94,12 +94,13 @@ class HelpCommand(BaseCommand):
             str: The formatted help text for the specific command.
         """
         requested_name = command_name.strip()
-        normalized_name = requested_name.lower()
+        lookup_name = requested_name.split(maxsplit=1)[0] if requested_name else ""
+        normalized_name = lookup_name.lower()
 
         # Get the command instance by direct name first
         command = (
             self.bot.command_manager.commands.get(normalized_name)
-            or self.bot.command_manager.commands.get(requested_name)
+            or self.bot.command_manager.commands.get(lookup_name)
         )
 
         # Then through plugin keyword mappings (if available)
@@ -313,5 +314,4 @@ class HelpCommand(BaseCommand):
                         return ', '.join(result) + suffix
                 break
         return ', '.join(result)
-
 

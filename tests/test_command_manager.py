@@ -349,6 +349,19 @@ class TestGetHelpForCommand:
         result = manager.get_help_for_command("sched")
         assert "Schedule help" in result
 
+    def test_subcommand_help_resolves_base_command_and_preserves_message(self, cm_bot):
+        mock_cmd = MagicMock()
+        mock_cmd.keywords = ["net"]
+        mock_cmd.get_help_text = Mock(return_value="Create a network")
+        manager = make_manager(cm_bot, commands={"net": mock_cmd})
+        message = mock_message(content="help net create", is_dm=True)
+
+        result = manager.get_help_for_command("net create", message)
+
+        assert "Create a network" in result
+        mock_cmd.get_help_text.assert_called_once_with(message)
+        assert message.content == "help net create"
+
 
 class TestInternetStatusCache:
     """Tests for InternetStatusCache."""
