@@ -215,8 +215,8 @@
                 <div id="rw-days-wrap">
                     <div class="rw-days" id="rw-days"></div>
                     <div class="d-flex justify-content-between small text-muted mt-2" id="rw-days-range"></div>
+                    <hr>
                 </div>
-                <hr>
                 <div id="rw-totals"></div>
             </div>
         </div>
@@ -254,6 +254,10 @@
                             </span>
                         </label>
                     </div>
+                    <div class="small text-muted mt-2" id="rw-mode-note" hidden>
+                        Everything below is still saved while the bot is only counting;
+                        it just isn't used until you pick dry run or send.
+                    </div>
                     <div class="form-check form-switch mt-3">
                         <input class="form-check-input" type="checkbox" id="rw-track-traffic" checked>
                         <label class="form-check-label" for="rw-track-traffic">
@@ -263,7 +267,7 @@
                     </div>
                 </fieldset>
 
-                <fieldset class="mb-4" id="rw-delivery-fieldset">
+                <fieldset class="mb-4">
                     <legend class="h6">Who hears it</legend>
                     <div class="row g-3">
                         <div class="col-md-4">
@@ -496,13 +500,11 @@
                 const input = option.querySelector('input');
                 option.classList.toggle('rw-mode-selected', !!input && input.checked);
             });
-            // Delivery and limits only describe warnings, so gray them out when
-            // the bot is only counting. They stay readable, and stay saved.
-            const off = mode === 'off';
-            el('rw-delivery-fieldset').disabled = off;
-            ['rw-min-unscoped', 'rw-sender-cooldown', 'rw-mesh-cooldown', 'rw-daily-cap', 'rw-message']
-                .forEach((id) => { el(id).disabled = off; });
-            el('rw-reset-message').disabled = off;
+            // The rest of the form describes warnings, which "count only" never
+            // sends — but the values are still written, and disabling the fields
+            // would both say otherwise and stop anyone drafting their wording
+            // before they turn it on. Say it in a sentence instead.
+            el('rw-mode-note').hidden = mode !== 'off';
             this.refreshPreview();
         }
 
@@ -701,6 +703,9 @@
             const host = el('rw-days');
             const peak = series.reduce(
                 (max, d) => Math.max(max, d.scoped + d.global + d.unknown), 0);
+            // An empty 84px track plus a date range reads as a broken chart
+            // rather than as "no data"; the summary below says it in words.
+            el('rw-days-wrap').hidden = peak === 0;
             host.innerHTML = series.map((d) => {
                 const total = d.scoped + d.global + d.unknown;
                 const height = peak ? Math.max(2, Math.round(100 * total / peak)) : 0;
