@@ -8,6 +8,11 @@ semantic versioning.
 
 ### Fixed
 
+- Daily Weather Service forecasts now retry transient Open-Meteo failures at
+  5, 15, and 30 minutes after the original run (#264). HTTP 429, 500, 502, 503,
+  and 504 responses plus transport failures use one replaceable retry job,
+  while permanent HTTP errors stop immediately and a successful retry sends
+  the forecast only once.
 - `help <command> <subcommand>` now resolves help for the base command while
   preserving the full message for context-aware help text (#285). Exact
   multi-word aliases such as `dad joke` and `ps aux` still take precedence
