@@ -2540,6 +2540,7 @@ def generate_samples(config_file):
 
     # Setup minimal bot for plugin loading
     minimal_bot = MinimalBot(config, logger)
+    minimal_bot.bot_root = bot_root  # Set bot_root for plugin loader
 
     # Initialize database manager if database exists
     db_path = get_database_path(config, bot_root)
@@ -2552,8 +2553,19 @@ def generate_samples(config_file):
     else:
         minimal_bot.db_manager = None
 
+    # Get local commands directory from config
+    local_dir_path = config.get('Bot', 'local_dir_path', fallback='local')
+    local_commands_dir = resolve_path(os.path.join(local_dir_path, 'commands'), bot_root)
+
+    # Only use local commands directory if it exists
+    if not os.path.exists(local_commands_dir):
+        logger.info(f"Local commands directory not found: {local_commands_dir}")
+        local_commands_dir = None
+    else:
+        logger.info(f"Using local commands directory: {local_commands_dir}")
+
     # Load plugins
-    plugin_loader = PluginLoader(minimal_bot)
+    plugin_loader = PluginLoader(minimal_bot, local_commands_dir=local_commands_dir)
     commands = plugin_loader.load_all_plugins()
 
     # Filter out admin and hidden commands
@@ -2775,6 +2787,7 @@ def main():
 
         # Setup minimal bot for plugin loading
         minimal_bot = MinimalBot(config, logger)
+        minimal_bot.bot_root = bot_root  # Set bot_root for plugin loader
 
         # Initialize database manager if database exists
         db_path = get_database_path(config, bot_root)
@@ -2789,9 +2802,20 @@ def main():
             logger.info("No database found, using default command ordering")
             minimal_bot.db_manager = None
 
+        # Get local commands directory from config
+        local_dir_path = config.get('Bot', 'local_dir_path', fallback='local')
+        local_commands_dir = resolve_path(os.path.join(local_dir_path, 'commands'), bot_root)
+
+        # Only use local commands directory if it exists
+        if not os.path.exists(local_commands_dir):
+            logger.info(f"Local commands directory not found: {local_commands_dir}")
+            local_commands_dir = None
+        else:
+            logger.info(f"Using local commands directory: {local_commands_dir}")
+
         # Load plugins
         logger.info("Loading command plugins...")
-        plugin_loader = PluginLoader(minimal_bot)
+        plugin_loader = PluginLoader(minimal_bot, local_commands_dir=local_commands_dir)
         commands = plugin_loader.load_all_plugins()
         logger.info(f"Loaded {len(commands)} commands")
 
