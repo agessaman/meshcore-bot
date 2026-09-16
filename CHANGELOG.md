@@ -6,6 +6,13 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Fixed
+
+- `help <command> <subcommand>` now resolves help for the base command while
+  preserving the full message for context-aware help text (#285). Exact
+  multi-word aliases such as `dad joke` and `ps aux` still take precedence
+  over the base-command fallback.
+
 ## [1.1.0] - 2026-09-13
 
 ### Added

@@ -238,6 +238,37 @@ class TestCheckKeywords:
         matches = manager.check_keywords(msg)
         assert any(trigger == "help" for trigger, _ in matches)
 
+    def test_help_subcommand_routes_to_base_command_with_full_message(self, cm_bot):
+        net_cmd = MagicMock()
+        net_cmd.keywords = ["net"]
+        net_cmd.get_help_text = Mock(return_value="Network help")
+        manager = make_manager(cm_bot, commands={"net": net_cmd})
+        message = mock_message(content="help net create", is_dm=True)
+
+        matches = manager.check_keywords(message)
+
+        assert any(trigger == "help" and "Network help" in response for trigger, response in matches)
+        net_cmd.get_help_text.assert_called_once_with(message)
+        assert message.content == "help net create"
+
+    def test_help_routing_preserves_exact_multiword_alias(self, cm_bot):
+        dadjoke_cmd = MagicMock()
+        dadjoke_cmd.keywords = ["dadjoke", "dad joke"]
+        dadjoke_cmd.get_help_text = Mock(return_value="Dad joke help")
+        unrelated_cmd = MagicMock()
+        unrelated_cmd.keywords = ["dad"]
+        unrelated_cmd.get_help_text = Mock(return_value="Wrong help")
+        manager = make_manager(
+            cm_bot,
+            commands={"dadjoke": dadjoke_cmd, "dad": unrelated_cmd},
+        )
+
+        matches = manager.check_keywords(mock_message(content="help dad joke", is_dm=True))
+
+        assert any(trigger == "help" and "Dad joke help" in response for trigger, response in matches)
+        dadjoke_cmd.get_help_text.assert_called_once()
+        unrelated_cmd.get_help_text.assert_not_called()
+
     def test_help_disabled_no_response(self, cm_bot):
         """[Help_Command] enabled=false must suppress the help response.
 
