@@ -30,7 +30,12 @@ from .config_validation import (
     _channel_name_is_public,
     strip_optional_quotes,
 )
-from .models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, MeshMessage
+from .models import (
+    CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD,
+    DM_BODY_LIMIT,
+    MeshMessage,
+    channel_body_limit,
+)
 from .plugin_loader import PluginLoader
 from .security_utils import sanitize_name, validate_safe_path
 from .utils import check_internet_connectivity_async, decode_escape_sequences, format_keyword_response_with_placeholders
@@ -687,7 +692,7 @@ class CommandManager:
         can be called outside of a specific command instance.
         """
         if message.is_dm:
-            return 158
+            return DM_BODY_LIMIT
         username: str | None = None
         try:
             if hasattr(self.bot, 'meshcore') and self.bot.meshcore:
@@ -701,7 +706,7 @@ class CommandManager:
             pass
         if not username:
             username = self.bot.config.get('Bot', 'bot_name', fallback='Bot')
-        max_length = max(130, 160 - len(str(username).encode('utf-8')) - 2)
+        max_length = channel_body_limit(username)
         if not MeshMessage.is_global_flood_scope(message.effective_outgoing_flood_scope(self.bot)):
             max_length -= CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD
         return max_length

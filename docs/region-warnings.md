@@ -27,6 +27,8 @@ Only `global` can earn a warning, and only on positive evidence. If the radio di
 
 `unknown` is excluded from the unscoped percentage rather than counted as clean, so a mesh the bot cannot classify reads as "no data" instead of "no problem".
 
+A channel message that arrives with no `Name: ` prefix has no attributable sender. It is still counted, but it can never earn anyone a warning — every such message would otherwise share one synthetic identity.
+
 Messages the radio cached from before the current connection are skipped entirely — a reconnect replays them as a burst, and counting them would both distort the tallies and let stale traffic earn someone a warning.
 
 ## Reading the page

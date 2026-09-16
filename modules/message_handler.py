@@ -30,6 +30,10 @@ from .utils import (
 # MessageHandler.find_recent_rf_data. Anything other than a fallback is known to be
 # this message's own packet; a fallback is merely the most recent packet heard, so its
 # route belongs to some other transmission and must not be attributed (issue #80).
+# Stand-in used when a channel message carries no "Name: " prefix to extract a
+# sender from. It is not a node: every such message would share this identity.
+CHANNEL_SENDER_FALLBACK = "Channel User"
+
 RF_MATCH_KEY = "_rf_match"
 RF_MATCH_EXACT = "exact"
 RF_MATCH_PUBKEY = "pubkey"
@@ -2608,7 +2612,7 @@ class MessageHandler:
 
             # Get sender information from text field if it's in "SENDER: message" format
             text = payload.get("text", "")
-            sender_id = "Channel User"  # Default fallback
+            sender_id = CHANNEL_SENDER_FALLBACK  # Default fallback
 
             # Try to extract sender from text field (e.g., "HOWL: Test" -> "HOWL")
             message_content = text  # Default to full text
@@ -2837,7 +2841,9 @@ class MessageHandler:
             # allowlist drops — running it after the gate would blind the
             # monitor to the traffic it exists to measure.
             await self._observe_flood_scope(
-                sender_id=sender_id,
+                # A message with no "Name: " prefix has no attributable sender,
+                # so it is counted but can never earn anyone a warning.
+                sender_id=None if sender_id == CHANNEL_SENDER_FALLBACK else sender_id,
                 sender_pubkey=payload.get("pubkey_prefix", ""),
                 channel=channel_name,
                 sender_timestamp=payload.get("sender_timestamp", 0),

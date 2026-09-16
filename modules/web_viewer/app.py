@@ -56,6 +56,7 @@ from modules.db_retention import (
 )
 from modules.ini_writer import IniValueError, update_ini_values
 from modules.maintenance import MaintenanceRunner
+from modules.models import channel_body_limit
 from modules.scheduled_message_admin import (
     SECTION as SCHEDULED_MESSAGES_SECTION,
 )
@@ -4051,9 +4052,15 @@ class BotDataViewer:
         # ── Region warnings (regional flood scope) ───────────────────────────
 
         def _region_warning_channel_limit() -> int:
-            """Channel body budget for a global-scope send, mirroring CommandManager."""
-            name = (self.config.get('Bot', 'bot_name', fallback='Bot') or 'Bot').strip() or 'Bot'
-            return max(130, 160 - len(name.encode('utf-8')) - 2)
+            """Channel body budget for a global-scope send.
+
+            The device's own name is authoritative for the command layer, but
+            the viewer is a separate process with no radio, so it falls back to
+            the configured one. They match on any install where the bot manages
+            the device name.
+            """
+            name = (self.config.get('Bot', 'bot_name', fallback='Bot') or 'Bot').strip()
+            return channel_body_limit(name or 'Bot')
 
         @self.app.route('/api/region-warnings')
         def api_region_warnings():

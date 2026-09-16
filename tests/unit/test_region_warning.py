@@ -11,7 +11,11 @@ import pytest
 from modules import region_warning
 from modules.db_migrations import MigrationRunner
 from modules.enums import PayloadType, RouteType
-from modules.message_handler import RF_MATCH_KEY, MessageHandler
+from modules.message_handler import (
+    CHANNEL_SENDER_FALLBACK,
+    RF_MATCH_KEY,
+    MessageHandler,
+)
 from modules.region_warning import (
     ACTION_DRY_RUN,
     ACTION_FAILED,
@@ -163,6 +167,71 @@ class TestClassifyFloodScope:
         ) == VERDICT_SCOPED
 
 
+@pytest.mark.asyncio
+class TestObservationHook:
+    """The MessageHandler side of the hook, independent of the monitor."""
+
+    def _hooked_handler(self):
+        handler = _handler()
+        handler.bot.region_warning_monitor = MagicMock()
+        handler.bot.region_warning_monitor.observe = AsyncMock()
+        handler.bot.connection_time = None
+        return handler
+
+    async def _observe(self, handler, **overrides):
+        args = {
+            "sender_id": "Ann",
+            "sender_pubkey": "ab",
+            "channel": "#gen",
+            "sender_timestamp": 0,
+            "reply_scope": None,
+            "recent_rf_data": None,
+            "packet_info": None,
+            "scope_rf_data": None,
+            "scope_packet_info": None,
+        }
+        args.update(overrides)
+        await handler._observe_flood_scope(**args)
+
+    async def test_verdict_is_forwarded_to_the_monitor(self):
+        handler = self._hooked_handler()
+        await self._observe(
+            handler, recent_rf_data=_rf(route_type_int=int(RouteType.FLOOD.value)))
+        kwargs = handler.bot.region_warning_monitor.observe.await_args.kwargs
+        assert kwargs["verdict"] == VERDICT_GLOBAL
+        assert kwargs["sender_id"] == "Ann"
+
+    async def test_no_monitor_is_a_noop(self):
+        handler = self._hooked_handler()
+        handler.bot.region_warning_monitor = None
+        await self._observe(handler)
+
+    async def test_old_cached_message_is_skipped(self):
+        """A reconnect replays cached traffic; counting it would distort everything."""
+        handler = self._hooked_handler()
+        handler.bot.connection_time = 2_000
+        await self._observe(handler, sender_timestamp=1_000)
+        handler.bot.region_warning_monitor.observe.assert_not_awaited()
+
+    async def test_monitor_failure_does_not_escape_to_the_message_path(self):
+        handler = self._hooked_handler()
+        handler.bot.region_warning_monitor.observe = AsyncMock(
+            side_effect=RuntimeError("boom"))
+        await self._observe(handler)
+        handler.logger.exception.assert_called()
+
+    async def test_unattributable_sender_is_passed_through_as_none(self):
+        handler = self._hooked_handler()
+        await self._observe(handler, sender_id=None)
+        kwargs = handler.bot.region_warning_monitor.observe.await_args.kwargs
+        assert kwargs["sender_id"] is None
+
+
+def test_channel_sender_fallback_is_the_handler_literal():
+    """The hook drops this name; if the handler renames it, the guard silently dies."""
+    assert CHANNEL_SENDER_FALLBACK == "Channel User"
+
+
 # ---------------------------------------------------------------------------
 # Settings
 # ---------------------------------------------------------------------------
@@ -268,6 +337,17 @@ class TestObservation:
             await monitor.observe(
                 verdict=VERDICT_UNKNOWN, sender_id="Ann", sender_pubkey="ab", channel="#gen")
         monitor.bot.command_manager.send_dm.assert_not_called()
+
+    async def test_unattributable_sender_is_counted_but_never_warned(self):
+        """A channel message with no "Name: " prefix has no real sender."""
+        monitor = _monitor(enabled="true", dry_run="false", min_unscoped_messages=1)
+        for _ in range(5):
+            await monitor.observe(
+                verdict=VERDICT_GLOBAL, sender_id=None, sender_pubkey="", channel="#gen")
+        monitor.bot.command_manager.send_dm.assert_not_called()
+        rows = monitor.bot.db_manager.execute_query(
+            "SELECT global_count FROM region_scope_daily")
+        assert rows[0]["global_count"] == 5
 
     async def test_bookkeeping_failure_does_not_raise(self):
         monitor = _monitor()

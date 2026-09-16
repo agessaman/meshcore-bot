@@ -38,6 +38,9 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
+from modules.models import DM_BODY_LIMIT as _DM_BODY_LIMIT
+from modules.models import channel_body_limit
+
 CONFIG_SECTION = "Region_Warnings"
 
 # Verdicts produced by MessageHandler._classify_channel_flood_scope.
@@ -64,8 +67,9 @@ DEFAULT_MESSAGE = (
     "Setting one in your MeshCore app keeps things quiet. Thanks!"
 )
 
-# Body budget for a DM, matching CommandManager.get_max_message_length.
-DM_BODY_LIMIT = 158
+# Re-exported so the web viewer (which has no bot object) can size the preview
+# against the same budget the command layer enforces.
+DM_BODY_LIMIT = _DM_BODY_LIMIT
 
 
 @dataclass(frozen=True)
@@ -577,14 +581,17 @@ class RegionWarningMonitor:
         return ok, body if ok else f"DM send failed (contact unknown or radio busy): {body}"
 
     def _channel_body_limit(self) -> int:
-        """Channel body budget for a global-scope send from this node."""
+        """Channel body budget for a global-scope send from this node.
+
+        Warnings always go out unscoped, so no regional-scope overhead applies.
+        """
         try:
             from modules.models import MeshMessage
 
             probe = MeshMessage(content="", channel="", is_dm=False, reply_scope="")
             return int(self.bot.command_manager.get_max_message_length(probe))
         except Exception:
-            return 130
+            return channel_body_limit(None)
 
     # -- gating ------------------------------------------------------------
 
