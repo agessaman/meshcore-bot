@@ -52,3 +52,337 @@ If omitted, the script uses the bot name and a default intro.
 ## Uploading
 
 The script produces a self-contained HTML file (with embedded CSS). Upload `website/index.html` to any static host (e.g. GitHub Pages, Netlify, or your group's web server). No server-side processing is required.
+
+---
+
+# CSS Architecture and Customization
+
+The generated HTML includes embedded CSS that uses a **CSS custom properties (variables) system** for easy theming. This section documents the CSS architecture and how to create your own custom styles.
+
+## CSS Structure Overview
+
+The stylesheet is organized into several sections:
+
+1. **CSS Custom Properties (`:root`)** - Theme variables for colors, fonts, spacing
+2. **Reset & Base Styles** - Global resets and base element styles
+3. **Layout Components** - Container, grid, sidebar navigation
+4. **Header & Introduction** - Title area and intro text
+5. **Command Cards** - Individual command display cards
+6. **Channel Cards** - Channel listing cards
+7. **Mobile Responsive** - Breakpoints and mobile menu
+8. **Theme Overrides** - Style-specific customizations
+
+## CSS Custom Properties (Theme Variables)
+
+All colors and key design tokens are defined as CSS custom properties in the `:root` selector. This allows easy theme customization without touching the core CSS.
+
+### Color Variables
+
+```css
+:root {
+    /* Backgrounds */
+    --bg-primary: #0a0e14;           /* Main page background */
+    --bg-secondary: #111820;         /* Secondary background (usage boxes) */
+    --bg-card: #151c25;              /* Card backgrounds */
+    --bg-card-hover: #1a232e;        /* Card hover state */
+
+    /* Accent Colors */
+    --accent-blue: #00d4ff;          /* Primary accent (command names, links) */
+    --accent-cyan: #00ffc8;          /* Secondary accent (keywords, highlights) */
+    --accent-orange: #ff8a00;        /* Parameter names */
+    --accent-purple: #a855f7;        /* Additional accent */
+    --accent-red: #ff4757;           /* Error/warning states */
+    --accent-yellow: #ffd700;        /* Highlights */
+
+    /* Text Colors */
+    --text-primary: #e8edf4;         /* Main text color */
+    --text-secondary: #8892a4;       /* Secondary text (descriptions) */
+    --text-muted: #6b7280;           /* Muted text (labels, footers) */
+
+    /* Borders & Effects */
+    --border-subtle: rgba(255,255,255,0.06);  /* Subtle borders */
+    --glow-blue: rgba(0, 212, 255, 0.15);     /* Blue glow effect */
+    --glow-cyan: rgba(0, 255, 200, 0.1);      /* Cyan glow effect */
+}
+```
+
+### Typography Variables
+
+Fonts are loaded via Google Fonts and applied through the CSS. The default theme uses:
+
+- **Outfit** - Sans-serif for body text and headings
+- **JetBrains Mono** - Monospace for code, keywords, and technical text
+
+## HTML Structure & CSS Classes
+
+### Page Layout
+
+```html
+<body>
+  <div class="atmosphere"></div>      <!-- Background gradient effect -->
+  <div class="grid-overlay"></div>    <!-- Subtle grid pattern -->
+  <div class="sidebar-overlay"></div> <!-- Mobile menu overlay -->
+
+  <button class="mobile-menu-toggle">  <!-- Mobile hamburger menu -->
+    <span class="hamburger"></span>
+    <span class="hamburger"></span>
+    <span class="hamburger"></span>
+  </button>
+
+  <div class="container">
+    <nav class="sidebar-nav">        <!-- Left sidebar navigation -->
+      <div class="nav-header">
+        <h3>Navigation</h3>
+      </div>
+      <ul class="nav-list">
+        <li class="nav-section-header">Commands</li>
+        <ul class="nav-sublist">
+          <li><a href="#..." class="nav-link nav-sublink">Category</a></li>
+        </ul>
+      </ul>
+    </nav>
+
+    <div class="main-content">
+      <header>
+        <div class="header-content">
+          <div class="header-title">
+            <h1>Bot Name</h1>
+          </div>
+          <div class="intro">Introduction text...</div>
+        </div>
+      </header>
+
+      <main>
+        <!-- Command categories -->
+        <div class="category-section" id="commands-category">
+          <h2 class="category-title">
+            <a href="#..." class="anchor-link">Category Name</a>
+          </h2>
+          <div class="commands-grid">
+            <!-- Command cards go here -->
+          </div>
+        </div>
+
+        <!-- Channels section -->
+        <div class="category-section" id="channels">
+          <h2 class="category-title">
+            <a href="#channels" class="anchor-link">Available Channels</a>
+          </h2>
+          <p class="channels-intro">...</p>
+          <div class="channel-category">
+            <h3 class="channel-category-title">...</h3>
+            <div class="channels-grid">
+              <!-- Channel cards go here -->
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <footer>
+        <p>Generated command reference...</p>
+      </footer>
+    </div>
+  </div>
+</body>
+```
+
+### Command Card Structure
+
+```html
+<div class="command-card">
+  <div class="command-header">
+    <h3 class="command-name">commandname</h3>
+    <div class="command-keywords">
+      <span class="keyword-badge">alias1</span>
+      <span class="keyword-badge">alias2</span>
+      <span class="keyword-badge keyword-expand" data-hidden="...">+3 more</span>
+    </div>
+  </div>
+
+  <p class="command-description">Command description text</p>
+
+  <div class="command-usage">
+    <code>!commandname [args]</code>
+  </div>
+
+  <div class="command-params">
+    <div class="params-header">Parameters:</div>
+    <div class="param-item">
+      <span class="param-name">param1</span>
+      <span class="param-desc">Description</span>
+    </div>
+  </div>
+
+  <div class="command-subcommands">
+    <div class="subcommands-header">Sub-commands:</div>
+    <div class="subcommand-item">
+      <span class="subcommand-name">subcmd</span>
+      <span class="subcommand-desc">Description</span>
+    </div>
+  </div>
+
+  <div class="command-channels">Channel: #specific-channel</div>
+</div>
+```
+
+### Channel Card Structure
+
+```html
+<div class="channel-card">
+  <div class="channel-name">#channel-name</div>
+  <div class="channel-description">Channel description text</div>
+</div>
+```
+
+## Key CSS Classes Reference
+
+### Layout Classes
+
+- `.container` - Main content wrapper with grid layout
+- `.sidebar-nav` - Left sidebar navigation (sticky on desktop)
+- `.main-content` - Right side main content area
+- `.mobile-menu-toggle` - Hamburger menu button (mobile only)
+- `.sidebar-overlay` - Dark overlay when mobile menu is open
+
+### Navigation Classes
+
+- `.nav-header` - Navigation section header
+- `.nav-list` - Main navigation list
+- `.nav-section-header` - Section divider in nav (e.g., "Commands", "Channels")
+- `.nav-sublist` - Nested navigation list
+- `.nav-link` - Navigation link item
+- `.nav-sublink` - Nested/indented navigation link
+
+### Header Classes
+
+- `.header-content` - Header wrapper with background and border
+- `.header-title` - Title container
+- `.intro` - Introduction text paragraph
+- `.channel-highlight` - Highlighted channel names in intro text
+
+### Content Organization Classes
+
+- `.category-section` - Wrapper for each command category
+- `.category-title` - Category heading (e.g., "Weather Commands")
+- `.anchor-link` - Linkable heading anchor
+- `.commands-grid` - CSS Grid container for command cards
+- `.channels-grid` - CSS Grid container for channel cards
+
+### Command Card Classes
+
+- `.command-card` - Individual command card container
+- `.command-header` - Command name and keywords section
+- `.command-name` - Command name heading
+- `.command-keywords` - Container for keyword badges
+- `.keyword-badge` - Individual keyword/alias badge
+- `.keyword-expand` - "+X more" expandable badge
+- `.keyword-hidden` - Hidden keywords (shown on expand)
+- `.command-description` - Command description paragraph
+- `.command-usage` - Usage syntax box
+- `.command-params` - Parameters section wrapper
+- `.params-header` - "Parameters:" label
+- `.param-item` - Individual parameter row
+- `.param-name` - Parameter name
+- `.param-desc` - Parameter description
+- `.command-subcommands` - Sub-commands section wrapper
+- `.subcommands-header` - "Sub-commands:" label
+- `.subcommand-item` - Individual sub-command row
+- `.subcommand-name` - Sub-command name
+- `.subcommand-desc` - Sub-command description
+- `.command-channels` - Channel restriction notice
+
+### Channel Card Classes
+
+- `.channel-category` - Channel category wrapper
+- `.channel-category-title` - Channel category heading
+- `.channels-intro` - Introduction text for channels section
+- `.channel-card` - Individual channel card
+- `.channel-name` - Channel name (e.g., "#general")
+- `.channel-description` - Channel description text
+
+### Utility Classes
+
+- `.atmosphere` - Background gradient effect layer
+- `.grid-overlay` - Subtle grid pattern overlay
+- `.hamburger` - Hamburger menu bar element
+
+## Responsive Breakpoints
+
+The CSS includes two main responsive breakpoints:
+
+- **1200px** - Switches to mobile layout, shows hamburger menu, sidebar becomes slide-out
+- **768px** - Further mobile optimizations for small screens
+
+Mobile behavior:
+- Sidebar slides in from left when hamburger is clicked
+- Overlay appears over main content
+- Grid layouts adjust to single column
+- Font sizes scale down slightly
+
+## Tips for Custom Styles
+
+1. **Start with variables** - Most visual changes can be achieved by only changing the CSS custom properties in `:root`
+
+2. **Use the sample generator** - Run `--sample` to see how your changes look across the entire site
+
+3. **Respect the structure** - The HTML structure and class names are semantic and should remain consistent
+
+4. **Test mobile** - Always check your custom styles at mobile breakpoints (< 1200px, < 768px)
+
+5. **Consider accessibility** - Ensure sufficient color contrast (WCAG AA: 4.5:1 for normal text, 3:1 for large text)
+
+6. **Use monospace for code** - Keep `JetBrains Mono` or similar for `.keyword-badge`, `.command-usage code`, `.param-name`, etc.
+
+7. **Preserve hover states** - Interactive elements should have clear hover/focus states for usability
+
+8. **Don't override `!important` rules** - The base CSS uses `!important` sparingly, mainly for mobile fixes
+
+## Example Style Variations
+
+### Dark High-Contrast
+```css
+:root {
+    --bg-primary: #000000;
+    --bg-card: #0a0a0a;
+    --accent-blue: #00ffff;
+    --accent-cyan: #00ff00;
+    --text-primary: #ffffff;
+    --border-subtle: rgba(255,255,255,0.2);
+}
+```
+
+### Light Professional
+```css
+:root {
+    --bg-primary: #ffffff;
+    --bg-card: #f5f5f5;
+    --accent-blue: #0066cc;
+    --accent-cyan: #0088cc;
+    --text-primary: #333333;
+    --text-secondary: #666666;
+    --border-subtle: rgba(0,0,0,0.1);
+}
+```
+
+### Warm Earth Tones
+```css
+:root {
+    --bg-primary: #2c2416;
+    --bg-card: #3d2f1f;
+    --accent-blue: #d4a574;
+    --accent-cyan: #c9a961;
+    --accent-orange: #e6925b;
+    --text-primary: #f4e8d8;
+    --text-secondary: #b89968;
+}
+```
+
+## JavaScript Functionality
+
+The generated HTML includes minimal JavaScript for:
+
+1. **Mobile menu toggle** - Shows/hides sidebar navigation on mobile
+2. **Keyword expansion** - Expands "+X more" keyword badges when clicked
+3. **Smooth scrolling** - Anchor links scroll smoothly to categories
+
+These behaviors are built-in and don't require customization for basic styling changes.
