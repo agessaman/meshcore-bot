@@ -357,6 +357,9 @@ semantic versioning.
 
 ### Added
 
+- `docs/develop-command-scripts.md` created to assist developers with creating
+  commands that integrate correctly into the MeshCore Bot framework.
+  
 - Shlink is now supported as a URL shortener alongside v.gd / is.gd, selected with
   `short_url_website_service = shlink` under `[External_Data]`. It authenticates with
   `short_url_website_api_key` in an `X-Api-Key` header and needs `short_url_website`
