@@ -331,7 +331,8 @@ max_response_hops = 7
 # Note that a channel sender is a display name, not an identity: MeshCore's
 # channel messages carry no public key, so anyone with the channel key can send
 # under any name. DM warnings therefore only go to a name the radio already has
-# a contact for. See docs/region-warnings.md.
+# a contact for, and the ones dropped for that reason are counted on the Region
+# Warnings page. See docs/region-warnings.md.
 track_traffic = true
 
 # Send a warning to senders whose messages are confirmed unscoped.

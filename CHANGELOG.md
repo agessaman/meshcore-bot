@@ -31,8 +31,11 @@ semantic versioning.
   A channel sender is a display name, not an identity — MeshCore's channel
   messages carry no public key — so DM warnings only go to a name the radio
   already holds a contact for, and a message with no `Name: ` prefix is counted
-  but never warned. `docs/region-warnings.md` says so plainly rather than
-  implying the bot knows who it is talking to.
+  but never warned. Warnings dropped for want of a contact are counted and
+  shown on the page, so a bot that keeps no contacts reports that rather than
+  showing an empty log beside a status card claiming it is sending.
+  `docs/region-warnings.md` says all of this plainly rather than implying the
+  bot knows who it is talking to.
 
 ### Fixed
 

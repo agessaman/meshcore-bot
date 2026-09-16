@@ -33,6 +33,7 @@ process and has no bot object.
 
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -61,6 +62,12 @@ DELIVERY_CHANNEL = "channel"
 ACTION_SENT = "sent"
 ACTION_DRY_RUN = "dry_run"
 ACTION_FAILED = "failed"
+
+# bot_metadata key holding today's count of warnings dropped for want of a
+# contact. A counter rather than event rows: this fires on every unscoped
+# message from an unknown name, ahead of the cooldowns that would rate-limit
+# rows, so logging each one would bury the decisions worth reading.
+WITHHELD_METADATA_KEY = "region_warning.withheld_no_contact"
 
 DEFAULT_MESSAGE = (
     "Heads up: your messages have no region code, so they flood the whole mesh. "
@@ -258,7 +265,7 @@ def traffic_summary(
         # the channel name as the radio reported it, and a rename between
         # "general" and "#General" would otherwise split one channel in two.
         rows = db_manager.execute_query(
-            "SELECT MIN(channel) AS channel, "
+            "SELECT TRIM(MIN(channel)) AS channel, "
             "SUM(scoped_count) AS scoped, "
             "SUM(global_count) AS global_, "
             "SUM(unknown_count) AS unknown "
@@ -340,6 +347,24 @@ def daily_series(
     return series
 
 
+def read_withheld(db_manager: Any, today: str) -> int:
+    """Today's count of warnings dropped because no contact matched the sender.
+
+    Returns 0 for any other date: the counter is a snapshot of one local day,
+    not a running total.
+    """
+    try:
+        raw = db_manager.get_metadata(WITHHELD_METADATA_KEY)
+        if not raw:
+            return 0
+        stored = json.loads(raw)
+        if stored.get("date") != today:
+            return 0
+        return max(0, int(stored.get("count") or 0))
+    except Exception:
+        return 0
+
+
 def recent_events(db_manager: Any, limit: int = 50) -> list[dict[str, Any]]:
     """Most recent warning decisions, newest first."""
     limit = max(1, min(int(limit), 500))
@@ -368,17 +393,20 @@ def warning_budget(
     today = _local_today(config, logger).isoformat()
     used = 0
     delivered = 0
+    previewed = 0
     last_at: Optional[str] = None
     try:
         rows = db_manager.execute_query(
             "SELECT COUNT(*) AS used, "
-            "SUM(CASE WHEN action IN (?, ?) THEN 1 ELSE 0 END) AS delivered "
+            "SUM(CASE WHEN action = ? THEN 1 ELSE 0 END) AS delivered, "
+            "SUM(CASE WHEN action = ? THEN 1 ELSE 0 END) AS previewed "
             "FROM region_warning_events WHERE date(created_at) = ?",
             (ACTION_SENT, ACTION_DRY_RUN, today),
         )
         if rows:
             used = int(rows[0].get("used") or 0)
             delivered = int(rows[0].get("delivered") or 0)
+            previewed = int(rows[0].get("previewed") or 0)
         rows = db_manager.execute_query(
             "SELECT MAX(created_at) AS last_at FROM region_warning_events WHERE action IN (?, ?)",
             (ACTION_SENT, ACTION_DRY_RUN),
@@ -391,12 +419,15 @@ def warning_budget(
     cap = settings.max_warnings_per_day
     return {
         "date": today,
-        # used_today is attempts (what the cap spends); delivered_today is the
-        # subset that reached the mesh. Reporting only the first put a count of
-        # four beside "last warning: none yet".
+        # used_today is attempts (what the cap spends). The rest break that down,
+        # because reporting attempts alone put a count of four beside "last
+        # warning: none yet", and folding dry runs into "sent" would report a
+        # morning's preview as afternoon transmissions.
         "used_today": used,
         "delivered_today": delivered,
-        "failed_today": max(0, used - delivered),
+        "previewed_today": previewed,
+        "failed_today": max(0, used - delivered - previewed),
+        "withheld_today": read_withheld(db_manager, today),
         "cap": cap,
         "remaining": None if cap <= 0 else max(0, cap - used),
         "unlimited": cap <= 0,
@@ -451,6 +482,8 @@ class RegionWarningMonitor:
         self._last_warning_monotonic: Optional[float] = None
         self._last_warning_wall: Optional[datetime] = None
         self._budget_loaded = False
+        self._withheld_date: str = ""
+        self._withheld_count = 0
         if self.settings.enabled:
             self.logger.info(
                 "Region warnings enabled (%s, delivery=%s, cap=%s/day)",
@@ -541,8 +574,13 @@ class RegionWarningMonitor:
             # slot and a cooldown. More to the point, the sender is a display
             # name off the wire: declining to DM a name with no contact behind
             # it keeps the bot from messaging a node on a stranger's say-so.
+            #
+            # Counted, not silent: a bot that keeps no contacts drops *every*
+            # warning here, and without this the page would show an empty log
+            # forever beside a status card claiming it was sending.
+            self._record_withheld()
             self.logger.debug(
-                "Region warning for %s skipped: no contact by that name", sender_id
+                "Region warning for %s withheld: no contact by that name", sender_id
             )
             return
 
@@ -676,6 +714,28 @@ class RegionWarningMonitor:
         except Exception:
             bot_name = ""
         return bool(bot_name) and sender_id.strip().lower() == bot_name.strip().lower()
+
+    def _record_withheld(self) -> None:
+        """Bump today's withheld-for-no-contact counter in ``bot_metadata``.
+
+        Keyed by local date so it resets on its own and needs no retention.
+        """
+        db_manager = getattr(self.bot, "db_manager", None)
+        if not db_manager:
+            return
+        today = self._now().date().isoformat()
+        try:
+            if self._withheld_date != today:
+                stored = read_withheld(db_manager, today)
+                self._withheld_date = today
+                self._withheld_count = stored
+            self._withheld_count += 1
+            db_manager.set_metadata(
+                WITHHELD_METADATA_KEY,
+                json.dumps({"date": today, "count": self._withheld_count}),
+            )
+        except Exception:
+            self.logger.debug("Could not record withheld region warning", exc_info=True)
 
     def _is_known_contact(self, sender_id: str) -> bool:
         """Whether a contact by this name is on the radio.

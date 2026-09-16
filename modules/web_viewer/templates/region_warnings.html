@@ -662,8 +662,13 @@
                 return;
             }
             const used = budget.used_today || 0;
-            const delivered = budget.delivered_today || 0;
             const failed = budget.failed_today || 0;
+            const withheld = budget.withheld_today || 0;
+            // Dry runs and real sends are different events and must not share a
+            // figure: a morning's preview would otherwise read as transmissions.
+            const shown = dryRun
+                ? (budget.previewed_today || 0)
+                : (budget.delivered_today || 0);
             // The cap is a ceiling on new warnings, not a rewrite of history: a
             // lowered cap can leave today already over it, and "7 of 6" would
             // read as a bug rather than as "no more today".
@@ -682,12 +687,17 @@
             // "last warning: none yet" reads as a bug. Attempts still show,
             // because they are what the cap actually spends.
             el('rw-status-budget').innerHTML =
-                '<div class="rw-figure">' + delivered + '</div>'
+                '<div class="rw-figure">' + shown + '</div>'
                 + '<div class="rw-figure-label">'
                 +   (dryRun ? 'would send today' : 'sent today') + '</div>'
                 + (failed
                     ? '<div class="small rw-alert">' + plural(failed, 'failed attempt')
                       + ', also counted</div>'
+                    : '')
+                + (withheld
+                    ? '<div class="small rw-alert">' + withheld + ' withheld: '
+                      + (withheld === 1 ? 'no contact by that name' : 'no contact by those names')
+                      + '</div>'
                     : '')
                 + '<div class="small mt-1">' + capLine + '</div>'
                 + '<div class="small text-muted">' + last + '</div>';
@@ -841,8 +851,16 @@
             const events = this.data.events || [];
             const body = el('rw-events');
             if (!events.length) {
+                const withheld = (this.data.budget || {}).withheld_today || 0;
                 body.innerHTML = '<tr><td colspan="5" class="rw-empty">'
-                    + 'No warnings decided yet. Turn on dry run to see what would be sent.'
+                    + (withheld
+                        // "Nothing happened" and "everything was dropped" look
+                        // identical from an empty table; say which it is.
+                        ? escapeHtml(plural(withheld, 'warning'))
+                          + ' withheld today because no contact matched the sender. '
+                          + 'Direct messages only go to names the radio knows &mdash; '
+                          + 'switch delivery to the channel to reach everyone.'
+                        : 'No warnings decided yet. Turn on dry run to see what would be sent.')
                     + '</td></tr>';
                 return;
             }

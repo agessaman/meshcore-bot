@@ -38,8 +38,10 @@ Only `global` can earn a warning, and only on that positive evidence. Absence of
 What it does instead is refuse to act on a name with nothing behind it:
 
 - A message with no `Name: ` prefix has no attributable sender at all. It is counted, but can never earn anyone a warning — every such message would otherwise share one synthetic identity.
-- DM delivery requires a contact the radio already knows by that name. That does not prove the message came from that node, but it keeps the bot from messaging someone on a stranger's say-so, and it avoids spending cap slots on sends that would fail anyway.
-- The per-sender cooldown and the daily cap bound how much one forged name can cost.
+- DM delivery requires a contact the radio already knows by that name. That does not prove the message came from that node, but it keeps the bot from messaging someone on a stranger's say-so, and it avoids spending cap slots on sends that would fail anyway. Warnings dropped this way are counted and shown on the page, so a bot that keeps no contacts does not silently do nothing.
+
+  Contacts come from adverts, so on a live mesh most active nodes are contacts. This closes off targeting an arbitrary made-up name; it does not stop someone impersonating a real neighbor.
+- The per-sender cooldown and the daily cap bound how much one forged name can cost — six DMs a day, one per name per week, at the defaults.
 
 If that residual risk matters on your mesh, leave warnings in dry run and read the log rather than sending.
 
@@ -77,7 +79,7 @@ Run it in dry run for a few days first. Because dry run spends the same budget, 
 | `mesh_cooldown_minutes` | 30 | Minimum gap between warnings to anyone. 0 disables. |
 | `max_warnings_per_day` | 6 | Hard ceiling per local day. 0 means unlimited. |
 
-Banned users are never warned, and the bot never warns itself (identified by public key, falling back to `[Bot] bot_name`). `channelpause` silences warnings along with everything else on channels.
+Banned users are never warned, and the bot skips messages whose sender name matches `[Bot] bot_name`. On this path that is the only check available, so a node that adopts your bot's name exempts itself — see [Who the sender is](#who-the-sender-is). `channelpause` silences warnings along with everything else on channels.
 
 The daily cap and the per-sender cooldown both count **attempts**, failures included: their job is to bound how much unprompted activity this feature can produce, and a send that reported failure may still have put something on the air before it did. They have to agree — when only the cap counted failures, one unreachable node spent the whole day's budget every day and nobody was ever warned.
 

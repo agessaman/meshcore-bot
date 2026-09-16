@@ -198,6 +198,29 @@ class TestRegionWarningsSave:
         assert budget["used_today"] == 3
         assert budget["delivered_today"] == 1
         assert budget["failed_today"] == 2
+        assert budget["previewed_today"] == 0
+        assert budget["withheld_today"] == 0
+
+    def test_budget_reports_warnings_withheld_for_want_of_a_contact(self, viewer):
+        """The viewer reads the bot's counter, so an empty log can explain itself."""
+        import json
+
+        viewer.db_manager.set_metadata(
+            region_warning.WITHHELD_METADATA_KEY,
+            json.dumps({"date": datetime.now().date().isoformat(), "count": 7}),
+        )
+        budget = viewer.app.test_client().get("/api/region-warnings").get_json()["budget"]
+        assert budget["withheld_today"] == 7
+
+    def test_a_stale_withheld_counter_is_not_reported_as_today(self, viewer):
+        import json
+
+        viewer.db_manager.set_metadata(
+            region_warning.WITHHELD_METADATA_KEY,
+            json.dumps({"date": "2020-01-01", "count": 99}),
+        )
+        budget = viewer.app.test_client().get("/api/region-warnings").get_json()["budget"]
+        assert budget["withheld_today"] == 0
 
     def test_empty_message_falls_back_to_the_default(self, viewer):
         resp = viewer.app.test_client().post(

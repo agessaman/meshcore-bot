@@ -76,6 +76,19 @@ class _FakeDBManager:
         cursor.execute(query, params)
         return [dict(row) for row in cursor.fetchall()]
 
+    def set_metadata(self, key, value):
+        self._conn.execute(
+            "INSERT INTO bot_metadata (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+        self._conn.commit()
+
+    def get_metadata(self, key):
+        row = self._conn.execute(
+            "SELECT value FROM bot_metadata WHERE key = ?", (key,)).fetchone()
+        return row[0] if row else None
+
 
 def _config(**values) -> configparser.ConfigParser:
     config = configparser.ConfigParser()
@@ -287,13 +300,20 @@ class TestLoadSettings:
         settings = region_warning.load_settings(_config(max_warnings_per_day="-1"))
         assert settings.max_warnings_per_day == 6
 
-    def test_percent_in_the_message_is_read_not_swallowed(self):
-        """configparser interpolation would raise on a bare %, losing the wording."""
+    def test_bare_percent_in_the_message_is_read_not_swallowed(self):
+        """A hand-edited bare % must yield the operator's wording, not the default.
+
+        Built with read_string rather than config.set: set() rejects a bare %
+        up front, so it cannot reproduce the value that broke the reload. Read
+        without raw=True, interpolation raises, _get swallows it, and the bot
+        transmits DEFAULT_MESSAGE instead of what the file says.
+        """
         config = configparser.ConfigParser()
-        config.add_section(region_warning.CONFIG_SECTION)
-        config.set(region_warning.CONFIG_SECTION, "message", "100%% of the mesh, really")
+        config.read_string(
+            f"[{region_warning.CONFIG_SECTION}]\nmessage = 100% of the mesh, really\n"
+        )
         settings = region_warning.load_settings(config)
-        assert settings.message == "100%% of the mesh, really"
+        assert settings.message == "100% of the mesh, really"
         assert settings.message != region_warning.DEFAULT_MESSAGE
 
     def test_empty_allowlist_monitors_every_channel(self):
@@ -449,6 +469,26 @@ class TestWarningGates:
                 verdict=VERDICT_GLOBAL, sender_id="Renamed Bot",
                 sender_pubkey="bbbbcccc", channel="#gen")
         monitor.bot.command_manager.send_dm.assert_not_called()
+
+    async def test_withheld_warnings_are_counted_so_the_page_can_say_so(self):
+        """An empty log otherwise looks the same as a mesh with nothing to report."""
+        monitor = _monitor(enabled="true", dry_run="false", min_unscoped_messages=1)
+        monitor.bot.meshcore.get_contact_by_name = lambda name: None
+        await self._flood(monitor, 4, sender="Stranger")
+        budget = region_warning.warning_budget(
+            monitor.bot.db_manager, monitor.settings, monitor.bot.config)
+        assert budget["withheld_today"] == 4
+        assert budget["used_today"] == 0
+
+    async def test_withheld_counter_does_not_run_for_channel_delivery(self):
+        monitor = _monitor(
+            enabled="true", dry_run="false", delivery="channel",
+            min_unscoped_messages=1, mesh_cooldown_minutes=0)
+        monitor.bot.meshcore.get_contact_by_name = lambda name: None
+        await self._flood(monitor, 1, sender="Passer By")
+        budget = region_warning.warning_budget(
+            monitor.bot.db_manager, monitor.settings, monitor.bot.config)
+        assert budget["withheld_today"] == 0
 
     async def test_a_name_with_no_contact_behind_it_is_not_dmed(self):
         """The sender is a display name off the wire, forgeable by anyone."""
@@ -614,6 +654,20 @@ class TestWarningGates:
 
 @pytest.mark.asyncio
 class TestDelivery:
+    async def test_budget_keeps_previews_apart_from_real_sends(self):
+        """A morning of dry run must not read as afternoon transmissions."""
+        monitor = _monitor(
+            enabled="true", dry_run="true", min_unscoped_messages=1,
+            mesh_cooldown_minutes=0, per_sender_cooldown_hours=0)
+        for name in ("Ann", "Bob"):
+            await monitor.observe(
+                verdict=VERDICT_GLOBAL, sender_id=name, sender_pubkey="", channel="#gen")
+        budget = region_warning.warning_budget(
+            monitor.bot.db_manager, monitor.settings, monitor.bot.config)
+        assert budget["previewed_today"] == 2
+        assert budget["delivered_today"] == 0
+        assert budget["used_today"] == 2
+
     async def test_dry_run_records_but_transmits_nothing(self):
         monitor = _monitor(
             enabled="true", dry_run="true", min_unscoped_messages=1, mesh_cooldown_minutes=0)
