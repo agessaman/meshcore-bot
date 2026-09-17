@@ -850,9 +850,13 @@ class PacketCaptureService(BaseServicePlugin):
         return iat, iat + ttl
 
     @staticmethod
-    def _utc_iso_timestamp() -> str:
-        """UTC ISO 8601 timestamp with Z suffix for broad consumer compatibility."""
-        return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    def _utc_iso_timestamp(moment: datetime | None = None) -> str:
+        """UTC ISO 8601 timestamp with Z suffix for broad consumer compatibility.
+
+        Pass ``moment`` to render an instant the caller already has, so every
+        time field in one payload agrees instead of straddling a second boundary.
+        """
+        return (moment or datetime.now(timezone.utc)).isoformat().replace("+00:00", "Z")
 
     @staticmethod
     def _disconnect_reason(rc: int) -> str:
@@ -1190,8 +1194,12 @@ class PacketCaptureService(BaseServicePlugin):
         Returns:
             dict[str, Any]: Formatted packet dictionary.
         """
-        current_time = datetime.now()
-        timestamp = self._utc_iso_timestamp()
+        # One UTC instant for the whole payload. "time"/"date" mirror "timestamp"
+        # because the original script read them off the firmware log line, which
+        # runs on the device's UTC clock — rendering them in the host's local
+        # zone here reads downstream as clock skew of exactly the UTC offset.
+        current_time = datetime.now(timezone.utc)
+        timestamp = self._utc_iso_timestamp(current_time)
 
         # Remove 0x prefix if present
         clean_raw_hex = raw_hex.replace("0x", "").upper()

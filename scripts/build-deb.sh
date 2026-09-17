@@ -22,7 +22,7 @@ fi
 if [[ -z "${VERSION}" ]]; then
     echo "ERROR: Could not read the version from pyproject.toml" >&2
     echo "       Install tomli (Python 3.10) or pass the version explicitly:" >&2
-    echo "       ./scripts/build-deb.sh 1.0.0" >&2
+    echo "       ./scripts/build-deb.sh 1.1.0" >&2
     exit 1
 fi
 

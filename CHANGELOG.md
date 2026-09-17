@@ -6,6 +6,25 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Fixed
+
+- A radio connection is no longer accepted when every channel read times out or
+  returns no usable channel data (#266). Startup and reconnect now retry the
+  channel scan three times, keep an empty result out of the valid cache and
+  database, then fail the connection cleanly so the normal restart/reconnect
+  path can try again instead of running a bot that cannot route replies.
+- Daily Weather Service forecasts now retry transient Open-Meteo failures at
+  5, 15, and 30 minutes after the original run (#264). HTTP 429, 500, 502, 503,
+  and 504 responses plus transport failures use one replaceable retry job,
+  while permanent HTTP errors stop immediately and a successful retry sends
+  the forecast only once.
+- `help <command> <subcommand>` now resolves help for the base command while
+  preserving the full message for context-aware help text (#285). Exact
+  multi-word aliases such as `dad joke` and `ps aux` still take precedence
+  over the base-command fallback.
+
+## [1.1.0] - 2026-09-13
+
 ### Added
 
 - Web viewer now has admin restricted pages (configuration and logs) and
@@ -14,6 +33,34 @@ semantic versioning.
   have access to all other pages such as dashboard, mesh-graph and contacts.
   Admin authentication is enabled by setting `web_viewer_password` in the
   `[Web_Viewer]` configuration section.
+  
+- Local commands and local services (dropped into `local/commands` and
+  `local/service_plugins`) now appear in the web viewer's Plugins settings page
+  alongside the built-in ones, tagged with `source: "local"`. Settings edited
+  there route to `local/config.ini` rather than the base `config.ini`, matching
+  the local overlay the bot already merges at startup via `[Bot] local_dir_path`
+  — a section already tracked in the base config keeps saving there. The web
+  viewer previously only read/wrote against `config.ini`, so any local plugin
+  settings actually stored in the overlay were invisible and unsavable from the
+  UI (#272).
+
+- `[Test_Command] distance_unit` (`auto`, `km`, `mi`) for `{path_distance}` and
+  `{firstlast_distance}` (#275). `auto` (the default) follows the reply language:
+  miles for `en` / `en-US`, kilometres for every other locale, including `en-GB`,
+  which shares the English catalog but not US units. Repeater-selection distances
+  stay in kilometres; only the printed placeholders convert.
+
+- `password` field type for a plugin's `settings_schema`, so a secret like
+  a password for a command renders masked in the web viewer's Plugins page
+  instead of as plain text (#273). It validates and serializes exactly like `str`
+  (the value is still stored in plaintext in `config.ini`); the masking is a
+  UI concern only. The plaintext secret never reaches the browser: the view
+  blanks the value and reports only `has_value`, matching the key-name
+  redaction already used elsewhere, and the field renders as a
+  `type="password"` input with a show/hide toggle. When a value is already
+  saved the field shows a `(saved — enter new value to change)` placeholder
+  and leaving it untouched keeps the stored secret, so an edit elsewhere on
+  the form does not blank it.
 
 - Localized proactive weather messages (daily forecasts, rain nowcasts, weather
   alerts) via `services.weather_service.*` translation keys. `WeatherService` now
@@ -44,6 +91,35 @@ semantic versioning.
   `_response_translator` ContextVar to do this.
 
 ### Fixed
+
+- Service installers no longer leave `venv/bin/pip` and other console scripts
+  pointing at the temporary build environment after an atomic virtualenv swap.
+  `--update-venv` also repairs already-broken shebangs before replacing the old
+  environment (#229).
+
+- Direct messages from newly advertised companions resolve through
+  `pending_contacts` until the next contact snapshot, so a successful command ACK
+  is no longer followed by a failed keyword reply.
+
+- Command matching preserves the original on-air message body while using a
+  cleaned copy for mention and trigger matching. Commands and web-viewer events no
+  longer receive content altered as a side effect of dispatch (#267).
+
+- The dark mesh map uses OpenFreeMap instead of Carto's retired unauthenticated
+  raster tiles. Browsers without the required WebGL support fall back to an
+  inverted OpenStreetMap layer instead of displaying a blank map.
+
+- ARMv7 service and Debian-package installs use the piwheels index and the shipped
+  compatibility constraints consistently, avoiding source builds and incompatible
+  dependency selections on 32-bit Raspberry Pi systems (#269).
+
+- Published packet payloads carry UTC in every time field, not just `timestamp`
+  (#278). `time` and `date` came from a local `datetime.now()` while the
+  `timestamp` beside them was UTC, so a consumer reading the pair off a bot in a
+  non-UTC zone saw a skew of exactly that zone's offset and flagged the observer's
+  clock as wrong. The original script took those two fields off the firmware log
+  line, which runs on the device's UTC clock, so a host-local reading was never
+  intended. All three fields now render one UTC instant.
 
 - Weather output no longer leaks translation key paths into mesh broadcasts. The
   localization pass replaced several `dict.get(key, fallback)` lookups with bare
@@ -275,6 +351,10 @@ semantic versioning.
   text, with no filesystem path and no extra airtime.
 
 ### Changed
+
+- `{elapsed}` in test/keyword replies renders as seconds once the delay is a
+  second or more (`1.5s` instead of `1500ms`), so a typical ack stays shorter
+  (#275). Sub-second times still print as milliseconds.
 
 - Response templates are parsed by a character-by-character state machine rather
   than by splitting on delimiters. Placeholders can now nest (`{"Dist: {d|hops_min:1}"}`)
@@ -586,12 +666,6 @@ considered stable; breaking changes to them will come with a major version bump.
 
 ### Fixed
 
-- Service installers no longer leave `venv/bin/pip` (and other console scripts)
-  with shebangs pointing at the temporary `.venv-build-$$` path after the atomic
-  virtualenv swap. Optional package prompts and documented pip invocations now
-  use `venv/bin/python -m pip`. `--update-venv` rewrites shebangs in place so
-  already-broken installs heal without a full rebuild, and the previous venv is
-  kept until rewrite succeeds (issue #229).
 - Data retention now runs shortly after startup and then daily. It no longer
   requires 24 hours of uninterrupted uptime before the first cleanup, and its
   timer remains independent from the nightly maintenance email.
@@ -889,6 +963,8 @@ hardening fixes.
   v0.9.0.
 - Discord integration, kg7qin integration notes (`f2936be`, `de6279c`).
 
+[Unreleased]: https://github.com/agessaman/meshcore-bot/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/agessaman/meshcore-bot/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/agessaman/meshcore-bot/compare/v0.9.3...v1.0.0
 [0.9.3]: https://github.com/agessaman/meshcore-bot/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/agessaman/meshcore-bot/compare/v0.9.1...v0.9.2

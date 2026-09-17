@@ -781,6 +781,137 @@ class TestTransportReconnect:
         running_svc.on_transport_reconnected.assert_awaited_once()
         stopped_svc.on_transport_reconnected.assert_not_awaited()
 
+    def test_keep_running_through_transport_reconnect(self, tmp_path):
+        """A reconnect clears connected; the main loop and scheduler must not treat that as a stop."""
+        bot = self._make_bot(tmp_path, connection_type="tcp")
+        bot.meshcore = None
+        # _schedule_transport_reconnect sets this before handing off to the task
+        bot._transport_reconnect_in_progress = True
+        seen_during_connect = []
+
+        async def fake_connect():
+            seen_during_connect.append((bot.connected, bot.keep_running))
+            bot.connected = True
+            return True
+
+        bot.connect = fake_connect
+        asyncio.run(bot._run_transport_reconnect())
+
+        assert seen_during_connect == [(False, True)]
+        assert bot._transport_reconnect_in_progress is False
+        assert bot.keep_running is True
+
+    def test_keep_running_false_after_reconnect_gives_up(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        bot._transport_reconnect_in_progress = True
+
+        async def fake_attempt():
+            bot.connected = False
+            return False
+
+        bot._attempt_reconnect = fake_attempt
+        asyncio.run(bot._run_transport_reconnect())
+        assert bot.keep_running is False
+
+    def test_keep_running_false_on_shutdown_mid_reconnect(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        bot.connected = False
+        bot._transport_reconnect_in_progress = True
+        assert bot.keep_running is True
+        bot._shutdown_event.set()
+        assert bot.keep_running is False
+
+    def test_keep_running_through_web_viewer_reconnect(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        bot.meshcore = MagicMock()
+        bot.meshcore.disconnect = AsyncMock()
+        seen_during_connect = []
+
+        async def fake_connect():
+            seen_during_connect.append((bot.connected, bot.keep_running))
+            return False
+
+        bot.connect = fake_connect
+        assert asyncio.run(bot.reconnect_radio()) is False
+        assert seen_during_connect == [(False, True)]
+        assert bot._radio_relinks_in_progress == 0
+        # A failed manual reconnect still ends the loops, as before
+        assert bot.keep_running is False
+
+    def test_failed_post_connect_initialization_cleans_up_and_stops(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        old_meshcore = MagicMock()
+        old_meshcore.disconnect = AsyncMock()
+        bot.meshcore = old_meshcore
+
+        new_meshcore = MagicMock()
+        new_meshcore.is_connected = True
+        new_meshcore.self_info = {}
+        new_meshcore.disconnect = AsyncMock()
+
+        bot.wait_for_contacts = AsyncMock()
+        bot.channel_manager.fetch_channels = AsyncMock()
+        bot.setup_message_handlers = AsyncMock(
+            side_effect=ConnectionError("message setup failed")
+        )
+
+        with patch(
+            "modules.core.meshcore.MeshCore.create_serial",
+            AsyncMock(return_value=new_meshcore),
+        ):
+            assert asyncio.run(bot.reconnect_radio()) is False
+
+        old_meshcore.disconnect.assert_awaited_once()
+        new_meshcore.disconnect.assert_awaited_once()
+        assert bot.meshcore is None
+        assert bot.connected is False
+        assert bot._radio_relinks_in_progress == 0
+        assert bot.keep_running is False
+
+    def test_connect_fails_when_channel_fetch_never_returns_channels(self, tmp_path):
+        bot = self._make_bot(tmp_path, connection_type="serial")
+        new_meshcore = MagicMock()
+        new_meshcore.is_connected = True
+        new_meshcore.self_info = {}
+        new_meshcore.disconnect = AsyncMock()
+
+        bot.wait_for_contacts = AsyncMock()
+        bot.channel_manager.fetch_channels = AsyncMock(return_value=False)
+        bot.setup_message_handlers = AsyncMock()
+
+        with patch(
+            "modules.core.meshcore.MeshCore.create_serial",
+            AsyncMock(return_value=new_meshcore),
+        ):
+            assert asyncio.run(bot.connect()) is False
+
+        new_meshcore.disconnect.assert_awaited_once()
+        bot.setup_message_handlers.assert_not_awaited()
+        assert bot.meshcore is None
+        assert bot.connected is False
+
+    def test_keep_running_through_web_viewer_reboot(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        bot.meshcore = MagicMock()
+        bot.meshcore.is_connected = True
+        bot.meshcore.commands.reboot = AsyncMock()
+        bot.meshcore.disconnect = AsyncMock()
+        seen = []
+
+        async def fake_connect():
+            bot.connected = True
+            return True
+
+        async def instant_sleep(*_args, **_kwargs):
+            seen.append((bot.connected, bot.keep_running))
+
+        bot.connect = fake_connect
+        with patch("asyncio.sleep", instant_sleep):
+            assert asyncio.run(bot.reboot_radio()) is True
+        assert seen == [(False, True)]
+        assert bot._radio_relinks_in_progress == 0
+        assert bot.keep_running is True
+
 
 class TestRadioOfflineState:
     """Tests for _record_send_failure / _record_send_success / is_radio_offline."""

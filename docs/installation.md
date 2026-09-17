@@ -21,7 +21,7 @@ isolated environment, which sidesteps PEP 668 (`externally-managed-environment`)
 Debian 12+, Ubuntu 23.04+, Fedora and Arch without you managing a virtualenv:
 
 ```bash
-pipx install "git+https://github.com/agessaman/meshcore-bot@v1.0.0"
+pipx install "git+https://github.com/agessaman/meshcore-bot@v1.1.0"
 ```
 
 Upgrade to a newer tag with `pipx install --force "git+https://github.com/agessaman/meshcore-bot@vX.Y.Z"`.

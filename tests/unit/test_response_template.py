@@ -169,6 +169,30 @@ def test_get_response_format_test_command_over_keywords():
 
 
 @pytest.mark.unit
+def test_test_command_decodes_keyword_newline_escapes():
+    bot = MagicMock()
+    bot.logger = Mock()
+    bot.config = configparser.ConfigParser()
+    bot.config.add_section("Bot")
+    bot.config.set("Bot", "bot_name", "TestBot")
+    bot.config.add_section("Channels")
+    bot.config.set("Channels", "monitor_channels", "general")
+    bot.config.set("Channels", "respond_to_dms", "true")
+    bot.config.add_section("Keywords")
+    bot.config.set("Keywords", "test", r"Line 1\nLine 2")
+    bot.config.add_section("Test_Command")
+    bot.config.set("Test_Command", "enabled", "true")
+    bot.config.add_section("Path_Command")
+    bot.config.set("Path_Command", "recency_weight", "0.2")
+    bot.translator = MagicMock()
+    bot.prefix_hex_chars = 2
+
+    cmd = MeshTestCommand(bot)
+
+    assert cmd.get_response_format() == "Line 1\nLine 2"
+
+
+@pytest.mark.unit
 def test_test_command_response_expands_rssi_placeholder():
     bot = MagicMock()
     bot.logger = Mock()

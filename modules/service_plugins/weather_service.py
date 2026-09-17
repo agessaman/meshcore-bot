@@ -5,31 +5,25 @@ Provides scheduled weather forecasts and alert monitoring
 """
 
 import asyncio
+import contextlib
 import json
 import math
 import re
 import threading
 import time
 import xml.dom.minidom
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import ephem
 import requests
+from apscheduler.jobstores.base import JobLookupError
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.date import DateTrigger
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-
-# Try to import MQTT client (use paho-mqtt like packet capture service)
-try:
-    import paho.mqtt.client as mqtt
-    MQTT_AVAILABLE = True
-except ImportError:
-    MQTT_AVAILABLE = False
-    mqtt = None
-
-import contextlib
 
 from .. import alert_format
 from ..commands.rain_command import (
@@ -47,6 +41,28 @@ from ..commands.rain_command import (
 from ..url_shortener import shorten_url_sync
 from ..utils import format_temperature_high_low, get_config_timezone
 from .base_service import BaseServicePlugin
+
+# Try to import MQTT client (use paho-mqtt like packet capture service)
+try:
+    import paho.mqtt.client as mqtt
+    MQTT_AVAILABLE = True
+except ImportError:
+    MQTT_AVAILABLE = False
+    mqtt = None
+
+
+FORECAST_MISFIRE_GRACE_SECONDS = 300
+FORECAST_RETRY_OFFSETS_SECONDS = (300, 900, 1800)
+FORECAST_RETRY_JOB_ID = "weather_daily_forecast_retry"
+TRANSIENT_FORECAST_HTTP_STATUSES = frozenset({429, 500, 502, 503, 504})
+
+
+@dataclass(frozen=True)
+class ForecastFetchResult:
+    """Forecast text plus whether a later attempt could reasonably succeed."""
+
+    text: str
+    retryable: bool = False
 
 
 class WeatherService(BaseServicePlugin):
@@ -181,6 +197,9 @@ class WeatherService(BaseServicePlugin):
         self._lightning_task: Optional[asyncio.Task] = None
         self._rain_task: Optional[asyncio.Task] = None
         self._forecast_scheduler: Optional[BackgroundScheduler] = None
+        self._forecast_cycle_lock = threading.Lock()
+        self._forecast_cycle_id = 0
+        self._forecast_sent_cycle_id: Optional[int] = None
         self._running = False
 
         # Rain nowcast episode state (dedup): which notice has fired for the
@@ -406,6 +425,7 @@ class WeatherService(BaseServicePlugin):
                 pass
 
         if self._forecast_scheduler is not None:
+            self._cancel_forecast_retry()
             try:
                 self._forecast_scheduler.shutdown(wait=False)
             except Exception as e:
@@ -433,7 +453,13 @@ class WeatherService(BaseServicePlugin):
                 self._forecast_scheduler = None
 
             tz, _ = get_config_timezone(self.bot.config, self.logger)
-            self._forecast_scheduler = BackgroundScheduler(timezone=tz)
+            self._forecast_scheduler = BackgroundScheduler(
+                timezone=tz,
+                job_defaults={
+                    'misfire_grace_time': FORECAST_MISFIRE_GRACE_SECONDS,
+                    'coalesce': True,
+                },
+            )
             self._forecast_scheduler.add_job(
                 self._send_daily_forecast,
                 CronTrigger(hour=hour, minute=minute),
@@ -449,6 +475,85 @@ class WeatherService(BaseServicePlugin):
             )
         except Exception as e:
             self.logger.error(f"Error setting up daily forecast schedule: {e}")
+
+    def _cancel_forecast_retry(self) -> None:
+        scheduler = self._forecast_scheduler
+        if scheduler is None:
+            return
+        try:
+            scheduler.remove_job(FORECAST_RETRY_JOB_ID)
+        except JobLookupError:
+            pass
+
+    def _begin_forecast_cycle(self) -> tuple[int, datetime]:
+        with self._forecast_cycle_lock:
+            self._forecast_cycle_id += 1
+            cycle_id = self._forecast_cycle_id
+            self._forecast_sent_cycle_id = None
+        self._cancel_forecast_retry()
+        return cycle_id, datetime.now(timezone.utc)
+
+    def _forecast_cycle_is_pending(self, cycle_id: int) -> bool:
+        with self._forecast_cycle_lock:
+            return (
+                cycle_id == self._forecast_cycle_id
+                and self._forecast_sent_cycle_id != cycle_id
+            )
+
+    def _claim_forecast_send(self, cycle_id: int) -> bool:
+        with self._forecast_cycle_lock:
+            if (
+                cycle_id != self._forecast_cycle_id
+                or self._forecast_sent_cycle_id == cycle_id
+            ):
+                return False
+            self._forecast_sent_cycle_id = cycle_id
+            return True
+
+    def _schedule_forecast_retry(
+        self,
+        cycle_id: int,
+        cycle_started_at: datetime,
+        retry_attempt: int,
+    ) -> None:
+        next_attempt = retry_attempt + 1
+        if next_attempt > len(FORECAST_RETRY_OFFSETS_SECONDS):
+            self.logger.warning(
+                "Daily weather forecast retries exhausted after %d attempts",
+                len(FORECAST_RETRY_OFFSETS_SECONDS),
+            )
+            return
+
+        scheduler = self._forecast_scheduler
+        if scheduler is None or not self._running:
+            return
+
+        retry_at = cycle_started_at + timedelta(
+            seconds=FORECAST_RETRY_OFFSETS_SECONDS[next_attempt - 1]
+        )
+        now = datetime.now(timezone.utc)
+        if retry_at <= now:
+            retry_at = now + timedelta(seconds=1)
+
+        with self._forecast_cycle_lock:
+            if (
+                cycle_id != self._forecast_cycle_id
+                or self._forecast_sent_cycle_id == cycle_id
+            ):
+                return
+            scheduler.add_job(
+                self._send_daily_forecast_retry,
+                trigger=DateTrigger(run_date=retry_at),
+                id=FORECAST_RETRY_JOB_ID,
+                args=[cycle_id, cycle_started_at, next_attempt],
+                replace_existing=True,
+            )
+        self.logger.warning(
+            "Daily weather forecast will retry at %s (attempt %d/%d)",
+            retry_at.isoformat(),
+            next_attempt,
+            len(FORECAST_RETRY_OFFSETS_SECONDS),
+        )
 
     async def _sunrise_sunset_forecast_loop(self) -> None:
         """Background task for sunrise/sunset-based forecasts.
@@ -510,14 +615,41 @@ class WeatherService(BaseServicePlugin):
         if not self._running:
             return
 
-        self.logger.info(f"📅 Sending daily weather forecast at {datetime.now().strftime('%H:%M:%S')}")
+        cycle_id, cycle_started_at = self._begin_forecast_cycle()
+        self._run_daily_forecast(cycle_id, cycle_started_at, retry_attempt=0)
+
+    def _send_daily_forecast_retry(
+        self,
+        cycle_id: int,
+        cycle_started_at: datetime,
+        retry_attempt: int,
+    ) -> None:
+        if not self._running or not self._forecast_cycle_is_pending(cycle_id):
+            return
+        self._run_daily_forecast(cycle_id, cycle_started_at, retry_attempt)
+
+    def _run_daily_forecast(
+        self,
+        cycle_id: int,
+        cycle_started_at: datetime,
+        retry_attempt: int,
+    ) -> None:
+        self.logger.info(
+            "📅 Sending daily weather forecast at %s%s",
+            datetime.now().strftime('%H:%M:%S'),
+            f" (retry {retry_attempt})" if retry_attempt else "",
+        )
 
         # Use the main event loop if available, otherwise create a new one
         # This prevents deadlock when the main loop is already running
         if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
             # Schedule coroutine in the running main event loop
             future = asyncio.run_coroutine_threadsafe(
-                self._send_daily_forecast_async(),
+                self._send_daily_forecast_async(
+                    cycle_id,
+                    cycle_started_at,
+                    retry_attempt,
+                ),
                 self.bot.main_event_loop
             )
             # Wait for completion (with timeout to prevent indefinite blocking)
@@ -533,32 +665,64 @@ class WeatherService(BaseServicePlugin):
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
 
-            loop.run_until_complete(self._send_daily_forecast_async())
+            loop.run_until_complete(
+                self._send_daily_forecast_async(
+                    cycle_id,
+                    cycle_started_at,
+                    retry_attempt,
+                )
+            )
 
-    async def _send_daily_forecast_async(self) -> None:
+    async def _send_daily_forecast_async(
+        self,
+        cycle_id: Optional[int] = None,
+        cycle_started_at: Optional[datetime] = None,
+        retry_attempt: int = 0,
+    ) -> bool:
         """Send daily weather forecast (async implementation).
 
         Fetches the forecast and sends it to the configured channel.
         Uses Open-Meteo for weather data and manages its own error logging.
         """
+        if cycle_id is not None and not self._forecast_cycle_is_pending(cycle_id):
+            return False
+
         try:
-            # Get weather forecast
-            forecast_text = await self._get_weather_forecast()
+            result = await self._get_weather_forecast_result()
 
             error_label = self._translate('services.weather_service.error_fetching')
-            if forecast_text and forecast_text != error_label:
-                # Send to configured channel
+            if result.retryable:
+                if cycle_id is not None and cycle_started_at is not None:
+                    self._schedule_forecast_retry(
+                        cycle_id,
+                        cycle_started_at,
+                        retry_attempt,
+                    )
+                self.logger.warning("Failed to get weather forecast for daily update")
+                return False
+
+            if result.text and result.text != error_label:
+                if cycle_id is not None and not self._claim_forecast_send(cycle_id):
+                    return False
+                self._cancel_forecast_retry()
                 daily_label = self._translate('services.weather_service.daily_weather')
-                await self.bot.command_manager.send_channel_message(
+                sent = await self.bot.command_manager.send_channel_message(
                     self.weather_channel,
-                    f"🌤️ {daily_label}: {forecast_text}",
+                    f"🌤️ {daily_label}: {result.text}",
                     scope=self.get_mesh_flood_scope(),
                 )
-                self.logger.info(f"Daily weather forecast sent to {self.weather_channel}")
+                if sent:
+                    self.logger.info(f"Daily weather forecast sent to {self.weather_channel}")
+                else:
+                    self.logger.warning(f"Daily weather forecast could not be sent to {self.weather_channel}")
+                return bool(sent)
             else:
+                self._cancel_forecast_retry()
                 self.logger.warning("Failed to get weather forecast for daily update")
+                return False
         except Exception as e:
             self.logger.error(f"Error sending daily weather forecast: {e}")
+            return False
 
     async def _get_weather_forecast(self) -> str:
         """Get weather forecast for configured position using Open-Meteo API.
@@ -566,6 +730,10 @@ class WeatherService(BaseServicePlugin):
         Returns:
             str: Formatted forecast string or error message.
         """
+        return (await self._get_weather_forecast_result()).text
+
+    async def _get_weather_forecast_result(self) -> ForecastFetchResult:
+        """Fetch a forecast and retain whether a scheduled retry is appropriate."""
         try:
             # Open-Meteo API endpoint
             api_url = "https://api.open-meteo.com/v1/forecast"
@@ -593,17 +761,23 @@ class WeatherService(BaseServicePlugin):
                 )
                 if not response.ok:
                     self.logger.warning(f"Error fetching weather from Open-Meteo: HTTP {response.status_code}")
-                    return self._translate('services.weather_service.error_fetching')
+                    return ForecastFetchResult(
+                        self._translate('services.weather_service.error_fetching'),
+                        retryable=response.status_code in TRANSIENT_FORECAST_HTTP_STATUSES,
+                    )
             except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
                 self.logger.warning(f"Timeout/connection error fetching weather: {e}")
-                return self._translate('services.weather_service.error_fetching')
+                return ForecastFetchResult(
+                    self._translate('services.weather_service.error_fetching'),
+                    retryable=True,
+                )
 
             # Extract current conditions
             current = data.get('current', {})
             daily = data.get('daily', {})
 
             if not current or not daily:
-                return self._translate('services.weather_service.no_data')
+                return ForecastFetchResult(self._translate('services.weather_service.no_data'))
 
             # Current conditions
             temp = int(current.get('temperature_2m', 0))
@@ -707,13 +881,13 @@ class WeatherService(BaseServicePlugin):
                         )
                         forecast_text += f" | {tomorrow_label}: {tomorrow_emoji}{tomorrow_desc} {hl}"
 
-            return forecast_text
+            return ForecastFetchResult(forecast_text)
 
         except Exception as e:
             self.logger.error(f"Error getting weather forecast: {e}")
             import traceback
             self.logger.debug(traceback.format_exc())
-            return self._translate('services.weather_service.error_fetching')
+            return ForecastFetchResult(self._translate('services.weather_service.error_fetching'))
 
     def _degrees_to_direction(self, degrees: float) -> str:
         """Convert wind direction in degrees to compass direction.

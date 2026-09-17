@@ -425,6 +425,8 @@ class MeshCoreBot:
         # Transport reconnect (serial/BLE/TCP) — lock created when event loop runs
         self._transport_reconnect_lock: asyncio.Lock | None = None
         self._transport_reconnect_in_progress = False
+        # Web-viewer reboot/reconnect ops in flight (a count, since they can overlap)
+        self._radio_relinks_in_progress = 0
 
         # Serialize host->radio commands: one companion frame in flight at a
         # time, with a minimum inter-command gap so the firmware's single
@@ -465,6 +467,24 @@ class MeshCoreBot:
         automatically when connect() succeeds after a power cycle.
         """
         return bool(getattr(self, '_radio_zombie_detected', False))
+
+    @property
+    def keep_running(self) -> bool:
+        """True while the main loop and scheduler thread should stay alive.
+
+        ``connected`` alone is not enough: it drops to False while a transport
+        reconnect or a web-viewer reboot/reconnect re-establishes the link, and
+        treating that window as a stop kills the bot on every transport blip.
+        A reconnect that gives up leaves ``connected`` False and clears its
+        in-progress flag, which still ends the loops.
+        """
+        if self._shutdown_event.is_set():
+            return False
+        return bool(
+            self.connected
+            or getattr(self, '_transport_reconnect_in_progress', False)
+            or getattr(self, '_radio_relinks_in_progress', 0)
+        )
 
     @property
     def is_radio_offline(self) -> bool:
@@ -1575,7 +1595,7 @@ long_jokes = false
             self.logger.info(f"Received shutdown signal {signum}, initiating graceful shutdown...")
             # Set shutdown event to break main loop
             self._shutdown_event.set()
-            # Set connected to False to break the while loop in start()
+            # Reflect the disconnected state for cleanup and status reporting
             self.connected = False
 
         # Register signal handlers
@@ -1750,6 +1770,8 @@ long_jokes = false
         Returns:
             bool: True if connection was successful, False otherwise.
         """
+        new_meshcore = None
+        connection_ready = False
         try:
             self.logger.info("Connecting to MeshCore node...")
 
@@ -1773,7 +1795,7 @@ long_jokes = false
                 # Create serial connection
                 serial_port = self.config.get('Connection', 'serial_port', fallback='/dev/ttyUSB0')
                 self.logger.info(f"Connecting via serial port: {serial_port}")
-                self.meshcore = await meshcore.MeshCore.create_serial(serial_port, debug=radio_debug)
+                new_meshcore = await meshcore.MeshCore.create_serial(serial_port, debug=radio_debug)
             elif connection_type == 'tcp':
                 # Create TCP connection
                 hostname = self.config.get('Connection', 'hostname', fallback=None)
@@ -1782,12 +1804,14 @@ long_jokes = false
                     self.logger.error("TCP connection requires 'hostname' to be set in config")
                     return False
                 self.logger.info(f"Connecting via TCP: {hostname}:{tcp_port}")
-                self.meshcore = await meshcore.MeshCore.create_tcp(hostname, tcp_port, debug=radio_debug)
+                new_meshcore = await meshcore.MeshCore.create_tcp(hostname, tcp_port, debug=radio_debug)
             else:
                 # Create BLE connection (default)
                 ble_device_name = self.config.get('Connection', 'ble_device_name', fallback=None)
                 self.logger.info("Connecting via BLE" + (f" to device: {ble_device_name}" if ble_device_name else ""))
-                self.meshcore = await meshcore.MeshCore.create_ble(ble_device_name, debug=radio_debug)
+                new_meshcore = await meshcore.MeshCore.create_ble(ble_device_name, debug=radio_debug)
+
+            self.meshcore = new_meshcore
 
             # Route meshcore library output through the bot's handlers (including log file)
             self._configure_meshcore_debug_logging(radio_debug)
@@ -1815,8 +1839,11 @@ long_jokes = false
                 # Wait for contacts to load
                 await self.wait_for_contacts()
 
-                # Fetch channels
-                await self.channel_manager.fetch_channels()
+                # A connected transport without channel data cannot route replies.
+                if not await self.channel_manager.fetch_channels():
+                    raise ConnectionError(
+                        "MeshCore node returned no channels after retries"
+                    )
 
                 # Setup message event handlers
                 await self.setup_message_handlers()
@@ -1829,6 +1856,7 @@ long_jokes = false
 
                 await self._notify_services_transport_reconnected()
 
+                connection_ready = True
                 return True
             else:
                 self.logger.error("Failed to connect to MeshCore node")
@@ -1837,6 +1865,21 @@ long_jokes = false
         except (OSError, ConnectionError, TimeoutError, ValueError, AttributeError) as e:
             self.logger.error(f"Connection failed: {e}")
             return False
+        finally:
+            if not connection_ready:
+                self.connected = False
+                self._update_radio_connected_metadata(False)
+                if new_meshcore is not None:
+                    try:
+                        await asyncio.wait_for(new_meshcore.disconnect(), timeout=5.0)
+                    except Exception as e:
+                        self.logger.warning(
+                            "Could not clean up incomplete MeshCore connection: %s",
+                            e,
+                        )
+                    finally:
+                        if self.meshcore is new_meshcore:
+                            self.meshcore = None
 
     async def _notify_services_transport_reconnected(self) -> None:
         """Re-bind mesh event subscriptions on running services after transport reconnect."""
@@ -1865,10 +1908,11 @@ long_jokes = false
         """Disconnect from the radio, which also stops the bot.
 
         Despite the name, this is not a radio-only operation: ``run()``ing loops
-        while ``self.connected`` is true, so clearing it ends the main loop and the
-        process exits. The web viewer therefore labels the control "Stop Bot" and
-        confirms first (issue #240). Keep that in mind before calling this from
-        anywhere that only means to drop the radio link.
+        while ``keep_running`` is true. This operation clears ``connected`` without
+        setting a reconnect/relink flag, so it ends the main loop and the process
+        exits. The web viewer therefore labels the control "Stop Bot" and confirms
+        first (issue #240). Keep that in mind before calling this from anywhere that
+        only means to drop the radio link.
 
         Called by the scheduler via the operation queue.
         """
@@ -1890,6 +1934,8 @@ long_jokes = false
     async def reboot_radio(self) -> bool:
         """Send firmware reboot command, disconnect, wait for reboot, then reconnect."""
         import asyncio
+        # Hold the loops open (see keep_running) while connected is False
+        self._radio_relinks_in_progress += 1
         try:
             if self.meshcore and self.meshcore.is_connected:
                 self.logger.info("Sending firmware reboot command")
@@ -1912,10 +1958,14 @@ long_jokes = false
         except Exception as e:
             self.logger.error(f"Error rebooting radio: {e}")
             return False
+        finally:
+            self._radio_relinks_in_progress -= 1
 
     async def reconnect_radio(self) -> bool:
         """Disconnect then reconnect. Called by scheduler for connect ops."""
         import asyncio
+        # Hold the loops open (see keep_running) while connected is False
+        self._radio_relinks_in_progress += 1
         try:
             if self.meshcore:
                 try:
@@ -1928,6 +1978,8 @@ long_jokes = false
         except Exception as e:
             self.logger.error(f"Error reconnecting radio: {e}")
             return False
+        finally:
+            self._radio_relinks_in_progress -= 1
 
     def _handle_serial_probe_error(self, threshold: int, interval: int) -> bool:
         """Serial/BLE: failed get_time may indicate zombie firmware (no transport reconnect)."""
@@ -2369,7 +2421,7 @@ long_jokes = false
         # Keep running
         self.logger.info("Bot is running. Press Ctrl+C to stop.")
         try:
-            while self.connected and not self._shutdown_event.is_set():
+            while self.keep_running:
                 # Backup: meshcore transport dropped (DISCONNECTED event is primary)
                 if self.meshcore and not self.meshcore.is_connected:
                     await self._schedule_transport_reconnect('poll_detected')

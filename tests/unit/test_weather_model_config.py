@@ -124,3 +124,21 @@ def test_weather_service_unset_weather_model_uses_best_match(mock_logger):
 
     asyncio.run(service._get_weather_forecast())
     assert captured["params"]["models"] == "best_match"
+
+
+def test_weather_daily_job_tolerates_short_scheduler_delay(mock_logger):
+    config = configparser.ConfigParser()
+    config.add_section("Weather")
+    config.add_section("Weather_Service")
+    config.set("Weather_Service", "my_position_lat", "47.6")
+    config.set("Weather_Service", "my_position_lon", "-122.3")
+    config.set("Weather_Service", "weather_alarm", "06:00")
+
+    service = WeatherService(_build_bot(mock_logger, config))
+    service._setup_daily_forecast()
+    try:
+        job = service._forecast_scheduler.get_job("weather_daily_forecast")
+        assert job.misfire_grace_time == 300
+        assert job.coalesce is True
+    finally:
+        service._forecast_scheduler.shutdown(wait=False)

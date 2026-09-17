@@ -263,7 +263,7 @@ independent of this setting.
   "model": "Heltec V3",
   "firmware_version": "v3.1.2",
   "radio": "915000000,250,9,8",
-  "client_version": "meshcore-bot/v1.0.0",
+  "client_version": "meshcore-bot/v1.1.0",
   "stats": {
     "rx_packets": 1234,
     "tx_packets": 567

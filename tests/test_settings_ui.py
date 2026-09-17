@@ -15,6 +15,7 @@ import pytest
 
 from modules.ini_writer import backup_config, update_ini_values
 from modules.settings_schema import (
+    _assemble_entry,
     build_plugin_settings_view,
     read_enabled,
     to_config_string,
@@ -175,6 +176,20 @@ class TestValidateField:
         assert to_config_string({"type": "bool"}, True) == "true"
         assert to_config_string({"type": "list"}, ["a", "b"]) == "a, b"
 
+    def test_password_validates_like_str(self):
+        f = {"key": "x", "type": "password", "pattern": r"[0-9a-f]{4}"}
+        assert validate_field(f, "beef")[0]
+        assert not validate_field(f, "zzzz")[0]
+
+    def test_password_required_empty_fails(self):
+        ok, _, err = validate_field(
+            {"key": "x", "type": "password", "required": True, "label": "API Password"}, ""
+        )
+        assert not ok and "required" in err
+
+    def test_password_to_config_string(self):
+        assert to_config_string({"type": "password"}, "s3cret") == "s3cret"
+
 
 # ---------------------------------------------------------------------------
 # settings_schema.read_enabled — legacy aliases
@@ -238,6 +253,202 @@ class TestBuildView:
                 assert any(f["key"].lower() == "channels" for f in e["fields"]), (
                     f"{e['name']} is missing the injected channels field"
                 )
+
+    def test_builtin_commands_and_services_are_base_source(self, view):
+        ping = self._entry(view, "command", "ping")
+        earthquake = self._entry(view, "service", "earthquake")
+        assert ping is not None and ping["source"] == "base"
+        assert earthquake is not None and earthquake["source"] == "base"
+
+
+class TestBuildViewLocalCommandSource:
+    """Local commands (discovered via _discover_local_classes) must be tagged
+    source='local' so the web viewer's save endpoint writes to the local
+    config overlay instead of the base config.ini."""
+
+    def test_local_command_gets_local_source(self, tmp_path):
+        local_dir = tmp_path / "local_commands"
+        local_dir.mkdir()
+        (local_dir / "dummy_command.py").write_text(
+            "from modules.commands.base_command import BaseCommand\n\n"
+            "class DummyCommand(BaseCommand):\n"
+            "    name = 'dummy'\n"
+            "    keywords = ['dummy']\n\n"
+            "    async def execute(self, message):\n"
+            "        return None\n",
+            encoding="utf-8",
+        )
+        cfg = configparser.ConfigParser()
+        view = build_plugin_settings_view(cfg, local_commands_dir=str(local_dir))
+        entry = next(
+            (e for e in view if e["kind"] == "command" and e["name"] == "dummy"), None
+        )
+        assert entry is not None
+        assert entry["source"] == "local"
+        # Sanity: built-ins discovered in the same view stay 'base'.
+        ping = next(
+            (e for e in view if e["kind"] == "command" and e["name"] == "ping"), None
+        )
+        assert ping is not None and ping["source"] == "base"
+
+
+class TestBuildViewLocalServiceSource:
+    """Local services (discovered via _discover_local_classes) must be tagged
+    source='local' so the web viewer's save endpoint writes to the local
+    config overlay instead of the base config.ini."""
+
+    def test_local_service_gets_local_source(self, tmp_path):
+        local_dir = tmp_path / "local_services"
+        local_dir.mkdir()
+        (local_dir / "dummy_service.py").write_text(
+            "from modules.service_plugins.base_service import BaseServicePlugin\n\n"
+            "class DummyService(BaseServicePlugin):\n"
+            "    name = 'dummy'\n\n"
+            "    async def start(self):\n"
+            "        return None\n\n"
+            "    async def stop(self):\n"
+            "        return None\n",
+            encoding="utf-8",
+        )
+        cfg = configparser.ConfigParser()
+        view = build_plugin_settings_view(cfg, local_services_dir=str(local_dir))
+        entry = next(
+            (e for e in view if e["kind"] == "service" and e["name"] == "dummy"), None
+        )
+        assert entry is not None
+        assert entry["source"] == "local"
+        # Sanity: built-ins discovered in the same view stay 'base'.
+        earthquake = next(
+            (e for e in view if e["kind"] == "service" and e["name"] == "earthquake"),
+            None,
+        )
+        assert earthquake is not None and earthquake["source"] == "base"
+
+
+class TestBuildViewLocalCommandAndServiceCoexist:
+    """Local commands and local services can be discovered together in a
+    single view build without interfering with each other."""
+
+    def test_local_command_and_service_both_appear(self, tmp_path):
+        local_commands_dir = tmp_path / "local_commands"
+        local_commands_dir.mkdir()
+        (local_commands_dir / "common.py").write_text(
+            "PLUGIN_NAME = 'dummycmd'\n",
+            encoding="utf-8",
+        )
+        (local_commands_dir / "dummy_command.py").write_text(
+            "from modules.commands.base_command import BaseCommand\n"
+            "from .common import PLUGIN_NAME\n\n"
+            "class DummyCommand(BaseCommand):\n"
+            "    name = PLUGIN_NAME\n"
+            "    keywords = ['dummycmd']\n\n"
+            "    async def execute(self, message):\n"
+            "        return None\n",
+            encoding="utf-8",
+        )
+
+        local_services_dir = tmp_path / "local_services"
+        local_services_dir.mkdir()
+        (local_services_dir / "common.py").write_text(
+            "PLUGIN_NAME = 'dummysvc'\n",
+            encoding="utf-8",
+        )
+        (local_services_dir / "dummy_service.py").write_text(
+            "from modules.service_plugins.base_service import BaseServicePlugin\n"
+            "from .common import PLUGIN_NAME\n\n"
+            "class DummyService(BaseServicePlugin):\n"
+            "    name = PLUGIN_NAME\n\n"
+            "    async def start(self):\n"
+            "        return None\n\n"
+            "    async def stop(self):\n"
+            "        return None\n",
+            encoding="utf-8",
+        )
+
+        cfg = configparser.ConfigParser()
+        view = build_plugin_settings_view(
+            cfg,
+            local_commands_dir=str(local_commands_dir),
+            local_services_dir=str(local_services_dir),
+        )
+
+        command_entry = next(
+            (e for e in view if e["kind"] == "command" and e["name"] == "dummycmd"),
+            None,
+        )
+        service_entry = next(
+            (e for e in view if e["kind"] == "service" and e["name"] == "dummysvc"),
+            None,
+        )
+        assert command_entry is not None and command_entry["source"] == "local"
+        assert service_entry is not None and service_entry["source"] == "local"
+
+    def test_local_name_collisions_match_runtime_and_are_skipped(self, tmp_path):
+        local_commands_dir = tmp_path / "local_commands"
+        local_commands_dir.mkdir()
+        (local_commands_dir / "ping_local.py").write_text(
+            "from modules.commands.base_command import BaseCommand\n\n"
+            "class PingLocalCommand(BaseCommand):\n"
+            "    name = 'ping'\n"
+            "    keywords = ['ping-local']\n\n"
+            "    async def execute(self, message):\n"
+            "        return None\n",
+            encoding="utf-8",
+        )
+
+        view = build_plugin_settings_view(
+            configparser.ConfigParser(),
+            local_commands_dir=str(local_commands_dir),
+            local_services_dir=str(tmp_path / "no-services"),
+        )
+
+        ping_entries = [
+            entry
+            for entry in view
+            if entry["kind"] == "command" and entry["name"] == "ping"
+        ]
+        assert len(ping_entries) == 1
+        assert ping_entries[0]["source"] == "base"
+
+
+class TestBuildViewPasswordRedaction:
+    """Password-typed fields must never leak their stored value to the UI;
+    the view should only report whether one is currently set."""
+
+    class _Dummy:
+        settings_schema = [
+            {"key": "api_password", "type": "password", "label": "API Password"},
+        ]
+
+    def _field(self, cfg, section="Dummy_Command"):
+        entry = _assemble_entry(
+            cfg,
+            self._Dummy,
+            kind="command",
+            name="dummy",
+            section=section,
+            label="Dummy",
+            description="",
+            category="general",
+            enabled_default=True,
+        )
+        return next(f for f in entry["fields"] if f["key"] == "api_password")
+
+    def test_password_value_is_blanked_and_has_value_true(self):
+        """A password field with a stored value returns empty string + has_value=True."""
+        cfg = configparser.ConfigParser()
+        cfg.add_section("Dummy_Command")
+        cfg.set("Dummy_Command", "api_password", "s3cret-value")
+        field = self._field(cfg)
+        assert field["value"] == ""
+        assert field["has_value"] is True
+
+    def test_password_has_value_false_when_unset(self):
+        """A password field with no stored value returns empty string + has_value=False."""
+        cfg = configparser.ConfigParser()
+        field = self._field(cfg)
+        assert field["value"] == ""
+        assert field["has_value"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -352,6 +563,32 @@ class TestPluginsApi:
             "WHERE operation_type = 'config_reload'"
         )
         assert rows and rows[0]["status"] == "pending"
+
+    def test_new_local_command_saves_to_local_overlay(self, viewer, tmp_path):
+        commands_dir = tmp_path / "local" / "commands"
+        commands_dir.mkdir(parents=True)
+        (commands_dir / "localonly_command.py").write_text(
+            "from modules.commands.base_command import BaseCommand\n\n"
+            "class LocalOnlyCommand(BaseCommand):\n"
+            "    name = 'localonly'\n"
+            "    keywords = ['localonly']\n\n"
+            "    async def execute(self, message):\n"
+            "        return None\n",
+            encoding="utf-8",
+        )
+
+        client = viewer.app.test_client()
+        resp = client.post(
+            "/api/plugins/command/localonly",
+            json={"enabled": True, "values": {"message": "local value"}},
+        )
+
+        assert resp.status_code == 200, resp.get_json()
+        local_text = (tmp_path / "local" / "config.ini").read_text(encoding="utf-8")
+        base_text = (tmp_path / "config.ini").read_text(encoding="utf-8")
+        assert "[Localonly_Command]" in local_text
+        assert "message = local value" in local_text
+        assert "[Localonly_Command]" not in base_text
 
     def test_omitted_dynamic_sections_do_not_wipe_managed_keys(self, viewer, tmp_path):
         """A payload without dynamic_sections must leave [Channels_List] alone."""

@@ -49,6 +49,11 @@ _RADIO_OPERATION_TYPES = (
 )
 _CONFIG_OPERATION_TYPES = ('config_reload',)
 
+# Let short host stalls or CPU pressure delay a scheduled transmission without
+# dropping it. Coalescing prevents a long suspension from replaying multiple
+# stale occurrences onto the mesh when the process resumes.
+SCHEDULE_MISFIRE_GRACE_SECONDS = 300
+
 
 class MessageScheduler:
     """Manages scheduled messages and timing"""
@@ -108,7 +113,13 @@ class MessageScheduler:
         # Stop and recreate the APScheduler to avoid duplicate jobs on reload
         self._shutdown_apscheduler_if_running()
         tz, _ = get_config_timezone(self.bot.config, self.logger)
-        self._apscheduler = BackgroundScheduler(timezone=tz)
+        self._apscheduler = BackgroundScheduler(
+            timezone=tz,
+            job_defaults={
+                'misfire_grace_time': SCHEDULE_MISFIRE_GRACE_SECONDS,
+                'coalesce': True,
+            },
+        )
         self.scheduled_messages.clear()
 
         if self.bot.config.has_section('Scheduled_Messages'):
@@ -771,7 +782,7 @@ class MessageScheduler:
         last_job_count = 0
         last_job_log_time = 0
 
-        while self.bot.connected:
+        while self.bot.keep_running:
             current_time = self.get_current_time()
 
             # Log current time every 5 minutes for debugging

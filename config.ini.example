@@ -1571,6 +1571,16 @@ require_path_bytes_greater_or_equal_to = 0
 # Optional response when rejected by path-byte requirement; leave empty for silent reject
 require_path_bytes_failure_response =
 
+# Unit for the {path_distance} and {firstlast_distance} placeholders.
+# auto (default) = follow the reply language: miles for en / en-US, kilometres
+#                  for every other locale, en-GB included (it shares the English
+#                  catalog but not the units)
+# km             = always kilometres
+# mi             = always miles
+# An invalid value falls back to auto with a startup warning. This only changes
+# what is printed; repeater-selection distances are always computed in km.
+distance_unit = auto
+
 # Optional: full ack template for test/t. When set, overrides [Keywords] test for this command only.
 # Same placeholders as Keywords (sender, phrase, phrase_part, connection_info, path, hops, hops_label,
 # timestamp, elapsed, snr, rssi, packet_hash, path_distance, firstlast_distance).
