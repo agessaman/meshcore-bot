@@ -8,6 +8,13 @@ semantic versioning.
 
 ### Added
 
+- Web viewer now has admin restricted pages (configuration and logs) and
+  restricts contacts page admin-only actions (delete, star/favorite, geocode
+  location, and purge inactive) to authenticated admin users. Non-admin users
+  have access to all other pages such as dashboard, mesh-graph and contacts.
+  Admin authentication is enabled by setting `web_viewer_password` in the
+  `[Web_Viewer]` configuration section.
+
 - Localized proactive weather messages (daily forecasts, rain nowcasts, weather
   alerts) via `services.weather_service.*` translation keys. `WeatherService` now
   uses the bot's `translator` instead of hardcoded English strings, so proactive

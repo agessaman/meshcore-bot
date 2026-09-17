@@ -433,6 +433,7 @@
                         </a>
                     </li>
                     {% endif %}
+                    {% if is_admin %}
                     <li class="nav-item">
                         <a class="nav-link {{ 'active' if request.path == '/logs' }}" href="/logs">
                             <i class="fas fa-file-alt"></i> Logs
@@ -486,10 +487,24 @@
                             </li>
                         </ul>
                     </li>
+                    {% endif %}
                 </ul>
 
                 <!-- Dark Mode Toggle and Connection Status -->
                 <div class="navbar-nav d-flex align-items-center">
+                    {% if auth_enabled %}
+                    <div class="nav-item me-3">
+                        {% if is_admin %}
+                        <a href="/logout" class="btn btn-sm btn-outline-light">
+                            <i class="fas fa-sign-out-alt"></i> Logout
+                        </a>
+                        {% else %}
+                        <a href="/login" class="btn btn-sm btn-outline-light">
+                            <i class="fas fa-sign-in-alt"></i> Admin Login
+                        </a>
+                        {% endif %}
+                    </div>
+                    {% endif %}
                     <div class="nav-item me-3">
                         <button class="dark-mode-toggle" id="dark-mode-toggle" aria-label="Toggle dark mode"
                             title="Toggle dark mode">
