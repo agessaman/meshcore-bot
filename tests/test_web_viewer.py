@@ -1178,13 +1178,15 @@ class TestAuthRoutes:
         resp = auth_client.get("/login")
         assert resp.status_code == 200
 
-    def test_unauthenticated_index_redirects_to_login(self, auth_client):
-        resp = auth_client.get("/")
+    def test_unauthenticated_admin_page_redirects_to_login(self, auth_client):
+        """Admin pages should redirect to login when not authenticated."""
+        resp = auth_client.get("/logs")
         assert resp.status_code == 302
         assert "login" in resp.headers["Location"]
 
-    def test_unauthenticated_api_returns_401(self, auth_client):
-        resp = auth_client.get("/api/health")
+    def test_unauthenticated_admin_api_returns_401(self, auth_client):
+        """Admin API endpoints should return 401 when not authenticated."""
+        resp = auth_client.get("/api/config/notifications")
         assert resp.status_code == 401
 
     def test_login_wrong_password(self, auth_client):
@@ -1213,8 +1215,8 @@ class TestAuthRoutes:
         auth_client.post("/login", data={"password": "secret123"})
         resp = auth_client.get("/logout", follow_redirects=False)
         assert resp.status_code == 302
-        # After logout, index should redirect to login again
-        resp2 = auth_client.get("/")
+        # After logout, admin pages should redirect to login again
+        resp2 = auth_client.get("/logs")
         assert resp2.status_code == 302
 
     def test_login_no_password_configured_redirects_to_index(self, client):
@@ -1222,6 +1224,69 @@ class TestAuthRoutes:
         resp = client.get("/login", follow_redirects=False)
         assert resp.status_code == 302
         assert resp.headers["Location"].endswith("/")
+
+
+# ===========================================================================
+# Role-based access control (public vs admin pages)
+# ===========================================================================
+
+class TestRoleBasedAccess:
+    """Test that public pages are accessible without auth, admin pages require auth."""
+
+    def test_public_pages_accessible_without_auth(self, auth_client):
+        """Public pages should be accessible even when password is configured."""
+        public_pages = ["/", "/realtime", "/mesh", "/contacts"]
+        for page in public_pages:
+            resp = auth_client.get(page)
+            assert resp.status_code == 200, f"{page} should be accessible without auth"
+
+    def test_admin_pages_require_auth(self, auth_client):
+        """Admin pages should redirect to login when not authenticated."""
+        admin_pages = ["/logs", "/config", "/plugins", "/radio", "/greeter", "/feeds", "/schedule"]
+        for page in admin_pages:
+            resp = auth_client.get(page, follow_redirects=False)
+            assert resp.status_code == 302, f"{page} should redirect to login"
+            assert "login" in resp.headers["Location"], f"{page} should redirect to login"
+
+    def test_admin_pages_accessible_after_login(self, auth_client):
+        """Admin pages should be accessible after authentication."""
+        auth_client.post("/login", data={"password": "secret123"})
+        admin_pages = ["/logs", "/config", "/plugins", "/radio", "/schedule"]
+        for page in admin_pages:
+            resp = auth_client.get(page)
+            assert resp.status_code == 200, f"{page} should be accessible after login"
+
+    def test_admin_api_endpoints_require_auth(self, auth_client):
+        """Admin API endpoints should return 401 when not authenticated."""
+        admin_apis = [
+            "/api/config/notifications",
+            "/api/config/logging",
+            "/api/maintenance/status",
+        ]
+        for api in admin_apis:
+            resp = auth_client.get(api)
+            assert resp.status_code == 401, f"{api} should return 401 without auth"
+
+    def test_admin_api_endpoints_accessible_after_login(self, auth_client):
+        """Admin API endpoints should be accessible after authentication."""
+        auth_client.post("/login", data={"password": "secret123"})
+        # Test read-only endpoint that should work
+        resp = auth_client.get("/api/config/notifications")
+        assert resp.status_code == 200, "Config API should be accessible after login"
+
+    def test_logout_redirects_to_index_not_login(self, auth_client):
+        """After logout, user should be redirected to index (public page)."""
+        auth_client.post("/login", data={"password": "secret123"})
+        resp = auth_client.get("/logout", follow_redirects=False)
+        assert resp.status_code == 302
+        assert resp.headers["Location"].endswith("/")
+
+    def test_public_pages_remain_accessible_no_password(self, client):
+        """When no password is configured, all pages should be accessible."""
+        all_pages = ["/", "/realtime", "/mesh", "/contacts", "/logs", "/config"]
+        for page in all_pages:
+            resp = client.get(page)
+            assert resp.status_code == 200, f"{page} should be accessible when auth is disabled"
 
 
 # ===========================================================================

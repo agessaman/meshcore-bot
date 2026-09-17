@@ -424,6 +424,7 @@
                                 <i class="fas fa-ellipsis-vertical" aria-hidden="true"></i>
                             </button>
                             <ul class="dropdown-menu dropdown-menu-end">
+                                {% if is_admin %}
                                 <li>
                                     <button type="button" class="dropdown-item text-danger"
                                             data-bs-toggle="modal" data-bs-target="#purgeContactsModal"
@@ -432,6 +433,7 @@
                                     </button>
                                 </li>
                                 <li><hr class="dropdown-divider"></li>
+                                {% endif %}
                                 <li><h6 class="dropdown-header">Export Contacts</h6></li>
                                 <li><a class="dropdown-item contacts-export-action" href="#" data-export-kind="contacts" data-export-format="csv"><i class="fas fa-file-csv me-2 text-success"></i>CSV</a></li>
                                 <li><a class="dropdown-item contacts-export-action" href="#" data-export-kind="contacts" data-export-format="json"><i class="fas fa-file-code me-2 text-warning"></i>JSON</a></li>
@@ -602,6 +604,8 @@
 
 {% block extra_js %}
         <script nonce="{{ g.csp_nonce }}">
+const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
+
 class ModernContactsManager {
     constructor() {
         this.contactsData = { tracking_data: [], server_stats: {} };
@@ -931,8 +935,15 @@ class ModernContactsManager {
         const checked = this.selectedContactIds.has(contact.user_id) ? 'checked' : '';
         const hasGeo = !!(contact.latitude && contact.longitude && contact.latitude !== 0 && contact.longitude !== 0);
         const starLabel = contact.is_starred ? 'Unstar contact' : 'Star contact';
-        const geoMenuItem = hasGeo
+        const geoMenuItem = IS_ADMIN && hasGeo
             ? `<li><button type="button" class="dropdown-item" data-contact-action="geocode" data-contact-index="${contactIndex}"><i class="fas fa-map-marker-alt me-2 text-primary"></i>Geocode location</button></li>`
+            : '';
+        const deleteMenuItem = IS_ADMIN
+            ? `<li><hr class="dropdown-divider"></li>
+                                    <li><button type="button" class="dropdown-item text-danger" data-contact-action="delete" data-contact-index="${contactIndex}"><i class="fas fa-trash me-2"></i>Delete contact</button></li>`
+            : '';
+        const starMenuItem = IS_ADMIN
+            ? `<li><button type="button" class="dropdown-item" data-contact-action="star" data-contact-index="${contactIndex}"><i class="fas fa-star me-2 text-warning"></i>${starLabel}</button></li>`
             : '';
         return `
             <div class="contact-mobile-card">
@@ -968,11 +979,10 @@ class ModernContactsManager {
                                     <i class="fas fa-ellipsis-vertical" aria-hidden="true"></i>
                                 </button>
                                 <ul class="dropdown-menu dropdown-menu-end">
-                                    <li><button type="button" class="dropdown-item" data-contact-action="star" data-contact-index="${contactIndex}"><i class="fas fa-star me-2 text-warning"></i>${starLabel}</button></li>
+                                    ${starMenuItem}
                                     <li><button type="button" class="dropdown-item" data-contact-action="advert" data-contact-index="${contactIndex}"><i class="fas fa-info-circle me-2 text-info"></i>View advertisement data</button></li>
                                     ${geoMenuItem}
-                                    <li><hr class="dropdown-divider"></li>
-                                    <li><button type="button" class="dropdown-item text-danger" data-contact-action="delete" data-contact-index="${contactIndex}"><i class="fas fa-trash me-2"></i>Delete contact</button></li>
+                                    ${deleteMenuItem}
                                 </ul>
                             </div>
                         </div>
@@ -1030,21 +1040,21 @@ class ModernContactsManager {
                 <td><span class="badge bg-success">${Number(contact.advert_count) || 0}</span></td>
                 <td>
                     <div class="btn-group" role="group">
-                        <button class="btn btn-sm ${contact.is_starred ? 'btn-warning' : 'btn-outline-warning'}" data-contact-action="star" data-contact-index="${contactIndex}" title="${contact.is_starred ? 'Unstar contact' : 'Star contact'}">
+                        ${IS_ADMIN ? `<button class="btn btn-sm ${contact.is_starred ? 'btn-warning' : 'btn-outline-warning'}" data-contact-action="star" data-contact-index="${contactIndex}" title="${contact.is_starred ? 'Unstar contact' : 'Star contact'}">
                             <i class="fas fa-star"></i>
-                        </button>
+                        </button>` : ''}
                         <button class="btn btn-sm btn-outline-info" data-contact-action="advert" data-contact-index="${contactIndex}" title="View Advertisement Data">
                             <i class="fas fa-info-circle"></i>
                         </button>
-                        ${contact.latitude && contact.longitude && contact.latitude !== 0 && contact.longitude !== 0 ? 
+                        ${IS_ADMIN && contact.latitude && contact.longitude && contact.latitude !== 0 && contact.longitude !== 0 ?
                             `<button class="btn btn-sm btn-outline-primary" data-contact-action="geocode" data-contact-index="${contactIndex}" title="Geocode Location">
                                 <i class="fas fa-map-marker-alt"></i>
-                            </button>` : 
+                            </button>` :
                             ''
                         }
-                        <button class="btn btn-sm btn-outline-danger" data-contact-action="delete" data-contact-index="${contactIndex}" title="Delete Contact">
+                        ${IS_ADMIN ? `<button class="btn btn-sm btn-outline-danger" data-contact-action="delete" data-contact-index="${contactIndex}" title="Delete Contact">
                             <i class="fas fa-trash"></i>
-                        </button>
+                        </button>` : ''}
                     </div>
                 </td>
             </tr>

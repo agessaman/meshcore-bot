@@ -1209,12 +1209,33 @@ class BotDataViewer:
                 error_message='Something went wrong on our end. The error has been logged.',
             ), 500)
 
+        # Template context processor for authentication state
+        @self.app.context_processor
+        def inject_auth_status():
+            """Make authentication status available to all templates."""
+            return {
+                'is_admin': session.get('authenticated_admin', False),
+                'auth_enabled': bool(self.web_viewer_password),
+            }
+
         # Authentication middleware (BUG-001)
         _EXEMPT_PATHS = frozenset([
             '/login', '/logout',
             '/apple-touch-icon.png', '/favicon-32x32.png', '/favicon-16x16.png',
             '/site.webmanifest', '/favicon.ico',
         ])
+
+        # Admin-only pages that require authentication
+        _ADMIN_ONLY_PATHS = frozenset([
+            '/logs', '/config', '/plugins', '/admin/config', '/radio',
+            '/greeter', '/feeds', '/schedule',
+        ])
+
+        # Admin-only API prefixes
+        _ADMIN_ONLY_API_PREFIXES = (
+            '/api/config/', '/api/plugins/', '/api/maintenance/',
+            '/api/greeter/', '/api/scheduled-messages', '/api/admin/',
+        )
 
         @self.app.before_request
         def create_csp_nonce():
@@ -1223,16 +1244,25 @@ class BotDataViewer:
 
         @self.app.before_request
         def require_auth():
+            """Enforce admin authentication for admin-only pages when password is configured."""
             if not self.web_viewer_password:
-                return  # Auth disabled — no password configured
+                return  # Auth disabled — no password configured, all pages are public
             if request.path in _EXEMPT_PATHS or request.path.startswith('/static/'):
                 return
-            if session.get('authenticated'):
-                return
-            if request.path.startswith('/api/'):
-                return make_response(jsonify({'error': 'Authentication required'}), 401)
-            next_url = request.path
-            return redirect(url_for('login', next=next_url))
+
+            # Check if this is an admin-only page or API endpoint
+            is_admin_page = request.path in _ADMIN_ONLY_PATHS
+            is_admin_api = any(request.path.startswith(prefix) for prefix in _ADMIN_ONLY_API_PREFIXES)
+
+            if is_admin_page or is_admin_api:
+                # Admin authentication required
+                if not session.get('authenticated_admin'):
+                    if request.path.startswith('/api/'):
+                        return make_response(jsonify({'error': 'Admin authentication required'}), 401)
+                    next_url = request.path
+                    return redirect(url_for('login', next=next_url))
+
+            # Public pages are accessible without authentication
 
         @self.app.before_request
         def csrf_protection():
@@ -1329,13 +1359,13 @@ class BotDataViewer:
 
         @self.app.route('/login', methods=['GET', 'POST'])
         def login():
-            """Login page for web viewer authentication"""
+            """Login page for admin authentication"""
             if not self.web_viewer_password:
                 return redirect(url_for('index'))
             if request.method == 'POST':
                 password = request.form.get('password', '')
                 if password == self.web_viewer_password:
-                    session['authenticated'] = True
+                    session['authenticated_admin'] = True
                     next_url = request.args.get('next', '/')
                     parsed = urlparse(next_url)
                     if parsed.scheme or parsed.netloc or not next_url.startswith('/'):
@@ -1347,8 +1377,8 @@ class BotDataViewer:
         @self.app.route('/logout')
         def logout():
             """Logout and clear session"""
-            session.pop('authenticated', None)
-            return redirect(url_for('login'))
+            session.pop('authenticated_admin', None)
+            return redirect(url_for('index'))
 
         @self.app.route('/')
         def index():
@@ -4892,7 +4922,7 @@ class BotDataViewer:
                     return False
 
                 # Reject unauthenticated SocketIO connections when auth is enabled (BUG-001)
-                if self.web_viewer_password and not session.get('authenticated'):
+                if self.web_viewer_password and not session.get('authenticated_admin'):
                     self.logger.warning(f"Rejected unauthenticated SocketIO connection from {client_id}")
                     with suppress(Exception):
                         disconnect()
