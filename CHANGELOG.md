@@ -8,6 +8,11 @@ semantic versioning.
 
 ### Fixed
 
+- A radio connection is no longer accepted when every channel read times out or
+  returns no usable channel data (#266). Startup and reconnect now retry the
+  channel scan three times, keep an empty result out of the valid cache and
+  database, then fail the connection cleanly so the normal restart/reconnect
+  path can try again instead of running a bot that cannot route replies.
 - Daily Weather Service forecasts now retry transient Open-Meteo failures at
   5, 15, and 30 minutes after the original run (#264). HTTP 429, 500, 502, 503,
   and 504 responses plus transport failures use one replaceable retry job,

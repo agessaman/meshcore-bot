@@ -1839,8 +1839,11 @@ long_jokes = false
                 # Wait for contacts to load
                 await self.wait_for_contacts()
 
-                # Fetch channels
-                await self.channel_manager.fetch_channels()
+                # A connected transport without channel data cannot route replies.
+                if not await self.channel_manager.fetch_channels():
+                    raise ConnectionError(
+                        "MeshCore node returned no channels after retries"
+                    )
 
                 # Setup message event handlers
                 await self.setup_message_handlers()
