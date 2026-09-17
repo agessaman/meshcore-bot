@@ -263,3 +263,44 @@ Schedule keys are parsed by **APScheduler** `CronTrigger.from_crontab` (plus `@`
 Prefer **`mon`–`sun`** names in the DOW field so expressions stay unambiguous. Example: Monday 12:30 is `30 12 * * mon` or `30 12 * * 0` — **not** Vixie’s `30 12 * * 1` (that is Tuesday here).
 
 Preset aliases expand to those same APScheduler forms. In particular **`@weekly`** is Monday 00:00 (`0 0 * * 0`), not Sunday midnight as on many Unix crons.
+
+#### Limiting a schedule to a date range
+
+Crontab has no field for a date range, so `start=` / `end=` bounds live on the **value**,
+ahead of the channel:
+
+```ini
+[Scheduled_Messages]
+0 19 last-fri * * = start=2027-01-01 end=2027-03-31 Public:Winter net starts now
+0 8 * * *         = end=2026-12-25 Public:#sea:Countdown to the holidays
+```
+
+Either bound may be omitted and they may appear in either order. `=` keeps them clear of
+the `:` that separates channel from message, and because they are anchored to the front of
+the value a message body mentioning `start=` is never mistaken for one.
+
+The end date is **inclusive** — `end=2027-03-31` runs through the whole of the 31st, not up
+to its midnight. Once a bounded schedule has no runs left the bot skips it at startup with
+a log line saying so, and the web viewer shows it as **Finished** rather than hiding it.
+
+#### Nth and last weekday of the month
+
+APScheduler's day-of-month field understands positional expressions like `last fri` and
+`4th tue`, which plain crontab cannot express. They contain a space, so write it as `-`
+(or `_`) to keep the five fields intact:
+
+| Key | Fires |
+| --- | --- |
+| `0 19 last-fri * *` | 19:00 on the last Friday of every month |
+| `0 19 4th-tue * *` | 19:00 on the fourth Tuesday |
+| `0 19 1st-tue,3rd-tue * *` | 19:00 on the first and third Tuesday |
+| `0 19 last * *` | 19:00 on the last day of the month (no weekday needed) |
+
+Prefixes are `1st` `2nd` `3rd` `4th` `5th` `last`, followed by `mon`–`sun`. They are valid
+**only in the day-of-month field** — `0 19 * * last-fri` is rejected.
+
+Two things to keep in mind. A month may have no fifth Tuesday, so `5th tue` simply skips
+those months. And `1st-tue,3rd-tue` is a 14/14/21-day cadence across a month boundary, not
+a strict fortnight: crontab matches calendar patterns and has no way to say "every 14
+days". If you need an exact fortnight, note that anchoring one drifts an hour across a DST
+change, which is usually worse for an announced net time than the 21-day gap.
