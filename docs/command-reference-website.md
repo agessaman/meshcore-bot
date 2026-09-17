@@ -27,6 +27,83 @@ python generate_website.py config.ini --style terminal
 
 Available styles include: **default** (modern dark), **minimalist** (light, clean), **terminal** (green/amber on black), **glass** (glassmorphism), **neon** (cyberpunk), **brutalist** (bold, high contrast), **gradient** (colorful gradients), **pixel** (retro gaming). Run `--list-styles` for the full list and short descriptions.
 
+## Add custom CSS
+
+You can override or supplement the built-in styles with your own CSS in two ways:
+
+### Link to external CSS
+
+Use `--link-css` to reference an external CSS file (hosted on your server or a CDN):
+
+```bash
+python generate_website.py config.ini --link-css https://example.com/my-custom.css
+python generate_website.py config.ini --style minimalist --link-css https://example.com/overrides.css
+```
+
+When used with `--style`, the linked CSS will be loaded after the built-in style's fonts, allowing you to override specific properties while keeping the base style intact.
+
+### Embed CSS from a file
+
+Use `--embed-css` to inline CSS from a local file directly into the generated HTML:
+
+```bash
+python generate_website.py config.ini --embed-css custom-style.css
+python generate_website.py config.ini --style default --embed-css tweaks.css
+```
+
+When used with `--style`, the embedded CSS is added after the built-in style's fonts. This is useful for:
+- Completely custom designs (without `--style`)
+- Small tweaks to existing styles (with `--style`)
+- Offline deployments where external links aren't suitable
+
+**Tip:** Start with a built-in style using `--style`, then use `--embed-css` with a small CSS file that only overrides the specific properties you want to change (colors, fonts, spacing, etc.). This is easier than writing a complete stylesheet from scratch.
+
+### Example: Custom color scheme
+
+Create a file `my-colors.css`:
+
+```css
+:root {
+    --bg-primary: #1a1a2e;
+    --bg-card: #16213e;
+    --accent-blue: #0f3460;
+    --accent-cyan: #e94560;
+    --text-primary: #eee;
+}
+```
+
+Then generate with:
+
+```bash
+python generate_website.py config.ini --style default --embed-css my-colors.css
+```
+
+This keeps all the layout and styling from the default theme but applies your custom color palette.
+
+### Example workflow: Fine-tuning a built-in style
+
+1. Generate with a built-in style you like:
+   ```bash
+   python generate_website.py config.ini --style minimalist
+   ```
+
+2. Inspect the output and identify what you want to change (e.g., "I want blue accents instead of the default colors")
+
+3. Create a small override file `tweaks.css` with just the changes:
+   ```css
+   :root {
+       --accent-blue: #2563eb;
+       --accent-cyan: #0891b2;
+   }
+   ```
+
+4. Regenerate with your tweaks:
+   ```bash
+   python generate_website.py config.ini --style minimalist --embed-css tweaks.css
+   ```
+
+This approach is much easier than writing CSS from scratch, since you only override specific properties while keeping all the responsive design, layouts, and other styling intact.
+
 ## Preview all styles
 
 To generate a sample page for every style plus an index that links to them (useful to pick a theme):
