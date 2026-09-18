@@ -29,34 +29,37 @@ Available styles include: **default** (modern dark), **minimalist** (light, clea
 
 ## Add custom CSS
 
-You can override or supplement the built-in styles with your own CSS in two ways:
+You can layer your own CSS on top of the built-in style chosen with `--style` (`default` if you don't pass one). The built-in CSS always loads first, so you only write the rules you want to change, and your rules win over built-in rules of equal specificity.
 
 ### Link to external CSS
 
-Use `--link-css` to reference an external CSS file (hosted on your server or a CDN):
+Use `--link-css` to reference a stylesheet hosted on your server or a CDN:
 
 ```bash
 python generate_website.py config.ini --link-css https://example.com/my-custom.css
 python generate_website.py config.ini --style minimalist --link-css https://example.com/overrides.css
 ```
 
-When used with `--style`, the linked CSS will be loaded after the built-in style's fonts, allowing you to override specific properties while keeping the base style intact.
+The `<link>` tag is placed after the built-in `<style>` block. A relative path such as `--link-css overrides.css` is resolved by the browser against `website/index.html`, so upload the stylesheet next to it.
 
 ### Embed CSS from a file
 
-Use `--embed-css` to inline CSS from a local file directly into the generated HTML:
+Use `--embed-css` to inline CSS from a local file into the generated HTML:
 
 ```bash
-python generate_website.py config.ini --embed-css custom-style.css
-python generate_website.py config.ini --style default --embed-css tweaks.css
+python generate_website.py config.ini --embed-css tweaks.css
+python generate_website.py config.ini --style terminal --embed-css tweaks.css
 ```
 
-When used with `--style`, the embedded CSS is added after the built-in style's fonts. This is useful for:
-- Completely custom designs (without `--style`)
-- Small tweaks to existing styles (with `--style`)
-- Offline deployments where external links aren't suitable
+The file's contents are appended to the built-in `<style>` block, so the page stays a single self-contained file. The path is relative to the directory you run the script from. If the file can't be read, the script exits with an error instead of generating the page.
 
-**Tip:** Start with a built-in style using `--style`, then use `--embed-css` with a small CSS file that only overrides the specific properties you want to change (colors, fonts, spacing, etc.). This is easier than writing a complete stylesheet from scratch.
+This is useful for:
+- Small tweaks to a built-in style (colors, fonts, spacing)
+- Offline deployments, or hosts where you can only upload one file
+
+### Using both
+
+You can pass `--embed-css` and `--link-css` together. The page loads the built-in style, then the embedded CSS, then the linked stylesheet, so the linked stylesheet wins any conflict.
 
 ### Example: Custom color scheme
 
@@ -112,7 +115,7 @@ To generate a sample page for every style plus an index that links to them (usef
 python generate_website.py config.ini --sample
 ```
 
-Output goes to `website/` with one HTML file per style and an `index.html` you can open locally.
+Output goes to `website/` with one HTML file per style and an `index.html` you can open locally. `--link-css` and `--embed-css` apply to every sample page, so you can preview your overrides against each style.
 
 ## Custom title and intro
 
@@ -128,15 +131,13 @@ If omitted, the script uses the bot name and a default intro.
 
 ## Uploading
 
-The script produces a self-contained HTML file (with embedded CSS). Upload `website/index.html` to any static host (e.g. GitHub Pages, Netlify, or your group's web server). No server-side processing is required.
+The script produces a self-contained HTML file (with embedded CSS). Upload `website/index.html` to any static host (e.g. GitHub Pages, Netlify, or your group's web server). No server-side processing is required. If you used `--link-css` with a relative path, upload that stylesheet alongside `index.html`.
 
----
-
-# CSS Architecture and Customization
+## CSS architecture and customization
 
 The generated HTML includes embedded CSS that uses a **CSS custom properties (variables) system** for easy theming. This section documents the CSS architecture and how to create your own custom styles.
 
-## CSS Structure Overview
+### CSS structure overview
 
 The stylesheet is organized into several sections:
 
@@ -149,11 +150,11 @@ The stylesheet is organized into several sections:
 7. **Mobile Responsive** - Breakpoints and mobile menu
 8. **Theme Overrides** - Style-specific customizations
 
-## CSS Custom Properties (Theme Variables)
+### CSS custom properties (theme variables)
 
-All colors and key design tokens are defined as CSS custom properties in the `:root` selector. This allows easy theme customization without touching the core CSS.
+Most colors are defined as CSS custom properties in the `:root` selector, so you can retheme a page without touching the rest of the CSS. A few effects (background gradients, badge tints) and some style-specific overrides use literal colors instead.
 
-### Color Variables
+#### Color variables
 
 ```css
 :root {
@@ -167,9 +168,9 @@ All colors and key design tokens are defined as CSS custom properties in the `:r
     --accent-blue: #00d4ff;          /* Primary accent (command names, links) */
     --accent-cyan: #00ffc8;          /* Secondary accent (keywords, highlights) */
     --accent-orange: #ff8a00;        /* Parameter names */
-    --accent-purple: #a855f7;        /* Additional accent */
-    --accent-red: #ff4757;           /* Error/warning states */
-    --accent-yellow: #ffd700;        /* Highlights */
+    --accent-purple: #a855f7;        /* Only used by the neon style */
+    --accent-red: #ff4757;           /* Not currently used */
+    --accent-yellow: #ffd700;        /* Only used by the terminal style */
 
     /* Text Colors */
     --text-primary: #e8edf4;         /* Main text color */
@@ -178,21 +179,21 @@ All colors and key design tokens are defined as CSS custom properties in the `:r
 
     /* Borders & Effects */
     --border-subtle: rgba(255,255,255,0.06);  /* Subtle borders */
-    --glow-blue: rgba(0, 212, 255, 0.15);     /* Blue glow effect */
-    --glow-cyan: rgba(0, 255, 200, 0.1);      /* Cyan glow effect */
+    --glow-blue: rgba(0, 212, 255, 0.15);     /* Only used by the neon style */
+    --glow-cyan: rgba(0, 255, 200, 0.1);      /* Not currently used */
 }
 ```
 
-### Typography Variables
+#### Typography variables
 
 Fonts are loaded via Google Fonts and applied through the CSS. The default theme uses:
 
 - **Outfit** - Sans-serif for body text and headings
 - **JetBrains Mono** - Monospace for code, keywords, and technical text
 
-## HTML Structure & CSS Classes
+### HTML structure and CSS classes
 
-### Page Layout
+#### Page layout
 
 ```html
 <body>
@@ -263,7 +264,7 @@ Fonts are loaded via Google Fonts and applied through the CSS. The default theme
 </body>
 ```
 
-### Command Card Structure
+#### Command card structure
 
 ```html
 <div class="command-card">
@@ -302,7 +303,7 @@ Fonts are loaded via Google Fonts and applied through the CSS. The default theme
 </div>
 ```
 
-### Channel Card Structure
+#### Channel card structure
 
 ```html
 <div class="channel-card">
@@ -311,9 +312,9 @@ Fonts are loaded via Google Fonts and applied through the CSS. The default theme
 </div>
 ```
 
-## Key CSS Classes Reference
+### Key CSS classes reference
 
-### Layout Classes
+#### Layout classes
 
 - `.container` - Main content wrapper with grid layout
 - `.sidebar-nav` - Left sidebar navigation (sticky on desktop)
@@ -321,7 +322,7 @@ Fonts are loaded via Google Fonts and applied through the CSS. The default theme
 - `.mobile-menu-toggle` - Hamburger menu button (mobile only)
 - `.sidebar-overlay` - Dark overlay when mobile menu is open
 
-### Navigation Classes
+#### Navigation classes
 
 - `.nav-header` - Navigation section header
 - `.nav-list` - Main navigation list
@@ -330,14 +331,14 @@ Fonts are loaded via Google Fonts and applied through the CSS. The default theme
 - `.nav-link` - Navigation link item
 - `.nav-sublink` - Nested/indented navigation link
 
-### Header Classes
+#### Header classes
 
 - `.header-content` - Header wrapper with background and border
 - `.header-title` - Title container
 - `.intro` - Introduction text paragraph
 - `.channel-highlight` - Highlighted channel names in intro text
 
-### Content Organization Classes
+#### Content organization classes
 
 - `.category-section` - Wrapper for each command category
 - `.category-title` - Category heading (e.g., "Weather Commands")
@@ -345,7 +346,7 @@ Fonts are loaded via Google Fonts and applied through the CSS. The default theme
 - `.commands-grid` - CSS Grid container for command cards
 - `.channels-grid` - CSS Grid container for channel cards
 
-### Command Card Classes
+#### Command card classes
 
 - `.command-card` - Individual command card container
 - `.command-header` - Command name and keywords section
@@ -368,7 +369,7 @@ Fonts are loaded via Google Fonts and applied through the CSS. The default theme
 - `.subcommand-desc` - Sub-command description
 - `.command-channels` - Channel restriction notice
 
-### Channel Card Classes
+#### Channel card classes
 
 - `.channel-category` - Channel category wrapper
 - `.channel-category-title` - Channel category heading
@@ -377,13 +378,13 @@ Fonts are loaded via Google Fonts and applied through the CSS. The default theme
 - `.channel-name` - Channel name (e.g., "#general")
 - `.channel-description` - Channel description text
 
-### Utility Classes
+#### Utility classes
 
 - `.atmosphere` - Background gradient effect layer
 - `.grid-overlay` - Subtle grid pattern overlay
 - `.hamburger` - Hamburger menu bar element
 
-## Responsive Breakpoints
+### Responsive breakpoints
 
 The CSS includes two main responsive breakpoints:
 
@@ -396,11 +397,11 @@ Mobile behavior:
 - Grid layouts adjust to single column
 - Font sizes scale down slightly
 
-## Tips for Custom Styles
+### Tips for custom styles
 
 1. **Start with variables** - Most visual changes can be achieved by only changing the CSS custom properties in `:root`
 
-2. **Use the sample generator** - Run `--sample` to see how your changes look across the entire site
+2. **Use the sample generator** - Run `--sample` with your `--embed-css` or `--link-css` flag to see your overrides on every built-in style
 
 3. **Respect the structure** - The HTML structure and class names are semantic and should remain consistent
 
@@ -412,11 +413,13 @@ Mobile behavior:
 
 7. **Preserve hover states** - Interactive elements should have clear hover/focus states for usability
 
-8. **Don't override `!important` rules** - The base CSS uses `!important` sparingly, mainly for mobile fixes
+8. **Match `!important` where needed** - The base CSS uses `!important` on many mobile-layout rules, and the brutalist, pixel, and minimalist styles use it heavily in their overrides. A custom rule only beats one of those if it's also `!important`.
 
-## Example Style Variations
+9. **Some styles hard-code colors** - The gradient and brutalist styles set many colors directly instead of through the variables, so changing only the `:root` variables has less effect on them.
 
-### Dark High-Contrast
+### Example style variations
+
+#### Dark high-contrast
 ```css
 :root {
     --bg-primary: #000000;
@@ -428,7 +431,7 @@ Mobile behavior:
 }
 ```
 
-### Light Professional
+#### Light professional
 ```css
 :root {
     --bg-primary: #ffffff;
@@ -441,7 +444,7 @@ Mobile behavior:
 }
 ```
 
-### Warm Earth Tones
+#### Warm earth tones
 ```css
 :root {
     --bg-primary: #2c2416;
@@ -454,12 +457,13 @@ Mobile behavior:
 }
 ```
 
-## JavaScript Functionality
+### JavaScript functionality
 
 The generated HTML includes minimal JavaScript for:
 
 1. **Mobile menu toggle** - Shows/hides sidebar navigation on mobile
 2. **Keyword expansion** - Expands "+X more" keyword badges when clicked
-3. **Smooth scrolling** - Anchor links scroll smoothly to categories
+
+Smooth scrolling to anchors comes from the CSS `scroll-behavior` property, not JavaScript.
 
 These behaviors are built-in and don't require customization for basic styling changes.
