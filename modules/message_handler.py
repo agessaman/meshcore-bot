@@ -9,6 +9,7 @@ import copy
 import hmac as hmac_mod
 import time
 from collections import OrderedDict
+from collections.abc import Iterable
 from hashlib import sha256
 from typing import Any, TypedDict
 
@@ -379,6 +380,7 @@ class MessageHandler:
         """Return configured channel indexes and keys without logging secrets."""
         meshcore = getattr(self.bot, "meshcore", None)
         channels = getattr(meshcore, "channels", None)
+        items: Iterable[tuple[int, Any]]
         if isinstance(channels, dict):
             items = channels.items()
         elif isinstance(channels, list):
@@ -390,8 +392,11 @@ class MessageHandler:
         for fallback_idx, channel in items:
             if not isinstance(channel, dict):
                 continue
+            # Annotated Any: with a mixed Any | int default, mypy matches .get()'s
+            # None-default overload and infers Any | None. int() rejects None anyway.
+            raw_idx: Any = channel.get("channel_idx", fallback_idx)
             try:
-                channel_idx = int(channel.get("channel_idx", fallback_idx))
+                channel_idx = int(raw_idx)
             except (TypeError, ValueError):
                 continue
 
