@@ -1284,7 +1284,7 @@ def format_monitor_channels(monitor_channels: list[str], html: bool = False) -> 
         return ", ".join(formatted[:-1]) + f", or {formatted[-1]}"
 
 
-def generate_html(bot_name: str, title: str, introduction: str, commands: list[tuple[str, Any]], monitor_channels: list[str] = None, channels_data: dict[str, dict[str, str]] = None, style: str = 'default') -> str:
+def generate_html(bot_name: str, title: str, introduction: str, commands: list[tuple[str, Any]], monitor_channels: list[str] = None, channels_data: dict[str, dict[str, str]] = None, style: str = 'default', link_css: Optional[str] = None, custom_css: Optional[str] = None) -> str:
     """Generate the HTML content"""
 
     if monitor_channels is None:
@@ -1519,6 +1519,17 @@ def generate_html(bot_name: str, title: str, introduction: str, commands: list[t
 
         channels_html += '</div>\n'
 
+    # Custom CSS cascades after the built-in style: embedded CSS is appended to
+    # the <style> block and a linked stylesheet follows it, so both can override
+    # built-in rules of equal specificity.
+    css_content = generate_builtin_css(style)
+    if custom_css:
+        css_content += "\n\n        /* Custom CSS overrides */\n" + custom_css
+
+    external_css_link = ""
+    if link_css:
+        external_css_link = f'\n    <link rel="stylesheet" href="{escape_html(link_css)}">'
+
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1529,7 +1540,144 @@ def generate_html(bot_name: str, title: str, introduction: str, commands: list[t
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="{STYLES[style]['fonts_url']}" rel="stylesheet">
     <style>
-        :root {{
+{css_content}
+    </style>{external_css_link}
+</head>"""
+
+    # Continue with body
+    html_content += f"""
+<body>
+    <div class="atmosphere"></div>
+    <div class="grid-overlay"></div>
+
+    <div class="sidebar-overlay"></div>
+
+    <button class="mobile-menu-toggle" aria-label="Toggle navigation menu">
+        <span class="hamburger"></span>
+        <span class="hamburger"></span>
+        <span class="hamburger"></span>
+    </button>
+
+    <div class="container">
+        {nav_html}
+
+        <div class="main-content">
+            <header>
+                <div class="header-content">
+                    <div class="header-title">
+                        <h1>{escape_html(bot_name)}</h1>
+                    </div>
+                    <div class="intro">
+                        {escape_html(introduction).replace(chr(10), '<br>')}{channels_suffix}
+                    </div>
+                </div>
+            </header>
+
+            <main>
+                {commands_html}
+                {channels_html}
+            </main>
+
+            <footer>
+                <p>Generated command reference for {escape_html(bot_name)}</p>
+            </footer>
+        </div>
+    </div>
+
+    <script>
+        // Handle mobile menu toggle
+        (function() {{
+            'use strict';
+
+            const menuToggle = document.querySelector('.mobile-menu-toggle');
+            const sidebar = document.querySelector('.sidebar-nav');
+            const overlay = document.querySelector('.sidebar-overlay');
+
+            if (menuToggle && sidebar) {{
+                function toggleMenu() {{
+                    const isOpen = sidebar.classList.contains('open');
+                    if (isOpen) {{
+                        menuToggle.classList.remove('active');
+                        sidebar.classList.remove('open');
+                        if (overlay) {{
+                            overlay.classList.remove('visible');
+                        }}
+                    }} else {{
+                        menuToggle.classList.add('active');
+                        sidebar.classList.add('open');
+                        if (overlay) {{
+                            overlay.classList.add('visible');
+                        }}
+                    }}
+                }}
+
+                function closeMenu() {{
+                    menuToggle.classList.remove('active');
+                    sidebar.classList.remove('open');
+                    if (overlay) {{
+                        overlay.classList.remove('visible');
+                    }}
+                }}
+
+                menuToggle.addEventListener('click', function(e) {{
+                    e.stopPropagation();
+                    e.preventDefault();
+                    toggleMenu();
+                    return false;
+                }});
+
+                // Handle overlay clicks - overlay now only covers area after sidebar
+                if (overlay) {{
+                    overlay.addEventListener('click', function(e) {{
+                        closeMenu();
+                    }});
+                }}
+
+                // Handle nav link clicks - don't prevent default, let browser handle navigation
+                const navLinks = sidebar.querySelectorAll('.nav-link');
+                navLinks.forEach(link => {{
+                    link.addEventListener('click', function(e) {{
+                        if (window.innerWidth <= 1200) {{
+                            // Close menu after a delay to allow navigation
+                            setTimeout(function() {{
+                                closeMenu();
+                            }}, 200);
+                        }}
+                    }});
+                }});
+            }}
+
+            // Handle keyword expansion
+            const expandButtons = document.querySelectorAll('.keyword-expand');
+
+            expandButtons.forEach(button => {{
+                button.addEventListener('click', function() {{
+                    const hiddenAliases = this.getAttribute('data-hidden').split(',');
+                    const commandKeywords = this.closest('.command-keywords');
+
+                    // Hide the expand button
+                    this.classList.add('expanded');
+
+                    // Add hidden aliases as visible badges
+                    hiddenAliases.forEach(alias => {{
+                        const badge = document.createElement('span');
+                        badge.className = 'keyword-badge keyword-hidden visible';
+                        badge.textContent = alias.trim();
+                        commandKeywords.appendChild(badge);
+                    }});
+                }});
+            }});
+        }})();
+    </script>
+</body>
+</html>"""
+
+    return html_content
+
+
+def generate_builtin_css(style: str) -> str:
+    """Generate the built-in CSS for a given style"""
+    return f"""        :root {{
             {STYLES[style]['css_vars']}
         }}
 
@@ -2368,136 +2516,7 @@ def generate_html(bot_name: str, title: str, introduction: str, commands: list[t
         }}
 
         /* Style-specific CSS overrides */
-        {STYLES[style].get('css_overrides', '')}
-    </style>
-</head>
-<body>
-    <div class="atmosphere"></div>
-    <div class="grid-overlay"></div>
-
-    <div class="sidebar-overlay"></div>
-
-    <button class="mobile-menu-toggle" aria-label="Toggle navigation menu">
-        <span class="hamburger"></span>
-        <span class="hamburger"></span>
-        <span class="hamburger"></span>
-    </button>
-
-    <div class="container">
-        {nav_html}
-
-        <div class="main-content">
-            <header>
-                <div class="header-content">
-                    <div class="header-title">
-                        <h1>{escape_html(bot_name)}</h1>
-                    </div>
-                    <div class="intro">
-                        {escape_html(introduction).replace(chr(10), '<br>')}{channels_suffix}
-                    </div>
-                </div>
-            </header>
-
-            <main>
-                {commands_html}
-                {channels_html}
-            </main>
-
-            <footer>
-                <p>Generated command reference for {escape_html(bot_name)}</p>
-            </footer>
-        </div>
-    </div>
-
-    <script>
-        // Handle mobile menu toggle
-        (function() {{
-            'use strict';
-
-            const menuToggle = document.querySelector('.mobile-menu-toggle');
-            const sidebar = document.querySelector('.sidebar-nav');
-            const overlay = document.querySelector('.sidebar-overlay');
-
-            if (menuToggle && sidebar) {{
-                function toggleMenu() {{
-                    const isOpen = sidebar.classList.contains('open');
-                    if (isOpen) {{
-                        menuToggle.classList.remove('active');
-                        sidebar.classList.remove('open');
-                        if (overlay) {{
-                            overlay.classList.remove('visible');
-                        }}
-                    }} else {{
-                        menuToggle.classList.add('active');
-                        sidebar.classList.add('open');
-                        if (overlay) {{
-                            overlay.classList.add('visible');
-                        }}
-                    }}
-                }}
-
-                function closeMenu() {{
-                    menuToggle.classList.remove('active');
-                    sidebar.classList.remove('open');
-                    if (overlay) {{
-                        overlay.classList.remove('visible');
-                    }}
-                }}
-
-                menuToggle.addEventListener('click', function(e) {{
-                    e.stopPropagation();
-                    e.preventDefault();
-                    toggleMenu();
-                    return false;
-                }});
-
-                // Handle overlay clicks - overlay now only covers area after sidebar
-                if (overlay) {{
-                    overlay.addEventListener('click', function(e) {{
-                        closeMenu();
-                    }});
-                }}
-
-                // Handle nav link clicks - don't prevent default, let browser handle navigation
-                const navLinks = sidebar.querySelectorAll('.nav-link');
-                navLinks.forEach(link => {{
-                    link.addEventListener('click', function(e) {{
-                        if (window.innerWidth <= 1200) {{
-                            // Close menu after a delay to allow navigation
-                            setTimeout(function() {{
-                                closeMenu();
-                            }}, 200);
-                        }}
-                    }});
-                }});
-            }}
-
-            // Handle keyword expansion
-            const expandButtons = document.querySelectorAll('.keyword-expand');
-
-            expandButtons.forEach(button => {{
-                button.addEventListener('click', function() {{
-                    const hiddenAliases = this.getAttribute('data-hidden').split(',');
-                    const commandKeywords = this.closest('.command-keywords');
-
-                    // Hide the expand button
-                    this.classList.add('expanded');
-
-                    // Add hidden aliases as visible badges
-                    hiddenAliases.forEach(alias => {{
-                        const badge = document.createElement('span');
-                        badge.className = 'keyword-badge keyword-hidden visible';
-                        badge.textContent = alias.trim();
-                        commandKeywords.appendChild(badge);
-                    }});
-                }});
-            }});
-        }})();
-    </script>
-</body>
-</html>"""
-
-    return html_content
+        {STYLES[style].get('css_overrides', '')}"""
 
 
 def list_styles():
@@ -2513,7 +2532,7 @@ def list_styles():
         print(f"  {' ' * max_len}  {style_info['description']}\n")
 
 
-def generate_samples(config_file):
+def generate_samples(config_file, link_css: Optional[str] = None, custom_css: Optional[str] = None):
     """Generate sample HTML files for all styles with an index page."""
     logger = logging.getLogger(__name__)
 
@@ -2582,7 +2601,9 @@ def generate_samples(config_file):
             commands=sorted_commands,
             monitor_channels=monitor_channels,
             channels_data=channels_data,
-            style=style_name
+            style=style_name,
+            link_css=link_css,
+            custom_css=custom_css
         )
 
         output_path = os.path.join(output_dir, f'{style_name}.html')
@@ -2730,6 +2751,18 @@ def main():
         help='Generate sample pages for all styles with an index.html'
     )
 
+    parser.add_argument(
+        '--link-css',
+        metavar='URL',
+        help='Link a stylesheet after the built-in style so its rules override it'
+    )
+
+    parser.add_argument(
+        '--embed-css',
+        metavar='FILE',
+        help='Inline CSS from a local file after the built-in style so its rules override it'
+    )
+
     args = parser.parse_args()
 
     # Handle --list-styles flag
@@ -2737,9 +2770,19 @@ def main():
         list_styles()
         sys.exit(0)
 
+    # Read --embed-css up front so a bad path fails before plugins load
+    custom_css = None
+    if args.embed_css:
+        try:
+            with open(args.embed_css, encoding='utf-8') as f:
+                custom_css = f.read()
+        except (OSError, UnicodeDecodeError) as e:
+            logger.error(f"Could not read --embed-css file {args.embed_css}: {e}")
+            sys.exit(1)
+
     # Handle --sample flag
     if args.sample:
-        generate_samples(args.config)
+        generate_samples(args.config, link_css=args.link_css, custom_css=custom_css)
         sys.exit(0)
 
     config_file = args.config
@@ -2822,7 +2865,7 @@ def main():
 
         # Generate HTML
         logger.info("Generating HTML...")
-        html_content = generate_html(bot_name, title, introduction, sorted_commands, monitor_channels, channels_data, style)
+        html_content = generate_html(bot_name, title, introduction, sorted_commands, monitor_channels, channels_data, style, args.link_css, custom_css)
 
         # Create website directory
         website_dir = os.path.join(bot_root, "website")

@@ -6,6 +6,16 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Added
+
+- `generate_website.py` accepts `--link-css URL` and `--embed-css FILE` to layer
+  custom CSS on top of the built-in style chosen with `--style` (#288). Embedded
+  CSS is appended to the page's `<style>` block, keeping the page a single file;
+  a linked stylesheet loads after it, so both override built-in rules of equal
+  specificity. Both flags also apply to `--sample` pages, and an unreadable
+  `--embed-css` file stops generation with an error. See
+  `docs/command-reference-website.md` for examples and the CSS class reference.
+
 ### Fixed
 
 - A radio connection is no longer accepted when every channel read times out or
