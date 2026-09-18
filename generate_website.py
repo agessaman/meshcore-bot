@@ -1284,7 +1284,7 @@ def format_monitor_channels(monitor_channels: list[str], html: bool = False) -> 
         return ", ".join(formatted[:-1]) + f", or {formatted[-1]}"
 
 
-def generate_html(bot_name: str, title: str, introduction: str, commands: list[tuple[str, Any]], monitor_channels: list[str] = None, channels_data: dict[str, dict[str, str]] = None, style: str = 'default', link_css: str = None, embed_css: str = None) -> str:
+def generate_html(bot_name: str, title: str, introduction: str, commands: list[tuple[str, Any]], monitor_channels: list[str] = None, channels_data: dict[str, dict[str, str]] = None, style: str = 'default', link_css: Optional[str] = None, custom_css: Optional[str] = None) -> str:
     """Generate the HTML content"""
 
     if monitor_channels is None:
@@ -1519,40 +1519,16 @@ def generate_html(bot_name: str, title: str, introduction: str, commands: list[t
 
         channels_html += '</div>\n'
 
-    # Determine CSS approach
-    css_content = ""
-    fonts_link = ""
-    external_css_link = ""
+    # Custom CSS cascades after the built-in style: embedded CSS is appended to
+    # the <style> block and a linked stylesheet follows it, so both can override
+    # built-in rules of equal specificity.
+    css_content = generate_builtin_css(style)
+    if custom_css:
+        css_content += "\n\n        /* Custom CSS overrides */\n" + custom_css
 
+    external_css_link = ""
     if link_css:
-        # Link to external CSS file
-        external_css_link = f'<link rel="stylesheet" href="{link_css}">'
-        # If using a built-in style as base, include its CSS and fonts
-        if style in STYLES:
-            fonts_link = f'<link href="{STYLES[style]["fonts_url"]}" rel="stylesheet">'
-            css_content = generate_builtin_css(style)
-    elif embed_css:
-        # Read and embed CSS from file
-        try:
-            with open(embed_css, encoding='utf-8') as f:
-                embedded_css = f.read()
-            # If using a built-in style as base, include it first, then the custom CSS
-            if style in STYLES:
-                fonts_link = f'<link href="{STYLES[style]["fonts_url"]}" rel="stylesheet">'
-                css_content = generate_builtin_css(style) + "\n\n        /* Custom CSS overrides */\n" + embedded_css
-            else:
-                # Just use the embedded CSS without a base style
-                css_content = embedded_css
-        except Exception as e:
-            logger = logging.getLogger(__name__)
-            logger.error(f"Failed to read CSS file {embed_css}: {e}")
-            # Fallback to built-in style
-            fonts_link = f'<link href="{STYLES[style]["fonts_url"]}" rel="stylesheet">'
-            css_content = generate_builtin_css(style)
-    else:
-        # Use built-in style
-        fonts_link = f'<link href="{STYLES[style]["fonts_url"]}" rel="stylesheet">'
-        css_content = generate_builtin_css(style)
+        external_css_link = f'\n    <link rel="stylesheet" href="{escape_html(link_css)}">'
 
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
@@ -1562,17 +1538,10 @@ def generate_html(bot_name: str, title: str, introduction: str, commands: list[t
     <title>{escape_html(title)}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    {fonts_link}
-    {external_css_link}"""
-
-    # Only add <style> block if we have embedded CSS
-    if css_content:
-        html_content += f"""
+    <link href="{STYLES[style]['fonts_url']}" rel="stylesheet">
     <style>
 {css_content}
-    </style>"""
-
-    html_content += """
+    </style>{external_css_link}
 </head>"""
 
     # Continue with body
@@ -2548,6 +2517,8 @@ def generate_builtin_css(style: str) -> str:
 
         /* Style-specific CSS overrides */
         {STYLES[style].get('css_overrides', '')}"""
+
+
 def list_styles():
     """Print available styles with descriptions."""
     print("Available styles:\n")
@@ -2561,7 +2532,7 @@ def list_styles():
         print(f"  {' ' * max_len}  {style_info['description']}\n")
 
 
-def generate_samples(config_file):
+def generate_samples(config_file, link_css: Optional[str] = None, custom_css: Optional[str] = None):
     """Generate sample HTML files for all styles with an index page."""
     logger = logging.getLogger(__name__)
 
@@ -2630,7 +2601,9 @@ def generate_samples(config_file):
             commands=sorted_commands,
             monitor_channels=monitor_channels,
             channels_data=channels_data,
-            style=style_name
+            style=style_name,
+            link_css=link_css,
+            custom_css=custom_css
         )
 
         output_path = os.path.join(output_dir, f'{style_name}.html')
@@ -2781,13 +2754,13 @@ def main():
     parser.add_argument(
         '--link-css',
         metavar='URL',
-        help='Link to an external CSS file instead of using built-in styles'
+        help='Link a stylesheet after the built-in style so its rules override it'
     )
 
     parser.add_argument(
         '--embed-css',
         metavar='FILE',
-        help='Embed CSS from a local file instead of using built-in styles'
+        help='Inline CSS from a local file after the built-in style so its rules override it'
     )
 
     args = parser.parse_args()
@@ -2797,9 +2770,19 @@ def main():
         list_styles()
         sys.exit(0)
 
+    # Read --embed-css up front so a bad path fails before plugins load
+    custom_css = None
+    if args.embed_css:
+        try:
+            with open(args.embed_css, encoding='utf-8') as f:
+                custom_css = f.read()
+        except (OSError, UnicodeDecodeError) as e:
+            logger.error(f"Could not read --embed-css file {args.embed_css}: {e}")
+            sys.exit(1)
+
     # Handle --sample flag
     if args.sample:
-        generate_samples(args.config)
+        generate_samples(args.config, link_css=args.link_css, custom_css=custom_css)
         sys.exit(0)
 
     config_file = args.config
@@ -2882,7 +2865,7 @@ def main():
 
         # Generate HTML
         logger.info("Generating HTML...")
-        html_content = generate_html(bot_name, title, introduction, sorted_commands, monitor_channels, channels_data, style, args.link_css, args.embed_css)
+        html_content = generate_html(bot_name, title, introduction, sorted_commands, monitor_channels, channels_data, style, args.link_css, custom_css)
 
         # Create website directory
         website_dir = os.path.join(bot_root, "website")
