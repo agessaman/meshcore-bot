@@ -16,6 +16,9 @@ semantic versioning.
   `--embed-css` file stops generation with an error. See
   `docs/command-reference-website.md` for examples and the CSS class reference.
 
+- Add `contact` command allowing the user to ask the bot to provide its
+  public key as a clickable contact.
+
 ### Fixed
 
 - A radio connection is no longer accepted when every channel read times out or
