@@ -5,6 +5,7 @@ Handles all bot commands, keyword matching, and response generation
 """
 
 import asyncio
+import contextlib
 import random
 import time
 from dataclasses import dataclass
@@ -1341,37 +1342,47 @@ class CommandManager:
                     scope_to_use,
                     scope_source,
                 )
-            if not scope_is_global and not hasattr(self.bot.meshcore.commands, "set_flood_scope"):
+            scoped = not scope_is_global and hasattr(self.bot.meshcore.commands, "set_flood_scope")
+            if not scope_is_global and not scoped:
                 self.logger.warning(
                     "Regional flood scope %r requested but meshcore.commands.set_flood_scope "
                     "is unavailable; channel message will use device default (often global flood)",
                     scope_to_use,
                 )
-            elif not scope_is_global:
-                _scope_result = await self.bot.meshcore.commands.set_flood_scope(scope_to_use)
-                if _scope_result is None or getattr(_scope_result, "type", None) == "ERROR":
-                    self.logger.warning(
-                        "set_flood_scope(%s) failed (result=%s); "
-                        "message will be sent with current firmware scope",
-                        scope_to_use, _scope_result,
-                    )
 
             target = f"{channel} (channel {channel_num})"
             # Retry on no_event_received: max 2 extra attempts, 2s apart
             _max_retries = 2
             for _attempt in range(_max_retries + 1):
-                try:
-                    result = await self.bot.meshcore.commands.send_chan_msg(
-                        channel_num, content,
-                        timestamp=int(timestamp.timestamp()) if timestamp else None,
-                    )
-                finally:
-                    if not scope_is_global and hasattr(self.bot.meshcore.commands, "set_flood_scope"):
-                        _restore_result = await self.bot.meshcore.commands.set_flood_scope("*")
-                        if _restore_result is None or getattr(_restore_result, "type", None) == "ERROR":
-                            self.logger.warning(
-                                "set_flood_scope('*') restore failed (result=%s)", _restore_result
-                            )
+                # Hold the radio from set to restore so no other send goes out
+                # under this message's scope.
+                async with self.bot.radio_session() if scoped else contextlib.nullcontext():
+                    if scoped:
+                        _scope_result = await self.bot.meshcore.commands.set_flood_scope(scope_to_use)
+                        if _scope_result is None or getattr(_scope_result, "type", None) == "ERROR":
+                            if _attempt == 0:
+                                self.logger.warning(
+                                    "set_flood_scope(%s) failed (result=%s); "
+                                    "message will be sent with current firmware scope",
+                                    scope_to_use, _scope_result,
+                                )
+                            else:
+                                self.logger.warning(
+                                    "set_flood_scope(%s) failed on retry re-apply (result=%s)",
+                                    scope_to_use, _scope_result,
+                                )
+                    try:
+                        result = await self.bot.meshcore.commands.send_chan_msg(
+                            channel_num, content,
+                            timestamp=int(timestamp.timestamp()) if timestamp else None,
+                        )
+                    finally:
+                        if scoped:
+                            _restore_result = await self.bot.meshcore.commands.set_flood_scope("*")
+                            if _restore_result is None or getattr(_restore_result, "type", None) == "ERROR":
+                                self.logger.warning(
+                                    "set_flood_scope('*') restore failed (result=%s)", _restore_result
+                                )
 
                 if self._is_no_event_received(result) and _attempt < _max_retries:
                     self.logger.warning(
@@ -1379,14 +1390,6 @@ class CommandManager:
                         f"(attempt {_attempt + 1}/{_max_retries + 1}), retrying in 2s"
                     )
                     await asyncio.sleep(2)
-                    # Re-apply scope for next attempt
-                    if not scope_is_global and hasattr(self.bot.meshcore.commands, "set_flood_scope"):
-                        _scope_result = await self.bot.meshcore.commands.set_flood_scope(scope_to_use)
-                        if _scope_result is None or getattr(_scope_result, "type", None) == "ERROR":
-                            self.logger.warning(
-                                "set_flood_scope(%s) failed on retry re-apply (result=%s)",
-                                scope_to_use, _scope_result,
-                            )
                     continue
                 break
 

@@ -7,8 +7,9 @@ Contains the main bot class and message processing logic
 import asyncio
 import atexit
 import configparser
+import contextlib
+import contextvars
 import functools
-import inspect
 import json
 import logging
 import signal
@@ -119,8 +120,15 @@ class _BotAdminServer(threading.Thread):
             self._bot.logger.error("BotAdminServer failed to start: %s", exc)
 
 
-class _SerializedCommands:
-    """Serializing proxy around ``meshcore.commands``.
+# True while the current task holds the radio through MeshCoreBot.radio_session(),
+# so the frames it sends don't try to take the (non-reentrant) lock again.
+_radio_session_held: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "radio_session_held", default=False
+)
+
+
+def _serialize_command_frames(bot: "MeshCoreBot", commands: Any) -> bool:
+    """Route every host->radio frame through the bot's radio command lock.
 
     The companion firmware processes one host serial frame per main-loop
     iteration and has no mid-frame resync: a burst of concurrent commands can
@@ -130,34 +138,33 @@ class _SerializedCommands:
     (sends, channel/contact ops, scheduler ops, health probes, auto message
     fetch) with no shared serialization.
 
-    This proxy routes every coroutine command through a single per-bot lock and
-    enforces a minimum inter-command interval, guaranteeing at most one
-    in-flight companion frame at a time. Non-coroutine attributes are passed
-    through untouched, so library internals that read ``_sender_func``,
-    ``default_timeout`` etc. are unaffected. ``meshcore_cli.next_cmd`` calls are
-    serialized too, since they dispatch through this same ``commands`` object.
+    Every meshcore command writes its frame through ``CommandHandler.send()``,
+    which waits for the radio's immediate reply (OK, ERROR, MSG_SENT, ...).
+    Wrapping ``send`` on the handler instance serializes exactly that exchange
+    and paces frames by a minimum interval, so there is at most one in-flight
+    companion frame at a time. Library methods call ``self.send``, so composite
+    commands (``send_msg_with_retry``, ``req_*_sync``, ``send_login_sync``) and
+    ``meshcore_cli.next_cmd`` are covered too, while their waits for ACKs and
+    remote responses happen outside the lock and don't block other senders.
+
+    Returns False when ``commands`` is already serialized.
     """
+    send = commands.send
+    if getattr(send, "_radio_serialized", False):
+        return False
 
-    __slots__ = ("_bot", "_commands")
+    @functools.wraps(send)
+    async def _serialized_send(*args: Any, **kwargs: Any) -> Any:
+        if _radio_session_held.get():
+            await bot._pace_radio_command()
+            return await send(*args, **kwargs)
+        async with bot._get_radio_cmd_lock():
+            await bot._pace_radio_command()
+            return await send(*args, **kwargs)
 
-    def __init__(self, bot: "MeshCoreBot", commands: Any) -> None:
-        object.__setattr__(self, "_bot", bot)
-        object.__setattr__(self, "_commands", commands)
-
-    def __getattr__(self, name: str) -> Any:
-        commands = object.__getattribute__(self, "_commands")
-        attr = getattr(commands, name)
-        if not inspect.iscoroutinefunction(attr):
-            return attr
-        bot = object.__getattribute__(self, "_bot")
-
-        @functools.wraps(attr)
-        async def _serialized(*args: Any, **kwargs: Any) -> Any:
-            async with bot._get_radio_cmd_lock():
-                await bot._pace_radio_command()
-                return await attr(*args, **kwargs)
-
-        return _serialized
+    _serialized_send._radio_serialized = True  # type: ignore[attr-defined]
+    commands.send = _serialized_send
+    return True
 
     def __setattr__(self, name: str, value: Any) -> None:
         setattr(object.__getattribute__(self, "_commands"), name, value)
@@ -1739,25 +1746,46 @@ long_jokes = false
             await asyncio.sleep(wait)
         self._radio_cmd_last_ts = time.monotonic()
 
-    def _install_command_serializer(self) -> None:
-        """Wrap ``meshcore.commands`` so every command is serialized + paced.
+    @contextlib.asynccontextmanager
+    async def radio_session(self):
+        """Hold the radio for a short sequence of frames that must not interleave.
 
-        Idempotent and safe to call after each (re)connect. Wrapping the
-        ``commands`` attribute in place means existing call sites
-        (``self.meshcore.commands.*`` and ``meshcore_cli.next_cmd``) are
-        serialized automatically with no per-call changes.
+        Frames are serialized one at a time, so another task's frame can land
+        between two of ours. Use this when that matters, e.g. setting the flood
+        scope, sending, and restoring it, so no other send goes out under the
+        temporary scope. Keep it short: every other sender waits, so don't wait
+        for ACKs or remote responses inside it. Re-entering from the same task
+        is a no-op. Tasks created inside the session inherit it, so don't spawn
+        work that sends after the session ends.
+        """
+        if _radio_session_held.get():
+            yield
+            return
+        async with self._get_radio_cmd_lock():
+            token = _radio_session_held.set(True)
+            try:
+                yield
+            finally:
+                _radio_session_held.reset(token)
+
+    def _install_command_serializer(self) -> None:
+        """Serialize and pace every frame ``meshcore.commands`` writes.
+
+        Idempotent and safe to call after each (re)connect. The handler is
+        wrapped in place, so existing call sites (``self.meshcore.commands.*``
+        and ``meshcore_cli.next_cmd``) need no per-call changes.
         """
         if not self.meshcore:
             return
         cmds = getattr(self.meshcore, "commands", None)
-        if cmds is None or isinstance(cmds, _SerializedCommands):
+        if cmds is None:
             return
         try:
-            self.meshcore.commands = _SerializedCommands(self, cmds)
-            self.logger.debug(
-                "Installed serialized command gateway (min interval %.0fms)",
-                self._radio_cmd_min_interval * 1000,
-            )
+            if _serialize_command_frames(self, cmds):
+                self.logger.debug(
+                    "Installed serialized command gateway (min interval %.0fms)",
+                    self._radio_cmd_min_interval * 1000,
+                )
         except (AttributeError, TypeError) as e:
             self.logger.warning(f"Could not install command serializer: {e}")
 

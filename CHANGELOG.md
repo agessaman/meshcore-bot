@@ -18,6 +18,14 @@ semantic versioning.
 
 ### Fixed
 
+- A DM waiting for its ACK no longer holds the radio. Radio commands were
+  serialized per call, so a DM's retry loop kept every other command waiting
+  through all of its ACK timeouts (up to ~36 s with the default three attempts),
+  stalling channel replies, other DMs, and scheduled sends. The lock now covers
+  one frame and the radio's immediate reply, and ACK and remote-response waits
+  run outside it, so neighbor scope requests no longer stall replies either. A
+  region-scoped channel message now holds the radio from setting its flood scope
+  through restoring it, so no other send goes out under that scope.
 - A radio connection is no longer accepted when every channel read times out or
   returns no usable channel data (#266). Startup and reconnect now retry the
   channel scan three times, keep an empty result out of the valid cache and
