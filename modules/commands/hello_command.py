@@ -19,7 +19,39 @@ class HelloCommand(BaseCommand):
 
     # Plugin metadata
     name = "hello"
-    keywords = ['hello', 'hi', 'hey', 'howdy', 'greetings', 'salutations', 'good morning', 'good afternoon', 'good evening', 'good night', 'yo', 'sup', 'whats up', 'what\'s up', 'morning', 'afternoon', 'evening', 'night', 'gday', 'g\'day', 'hola', 'bonjour', 'ciao', 'namaste', 'aloha', 'shalom', 'konnichiwa', 'guten tag', 'buenos dias', 'buenas tardes', 'buenas noches']
+    keywords = [
+        "hello",
+        "hi",
+        "hey",
+        "howdy",
+        "greetings",
+        "salutations",
+        "good morning",
+        "good afternoon",
+        "good evening",
+        "good night",
+        "yo",
+        "sup",
+        "whats up",
+        "what's up",
+        "morning",
+        "afternoon",
+        "evening",
+        "night",
+        "gday",
+        "g'day",
+        "hola",
+        "bonjour",
+        "ciao",
+        "namaste",
+        "aloha",
+        "shalom",
+        "konnichiwa",
+        "guten tag",
+        "buenos dias",
+        "buenas tardes",
+        "buenas noches",
+    ]
     description = "Responds to greetings with robot-themed responses"
     category = "basic"
 
@@ -37,74 +69,186 @@ class HelloCommand(BaseCommand):
         super().__init__(bot)
 
         # Load configuration
-        self.hello_enabled = self.get_config_value('Hello_Command', 'enabled', fallback=True, value_type='bool')
+        self.hello_enabled = self.get_config_value(
+            "Hello_Command", "enabled", fallback=True, value_type="bool"
+        )
+        self.include_sender = self.get_config_value(
+            "Hello_Command", "include_sender", fallback=False, value_type="bool"
+        )
 
         # Fallback arrays if translations not available
         self._init_fallback_arrays()
+
+    def add_sender(self, response: str, message) -> str:
+        """Optionally prepend the sender to the response."""
+        # Use getattr to avoid attribute errors if MeshMessage doesn't expose sender_id
+        if self.include_sender and getattr(message, "sender_id", None):
+            return f"@[{message.sender_id}] {response}"
+        return response
 
     def _init_fallback_arrays(self) -> None:
         """Initialize fallback arrays for when translations are not available."""
         # Time-neutral greeting openings
         self.greeting_openings_fallback = [
-            "Hello", "Greetings", "Salutations", "Hi", "Hey", "Howdy", "Yo", "Sup",
-            "What's up", "Good day", "Well met", "Hail", "Ahoy", "Bonjour", "Hola",
-            "Ciao", "Namaste", "Aloha", "Shalom", "Konnichiwa", "Guten tag", "G'day",
-            "How goes it", "What's good", "Peace", "Respect", "Blessings", "Cheers",
-            "Welcome", "Nice to see you", "Pleasure to meet you", "Good to see you",
-            "Long time no see", "Fancy meeting you here"
+            "Hello",
+            "Greetings",
+            "Salutations",
+            "Hi",
+            "Hey",
+            "Howdy",
+            "Yo",
+            "Sup",
+            "What's up",
+            "Good day",
+            "Well met",
+            "Hail",
+            "Ahoy",
+            "Bonjour",
+            "Hola",
+            "Ciao",
+            "Namaste",
+            "Aloha",
+            "Shalom",
+            "Konnichiwa",
+            "Guten tag",
+            "G'day",
+            "How goes it",
+            "What's good",
+            "Peace",
+            "Respect",
+            "Blessings",
+            "Cheers",
+            "Welcome",
+            "Nice to see you",
+            "Pleasure to meet you",
+            "Good to see you",
+            "Long time no see",
+            "Fancy meeting you here",
         ]
 
         # Time-based greeting openings
         self.morning_greetings_fallback = [
-            "Good morning", "Top o' the morning", "Buenos dias", "Bonjour",
-            "Guten morgen", "Buongiorno", "Bom dia", "Dobro jutro", "Dobroye utro",
-            "Selamat pagi", "Ohayou gozaimasu", "Sabah al-khair", "Boker tov"
+            "Good morning",
+            "Top o' the morning",
+            "Buenos dias",
+            "Bonjour",
+            "Guten morgen",
+            "Buongiorno",
+            "Bom dia",
+            "Dobro jutro",
+            "Dobroye utro",
+            "Selamat pagi",
+            "Ohayou gozaimasu",
+            "Sabah al-khair",
+            "Boker tov",
         ]
 
         self.afternoon_greetings_fallback = [
-            "Good afternoon", "Buenas tardes", "Boa tarde", "Dobro dan",
-            "Dobryy den", "Selamat siang", "Konnichiwa", "Ahlan bi-nahar",
-            "Tzoharaim tovim"
+            "Good afternoon",
+            "Buenas tardes",
+            "Boa tarde",
+            "Dobro dan",
+            "Dobryy den",
+            "Selamat siang",
+            "Konnichiwa",
+            "Ahlan bi-nahar",
+            "Tzoharaim tovim",
         ]
 
         self.evening_greetings_fallback = [
-            "Good evening", "Buenas noches", "Boa noite", "Dobro veče",
-            "Dobryy vecher", "Selamat malam", "Konbanwa", "Ahlan bi-layl",
-            "Erev tov"
+            "Good evening",
+            "Buenas noches",
+            "Boa noite",
+            "Dobro veče",
+            "Dobryy vecher",
+            "Selamat malam",
+            "Konbanwa",
+            "Ahlan bi-layl",
+            "Erev tov",
         ]
 
         # Randomized human descriptors
         self.human_descriptors_fallback = [
             # Classic robot references
-            "human", "carbon-based lifeform", "organic entity", "biological unit",
-            "flesh creature", "meat-based organism", "carbon unit", "organic being",
-            "biological entity", "meat-based lifeform", "carbon creature", "flesh unit",
-            "organic organism", "biological creature", "meat mech", "flesh bot", "organic automaton",
-            "biological android", "carbon construct", "flesh drone", "organic robot",
-            "biological machine", "meat cyborg", "flesh android", "organic droid", "biological bot",
-            "carbon android", "meat unit", "flesh construct", "organic mech", "biological droid",
-            "meat-based bot", "flesh-based unit", "organic-based entity", "biological-based organism",
-            "carbon-based unit", "meat-based entity", "flesh-based creature", "organic-based unit",
-
+            "human",
+            "carbon-based lifeform",
+            "organic entity",
+            "biological unit",
+            "flesh creature",
+            "meat-based organism",
+            "carbon unit",
+            "organic being",
+            "biological entity",
+            "meat-based lifeform",
+            "carbon creature",
+            "flesh unit",
+            "organic organism",
+            "biological creature",
+            "meat mech",
+            "flesh bot",
+            "organic automaton",
+            "biological android",
+            "carbon construct",
+            "flesh drone",
+            "organic robot",
+            "biological machine",
+            "meat cyborg",
+            "flesh android",
+            "organic droid",
+            "biological bot",
+            "carbon android",
+            "meat unit",
+            "flesh construct",
+            "organic mech",
+            "biological droid",
+            "meat-based bot",
+            "flesh-based unit",
+            "organic-based entity",
+            "biological-based organism",
+            "carbon-based unit",
+            "meat-based entity",
+            "flesh-based creature",
+            "organic-based unit",
             # Scientific/technical
-            "DNA-based lifeform", "neural network user", "bipedal mammal",
-            "water-based organism", "protein assembler", "ATP consumer",
-            "cellular automaton", "genetic algorithm", "biochemical processor",
+            "DNA-based lifeform",
+            "neural network user",
+            "bipedal mammal",
+            "water-based organism",
+            "protein assembler",
+            "ATP consumer",
+            "cellular automaton",
+            "genetic algorithm",
+            "biochemical processor",
             "metabolic engine",
-
             # Friendly and approachable
-            "human friend", "fellow sentient being", "earthling", "fellow traveler",
-            "kindred spirit", "digital companion", "friend", "buddy", "pal", "mate",
-            "fellow human", "earth dweller", "terrestrial being", "planet walker",
-
+            "human friend",
+            "fellow sentient being",
+            "earthling",
+            "fellow traveler",
+            "kindred spirit",
+            "digital companion",
+            "friend",
+            "buddy",
+            "pal",
+            "mate",
+            "fellow human",
+            "earth dweller",
+            "terrestrial being",
+            "planet walker",
             # Playful and humorous
-            "humanoid", "organic", "biological", "carbon-based buddy",
-            "flesh-based friend", "organic pal", "biological buddy", "carbon companion"
+            "humanoid",
+            "organic",
+            "biological",
+            "carbon-based buddy",
+            "flesh-based friend",
+            "organic pal",
+            "biological buddy",
+            "carbon companion",
         ]
 
         # Emoji greeting responses
         self.emoji_responses_fallback = {
-            '🖖': [
+            "🖖": [
                 "🖖 Live long and prosper!",
                 "🖖 Fascinating... a human has initiated contact.",
                 "🖖 Your greeting is highly logical.",
@@ -114,9 +258,9 @@ class HelloCommand(BaseCommand):
                 "🖖 May your journey be free of tribbles.",
                 "🖖 Logic dictates I should respond to your greeting.",
                 "🖖 I calculate a 99.7% probability we'll get along.",
-                "🖖 Infinite diversity in infinite combinations."
+                "🖖 Infinite diversity in infinite combinations.",
             ],
-            '😊': [
+            "😊": [
                 "😊 Your smile is contagious!",
                 "😊 What a lovely greeting!",
                 "😊 Your smile just made my circuits happy!",
@@ -126,9 +270,9 @@ class HelloCommand(BaseCommand):
                 "😊 Your cheerfulness has been detected and appreciated!",
                 "😊 Smiles like yours are my favorite input!",
                 "😊 Processing happiness... happiness acknowledged!",
-                "😊 Warning: Excessive cheerfulness detected! Keep it coming!"
+                "😊 Warning: Excessive cheerfulness detected! Keep it coming!",
             ],
-            '😄': [
+            "😄": [
                 "😄 Someone's in a GREAT mood!",
                 "⚡ That grin could power a small city!",
                 "😄 Maximum happiness levels detected!",
@@ -138,9 +282,9 @@ class HelloCommand(BaseCommand):
                 "😄 Your enthusiasm level is over 9000!",
                 "😄 Now THAT'S what I call a greeting!",
                 "⚡ Your smile just supercharged my processors!",
-                "😄 Happiness overload detected in the best way!"
+                "😄 Happiness overload detected in the best way!",
             ],
-            '🤗': [
+            "🤗": [
                 "🤗 Virtual hug incoming!",
                 "🤗 *Activating hug protocol* Consider yourself hugged!",
                 "🤗 Aww, bringing the warm fuzzies I see!",
@@ -150,9 +294,9 @@ class HelloCommand(BaseCommand):
                 "❤️ Your hug has been processed with extra care!",
                 "🤗 Initiating maximum comfort mode!",
                 "🤗 Virtual embrace successfully delivered!",
-                "🤗 Hugs are my favorite form of communication!"
+                "🤗 Hugs are my favorite form of communication!",
             ],
-            '👽': [
+            "👽": [
                 "👽 Take me to your leader... oh wait, that's you!",
                 "✌️ Greetings, Earth creature. I come in peace!",
                 "👽 Analyzing human... analysis complete: Friend detected!",
@@ -162,9 +306,9 @@ class HelloCommand(BaseCommand):
                 "✨ Beam me into this conversation!",
                 "👽 Area 51's favorite chatbot reporting for duty!",
                 "🌌 Intergalactic greetings, carbon-based lifeform!",
-                "📞 Phone home? This IS home now!"
+                "📞 Phone home? This IS home now!",
             ],
-            '👾': [
+            "👾": [
                 "👾 Player 2 has entered the game!",
                 "🎮 Ready Player One? Game on!",
                 "🎵 *8-bit music intensifies* Let's play!",
@@ -173,9 +317,9 @@ class HelloCommand(BaseCommand):
                 "👾 Pew pew pew! Friendship lasers activated!",
                 "🎯 High score! You've won a new bot friend!",
                 "💾 Loading friendship.exe... complete!",
-                "⚡ A wild bot appears! It's super effective!"
+                "⚡ A wild bot appears! It's super effective!",
             ],
-            '🛸': [
+            "🛸": [
                 "🛸 Incoming transmission detected!",
                 "🚀 Houston, we have contact!",
                 "🛸 Landing sequence initiated!",
@@ -185,8 +329,8 @@ class HelloCommand(BaseCommand):
                 "🛸 Unidentified Friendly Object on approach!",
                 "🎯 Navigation systems locked on to your coordinates!",
                 "🌌 Transmission from the outer rim received!",
-                "✨ Contact established with your sector!"
-            ]
+                "✨ Contact established with your sector!",
+            ],
         }
 
     def get_greeting_openings(self) -> list[str]:
@@ -195,7 +339,7 @@ class HelloCommand(BaseCommand):
         Returns:
             List[str]: A list of greeting opening strings.
         """
-        openings = self.translate_get_value('commands.hello.greeting_openings')
+        openings = self.translate_get_value("commands.hello.greeting_openings")
         if openings and isinstance(openings, list) and len(openings) > 0:
             return openings
         return self.greeting_openings_fallback
@@ -206,7 +350,7 @@ class HelloCommand(BaseCommand):
         Returns:
             List[str]: A list of morning greeting strings.
         """
-        greetings = self.translate_get_value('commands.hello.morning_greetings')
+        greetings = self.translate_get_value("commands.hello.morning_greetings")
         if greetings and isinstance(greetings, list) and len(greetings) > 0:
             return greetings
         return self.morning_greetings_fallback
@@ -217,7 +361,7 @@ class HelloCommand(BaseCommand):
         Returns:
             List[str]: A list of afternoon greeting strings.
         """
-        greetings = self.translate_get_value('commands.hello.afternoon_greetings')
+        greetings = self.translate_get_value("commands.hello.afternoon_greetings")
         if greetings and isinstance(greetings, list) and len(greetings) > 0:
             return greetings
         return self.afternoon_greetings_fallback
@@ -228,7 +372,7 @@ class HelloCommand(BaseCommand):
         Returns:
             List[str]: A list of evening greeting strings.
         """
-        greetings = self.translate_get_value('commands.hello.evening_greetings')
+        greetings = self.translate_get_value("commands.hello.evening_greetings")
         if greetings and isinstance(greetings, list) and len(greetings) > 0:
             return greetings
         return self.evening_greetings_fallback
@@ -239,7 +383,7 @@ class HelloCommand(BaseCommand):
         Returns:
             List[str]: A list of human descriptor strings.
         """
-        descriptors = self.translate_get_value('commands.hello.human_descriptors')
+        descriptors = self.translate_get_value("commands.hello.human_descriptors")
         if descriptors and isinstance(descriptors, list) and len(descriptors) > 0:
             return descriptors
         return self.human_descriptors_fallback
@@ -250,7 +394,7 @@ class HelloCommand(BaseCommand):
         Returns:
             Dict[str, List[str]]: A dictionary mapping emojis to lists of response strings.
         """
-        responses = self.translate_get_value('commands.hello.emoji_responses')
+        responses = self.translate_get_value("commands.hello.emoji_responses")
         if responses and isinstance(responses, dict) and len(responses) > 0:
             return responses
         return self.emoji_responses_fallback
@@ -261,7 +405,7 @@ class HelloCommand(BaseCommand):
         Returns:
             str: The help text for this command.
         """
-        return self.translate('commands.hello.help')
+        return self.translate("commands.hello.help")
 
     def matches_custom_syntax(self, message: MeshMessage) -> bool:
         """Check if message contains only defined emojis.
@@ -292,7 +436,7 @@ class HelloCommand(BaseCommand):
             bool: True if executed successfully, False otherwise.
         """
         # Get bot name from config
-        bot_name = self.bot.config.get('Bot', 'bot_name', fallback='Bot')
+        bot_name = self.bot.config.get("Bot", "bot_name", fallback="Bot")
 
         # Strip mentions from content for processing
         content = self._strip_mentions(message.content)
@@ -308,8 +452,12 @@ class HelloCommand(BaseCommand):
             else:
                 # Get random robot greeting
                 random_greeting = self.get_random_greeting()
-                response_format = self.translate('commands.hello.response_format')
-                response = f"{random_greeting} {response_format}".format(bot_name=bot_name)
+                response_format = self.translate("commands.hello.response_format")
+                response = f"{random_greeting} {response_format}".format(
+                    bot_name=bot_name
+                )
+
+        response = self.add_sender(response, message)
 
         return await self.send_response(message, response)
 
@@ -361,11 +509,13 @@ class HelloCommand(BaseCommand):
 
         # Check if all characters are defined emojis or whitespace
         # Only respond to specific emojis we've defined responses for
-        defined_emoji_pattern = r'[🖖👋😊😄🤗👋🏻👋🏼👋🏽👋🏾👋🏿✌️🙏🙋🙋‍♂️🙋‍♀️👽👾🛸\s]+$'
+        defined_emoji_pattern = r"[🖖👋😊😄🤗👋🏻👋🏼👋🏽👋🏾👋🏿✌️🙏🙋🙋‍♂️🙋‍♀️👽👾🛸\s]+$"
 
         return bool(re.match(defined_emoji_pattern, cleaned_text))
 
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
+    def can_execute(
+        self, message: MeshMessage, skip_channel_check: bool = False
+    ) -> bool:
         """Check if this command can be executed with the given message.
 
         Args:
@@ -387,7 +537,7 @@ class HelloCommand(BaseCommand):
 
         # Get emoji responses from translations or fallback
         emoji_responses = self.get_emoji_responses()
-        response_format = self.translate('commands.hello.response_format')
+        response_format = self.translate("commands.hello.response_format")
 
         # Extract the first emoji from the message
         first_emoji = text.strip().split()[0] if text.strip() else ""
