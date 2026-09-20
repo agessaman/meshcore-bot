@@ -38,9 +38,16 @@ class HelloCommand(BaseCommand):
 
         # Load configuration
         self.hello_enabled = self.get_config_value('Hello_Command', 'enabled', fallback=True, value_type='bool')
+        self.include_sender = self.get_config_value('Hello_Command', 'include_sender', fallback=False, value_type='bool')
 
         # Fallback arrays if translations not available
         self._init_fallback_arrays()
+
+    def add_sender(self, response: str, message: MeshMessage) -> str:
+        """Optionally prepend the sender to the response."""
+        if self.include_sender and message.sender_id:
+            return f"@[{message.sender_id}] {response}"
+        return response
 
     def _init_fallback_arrays(self) -> None:
         """Initialize fallback arrays for when translations are not available."""
@@ -310,6 +317,8 @@ class HelloCommand(BaseCommand):
                 random_greeting = self.get_random_greeting()
                 response_format = self.translate('commands.hello.response_format')
                 response = f"{random_greeting} {response_format}".format(bot_name=bot_name)
+
+        response = self.add_sender(response, message)
 
         return await self.send_response(message, response)
 

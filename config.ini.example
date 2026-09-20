@@ -1532,6 +1532,7 @@ enabled = true
 # channels =
 [Hello_Command]
 enabled = true
+include_sender = false
 # channels =
 [Dice_Command]
 enabled = true
