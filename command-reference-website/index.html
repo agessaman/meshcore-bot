@@ -1,0 +1,2562 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for the MeshCore bot and its services">
+      
+      
+      
+        <link rel="canonical" href="https://agessaman.github.io/meshcore-bot/command-reference-website/">
+      
+      
+        <link rel="prev" href="../repeater-commands/">
+      
+      
+        <link rel="next" href="../develop-command-scripts/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Custom Command Website - Meshcore Bot Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="cyan">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#custom-command-reference-website" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Meshcore Bot Documentation" class="md-header__button md-logo" aria-label="Meshcore Bot Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Meshcore Bot Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Custom Command Website
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="cyan"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="cyan"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/agessaman/meshcore-bot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    meshcore-bot
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Quick Start
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../installation/" class="md-tabs__link">
+          
+  
+  
+  Installation
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../configuration/" class="md-tabs__link">
+          
+  
+  
+  Configuration
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../web-viewer/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Web Viewer
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../command-reference/" class="md-tabs__link">
+          
+  
+  
+  Command Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../service-plugins/" class="md-tabs__link">
+          
+  
+  
+  Service Plugins
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../faq/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  FAQ
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../upgrade/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Upgrade
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../solar-conditions-provenance/" class="md-tabs__link">
+          
+  
+  
+  Project
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--lifted md-nav--integrated" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Meshcore Bot Documentation" class="md-nav__button md-logo" aria-label="Meshcore Bot Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Meshcore Bot Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/agessaman/meshcore-bot" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    meshcore-bot
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Installation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../service-installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Configuration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-retention/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data retention
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../local-plugins/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Local plugins and services
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../checkin-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Check-in API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../path-command-config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Path Command
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../config-validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Config validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../region-warnings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Region warnings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../web-viewer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Viewer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Command Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Command Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../command-reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../repeater-commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repeater Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom Command Website
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom Command Website
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#basic-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic usage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#which-commands-get-listed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Which commands get listed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#choose-a-style" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choose a style
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#add-custom-css" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Add custom CSS
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Add custom CSS">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#link-to-external-css" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Link to external CSS
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#embed-css-from-a-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Embed CSS from a file
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#using-both" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Using both
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-custom-color-scheme" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example: Custom color scheme
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-workflow-fine-tuning-a-built-in-style" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example workflow: Fine-tuning a built-in style
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#preview-all-styles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Preview all styles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#custom-title-and-intro" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Custom title and intro
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#uploading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Uploading
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#css-architecture-and-customization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CSS architecture and customization
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="CSS architecture and customization">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#css-structure-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CSS structure overview
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#css-custom-properties-theme-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CSS custom properties (theme variables)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="CSS custom properties (theme variables)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#color-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Color variables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#typography-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Typography variables
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#html-structure-and-css-classes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HTML structure and CSS classes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="HTML structure and CSS classes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#page-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Page layout
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#command-card-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Command card structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#channel-card-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Channel card structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#key-css-classes-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key CSS classes reference
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Key CSS classes reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#layout-classes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Layout classes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#navigation-classes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Navigation classes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#header-classes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Header classes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#content-organization-classes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Content organization classes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#command-card-classes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Command card classes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#channel-card-classes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Channel card classes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#utility-classes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Utility classes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#responsive-breakpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Responsive breakpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tips-for-custom-styles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tips for custom styles
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-style-variations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example style variations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Example style variations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#dark-high-contrast" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dark high-contrast
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#light-professional" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Light professional
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#warm-earth-tones" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Warm earth tones
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#javascript-functionality" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        JavaScript functionality
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../develop-command-scripts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developing Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Service Plugins
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Service Plugins
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../service-plugins/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../discord-bridge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Discord Bridge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../telegram-bridge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telegram Bridge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../packet-capture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Packet Capture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../map-uploader/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Map Uploader
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../weather-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Weather Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../earthquake-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Earthquake Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../repeater-prefix-collision-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repeater Prefix Collision
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../worldcup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    World Cup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../FEEDS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feed Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../upgrade/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Project
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../solar-conditions-provenance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Solar conditions provenance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="custom-command-reference-website">Custom command reference website</h1>
+<p>Use the <strong><code>generate_website.py</code></strong> script to build a single-page HTML command reference from your <code>config.ini</code>. The output lists your enabled commands, keywords, usage, and channel restrictions so you can host it on your own site for users.</p>
+<h2 id="basic-usage">Basic usage</h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>python<span class="w"> </span>generate_website.py<span class="w"> </span><span class="o">[</span>config.ini<span class="o">]</span>
+</code></pre></div>
+<p>This reads your config (default: <code>config.ini</code>), loads your commands and channels, and writes <strong><code>website/index.html</code></strong> in the same directory as the config file. Upload that file (and the directory if you use assets) to your web host.</p>
+<h2 id="which-commands-get-listed">Which commands get listed</h2>
+<p>The page lists what your bot actually answers:</p>
+<ul>
+<li><strong>Local commands are included.</strong> Any command installed under <code>[Bot] local_dir_path</code> (default <code>local/commands</code>) appears alongside the built-in ones.</li>
+<li><strong>Disabled commands are omitted.</strong> A command turned off with <code>enabled = false</code> in its <code>[*_Command]</code> section is left out, including the legacy spellings such as <code>[Jokes] joke_enabled</code>.</li>
+<li><strong>The local config overlay is read.</strong> Settings saved from the web viewer's plugin settings page land in <code>&lt;local_dir_path&gt;/config.ini</code>, and the generator reads that on top of your base config just as the bot does.</li>
+</ul>
+<p>Admin-only, hidden, and keyword-less commands are never listed.</p>
+<h2 id="choose-a-style">Choose a style</h2>
+<p>The <code>--style</code> option selects a theme (colors, typography, layout). Default is <code>default</code> (modern dark). To see all themes:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>python<span class="w"> </span>generate_website.py<span class="w"> </span>--list-styles
+</code></pre></div>
+<p>Then generate with a specific style:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>python<span class="w"> </span>generate_website.py<span class="w"> </span>config.ini<span class="w"> </span>--style<span class="w"> </span>minimalist
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>python<span class="w"> </span>generate_website.py<span class="w"> </span>config.ini<span class="w"> </span>--style<span class="w"> </span>terminal
+</code></pre></div>
+<p>Available styles include: <strong>default</strong> (modern dark), <strong>minimalist</strong> (light, clean), <strong>terminal</strong> (green/amber on black), <strong>glass</strong> (glassmorphism), <strong>neon</strong> (cyberpunk), <strong>brutalist</strong> (bold, high contrast), <strong>gradient</strong> (colorful gradients), <strong>pixel</strong> (retro gaming). Run <code>--list-styles</code> for the full list and short descriptions.</p>
+<h2 id="add-custom-css">Add custom CSS</h2>
+<p>You can layer your own CSS on top of the built-in style chosen with <code>--style</code> (<code>default</code> if you don't pass one). The built-in CSS always loads first, so you only write the rules you want to change, and your rules win over built-in rules of equal specificity.</p>
+<h3 id="link-to-external-css">Link to external CSS</h3>
+<p>Use <code>--link-css</code> to reference a stylesheet hosted on your server or a CDN:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>python<span class="w"> </span>generate_website.py<span class="w"> </span>config.ini<span class="w"> </span>--link-css<span class="w"> </span>https://example.com/my-custom.css
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>python<span class="w"> </span>generate_website.py<span class="w"> </span>config.ini<span class="w"> </span>--style<span class="w"> </span>minimalist<span class="w"> </span>--link-css<span class="w"> </span>https://example.com/overrides.css
+</code></pre></div>
+<p>The <code>&lt;link&gt;</code> tag is placed after the built-in <code>&lt;style&gt;</code> block. A relative path such as <code>--link-css overrides.css</code> is resolved by the browser against <code>website/index.html</code>, so upload the stylesheet next to it.</p>
+<h3 id="embed-css-from-a-file">Embed CSS from a file</h3>
+<p>Use <code>--embed-css</code> to inline CSS from a local file into the generated HTML:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>python<span class="w"> </span>generate_website.py<span class="w"> </span>config.ini<span class="w"> </span>--embed-css<span class="w"> </span>tweaks.css
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>python<span class="w"> </span>generate_website.py<span class="w"> </span>config.ini<span class="w"> </span>--style<span class="w"> </span>terminal<span class="w"> </span>--embed-css<span class="w"> </span>tweaks.css
+</code></pre></div>
+<p>The file's contents are appended to the built-in <code>&lt;style&gt;</code> block, so the page stays a single self-contained file. The path is relative to the directory you run the script from. If the file can't be read, the script exits with an error instead of generating the page.</p>
+<p>This is useful for:
+- Small tweaks to a built-in style (colors, fonts, spacing)
+- Offline deployments, or hosts where you can only upload one file</p>
+<h3 id="using-both">Using both</h3>
+<p>You can pass <code>--embed-css</code> and <code>--link-css</code> together. The page loads the built-in style, then the embedded CSS, then the linked stylesheet, so the linked stylesheet wins any conflict.</p>
+<h3 id="example-custom-color-scheme">Example: Custom color scheme</h3>
+<p>Create a file <code>my-colors.css</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="p">:</span><span class="nd">root</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span><span class="nv">--bg-primary</span><span class="p">:</span><span class="w"> </span><span class="mh">#1a1a2e</span><span class="p">;</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="nv">--bg-card</span><span class="p">:</span><span class="w"> </span><span class="mh">#16213e</span><span class="p">;</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="nv">--accent-blue</span><span class="p">:</span><span class="w"> </span><span class="mh">#0f3460</span><span class="p">;</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">    </span><span class="nv">--accent-cyan</span><span class="p">:</span><span class="w"> </span><span class="mh">#e94560</span><span class="p">;</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">    </span><span class="nv">--text-primary</span><span class="p">:</span><span class="w"> </span><span class="mh">#eee</span><span class="p">;</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="p">}</span>
+</code></pre></div>
+<p>Then generate with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>python<span class="w"> </span>generate_website.py<span class="w"> </span>config.ini<span class="w"> </span>--style<span class="w"> </span>default<span class="w"> </span>--embed-css<span class="w"> </span>my-colors.css
+</code></pre></div>
+<p>This keeps all the layout and styling from the default theme but applies your custom color palette.</p>
+<h3 id="example-workflow-fine-tuning-a-built-in-style">Example workflow: Fine-tuning a built-in style</h3>
+<ol>
+<li>
+<p>Generate with a built-in style you like:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>python<span class="w"> </span>generate_website.py<span class="w"> </span>config.ini<span class="w"> </span>--style<span class="w"> </span>minimalist
+</code></pre></div></p>
+</li>
+<li>
+<p>Inspect the output and identify what you want to change (e.g., "I want blue accents instead of the default colors")</p>
+</li>
+<li>
+<p>Create a small override file <code>tweaks.css</code> with just the changes:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="p">:</span><span class="nd">root</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">    </span><span class="nv">--accent-blue</span><span class="p">:</span><span class="w"> </span><span class="mh">#2563eb</span><span class="p">;</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="nv">--accent-cyan</span><span class="p">:</span><span class="w"> </span><span class="mh">#0891b2</span><span class="p">;</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="p">}</span>
+</code></pre></div></p>
+</li>
+<li>
+<p>Regenerate with your tweaks:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>python<span class="w"> </span>generate_website.py<span class="w"> </span>config.ini<span class="w"> </span>--style<span class="w"> </span>minimalist<span class="w"> </span>--embed-css<span class="w"> </span>tweaks.css
+</code></pre></div></p>
+</li>
+</ol>
+<p>This approach is much easier than writing CSS from scratch, since you only override specific properties while keeping all the responsive design, layouts, and other styling intact.</p>
+<h2 id="preview-all-styles">Preview all styles</h2>
+<p>To generate a sample page for every style plus an index that links to them (useful to pick a theme):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>python<span class="w"> </span>generate_website.py<span class="w"> </span>config.ini<span class="w"> </span>--sample
+</code></pre></div>
+<p>Output goes to <code>website/</code> with one HTML file per style and an <code>index.html</code> you can open locally. <code>--link-css</code> and <code>--embed-css</code> apply to every sample page, so you can preview your overrides against each style.</p>
+<h2 id="custom-title-and-intro">Custom title and intro</h2>
+<p>Optional <code>[Website]</code> section in <code>config.ini</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="k">[Website]</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="na">website_title</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">My Mesh Bot - Commands</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="na">introduction_text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">Welcome! Here are the commands you can use on the mesh.</span>
+</code></pre></div>
+<p>If omitted, the script uses the bot name and a default intro.</p>
+<h2 id="uploading">Uploading</h2>
+<p>The script produces a self-contained HTML file (with embedded CSS). Upload <code>website/index.html</code> to any static host (e.g. GitHub Pages, Netlify, or your group's web server). No server-side processing is required. If you used <code>--link-css</code> with a relative path, upload that stylesheet alongside <code>index.html</code>.</p>
+<h2 id="css-architecture-and-customization">CSS architecture and customization</h2>
+<p>The generated HTML includes embedded CSS that uses a <strong>CSS custom properties (variables) system</strong> for easy theming. This section documents the CSS architecture and how to create your own custom styles.</p>
+<h3 id="css-structure-overview">CSS structure overview</h3>
+<p>The stylesheet is organized into several sections:</p>
+<ol>
+<li><strong>CSS Custom Properties (<code>:root</code>)</strong> - Theme variables for colors, fonts, spacing</li>
+<li><strong>Reset &amp; Base Styles</strong> - Global resets and base element styles</li>
+<li><strong>Layout Components</strong> - Container, grid, sidebar navigation</li>
+<li><strong>Header &amp; Introduction</strong> - Title area and intro text</li>
+<li><strong>Command Cards</strong> - Individual command display cards</li>
+<li><strong>Channel Cards</strong> - Channel listing cards</li>
+<li><strong>Mobile Responsive</strong> - Breakpoints and mobile menu</li>
+<li><strong>Theme Overrides</strong> - Style-specific customizations</li>
+</ol>
+<h3 id="css-custom-properties-theme-variables">CSS custom properties (theme variables)</h3>
+<p>Most colors are defined as CSS custom properties in the <code>:root</code> selector, so you can retheme a page without touching the rest of the CSS. A few effects (background gradients, badge tints) and some style-specific overrides use literal colors instead.</p>
+<h4 id="color-variables">Color variables</h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="p">:</span><span class="nd">root</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">    </span><span class="c">/* Backgrounds */</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">    </span><span class="nv">--bg-primary</span><span class="p">:</span><span class="w"> </span><span class="mh">#0a0e14</span><span class="p">;</span><span class="w">           </span><span class="c">/* Main page background */</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">    </span><span class="nv">--bg-secondary</span><span class="p">:</span><span class="w"> </span><span class="mh">#111820</span><span class="p">;</span><span class="w">         </span><span class="c">/* Secondary background (usage boxes) */</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">    </span><span class="nv">--bg-card</span><span class="p">:</span><span class="w"> </span><span class="mh">#151c25</span><span class="p">;</span><span class="w">              </span><span class="c">/* Card backgrounds */</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="w">    </span><span class="nv">--bg-card-hover</span><span class="p">:</span><span class="w"> </span><span class="mh">#1a232e</span><span class="p">;</span><span class="w">        </span><span class="c">/* Card hover state */</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="w">    </span><span class="c">/* Accent Colors */</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="w">    </span><span class="nv">--accent-blue</span><span class="p">:</span><span class="w"> </span><span class="mh">#00d4ff</span><span class="p">;</span><span class="w">          </span><span class="c">/* Primary accent (command names, links) */</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="w">    </span><span class="nv">--accent-cyan</span><span class="p">:</span><span class="w"> </span><span class="mh">#00ffc8</span><span class="p">;</span><span class="w">          </span><span class="c">/* Secondary accent (keywords, highlights) */</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="w">    </span><span class="nv">--accent-orange</span><span class="p">:</span><span class="w"> </span><span class="mh">#ff8a00</span><span class="p">;</span><span class="w">        </span><span class="c">/* Parameter names */</span>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="w">    </span><span class="nv">--accent-purple</span><span class="p">:</span><span class="w"> </span><span class="mh">#a855f7</span><span class="p">;</span><span class="w">        </span><span class="c">/* Only used by the neon style */</span>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="w">    </span><span class="nv">--accent-red</span><span class="p">:</span><span class="w"> </span><span class="mh">#ff4757</span><span class="p">;</span><span class="w">           </span><span class="c">/* Not currently used */</span>
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a><span class="w">    </span><span class="nv">--accent-yellow</span><span class="p">:</span><span class="w"> </span><span class="mh">#ffd700</span><span class="p">;</span><span class="w">        </span><span class="c">/* Only used by the terminal style */</span>
+<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a>
+<a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a><span class="w">    </span><span class="c">/* Text Colors */</span>
+<a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a><span class="w">    </span><span class="nv">--text-primary</span><span class="p">:</span><span class="w"> </span><span class="mh">#e8edf4</span><span class="p">;</span><span class="w">         </span><span class="c">/* Main text color */</span>
+<a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a><span class="w">    </span><span class="nv">--text-secondary</span><span class="p">:</span><span class="w"> </span><span class="mh">#8892a4</span><span class="p">;</span><span class="w">       </span><span class="c">/* Secondary text (descriptions) */</span>
+<a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a><span class="w">    </span><span class="nv">--text-muted</span><span class="p">:</span><span class="w"> </span><span class="mh">#6b7280</span><span class="p">;</span><span class="w">           </span><span class="c">/* Muted text (labels, footers) */</span>
+<a id="__codelineno-12-20" name="__codelineno-12-20" href="#__codelineno-12-20"></a>
+<a id="__codelineno-12-21" name="__codelineno-12-21" href="#__codelineno-12-21"></a><span class="w">    </span><span class="c">/* Borders &amp; Effects */</span>
+<a id="__codelineno-12-22" name="__codelineno-12-22" href="#__codelineno-12-22"></a><span class="w">    </span><span class="nv">--border-subtle</span><span class="p">:</span><span class="w"> </span><span class="nb">rgba</span><span class="p">(</span><span class="mi">255</span><span class="p">,</span><span class="mi">255</span><span class="p">,</span><span class="mi">255</span><span class="p">,</span><span class="mf">0.06</span><span class="p">);</span><span class="w">  </span><span class="c">/* Subtle borders */</span>
+<a id="__codelineno-12-23" name="__codelineno-12-23" href="#__codelineno-12-23"></a><span class="w">    </span><span class="nv">--glow-blue</span><span class="p">:</span><span class="w"> </span><span class="nb">rgba</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">212</span><span class="p">,</span><span class="w"> </span><span class="mi">255</span><span class="p">,</span><span class="w"> </span><span class="mf">0.15</span><span class="p">);</span><span class="w">     </span><span class="c">/* Only used by the neon style */</span>
+<a id="__codelineno-12-24" name="__codelineno-12-24" href="#__codelineno-12-24"></a><span class="w">    </span><span class="nv">--glow-cyan</span><span class="p">:</span><span class="w"> </span><span class="nb">rgba</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">255</span><span class="p">,</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span><span class="w"> </span><span class="mf">0.1</span><span class="p">);</span><span class="w">      </span><span class="c">/* Not currently used */</span>
+<a id="__codelineno-12-25" name="__codelineno-12-25" href="#__codelineno-12-25"></a><span class="p">}</span>
+</code></pre></div>
+<h4 id="typography-variables">Typography variables</h4>
+<p>Fonts are loaded via Google Fonts and applied through the CSS. The default theme uses:</p>
+<ul>
+<li><strong>Outfit</strong> - Sans-serif for body text and headings</li>
+<li><strong>JetBrains Mono</strong> - Monospace for code, keywords, and technical text</li>
+</ul>
+<h3 id="html-structure-and-css-classes">HTML structure and CSS classes</h3>
+<h4 id="page-layout">Page layout</h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="p">&lt;</span><span class="nt">body</span><span class="p">&gt;</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>  <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"atmosphere"</span><span class="p">&gt;&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>      <span class="cm">&lt;!-- Background gradient effect --&gt;</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>  <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"grid-overlay"</span><span class="p">&gt;&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>    <span class="cm">&lt;!-- Subtle grid pattern --&gt;</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>  <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"sidebar-overlay"</span><span class="p">&gt;&lt;/</span><span class="nt">div</span><span class="p">&gt;</span> <span class="cm">&lt;!-- Mobile menu overlay --&gt;</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>  <span class="p">&lt;</span><span class="nt">button</span> <span class="na">class</span><span class="o">=</span><span class="s">"mobile-menu-toggle"</span><span class="p">&gt;</span>  <span class="cm">&lt;!-- Mobile hamburger menu --&gt;</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>    <span class="p">&lt;</span><span class="nt">span</span> <span class="na">class</span><span class="o">=</span><span class="s">"hamburger"</span><span class="p">&gt;&lt;/</span><span class="nt">span</span><span class="p">&gt;</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>    <span class="p">&lt;</span><span class="nt">span</span> <span class="na">class</span><span class="o">=</span><span class="s">"hamburger"</span><span class="p">&gt;&lt;/</span><span class="nt">span</span><span class="p">&gt;</span>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>    <span class="p">&lt;</span><span class="nt">span</span> <span class="na">class</span><span class="o">=</span><span class="s">"hamburger"</span><span class="p">&gt;&lt;/</span><span class="nt">span</span><span class="p">&gt;</span>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a>  <span class="p">&lt;/</span><span class="nt">button</span><span class="p">&gt;</span>
+<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>
+<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a>  <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"container"</span><span class="p">&gt;</span>
+<a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a>    <span class="p">&lt;</span><span class="nt">nav</span> <span class="na">class</span><span class="o">=</span><span class="s">"sidebar-nav"</span><span class="p">&gt;</span>        <span class="cm">&lt;!-- Left sidebar navigation --&gt;</span>
+<a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a>      <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"nav-header"</span><span class="p">&gt;</span>
+<a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a>        <span class="p">&lt;</span><span class="nt">h3</span><span class="p">&gt;</span>Navigation<span class="p">&lt;/</span><span class="nt">h3</span><span class="p">&gt;</span>
+<a id="__codelineno-13-16" name="__codelineno-13-16" href="#__codelineno-13-16"></a>      <span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-13-17" name="__codelineno-13-17" href="#__codelineno-13-17"></a>      <span class="p">&lt;</span><span class="nt">ul</span> <span class="na">class</span><span class="o">=</span><span class="s">"nav-list"</span><span class="p">&gt;</span>
+<a id="__codelineno-13-18" name="__codelineno-13-18" href="#__codelineno-13-18"></a>        <span class="p">&lt;</span><span class="nt">li</span> <span class="na">class</span><span class="o">=</span><span class="s">"nav-section-header"</span><span class="p">&gt;</span>Commands<span class="p">&lt;/</span><span class="nt">li</span><span class="p">&gt;</span>
+<a id="__codelineno-13-19" name="__codelineno-13-19" href="#__codelineno-13-19"></a>        <span class="p">&lt;</span><span class="nt">ul</span> <span class="na">class</span><span class="o">=</span><span class="s">"nav-sublist"</span><span class="p">&gt;</span>
+<a id="__codelineno-13-20" name="__codelineno-13-20" href="#__codelineno-13-20"></a>          <span class="p">&lt;</span><span class="nt">li</span><span class="p">&gt;&lt;</span><span class="nt">a</span> <span class="na">href</span><span class="o">=</span><span class="s">"#..."</span> <span class="na">class</span><span class="o">=</span><span class="s">"nav-link nav-sublink"</span><span class="p">&gt;</span>Category<span class="p">&lt;/</span><span class="nt">a</span><span class="p">&gt;&lt;/</span><span class="nt">li</span><span class="p">&gt;</span>
+<a id="__codelineno-13-21" name="__codelineno-13-21" href="#__codelineno-13-21"></a>        <span class="p">&lt;/</span><span class="nt">ul</span><span class="p">&gt;</span>
+<a id="__codelineno-13-22" name="__codelineno-13-22" href="#__codelineno-13-22"></a>      <span class="p">&lt;/</span><span class="nt">ul</span><span class="p">&gt;</span>
+<a id="__codelineno-13-23" name="__codelineno-13-23" href="#__codelineno-13-23"></a>    <span class="p">&lt;/</span><span class="nt">nav</span><span class="p">&gt;</span>
+<a id="__codelineno-13-24" name="__codelineno-13-24" href="#__codelineno-13-24"></a>
+<a id="__codelineno-13-25" name="__codelineno-13-25" href="#__codelineno-13-25"></a>    <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"main-content"</span><span class="p">&gt;</span>
+<a id="__codelineno-13-26" name="__codelineno-13-26" href="#__codelineno-13-26"></a>      <span class="p">&lt;</span><span class="nt">header</span><span class="p">&gt;</span>
+<a id="__codelineno-13-27" name="__codelineno-13-27" href="#__codelineno-13-27"></a>        <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"header-content"</span><span class="p">&gt;</span>
+<a id="__codelineno-13-28" name="__codelineno-13-28" href="#__codelineno-13-28"></a>          <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"header-title"</span><span class="p">&gt;</span>
+<a id="__codelineno-13-29" name="__codelineno-13-29" href="#__codelineno-13-29"></a>            <span class="p">&lt;</span><span class="nt">h1</span><span class="p">&gt;</span>Bot Name<span class="p">&lt;/</span><span class="nt">h1</span><span class="p">&gt;</span>
+<a id="__codelineno-13-30" name="__codelineno-13-30" href="#__codelineno-13-30"></a>          <span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-13-31" name="__codelineno-13-31" href="#__codelineno-13-31"></a>          <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"intro"</span><span class="p">&gt;</span>Introduction text...<span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-13-32" name="__codelineno-13-32" href="#__codelineno-13-32"></a>        <span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-13-33" name="__codelineno-13-33" href="#__codelineno-13-33"></a>      <span class="p">&lt;/</span><span class="nt">header</span><span class="p">&gt;</span>
+<a id="__codelineno-13-34" name="__codelineno-13-34" href="#__codelineno-13-34"></a>
+<a id="__codelineno-13-35" name="__codelineno-13-35" href="#__codelineno-13-35"></a>      <span class="p">&lt;</span><span class="nt">main</span><span class="p">&gt;</span>
+<a id="__codelineno-13-36" name="__codelineno-13-36" href="#__codelineno-13-36"></a>        <span class="cm">&lt;!-- Command categories --&gt;</span>
+<a id="__codelineno-13-37" name="__codelineno-13-37" href="#__codelineno-13-37"></a>        <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"category-section"</span> <span class="na">id</span><span class="o">=</span><span class="s">"commands-category"</span><span class="p">&gt;</span>
+<a id="__codelineno-13-38" name="__codelineno-13-38" href="#__codelineno-13-38"></a>          <span class="p">&lt;</span><span class="nt">h2</span> <span class="na">class</span><span class="o">=</span><span class="s">"category-title"</span><span class="p">&gt;</span>
+<a id="__codelineno-13-39" name="__codelineno-13-39" href="#__codelineno-13-39"></a>            <span class="p">&lt;</span><span class="nt">a</span> <span class="na">href</span><span class="o">=</span><span class="s">"#..."</span> <span class="na">class</span><span class="o">=</span><span class="s">"anchor-link"</span><span class="p">&gt;</span>Category Name<span class="p">&lt;/</span><span class="nt">a</span><span class="p">&gt;</span>
+<a id="__codelineno-13-40" name="__codelineno-13-40" href="#__codelineno-13-40"></a>          <span class="p">&lt;/</span><span class="nt">h2</span><span class="p">&gt;</span>
+<a id="__codelineno-13-41" name="__codelineno-13-41" href="#__codelineno-13-41"></a>          <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"commands-grid"</span><span class="p">&gt;</span>
+<a id="__codelineno-13-42" name="__codelineno-13-42" href="#__codelineno-13-42"></a>            <span class="cm">&lt;!-- Command cards go here --&gt;</span>
+<a id="__codelineno-13-43" name="__codelineno-13-43" href="#__codelineno-13-43"></a>          <span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-13-44" name="__codelineno-13-44" href="#__codelineno-13-44"></a>        <span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-13-45" name="__codelineno-13-45" href="#__codelineno-13-45"></a>
+<a id="__codelineno-13-46" name="__codelineno-13-46" href="#__codelineno-13-46"></a>        <span class="cm">&lt;!-- Channels section --&gt;</span>
+<a id="__codelineno-13-47" name="__codelineno-13-47" href="#__codelineno-13-47"></a>        <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"category-section"</span> <span class="na">id</span><span class="o">=</span><span class="s">"channels"</span><span class="p">&gt;</span>
+<a id="__codelineno-13-48" name="__codelineno-13-48" href="#__codelineno-13-48"></a>          <span class="p">&lt;</span><span class="nt">h2</span> <span class="na">class</span><span class="o">=</span><span class="s">"category-title"</span><span class="p">&gt;</span>
+<a id="__codelineno-13-49" name="__codelineno-13-49" href="#__codelineno-13-49"></a>            <span class="p">&lt;</span><span class="nt">a</span> <span class="na">href</span><span class="o">=</span><span class="s">"#channels"</span> <span class="na">class</span><span class="o">=</span><span class="s">"anchor-link"</span><span class="p">&gt;</span>Available Channels<span class="p">&lt;/</span><span class="nt">a</span><span class="p">&gt;</span>
+<a id="__codelineno-13-50" name="__codelineno-13-50" href="#__codelineno-13-50"></a>          <span class="p">&lt;/</span><span class="nt">h2</span><span class="p">&gt;</span>
+<a id="__codelineno-13-51" name="__codelineno-13-51" href="#__codelineno-13-51"></a>          <span class="p">&lt;</span><span class="nt">p</span> <span class="na">class</span><span class="o">=</span><span class="s">"channels-intro"</span><span class="p">&gt;</span>...<span class="p">&lt;/</span><span class="nt">p</span><span class="p">&gt;</span>
+<a id="__codelineno-13-52" name="__codelineno-13-52" href="#__codelineno-13-52"></a>          <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"channel-category"</span><span class="p">&gt;</span>
+<a id="__codelineno-13-53" name="__codelineno-13-53" href="#__codelineno-13-53"></a>            <span class="p">&lt;</span><span class="nt">h3</span> <span class="na">class</span><span class="o">=</span><span class="s">"channel-category-title"</span><span class="p">&gt;</span>...<span class="p">&lt;/</span><span class="nt">h3</span><span class="p">&gt;</span>
+<a id="__codelineno-13-54" name="__codelineno-13-54" href="#__codelineno-13-54"></a>            <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"channels-grid"</span><span class="p">&gt;</span>
+<a id="__codelineno-13-55" name="__codelineno-13-55" href="#__codelineno-13-55"></a>              <span class="cm">&lt;!-- Channel cards go here --&gt;</span>
+<a id="__codelineno-13-56" name="__codelineno-13-56" href="#__codelineno-13-56"></a>            <span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-13-57" name="__codelineno-13-57" href="#__codelineno-13-57"></a>          <span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-13-58" name="__codelineno-13-58" href="#__codelineno-13-58"></a>        <span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-13-59" name="__codelineno-13-59" href="#__codelineno-13-59"></a>      <span class="p">&lt;/</span><span class="nt">main</span><span class="p">&gt;</span>
+<a id="__codelineno-13-60" name="__codelineno-13-60" href="#__codelineno-13-60"></a>
+<a id="__codelineno-13-61" name="__codelineno-13-61" href="#__codelineno-13-61"></a>      <span class="p">&lt;</span><span class="nt">footer</span><span class="p">&gt;</span>
+<a id="__codelineno-13-62" name="__codelineno-13-62" href="#__codelineno-13-62"></a>        <span class="p">&lt;</span><span class="nt">p</span><span class="p">&gt;</span>Generated command reference...<span class="p">&lt;/</span><span class="nt">p</span><span class="p">&gt;</span>
+<a id="__codelineno-13-63" name="__codelineno-13-63" href="#__codelineno-13-63"></a>      <span class="p">&lt;/</span><span class="nt">footer</span><span class="p">&gt;</span>
+<a id="__codelineno-13-64" name="__codelineno-13-64" href="#__codelineno-13-64"></a>    <span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-13-65" name="__codelineno-13-65" href="#__codelineno-13-65"></a>  <span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-13-66" name="__codelineno-13-66" href="#__codelineno-13-66"></a><span class="p">&lt;/</span><span class="nt">body</span><span class="p">&gt;</span>
+</code></pre></div>
+<h4 id="command-card-structure">Command card structure</h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"command-card"</span><span class="p">&gt;</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>  <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"command-header"</span><span class="p">&gt;</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>    <span class="p">&lt;</span><span class="nt">h3</span> <span class="na">class</span><span class="o">=</span><span class="s">"command-name"</span><span class="p">&gt;</span>commandname<span class="p">&lt;/</span><span class="nt">h3</span><span class="p">&gt;</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>    <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"command-keywords"</span><span class="p">&gt;</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>      <span class="p">&lt;</span><span class="nt">span</span> <span class="na">class</span><span class="o">=</span><span class="s">"keyword-badge"</span><span class="p">&gt;</span>alias1<span class="p">&lt;/</span><span class="nt">span</span><span class="p">&gt;</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>      <span class="p">&lt;</span><span class="nt">span</span> <span class="na">class</span><span class="o">=</span><span class="s">"keyword-badge"</span><span class="p">&gt;</span>alias2<span class="p">&lt;/</span><span class="nt">span</span><span class="p">&gt;</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>      <span class="p">&lt;</span><span class="nt">span</span> <span class="na">class</span><span class="o">=</span><span class="s">"keyword-badge keyword-expand"</span> <span class="na">data-hidden</span><span class="o">=</span><span class="s">"..."</span><span class="p">&gt;</span>+3 more<span class="p">&lt;/</span><span class="nt">span</span><span class="p">&gt;</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>    <span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>  <span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>  <span class="p">&lt;</span><span class="nt">p</span> <span class="na">class</span><span class="o">=</span><span class="s">"command-description"</span><span class="p">&gt;</span>Command description text<span class="p">&lt;/</span><span class="nt">p</span><span class="p">&gt;</span>
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a>
+<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a>  <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"command-usage"</span><span class="p">&gt;</span>
+<a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a>    <span class="p">&lt;</span><span class="nt">code</span><span class="p">&gt;</span>!commandname [args]<span class="p">&lt;/</span><span class="nt">code</span><span class="p">&gt;</span>
+<a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a>  <span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a>
+<a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a>  <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"command-params"</span><span class="p">&gt;</span>
+<a id="__codelineno-14-18" name="__codelineno-14-18" href="#__codelineno-14-18"></a>    <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"params-header"</span><span class="p">&gt;</span>Parameters:<span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-14-19" name="__codelineno-14-19" href="#__codelineno-14-19"></a>    <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"param-item"</span><span class="p">&gt;</span>
+<a id="__codelineno-14-20" name="__codelineno-14-20" href="#__codelineno-14-20"></a>      <span class="p">&lt;</span><span class="nt">span</span> <span class="na">class</span><span class="o">=</span><span class="s">"param-name"</span><span class="p">&gt;</span>param1<span class="p">&lt;/</span><span class="nt">span</span><span class="p">&gt;</span>
+<a id="__codelineno-14-21" name="__codelineno-14-21" href="#__codelineno-14-21"></a>      <span class="p">&lt;</span><span class="nt">span</span> <span class="na">class</span><span class="o">=</span><span class="s">"param-desc"</span><span class="p">&gt;</span>Description<span class="p">&lt;/</span><span class="nt">span</span><span class="p">&gt;</span>
+<a id="__codelineno-14-22" name="__codelineno-14-22" href="#__codelineno-14-22"></a>    <span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-14-23" name="__codelineno-14-23" href="#__codelineno-14-23"></a>  <span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-14-24" name="__codelineno-14-24" href="#__codelineno-14-24"></a>
+<a id="__codelineno-14-25" name="__codelineno-14-25" href="#__codelineno-14-25"></a>  <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"command-subcommands"</span><span class="p">&gt;</span>
+<a id="__codelineno-14-26" name="__codelineno-14-26" href="#__codelineno-14-26"></a>    <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"subcommands-header"</span><span class="p">&gt;</span>Sub-commands:<span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-14-27" name="__codelineno-14-27" href="#__codelineno-14-27"></a>    <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"subcommand-item"</span><span class="p">&gt;</span>
+<a id="__codelineno-14-28" name="__codelineno-14-28" href="#__codelineno-14-28"></a>      <span class="p">&lt;</span><span class="nt">span</span> <span class="na">class</span><span class="o">=</span><span class="s">"subcommand-name"</span><span class="p">&gt;</span>subcmd<span class="p">&lt;/</span><span class="nt">span</span><span class="p">&gt;</span>
+<a id="__codelineno-14-29" name="__codelineno-14-29" href="#__codelineno-14-29"></a>      <span class="p">&lt;</span><span class="nt">span</span> <span class="na">class</span><span class="o">=</span><span class="s">"subcommand-desc"</span><span class="p">&gt;</span>Description<span class="p">&lt;/</span><span class="nt">span</span><span class="p">&gt;</span>
+<a id="__codelineno-14-30" name="__codelineno-14-30" href="#__codelineno-14-30"></a>    <span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-14-31" name="__codelineno-14-31" href="#__codelineno-14-31"></a>  <span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-14-32" name="__codelineno-14-32" href="#__codelineno-14-32"></a>
+<a id="__codelineno-14-33" name="__codelineno-14-33" href="#__codelineno-14-33"></a>  <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"command-channels"</span><span class="p">&gt;</span>Channel: #specific-channel<span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-14-34" name="__codelineno-14-34" href="#__codelineno-14-34"></a><span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+</code></pre></div>
+<h4 id="channel-card-structure">Channel card structure</h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"channel-card"</span><span class="p">&gt;</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>  <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"channel-name"</span><span class="p">&gt;</span>#channel-name<span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>  <span class="p">&lt;</span><span class="nt">div</span> <span class="na">class</span><span class="o">=</span><span class="s">"channel-description"</span><span class="p">&gt;</span>Channel description text<span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+</code></pre></div>
+<h3 id="key-css-classes-reference">Key CSS classes reference</h3>
+<h4 id="layout-classes">Layout classes</h4>
+<ul>
+<li><code>.container</code> - Main content wrapper with grid layout</li>
+<li><code>.sidebar-nav</code> - Left sidebar navigation (sticky on desktop)</li>
+<li><code>.main-content</code> - Right side main content area</li>
+<li><code>.mobile-menu-toggle</code> - Hamburger menu button (mobile only)</li>
+<li><code>.sidebar-overlay</code> - Dark overlay when mobile menu is open</li>
+</ul>
+<h4 id="navigation-classes">Navigation classes</h4>
+<ul>
+<li><code>.nav-header</code> - Navigation section header</li>
+<li><code>.nav-list</code> - Main navigation list</li>
+<li><code>.nav-section-header</code> - Section divider in nav (e.g., "Commands", "Channels")</li>
+<li><code>.nav-sublist</code> - Nested navigation list</li>
+<li><code>.nav-link</code> - Navigation link item</li>
+<li><code>.nav-sublink</code> - Nested/indented navigation link</li>
+</ul>
+<h4 id="header-classes">Header classes</h4>
+<ul>
+<li><code>.header-content</code> - Header wrapper with background and border</li>
+<li><code>.header-title</code> - Title container</li>
+<li><code>.intro</code> - Introduction text paragraph</li>
+<li><code>.channel-highlight</code> - Highlighted channel names in intro text</li>
+</ul>
+<h4 id="content-organization-classes">Content organization classes</h4>
+<ul>
+<li><code>.category-section</code> - Wrapper for each command category</li>
+<li><code>.category-title</code> - Category heading (e.g., "Weather Commands")</li>
+<li><code>.anchor-link</code> - Linkable heading anchor</li>
+<li><code>.commands-grid</code> - CSS Grid container for command cards</li>
+<li><code>.channels-grid</code> - CSS Grid container for channel cards</li>
+</ul>
+<h4 id="command-card-classes">Command card classes</h4>
+<ul>
+<li><code>.command-card</code> - Individual command card container</li>
+<li><code>.command-header</code> - Command name and keywords section</li>
+<li><code>.command-name</code> - Command name heading</li>
+<li><code>.command-keywords</code> - Container for keyword badges</li>
+<li><code>.keyword-badge</code> - Individual keyword/alias badge</li>
+<li><code>.keyword-expand</code> - "+X more" expandable badge</li>
+<li><code>.keyword-hidden</code> - Hidden keywords (shown on expand)</li>
+<li><code>.command-description</code> - Command description paragraph</li>
+<li><code>.command-usage</code> - Usage syntax box</li>
+<li><code>.command-params</code> - Parameters section wrapper</li>
+<li><code>.params-header</code> - "Parameters:" label</li>
+<li><code>.param-item</code> - Individual parameter row</li>
+<li><code>.param-name</code> - Parameter name</li>
+<li><code>.param-desc</code> - Parameter description</li>
+<li><code>.command-subcommands</code> - Sub-commands section wrapper</li>
+<li><code>.subcommands-header</code> - "Sub-commands:" label</li>
+<li><code>.subcommand-item</code> - Individual sub-command row</li>
+<li><code>.subcommand-name</code> - Sub-command name</li>
+<li><code>.subcommand-desc</code> - Sub-command description</li>
+<li><code>.command-channels</code> - Channel restriction notice</li>
+</ul>
+<h4 id="channel-card-classes">Channel card classes</h4>
+<ul>
+<li><code>.channel-category</code> - Channel category wrapper</li>
+<li><code>.channel-category-title</code> - Channel category heading</li>
+<li><code>.channels-intro</code> - Introduction text for channels section</li>
+<li><code>.channel-card</code> - Individual channel card</li>
+<li><code>.channel-name</code> - Channel name (e.g., "#general")</li>
+<li><code>.channel-description</code> - Channel description text</li>
+</ul>
+<h4 id="utility-classes">Utility classes</h4>
+<ul>
+<li><code>.atmosphere</code> - Background gradient effect layer</li>
+<li><code>.grid-overlay</code> - Subtle grid pattern overlay</li>
+<li><code>.hamburger</code> - Hamburger menu bar element</li>
+</ul>
+<h3 id="responsive-breakpoints">Responsive breakpoints</h3>
+<p>The CSS includes two main responsive breakpoints:</p>
+<ul>
+<li><strong>1200px</strong> - Switches to mobile layout, shows hamburger menu, sidebar becomes slide-out</li>
+<li><strong>768px</strong> - Further mobile optimizations for small screens</li>
+</ul>
+<p>Mobile behavior:
+- Sidebar slides in from left when hamburger is clicked
+- Overlay appears over main content
+- Grid layouts adjust to single column
+- Font sizes scale down slightly</p>
+<h3 id="tips-for-custom-styles">Tips for custom styles</h3>
+<ol>
+<li>
+<p><strong>Start with variables</strong> - Most visual changes can be achieved by only changing the CSS custom properties in <code>:root</code></p>
+</li>
+<li>
+<p><strong>Use the sample generator</strong> - Run <code>--sample</code> with your <code>--embed-css</code> or <code>--link-css</code> flag to see your overrides on every built-in style</p>
+</li>
+<li>
+<p><strong>Respect the structure</strong> - The HTML structure and class names are semantic and should remain consistent</p>
+</li>
+<li>
+<p><strong>Test mobile</strong> - Always check your custom styles at mobile breakpoints (&lt; 1200px, &lt; 768px)</p>
+</li>
+<li>
+<p><strong>Consider accessibility</strong> - Ensure sufficient color contrast (WCAG AA: 4.5:1 for normal text, 3:1 for large text)</p>
+</li>
+<li>
+<p><strong>Use monospace for code</strong> - Keep <code>JetBrains Mono</code> or similar for <code>.keyword-badge</code>, <code>.command-usage code</code>, <code>.param-name</code>, etc.</p>
+</li>
+<li>
+<p><strong>Preserve hover states</strong> - Interactive elements should have clear hover/focus states for usability</p>
+</li>
+<li>
+<p><strong>Match <code>!important</code> where needed</strong> - The base CSS uses <code>!important</code> on many mobile-layout rules, and the brutalist, pixel, and minimalist styles use it heavily in their overrides. A custom rule only beats one of those if it's also <code>!important</code>.</p>
+</li>
+<li>
+<p><strong>Some styles hard-code colors</strong> - The gradient and brutalist styles set many colors directly instead of through the variables, so changing only the <code>:root</code> variables has less effect on them.</p>
+</li>
+</ol>
+<h3 id="example-style-variations">Example style variations</h3>
+<h4 id="dark-high-contrast">Dark high-contrast</h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="p">:</span><span class="nd">root</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">    </span><span class="nv">--bg-primary</span><span class="p">:</span><span class="w"> </span><span class="mh">#000000</span><span class="p">;</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">    </span><span class="nv">--bg-card</span><span class="p">:</span><span class="w"> </span><span class="mh">#0a0a0a</span><span class="p">;</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="w">    </span><span class="nv">--accent-blue</span><span class="p">:</span><span class="w"> </span><span class="mh">#00ffff</span><span class="p">;</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="w">    </span><span class="nv">--accent-cyan</span><span class="p">:</span><span class="w"> </span><span class="mh">#00ff00</span><span class="p">;</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="w">    </span><span class="nv">--text-primary</span><span class="p">:</span><span class="w"> </span><span class="mh">#ffffff</span><span class="p">;</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="w">    </span><span class="nv">--border-subtle</span><span class="p">:</span><span class="w"> </span><span class="nb">rgba</span><span class="p">(</span><span class="mi">255</span><span class="p">,</span><span class="mi">255</span><span class="p">,</span><span class="mi">255</span><span class="p">,</span><span class="mf">0.2</span><span class="p">);</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="p">}</span>
+</code></pre></div>
+<h4 id="light-professional">Light professional</h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="p">:</span><span class="nd">root</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="w">    </span><span class="nv">--bg-primary</span><span class="p">:</span><span class="w"> </span><span class="mh">#ffffff</span><span class="p">;</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="w">    </span><span class="nv">--bg-card</span><span class="p">:</span><span class="w"> </span><span class="mh">#f5f5f5</span><span class="p">;</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="w">    </span><span class="nv">--accent-blue</span><span class="p">:</span><span class="w"> </span><span class="mh">#0066cc</span><span class="p">;</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="w">    </span><span class="nv">--accent-cyan</span><span class="p">:</span><span class="w"> </span><span class="mh">#0088cc</span><span class="p">;</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="w">    </span><span class="nv">--text-primary</span><span class="p">:</span><span class="w"> </span><span class="mh">#333333</span><span class="p">;</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="w">    </span><span class="nv">--text-secondary</span><span class="p">:</span><span class="w"> </span><span class="mh">#666666</span><span class="p">;</span>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="w">    </span><span class="nv">--border-subtle</span><span class="p">:</span><span class="w"> </span><span class="nb">rgba</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mf">0.1</span><span class="p">);</span>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="p">}</span>
+</code></pre></div>
+<h4 id="warm-earth-tones">Warm earth tones</h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="p">:</span><span class="nd">root</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="w">    </span><span class="nv">--bg-primary</span><span class="p">:</span><span class="w"> </span><span class="mh">#2c2416</span><span class="p">;</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="w">    </span><span class="nv">--bg-card</span><span class="p">:</span><span class="w"> </span><span class="mh">#3d2f1f</span><span class="p">;</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="w">    </span><span class="nv">--accent-blue</span><span class="p">:</span><span class="w"> </span><span class="mh">#d4a574</span><span class="p">;</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="w">    </span><span class="nv">--accent-cyan</span><span class="p">:</span><span class="w"> </span><span class="mh">#c9a961</span><span class="p">;</span>
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a><span class="w">    </span><span class="nv">--accent-orange</span><span class="p">:</span><span class="w"> </span><span class="mh">#e6925b</span><span class="p">;</span>
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="w">    </span><span class="nv">--text-primary</span><span class="p">:</span><span class="w"> </span><span class="mh">#f4e8d8</span><span class="p">;</span>
+<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a><span class="w">    </span><span class="nv">--text-secondary</span><span class="p">:</span><span class="w"> </span><span class="mh">#b89968</span><span class="p">;</span>
+<a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a><span class="p">}</span>
+</code></pre></div>
+<h3 id="javascript-functionality">JavaScript functionality</h3>
+<p>The generated HTML includes minimal JavaScript for:</p>
+<ol>
+<li><strong>Mobile menu toggle</strong> - Shows/hides sidebar navigation on mobile</li>
+<li><strong>Keyword expansion</strong> - Expands "+X more" keyword badges when clicked</li>
+</ol>
+<p>Smooth scrolling to anchors comes from the CSS <code>scroll-behavior</code> property, not JavaScript.</p>
+<p>These behaviors are built-in and don't require customization for basic styling changes.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.sections", "toc.integrate", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
