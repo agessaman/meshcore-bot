@@ -114,6 +114,21 @@ outgoing_flood_scope_override = #west
 flood_scopes                  = #west
 ```
 
+### Managing region scopes from the web viewer
+
+The **Region Scopes** card on the web viewer's **Radio** page edits both keys
+for you. It writes `[Channels]` in `config.ini` and queues a config reload, so
+changes take effect **without restarting the bot**, and it reports what the
+reload did rather than only that the file was written.
+
+It is an editor for the same two keys, not a separate store, so values set by
+hand and values set in the UI are the same thing. Scope names are normalized on
+save the way the bot normalizes them (`west` is stored as `#west`), and a name
+containing `,`, `%` or an inner `#` is refused before anything is written.
+
+Per-channel `flood_scope.<channel>` entries are shown read-only there; edit
+those in `config.ini`.
+
 ### Public channel guard
 
 The bot **refuses to start** if `monitor_channels` includes the Public channel, unless an explicit override key is set in `[Bot]`. This prevents accidental bot deployments on the shared channel that is visible to all mesh users by default.

@@ -8,6 +8,62 @@ semantic versioning.
 
 ### Added
 
+- Region-code monitoring and an optional automatic warning to senders whose
+  channel messages carry no regional flood scope (#279). The bot classifies
+  every channel message it hears as scoped, global (unscoped) or unknown and
+  tallies the result per channel per day, which costs no airtime and is on by
+  default. A new `Settings -> Region Warnings` page in the web viewer shows how
+  much unscoped traffic the mesh actually carries before any decision to spend
+  airtime on it.
+
+  Warnings themselves are off by default and start in dry run, where every
+  decision is logged and consumes the same cooldowns and daily cap it would
+  when live, so the log is a true preview rather than an upper bound. A sender
+  must send `min_unscoped_messages` confirmed-unscoped messages, and the
+  warning is fenced by a per-sender cooldown, a mesh-wide cooldown and a daily
+  cap, all read from the database so a restart cannot release a burst. Warnings
+  fire only on positive RF evidence of an unscoped FLOOD; a message the radio
+  could not classify is never warned about. Channel-delivered warnings are sent
+  at global scope, because a scoped reply could not reach someone outside the
+  region. Configure it in `[Region_Warnings]`; retention is governed by
+  `[Data_Retention] region_warning_retention_days`.
+
+  A channel sender is a display name, not an identity — MeshCore's channel
+  messages carry no public key — so DM warnings only go to a name the radio
+  already holds a contact for, and a message with no `Name: ` prefix is counted
+  but never warned. Warnings dropped for want of a contact are counted and
+  shown on the page, so a bot that keeps no contacts reports that rather than
+  showing an empty log beside a status card claiming it is sending.
+  `docs/region-warnings.md` says all of this plainly rather than implying the
+  bot knows who it is talking to.
+
+- The Radio page's Node Settings card now reads and writes the radio's own
+  **Default Region Scope** (#283), beside the path hash size. This is the
+  firmware setting (`NodePrefs.default_scope_name` / `default_scope_key`) the
+  radio falls back to for any send the bot does not scope itself. Firmware
+  without the setting is reported as not having answered rather than shown as
+  an empty field, and a stored key that is not the stored name's hash is
+  flagged, because the radio routes by the key and the name beside it is only a
+  label. Clearing it sends the firmware's own bare-frame form rather than the
+  meshcore library's reset helpers, none of which can clear the field: `None`
+  raises, `""` earns ILLEGAL_ARG, and `"*"` only works through a padding
+  off-by-one. The card says plainly that the bot leaves the radio in
+  forced-unscoped mode after any scoped send, so this default stops applying
+  until the bot scopes another one.
+
+- A **Region Scopes** card on the web viewer's Radio page sets the bot's own
+  regional flood scopes (#283), so `[Channels] flood_scopes` and
+  `outgoing_flood_scope_override` no longer have to be edited by hand. It
+  writes `config.ini` and queues a hot config reload, then polls that reload and
+  reports what the bot actually did — including saying plainly when nothing
+  picked the change up. Scope names are normalized on save the way the bot
+  normalizes them (`west` becomes `#west`), and a name containing `,`, `%` or an
+  inner `#` is refused before anything is written, because those are the three
+  characters that do not survive a trip through a comma-separated INI value read
+  with interpolation on. Per-channel `flood_scope.<channel>` entries are listed
+  read-only beside the default, since they are the reason a channel can ignore
+  it.
+
 - `docs/develop-command-scripts.md` walks through writing a command plugin that
   integrates correctly with the bot framework, including developing against
   `[Bot] local_dir_path` (#259).
@@ -48,6 +104,15 @@ semantic versioning.
   messages the recipient had in fact received.
 
 ### Fixed
+
+- `outgoing_flood_scope_override = none` is now read as global flood on the
+  send path, as it already was everywhere else. `send_channel_message` tested
+  the raw value against a fixed tuple, so the lowercase spelling became the
+  region `#none` and sent scoped.
+- Striped and hovered table rows in the web viewer's dark mode no longer render
+  Bootstrap's light-theme text color on a dark background (about 1.3:1
+  contrast). The dark overrides set a background but not a color, so every
+  `.table-striped` page was affected.
 
 - `[Joke_Command] joke_enabled` and `[DadJoke_Command] dadjoke_enabled` are now
   listed in the shared legacy-alias table. Both commands accepted that spelling

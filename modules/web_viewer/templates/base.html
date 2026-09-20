@@ -156,12 +156,17 @@
             color: var(--text-color);
         }
 
+        /* Bootstrap's striping sets a light --bs-table-striped-color on the
+           cell as well as a background. Overriding only the background left
+           #212529 text on a #3d3d3d row in dark mode — about 1.3:1. */
         [data-theme="dark"] .table-striped>tbody>tr:nth-of-type(odd)>td {
             background-color: var(--bg-tertiary);
+            color: var(--text-color);
         }
 
         [data-theme="dark"] .table-hover>tbody>tr:hover>td {
             background-color: var(--bg-tertiary);
+            color: var(--text-color);
         }
 
         .badge {
@@ -255,8 +260,14 @@
             color: var(--text-muted) !important;
         }
 
-        /* Dark mode borders */
-        [data-theme="dark"] .border {
+        /* Dark mode borders. The directional utilities need naming too — the
+           all-sides rule does not cover them, so a .border-start divider drew
+           Bootstrap's light #dee2e6 straight onto a dark card. */
+        [data-theme="dark"] .border,
+        [data-theme="dark"] .border-top,
+        [data-theme="dark"] .border-end,
+        [data-theme="dark"] .border-bottom,
+        [data-theme="dark"] .border-start {
             border-color: var(--border-color) !important;
         }
 
@@ -441,7 +452,7 @@
 
                     {#- Configuration pages live behind one gear so the bar stays about
                         what the mesh is doing, not how the bot is set up. -#}
-                    {% set settings_paths = ['/radio', '/schedule', '/greeter', '/feeds', '/plugins', '/config'] %}
+                    {% set settings_paths = ['/radio', '/schedule', '/greeter', '/feeds', '/region-warnings', '/plugins', '/config'] %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle {{ 'active' if request.path in settings_paths }}"
                            href="#" id="settingsDropdown" role="button"
@@ -473,6 +484,11 @@
                                 </a>
                             </li>
                             {% endif %}
+                            <li>
+                                <a class="dropdown-item {{ 'active' if request.path == '/region-warnings' }}" href="/region-warnings">
+                                    <i class="fas fa-globe fa-fw me-2"></i>Region Warnings
+                                </a>
+                            </li>
                             <li>
                                 <a class="dropdown-item {{ 'active' if request.path == '/plugins' }}" href="/plugins">
                                     <i class="fas fa-puzzle-piece fa-fw me-2"></i>Plugins

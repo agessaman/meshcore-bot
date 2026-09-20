@@ -330,6 +330,14 @@ class MeshCoreBot:
         self.message_handler = MessageHandler(self)
         self.command_manager = CommandManager(self)
 
+        # Regional flood-scope tallies, and the opt-in warning they can drive.
+        try:
+            from .region_warning import RegionWarningMonitor
+            self.region_warning_monitor = RegionWarningMonitor(self)
+        except Exception as e:
+            self.logger.warning(f"Failed to initialize region warning monitor: {e}")
+            self.region_warning_monitor = None
+
         # Initialize transmission tracker for monitoring TX success
         try:
             self.transmission_tracker = TransmissionTracker(self)
@@ -967,6 +975,9 @@ class MeshCoreBot:
                     self.channel_manager.max_channels = new_max_channels
                     set_config(new_config)
 
+                    if getattr(self, 'region_warning_monitor', None):
+                        self.region_warning_monitor.reload_config()
+
                     if hasattr(self, 'scheduler'):
                         scheduler_apply_started = True
                         self.scheduler.setup_scheduled_messages()
@@ -992,6 +1003,8 @@ class MeshCoreBot:
                     )
                     self.channel_manager.max_channels = old_state["max_channels"]
                     set_config(old_config)
+                    if getattr(self, 'region_warning_monitor', None):
+                        self.region_warning_monitor.reload_config()
                     # setup_scheduled_messages may have stopped the previous
                     # APScheduler before failing. Rebuild it against old config.
                     if scheduler_apply_started and hasattr(self, 'scheduler'):
