@@ -166,9 +166,6 @@ def _serialize_command_frames(bot: "MeshCoreBot", commands: Any) -> bool:
     commands.send = _serialized_send
     return True
 
-    def __setattr__(self, name: str, value: Any) -> None:
-        setattr(object.__getattribute__(self, "_commands"), name, value)
-
 
 class MeshCoreBot:
     """MeshCore Bot using official meshcore package.
