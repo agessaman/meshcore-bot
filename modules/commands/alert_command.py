@@ -1,1137 +1,367 @@
 #!/usr/bin/env python3
 """
-Alert command for the MeshCore Bot
-Provides PulsePoint incident alerts for locations, zip codes, and street addresses
+Alert command for the MeshCore Bot.
+
+This command is a thin *orchestrator* over one or more alert services (see
+``modules/service_plugins/base_alert_service.py``). It no longer talks to any
+API directly; instead it:
+
+1. Discovers the alert services connected via ``[Alert_Command] services``.
+2. Decides which services to query for a given message (all connected
+   services, or — when the message arrives in a channel a service polls — just
+   that one service).
+3. Asks each service for incident lines matching the user's query.
+4. Distributes a total incident budget across the responding services,
+   prefixes each service's output with its ``[LABEL]:`` header, and sends the
+   messages.
+
+See ``docs/alert-service.md`` for the full architecture and a guide to writing
+new alert services.
 """
 
 import asyncio
-import base64
-import hashlib
-import json
-import re
-from datetime import datetime, timezone
-from typing import Optional
-
-import requests
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from typing import Any, Optional
 
 from ..models import MeshMessage
-from ..utils import calculate_distance, geocode_city_sync, geocode_zipcode_sync, rate_limited_nominatim_reverse_sync
 from .base_command import BaseCommand
 
-# Incident type codes -> human readable (short versions for mesh)
-CALL_TYPES = {
-    "AA": "Auto Aid", "MU": "Mutual Aid", "ST": "Strike Team",
-    "AC": "Aircraft Crash", "AE": "Aircraft Emerg", "AES": "Aircraft Standby", "LZ": "Landing Zone",
-    "AED": "AED Alarm", "OA": "Alarm", "CMA": "CO Alarm", "FA": "Fire Alarm",
-    "MA": "Manual Alarm", "SD": "Smoke Detector", "TRBL": "Trouble Alarm", "WFA": "Waterflow",
-    "FL": "Flooding", "LR": "Ladder Req", "LA": "Lift Assist",
-    "PA": "Police Assist", "PS": "Public Svc", "SH": "Hydrant",
-    "EX": "Explosion", "PE": "Pipeline Emerg", "TE": "Transformer",
-    "AF": "Appliance Fire", "CHIM": "Chimney Fire", "CF": "Commercial Fire",
-    "WSF": "Structure Fire", "WVEG": "Veg Fire", "CB": "Controlled Burn",
-    "ELF": "Electrical Fire", "EF": "Extinguished", "FIRE": "Fire",
-    "FULL": "Full Assignment", "IF": "Illegal Fire", "MF": "Marine Fire",
-    "OF": "Outside Fire", "PF": "Pole Fire", "GF": "Garbage Fire",
-    "RF": "Residential Fire", "SF": "Structure Fire", "VEG": "Veg Fire",
-    "VF": "Vehicle Fire", "WCF": "Working Comm Fire", "WRF": "Working Res Fire",
-    "BT": "Bomb Threat", "EE": "Electrical Emerg", "EM": "Emergency",
-    "ER": "Emergency", "GAS": "Gas Leak", "HC": "Hazmat",
-    "HMR": "Hazmat", "TD": "Tree Down", "WE": "Water Emerg",
-    "AI": "Arson Inv", "HMI": "Hazmat Inv", "INV": "Investigation",
-    "OI": "Odor Inv", "SI": "Smoke Inv",
-    "LO": "Lockout", "CL": "Comm Lockout", "RL": "Res Lockout", "VL": "Vehicle Lockout",
-    "IFT": "Med Transfer", "ME": "Medical", "MCI": "Mass Casualty",
-    "EQ": "Earthquake", "FLW": "Flood Warn", "TOW": "Tornado Warn", "TSW": "Tsunami Warn",
-    "CA": "Community", "FW": "Fire Watch", "NO": "Notification",
-    "STBY": "Standby", "TEST": "Test", "TRNG": "Training", "UNK": "Unknown",
-    "AR": "Animal Rescue", "CR": "Cliff Rescue", "CSR": "Confined Space",
-    "ELR": "Elevator Rescue", "RES": "Rescue", "RR": "Rope Rescue",
-    "TR": "Tech Rescue", "TNR": "Trench Rescue", "USAR": "Urban SAR",
-    "VS": "Vessel Sinking", "WR": "Water Rescue",
-    "TCE": "Major TC", "RTE": "Train Emerg",
-    "TC": "Traffic Collision", "TCS": "TC w/Structure", "TCT": "TC w/Train",
-    "WA": "Wires Arcing", "WD": "Wires Down"
-}
+# Default total number of incidents shown across all services for one query.
+DEFAULT_MAX_INCIDENTS_TOTAL = 10
 
-# Unit dispatch status codes
-UNIT_STATUS = {
-    "DP": "Dispatched",
-    "ER": "Enroute",
-    "OS": "On Scene",
-    "AV": "Available",
-    "TR": "Transport",
-    "TA": "Arrived",
-    "CL": "Cleared"
-}
+# Default LoRa-friendly message length budget (bytes/chars).
+DEFAULT_MAX_MESSAGE_LENGTH = 130
 
-
-def _derive_key(salt: bytes) -> bytes:
-    """Derive AES key from the obfuscated password.
-
-    Args:
-        salt: The salt bytes to use for derivation.
-
-    Returns:
-        bytes: The derived 32-byte key.
-    """
-    e = "CommonIncidents"
-    password = e[13] + e[1] + e[2] + "brady" + "5" + "r" + e.lower()[6] + e[5] + "gs"
-
-    hasher = hashlib.md5()
-    key = b''
-    block = None
-    while len(key) < 32:
-        if block:
-            hasher.update(block)
-        hasher.update(password.encode())
-        hasher.update(salt)
-        block = hasher.digest()
-        hasher = hashlib.md5()
-        key += block
-    return key[:32]
-
-
-def _decrypt(data: dict) -> dict:
-    """Decrypt PulsePoint's encrypted response.
-
-    Args:
-        data: The encrypted data dictionary from the API.
-
-    Returns:
-        dict: The decrypted JSON data.
-    """
-    ct = base64.b64decode(data["ct"])
-    iv = bytes.fromhex(data["iv"])
-    salt = bytes.fromhex(data["s"])
-
-    key = _derive_key(salt)
-    cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
-    decryptor = cipher.decryptor()
-    out = decryptor.update(ct) + decryptor.finalize()
-
-    out = out[1:out.rindex(b'"')].decode()
-    out = out.replace(r'\"', r'"')
-    return json.loads(out)
-
-
-def _parse_time(iso_str: str) -> Optional[datetime]:
-    """Parse ISO timestamp to datetime and convert to local time.
-
-    Args:
-        iso_str: ISO formatted timestamp string.
-
-    Returns:
-        Optional[datetime]: Parsed timezone-aware datetime, or None if invalid.
-    """
-    if not iso_str:
-        return None
-    try:
-        dt = datetime.fromisoformat(iso_str.replace('Z', '+00:00'))
-        # Convert to local time if timezone-aware
-        if dt.tzinfo is not None:
-            dt = dt.astimezone()
-        return dt
-    except:
-        return None
-
-
-def _time_ago(dt: datetime) -> str:
-    """Format datetime as relative time string (e.g., '5m ago').
-
-    Args:
-        dt: The datetime to compare against current time.
-
-    Returns:
-        str: Relative time string.
-    """
-    if not dt:
-        return ""
-
-    # Use local time for comparison
-    now = datetime.now().astimezone()
-    # Ensure dt is timezone-aware (should be after _parse_time conversion)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=now.tzinfo)
-    diff = now - dt
-    mins = int(diff.total_seconds() / 60)
-
-    if mins < 1:
-        return "now"
-    elif mins < 60:
-        return f"{mins}m ago"
-    elif mins < 1440:
-        return f"{mins // 60}h {mins % 60}m ago"
-    else:
-        return f"{mins // 1440}d ago"
+# Delay between successive response messages, seconds.
+INTER_MESSAGE_DELAY = 2.0
 
 
 class AlertCommand(BaseCommand):
-    """Handles alert/incident commands using PulsePoint API.
+    """Query connected alert services for active incidents.
 
-    Retrieves and displays active fire and emergency incidents for specified
-    locations (city, county, zipcode, or coordinates).
+    The command aggregates results from every configured alert service and
+    presents them as label-prefixed messages. Individual services encapsulate
+    all API and query-parsing logic.
     """
 
     # Plugin metadata
     name = "alert"
     keywords = ['alert', 'alerts', 'incident', 'incidents']
-    description = "Get active emergency incidents (usage: alert seattle, alert 98258, alert 178th seattle, alert seattle all)"
+    description = "Get active emergency incidents (usage: alert seattle, alert 98258, alert 178th seattle)"
     category = "emergency"
     cooldown_seconds = 10  # 10 second cooldown to prevent API abuse
 
     # Documentation
-    short_description = "Get active emergency incidents from PulsePoint"
-    usage = "alert <location> [all]"
-    examples = ["alert seattle", "alert 98101 all"]
+    short_description = "Get active emergency incidents from connected alert services"
+    usage = "alert <location>"
+    examples = ["alert seattle", "alert 98101"]
     parameters = [
-        {"name": "location", "description": "City, zip code, or street address"},
-        {"name": "all", "description": "Show all incidents (not just nearby)"}
+        {"name": "location", "description": "City, zip code, county, or street address"},
     ]
-    requires_internet = True  # Requires internet access for PulsePoint API
+    requires_internet = True
 
     # Web-viewer settings schema (see modules/settings_schema.py).
-    # PulsePoint agency.* keys are dynamic and appear under "Other config values".
     settings_schema = [
-        {"key": "max_distance_km", "label": "Max distance", "type": "float",
-         "min": 0, "default": 20.0, "unit": "km",
-         "help": "Only show incidents within this distance of the location."},
-        {"key": "max_incident_age_hours", "label": "Max incident age", "type": "float",
-         "min": 0, "default": 24.0, "unit": "hours",
-         "help": "Ignore incidents older than this many hours."},
+        {"key": "enabled", "label": "Enabled", "type": "bool", "default": True,
+         "help": "Enable the alert command."},
+        {"key": "services", "label": "Connected services", "type": "str",
+         "default": "pulsepoint",
+         "help": "Comma-separated alert service ids to query (e.g. pulsepoint)."},
+        {"key": "max_incidents_total", "label": "Max incidents", "type": "int",
+         "min": 1, "default": DEFAULT_MAX_INCIDENTS_TOTAL,
+         "help": "Total incidents shown across all services for one query."},
     ]
 
-    # Web-viewer dynamic editor for the PulsePoint agency.* keys in this section.
-    settings_dynamic_sections = [
-        {
-            "section": "Alert_Command",
-            "key_prefix": "agency.",
-            "label": "PulsePoint agencies",
-            "help": ("Map a region name to its PulsePoint agency IDs. Users query "
-                     "with 'alert <region>'. Find IDs at web.pulsepoint.org."),
-            "key_label": "Region name",
-            "value_label": "Agency IDs (comma-separated)",
-            "key_placeholder": "county1",
-            "value_placeholder": "1234,5678",
-        }
-    ]
-
-    def __init__(self, bot):
+    def __init__(self, bot: Any) -> None:
         super().__init__(bot)
-        self.url_timeout = 10
-        self.db_manager = bot.db_manager
 
-        # Load agencies from config (separate cities and counties)
-        self.city_agencies, self.county_agencies = self._load_agencies()
-
-        # Get max distance from config (default 20km, about 12 miles)
-        self.max_distance_km = self.get_config_value('Alert_Command', 'max_distance_km', fallback=20.0, value_type='float')
-
-        # Get max incident age in hours (default 24 hours) - filter out incidents older than this
-        self.max_incident_age_hours = self.get_config_value('Alert_Command', 'max_incident_age_hours', fallback=24.0, value_type='float')
-
-        # Load enabled (standard enabled; alert_enabled legacy)
+        # Load enabled (standard 'enabled'; 'alert_enabled' legacy).
         self.alert_enabled = self.get_config_value('Alert_Command', 'enabled', fallback=None, value_type='bool')
         if self.alert_enabled is None:
             self.alert_enabled = self.get_config_value('Alert_Command', 'alert_enabled', fallback=True, value_type='bool')
 
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
+        # Which alert services this command is connected to.
+        self.service_names = self._load_service_names()
 
-        Args:
-            message: The message triggering the command.
+        # Total incident budget across all responding services.
+        self.max_incidents_total = self.get_config_value(
+            'Alert_Command', 'max_incidents_total',
+            fallback=DEFAULT_MAX_INCIDENTS_TOTAL, value_type='int'
+        )
+
+    def _load_service_names(self) -> list[str]:
+        """Load connected alert service ids from ``[Alert_Command] services``.
+
+        Defaults to ``pulsepoint`` for backward compatibility with the original
+        single-service alert command.
 
         Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
+            List of alert service ids (lowercased, stripped).
         """
+        raw = self.get_config_value('Alert_Command', 'services', fallback='pulsepoint', value_type='str')
+        if not raw:
+            return []
+        return [s.strip().lower() for s in raw.split(',') if s.strip()]
+
+    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
+        """Check if this command can be executed with the given message."""
         if not self.alert_enabled:
             return False
-
-        # Call parent can_execute() which includes channel checking, cooldown, etc.
         return super().can_execute(message)
 
-    def _load_agencies(self) -> tuple[dict[str, str], dict[str, str]]:
-        """Load agency IDs from config, separating cities and counties.
+    # ------------------------------------------------------------------ #
+    # Service discovery / selection.
+    # ------------------------------------------------------------------ #
+    def _all_alert_services(self) -> list[Any]:
+        """Return every loaded alert service instance.
 
-        Returns:
-            Tuple[Dict[str, str], Dict[str, str]]: Tuple of (cities_map, counties_map).
+        Alert services are loaded at bot startup (after commands are
+        constructed), so this must be resolved lazily at execute time. Services
+        are identified by the presence of an ``alert_service_id`` attribute
+        rather than by dict key, because the service loader keys the registry
+        by the class-derived name.
         """
-        cities = {}
-        counties = {}
-        if self.bot.config.has_section('Alert_Command'):
-            for key, value in self.bot.config.items('Alert_Command'):
-                # New format: agency.city.seattle or agency.county.king
-                if key.startswith('agency.city.'):
-                    city = key.replace('agency.city.', '').lower()
-                    cities[city] = value.strip()
-                elif key.startswith('agency.county.'):
-                    county = key.replace('agency.county.', '').lower()
-                    counties[county] = value.strip()
-                # Legacy format support: agency.* (treat as county for backward compatibility)
-                elif key.startswith('agency.'):
-                    name = key.replace('agency.', '').lower()
-                    counties[name] = value.strip()
-                # Old format: agency_* (treat as county for backward compatibility)
-                elif key.startswith('agency_'):
-                    name = key.replace('agency_', '').lower()
-                    counties[name] = value.strip()
-        return cities, counties
+        loaded = getattr(self.bot, 'services', None) or {}
+        return [
+            svc for svc in loaded.values()
+            if getattr(svc, 'alert_service_id', None)
+        ]
 
-    def _normalize_location_key(self, location: str) -> str:
-        """Normalize location name to match config key format (spaces -> underscores).
+    def _get_connected_services(self, all_alert: list[Any]) -> list[Any]:
+        """Filter loaded alert services down to the connected, ordered list."""
+        by_id = {getattr(svc, 'alert_service_id'): svc for svc in all_alert}
+        connected = []
+        for name in self.service_names:
+            svc = by_id.get(name)
+            if svc is not None:
+                connected.append(svc)
+            else:
+                self.logger.debug("Alert service '%s' configured but not loaded", name)
+        return connected
+
+    @staticmethod
+    def _normalize_channel(channel: str) -> str:
+        """Normalize a channel name for comparison (case-insensitive, no '#')."""
+        return channel.lower().strip().lstrip('#')
+
+    def _get_services_for_message(self, message: MeshMessage) -> list[Any]:
+        """Decide which alert services should answer this message.
+
+        If the message arrives in a channel that a loaded alert service polls,
+        only that service (or services) answers. Otherwise the connected
+        services from ``[Alert_Command] services`` are queried.
 
         Args:
-            location: The raw location string.
+            message: The triggering message.
 
         Returns:
-            str: Normalized location string.
+            Ordered list of alert service instances to query.
         """
-        return location.lower().replace(' ', '_')
+        all_alert = self._all_alert_services()
 
-    def _get_agency_ids(self, location: str = None, location_type: str = None) -> Optional[str]:
-        """Get agency IDs for a city or county, or default to all configured agencies.
+        # Channel-specific: a service polling this channel answers alone.
+        if not message.is_dm and message.channel:
+            ch = self._normalize_channel(message.channel)
+            channel_services = [
+                svc for svc in all_alert
+                if ch in [self._normalize_channel(c) for c in getattr(svc, 'polling_channels', []) or []]
+            ]
+            if channel_services:
+                self.logger.debug(
+                    "Alert: channel '%s' maps to service(s) %s",
+                    message.channel,
+                    [getattr(s, 'alert_service_id', '?') for s in channel_services],
+                )
+                return channel_services
+
+        # Default: connected services from config.
+        return self._get_connected_services(all_alert)
+
+    # ------------------------------------------------------------------ #
+    # Incident distribution.
+    # ------------------------------------------------------------------ #
+    def _distribute_incidents(self, counts: list[int], max_total: int) -> list[int]:
+        """Compute an incident allocation per service given a total budget.
+
+        Incidents are distributed as equally as possible. Any budget a service
+        cannot use (because it returned fewer incidents than its share) is
+        redistributed to services that have more incidents to show, so the
+        total shown is maximized without exceeding ``max_total``.
 
         Args:
-            location: Name of the city or county.
-            location_type: Type of location ('city' or 'county').
+            counts: Number of incidents each service actually returned.
+            max_total: Total incident budget across all services.
 
         Returns:
-            Optional[str]: Comma-separated agency IDs, or None if specific location not found.
+            A list of per-service allocations, parallel to ``counts``.
         """
-        if location:
-            location_lower = location.lower()
-            location_normalized = self._normalize_location_key(location)
+        n = len(counts)
+        if n == 0 or max_total <= 0:
+            return [0] * n
 
-            # If location_type is specified, only check that type
-            if location_type == "city":
-                # Try normalized first (with underscore), then original (with space)
-                if location_normalized in self.city_agencies:
-                    return self.city_agencies[location_normalized]
-                if location_lower in self.city_agencies:
-                    return self.city_agencies[location_lower]
-                # City not found in config, return None to indicate we should use all agencies
-                return None
-            elif location_type == "county":
-                # Try normalized first (with underscore), then original (with space)
-                if location_normalized in self.county_agencies:
-                    return self.county_agencies[location_normalized]
-                if location_lower in self.county_agencies:
-                    return self.county_agencies[location_lower]
-                # County not found, check aliases
-                aliases = {
-                    'sno': 'snohomish',
-                    'sea': 'king',  # 'sea' alias maps to King County
-                    'tac': 'pierce',
-                    'all': 'puget_sound'
-                }
-                if location_lower in aliases:
-                    alias_target = aliases[location_lower]
-                    if alias_target in self.county_agencies:
-                        return self.county_agencies[alias_target]
-                return None
+        # Equal base share, with the remainder handed to the first services.
+        base = max_total // n
+        remainder = max_total % n
+        alloc = [base + (1 if i < remainder else 0) for i in range(n)]
 
-            # If no location_type specified, check both (city first, then county)
-            # Try normalized first (with underscore), then original (with space)
-            if location_normalized in self.city_agencies:
-                return self.city_agencies[location_normalized]
-            if location_lower in self.city_agencies:
-                return self.city_agencies[location_lower]
-            if location_normalized in self.county_agencies:
-                return self.county_agencies[location_normalized]
-            if location_lower in self.county_agencies:
-                return self.county_agencies[location_lower]
+        # Cap each allocation at what the service can actually supply, tracking
+        # freed budget for redistribution.
+        alloc = [min(a, counts[i]) for i, a in enumerate(alloc)]
 
-            # Check aliases (these map to counties)
-            aliases = {
-                'sno': 'snohomish',
-                'sea': 'king',  # 'sea' alias maps to King County
-                'tac': 'pierce',
-                'all': 'puget_sound'
-            }
-            if location_lower in aliases:
-                alias_target = aliases[location_lower]
-                if alias_target in self.county_agencies:
-                    return self.county_agencies[alias_target]
+        # Redistribute leftover budget to services that still have more to show.
+        while True:
+            used = sum(alloc)
+            leftover = max_total - used
+            if leftover <= 0:
+                break
+            # Services that can take at least one more incident.
+            hungry = [i for i in range(n) if alloc[i] < counts[i]]
+            if not hungry:
+                break
+            progressed = False
+            for i in hungry:
+                if leftover <= 0:
+                    break
+                alloc[i] += 1
+                leftover -= 1
+                progressed = True
+            if not progressed:
+                break
+        return alloc
 
-        # Default: combine all agencies from both cities and counties
-        all_agencies = []
-        for agency_list in list(self.city_agencies.values()) + list(self.county_agencies.values()):
-            all_agencies.append(agency_list)
-        return ",".join(all_agencies)
+    def _build_service_messages(self, label: str, incidents: list[str],
+                                allocation: int, max_length: int) -> list[str]:
+        """Build label-prefixed messages for one service's incidents.
 
-    def _fetch_incidents(self, agency_ids: str) -> list[dict]:
-        """Fetch active incidents from PulsePoint.
+        Shows up to ``allocation`` incidents, packed into as few messages as
+        possible within ``max_length``. Every message carries the ``[LABEL]:``
+        header. When the service returned more incidents than ``allocation``, a
+        trailing ``(N more)`` note is appended (the service label already tells
+        the user which source has more, so the source is not repeated).
 
         Args:
-            agency_ids: Comma-separated string of agency IDs.
+            label: The service label (already <=6 chars).
+            incidents: All incident lines the service returned.
+            allocation: How many of them this service may show.
+            max_length: Max characters per message.
 
         Returns:
-            List[Dict]: List of incident dictionaries.
+            A list of ready-to-send message strings.
         """
-        url = "https://api.pulsepoint.org/v1/webapp"
-        params = {"resource": "incidents", "agencyid": agency_ids}
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Origin": "https://web.pulsepoint.org",
-            "Referer": "https://web.pulsepoint.org/"
-        }
-
-        try:
-            resp = requests.get(url, params=params, headers=headers, timeout=self.url_timeout)
-            resp.raise_for_status()
-
-            encrypted = resp.json()
-            decrypted = _decrypt(encrypted)
-
-            incidents = []
-            seen_ids = set()  # Track incident IDs to avoid duplicates
-
-            # Only fetch active incidents (not recent/cleared)
-            # Filter by age to exclude very old "active" incidents
-            now = datetime.now(timezone.utc)
-            max_age = self.max_incident_age_hours * 3600  # Convert hours to seconds
-
-            for inc in decrypted.get("incidents", {}).get("active", []):
-                incident_id = inc.get("ID")
-
-                # Skip if we've already seen this incident ID (deduplication)
-                if incident_id in seen_ids:
-                    continue
-                seen_ids.add(incident_id)
-
-                call_type = inc.get("PulsePointIncidentCallType", "UNK")
-                call_time = _parse_time(inc.get("CallReceivedDateTime"))
-
-                # Filter out incidents older than max_incident_age_hours
-                if call_time:
-                    # Ensure timezone-aware for comparison
-                    if call_time.tzinfo is None:
-                        call_time = call_time.replace(tzinfo=timezone.utc)
-                    else:
-                        call_time = call_time.astimezone(timezone.utc)
-
-                    age_seconds = (now - call_time).total_seconds()
-                    if age_seconds > max_age:
-                        # Incident is too old, skip it
-                        continue
-
-                # Parse units with status
-                units = []
-                for u in inc.get("Unit", []):
-                    unit_id = u.get("UnitID", "?")
-                    status = u.get("PulsePointDispatchStatus", "?")
-                    units.append({
-                        "id": unit_id,
-                        "status_code": status,
-                        "status": UNIT_STATUS.get(status, status)
-                    })
-
-                # Parse address
-                full_addr = inc.get("FullDisplayAddress", "Unknown")
-                # Try splitting on ", " first (most common), then on "," if that fails
-                if ", " in full_addr:
-                    addr_parts = full_addr.split(", ", 1)
-                elif "," in full_addr:
-                    addr_parts = full_addr.split(",", 1)
-                else:
-                    addr_parts = [full_addr]
-                street = addr_parts[0].strip()
-                city = addr_parts[1].strip() if len(addr_parts) > 1 else ""
-
-                incidents.append({
-                    "id": incident_id,
-                    "type_code": call_type,
-                    "type": CALL_TYPES.get(call_type, call_type),
-                    "address": full_addr,
-                    "street": street,
-                    "city": city,
-                    "latitude": float(inc.get("Latitude", 0)),
-                    "longitude": float(inc.get("Longitude", 0)),
-                    "agency": inc.get("AgencyID"),
-                    "time": call_time,
-                    "time_ago": _time_ago(call_time),
-                    "units": units,
-                    "unit_ids": [u["id"] for u in units],
-                    "raw": inc
-                })
-
-            return incidents
-        except Exception as e:
-            self.logger.error(f"Error fetching PulsePoint incidents: {e}")
+        shown = incidents[:allocation]
+        if not shown:
             return []
 
-    def _parse_query(self, query: str) -> tuple[str, Optional[str], Optional[float], Optional[float]]:
-        """Parse query string to determine search type.
+        remaining = len(incidents) - len(shown)
+        header = f"[{label}]:"
 
-        Args:
-            query: The raw query string from the user.
+        more_note = f"({remaining} more)" if remaining > 0 else None
 
-        Returns:
-            Tuple[str, Optional[str], Optional[float], Optional[float]]:
-                Tuple of (query_type, location, lat, lon).
-                query_type can be: "zipcode", "coordinates", "street_city", "city", "county".
-        """
-        query = query.strip()
-
-        # Check for coordinates (lat,lon or lat, lon)
-        coord_match = re.match(r'^(-?\d+\.?\d*),?\s*(-?\d+\.?\d*)$', query)
-        if coord_match:
-            try:
-                lat = float(coord_match.group(1))
-                lon = float(coord_match.group(2))
-                if -90 <= lat <= 90 and -180 <= lon <= 180:
-                    return ("coordinates", None, lat, lon)
-            except:
-                pass
-
-        # Check for zipcode (5 digits)
-        if re.match(r'^\d{5}$', query):
-            return ("zipcode", query, None, None)
-
-        # Check for street + city pattern (e.g., "178th seattle", "main seattle")
-        # If query has 2+ words, check if first word looks like a street name
-        parts = query.split()
-        if len(parts) >= 2:
-            first_word = parts[0].lower()
-
-            # Check if first word looks like a street name:
-            # - Ends with a number (e.g., "178th", "5th", "123rd")
-            # - Ends with street suffix (e.g., "main", "oak", "park" - but these are ambiguous)
-            # - Is a known street prefix (e.g., "ne", "nw", "se", "sw" for directional)
-            looks_like_street = (
-                bool(re.search(r'\d+(st|nd|rd|th)$', first_word)) or  # Ends with number + ordinal
-                first_word in ['ne', 'nw', 'se', 'sw', 'n', 's', 'e', 'w'] or  # Directional prefixes
-                first_word.endswith(('st', 'nd', 'rd', 'th'))  # Ordinal suffix
-            )
-
-            if looks_like_street:
-                # First word looks like a street, try to split into street and city
-                for i in range(1, len(parts)):
-                    street_part = ' '.join(parts[:i])
-                    city_part = ' '.join(parts[i:])
-
-                    # Check if city_part looks like a city name (not a street suffix)
-                    # If city_part is a known city/county, or doesn't end with street suffix, it's likely a city
-                    city_lower = city_part.lower()
-                    if (city_lower in self.city_agencies or
-                        city_lower in self.county_agencies or
-                        city_lower in ['sno', 'sea', 'tac', 'all'] or
-                        not city_lower.endswith(('st', 'street', 'ave', 'avenue', 'rd', 'road', 'blvd', 'boulevard',
-                                                'dr', 'drive', 'ct', 'court', 'ln', 'lane', 'way', 'pl', 'place'))):
-                        # This looks like street + city
-                        return ("street_city", f"{street_part} {city_part}", None, None)
-
-                # If no good split found, assume first word is street, rest is city
-                street_part = parts[0]
-                city_part = ' '.join(parts[1:])
-                return ("street_city", f"{street_part} {city_part}", None, None)
-            # else: first word doesn't look like a street, treat entire query as city name (fall through)
-
-        # Check if it's a known county alias (short codes only)
-        # County aliases: 'sno' (snohomish), 'sea' (king), 'tac' (pierce), 'all' (all counties)
-        query_lower = query.lower()
-        if query_lower in ['sno', 'sea', 'tac', 'all']:
-            return ("county", query, None, None)
-
-        # Normalize query to match config key format (spaces -> underscores)
-        # Config keys use underscores (e.g., "lake_stevens"), but queries may use spaces
-        query_normalized = self._normalize_location_key(query)
-
-        # Check if it's a configured city name (from config) - check cities first
-        # Try both normalized (with underscore) and original (with space) formats
-        if query_normalized in self.city_agencies or query_lower in self.city_agencies:
-            return ("city", query, None, None)
-
-        # Check if it's a configured county name (from config)
-        # Try both normalized (with underscore) and original (with space) formats
-        if query_normalized in self.county_agencies or query_lower in self.county_agencies:
-            return ("county", query, None, None)
-
-        # Default: treat as city name (handles single-word and multi-word city names)
-        return ("city", query, None, None)
-
-    def _match_street_name(self, incidents: list[dict], street_query: str) -> tuple[list[dict], list[dict]]:
-        """Split incidents into matched and unmatched by street name.
-
-        Args:
-            incidents: List of incidents to filter.
-            street_query: Street name to search for.
-
-        Returns:
-            Tuple[List[Dict], List[Dict]]: (matched_incidents, unmatched_incidents).
-        """
-        street_lower = street_query.lower().strip()
-        matched = []
-        unmatched = []
-
-        for inc in incidents:
-            street = inc.get("street", "").lower()
-            # Check if street query appears in the incident's street name
-            # This handles cases like "178th" matching "178TH AVE" or "NE 178TH ST"
-            if street_lower in street:
-                matched.append(inc)
-            else:
-                unmatched.append(inc)
-
-        return matched, unmatched
-
-    def _matches_city(self, inc: dict, city_query: str) -> bool:
-        """Check if incident matches the city name by substring matching on address field.
-
-        Args:
-            inc: Incident dictionary.
-            city_query: City name to check.
-
-        Returns:
-            bool: True if matched, False otherwise.
-        """
-        city_query_lower = city_query.lower().strip()
-        address = inc.get("address", "").lower().strip()
-        inc.get("city", "").lower().strip()
-
-        # Check if city name appears in the address field
-        return city_query_lower in address
-
-    def _get_city_match_priority(self, inc: dict, city_query: str) -> int:
-        """Get priority score for city match (higher = better match).
-
-        We prioritize matches where the city name appears at the end of the address
-        (after a comma), as this is the most reliable indicator. The city field
-        can be inaccurate (e.g., showing "SEATTLE" for addresses in King County
-        but not actually in Seattle).
-
-        Args:
-            inc: Incident dictionary.
-            city_query: City name to match.
-
-        Returns:
-            int: Priority score (2=suffix match, 1=substring match, 0=no match).
-        """
-        city_query_lower = city_query.lower().strip()
-        address = inc.get("address", "").lower().strip()
-
-        city_query_clean = city_query_lower.split(',')[0].strip()
-
-        # Priority 2: City appears at end of address (most reliable - typical format: "STREET, CITY" or "STREET, CITY, STATE")
-        # This is the most trustworthy match since it's based on the actual address format
-        import re
-        end_pattern = r',\s*' + re.escape(city_query_clean) + r'(?:\s*,\s*[A-Z]{2})?$'
-        if re.search(end_pattern, address, re.IGNORECASE):
-            return 2
-
-        # Priority 1: City appears anywhere in address (substring match, less reliable)
-        # This catches cases where city might be mentioned but not at the end
-        if city_query_clean in address:
-            return 1
-
-        # Priority 0: No match
-        return 0
-
-    def _match_city_name(self, incidents: list[dict], city_query: str) -> tuple[list[dict], list[dict]]:
-        """Split incidents into matched and unmatched by city name.
-
-        Args:
-            incidents: List of incidents to filter.
-            city_query: City name to filter by.
-
-        Returns:
-            Tuple[List[Dict], List[Dict]]: (matched_incidents, unmatched_incidents).
-        """
-        matched = []
-        unmatched = []
-
-        for inc in incidents:
-            if self._matches_city(inc, city_query):
-                matched.append(inc)
-            else:
-                unmatched.append(inc)
-
-        return matched, unmatched
-
-    def _sort_by_time(self, incidents: list[dict]) -> list[dict]:
-        """Sort incidents by time (most recent first).
-
-        Args:
-            incidents: List of incidents to sort.
-
-        Returns:
-            List[Dict]: Sorted list of incidents.
-        """
-        def get_time_key(inc):
-            time = inc.get("time")
-            if time is None:
-                return datetime.min.replace(tzinfo=timezone.utc)
-            # Ensure timezone-aware
-            if time.tzinfo is None:
-                time = time.replace(tzinfo=timezone.utc)
-            return time
-
-        return sorted(incidents, key=get_time_key, reverse=True)
-
-    def _sort_by_distance_then_time(self, incidents: list[dict], lat: float, lon: float, max_distance: float = None) -> list[dict]:
-        """Sort incidents by distance first, then by time (most recent first) within same distance.
-
-        Args:
-            incidents: List of incidents to sort.
-            lat: Reference latitude.
-            lon: Reference longitude.
-            max_distance: Optional max distance in km to filter.
-
-        Returns:
-            List[Dict]: Sorted list of incidents.
-        """
-        scored_incidents = []
-        for inc in incidents:
-            if not self._has_valid_coordinates(inc):
-                continue
-
-            inc_lat = inc.get("latitude", 0)
-            inc_lon = inc.get("longitude", 0)
-            distance = calculate_distance(lat, lon, inc_lat, inc_lon)
-            inc["_distance"] = distance
-
-            # Filter by max_distance if specified
-            if max_distance is None or distance <= max_distance:
-                # Get time for secondary sort
-                time = inc.get("time")
-                if time is None:
-                    time_key = datetime.min.replace(tzinfo=timezone.utc)
-                else:
-                    if time.tzinfo is None:
-                        time = time.replace(tzinfo=timezone.utc)
-                    time_key = time
-                inc["_time_key"] = time_key
-                scored_incidents.append(inc)
-
-        # Sort by distance first, then by time (most recent first)
-        return sorted(scored_incidents, key=lambda x: (x.get("_distance", float('inf')), -x.get("_time_key", datetime.min).timestamp()))
-
-    def _has_valid_coordinates(self, inc: dict) -> bool:
-        """Check if incident has valid coordinates.
-
-        Args:
-            inc: Incident dictionary.
-
-        Returns:
-            bool: True if coordinates are valid and non-zero, False otherwise.
-        """
-        inc_lat = inc.get("latitude", 0)
-        inc_lon = inc.get("longitude", 0)
-        # Valid if both are non-zero and within valid ranges
-        return (inc_lat != 0.0 and inc_lon != 0.0 and
-                -90 <= inc_lat <= 90 and -180 <= inc_lon <= 180)
-
-    def _sort_by_distance(self, incidents: list[dict], lat: float, lon: float, max_distance: float = None) -> list[dict]:
-        """Sort incidents by distance from given coordinates.
-
-        Args:
-            incidents: List of incident dicts.
-            lat: Target latitude.
-            lon: Target longitude.
-            max_distance: Optional maximum distance in km (incidents beyond this are excluded).
-
-        Returns:
-            List[Dict]: Sorted list of incidents (closest first). Only includes incidents with valid coordinates.
-        """
-        scored_incidents = []
-        for inc in incidents:
-            if not self._has_valid_coordinates(inc):
-                # Skip incidents without valid coordinates - they'll be handled separately
-                continue
-
-            inc_lat = inc.get("latitude", 0)
-            inc_lon = inc.get("longitude", 0)
-            distance = calculate_distance(lat, lon, inc_lat, inc_lon)
-            inc["_distance"] = distance
-
-            # Filter by max_distance if specified
-            if max_distance is None or distance <= max_distance:
-                scored_incidents.append(inc)
-
-        # Sort by distance (closest first)
-        return sorted(scored_incidents, key=lambda x: x.get("_distance", float('inf')))
-
-    def _format_incident_compact(self, inc: dict) -> str:
-        """Format a single incident in compact format.
-
-        Args:
-            inc: Incident dictionary.
-
-        Returns:
-            str: Formatted incident string for display.
-        """
-        # Get first unit with status icon
-        unit_str = ""
-        if inc.get("units"):
-            u = inc["units"][0]
-            status_icon = {"DP": "⏳", "ER": "🚗", "OS": "📍", "TR": "🏥"}.get(u["status_code"], "")
-            unit_str = f" [{u['id']}{status_icon}]"
-
-        # Shorten city name
-        city = inc.get("city", "")
-        if city:
-            city = city.replace(", WA", "").replace(" COUNTY", " CO")
-            city_part = f", {city}"
-        else:
-            city_part = ""
-
-        time_ago = inc.get("time_ago", "")
-        time_part = f" ({time_ago})" if time_ago else ""
-
-        return f"{inc['type']}: {inc['street']}{city_part}{time_part}{unit_str}"
-
-    def _format_response(self, incidents: list[dict], max_length: int = 130) -> str:
-        """Format incidents into a single message, limiting to max_length.
-
-        Args:
-            incidents: List of incidents to format.
-            max_length: Maximum length of the output string (default 130 for LoRa).
-
-        Returns:
-            str: Formatted response string.
-        """
-        if not incidents:
-            return "🚨 No active incidents"
-
-        lines = ["🚨"]
-        # Start with emoji (2 chars) + newline (1 char) = 3 chars
-        current_length = 3
-
-        remaining = len(incidents)
-
-        for _i, inc in enumerate(incidents):
-            line = self._format_incident_compact(inc)
-            # Length includes the line content + newline character
-            line_length = len(line) + 1
-
-            # Check if we can fit this line at all
-            if current_length + line_length > max_length:
-                # Can't fit this line
-                if len(lines) > 1:  # At least one incident shown
-                    lines.append(f"({remaining} more)")
-                break
-
-            # Check if this is the last incident
-            is_last = (remaining == 1)
-
-            if is_last:
-                # Last incident, no "(X more)" needed, add it
-                lines.append(line)
-                current_length += line_length
-                remaining -= 1
-            else:
-                # Not the last incident, check if we can fit line + "(X more)"
-                more_text = f" ({remaining - 1} more)"
-                if current_length + line_length + len(more_text) > max_length:
-                    # Can't fit both line and "(X more)", show count instead
-                    if len(lines) > 1:  # At least one incident shown
-                        lines.append(f"({remaining} more)")
-                    break
-                else:
-                    # Can fit both line and "(X more)", add the line
-                    lines.append(line)
-                    current_length += line_length
-                    remaining -= 1
-
-        # Build final message
-        final_message = "\n".join(lines)
-
-        # Safety check: ensure we don't exceed max_length (shouldn't happen, but be safe)
-        if len(final_message) > max_length:
-            # Find the last complete line before max_length
-            # Look for the last newline that would keep us under the limit
-            last_newline = final_message.rfind('\n', 0, max_length - 15)  # Reserve 15 chars for "(X more)"
-            if last_newline > 0 and len(lines) > 1:
-                # Truncate at the last complete line
-                final_message = final_message[:last_newline]
-                # Add count if there are remaining incidents
-                if remaining > 0:
-                    final_message += f"\n({remaining} more)"
-            else:
-                # Fallback: just truncate (shouldn't happen with proper logic above)
-                final_message = final_message[:max_length].rstrip()
-
-        return final_message
-
-    async def _send_all_response(self, message: MeshMessage, incidents: list[dict]) -> None:
-        """Send up to 10 incidents in multiple messages, grouping efficiently.
-
-        Args:
-            message: The message to respond to.
-            incidents: List of incidents to send.
-        """
-        if not incidents:
-            await self.send_response(message, "🚨 No active incidents")
-            return
-
-        # Build messages efficiently, grouping incidents to fit within 130 chars
-        messages = []
-        header = f"🚨 {len(incidents)} incident(s):"
-
-        # Start first message with header
+        # Pack incident lines into messages, each starting with the header.
+        messages: list[str] = []
         current_lines = [header]
         current_length = len(header)
-        # Whether the message being built already carries an incident. Only the
-        # first message has a header, so a length check cannot tell "header
-        # only" from "one incident, no header" — conflating them let a second
-        # incident be appended past the limit.
-        has_incident = False
 
-        for inc in incidents:
-            incident_text = self._format_incident_compact(inc)
-            incident_length = len(incident_text)
-
-            # Calculate what the message would look like with this incident added
-            # (+1 for the joining newline, unless the message is still empty)
-            test_length = current_length + (1 if current_lines else 0) + incident_length
-
-            # Check if this incident fits in the current message
-            if test_length <= 130:
-                # It fits, add it
-                current_lines.append(incident_text)
-                current_length = test_length
-                has_incident = True
-            elif has_incident:
-                # Doesn't fit and we already have something worth sending —
-                # finalize, then start a new message (no header) with this one.
+        for line in shown:
+            addition = len(line) + 1  # +1 for the joining newline
+            if current_length + addition > max_length and len(current_lines) > 1:
+                # Current message is full; flush and start a new one with header.
                 messages.append("\n".join(current_lines))
-                current_lines = [incident_text]
-                current_length = incident_length
+                current_lines = [header, line]
+                current_length = len(header) + addition
             else:
-                # Nothing but the header (or an empty buffer) so far: a message
-                # with no incident is useless, so take this one even though it
-                # exceeds the limit, then start fresh.
-                current_lines.append(incident_text)
+                current_lines.append(line)
+                current_length += addition
+
+        # Append the "(N more)" note to the last message if it fits, else its
+        # own message.
+        if more_note:
+            addition = len(more_note) + 1
+            if current_length + addition <= max_length:
+                current_lines.append(more_note)
+            else:
                 messages.append("\n".join(current_lines))
-                current_lines = []
-                current_length = 0
-                has_incident = False
+                current_lines = [header, more_note]
+        messages.append("\n".join(current_lines))
 
-        # Add the last message if it has content.
-        # No header-only special case here: `incidents` is non-empty (guarded
-        # above), so the loop always puts at least one incident into
-        # current_lines or flushes and clears it. The old length-1 check also
-        # matched a final chunk holding a single *incident* — subsequent
-        # messages carry no header — and appended incidents[0] on top of it,
-        # duplicating the first incident into the last message.
-        if current_lines:
-            messages.append("\n".join(current_lines))
+        return messages
 
-        # Send all messages with delays between them
-        for i, msg in enumerate(messages):
-            await self.send_response(message, msg)
-            # Wait between messages (except after the last one)
-            if i < len(messages) - 1:
-                await asyncio.sleep(2.0)
-
-    def _rank_incidents(
-        self,
-        query_type: str,
-        query: str,
-        location: Optional[str],
-        lat: Optional[float],
-        lon: Optional[float],
-        incidents: list[dict],
-    ) -> list[dict]:
-        """Filter and rank incidents for the query (runs off the event loop).
-
-        The zipcode and street_city branches geocode over blocking HTTP, so
-        this is called via asyncio.to_thread rather than inline.
-        """
-        # Process based on query type
-        if query_type == "coordinates":
-            # Sort by distance with configurable max distance, then by time
-            incidents = self._sort_by_distance_then_time(incidents, lat, lon, max_distance=self.max_distance_km)
-        elif query_type == "zipcode":
-            # Geocode zipcode and get city name
-            zip_lat, zip_lon = geocode_zipcode_sync(self.bot, location)
-            zip_city = None
-
-            if zip_lat and zip_lon:
-                # Get city name from zipcode via reverse geocoding
-                try:
-                    reverse_location = rate_limited_nominatim_reverse_sync(self.bot, f"{zip_lat}, {zip_lon}", timeout=10)
-                    if reverse_location and reverse_location.raw:
-                        address = reverse_location.raw.get('address', {})
-                        zip_city = (address.get('city') or
-                                   address.get('town') or
-                                   address.get('village') or
-                                   address.get('hamlet') or
-                                   address.get('municipality') or
-                                   address.get('suburb') or '')
-                        if zip_city:
-                            zip_city = zip_city.lower().strip()
-                            self.logger.debug(f"Zipcode {location} maps to city: {zip_city}")
-                except Exception as e:
-                    self.logger.debug(f"Error getting city from zipcode: {e}")
-
-                # Split incidents by coordinate validity
-                with_coords = [inc for inc in incidents if self._has_valid_coordinates(inc)]
-                without_coords = [inc for inc in incidents if not self._has_valid_coordinates(inc)]
-
-                # Prioritize incidents that match the zipcode's city
-                if zip_city:
-                    # Filter by city name match, then sort by distance and time
-                    matched_coords, _ = self._match_city_name(with_coords, zip_city)
-                    matched_no_coords, _ = self._match_city_name(without_coords, zip_city)
-
-                    # Sort matched incidents by distance (for those with coords), then time
-                    matched_coords = self._sort_by_distance_then_time(matched_coords, zip_lat, zip_lon, max_distance=None)
-                    matched_no_coords = self._sort_by_time(matched_no_coords)
-
-                    # If we have matches, show those. Otherwise, show nearby incidents within max distance
-                    if len(matched_coords) > 0 or len(matched_no_coords) > 0:
-                        incidents = matched_coords + matched_no_coords
-                    else:
-                        # No city matches, show nearby incidents within max distance
-                        nearby_coords = self._sort_by_distance_then_time(with_coords, zip_lat, zip_lon, max_distance=self.max_distance_km)
-                        nearby_no_coords = self._sort_by_time(without_coords)
-                        incidents = nearby_coords + nearby_no_coords
-                else:
-                    # No city name available, just sort by distance
-                    incidents = self._sort_by_distance_then_time(incidents, zip_lat, zip_lon, max_distance=self.max_distance_km)
-        elif query_type == "street_city":
-            # Extract street and city
-            parts = location.split(None, 1)
-            if len(parts) == 2:
-                street_query, city_query = parts
-                # Geocode city first
-                result = geocode_city_sync(self.bot, city_query, include_address_info=False)
-                city_lat, city_lon = None, None
-                if len(result) >= 2:
-                    city_lat, city_lon = result[0], result[1]
-
-                # Split incidents by coordinate validity
-                with_coords = [inc for inc in incidents if self._has_valid_coordinates(inc)]
-                without_coords = [inc for inc in incidents if not self._has_valid_coordinates(inc)]
-
-                # Process incidents with coordinates
-                if city_lat and city_lon:
-                    # Sort by distance (closest first) with max distance filter
-                    with_coords = self._sort_by_distance(with_coords, city_lat, city_lon, max_distance=self.max_distance_km)
-                    # Prioritize street-matched incidents by re-sorting
-                    matched_street_coords, unmatched_street_coords = self._match_street_name(with_coords, street_query)
-                    # Re-sort both groups by distance then time to maintain proximity ordering
-                    matched_street_coords = self._sort_by_distance_then_time(matched_street_coords, city_lat, city_lon, max_distance=self.max_distance_km)
-                    unmatched_street_coords = self._sort_by_distance_then_time(unmatched_street_coords, city_lat, city_lon, max_distance=self.max_distance_km)
-                    with_coords = matched_street_coords + unmatched_street_coords
-                else:
-                    # Geocoding failed - fall back to address matching for incidents with coordinates
-                    matched_street_coords, unmatched_street_coords = self._match_street_name(with_coords, street_query)
-                    matched_city_coords, _ = self._match_city_name(matched_street_coords + unmatched_street_coords, city_query)
-                    with_coords = matched_city_coords
-                    # Sort by time
-                    with_coords = self._sort_by_time(with_coords)
-
-                # Process incidents without coordinates: match by street name and city name
-                matched_street, unmatched_street = self._match_street_name(without_coords, street_query)
-                # Also match by city name in address for those without coordinates
-                matched_city, _ = self._match_city_name(matched_street + unmatched_street, city_query)
-                without_coords = matched_city
-                # Sort by time
-                without_coords = self._sort_by_time(without_coords)
-
-                # Combine: incidents with coordinates (sorted by distance or matched by address) first, then address-matched ones without coordinates
-                incidents = with_coords + without_coords
-        elif query_type == "city":
-            # Filter incidents by city name match - ONLY show matches where city appears at end of address
-            # This is the most reliable indicator and avoids false positives
-            matched, _ = self._match_city_name(incidents, location)
-
-            # Only keep incidents where city name appears at end of address (Priority 2)
-            # This ensures we only show incidents that are actually in the queried city
-            high_priority = []
-            for inc in matched:
-                priority = self._get_city_match_priority(inc, location)
-                if priority >= 2:  # Only city at end of address
-                    high_priority.append(inc)
-                else:
-                    # Log why an incident was excluded (for debugging)
-                    self.logger.debug(f"Excluding incident: {inc.get('address', 'N/A')[:60]} (priority: {priority})")
-
-            # Sort by time (most recent first)
-            incidents = self._sort_by_time(high_priority)
-            self.logger.debug(f"City query '{location}': {len(incidents)} matches (city at end of address only), {len(matched) - len(high_priority)} excluded")
-        elif query_type == "county":
-            # For county queries, return all incidents from that county (no city filtering)
-            # Sort by time (most recent first)
-            incidents = self._sort_by_time(incidents)
-            self.logger.debug(f"County query '{location}': returning {len(incidents)} incidents (no city filtering)")
-        else:
-            # Unknown query type - this shouldn't happen, but log it
-            self.logger.warning(f"Unknown query type: {query_type} for query: {query}")
-            # Default: sort by time
-            incidents = self._sort_by_time(incidents)
-        return incidents
+    # ------------------------------------------------------------------ #
+    # Command execution.
+    # ------------------------------------------------------------------ #
+    async def _query_service(self, service: Any, query: str) -> list[str]:
+        """Query a single service, converting any failure into an empty list."""
+        try:
+            result = await service.query_alerts(query)
+            return list(result) if result else []
+        except Exception as e:
+            self.logger.error(
+                "Alert service '%s' query failed: %s",
+                getattr(service, 'alert_service_id', '?'), e
+            )
+            return []
 
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the alert command.
 
-        Parses query, fetches incidents, filters/sorts, and sends response.
+        Parses the user query, selects the services to ask, aggregates their
+        incident lines, and sends label-prefixed messages.
 
         Args:
             message: The message triggering the command.
 
         Returns:
-            bool: True if executed successfully, False otherwise.
+            bool: True (the command always produces a response).
         """
         content = message.content.strip()
-
-        # Parse command
         parts = content.split(None, 1)
         if len(parts) < 2:
-            # No query provided, use default location or show help
-            await self.send_response(message, "Usage: alert <city|zipcode|street city|lat,lon|county> [all]")
+            await self.send_response(message, "Usage: alert <city|zipcode|street city|county>")
             return True
 
         query = parts[1].strip()
 
-        # Check for "all" flag at the end
-        show_all = False
+        # Backward compatibility: the legacy "all" suffix is now implicit. Strip
+        # it so it is neither treated as part of the location nor rejected.
         if query.lower().endswith(' all'):
-            show_all = True
-            query = query[:-4].strip()  # Remove " all" from the end
+            query = query[:-4].strip()
 
         try:
-            # Parse the query
-            query_type, location, lat, lon = self._parse_query(query)
-            self.logger.debug(f"Parsed query '{query}' as type: {query_type}, location: {location}")
+            services = self._get_services_for_message(message)
+            if not services:
+                await self.send_response(message, "🚨 No alert services configured")
+                return True
 
-            # Get agency IDs based on query type
-            if query_type == "county":
-                agency_ids = self._get_agency_ids(location, "county")
-            elif query_type == "city":
-                # For city queries, try to get city-specific agencies, fall back to all
-                agency_ids = self._get_agency_ids(location, "city")
-                if agency_ids is None:
-                    # No city-specific agencies configured, use all agencies
-                    agency_ids = self._get_agency_ids()
-            else:
-                # For other queries (zipcode, coordinates, street_city), use all agencies
-                agency_ids = self._get_agency_ids()  # Default to all
+            # Query every selected service concurrently.
+            results = await asyncio.gather(
+                *[self._query_service(svc, query) for svc in services]
+            )
 
-            # Fetch incidents (blocking HTTP — keep it off the event loop)
-            incidents = await asyncio.to_thread(self._fetch_incidents, agency_ids)
-
-            if not incidents:
+            counts = [len(r) for r in results]
+            if sum(counts) == 0:
                 await self.send_response(message, "🚨 No active incidents")
                 return True
 
-            # Offloaded: the zipcode/street_city branches geocode over
-            # blocking HTTP, which would stall the event loop.
-            incidents = await asyncio.to_thread(
-                self._rank_incidents, query_type, query, location, lat, lon, incidents
-            )
+            allocation = self._distribute_incidents(counts, self.max_incidents_total)
+            max_length = self.get_max_message_length(message)
 
-            # Limit to 10 incidents if "all" mode is enabled
-            if show_all:
-                incidents = incidents[:10]
-                await self._send_all_response(message, incidents)
-            else:
-                # Format and send response (compact mode)
-                response = self._format_response(incidents)
-                await self.send_response(message, response)
+            # Build all messages, grouped per service (preserving service order).
+            all_messages: list[str] = []
+            for svc, incidents, alloc in zip(services, results, allocation):
+                if alloc <= 0 or not incidents:
+                    continue
+                label = getattr(svc, 'label', getattr(svc, 'alert_service_id', '?'))
+                all_messages.extend(
+                    self._build_service_messages(label, incidents, alloc, max_length)
+                )
+
+            if not all_messages:
+                await self.send_response(message, "🚨 No active incidents")
+                return True
+
+            for i, msg in enumerate(all_messages):
+                await self.send_response(message, msg)
+                if i < len(all_messages) - 1:
+                    await asyncio.sleep(INTER_MESSAGE_DELAY)
             return True
 
         except Exception as e:
@@ -1140,5 +370,3 @@ class AlertCommand(BaseCommand):
             self.logger.error(traceback.format_exc())
             await self.send_response(message, f"Error fetching alerts: {str(e)}")
             return True
-
-

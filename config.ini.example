@@ -1403,14 +1403,63 @@ defer_to_human_greeting = false
 # 0 = exact match only (default). 1-3 = allow small typos/variants in sender names.
 levenshtein_distance = 0
 [Alert_Command]
+# The alert command is an interface to one or more "alert services" (plugins
+# that talk to an external incident source such as PulsePoint). See
+# docs/alert-service.md for the full architecture and a guide to writing new
+# alert services.
+#
 # Enable or disable the alert command (true/false)
 enabled = false
 
-# Only report incidents within this distance of the bot (kilometers)
+# Comma-separated list of alert service ids this command queries. Each id is a
+# service's `alert_service_id` (e.g. the PulsePoint service is "pulsepoint").
+# When a user runs "alert <location>", every listed service is queried and the
+# results are merged. Defaults to "pulsepoint" if omitted.
+services = pulsepoint
+
+# Total number of incidents shown across ALL services for a single query. The
+# budget is split as evenly as possible between the responding services; if one
+# service has fewer matches, its unused share is given to the others.
+max_incidents_total = 10
+
+# ---------------------------------------------------------------------------
+# NOTE: PulsePoint-specific settings (agencies, distance, polling) now live in
+# the [PulsePoint_Alert_Service] section below, not here.
+# ---------------------------------------------------------------------------
+
+[PulsePoint_Alert_Service]
+# PulsePoint alert service: fire/EMS incidents from the PulsePoint API.
+# Enable this so the alert command's "pulsepoint" service is available, and/or
+# so polling mode can auto-post new incidents to a channel.
+enabled = false
+
+# Short label (<= 6 chars) prefixed to every message this service produces,
+# e.g. a label of "PP" yields messages beginning with "[PP]:". Defaults to the
+# uppercased service id.
+label = PP
+
+# Only report incidents within this distance of the queried location (km)
 max_distance_km = 20.0
 
 # Only report incidents newer than this (hours)
 max_incident_age_hours = 24.0
+
+# --- Polling mode (optional) ------------------------------------------------
+# When enabled, the service periodically fetches new incidents on its own and
+# posts them to polling_channels. This is independent of the alert command.
+# If the alert command is run IN one of these channels, only this service
+# answers there (so an #alerts channel shows just its own source).
+polling_enabled = false
+
+# How often to poll for new incidents, in milliseconds (minimum 30000).
+polling_interval = 300000
+
+# Comma-separated channels to auto-post new incidents to (e.g. #alerts,#fire).
+# Leave empty to disable posting even when polling_enabled is true.
+polling_channels =
+
+# Optional regional TC_FLOOD scope for mesh channel posts from this service.
+# flood_scope = #west
 
 # PulsePoint agency IDs by city or county
 # Format: agency.city.<name> = comma-separated agency IDs
@@ -1424,6 +1473,7 @@ max_incident_age_hours = 24.0
 
 # Example: County agencies
 # agency.county.king = 17D02,17M15
+
 [Announcements_Command]
 # Enable or disable the announcements command (true/false)
 enabled = false

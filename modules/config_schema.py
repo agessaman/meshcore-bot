@@ -85,8 +85,11 @@ BRIDGE_CHANNEL_KEY_PREFIX = "bridge."
 # User-defined announcement triggers in Announcements_Command.
 ANNOUNCEMENTS_TRIGGER_KEY_PREFIX = "announce."
 
-# PulsePoint agency mappings in Alert_Command (city, county, and legacy formats).
+# PulsePoint agency mappings (city, county, and legacy formats). These live in
+# the PulsePoint alert service section; the legacy [Alert_Command] location is
+# still accepted for backward compatibility.
 ALERT_AGENCY_KEY_PREFIXES = ("agency.", "agency_")
+ALERT_AGENCY_SECTIONS = ("Alert_Command", "PulsePoint_Alert_Service")
 
 # Numbered MQTT broker keys in [PacketCapture]: mqtt1_server, mqtt2_server, ...
 MQTT_BROKER_KEY_RE = re.compile(r"^mqtt\d+_(.+)$")
@@ -323,7 +326,7 @@ def is_announcements_trigger_key(section: str, key: str) -> bool:
 
 def is_alert_agency_key(section: str, key: str) -> bool:
     """Return True for dynamic agency.city.* / agency.county.* / legacy agency keys."""
-    return section == "Alert_Command" and key.startswith(ALERT_AGENCY_KEY_PREFIXES)
+    return section in ALERT_AGENCY_SECTIONS and key.startswith(ALERT_AGENCY_KEY_PREFIXES)
 
 
 def is_dynamic_suffix_key(section: str, key: str) -> bool:
