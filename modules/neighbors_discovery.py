@@ -18,25 +18,23 @@ link* between two full 32-byte public keys, with a measured SNR. That is
 stronger evidence than anything path inference can offer, and it costs one radio
 command plus a passive listen window.
 
-Stage 2 (scopes) is deliberately optional here and defaults off, for two reasons
-that do not apply to the upstream capture tool:
+Stage 2 (scopes) is deliberately optional here and defaults off, for a reason
+that does not apply to the upstream capture tool: upstream relies on a freshly
+discovered neighbor *not* being a known contact, which is what makes
+``send_anon_req`` ask for a zero-hop reply path. This bot populates the
+library's contact cache. For a contact with no path (``out_path_len == -1``,
+the common case for a flood repeater) the library reaches zero-hop by calling
+``change_contact_path()`` and then ``reset_path()`` -- i.e. it *mutates the
+device's contact table* per neighbor. Those two calls are not paired by
+``try``/``finally`` upstream, so a request cut short between them leaves the
+contact pinned to zero-hop; collect_scopes restores it itself (see
+``_restore_flood_path``).
 
-* ``req_regions_sync`` awaits its reply inside the call, and every bot command
-  is serialized through ``modules.core._SerializedCommands``, so one scope
-  request holds the radio for its whole round trip -- stalling message sends.
-* Upstream relies on a freshly discovered neighbor *not* being a known contact,
-  which is what makes ``send_anon_req`` ask for a zero-hop reply path. This bot
-  populates the library's contact cache. For a contact with no path
-  (``out_path_len == -1``, the common case for a flood repeater) the library
-  reaches zero-hop by calling ``change_contact_path()`` and then
-  ``reset_path()`` -- i.e. it *mutates the device's contact table* per neighbor.
-  Those two calls are not paired by ``try``/``finally`` upstream, so a request
-  cut short between them leaves the contact pinned to zero-hop; collect_scopes
-  restores it itself (see ``_restore_flood_path``).
-
-No device-command lock is passed around: unlike upstream, every coroutine on
-``meshcore.commands`` is already serialized and paced by
-``modules.core._SerializedCommands``.
+No device-command lock is passed around: unlike upstream, every frame
+``meshcore.commands`` writes is already serialized and paced by
+``modules.core._serialize_command_frames``. The lock covers each frame and its
+immediate reply only, so waiting for a neighbor's scope reply doesn't stall the
+bot's other sends.
 """
 
 from __future__ import annotations
@@ -484,9 +482,9 @@ async def collect_scopes(
         pinned_to_zero_hop = _contact_has_no_path(meshcore, entry.pubkey)
 
         try:
-            # Bounded: this holds the shared radio command lock for its whole
-            # round trip, and an unbounded stall here would block every other
-            # bot command for as long as the write hangs.
+            # Bounded: a hung write holds the shared radio command lock, and an
+            # unbounded stall here would block every other bot command for as
+            # long as the write hangs.
             scopes = await asyncio.wait_for(
                 meshcore.commands.req_regions_sync(
                     entry.pubkey,

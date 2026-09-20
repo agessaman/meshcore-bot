@@ -33,8 +33,8 @@ dependencies = [
     "maidenhead>=1.4.0",
     "pytz>=2023.3",
     "aiohttp>=3.8.0",
-    # 2.3.8+ required for zero-hop neighbour discovery (see requirements.txt)
-    "meshcore>=2.3.8",
+    # 2.3.14+ required for send_msg_with_retry's ACK handling (see requirements.txt)
+    "meshcore>=2.3.14",
     "openmeteo-requests>=1.7.2",
     "requests-cache>=1.1.1",
     "retry-requests>=1.0.0",

@@ -21,8 +21,30 @@ semantic versioning.
   for bots that do not advertise. Enabled by default; disable with
   `[Contact_Command] enabled = false`.
 
+### Changed
+
+- `meshcore` now requires 2.3.14 or newer. Before 2.3.13, `send_msg_with_retry`
+  reported ACKed DMs as failures: it subscribed to the ACK only after `send_msg`
+  returned, so an ACK queued right behind `MSG_SENT` was dispatched with no
+  listener, and each attempt accepted only its own ACK code, so a late ACK
+  answering an earlier attempt was ignored (meshcore_py#108). The bot logged
+  "no ACK received after retries" and skipped the delivery bookkeeping for
+  messages the recipient had in fact received.
+
 ### Fixed
 
+- A region-scoped channel message now restores global flood even when
+  `set_flood_scope` raises. The restore only ran in the `finally` around the
+  send, so a set that raised left the device pinned to that region and every
+  later send — channel replies, DMs, scheduled sends — went out under it.
+- A DM waiting for its ACK no longer holds the radio. Radio commands were
+  serialized per call, so a DM's retry loop kept every other command waiting
+  through all of its ACK timeouts (up to ~36 s with the default three attempts),
+  stalling channel replies, other DMs, and scheduled sends. The lock now covers
+  one frame and the radio's immediate reply, and ACK and remote-response waits
+  run outside it, so neighbor scope requests no longer stall replies either. A
+  region-scoped channel message now holds the radio from setting its flood scope
+  through restoring it, so no other send goes out under that scope.
 - A radio connection is no longer accepted when every channel read times out or
   returns no usable channel data (#266). Startup and reconnect now retry the
   channel scan three times, keep an empty result out of the valid cache and
