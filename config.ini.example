@@ -1536,6 +1536,9 @@ enabled = true
 [Dice_Command]
 enabled = true
 # channels =
+[Contact_Command]
+enabled = true
+# channels =
 [Cmd_Command]
 enabled = true
 # Optional: override `cmd` output with a link to your full docs page
@@ -1560,9 +1563,6 @@ enabled = true
 # Worth adding to Admin_ACL admin_commands, since a cycle spends airtime.
 enabled = true
 # channels =
-[Contact_Command]
-enabled = true
-# chanels =
 [Test_Command]
 enabled = true
 # Require minimum path byte length before responding to test/t

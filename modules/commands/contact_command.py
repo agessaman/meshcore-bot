@@ -4,8 +4,13 @@ Contact command for the MeshCore Bot
 Adds the bot contact info to the current channel
 """
 
+import re
+from typing import Any, Optional
+
 from modules.commands.base_command import BaseCommand
 from modules.models import MeshMessage
+
+PUBLIC_KEY_RE = re.compile(r'^[0-9a-fA-F]{64}$')
 
 
 class ContactCommand(BaseCommand):
@@ -38,13 +43,14 @@ class ContactCommand(BaseCommand):
 
         Args:
             message: The message triggering the command.
+            skip_channel_check: If True, skip the channel check.
 
         Returns:
             bool: True if command is enabled and checks pass, False otherwise.
         """
         if not self.enabled:
             return False
-        return super().can_execute(message)
+        return super().can_execute(message, skip_channel_check=skip_channel_check)
 
     def get_help_text(self) -> str:
         """Get help text for the contact command.
@@ -55,22 +61,37 @@ class ContactCommand(BaseCommand):
         return self.translate('commands.contact.help')
 
     def matches_keyword(self, message: MeshMessage) -> bool:
-        """Override to handle contact-specific matching.
+        """Match ``contact`` (or a configured alias) on its own, with no arguments.
 
         Args:
             message: The received message.
 
         Returns:
-            bool: True if message is a dice command, False otherwise.
+            bool: True if the message is a contact command, False otherwise.
         """
-        content_lower = self.cleanup_message_for_matching(message)
+        def _matches(content_lower: str) -> bool:
+            return any(content_lower == keyword.lower() for keyword in self.keywords)
 
-        # Check for exact "contact" match
-        if content_lower == "contact":
-            return True
+        return self._cleaned_content_matches(message, _matches)
 
-        return False
+    def _self_info_value(self, key: str) -> Optional[str]:
+        """Read a field from the radio's self_info, which may be a dict or an object.
 
+        Args:
+            key: The self_info field name.
+
+        Returns:
+            str: The field value, or None if unavailable.
+        """
+        meshcore: Any = getattr(self.bot, 'meshcore', None)
+        self_info = getattr(meshcore, 'self_info', None) if meshcore else None
+        if not self_info:
+            return None
+        if isinstance(self_info, dict):
+            value = self_info.get(key)
+        else:
+            value = getattr(self_info, key, None)
+        return str(value).strip() if value else None
 
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the contact command.
@@ -81,17 +102,15 @@ class ContactCommand(BaseCommand):
         Returns:
             bool: True if executed successfully, False otherwise.
         """
-        content = message.content.strip()
+        public_key = self._self_info_value('public_key')
+        name = self._self_info_value('name') or self._self_info_value('adv_name')
 
-        # Handle command-style messages
-        if content.startswith('!'):
-            content = content[1:].strip()
+        if not public_key or not PUBLIC_KEY_RE.match(public_key):
+            self.logger.warning("Contact command: no usable public key in self_info")
+            return await self.send_response(message, self.translate('commands.contact.unavailable'))
 
-        # Default to d6 if no specification
-        if content.lower() == "contact":
-            my_public_key = self.bot.meshcore.self_info.get("public_key")
-            my_name = self.bot.meshcore.self_info.get("name")
-            response = f"<{my_public_key}:1:{my_name}>"
-            return await self.send_response(message, response)
+        if not name:
+            self.logger.warning("Contact command: no device name in self_info")
+            return await self.send_response(message, self.translate('commands.contact.unavailable'))
 
-        return False
+        return await self.send_response(message, f"<{public_key.lower()}:1:{name}>")

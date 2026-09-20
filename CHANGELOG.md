@@ -16,8 +16,10 @@ semantic versioning.
   `--embed-css` file stops generation with an error. See
   `docs/command-reference-website.md` for examples and the CSS class reference.
 
-- Add `contact` command allowing the user to ask the bot to provide its
-  public key as a clickable contact.
+- Add the `contact` command (#293), which replies with the bot's own contact
+  card so a user can add the bot and DM it without waiting for an advert. Useful
+  for bots that do not advertise. Enabled by default; disable with
+  `[Contact_Command] enabled = false`.
 
 ### Fixed
 

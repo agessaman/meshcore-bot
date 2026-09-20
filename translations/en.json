@@ -1349,7 +1349,8 @@
       "description": "List available commands"
     },
     "contact": {
-      "help": "Display the bot's contact information"
+      "help": "Display the bot's contact information",
+      "unavailable": "Contact info unavailable: the radio has not reported its identity yet."
     }
   },
   "elapsed": {
