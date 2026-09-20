@@ -8,6 +8,10 @@ semantic versioning.
 
 ### Added
 
+- `docs/develop-command-scripts.md` walks through writing a command plugin that
+  integrates correctly with the bot framework, including developing against
+  `[Bot] local_dir_path` (#259).
+
 - `[Hello_Command] include_sender` (default off) names the user the hello reply is
   answering, so a busy channel can tell whose greeting the bot picked up (#292). The
   mention takes the place of the random human descriptor, keeping the translated
@@ -417,9 +421,6 @@ semantic versioning.
 
 ### Added
 
-- `docs/develop-command-scripts.md` created to assist developers with creating
-  commands that integrate correctly into the MeshCore Bot framework.
-  
 - Shlink is now supported as a URL shortener alongside v.gd / is.gd, selected with
   `short_url_website_service = shlink` under `[External_Data]`. It authenticates with
   `short_url_website_api_key` in an `X-Api-Key` header and needs `short_url_website`
