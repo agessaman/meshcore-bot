@@ -97,6 +97,19 @@ cmd
 
 ---
 
+### `contact`
+
+Share the bot's own contact card so you can add it and send DMs without waiting for an advert.
+
+**Usage:**
+```
+contact
+```
+
+**Response:** A clickable contact card containing the bot's public key and device name.
+
+---
+
 ### `version`
 
 Show the bot's current software version.

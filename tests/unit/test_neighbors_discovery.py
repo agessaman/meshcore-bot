@@ -1,8 +1,8 @@
 """Tests for zero-hop neighbor discovery (modules/neighbors_discovery.py).
 
 Ported from the meshcore-packet-capture project's test_neighbors.py, minus the
-device-lock tests (the bot serialises radio commands globally in
-modules/core.py _SerializedCommands, so the module takes no lock of its own).
+device-lock tests (the bot serialises radio frames globally in
+modules/core.py _serialize_command_frames, so the module takes no lock of its own).
 """
 
 from __future__ import annotations

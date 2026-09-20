@@ -481,24 +481,20 @@ more minute" would be followed by fourteen more minutes of personal cooldown.
 ### Region scopes are opt-in, and why
 
 `neighbors_collect_scopes` additionally asks each neighbour for its region scopes.
-It defaults to **false** for two reasons specific to running inside the bot:
+It defaults to **false** for a reason specific to running inside the bot:
 
-1. **It stalls bot replies.** Every bot radio command is serialised through one lock
-   (`modules/core.py` `_SerializedCommands`), and `req_regions_sync` waits for its
-   reply *inside* the call — so one request holds the radio for up to ~25 s. With 32
-   neighbours the bot's own messages stall in bursts for minutes.
-2. **It mutates device contact state.** The zero-hop probe relies on the neighbour
-   *not* being a known contact. The bot does track contacts, and for a repeater with
-   no stored path the meshcore library reaches zero-hop by calling
-   `change_contact_path()` and then `reset_path()` — temporarily rewriting that
-   contact's path on the device. Those two calls are not paired by a
-   `try`/`finally` upstream, and one error path returns between them, so a request
-   cut short — or one whose path change was applied but not acknowledged — would
-   leave the contact pinned to zero-hop and every later message to it sent
-   direct-only. `modules/neighbors_discovery.py` restores the path itself in each
-   of those cases, and warns if the device rejects the restore (which it reports
-   as an error event rather than an exception), since that contact's routing is
-   then wrong until something else fixes it.
+- **It mutates device contact state.** The zero-hop probe relies on the neighbour
+  *not* being a known contact. The bot does track contacts, and for a repeater with
+  no stored path the meshcore library reaches zero-hop by calling
+  `change_contact_path()` and then `reset_path()` — temporarily rewriting that
+  contact's path on the device. Those two calls are not paired by a
+  `try`/`finally` upstream, and one error path returns between them, so a request
+  cut short — or one whose path change was applied but not acknowledged — would
+  leave the contact pinned to zero-hop and every later message to it sent
+  direct-only. `modules/neighbors_discovery.py` restores the path itself in each
+  of those cases, and warns if the device rejects the restore (which it reports
+  as an error event rather than an exception), since that contact's routing is
+  then wrong until something else fixes it.
 
 With it off, the snapshot reports every neighbour it heard with empty `scopes` and
 `status: responded`. Enable it on a bench radio first.

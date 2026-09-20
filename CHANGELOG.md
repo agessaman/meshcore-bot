@@ -64,6 +64,41 @@ semantic versioning.
   read-only beside the default, since they are the reason a channel can ignore
   it.
 
+- `[Hello_Command] include_sender` (default off) names the user the hello reply is
+  answering, so a busy channel can tell whose greeting the bot picked up (#292). The
+  mention takes the place of the random human descriptor, keeping the translated
+  sentence intact, and is dropped when it would push the reply past the channel body
+  budget. DMs are unaffected.
+- `generate_website.py` accepts `--link-css URL` and `--embed-css FILE` to layer
+  custom CSS on top of the built-in style chosen with `--style` (#288). Embedded
+  CSS is appended to the page's `<style>` block, keeping the page a single file;
+  a linked stylesheet loads after it, so both override built-in rules of equal
+  specificity. Both flags also apply to `--sample` pages, and an unreadable
+  `--embed-css` file stops generation with an error. See
+  `docs/command-reference-website.md` for examples and the CSS class reference.
+
+- Add the `contact` command (#293), which replies with the bot's own contact
+  card so a user can add the bot and DM it without waiting for an advert. Useful
+  for bots that do not advertise. Enabled by default; disable with
+  `[Contact_Command] enabled = false`.
+- `generate_website.py` now lists the local commands installed under
+  `[Bot] local_dir_path` and omits commands disabled in the configuration file
+  (#287). It also reads the `<local_dir_path>/config.ini` overlay the way the
+  bot does, which is where the settings UI saves a local plugin's state, and it
+  resolves a command's section and legacy `enabled` aliases through the bot's
+  own helpers, so `[Jokes] joke_enabled = false` is honored rather than silently
+  ignored.
+
+### Changed
+
+- `meshcore` now requires 2.3.14 or newer. Before 2.3.13, `send_msg_with_retry`
+  reported ACKed DMs as failures: it subscribed to the ACK only after `send_msg`
+  returned, so an ACK queued right behind `MSG_SENT` was dispatched with no
+  listener, and each attempt accepted only its own ACK code, so a late ACK
+  answering an earlier attempt was ignored (meshcore_py#108). The bot logged
+  "no ACK received after retries" and skipped the delivery bookkeeping for
+  messages the recipient had in fact received.
+
 ### Fixed
 
 - `outgoing_flood_scope_override = none` is now read as global flood on the
@@ -74,6 +109,30 @@ semantic versioning.
   Bootstrap's light-theme text color on a dark background (about 1.3:1
   contrast). The dark overrides set a background but not a color, so every
   `.table-striped` page was affected.
+
+- `[Joke_Command] joke_enabled` and `[DadJoke_Command] dadjoke_enabled` are now
+  listed in the shared legacy-alias table. Both commands accepted that spelling
+  at runtime through their own fallback, but the settings UI read only the
+  `[Jokes]` spelling, so a bot disabled the same-section way showed as enabled
+  on the plugin settings page.
+
+- A region-scoped channel message now restores global flood even when
+  `set_flood_scope` raises. The restore only ran in the `finally` around the
+  send, so a set that raised left the device pinned to that region and every
+  later send — channel replies, DMs, scheduled sends — went out under it.
+- A DM waiting for its ACK no longer holds the radio. Radio commands were
+  serialized per call, so a DM's retry loop kept every other command waiting
+  through all of its ACK timeouts (up to ~36 s with the default three attempts),
+  stalling channel replies, other DMs, and scheduled sends. The lock now covers
+  one frame and the radio's immediate reply, and ACK and remote-response waits
+  run outside it, so neighbor scope requests no longer stall replies either. A
+  region-scoped channel message now holds the radio from setting its flood scope
+  through restoring it, so no other send goes out under that scope.
+- A radio connection is no longer accepted when every channel read times out or
+  returns no usable channel data (#266). Startup and reconnect now retry the
+  channel scan three times, keep an empty result out of the valid cache and
+  database, then fail the connection cleanly so the normal restart/reconnect
+  path can try again instead of running a bot that cannot route replies.
 - Daily Weather Service forecasts now retry transient Open-Meteo failures at
   5, 15, and 30 minutes after the original run (#264). HTTP 429, 500, 502, 503,
   and 504 responses plus transport failures use one replaceable retry job,
@@ -423,6 +482,9 @@ semantic versioning.
 
 ### Added
 
+- `docs/develop-command-scripts.md` created to assist developers with creating
+  commands that integrate correctly into the MeshCore Bot framework.
+  
 - Shlink is now supported as a URL shortener alongside v.gd / is.gd, selected with
   `short_url_website_service = shlink` under `[External_Data]`. It authenticates with
   `short_url_website_api_key` in an `X-Api-Key` header and needs `short_url_website`

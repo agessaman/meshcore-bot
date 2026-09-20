@@ -50,8 +50,8 @@ LEGACY_ENABLED_KEY_RE = re.compile(r"^[a-z]+_enabled$")
 # behavior and the UI can never disagree.
 # Maps canonical section -> ordered ((legacy_section, legacy_key), ...).
 LEGACY_ENABLED_ALIASES: dict[str, tuple[tuple[str, str], ...]] = {
-    "Joke_Command": (("Jokes", "joke_enabled"),),
-    "DadJoke_Command": (("Jokes", "dadjoke_enabled"),),
+    "Joke_Command": (("Joke_Command", "joke_enabled"), ("Jokes", "joke_enabled")),
+    "DadJoke_Command": (("DadJoke_Command", "dadjoke_enabled"), ("Jokes", "dadjoke_enabled")),
     "Stats_Command": (("Stats_Command", "stats_enabled"), ("Stats", "stats_enabled")),
     "Sports_Command": (("Sports_Command", "sports_enabled"), ("Sports", "sports_enabled")),
     "Hacker_Command": (("Hacker_Command", "hacker_enabled"), ("Hacker", "hacker_enabled")),

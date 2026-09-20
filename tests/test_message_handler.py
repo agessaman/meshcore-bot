@@ -1756,6 +1756,20 @@ class TestAuthenticatedChannelCorrelation:
         payload.update(over)
         return payload
 
+    def test_channel_secrets_reads_meshcore_list_layout(self, handler):
+        """meshcore keeps channels in a list; entries without channel_idx use their position."""
+        self._setup(
+            handler,
+            [
+                {},
+                {"channel_secret": self.SECRET_1.hex()},
+                {"channel_idx": 5, "channel_key_hex": self.SECRET_2.hex()},
+                {"channel_idx": None, "channel_secret": self.SECRET_1},
+            ],
+        )
+
+        assert handler._channel_secrets() == [(1, self.SECRET_1), (5, self.SECRET_2)]
+
     @pytest.mark.asyncio
     async def test_zero_snr_uses_authenticated_rf_row(self, handler):
         self._setup(
