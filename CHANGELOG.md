@@ -25,6 +25,13 @@ semantic versioning.
   card so a user can add the bot and DM it without waiting for an advert. Useful
   for bots that do not advertise. Enabled by default; disable with
   `[Contact_Command] enabled = false`.
+- `generate_website.py` now lists the local commands installed under
+  `[Bot] local_dir_path` and omits commands disabled in the configuration file
+  (#287). It also reads the `<local_dir_path>/config.ini` overlay the way the
+  bot does, which is where the settings UI saves a local plugin's state, and it
+  resolves a command's section and legacy `enabled` aliases through the bot's
+  own helpers, so `[Jokes] joke_enabled = false` is honored rather than silently
+  ignored.
 
 ### Changed
 
@@ -37,6 +44,12 @@ semantic versioning.
   messages the recipient had in fact received.
 
 ### Fixed
+
+- `[Joke_Command] joke_enabled` and `[DadJoke_Command] dadjoke_enabled` are now
+  listed in the shared legacy-alias table. Both commands accepted that spelling
+  at runtime through their own fallback, but the settings UI read only the
+  `[Jokes]` spelling, so a bot disabled the same-section way showed as enabled
+  on the plugin settings page.
 
 - A region-scoped channel message now restores global flood even when
   `set_flood_scope` raises. The restore only ran in the `finally` around the
