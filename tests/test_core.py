@@ -868,6 +868,28 @@ class TestTransportReconnect:
         assert bot._radio_relinks_in_progress == 0
         assert bot.keep_running is False
 
+    def test_connect_fails_when_channel_fetch_never_returns_channels(self, tmp_path):
+        bot = self._make_bot(tmp_path, connection_type="serial")
+        new_meshcore = MagicMock()
+        new_meshcore.is_connected = True
+        new_meshcore.self_info = {}
+        new_meshcore.disconnect = AsyncMock()
+
+        bot.wait_for_contacts = AsyncMock()
+        bot.channel_manager.fetch_channels = AsyncMock(return_value=False)
+        bot.setup_message_handlers = AsyncMock()
+
+        with patch(
+            "modules.core.meshcore.MeshCore.create_serial",
+            AsyncMock(return_value=new_meshcore),
+        ):
+            assert asyncio.run(bot.connect()) is False
+
+        new_meshcore.disconnect.assert_awaited_once()
+        bot.setup_message_handlers.assert_not_awaited()
+        assert bot.meshcore is None
+        assert bot.connected is False
+
     def test_keep_running_through_web_viewer_reboot(self, tmp_path):
         bot = self._make_bot(tmp_path)
         bot.meshcore = MagicMock()

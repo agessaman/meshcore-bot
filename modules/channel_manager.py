@@ -49,15 +49,26 @@ class ChannelManager:
         """Lowercase channel name without a leading # for cache lookups."""
         return name.removeprefix("#").lower()
 
-    async def fetch_channels(self):
-        """Fetch channels from the MeshCore node using enhanced concurrent fetching"""
+    async def fetch_channels(self, max_attempts: int = 3, retry_delay: float = 2.0) -> bool:
+        """Fetch configured channels, retrying when the node returns no usable data."""
         self.logger.info("Fetching channels from MeshCore node using enhanced concurrent method...")
-        try:
-            # Wait a moment for the device to be ready
-            await asyncio.sleep(2)
+        if max_attempts < 1:
+            raise ValueError("max_attempts must be at least 1")
 
-            # Fetch all channels concurrently
-            channels = await self.fetch_all_channels(force_refresh=True)
+        # Give the companion protocol a moment to settle after transport connect.
+        await asyncio.sleep(2)
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                channels = await self.fetch_all_channels(force_refresh=True)
+            except Exception as e:
+                channels = []
+                self.logger.warning(
+                    "Channel fetch attempt %d/%d failed: %s",
+                    attempt,
+                    max_attempts,
+                    e,
+                )
 
             if channels:
                 self.logger.info(f"Successfully fetched {len(channels)} channels from MeshCore node")
@@ -68,13 +79,25 @@ class ChannelManager:
                         self.logger.info(f"  Channel {channel_idx}: {channel_name}")
                     else:
                         self.logger.debug(f"  Channel {channel_idx}: (empty)")
-            else:
-                self.logger.warning("No channels found on MeshCore node")
-                self.bot.meshcore.channels = {}
+                return True
 
-        except Exception as e:
-            self.logger.error(f"Failed to fetch channels: {e}")
+            self._cache_valid = False
             self.bot.meshcore.channels = {}
+            if attempt < max_attempts:
+                self.logger.warning(
+                    "No channels received from MeshCore node on attempt %d/%d; "
+                    "retrying in %.1fs",
+                    attempt,
+                    max_attempts,
+                    retry_delay,
+                )
+                await asyncio.sleep(retry_delay)
+
+        self.logger.error(
+            "No channels received from MeshCore node after %d attempt(s)",
+            max_attempts,
+        )
+        return False
 
     async def fetch_all_channels(self, force_refresh: bool = False) -> list[dict[str, Any]]:
         """
@@ -136,14 +159,15 @@ class ChannelManager:
                     break
                 continue
 
-        self._cache_valid = True
+        self._cache_valid = bool(valid_channels)
         self.logger.info(f"Successfully fetched {len(valid_channels)} channels")
 
         # Update the bot's meshcore channels for compatibility
         self.bot.meshcore.channels = self._channels_cache
 
-        # Store channels in database for web viewer access
-        self._store_channels_in_db(valid_channels)
+        # Do not erase the last known channel table on a transient all-empty scan.
+        if valid_channels:
+            self._store_channels_in_db(valid_channels)
 
         return valid_channels
 

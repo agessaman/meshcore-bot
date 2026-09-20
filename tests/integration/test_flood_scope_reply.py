@@ -556,3 +556,45 @@ class TestWildcardOnlyAllowlist:
     def test_unset_config_configures_no_allowlist(self):
         keys, allow_global = self._cmd_mgr("")
         assert bool(keys or allow_global) is False
+
+
+@pytest.mark.asyncio
+async def test_send_channel_message_restores_scope_when_set_raises():
+    """A raising set_flood_scope must still restore global flood.
+
+    Otherwise the device stays pinned to the region and every later send —
+    channel replies, DMs, scheduled sends — goes out under that scope.
+    """
+    bot = MagicMock()
+    bot.logger = Mock()
+    bot.config = make_config()
+    bot.connected = True
+    bot.meshcore = MagicMock()
+    bot.is_radio_zombie = False
+    bot.is_radio_offline = False
+    bot.channel_manager = MagicMock()
+    bot.channel_manager.get_channel_number = Mock(return_value=0)
+
+    cm = object.__new__(CommandManager)
+    cm.bot = bot
+    cm.logger = bot.logger
+
+    async def _set_flood_scope(value):
+        if value != "*":
+            raise RuntimeError("radio went away")
+        return MagicMock(type="OK")
+
+    set_flood_scope = AsyncMock(side_effect=_set_flood_scope)
+    send_chan_msg = AsyncMock(return_value=MagicMock(type="OK", payload={}))
+    bot.meshcore.commands.set_flood_scope = set_flood_scope
+    bot.meshcore.commands.send_chan_msg = send_chan_msg
+
+    cm._check_rate_limits = AsyncMock(return_value=(True, None))
+    cm._is_no_event_received = Mock(return_value=False)
+    cm._handle_send_result = Mock(return_value=True)
+
+    assert await cm.send_channel_message("general", "hi", scope="west") is False
+
+    scopes_set = [c.args[0] for c in set_flood_scope.await_args_list if c.args]
+    assert scopes_set == ["#west", "*"]
+    send_chan_msg.assert_not_awaited()

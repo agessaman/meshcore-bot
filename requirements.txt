@@ -13,9 +13,14 @@ geopy>=2.3.0
 maidenhead>=1.4.0
 pytz>=2023.3
 aiohttp>=3.8.0
-# 2.3.8+ is required, not merely preferred: send_node_discover_req / req_regions_sync
-# (zero-hop neighbour discovery) and the bounded, serialised BLE write both landed there.
-meshcore>=2.3.8
+# 2.3.14+ is required, not merely preferred. Before 2.3.13, send_msg_with_retry
+# reported ACKed DMs as failures: it subscribed to the ACK only after send_msg
+# returned, and each attempt accepted only its own ACK code, so an ACK that arrived
+# right behind MSG_SENT or answered an earlier attempt was ignored (meshcore_py#108).
+# 2.3.14 additionally fixes send_cmd's destination-type handling. 2.3.8 first brought
+# send_node_discover_req / req_regions_sync (zero-hop neighbor discovery) and the
+# bounded, serialized BLE write.
+meshcore>=2.3.14
 openmeteo-requests>=1.7.2
 requests-cache>=1.1.1
 retry-requests>=1.0.0
