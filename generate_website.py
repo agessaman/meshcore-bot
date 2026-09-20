@@ -24,6 +24,7 @@ try:
     from modules.config_validation import strip_optional_quotes
     from modules.db_manager import DBManager
     from modules.plugin_loader import PluginLoader
+    from modules.settings_schema import command_section_name, read_enabled
     from modules.utils import resolve_path
 except ImportError as e:
     print("Error: Missing required dependencies.")
@@ -39,10 +40,11 @@ except ImportError as e:
 class MinimalBot:
     """Minimal bot mock for plugin loading without full bot initialization"""
 
-    def __init__(self, config, logger, db_manager=None):
+    def __init__(self, config, logger, db_manager=None, bot_root=None):
         self.config = config
         self.logger = logger
         self.db_manager = db_manager
+        self.bot_root = bot_root
 
         # Dummy translator
         class DummyTranslator:
@@ -920,11 +922,25 @@ def setup_logging():
 
 
 def read_config(config_file: str = "config.ini") -> configparser.ConfigParser:
-    """Read and parse config.ini file"""
+    """Read config.ini, then overlay `<local_dir_path>/config.ini` if present.
+
+    Mirrors `Bot._read_config_snapshot` in modules/core.py. The overlay is where
+    the settings UI writes a local plugin's settings, so without it the
+    generated page would advertise commands the running bot refuses.
+    """
     config = configparser.ConfigParser()
     if not os.path.exists(config_file):
         raise FileNotFoundError(f"Config file not found: {config_file}")
     config.read(config_file)
+
+    bot_root = os.path.dirname(os.path.abspath(config_file))
+    local_config = os.path.join(
+        resolve_path(config.get('Bot', 'local_dir_path', fallback='local'), bot_root),
+        'config.ini',
+    )
+    if os.path.isfile(local_config):
+        config.read(local_config)
+
     return config
 
 
@@ -1144,8 +1160,32 @@ def get_command_popularity(db_path: Optional[str], commands: dict[str, Any]) -> 
     return popularity
 
 
+def resolve_local_commands_dir(
+    config: configparser.ConfigParser, bot_root: str, logger: logging.Logger
+) -> Optional[str]:
+    """Resolve the local commands directory, or None when it does not exist.
+
+    PluginLoader treats None as "no local commands", so a bot without a local
+    directory loads only the built-in plugins.
+    """
+    local_dir_path = config.get('Bot', 'local_dir_path', fallback='local')
+    local_commands_dir = resolve_path(os.path.join(local_dir_path, 'commands'), bot_root)
+
+    if not os.path.isdir(local_commands_dir):
+        logger.info(f"Local commands directory not found: {local_commands_dir}")
+        return None
+
+    logger.info(f"Using local commands directory: {local_commands_dir}")
+    return local_commands_dir
+
+
 def is_command_enabled(cmd_instance: Any, config: configparser.ConfigParser) -> bool:
-    """Check if a command is enabled in the config.
+    """Report whether a command is enabled in the config.
+
+    Defers to the same section derivation and legacy `enabled` aliases the bot
+    uses at runtime, so a command the bot will not answer is not advertised on
+    the generated page. Commands with no name and commands with no explicit
+    setting are treated as enabled.
 
     Args:
         cmd_instance: Command instance to check
@@ -1154,47 +1194,11 @@ def is_command_enabled(cmd_instance: Any, config: configparser.ConfigParser) -> 
     Returns:
         bool: True if command is enabled, False otherwise
     """
-    # Get command name
-    cmd_name = cmd_instance.name if hasattr(cmd_instance, 'name') else None
+    cmd_name = getattr(cmd_instance, 'name', None)
     if not cmd_name:
-        return True  # If no name, assume enabled
+        return True
 
-    # Derive config section name (e.g., "sports" -> "Sports_Command")
-    # Handle camelCase names
-    camel_case_map = {
-        'dadjoke': 'DadJoke',
-        'webviewer': 'WebViewer',
-    }
-
-    if cmd_name in camel_case_map:
-        base_name = camel_case_map[cmd_name]
-    else:
-        base_name = cmd_name.title()
-
-    section_name = f"{base_name}_Command"
-
-    # Check if section exists
-    if not config.has_section(section_name):
-        return True  # If no config section, assume enabled
-
-    # Check for 'enabled' key (standard)
-    if config.has_option(section_name, 'enabled'):
-        try:
-            return config.getboolean(section_name, 'enabled')
-        except ValueError:
-            # Invalid boolean value, assume enabled
-            return True
-
-    # Check for legacy command-specific enabled keys (e.g., 'sports_enabled')
-    legacy_enabled_key = f"{cmd_name}_enabled"
-    if config.has_option(section_name, legacy_enabled_key):
-        try:
-            return config.getboolean(section_name, legacy_enabled_key)
-        except ValueError:
-            return True
-
-    # No explicit enabled setting, assume enabled
-    return True
+    return read_enabled(config, command_section_name(cmd_name), default=True)
 
 
 def filter_commands(commands: dict[str, Any], admin_commands: list[str], config: configparser.ConfigParser) -> dict[str, Any]:
@@ -1207,6 +1211,10 @@ def filter_commands(commands: dict[str, Any], admin_commands: list[str], config:
     for cmd_name, cmd_instance in commands.items():
         # Skip commands in excluded categories
         if hasattr(cmd_instance, 'category') and cmd_instance.category in excluded_categories:
+            continue
+
+        # Skip commands that mark themselves hidden
+        if getattr(cmd_instance, 'hidden', False):
             continue
 
         # Get primary command name
@@ -2615,8 +2623,7 @@ def generate_samples(config_file, link_css: Optional[str] = None, custom_css: Op
     channels_data = load_channels_from_config(config)
 
     # Setup minimal bot for plugin loading
-    minimal_bot = MinimalBot(config, logger)
-    minimal_bot.bot_root = bot_root  # Set bot_root for plugin loader
+    minimal_bot = MinimalBot(config, logger, bot_root=bot_root)
 
     # Initialize database manager if database exists
     db_path = get_database_path(config, bot_root)
@@ -2629,16 +2636,7 @@ def generate_samples(config_file, link_css: Optional[str] = None, custom_css: Op
     else:
         minimal_bot.db_manager = None
 
-    # Get local commands directory from config
-    local_dir_path = config.get('Bot', 'local_dir_path', fallback='local')
-    local_commands_dir = resolve_path(os.path.join(local_dir_path, 'commands'), bot_root)
-
-    # Only use local commands directory if it exists
-    if not os.path.exists(local_commands_dir):
-        logger.info(f"Local commands directory not found: {local_commands_dir}")
-        local_commands_dir = None
-    else:
-        logger.info(f"Using local commands directory: {local_commands_dir}")
+    local_commands_dir = resolve_local_commands_dir(config, bot_root, logger)
 
     # Load plugins
     plugin_loader = PluginLoader(minimal_bot, local_commands_dir=local_commands_dir)
@@ -2883,8 +2881,7 @@ def main():
         logger.info(f"Monitor channels: {monitor_channels}")
 
         # Setup minimal bot for plugin loading
-        minimal_bot = MinimalBot(config, logger)
-        minimal_bot.bot_root = bot_root  # Set bot_root for plugin loader
+        minimal_bot = MinimalBot(config, logger, bot_root=bot_root)
 
         # Initialize database manager if database exists
         db_path = get_database_path(config, bot_root)
@@ -2899,16 +2896,7 @@ def main():
             logger.info("No database found, using default command ordering")
             minimal_bot.db_manager = None
 
-        # Get local commands directory from config
-        local_dir_path = config.get('Bot', 'local_dir_path', fallback='local')
-        local_commands_dir = resolve_path(os.path.join(local_dir_path, 'commands'), bot_root)
-
-        # Only use local commands directory if it exists
-        if not os.path.exists(local_commands_dir):
-            logger.info(f"Local commands directory not found: {local_commands_dir}")
-            local_commands_dir = None
-        else:
-            logger.info(f"Using local commands directory: {local_commands_dir}")
+        local_commands_dir = resolve_local_commands_dir(config, bot_root, logger)
 
         # Load plugins
         logger.info("Loading command plugins...")

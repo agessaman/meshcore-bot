@@ -10,6 +10,16 @@ python generate_website.py [config.ini]
 
 This reads your config (default: `config.ini`), loads your commands and channels, and writes **`website/index.html`** in the same directory as the config file. Upload that file (and the directory if you use assets) to your web host.
 
+## Which commands get listed
+
+The page lists what your bot actually answers:
+
+- **Local commands are included.** Any command installed under `[Bot] local_dir_path` (default `local/commands`) appears alongside the built-in ones.
+- **Disabled commands are omitted.** A command turned off with `enabled = false` in its `[*_Command]` section is left out, including the legacy spellings such as `[Jokes] joke_enabled`.
+- **The local config overlay is read.** Settings saved from the web viewer's plugin settings page land in `<local_dir_path>/config.ini`, and the generator reads that on top of your base config just as the bot does.
+
+Admin-only, hidden, and keyword-less commands are never listed.
+
 ## Choose a style
 
 The `--style` option selects a theme (colors, typography, layout). Default is `default` (modern dark). To see all themes:
