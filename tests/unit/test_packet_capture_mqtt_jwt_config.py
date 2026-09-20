@@ -124,3 +124,81 @@ def test_auth_token_iat_exp_uses_broker_then_global():
 )
 def test_jwt_ttl_log_phrase(ttl: int, phrase: str):
     assert PacketCaptureService._jwt_ttl_log_phrase(ttl) == phrase
+
+
+def _waev_service(ini: str):
+    bot = _bot_from_ini(ini)
+    svc = object.__new__(PacketCaptureService)
+    svc.bot = bot
+    svc.logger = MagicMock()
+    return svc, PacketCaptureService._parse_mqtt_brokers(svc, bot.config)
+
+
+def test_waev_broker_defaults_to_a_ttl_the_broker_accepts():
+    """waev.app rejects the 24-hour default, leaving the bot unable to auth (#248)."""
+    _, brokers = _waev_service(
+        """
+        [PacketCapture]
+        enabled = false
+        mqtt1_server = mqtt-a.waev.app
+        mqtt2_server = broker.example
+        """
+    )
+    assert brokers[0]["jwt_ttl_seconds"] == 3600
+    assert brokers[0]["jwt_renewal_interval"] == 3500
+    # Only waev hosts move; every other broker keeps the project default.
+    assert brokers[1]["jwt_ttl_seconds"] == 86400
+    assert brokers[1]["jwt_renewal_interval"] == 43200
+
+
+@pytest.mark.parametrize("host", ["waev.app", "WAEV.APP", "mqtt-b.waev.app"])
+def test_waev_default_matches_apex_and_subdomains(host: str):
+    _, brokers = _waev_service(
+        f"""
+        [PacketCapture]
+        enabled = false
+        mqtt1_server = {host}
+        """
+    )
+    assert brokers[0]["jwt_ttl_seconds"] == 3600
+
+
+@pytest.mark.parametrize("host", ["notwaev.app", "waev.app.example.com"])
+def test_waev_default_does_not_match_lookalike_hosts(host: str):
+    _, brokers = _waev_service(
+        f"""
+        [PacketCapture]
+        enabled = false
+        mqtt1_server = {host}
+        """
+    )
+    assert brokers[0]["jwt_ttl_seconds"] == 86400
+
+
+def test_explicit_per_broker_ttl_beats_the_waev_default():
+    _, brokers = _waev_service(
+        """
+        [PacketCapture]
+        enabled = false
+        mqtt1_server = mqtt-a.waev.app
+        mqtt1_jwt_ttl_seconds = 1800
+        mqtt1_jwt_renewal_interval = 900
+        """
+    )
+    assert brokers[0]["jwt_ttl_seconds"] == 1800
+    assert brokers[0]["jwt_renewal_interval"] == 900
+
+
+def test_explicit_global_ttl_beats_the_waev_default():
+    """An operator who set a global value meant it, even for waev."""
+    _, brokers = _waev_service(
+        """
+        [PacketCapture]
+        enabled = false
+        jwt_ttl_seconds = 7200
+        jwt_renewal_interval = 3600
+        mqtt1_server = mqtt-a.waev.app
+        """
+    )
+    assert brokers[0]["jwt_ttl_seconds"] == 7200
+    assert brokers[0]["jwt_renewal_interval"] == 3600

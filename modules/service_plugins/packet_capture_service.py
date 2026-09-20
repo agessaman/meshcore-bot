@@ -76,8 +76,21 @@ NEIGHBORS_ATTEMPT_STATE_KEY = "packet_capture.last_neighbors_attempt"
 # instead, which is longer.
 NEIGHBORS_RETRY_BACKOFF_SECONDS = 300.0
 
+# waev.app rejects a JWT whose exp is more than an hour past its iat, so the
+# project-wide 24-hour default cannot authenticate there (#248). These are the
+# values its brokers accept, applied only when nothing else was configured;
+# renewal is set just under the TTL so a token is replaced before it expires.
+WAEV_JWT_TTL_SECONDS = 3600
+WAEV_JWT_RENEWAL_INTERVAL = 3500
+
 # Sentinel meaning "no IATA configured" (documented as invalid in config.ini.example).
 DEFAULT_IATA = "XYZ"
+
+
+def _is_waev_host(host: str) -> bool:
+    """Whether ``host`` is a waev.app broker (the apex or any subdomain)."""
+    normalized = (host or "").strip().lower().rstrip(".")
+    return normalized == "waev.app" or normalized.endswith(".waev.app")
 
 
 def _decode_key_str(key_str: str) -> Optional[bytes]:
@@ -689,6 +702,8 @@ class PacketCaptureService(BaseServicePlugin):
 
         global_jwt_renewal = config.getint("PacketCapture", "jwt_renewal_interval", fallback=43200)
         global_jwt_ttl = config.getint("PacketCapture", "jwt_ttl_seconds", fallback=86400)
+        global_renewal_set = config.has_option("PacketCapture", "jwt_renewal_interval")
+        global_ttl_set = config.has_option("PacketCapture", "jwt_ttl_seconds")
 
         # Parse multiple brokers (mqtt1_*, mqtt2_*, etc.)
         broker_num = 1
@@ -712,21 +727,42 @@ class PacketCaptureService(BaseServicePlugin):
                 if not upload_packet_types:
                     upload_packet_types = None
 
+            host = config.get("PacketCapture", server_key, fallback="localhost")
+            # waev.app refuses a token whose lifetime runs past an hour, so the
+            # 24-hour default never authenticates there and the operator only sees
+            # a bare auth failure (#248). Give those brokers a lifetime they accept
+            # unless a value was chosen for them, per broker or globally.
+            waev_default = _is_waev_host(host)
+
             renew_key = f"mqtt{broker_num}_jwt_renewal_interval"
             if config.has_option("PacketCapture", renew_key):
                 jwt_renewal_interval = config.getint("PacketCapture", renew_key)
+            elif waev_default and not global_renewal_set:
+                jwt_renewal_interval = WAEV_JWT_RENEWAL_INTERVAL
             else:
                 jwt_renewal_interval = global_jwt_renewal
 
             ttl_key = f"mqtt{broker_num}_jwt_ttl_seconds"
             if config.has_option("PacketCapture", ttl_key):
                 jwt_ttl_seconds = config.getint("PacketCapture", ttl_key)
+            elif waev_default and not global_ttl_set:
+                jwt_ttl_seconds = WAEV_JWT_TTL_SECONDS
             else:
                 jwt_ttl_seconds = global_jwt_ttl
 
+            if waev_default and (
+                jwt_ttl_seconds != global_jwt_ttl or jwt_renewal_interval != global_jwt_renewal
+            ):
+                self.logger.info(
+                    "MQTT broker %d (%s) is a waev.app host; using a %ds JWT TTL and %ds "
+                    "renewal instead of the defaults, which it rejects. Set "
+                    "mqtt%d_jwt_ttl_seconds to override.",
+                    broker_num, host, jwt_ttl_seconds, jwt_renewal_interval, broker_num,
+                )
+
             broker = {
                 "enabled": True,
-                "host": config.get("PacketCapture", server_key, fallback="localhost"),
+                "host": host,
                 "port": config.getint("PacketCapture", f"mqtt{broker_num}_port", fallback=1883),
                 "username": config.get("PacketCapture", f"mqtt{broker_num}_username", fallback=None),
                 "password": config.get("PacketCapture", f"mqtt{broker_num}_password", fallback=None),
