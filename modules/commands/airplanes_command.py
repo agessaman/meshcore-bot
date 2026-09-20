@@ -1,19 +1,46 @@
 #!/usr/bin/env python3
 """
 Airplanes command for the MeshCore Bot
-Provides aircraft tracking using ADS-B data from airplanes.live or compatible APIs
+Provides aircraft tracking using ADS-B data from adsb.lol or compatible APIs
 """
 
 import asyncio
 import math
 import re
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 import requests
 
 from ..models import MeshMessage
+from ..security_utils import sanitize_name
 from ..utils import calculate_distance
 from .base_command import BaseCommand
+
+DEFAULT_API_URL = "https://api.adsb.lol/v2/"
+USER_AGENT = "MeshCoreBot (https://github.com/agessaman/meshcore-bot)"
+# Public airplanes.live v2 now returns 403 for unregistered clients.
+_DEPRECATED_PUBLIC_API_HOSTS = frozenset({"api.airplanes.live"})
+
+
+def normalize_api_url(url: str) -> str:
+    """Strip whitespace and ensure a trailing slash on a non-empty API base URL."""
+    url = (url or "").strip()
+    if url and not url.endswith("/"):
+        url += "/"
+    return url
+
+
+def is_deprecated_public_airplanes_live_url(url: str) -> bool:
+    """Return True for the old public airplanes.live host (not the Pro REST host)."""
+    host = (urlparse(url).hostname or "").lower()
+    return host in _DEPRECATED_PUBLIC_API_HOSTS
+
+
+def _response_body_snippet(response: requests.Response, max_length: int = 200) -> str:
+    """Return a log-safe snippet of an HTTP response body."""
+    text = response.text or response.reason or ""
+    return sanitize_name(text, max_length=max_length) or "(empty body)"
 
 
 class AirplanesCommand(BaseCommand):
@@ -21,9 +48,12 @@ class AirplanesCommand(BaseCommand):
 
     Provides aircraft information overhead at companion location, bot location,
     or specified coordinates. Supports filtering and detailed single-aircraft display.
+    Uses adsb.lol by default; any readsb/ADSBExchange v2 endpoint can be configured.
     """
 
     # Plugin metadata
+    # Read-only informational output; safe for scheduled {cmd:...} rendering.
+    render_safe = True
     name = "airplanes"
     keywords = ['airplanes', 'aircraft', 'planes', 'adsb', 'overhead']
     description = "Get aircraft overhead (usage: airplanes [location] [options] or overhead [lat,lon])"
@@ -44,8 +74,8 @@ class AirplanesCommand(BaseCommand):
     # Web-viewer settings schema (see modules/settings_schema.py)
     settings_schema = [
         {"key": "api_url", "label": "API URL", "type": "str",
-         "default": "http://api.airplanes.live/v2/",
-         "help": "ADS-B API endpoint (readsb/airplanes.live format)."},
+         "default": DEFAULT_API_URL,
+         "help": "ADS-B API endpoint (readsb/ADSBExchange v2 format). Default is adsb.lol."},
         {"key": "default_radius", "label": "Default radius", "type": "float",
          "min": 1, "max": 250, "default": 25, "unit": "nm",
          "help": "Default search radius in nautical miles (max 250)."},
@@ -60,16 +90,15 @@ class AirplanesCommand(BaseCommand):
     def __init__(self, bot):
         super().__init__(bot)
         self.airplanes_enabled = self.get_config_value('Airplanes_Command', 'enabled', fallback=True, value_type='bool')
-        self.api_url = self.get_config_value('Airplanes_Command', 'api_url', fallback='http://api.airplanes.live/v2/', value_type='str')
+        configured_url = self.get_config_value(
+            'Airplanes_Command', 'api_url', fallback=DEFAULT_API_URL, value_type='str'
+        )
+        self.api_url = self._resolve_api_url(configured_url)
         self.default_radius = self.get_config_value('Airplanes_Command', 'default_radius', fallback=25, value_type='float')
         # Default chosen to fit single-message constraints on the smallest channel budget.
         # Channel payload can be as low as 130 bytes; three compact lines are reliable.
         self.max_results = self.get_config_value('Airplanes_Command', 'max_results', fallback=3, value_type='int')
         self.url_timeout = self.get_config_value('Airplanes_Command', 'url_timeout', fallback=10, value_type='int')
-
-        # Ensure API URL ends with /
-        if self.api_url and not self.api_url.endswith('/'):
-            self.api_url += '/'
 
     def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Check if this command can be executed with the given message.
@@ -91,6 +120,26 @@ class AirplanesCommand(BaseCommand):
             str: The help text for this command.
         """
         return self.translate('commands.airplanes.description')
+
+    def _resolve_api_url(self, configured: Optional[str]) -> str:
+        """Normalize api_url and remap the blocked public airplanes.live host.
+
+        Custom URLs (local readsb, airplanes.live Pro, other v2 hosts) are left
+        unchanged so a private feeder is never redirected to a public API.
+        """
+        url = normalize_api_url(configured or "")
+        if not url:
+            return DEFAULT_API_URL
+        if is_deprecated_public_airplanes_live_url(url):
+            self.logger.warning(
+                "Airplanes_Command api_url %s is no longer publicly accessible; "
+                "using %s instead. Point api_url at a local readsb instance or "
+                "another compatible ADS-B API to override.",
+                url,
+                DEFAULT_API_URL,
+            )
+            return DEFAULT_API_URL
+        return url
 
     def _calculate_bearing(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
         """Calculate bearing from point 1 to point 2 in degrees.
@@ -319,27 +368,39 @@ class AirplanesCommand(BaseCommand):
         Returns:
             Optional[Dict[str, Any]]: API response JSON or None on error.
         """
+        url = f"{self.api_url}point/{lat}/{lon}/{radius}"
+        headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+        self.logger.debug("Fetching aircraft data from %s", url)
+
         try:
-            # Convert radius from nautical miles to approximate degrees (rough conversion)
-            # 1 nm ≈ 0.0167 degrees at equator, but we'll use a simple approximation
-            # More accurate: use the API's native radius parameter if it accepts nm
-            url = f"{self.api_url}point/{lat}/{lon}/{radius}"
-
-            self.logger.debug(f"Fetching aircraft data from {url}")
-            response = requests.get(url, timeout=self.url_timeout)
-            response.raise_for_status()
-
-            data = response.json()
-            return data
+            response = requests.get(url, headers=headers, timeout=self.url_timeout)
         except requests.exceptions.Timeout:
-            self.logger.warning("API request timed out")
+            self.logger.warning("Aircraft API request timed out: %s", url)
             return None
         except requests.exceptions.RequestException as e:
-            self.logger.warning(f"API request failed: {e}")
+            self.logger.warning("Aircraft API request failed: %s", e)
             return None
+
+        if not response.ok:
+            self.logger.warning(
+                "Aircraft API request failed: HTTP %s from %s: %s",
+                response.status_code,
+                url,
+                _response_body_snippet(response),
+            )
+            return None
+
+        try:
+            data = response.json()
         except ValueError as e:
-            self.logger.warning(f"Invalid JSON response: {e}")
+            self.logger.warning(
+                "Invalid JSON from aircraft API %s: %s (%s)",
+                url,
+                e,
+                _response_body_snippet(response),
+            )
             return None
+        return data
 
     async def _fetch_aircraft_data_async(
         self,

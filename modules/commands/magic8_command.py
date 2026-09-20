@@ -23,6 +23,8 @@ class Magic8Command(BaseCommand):
     """
 
     # Plugin metadata
+    # Read-only informational output; safe for scheduled {cmd:...} rendering.
+    render_safe = True
     name = "magic8"
     keywords = ['magic8']
     description = "Emulates the classic Magic 8-ball toy'"

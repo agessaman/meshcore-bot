@@ -50,8 +50,8 @@ LEGACY_ENABLED_KEY_RE = re.compile(r"^[a-z]+_enabled$")
 # behavior and the UI can never disagree.
 # Maps canonical section -> ordered ((legacy_section, legacy_key), ...).
 LEGACY_ENABLED_ALIASES: dict[str, tuple[tuple[str, str], ...]] = {
-    "Joke_Command": (("Jokes", "joke_enabled"),),
-    "DadJoke_Command": (("Jokes", "dadjoke_enabled"),),
+    "Joke_Command": (("Joke_Command", "joke_enabled"), ("Jokes", "joke_enabled")),
+    "DadJoke_Command": (("DadJoke_Command", "dadjoke_enabled"), ("Jokes", "dadjoke_enabled")),
     "Stats_Command": (("Stats_Command", "stats_enabled"), ("Stats", "stats_enabled")),
     "Sports_Command": (("Sports_Command", "sports_enabled"), ("Sports", "sports_enabled")),
     "Hacker_Command": (("Hacker_Command", "hacker_enabled"), ("Hacker", "hacker_enabled")),
@@ -213,6 +213,7 @@ SECTIONS: dict[str, SectionMeta] = {
     "Localization": SectionMeta(keys={
         "language": KeyMeta(default="en"),
         "translation_path": KeyMeta(default="translations/"),
+        "local_translation_path": KeyMeta(default="<local_dir_path>/translations"),
         "auto_detect_language": KeyMeta(type="bool", default="false"),
     }),
     "Webhook": SectionMeta(keys={
@@ -264,6 +265,18 @@ SECTIONS: dict[str, SectionMeta] = {
         "dead_air_delay_seconds": KeyMeta(type="int", default="0"),
         "defer_to_human_greeting": KeyMeta(type="bool"),
         "levenshtein_distance": KeyMeta(type="int", default="0"),
+    }),
+    "Region_Warnings": SectionMeta(keys={
+        "enabled": KeyMeta(type="bool", default="false"),
+        "dry_run": KeyMeta(type="bool", default="true"),
+        "delivery": KeyMeta(default="dm"),
+        "channels": KeyMeta(),
+        "message": KeyMeta(),
+        "min_unscoped_messages": KeyMeta(type="int", default="3"),
+        "per_sender_cooldown_hours": KeyMeta(type="float", default="168"),
+        "mesh_cooldown_minutes": KeyMeta(type="float", default="30"),
+        "max_warnings_per_day": KeyMeta(type="int", default="6"),
+        "track_traffic": KeyMeta(type="bool", default="true"),
     }),
     "Announcements_Command": SectionMeta(dynamic_keys=True),
     "Alert_Command": SectionMeta(dynamic_keys=True),

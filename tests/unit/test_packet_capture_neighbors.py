@@ -8,6 +8,7 @@ import contextlib
 import json
 import logging
 import sqlite3
+import time
 import types
 from unittest.mock import MagicMock
 
@@ -488,28 +489,35 @@ def test_capability_false_without_a_radio():
 # State persistence
 # ---------------------------------------------------------------------------
 
+# _load_neighbors_timestamp rejects anything outside now-400d .. now+300s, so
+# both of these have to be relative: an absolute epoch literal drifts out of
+# the accepted range and fails on a date nobody picked.
+STORED_EPOCH = float(round(time.time()) - 3600)
+FAR_FUTURE_EPOCH = round(time.time()) + 10 * 365 * 86400
+
+
 def test_state_round_trips_through_bot_metadata(db_manager):
     service = build_service(BASE_INI, db_manager=db_manager)
     assert service.last_neighbors_publish == 0.0
 
-    service.last_neighbors_publish = 1774482900.0
+    service.last_neighbors_publish = STORED_EPOCH
     service._save_neighbors_state()
-    assert db_manager.metadata[NEIGHBORS_STATE_KEY] == "1774482900.0"
+    assert db_manager.metadata[NEIGHBORS_STATE_KEY] == str(STORED_EPOCH)
 
     reloaded = build_service(BASE_INI, db_manager=db_manager)
-    assert reloaded.last_neighbors_publish == 1774482900.0
+    assert reloaded.last_neighbors_publish == STORED_EPOCH
 
 
 def test_attempt_state_round_trips_through_bot_metadata(db_manager):
     service = build_service(BASE_INI, db_manager=db_manager)
     assert service.last_neighbors_attempt == 0.0
 
-    service.last_neighbors_attempt = 1774482900.0
+    service.last_neighbors_attempt = STORED_EPOCH
     service._save_neighbors_attempt_state()
-    assert db_manager.metadata[NEIGHBORS_ATTEMPT_STATE_KEY] == "1774482900.0"
+    assert db_manager.metadata[NEIGHBORS_ATTEMPT_STATE_KEY] == str(STORED_EPOCH)
 
     reloaded = build_service(BASE_INI, db_manager=db_manager)
-    assert reloaded.last_neighbors_attempt == 1774482900.0
+    assert reloaded.last_neighbors_attempt == STORED_EPOCH
 
 
 def test_malformed_state_is_ignored(db_manager):
@@ -519,7 +527,7 @@ def test_malformed_state_is_ignored(db_manager):
 
 def test_far_future_state_is_ignored(db_manager):
     """A clock jump forward would otherwise suppress cycles indefinitely."""
-    db_manager.metadata[NEIGHBORS_STATE_KEY] = str(2**31)
+    db_manager.metadata[NEIGHBORS_STATE_KEY] = str(FAR_FUTURE_EPOCH)
     assert build_service(BASE_INI, db_manager=db_manager).last_neighbors_publish == 0.0
 
 

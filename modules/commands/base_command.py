@@ -6,7 +6,7 @@ Provides common functionality and interface for command implementations
 
 import re
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime
@@ -19,9 +19,19 @@ from ..command_prefix import (
     normalize_command_content,
 )
 from ..config_schema import LEGACY_ENABLED_ALIASES
-from ..models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, MeshMessage
+from ..models import (
+    CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD,
+    DM_BODY_LIMIT,
+    MeshMessage,
+    channel_body_limit,
+)
 from ..security_utils import validate_pubkey_format
-from ..utils import format_elapsed_display, get_config_timezone
+from ..utils import (
+    format_elapsed_display,
+    get_config_timezone,
+    get_packet_hash_placeholder,
+    message_hop_count,
+)
 
 # Task-local override for the active translator.  When set (via
 # ``BaseCommand.respond_in_sender_language``), ``translate`` / ``translate_get_value``
@@ -48,6 +58,15 @@ class BaseCommand(ABC):
     requires_dm: bool = False
     requires_internet: bool = False  # Set to True if command needs internet access
     cooldown_seconds: int = 0
+
+    # Whether this command may be run by CommandManager.render_command_output for a
+    # {cmd:...} placeholder in a scheduled message. Opt-in, because rendering is only
+    # airtime-free for commands whose entire output goes through send_response /
+    # send_response_chunked. A command that transmits directly (advert), posts its own
+    # messages (announcements), changes device or bot state, or is restricted to DMs
+    # (schedule leaks configuration if broadcast) must stay False. A denylist cannot be
+    # safe here: a new command defaults to not renderable rather than to transmitting.
+    render_safe: bool = False
     category: str = "general"
 
     # Documentation fields - to be overridden by subclasses for website generation
@@ -87,6 +106,20 @@ class BaseCommand(ABC):
         # Load translated keywords after initialization
         self._load_translated_keywords()
 
+    @property
+    def response_translator(self) -> Any:
+        """The translator for the reply being built, or the bot default.
+
+        ``respond_in_sender_language`` binds a per-message translator for the
+        duration of one reply, so helpers that format part of a response need
+        this rather than ``bot.translator`` — otherwise one line of a reply
+        comes back in the sender's language and the next in the bot's default.
+
+        Returns:
+            Any: Translator object, or None when the bot has none.
+        """
+        return _response_translator.get() or getattr(self.bot, 'translator', None)
+
     def translate(self, key: str, **kwargs: Any) -> str:
         """Translate a key using the bot's translator.
 
@@ -97,7 +130,7 @@ class BaseCommand(ABC):
         Returns:
             str: Translated string, or key if translation not found.
         """
-        translator = _response_translator.get() or getattr(self.bot, 'translator', None)
+        translator = self.response_translator
         if translator is not None:
             return translator.translate(key, **kwargs)
         # Fallback if translator not available
@@ -112,7 +145,7 @@ class BaseCommand(ABC):
         Returns:
             Any: The value at the key path, or None if not found.
         """
-        translator = _response_translator.get() or getattr(self.bot, 'translator', None)
+        translator = self.response_translator
         if translator is not None:
             return translator.get_value(key)
         return None
@@ -661,7 +694,7 @@ class BaseCommand(ABC):
             int: Maximum message body length in UTF-8 bytes.
         """
         if message.is_dm:
-            return 158
+            return DM_BODY_LIMIT
 
         # For channel messages, calculate based on bot username length
         # Try to get device username from meshcore first (actual radio username)
@@ -684,9 +717,7 @@ class BaseCommand(ABC):
         if not username:
             username = self.bot.config.get('Bot', 'bot_name', fallback='Bot')
 
-        # 160 bytes are available for channel messages
-        # Calculate max length: 160 - username_length - 2 (for ": ")
-        max_length = max(130, 160 - len(str(username).encode('utf-8')) - 2)
+        max_length = channel_body_limit(username)
         if not MeshMessage.is_global_flood_scope(message.effective_outgoing_flood_scope(self.bot)):
             max_length -= CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD
         return max_length
@@ -910,6 +941,7 @@ class BaseCommand(ABC):
         validates mention rules and strips all @[...] mentions. Also updates
         message.content and message.content_lower with the cleaned text so that
         downstream processing (the execute step) sees the same clean content.
+        Does not touch message.original_content (the on-air body for display).
 
         Args:
             message: The incoming message.
@@ -945,6 +977,68 @@ class BaseCommand(ABC):
         message.content_lower = content.lower()
         return message.content_lower
 
+    def _cleaned_content_matches(
+        self, message: MeshMessage, matcher: Callable[[str], bool]
+    ) -> bool:
+        """Apply mention/prefix cleanup for matching; restore content on a miss.
+
+        ``matcher`` receives the cleaned lowercased body. On True, ``message.content``
+        stays cleaned for execute. On False (or cleanup reject), the previous
+        content is restored so a keyword scan does not rewrite overheard traffic
+        (#267).
+        """
+        prior_content = message.content
+        prior_lower = message.content_lower
+        content_lower = self.cleanup_message_for_matching(message)
+        if not content_lower or not matcher(content_lower):
+            message.content = prior_content
+            message.content_lower = prior_lower
+            return False
+        return True
+
+    def split_trigger_and_args(self, content: str) -> tuple[Optional[str], str]:
+        """Split message content into ``(matched_keyword, args)``.
+
+        Matches against ``self.keywords`` (built-in stems plus config ``aliases``),
+        preferring the longest keyword so multi-word triggers win. The configured
+        command prefix is stripped for execute paths that still see raw
+        command-style text.
+
+        Args:
+            content: Raw or partially cleaned message text.
+
+        Returns:
+            ``(keyword, args)`` when a keyword matches as the first token(s);
+            ``(None, content)`` (after prefix stripping) otherwise.
+        """
+        text = content.strip()
+        # Strip the configured prefix; bare "!" only in legacy no-prefix mode, so a
+        # bot configured with command_prefix = / does not silently accept "!test".
+        matched = find_matching_prefix(text, self._command_prefixes)
+        if matched is not None:
+            text = text[len(matched):].strip()
+        elif not self._command_prefixes and text.startswith('!'):
+            text = text[1:].strip()
+        if not text or not self.keywords:
+            return None, text
+
+        # Longest first (word count, then length) so "dad joke" wins over a shorter
+        # stem. Compare word by word rather than slicing the lowered copy by keyword
+        # length: str.lower() can change length for non-ASCII aliases, which would
+        # misalign the offset and cut the args in the wrong place.
+        for keyword in sorted(self.keywords, key=lambda k: (len(k.split()), len(k)), reverse=True):
+            kw_words = keyword.lower().split()
+            if not kw_words:
+                continue
+            parts = text.split(maxsplit=len(kw_words))
+            if len(parts) < len(kw_words):
+                continue
+            if [part.lower() for part in parts[:len(kw_words)]] != kw_words:
+                continue
+            args = parts[len(kw_words)].strip() if len(parts) > len(kw_words) else ""
+            return keyword.lower(), args
+        return None, text
+
     def matches_keyword(self, message: MeshMessage) -> bool:
         """Check if this command matches the message content based on keywords.
 
@@ -962,25 +1056,19 @@ class BaseCommand(ABC):
         if not self.keywords:
             return False
 
-        content_lower = self.cleanup_message_for_matching(message)
-        if not content_lower:
+        def _matches(content_lower: str) -> bool:
+            for keyword in self.keywords:
+                keyword_lower = keyword.lower()
+                if keyword_lower == content_lower:
+                    return True
+                if content_lower.startswith(keyword_lower) and (
+                    len(content_lower) == len(keyword_lower)
+                    or content_lower[len(keyword_lower)] == ' '
+                ):
+                    return True
             return False
 
-        for keyword in self.keywords:
-            keyword_lower = keyword.lower()
-
-            # Check for exact match first
-            if keyword_lower == content_lower:
-                return True
-
-            # Check if the message starts with the keyword (followed by space or end of string)
-            # This ensures the keyword is the first word in the message
-            if content_lower.startswith(keyword_lower):
-                # Check if it's followed by a space or is the end of the message
-                if len(content_lower) == len(keyword_lower) or content_lower[len(keyword_lower)] == ' ':
-                    return True
-
-        return False
+        return self._cleaned_content_matches(message, _matches)
 
     def matches_custom_syntax(self, message: MeshMessage) -> bool:
         """Check if this command matches custom syntax patterns.
@@ -1170,47 +1258,52 @@ class BaseCommand(ABC):
 
     def get_hops_display_values(self, message: MeshMessage) -> tuple[str, str]:
         """Return hop count placeholders as numeric and pluralized strings."""
-        hops_val = getattr(message, 'hops', None)
-        routing_info = getattr(message, 'routing_info', None)
-
-        if not isinstance(hops_val, int) and routing_info is not None:
-            hops_val = routing_info.get('path_length')
-            if hops_val is None and routing_info.get('path_nodes'):
-                hops_val = len(routing_info['path_nodes'])
-
-        if not isinstance(hops_val, int):
-            path_str = message.path or ""
-            hop_match = re.search(r'\((\d+)\s*hops?', path_str, re.IGNORECASE)
-            if hop_match:
-                hops_val = int(hop_match.group(1))
-            elif re.search(r'\bdirect\b|\b0\s*hops?\b', path_str, re.IGNORECASE):
-                hops_val = 0
-
-        if not isinstance(hops_val, int):
+        hops_val = message_hop_count(message)
+        if hops_val is None:
             return "?", "?"
 
         hops_str = str(hops_val)
         hops_label = "1 hop" if hops_val == 1 else f"{hops_val} hops"
         return hops_str, hops_label
 
-    def format_response(self, message: MeshMessage, response_format: str) -> str:
-        """Format a response string with message data"""
-        try:
-            connection_info = self.build_enhanced_connection_info(message)
-            path_display = self.get_path_display_string(message)
-            hops, hops_label = self.get_hops_display_values(message)
-            timestamp = self.format_timestamp(message)
+    def get_standard_placeholder_fields(self, message: MeshMessage) -> dict[str, Any]:
+        """Standard response placeholders shared by every command template.
 
-            return response_format.format(
-                sender=message.sender_id or "Unknown",
-                connection_info=connection_info,
-                path=path_display,
-                hops=hops,
-                hops_label=hops_label,
-                timestamp=timestamp,
-                snr=message.snr or "Unknown",
-                rssi=message.rssi or "Unknown"
-            )
+        Subclasses that render templates through
+        :func:`~modules.response_template.format_piped_template` start from this
+        mapping and add their own fields, so the common names stay identical
+        across commands.
+        """
+        hops, hops_label = self.get_hops_display_values(message)
+        return {
+            'sender': message.sender_id or "Unknown",
+            'connection_info': self.build_enhanced_connection_info(message),
+            'path': self.get_path_display_string(message),
+            'hops': hops,
+            'hops_label': hops_label,
+            'timestamp': self.format_timestamp(message),
+            'snr': message.snr or "Unknown",
+            'rssi': message.rssi or "Unknown",
+            'packet_hash': get_packet_hash_placeholder(message),
+        }
+
+    def format_response(self, message: MeshMessage, response_format: str,
+                        extra: Optional[dict[str, Any]] = None) -> str:
+        """Format a response string with message data.
+
+        Args:
+            message: The message the placeholders describe.
+            response_format: Template string using ``{placeholder}`` names.
+            extra: Additional command-specific placeholders. Values here are
+                merged over the standard set, so a command can expose fields
+                only it can compute (e.g. the path command's ``{distance}``).
+        """
+        try:
+            fields = self.get_standard_placeholder_fields(message)
+            if extra:
+                fields.update(extra)
+
+            return response_format.format(**fields)
         except (KeyError, ValueError) as e:
             self.logger.warning(f"Error formatting response: {e}")
             return response_format

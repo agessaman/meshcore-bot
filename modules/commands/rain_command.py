@@ -721,6 +721,10 @@ def decide_rain_notification(
 class RainCommand(BaseCommand):
     """Minute-level rain nowcast for a location (Open-Meteo 15-minutely precip)."""
 
+    # Read-only informational output; safe for scheduled {cmd:...} rendering.
+
+    render_safe = True
+
     name = "rain"
     keywords = ["rain", "nowcast", "snow"]
     description = "Rain/snow nowcast: when precip starts or stops in the next ~2h, with amount"

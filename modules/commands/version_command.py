@@ -14,6 +14,10 @@ from .base_command import BaseCommand
 class VersionCommand(BaseCommand):
     """Handles the version/ver command."""
 
+    # Read-only informational output; safe for scheduled {cmd:...} rendering.
+
+    render_safe = True
+
     name = "version"
     keywords = ["version", "ver"]
     description = "Show the running bot version."

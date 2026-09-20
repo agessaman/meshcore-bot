@@ -67,7 +67,7 @@ shorten_urls = false
 # Or shorten only where the format says {link|shorten} (see placeholders below)
 ```
 
-Per-output-format URL shortening: use `{link|shorten}` for a single shortened link, or `{link|shorten|truncate:N}` to shorten then cap length. `shorten_urls = true` shortens every plain `{link}`.
+Per-output-format URL shortening: use `{link|shorten}` for a single shortened link, or `{link|shorten|truncate:N}` to shorten then cap length. `shorten_urls = true` shortens every plain `{link}`. `shorten_url` is accepted as an alias, so a filter chain copied from a command `response_format` works here unchanged.
 
 ## RSS Feed Configuration
 

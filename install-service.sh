@@ -14,6 +14,7 @@
 #   ./install-service.sh          # Normal installation (non-destructive if already installed)
 #   ./install-service.sh --upgrade # Upgrade mode (copies new files, updates dependencies)
 #   ./install-service.sh -u        # Short form of --upgrade
+#   ./install-service.sh -u --install-extras # upgrade + install optional packages (profanity, geocoding)
 #   ./install-service.sh --update-venv           # Only refresh the venv, in place
 #   ./install-service.sh -u --update-venv        # Upgrade code, reuse the venv
 #
@@ -79,6 +80,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Parse command line arguments (before sudo check so help works)
 UPGRADE_MODE=false
 UPDATE_VENV=false
+INSTALL_EXTRAS=false
 for arg in "$@"; do
     case $arg in
         --upgrade|-u)
@@ -86,6 +88,9 @@ for arg in "$@"; do
             ;;
         --update-venv)
             UPDATE_VENV=true
+            ;;
+        --install-extras|-ie)
+            INSTALL_EXTRAS=true
             ;;
         --help|-h)
             echo "MeshCore Bot Service Installation Script"
@@ -105,6 +110,7 @@ for arg in "$@"; do
             echo "  $0                     # Normal installation (non-destructive if already installed)"
             echo "  $0 --upgrade           # Upgrade existing installation (rebuilds the venv)"
             echo "  $0 -u                  # Short form of --upgrade"
+            echo "  $0 -u --install-extras # Upgrade and install optional packages without prompting"
             echo "  $0 --update-venv       # Refresh dependencies only, keeping the venv"
             echo "  $0 -u --update-venv    # Upgrade code and refresh the venv in place"
             exit 0
@@ -373,48 +379,27 @@ venv_reuse_blocker() {
 }
 
 # Extra pip arguments for 32-bit ARM hosts (Raspberry Pi 2/3 on a 32-bit OS).
-#
-# Ten dependencies have no prebuilt armv7 wheel on PyPI and would compile from source on
-# the device - hours of work on a Cortex-A7 and a likely OOM at 1 GB RAM.  piwheels serves
-# prebuilt armv7 wheels and is already configured on Raspberry Pi OS via /etc/pip.conf;
-# passing it explicitly also covers Ubuntu armhf, DietPi and other 32-bit distros that do
-# not ship that default.  constraints-armv7.txt then closes the last two gaps, so the
-# install resolves entirely to wheels.  See that file for the measurements.
-#
-# Scoped to 32-bit ARM on purpose: the constraints hold two packages one version back, and
-# there is no reason to impose that on amd64/arm64.  Results go in ARMV7_PIP_ARGS, which is
-# empty on every other platform.
-ARMV7_PIP_ARGS=()
-configure_armv7_pip_args() {
-    local requirements="$1"
-    local constraints
-
-    ARMV7_PIP_ARGS=()
-    case "$(uname -m)" in
-        armv6l|armv7l) ;;
-        *) return 0 ;;
-    esac
-
-    ARMV7_PIP_ARGS+=(--extra-index-url https://www.piwheels.org/simple)
-    print_info "32-bit ARM detected; using piwheels prebuilt wheels to avoid on-device compilation"
-
-    constraints="$(dirname "$requirements")/constraints-armv7.txt"
-    if [ -f "$constraints" ]; then
-        ARMV7_PIP_ARGS+=(-c "$constraints")
-    else
-        print_warning "constraints-armv7.txt not found next to $requirements"
-        print_warning "brotli and ephem will compile from source; this can take a while"
-    fi
-}
+# Shared with the .deb postinst via scripts/armv7_pip_args.sh so the two install
+# paths cannot drift (issue #269).  See that helper and constraints-armv7.txt.
+_ARMV7_PIP_HELPER="$SCRIPT_DIR/scripts/armv7_pip_args.sh"
+if [ ! -f "$_ARMV7_PIP_HELPER" ]; then
+    print_error "Missing $_ARMV7_PIP_HELPER"
+    exit 1
+fi
+# shellcheck source=scripts/armv7_pip_args.sh
+source "$_ARMV7_PIP_HELPER"
 
 # Bring an existing virtualenv up to date with requirements.txt.  Plain
 # `pip install -r` (no --upgrade) is deliberate: it installs what is missing and
 # upgrades only what no longer satisfies a specifier, which is the fast path.
 # `--upgrade` would eagerly churn transitive dependencies on every run.  Extras
 # installed previously (profanity filter, geocoding) survive, unlike a rebuild.
+# Also rewrites console-script shebangs so an earlier .venv-build-$$ relocate
+# does not leave venv/bin/pip broken after --update-venv (issue #229).
 update_venv_in_place() {
     local venv="$1"
     local requirements="$2"
+    local rewrite_helper
 
     print_info "Reusing the existing virtualenv at $venv"
     print_info "Synchronizing dependencies from $requirements"
@@ -422,6 +407,19 @@ update_venv_in_place() {
     if ! "$venv/bin/python" -m pip install --quiet "${ARMV7_PIP_ARGS[@]}" -r "$requirements"; then
         print_error "Failed to update Python dependencies"
         print_info "Check your internet connection, or rebuild with: $0 --upgrade"
+        return 1
+    fi
+
+    # Prefer the helper shipped with this installer invocation so --update-venv
+    # heals broken shebangs even before a full code sync lands under INSTALL_DIR.
+    if [ -f "$SCRIPT_DIR/scripts/rewrite_venv_shebangs.sh" ]; then
+        rewrite_helper="$SCRIPT_DIR/scripts/rewrite_venv_shebangs.sh"
+    else
+        rewrite_helper="$INSTALL_DIR/scripts/rewrite_venv_shebangs.sh"
+    fi
+    if ! bash "$rewrite_helper" "$venv"; then
+        print_error "Failed to rewrite virtualenv console-script shebangs"
+        print_info "Rebuild with: $0 --upgrade"
         return 1
     fi
 
@@ -517,7 +515,7 @@ else
     else
         print_warning "User $SERVICE_USER already exists (skipping creation)"
     fi
-    
+
     # Add user to dialout group for serial port access (Linux)
     print_info "Configuring serial port access permissions"
     if getent group dialout > /dev/null 2>&1; then
@@ -531,7 +529,7 @@ else
         print_warning "dialout group not found - serial port access may require manual configuration"
         print_info "If using serial connection, you may need to: sudo usermod -a -G dialout $SERVICE_USER"
     fi
-    
+
     # Also check for other common serial port groups (tty, uucp, lock)
     for group in tty uucp lock; do
         if getent group "$group" > /dev/null 2>&1; then
@@ -780,13 +778,52 @@ if [[ "$VENV_UPDATED_IN_PLACE" != true ]]; then
         print_error "Failed to activate the newly built virtual environment"
         exit 1
     fi
+    # Console scripts still embed the .venv-build-$$ shebang; rewrite before any
+    # later call to venv/bin/pip or other entry points (see issue #229).  Keep
+    # VENV_OLD until rewrite succeeds so a failure can restore the prior tree.
+    if ! bash "$INSTALL_DIR/scripts/rewrite_venv_shebangs.sh" "$INSTALL_DIR/venv"; then
+        print_error "Failed to rewrite virtualenv console-script shebangs after relocate"
+        if [ -d "$VENV_OLD" ]; then
+            rm -rf "$INSTALL_DIR/venv"
+            mv "$VENV_OLD" "$INSTALL_DIR/venv"
+            print_warning "Restored the previous virtualenv after shebang rewrite failure"
+        fi
+        exit 1
+    fi
     rm -rf "$VENV_OLD"
     print_success "Installed all Python dependencies into a fresh virtual environment"
 fi
 
 # Optional extras.  A rebuild starts empty so these have to be re-chosen; an
 # in-place update keeps whatever was installed before, so don't re-prompt.
-if [[ "$VENV_UPDATED_IN_PLACE" == true ]]; then
+# --install-extras installs both sets non-interactively and takes precedence,
+# so an unattended run can top up an in-place venv update too.
+# Always invoke pip via `python -m pip` so a stale shebang cannot break installs.
+VENV_PYTHON="$INSTALL_DIR/venv/bin/python"
+
+install_profanity_packages() {
+    print_info "Installing profanity filter packages..."
+    if "$VENV_PYTHON" -m pip install --quiet "better-profanity>=0.7.0" "unidecode>=1.3.0"; then
+        print_success "Installed profanity filter packages"
+    else
+        print_warning "Failed to install profanity filter packages (non-fatal)"
+    fi
+}
+
+install_geocoding_packages() {
+    print_info "Installing geocoding extras..."
+    if "$VENV_PYTHON" -m pip install --quiet "pycountry>=23.12.0" "us>=2.0.0"; then
+        print_success "Installed geocoding extras"
+    else
+        print_warning "Failed to install geocoding extras (non-fatal)"
+    fi
+}
+
+if [[ "$INSTALL_EXTRAS" == true ]]; then
+    print_info "Installing optional feature packages (--install-extras)"
+    install_profanity_packages
+    install_geocoding_packages
+elif [[ "$VENV_UPDATED_IN_PLACE" == true ]]; then
     print_info "Kept any optional packages already installed in the virtualenv"
 else
     echo ""
@@ -796,21 +833,13 @@ else
     echo ""
 
     if ask_yes_no "Install profanity filter packages? (recommended if using the profanity filter feature)" "n"; then
-        print_info "Installing profanity filter packages..."
-        "$INSTALL_DIR/venv/bin/pip" install --quiet "better-profanity>=0.7.0" "unidecode>=1.3.0" || {
-            print_warning "Failed to install profanity filter packages (non-fatal)"
-        }
-        print_success "Installed profanity filter packages"
+        install_profanity_packages
     else
         print_info "Skipping profanity filter packages"
     fi
 
     if ask_yes_no "Install geocoding extras? (recommended if using location/path commands)" "n"; then
-        print_info "Installing geocoding extras..."
-        "$INSTALL_DIR/venv/bin/pip" install --quiet "pycountry>=23.12.0" "us>=2.0.0" || {
-            print_warning "Failed to install geocoding extras (non-fatal)"
-        }
-        print_success "Installed geocoding extras"
+        install_geocoding_packages
     else
         print_info "Skipping geocoding extras"
     fi
@@ -866,7 +895,7 @@ if [[ "$IS_MACOS" == true ]]; then
     print_info "The service will be configured to start on boot and restart on failure"
     # Create LaunchDaemons directory if it doesn't exist
     mkdir -p "$LAUNCHD_DIR"
-    
+
     # Update plist with actual installation paths and copy to LaunchDaemons
     if [ -f "$LAUNCHD_DIR/$SERVICE_FILE" ] && [[ "$UPGRADE_MODE" != true ]]; then
         print_info "Plist file already exists at $LAUNCHD_DIR/$SERVICE_FILE"
@@ -894,12 +923,12 @@ with open('$LAUNCHD_DIR/$SERVICE_FILE', 'w') as f:
         fi
         print_success "Copied and configured plist file to $LAUNCHD_DIR/"
     fi
-    
+
     # Set ownership
     chown root:wheel "$LAUNCHD_DIR/$SERVICE_FILE"
     chmod 644 "$LAUNCHD_DIR/$SERVICE_FILE"
     print_success "Set plist permissions"
-    
+
     print_section "Step 7: Loading Service"
     # Check if service is already loaded
     if launchctl list "$PLIST_NAME" &>/dev/null; then
@@ -952,7 +981,7 @@ else
         systemctl daemon-reload
         print_success "Systemd configuration reloaded"
     fi
-    
+
     print_section "Step 7: Enabling Service"
     # Check if service is already enabled
     if systemctl is-enabled "$SERVICE_NAME" &>/dev/null; then

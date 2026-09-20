@@ -17,6 +17,10 @@ from .base_command import BaseCommand
 class AuroraCommand(BaseCommand):
     """Command to get aurora (KP index and probability) for a location."""
 
+    # Read-only informational output; safe for scheduled {cmd:...} rendering.
+
+    render_safe = True
+
     name = "aurora"
     keywords = ["aurora", "kp"]
     description = "Get aurora forecast (KP index and probability) for a location"

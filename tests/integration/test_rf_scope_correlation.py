@@ -7,7 +7,11 @@ from unittest.mock import Mock
 import pytest
 
 from modules.command_manager import CommandManager
-from modules.message_handler import MessageHandler
+from modules.message_handler import (
+    RF_MATCH_FALLBACK,
+    RF_MATCH_KEY,
+    MessageHandler,
+)
 from tests.integration.test_flood_scope_reply import make_transport_code
 
 
@@ -95,7 +99,7 @@ class TestScopeEligibleRfData:
         ping = _fresh_rf(SNOCO_PING_RF)
         mh.recent_rf_data = [advert, ping]
         result = mh.find_recent_rf_data(scope_eligible_only=True)
-        assert result is ping
+        assert result == {**ping, RF_MATCH_KEY: RF_MATCH_FALLBACK}
 
     def test_find_recent_scope_fallback_returns_none_without_tc_flood(self, mh: MessageHandler):
         mh.recent_rf_data = [_fresh_rf(STALE_ADVERT_RF)]
@@ -152,8 +156,8 @@ class TestStaleAdvertScopeCorrelation:
         mh.recent_rf_data = [ping, advert]
         path_rf = mh.find_recent_rf_data()
         scope_rf = mh.find_recent_rf_data(scope_eligible_only=True)
-        assert path_rf is advert
-        assert scope_rf is ping
+        assert path_rf == {**advert, RF_MATCH_KEY: RF_MATCH_FALLBACK}
+        assert scope_rf == {**ping, RF_MATCH_KEY: RF_MATCH_FALLBACK}
 
     def test_resolve_scope_from_advert_returns_none(self, mh: MessageHandler):
         scope_keys = {"#snoco": _scope_key("#snoco")}

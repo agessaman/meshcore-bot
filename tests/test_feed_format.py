@@ -138,3 +138,51 @@ class TestFormatFeedMessage:
             shorten_feed_urls=False,
         )
         assert msg == "https://example.com/long"
+
+
+class TestShortenUrlAlias:
+    """`shorten_url` is the response-template spelling; feed formats accept it too.
+
+    Without the alias a chain copied from a command response_format hits the unknown
+    -function branch and the long URL goes out unshortened, with no warning.
+    """
+
+    @patch("modules.feed_format.shorten_url_sync", return_value="https://v.gd/x")
+    def test_shorten_url_is_accepted_as_a_function(self, mock_shorten):
+        out = apply_feed_field_function(
+            "https://example.com/long", "shorten_url", config=object()
+        )
+        assert out == "https://v.gd/x"
+        mock_shorten.assert_called_once()
+
+    @patch("modules.feed_format.shorten_url_sync", return_value="https://v.gd/x")
+    def test_shorten_url_chains_like_shorten(self, _mock_shorten):
+        assert (
+            apply_feed_field_function(
+                "https://example.com/long", "shorten_url|truncate:9", config=object()
+            )
+            == apply_feed_field_function(
+                "https://example.com/long", "shorten|truncate:9", config=object()
+            )
+        )
+
+    @patch("modules.feed_format.shorten_url_sync", return_value="")
+    def test_shorten_url_falls_back_to_the_original(self, _mock_shorten):
+        out = apply_feed_field_function(
+            "https://example.com/long", "shorten_url", config=object()
+        )
+        assert out == "https://example.com/long"
+
+    @patch("modules.feed_format.shorten_url_sync", return_value="https://v.gd/x")
+    def test_explicit_shorten_url_is_not_double_shortened(self, mock_shorten):
+        """shorten_feed_urls must see through the alias, as it does through `shorten`."""
+        format_feed_message(
+            {"title": "t", "description": "", "link": "https://example.com/long"},
+            "{link|shorten_url}",
+            shorten_feed_urls=True,
+            config=object(),
+        )
+        assert mock_shorten.call_count == 1
+
+    def test_an_unrelated_name_starting_with_shorten_url_is_untouched(self):
+        assert apply_feed_field_function("abc", "shorten_urlish") == "abc"

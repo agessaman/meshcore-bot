@@ -2,7 +2,12 @@
 
 import pytest
 
+from modules.commands.alert_command import AlertCommand
 from modules.commands.cmd_command import CmdCommand
+from modules.commands.ping_command import PingCommand
+from modules.commands.sports_command import SportsCommand
+from modules.commands.trace_command import TraceCommand
+from modules.commands.wx_command import WxCommand
 from tests.conftest import mock_message
 
 
@@ -23,6 +28,89 @@ class TestCmdCommand:
         cmd = CmdCommand(command_mock_bot)
         msg = mock_message(content="cmd", is_dm=True)
         assert cmd.can_execute(msg) is False
+
+    @pytest.mark.asyncio
+    async def test_is_not_listed_when_sports_cmd_disabled(self, command_mock_bot):
+        command_mock_bot.config.add_section("Cmd_Command")
+        command_mock_bot.config.set("Cmd_Command", "enabled", "true")
+        command_mock_bot.config.add_section("Ping_Command")
+        command_mock_bot.config.set("Ping_Command", "enabled", "true")
+        command_mock_bot.config.add_section("Wx_Command")
+        command_mock_bot.config.set("Wx_Command", "enabled", "true")
+        command_mock_bot.config.add_section("Sports_Command")
+        command_mock_bot.config.set("Sports_Command", "enabled", "false")
+        command_mock_bot.config.add_section("Trace_Command")
+        command_mock_bot.config.set("Trace_Command", "enabled", "true")
+        command_mock_bot.config.add_section("Alert_Command")
+        command_mock_bot.config.set("Alert_Command", "enabled", "true")
+
+        command_mock_bot.command_manager.keywords = {}
+        command_mock_bot.command_manager.commands = {
+            'ping': PingCommand(command_mock_bot),
+            'wx': WxCommand(command_mock_bot),
+            'sports': SportsCommand(command_mock_bot),
+            'trace': TraceCommand(command_mock_bot),
+            'alert': AlertCommand(command_mock_bot)
+        }
+
+        cmd = CmdCommand(command_mock_bot)
+        msg = mock_message(content="cmd", is_dm=True)
+        result = await cmd.execute(msg)
+        call_args = command_mock_bot.command_manager.send_response.call_args
+
+        assert result is True
+        assert 'ping' in call_args[0][1]
+        assert 'wx' in call_args[0][1]
+        assert 'sports' not in call_args[0][1]
+        assert 'trace' in call_args[0][1]
+        assert 'alert' in call_args[0][1]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("disabled_value", ["false", "no", "0", "False", "FALSE", "off"])
+    async def test_is_not_listed_for_any_disabled_spelling(self, command_mock_bot, disabled_value):
+        """config.ini accepts every boolean spelling configparser does, not just 'false'."""
+        command_mock_bot.config.add_section("Cmd_Command")
+        command_mock_bot.config.set("Cmd_Command", "enabled", "true")
+        command_mock_bot.config.add_section("Ping_Command")
+        command_mock_bot.config.set("Ping_Command", "enabled", "true")
+        command_mock_bot.config.add_section("Sports_Command")
+        command_mock_bot.config.set("Sports_Command", "enabled", disabled_value)
+
+        command_mock_bot.command_manager.keywords = {}
+        command_mock_bot.command_manager.commands = {
+            'ping': PingCommand(command_mock_bot),
+            'sports': SportsCommand(command_mock_bot),
+        }
+
+        cmd = CmdCommand(command_mock_bot)
+        msg = mock_message(content="cmd", is_dm=True)
+        result = await cmd.execute(msg)
+        call_args = command_mock_bot.command_manager.send_response.call_args
+
+        assert result is True
+        assert 'ping' in call_args[0][1]
+        assert 'sports' not in call_args[0][1]
+
+    @pytest.mark.asyncio
+    async def test_is_listed_when_command_has_no_config_section(self, command_mock_bot):
+        """A command with no [<Name>_Command] section defaults to enabled, as before."""
+        command_mock_bot.config.add_section("Cmd_Command")
+        command_mock_bot.config.set("Cmd_Command", "enabled", "true")
+
+        command_mock_bot.command_manager.keywords = {}
+        command_mock_bot.command_manager.commands = {
+            'ping': PingCommand(command_mock_bot),
+            'sports': SportsCommand(command_mock_bot),
+        }
+
+        cmd = CmdCommand(command_mock_bot)
+        msg = mock_message(content="cmd", is_dm=True)
+        result = await cmd.execute(msg)
+        call_args = command_mock_bot.command_manager.send_response.call_args
+
+        assert result is True
+        assert 'ping' in call_args[0][1]
+        assert 'sports' in call_args[0][1]
 
     @pytest.mark.asyncio
     async def test_execute_returns_command_list(self, command_mock_bot):
@@ -85,8 +173,8 @@ class TestCmdCommand:
         commands = {}
         for i in range(25):
             name = f"longcommandname{i:02d}"
-            mock_cmd = type("MockCmd", (), {"keywords": [name]})()
-            commands[name] = mock_cmd
+            commands[name] = CmdCommand(command_mock_bot)
+            command_mock_bot.config.add_section(name.title() + "_Command")
         command_mock_bot.command_manager.commands = commands
         cmd = CmdCommand(command_mock_bot)
         # "Available commands: " = 20 chars; "longcommandnameNN" = 17 chars; ", " = 2 chars

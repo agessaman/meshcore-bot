@@ -38,12 +38,13 @@ import socket
 import sqlite3
 import time
 from contextlib import suppress
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 SCHEMA_REV = 1
 
 LEASE_KEY = "dashboard.snapshot_lease"
+ZERO_HOP_BACKFILL_KEY = "dashboard.zero_hop_path_backfill"
 
 # Source-presence bitmask stored on each daily_rollup row.  A missing table is
 # genuinely possible: message_stats/command_stats/path_stats are created by
@@ -179,11 +180,10 @@ TOP_KINDS = ("users", "commands", "channels", "paths", "repeaters", "neighbors")
 # link last exercised a month ago says nothing about whether it works today.
 NEIGHBOR_WINDOWS = ("24h", "7d")
 
-# A path is one hop when its byte length equals the per-hop encoding width.
-# path_length is measured in BYTES, and with 2- or 3-byte hop encoding a 3-hop
-# path is 6 or 9 bytes long — reading the raw value as a hop count inflates
-# every multibyte path by 2-3x.
-ONE_HOP_PATH = "op.bytes_per_hop > 0 AND op.path_length = op.bytes_per_hop"
+# Direct RF neighbour: MeshCore hop count 0 (empty path). path_length is a
+# BYTE count, so a 1-hop relayed path is path_length = bytes_per_hop — that is
+# not a neighbour. Empty-path rows are the ones this radio heard itself.
+ZERO_HOP_PATH = "op.path_length = 0"
 
 # Roles the firmware reports as an unmapped enum ordinal.  They are real
 # contacts, so they belong in the mix — just not as sixteen singleton slices.
@@ -211,6 +211,30 @@ def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
     ).fetchone()
     return row is not None
+
+
+def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    if not table.isidentifier():
+        return False
+    return any(row[1] == column for row in conn.execute(f'PRAGMA table_info("{table}")'))
+
+
+def _parse_aware_utc(value: Any) -> datetime | None:
+    """Parse neighbor_links.last_seen (UTC ISO, with or without offset)."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _neighbor_window_cutoff_utc(window: str) -> datetime:
+    days = 1 if window == "24h" else 7
+    return datetime.now(timezone.utc) - timedelta(days=days)
 
 
 def _top_n_with_other(entries: list[list[Any]], limit: int = MIX_ROWS) -> list[list[Any]]:
@@ -301,6 +325,7 @@ class DashboardStatsService:
         # retention: recomputing a day whose raw rows were just pruned would
         # overwrite a real value with a zero.
         self.trailing_days = 3
+        self._zero_hop_backfilled = False
 
     # -- source availability -------------------------------------------------
 
@@ -369,6 +394,150 @@ class DashboardStatsService:
             # that predates the migration.  Packet tiles degrade to "unknown".
             self.logger.debug(f"packet_stream dimension backfill unavailable: {exc}")
             return 0
+
+    @staticmethod
+    def _advert_identity_from_packet_json(
+        data: dict[str, Any],
+    ) -> tuple[str | None, float | None, float | None]:
+        """Recover originator key and RF signal from a packet_stream JSON blob."""
+        pk = data.get("advert_public_key")
+        if not (isinstance(pk, str) and len(pk) >= 64):
+            hex_str = str(data.get("payload_hex") or "").replace("0x", "").replace(" ", "")
+            pk = hex_str[:64] if len(hex_str) >= 64 else None
+        if isinstance(pk, str):
+            pk = pk.lower()
+            if len(pk) != 64 or any(char not in "0123456789abcdef" for char in pk):
+                pk = None
+        else:
+            pk = None
+
+        def _num(value: Any) -> float | None:
+            if value is None or value == "" or value == "Unknown":
+                return None
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return None
+
+        return pk, _num(data.get("snr", data.get("SNR"))), _num(data.get("rssi", data.get("RSSI")))
+
+    def backfill_zero_hop_from_packet_stream(self, conn: sqlite3.Connection) -> int:
+        """One-time copy of zero-hop ADVERT packets into observed_paths.
+
+        Empty-path adverts were never stored; packet_stream still has ~3 days of
+        them with hop count and payload_hex. Idempotent on the advert unique
+        index. SNR is taken from the JSON when present, else neighbor_links.
+        """
+        if self._zero_hop_backfilled:
+            return 0
+        if _table_exists(conn, "bot_metadata"):
+            row = conn.execute(
+                "SELECT value FROM bot_metadata WHERE key = ?",
+                (ZERO_HOP_BACKFILL_KEY,),
+            ).fetchone()
+            if row:
+                self._zero_hop_backfilled = True
+                return 0
+        if not _table_exists(conn, "packet_stream") or not _table_exists(conn, "observed_paths"):
+            self._zero_hop_backfilled = True
+            return 0
+
+        from modules.neighbors_discovery import upsert_zero_hop_observed_path
+
+        try:
+            rows = conn.execute(
+                """
+                SELECT timestamp, data, path_len, bytes_per_hop, payload_type_name
+                FROM packet_stream
+                WHERE type = 'packet'
+                  AND (
+                    payload_type_name = 'ADVERT'
+                    OR json_extract(data, '$.payload_type_name') = 'ADVERT'
+                  )
+                  AND COALESCE(
+                    path_len,
+                    CAST(json_extract(data, '$.path_len') AS INTEGER)
+                  ) = 0
+                """
+            ).fetchall()
+        except sqlite3.OperationalError as exc:
+            self.logger.debug(f"zero-hop packet_stream backfill unavailable: {exc}")
+            return 0
+
+        discover_snr: dict[str, float] = {}
+        if _table_exists(conn, "neighbor_links"):
+            for row in conn.execute(
+                "SELECT neighbor_public_key, last_snr FROM neighbor_links WHERE last_snr IS NOT NULL"
+            ):
+                key = (row["neighbor_public_key"] or "").lower()
+                if key:
+                    discover_snr[key] = float(row["last_snr"])
+
+        latest: dict[str, dict[str, Any]] = {}
+        existing_keys = {
+            (row[0] or "").lower()
+            for row in conn.execute(
+                """
+                SELECT public_key FROM observed_paths
+                WHERE packet_type = 'advert' AND path_length = 0 AND public_key IS NOT NULL
+                """
+            )
+        }
+        for row in rows:
+            try:
+                data = json.loads(row["data"] or "{}")
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(data, dict):
+                continue
+            pk, snr, rssi = self._advert_identity_from_packet_json(data)
+            if not pk or pk in existing_keys:
+                continue
+            ts = row["timestamp"]
+            try:
+                ts_f = float(ts)
+            except (TypeError, ValueError):
+                continue
+            prev = latest.get(pk)
+            if prev is not None and ts_f <= prev["ts"]:
+                continue
+            if snr is None:
+                snr = discover_snr.get(pk)
+            bph = row["bytes_per_hop"] or data.get("bytes_per_hop") or 1
+            try:
+                bph = int(bph)
+            except (TypeError, ValueError):
+                bph = 1
+            latest[pk] = {"ts": ts_f, "snr": snr, "rssi": rssi, "bytes_per_hop": bph}
+
+        cursor = conn.cursor()
+        for pk, info in latest.items():
+            upsert_zero_hop_observed_path(
+                cursor,
+                pk,
+                snr=info["snr"],
+                rssi=info["rssi"],
+                bytes_per_hop=info["bytes_per_hop"] or 1,
+                last_seen=datetime.fromtimestamp(info["ts"]).isoformat(),
+                update_rssi=info["rssi"] is not None,
+            )
+
+        if _table_exists(conn, "bot_metadata"):
+            conn.execute(
+                """
+                INSERT INTO bot_metadata (key, value, updated_at)
+                VALUES (?, '1', CURRENT_TIMESTAMP)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+                """,
+                (ZERO_HOP_BACKFILL_KEY,),
+            )
+        self._zero_hop_backfilled = True
+        if latest:
+            self.logger.info(
+                "Backfilled %d zero-hop neighbour path(s) from packet_stream",
+                len(latest),
+            )
+        return len(latest)
 
     def packet_coverage(self, conn: sqlite3.Connection) -> dict[str, Any]:
         """Actual time span covered by packet rows carrying denormalized dims.
@@ -862,7 +1031,7 @@ class DashboardStatsService:
 
         mesh["hops"] = self._hops_distribution(conn, sources)
 
-        if sources & SOURCE_OBSERVED_PATHS:
+        if sources & SOURCE_OBSERVED_PATHS or _table_exists(conn, "neighbor_links"):
             mesh["neighbors"] = {
                 window: self._count_one_hop_nodes(conn, window)
                 for window in NEIGHBOR_WINDOWS
@@ -1030,69 +1199,154 @@ class DashboardStatsService:
             counts[int(hops)] = counts.get(int(hops), 0) + (1 if per_row else (row["n"] or 0))
         return [[hop, count] for hop, count in sorted(counts.items())]
 
-    def _count_one_hop_nodes(self, conn: sqlite3.Connection, window: str) -> int:
-        return conn.execute(
-            f"""
-            SELECT COUNT(DISTINCT op.public_key) FROM observed_paths op
-            WHERE op.packet_type = 'advert' AND {ONE_HOP_PATH}
-              AND op.last_seen > datetime('now','localtime', ?)
-            """,  # noqa: S608 - ONE_HOP_PATH is a module constant, not input
-            (self._window_offset(window),),
-        ).fetchone()[0] or 0
-
     @staticmethod
     def _window_offset(window: str) -> str:
         return {"24h": "-1 days", "7d": "-7 days", "30d": "-30 days"}.get(window, "-7 days")
 
-    def _one_hop_rows(self, conn: sqlite3.Connection, window: str, limit: int) -> list[dict]:
-        """Nodes whose advert reached this radio in a single hop, weakest first.
+    def _count_one_hop_nodes(self, conn: sqlite3.Connection, window: str) -> int:
+        return len(self._direct_neighbor_keys(conn, window))
 
-        Membership comes from path evidence, not from
-        ``complete_contact_tracking.hop_count``.  That column claims 800 zero-hop
-        contacts, but only 68 of them have any one-hop path to corroborate it,
-        their stored SNR piles up in a 1.5 dB band (655 of 800 between 11.25 and
-        12.75), and their RSSI clusters around -45 dBm — the signature of one
-        strong local link being recorded against every node whose traffic came
-        through it, not of hundreds of separate radios.
+    def _direct_neighbor_keys(self, conn: sqlite3.Connection, window: str) -> set[str]:
+        """Public keys heard directly in *window*: empty-path adverts plus discover."""
+        keys: set[str] = set()
+        if _table_exists(conn, "observed_paths"):
+            for row in conn.execute(
+                f"""
+                SELECT DISTINCT op.public_key FROM observed_paths op
+                WHERE op.packet_type = 'advert' AND {ZERO_HOP_PATH}
+                  AND op.last_seen > datetime('now','localtime', ?)
+                """,  # noqa: S608 - ZERO_HOP_PATH is a module constant, not input
+                (self._window_offset(window),),
+            ):
+                if row[0]:
+                    keys.add(str(row[0]).lower())
+        keys.update(self._neighbor_link_keys_in_window(conn, window))
+        return keys
 
-        Signal is therefore reported only where the path evidence and the stored
-        hop_count agree; everything else lists as unknown rather than being given
-        a number that belongs to somebody else's link.
+    def _neighbor_link_keys_in_window(
+        self, conn: sqlite3.Connection, window: str
+    ) -> dict[str, dict[str, Any]]:
+        """Discover-confirmed neighbours whose last_seen falls in *window*.
+
+        neighbor_links.last_seen is UTC ISO; do not compare it with
+        datetime('now','localtime', …).
         """
-        rows = conn.execute(
-            f"""
-            SELECT op.public_key,
-                   MAX(op.last_seen) AS last_seen,
-                   c.name, c.role, c.snr, c.signal_strength, c.hop_count
-            FROM observed_paths op
-            LEFT JOIN complete_contact_tracking c ON c.public_key = op.public_key
-            WHERE op.packet_type = 'advert' AND {ONE_HOP_PATH}
-              AND op.last_seen > datetime('now','localtime', ?)
-            GROUP BY op.public_key
-            """,  # noqa: S608 - ONE_HOP_PATH is a module constant, not input
-            (self._window_offset(window),),
-        ).fetchall()
+        found: dict[str, dict[str, Any]] = {}
+        if not _table_exists(conn, "neighbor_links"):
+            return found
+        cutoff = _neighbor_window_cutoff_utc(window)
+        for row in conn.execute(
+            """
+            SELECT neighbor_public_key, last_snr, last_seen
+            FROM neighbor_links
+            """
+        ):
+            key = (row["neighbor_public_key"] or "").lower()
+            if not key:
+                continue
+            seen = _parse_aware_utc(row["last_seen"])
+            if seen is None or seen < cutoff:
+                continue
+            found[key] = {
+                "snr": row["last_snr"],
+                "last_seen": row["last_seen"],
+            }
+        return found
 
-        measured: list[dict[str, Any]] = []
-        unmeasured: list[dict[str, Any]] = []
-        for row in rows:
-            corroborated = row["hop_count"] == 0 and row["snr"] is not None
-            item = {
-                "name": row["name"] or (row["public_key"] or "")[:12],
+    def _one_hop_rows(self, conn: sqlite3.Connection, window: str, limit: int) -> list[dict]:
+        """Nodes this radio heard directly, weakest measured link first.
+
+        Membership is empty-path advert evidence (MeshCore hop count 0) union
+        in-window ``neighbor_links``. ``complete_contact_tracking.hop_count``
+        is not used for membership — it over-claims zero-hop.
+
+        Signal prefers the path-row measurement, then discover SNR, then the
+        contact row only when hop_count is 0.
+        """
+        has_path_snr = _table_exists(conn, "observed_paths") and _column_exists(
+            conn, "observed_paths", "snr"
+        )
+        snr_select = "op.snr AS path_snr, op.rssi AS path_rssi," if has_path_snr else (
+            "NULL AS path_snr, NULL AS path_rssi,"
+        )
+        path_rows = []
+        if _table_exists(conn, "observed_paths"):
+            path_rows = conn.execute(
+                f"""
+                SELECT op.public_key,
+                       MAX(op.last_seen) AS last_seen,
+                       {snr_select}
+                       c.name, c.role, c.snr, c.signal_strength, c.hop_count
+                FROM observed_paths op
+                LEFT JOIN complete_contact_tracking c ON c.public_key = op.public_key
+                WHERE op.packet_type = 'advert' AND {ZERO_HOP_PATH}
+                  AND op.last_seen > datetime('now','localtime', ?)
+                GROUP BY op.public_key
+                """,  # noqa: S608 - ZERO_HOP_PATH / snr_select are module-controlled
+                (self._window_offset(window),),
+            ).fetchall()
+
+        discover = self._neighbor_link_keys_in_window(conn, window)
+        by_key: dict[str, dict[str, Any]] = {}
+
+        def _contact_name(row, key: str) -> str:
+            return row["name"] or key[:12]
+
+        for row in path_rows:
+            key = (row["public_key"] or "").lower()
+            if not key:
+                continue
+            snr = row["path_snr"]
+            rssi = row["path_rssi"]
+            link = discover.pop(key, None)
+            if snr is None and link is not None:
+                snr = link.get("snr")
+            if snr is None and row["hop_count"] == 0:
+                snr = row["snr"]
+                rssi = row["signal_strength"] if rssi is None else rssi
+            corroborated = snr is not None
+            by_key[key] = {
+                "name": _contact_name(row, key),
                 "public_key": row["public_key"],
                 "role": normalize_role(row["role"]),
-                "snr": round(float(row["snr"]), 1) if corroborated else None,
+                "snr": round(float(snr), 1) if corroborated else None,
                 "rssi": (
-                    round(float(row["signal_strength"]))
-                    if corroborated and row["signal_strength"] is not None
-                    else None
+                    round(float(rssi)) if corroborated and rssi is not None else None
                 ),
                 "signal_corroborated": corroborated,
                 "last_seen": row["last_seen"],
             }
-            (measured if corroborated else unmeasured).append(item)
 
-        # Weakest measured links first — those are the ones worth acting on.
+        # Discover-only neighbours (answered node-discover, no stored empty-path advert).
+        if discover:
+            contacts = {}
+            if _table_exists(conn, "complete_contact_tracking"):
+                placeholders = ",".join("?" * len(discover))
+                for row in conn.execute(
+                    f"""
+                    SELECT public_key, name, role FROM complete_contact_tracking
+                    WHERE lower(public_key) IN ({placeholders})
+                    """,  # noqa: S608 - placeholders match bound keys
+                    tuple(discover),
+                ):
+                    contacts[(row["public_key"] or "").lower()] = row
+            for key, link in discover.items():
+                contact = contacts.get(key)
+                snr = link.get("snr")
+                corroborated = snr is not None
+                by_key[key] = {
+                    "name": (contact["name"] if contact else None) or key[:12],
+                    "public_key": (contact["public_key"] if contact else key),
+                    "role": normalize_role(contact["role"] if contact else None),
+                    "snr": round(float(snr), 1) if snr is not None else None,
+                    "rssi": None,
+                    "signal_corroborated": corroborated,
+                    "last_seen": link.get("last_seen"),
+                }
+
+        items = list(by_key.values())
+        measured = [item for item in items if item["signal_corroborated"]]
+        unmeasured = [item for item in items if not item["signal_corroborated"]]
         measured.sort(key=lambda item: item["snr"])
         unmeasured.sort(key=lambda item: item["last_seen"] or "", reverse=True)
         return (measured + unmeasured)[:limit]
@@ -1251,6 +1505,7 @@ class DashboardStatsService:
         conn.execute("BEGIN IMMEDIATE")
         try:
             backfilled_packets = self.backfill_packet_dims(conn)
+            self.backfill_zero_hop_from_packet_stream(conn)
             conn.commit()
         except Exception:
             conn.rollback()
@@ -1481,7 +1736,7 @@ class DashboardStatsService:
             if window not in NEIGHBOR_WINDOWS:
                 window = NEIGHBOR_WINDOWS[0]
             retention = self.adverts_retention_days
-            if _table_exists(conn, "observed_paths"):
+            if _table_exists(conn, "observed_paths") or _table_exists(conn, "neighbor_links"):
                 items = self._one_hop_rows(conn, window, limit)
                 total = self._count_one_hop_nodes(conn, window)
         elif kind == "repeaters":

@@ -788,6 +788,66 @@ def _m0022_neighbor_tables(cursor: sqlite3.Cursor) -> None:
     )
 
 
+def _m0023_observed_paths_zero_hop_signal(cursor: sqlite3.Cursor) -> None:
+    """SNR/RSSI on observed_paths for direct (zero-hop) advert rows.
+
+    Empty-path adverts are a confirmed last-hop-is-originator measurement, so
+    the figure belongs on the path row rather than on complete_contact_tracking
+    (whose hop_count over-claims zero-hop). Multi-hop rows leave these NULL.
+    """
+    if not _table_exists(cursor, "observed_paths"):
+        return
+    _add_column(cursor, "observed_paths", "snr", "REAL")
+    _add_column(cursor, "observed_paths", "rssi", "REAL")
+
+def _m0024_region_scope_tables(cursor: sqlite3.Cursor) -> None:
+    """Storage for regional flood-scope observation and the warnings it drives.
+
+    ``region_scope_daily`` is a per-day, per-channel tally of how each channel
+    message's flood scope was classified.  It is written for every channel
+    message the bot hears, independent of whether warnings are enabled, because
+    the whole point is letting an operator see how much unscoped traffic there
+    actually is *before* deciding to spend airtime telling anyone about it.
+    One row per channel per local date keeps that free.
+
+    ``region_warning_events`` holds one row per warning decision that reached
+    the send stage — actually sent, suppressed by a failed send, or withheld
+    because the feature is in dry-run.  Suppressions by cooldown or daily cap
+    are deliberately *not* rows: they are the common case and would bury the
+    log.  The cooldown and cap windows are derived from this table rather than
+    from memory so they survive a restart, which is why dry-run rows are
+    written too — a dry run has to consume the same budget it is previewing.
+    """
+    cursor.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS region_scope_daily (
+            date          TEXT NOT NULL,
+            channel       TEXT NOT NULL,
+            scoped_count  INTEGER NOT NULL DEFAULT 0,
+            global_count  INTEGER NOT NULL DEFAULT 0,
+            unknown_count INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (date, channel)
+        );
+
+        CREATE TABLE IF NOT EXISTS region_warning_events (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at    TIMESTAMP NOT NULL,
+            sender_id     TEXT NOT NULL,
+            sender_pubkey TEXT,
+            channel       TEXT,
+            delivery      TEXT NOT NULL,
+            action        TEXT NOT NULL,
+            detail        TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_region_warning_events_created_at
+            ON region_warning_events(created_at);
+        CREATE INDEX IF NOT EXISTS idx_region_warning_events_sender
+            ON region_warning_events(sender_id, created_at);
+        """
+    )
+
+
 # ---------------------------------------------------------------------------
 # Migration registry — append new entries here, never remove or reorder.
 # ---------------------------------------------------------------------------
@@ -817,6 +877,8 @@ MIGRATIONS: list[MigrationEntry] = [
     (20, "mesh_connections: table-specific last_seen index", _m0020_mesh_connections_last_seen_index),
     (21, "daily_rollup: per-payload-type multibyte split", _m0021_daily_rollup_packet_type_encoding),
     (22, "neighbor discovery tables", _m0022_neighbor_tables),
+    (23, "observed_paths: snr/rssi for zero-hop adverts", _m0023_observed_paths_zero_hop_signal),
+    (24, "regional flood scope tallies and warning events", _m0024_region_scope_tables),
 ]
 
 

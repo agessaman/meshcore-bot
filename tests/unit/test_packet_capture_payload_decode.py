@@ -132,7 +132,10 @@ def _service_for_format(decode_payloads: bool) -> PacketCaptureService:
     svc.debug = False
     svc.logger = logging.getLogger("test-packet-capture")
     svc.bot = None
-    svc._get_bot_name = lambda: "TestBot"  # type: ignore[method-assign]
+    # _format_packet_data resolves the reported origin through _get_observer_name,
+    # which falls back to _get_bot_name; stub the entry point so these tests stay
+    # about payload decoding and not name resolution.
+    svc._get_observer_name = lambda: "TestBot"  # type: ignore[method-assign]
     if decode_payloads:
         svc.channel_key_store = ChannelKeyStore()
         svc.channel_key_store.add_secret(BOT_KEY, "#bot")

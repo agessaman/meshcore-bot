@@ -111,6 +111,15 @@ Sends forecast to `weather_channel` at configured time:
 - Sunrise: `weather_alarm = sunrise`
 - Sunset: `weather_alarm = sunset`
 
+`weather_alarm` fires **once a day**. For more than one forecast a day, or a forecast for a location other than the bot's own position, schedule the `wx` command instead with a [`{cmd:...}` placeholder](configuration.md#broadcasting-a-commands-output-cmd):
+
+```ini
+[Scheduled_Messages]
+0 6,12,18 * * * = Public:{cmd:wx Seattle}
+```
+
+That accepts any cron schedule and any location, and works the same way for `aqi` and other commands. `sunrise`/`sunset` are not expressible as cron, so keep using `weather_alarm` for those.
+
 ### Rain Nowcast (Proactive)
 
 Watches your position and posts a heads-up to `rain_channel` (default: `weather_channel`) when precipitation is about to start, using Open-Meteo's 15-minutely forecast — the same engine as the [`rain`/`nowcast` command](command-reference.md#rain-location).

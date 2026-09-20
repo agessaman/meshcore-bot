@@ -16,6 +16,8 @@ class SolarCommand(BaseCommand):
     """
 
     # Plugin metadata
+    # Read-only informational output; safe for scheduled {cmd:...} rendering.
+    render_safe = True
     name = "solar"
     keywords = ['solar']
     description = "Get current solar conditions and HF band info"

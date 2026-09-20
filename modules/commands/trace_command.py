@@ -93,12 +93,6 @@ class TraceCommand(BaseCommand):
             "No path = use your message path (round-trip)."
         )
 
-    def matches_keyword(self, message: MeshMessage) -> bool:
-        content_lower = self.cleanup_message_for_matching(message)
-        if content_lower == "trace" or content_lower == "tracer":
-            return True
-        return bool(content_lower.startswith("trace ") or content_lower.startswith("tracer "))
-
     def _extract_path_from_message(self, message: MeshMessage) -> list[str]:
         """Extract path node IDs from message.path (supports 1-byte, 2-byte, and 3-byte hashes)."""
         if not message.path:
@@ -133,21 +127,14 @@ class TraceCommand(BaseCommand):
         return valid
 
     def _parse_path_arg(self, content: str) -> Optional[list[str]]:
-        """Parse path from command content after 'trace ' or 'tracer '.
+        """Parse path from command content after the matched trigger keyword.
         Accepts comma-separated hex nodes where each segment is the same length:
           2-char = 1-byte (e.g. 01,7a,55), 4-char = 2-byte (e.g. feed,6ddf),
           6-char = 3-byte (e.g. feedca,6ddf01).
         Without commas, treats contiguous hex as 2-char (1-byte) nodes.
         Returns list of hex node IDs, or None if no path args / invalid.
         """
-        content = content.strip()
-        if content.startswith("!"):
-            content = content[1:].strip()
-        rest = ""
-        for kw in ["tracer ", "trace "]:
-            if content.lower().startswith(kw):
-                rest = content[len(kw) :].strip()
-                break
+        _trigger, rest = self.split_trigger_and_args(content)
         if not rest:
             return None
         # Comma-separated: each segment is one node; preserves multibyte groupings
@@ -224,11 +211,9 @@ class TraceCommand(BaseCommand):
         return "\n".join(lines)
 
     async def execute(self, message: MeshMessage) -> bool:
-        content = message.content.strip()
-        if content.startswith("!"):
-            content = content[1:].strip()
-
-        is_tracer = content.lower().startswith("tracer")
+        trigger, _args = self.split_trigger_and_args(message.content)
+        # Reciprocal round-trip only when the tracer stem is used (not aliases of trace)
+        is_tracer = trigger == "tracer"
         path_arg = self._parse_path_arg(message.content)
         if path_arg is not None:
             path_nodes = path_arg[: self.maximum_hops]

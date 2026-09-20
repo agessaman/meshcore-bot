@@ -518,3 +518,83 @@ class TestSnocoScopedPingRegression:
         cm.send_channel_message.assert_awaited_once()
         _, kwargs = cm.send_channel_message.call_args
         assert kwargs.get("scope") == "#snoco"
+
+
+class TestWildcardOnlyAllowlist:
+    """flood_scopes = "*" leaves scope_keys empty but still configures an allowlist
+    (global only). Gating on scope_keys alone let that configuration skip
+    authorisation entirely."""
+
+    @staticmethod
+    def _cmd_mgr(raw):
+        from unittest.mock import Mock
+
+        from modules.command_manager import CommandManager
+
+        mgr = object.__new__(CommandManager)
+        mgr.logger = Mock()
+        mgr._flood_scopes_config_raw = lambda: raw
+        mgr.flood_scope_allow_global = False
+        keys = mgr._load_flood_scope_keys()
+        return keys, mgr.flood_scope_allow_global
+
+    def test_wildcard_only_yields_no_keys_but_allows_global(self):
+        keys, allow_global = self._cmd_mgr("*")
+        assert keys == {}
+        assert allow_global is True
+
+    def test_wildcard_only_still_counts_as_a_configured_allowlist(self):
+        """The gate condition the handler uses must be true here, or '*' bypasses it."""
+        keys, allow_global = self._cmd_mgr("*")
+        assert bool(keys or allow_global) is True
+
+    def test_named_scope_plus_wildcard(self):
+        keys, allow_global = self._cmd_mgr("#west, *")
+        assert list(keys) == ["#west"]
+        assert allow_global is True
+
+    def test_unset_config_configures_no_allowlist(self):
+        keys, allow_global = self._cmd_mgr("")
+        assert bool(keys or allow_global) is False
+
+
+@pytest.mark.asyncio
+async def test_send_channel_message_restores_scope_when_set_raises():
+    """A raising set_flood_scope must still restore global flood.
+
+    Otherwise the device stays pinned to the region and every later send —
+    channel replies, DMs, scheduled sends — goes out under that scope.
+    """
+    bot = MagicMock()
+    bot.logger = Mock()
+    bot.config = make_config()
+    bot.connected = True
+    bot.meshcore = MagicMock()
+    bot.is_radio_zombie = False
+    bot.is_radio_offline = False
+    bot.channel_manager = MagicMock()
+    bot.channel_manager.get_channel_number = Mock(return_value=0)
+
+    cm = object.__new__(CommandManager)
+    cm.bot = bot
+    cm.logger = bot.logger
+
+    async def _set_flood_scope(value):
+        if value != "*":
+            raise RuntimeError("radio went away")
+        return MagicMock(type="OK")
+
+    set_flood_scope = AsyncMock(side_effect=_set_flood_scope)
+    send_chan_msg = AsyncMock(return_value=MagicMock(type="OK", payload={}))
+    bot.meshcore.commands.set_flood_scope = set_flood_scope
+    bot.meshcore.commands.send_chan_msg = send_chan_msg
+
+    cm._check_rate_limits = AsyncMock(return_value=(True, None))
+    cm._is_no_event_received = Mock(return_value=False)
+    cm._handle_send_result = Mock(return_value=True)
+
+    assert await cm.send_channel_message("general", "hi", scope="west") is False
+
+    scopes_set = [c.args[0] for c in set_flood_scope.await_args_list if c.args]
+    assert scopes_set == ["#west", "*"]
+    send_chan_msg.assert_not_awaited()

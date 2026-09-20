@@ -9,6 +9,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import socket
 import sqlite3
 import threading
@@ -21,7 +22,9 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
 from meshcore.events import EventType
 
+from .flood_scope import scope_key_hex
 from .maintenance import MaintenanceRunner
+from .models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD
 from .scheduled_message_cron import (
     is_valid_legacy_hhmm,
     parse_schedule_key,
@@ -46,6 +49,11 @@ _RADIO_OPERATION_TYPES = (
     'radio_advert',
 )
 _CONFIG_OPERATION_TYPES = ('config_reload',)
+
+# Let short host stalls or CPU pressure delay a scheduled transmission without
+# dropping it. Coalescing prevents a long suspension from replaying multiple
+# stale occurrences onto the mesh when the process resumes.
+SCHEDULE_MISFIRE_GRACE_SECONDS = 300
 
 
 class MessageScheduler:
@@ -106,7 +114,13 @@ class MessageScheduler:
         # Stop and recreate the APScheduler to avoid duplicate jobs on reload
         self._shutdown_apscheduler_if_running()
         tz, _ = get_config_timezone(self.bot.config, self.logger)
-        self._apscheduler = BackgroundScheduler(timezone=tz)
+        self._apscheduler = BackgroundScheduler(
+            timezone=tz,
+            job_defaults={
+                'misfire_grace_time': SCHEDULE_MISFIRE_GRACE_SECONDS,
+                'coalesce': True,
+            },
+        )
         self.scheduled_messages.clear()
 
         if self.bot.config.has_section('Scheduled_Messages'):
@@ -135,6 +149,18 @@ class MessageScheduler:
 
                     channel, message, scope = parse_scheduled_message_value(message_info)
                     message = decode_escape_sequences(message)
+
+                    if self._has_command_placeholders(message):
+                        interval = self._min_fire_interval_seconds(parsed.trigger, tz)
+                        floor = self.MIN_COMMAND_PLACEHOLDER_INTERVAL_SECONDS
+                        if interval is not None and interval < floor:
+                            self.logger.error(
+                                "Scheduled message %r uses a {cmd:...} placeholder but fires "
+                                "every %.0fs; the minimum is %ds because each firing spends "
+                                "airtime. Not scheduled: %s",
+                                schedule_key, interval, floor, message,
+                            )
+                            continue
 
                     job_id = "schedmsg_" + hashlib.sha256(
                         f"{schedule_key}\0{channel}\0{scope or ''}\0{message}".encode()
@@ -490,6 +516,82 @@ class MessageScheduler:
 
         return info
 
+    # {cmd:<command> [args]} — run a command and substitute its reply text.
+    # Non-greedy and brace-free inside, matching the placeholder limits elsewhere.
+    _COMMAND_PLACEHOLDER_RE = re.compile(r"\{cmd:([^{}]+)\}")
+
+    # Floor on how often a schedule containing {cmd:...} may fire. Every firing is a
+    # transmission on a shared medium, and a command placeholder makes it trivial to
+    # write a cron that airs several times an hour. Deliberately not configurable.
+    MIN_COMMAND_PLACEHOLDER_INTERVAL_SECONDS = 900
+
+    @staticmethod
+    def _min_fire_interval_seconds(trigger, tz, samples: int = 12) -> Optional[float]:
+        """Smallest gap between consecutive firings of *trigger*, in seconds.
+
+        Sampled rather than derived, so uneven crons are measured by their tightest
+        gap: ``0,1 * * * *`` is a 60-second schedule, not a half-hourly one.
+
+        Returns None when the trigger has no future firings to compare.
+        """
+        now = datetime.datetime.now(tz)
+        previous = trigger.get_next_fire_time(None, now)
+        if previous is None:
+            return None
+
+        smallest = None
+        for _ in range(samples):
+            nxt = trigger.get_next_fire_time(
+                previous, previous + datetime.timedelta(microseconds=1)
+            )
+            if nxt is None:
+                break
+            gap = (nxt - previous).total_seconds()
+            if gap > 0 and (smallest is None or gap < smallest):
+                smallest = gap
+            previous = nxt
+        return smallest
+
+    def _has_command_placeholders(self, message: str) -> bool:
+        return bool(self._COMMAND_PLACEHOLDER_RE.search(message))
+
+    async def _expand_command_placeholders(self, message: str, channel: str) -> str:
+        """Replace each {cmd:...} with the command's output.
+
+        A placeholder whose command is unknown, disabled, admin-only or failing
+        expands to an empty string rather than leaving the raw ``{cmd:...}`` text
+        on the air. Command output is never re-scanned, so a reply that happens to
+        contain ``{cmd:...}`` cannot cause recursion.
+        """
+        timeout = self.bot.config.getfloat(
+            'Bot', 'scheduled_command_timeout_seconds', fallback=30.0
+        )
+
+        out = []
+        last = 0
+        for match in self._COMMAND_PLACEHOLDER_RE.finditer(message):
+            out.append(message[last:match.start()])
+            spec = match.group(1).strip()
+            try:
+                rendered = await self.bot.command_manager.render_command_output(
+                    spec, channel=channel, timeout=timeout
+                )
+            except Exception as e:
+                self.logger.warning(
+                    "Error rendering scheduled command placeholder %r: %s", spec, e
+                )
+                rendered = None
+            if rendered:
+                self.logger.info("Scheduled message rendered {cmd:%s}", spec)
+            else:
+                self.logger.warning(
+                    "Scheduled message placeholder {cmd:%s} produced nothing; omitted", spec
+                )
+            out.append(rendered or "")
+            last = match.end()
+        out.append(message[last:])
+        return "".join(out)
+
     def _has_mesh_info_placeholders(self, message: str) -> bool:
         """Check if message contains mesh info placeholders"""
         placeholders = [
@@ -502,6 +604,90 @@ class MessageScheduler:
             '{repeaters}', '{companions}'
         ]
         return any(placeholder in message for placeholder in placeholders)
+
+    def _channel_body_budget(self, scope: str | None) -> int:
+        """UTF-8 byte budget for one channel message body.
+
+        Mirrors BaseCommand.get_max_message_length: channel sends are framed as
+        "<username>: <body>", and a regional flood scope costs extra header bytes.
+        """
+        username = ""
+        try:
+            self_info = getattr(getattr(self.bot, "meshcore", None), "self_info", None)
+            if isinstance(self_info, dict):
+                username = self_info.get("name") or self_info.get("user_name") or ""
+            elif self_info is not None:
+                username = getattr(self_info, "name", "") or getattr(self_info, "user_name", "")
+        except Exception:  # noqa: BLE001 - budget must never break a send
+            username = ""
+        if not isinstance(username, str) or not username:
+            try:
+                username = self.bot.config.get("Bot", "bot_name", fallback="") or ""
+            except Exception:  # noqa: BLE001 - budget must never break a send
+                username = ""
+        # A stubbed or misconfigured source can hand back a non-string; fall back to
+        # the most conservative budget rather than raising inside the send path.
+        if not isinstance(username, str):
+            username = ""
+
+        budget = 160 - len(username.encode("utf-8")) - 2
+        if (scope or "").strip():
+            budget -= CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD
+        return max(budget, 32)
+
+    def _effective_send_scope(self, channel: str, scope: str | None) -> str | None:
+        """The scope the send will actually use, not just the one on the schedule.
+
+        send_channel_message resolves an unset scope from ``flood_scope.<channel>`` and
+        then ``outgoing_flood_scope_override``. Budgeting on the raw schedule scope
+        alone would size chunks for a global send and overshoot by the regional header
+        once the sender adds it.
+        """
+        if (scope or "").strip():
+            return scope
+        try:
+            resolved = self.bot.command_manager.resolve_channel_send_scope(
+                scope=None, channel=channel
+            )
+            if (resolved or "").strip():
+                return resolved
+            override = self.bot.config.get(
+                "Channels", "outgoing_flood_scope_override", fallback=""
+            )
+            return override if (override or "").strip() else None
+        except Exception:  # noqa: BLE001 - budgeting must never break a send
+            # Unknown means assume regional, which only ever makes chunks smaller.
+            return "#unknown"
+
+    @staticmethod
+    def _split_to_budget(text: str, budget: int) -> list[str]:
+        """Split *text* into chunks of at most *budget* UTF-8 bytes, on line breaks
+        where possible so a rendered command's lines are not cut mid-sentence."""
+        if len(text.encode("utf-8")) <= budget:
+            return [text]
+
+        chunks: list[str] = []
+        current = ""
+        for line in text.split("\n"):
+            candidate = f"{current}\n{line}" if current else line
+            if len(candidate.encode("utf-8")) <= budget:
+                current = candidate
+                continue
+            if current:
+                chunks.append(current)
+                current = ""
+            # A single line over budget still has to go out; cut it on a character
+            # boundary that keeps the encoded length within the limit.
+            while len(line.encode("utf-8")) > budget:
+                cut = budget
+                while cut > 0 and len(line[:cut].encode("utf-8")) > budget:
+                    cut -= 1
+                chunks.append(line[:cut])
+                line = line[cut:]
+            current = line
+        if current:
+            chunks.append(current)
+        return [c for c in chunks if c]
 
     async def _send_scheduled_message_async(
         self,
@@ -518,6 +704,17 @@ class MessageScheduler:
                 "Scheduled message stagger %.2fs (schedule_key=%r)", stagger, schedule_key
             )
             await asyncio.sleep(stagger)
+
+        # Command placeholders first: their output may itself contain mesh info
+        # placeholders, which the pass below then resolves.
+        if self._has_command_placeholders(message):
+            message = await self._expand_command_placeholders(message, channel)
+            if not message.strip():
+                self.logger.warning(
+                    "Scheduled message for %s is empty after expanding command "
+                    "placeholders; nothing sent", channel
+                )
+                return
 
         # Check if message contains mesh info placeholders
         if self._has_mesh_info_placeholders(message):
@@ -539,6 +736,25 @@ class MessageScheduler:
 
         import asyncio as _asyncio
         send_timeout = self.bot.config.getint('Bot', 'send_timeout_seconds', fallback=30)
+
+        # A {cmd:...} placeholder can expand to more than one message's worth of text,
+        # and send_channel_message does not split. Chunk to the RF body budget so a
+        # long rendered reply airs as several messages instead of failing at the device.
+        effective_scope = self._effective_send_scope(channel, scope)
+        chunks = self._split_to_budget(message, self._channel_body_budget(effective_scope))
+        if len(chunks) > 1:
+            self.logger.info(
+                "Scheduled message for %s split into %d chunks to fit the RF budget",
+                channel, len(chunks),
+            )
+            await _asyncio.wait_for(
+                self.bot.command_manager.send_channel_messages_chunked(
+                    channel, chunks, skip_user_rate_limit=True, scope=scope
+                ),
+                timeout=send_timeout * len(chunks),
+            )
+            return
+
         await _asyncio.wait_for(
             self.bot.command_manager.send_channel_message(
                 channel, message, skip_user_rate_limit=True, scope=scope
@@ -567,7 +783,7 @@ class MessageScheduler:
         last_job_count = 0
         last_job_log_time = 0
 
-        while self.bot.connected:
+        while self.bot.keep_running:
             current_time = self.get_current_time()
 
             # Log current time every 5 minutes for debugging
@@ -1270,7 +1486,7 @@ class MessageScheduler:
             self.logger.exception(f"Error in _process_config_operations: {e}")
 
     async def _firmware_read_op(self):
-        """Read the path hash mode from radio firmware (device query)."""
+        """Read the path hash mode and default flood scope from radio firmware."""
         import asyncio
         try:
             meshcore = getattr(self.bot, 'meshcore', None)
@@ -1281,10 +1497,59 @@ class MessageScheduler:
                 meshcore.commands.get_path_hash_mode(), timeout=10
             )
 
-            return True, {'path_hash_mode': path_hash_mode}
+            result: dict[str, Any] = {'path_hash_mode': path_hash_mode}
+            result.update(await self._read_default_flood_scope(meshcore))
+            return True, result
         except Exception as e:
             self.logger.error(f"Firmware read failed: {e}")
             return False, {'error': str(e)}
+
+    async def _read_default_flood_scope(self, meshcore) -> dict[str, Any]:
+        """Read the radio's own default flood scope, if it has one to report.
+
+        Never raises: firmware without CMD_GET_DEFAULT_FLOOD_SCOPE answers with
+        an error or not at all, and that must not cost the caller the path hash
+        mode it asked for in the same read. The absence of the keys is how the
+        page knows the radio did not answer, which is not the same as the radio
+        answering "no scope set".
+        """
+        getter = getattr(meshcore.commands, 'get_default_flood_scope', None)
+        if getter is None:
+            self.logger.debug(
+                "meshcore library has no get_default_flood_scope; skipping"
+            )
+            return {}
+        try:
+            event = await asyncio.wait_for(getter(), timeout=10)
+        except Exception as e:  # noqa: BLE001 - optional read, never fatal
+            self.logger.info("Default flood scope read unavailable: %s", e)
+            return {}
+
+        if event is None or getattr(event, 'type', None) == EventType.ERROR:
+            self.logger.info(
+                "Radio did not report a default flood scope (result=%s)", event
+            )
+            return {}
+
+        payload = getattr(event, 'payload', None) or {}
+        name = payload.get('scope_name', '') or ''
+        key = payload.get('scope_key', '') or ''
+        # A radio with no default scope sends the one-byte sentinel, which the
+        # library turns into an empty payload. Report that as the cleared
+        # state, distinct from the radio never having answered.
+        result: dict[str, Any] = {
+            'default_scope_name': name,
+            'default_scope_key': key,
+            'default_scope_supported': True,
+        }
+        if name and key:
+            # The name is a label stored beside the key; the radio routes by
+            # the key. A build-flag default stores the name without its '#'
+            # while hashing the '#' form, so compare on the normalized name.
+            result['default_scope_key_matches'] = (
+                scope_key_hex(name).lower() == key.lower()
+            )
+        return result
 
     async def _firmware_write_op(self, payload: dict):
         """Write the path hash mode to radio firmware."""
@@ -1309,6 +1574,13 @@ class MessageScheduler:
                 if not ok:
                     errors.append(f"set_path_hash_mode({mode}) failed: {result}")
 
+            if 'default_flood_scope' in payload:
+                scope = payload['default_flood_scope']
+                ok, error = await self._write_default_flood_scope(meshcore, scope)
+                results['default_flood_scope'] = ok
+                if error:
+                    errors.append(error)
+
             success = len(errors) == 0
             response: dict[str, Any] = {'results': results}
             if errors:
@@ -1317,6 +1589,43 @@ class MessageScheduler:
         except Exception as e:
             self.logger.error(f"Firmware write failed: {e}")
             return False, {'error': str(e)}
+
+    async def _write_default_flood_scope(self, meshcore, scope) -> tuple[bool, str]:
+        """Set or clear the radio's default flood scope.
+
+        Clearing does not go through the library. ``set_default_flood_scope``
+        cannot do it: ``None`` raises on ``len(None)``, ``""`` makes the
+        firmware answer ILLEGAL_ARG, and ``"*"`` only works because the frame
+        is padded by character count rather than by the name it wrote, leaving
+        it one byte short of the length the firmware reads as "a scope
+        follows". The firmware's own contract for clearing is a bare
+        CMD_SET_DEFAULT_FLOOD_SCOPE with nothing after it, so send that.
+        """
+        from meshcore.packets import CommandType
+
+        setter = getattr(meshcore.commands, 'set_default_flood_scope', None)
+        if setter is None:
+            return False, (
+                'This meshcore library version cannot set the default flood scope'
+            )
+
+        if scope:
+            result = await asyncio.wait_for(setter(scope), timeout=10)
+            label = f'set_default_flood_scope({scope})'
+        else:
+            result = await asyncio.wait_for(
+                meshcore.commands.send(
+                    bytearray([CommandType.SET_DEFAULT_FLOOD_SCOPE.value]),
+                    [EventType.OK, EventType.ERROR],
+                ),
+                timeout=10,
+            )
+            label = 'clear default_flood_scope'
+
+        ok = getattr(result, 'type', None) == EventType.OK
+        if ok:
+            return True, ''
+        return False, f'{label} failed: {result}'
 
     async def _radio_params_read_op(self):
         """Read current radio and node parameters via SELF_INFO (appstart)."""

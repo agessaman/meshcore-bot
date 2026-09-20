@@ -107,6 +107,24 @@ def validate_repeater_tables(db_manager: Any, logger: Any) -> None:
 class RepeaterManager:
     """Manages repeater contacts database and purging operations"""
 
+    # A contact the device keeps refusing is dropped from future sweeps after this many
+    # consecutive failures, so one unremovable contact cannot generate warnings forever.
+    MAX_STALE_REMOVAL_ATTEMPTS = 3
+
+    # MeshCore firmware seeds an unset clock with a hardcoded time, so a device that
+    # has never been synced advertises one of these rather than a real observation:
+    #   1715770351 — 15 May 2024, VolatileRTCClock's base_time (helpers/ArduinoHelpers.h)
+    #   1772323200 — 1 Mar 2026, RTC_TIME_MIN used by the NRF52 and ESP32 RTC paths
+    # These are not staleness. Treating them as such made unsynced-but-active contacts
+    # look like the oldest entries in the list: they sorted to the top, consumed the
+    # whole per-sweep removal budget, and the bot kept trying to evict live nodes
+    # (see issue #176, where every affected contact reported exactly 722 days).
+    FIRMWARE_CLOCK_SEEDS = (1715770351, 1772323200)
+
+    # Nothing below the earliest seed can be a real observation either; a raw 0 for a
+    # contact that was never heard decodes to 1970.
+    FIRMWARE_CLOCK_FLOOR = 1715770351
+
     def __init__(self, bot):
         self.bot = bot
         self.logger = bot.logger
@@ -117,6 +135,11 @@ class RepeaterManager:
 
         # Initialize repeater-specific tables
         self._init_repeater_tables()
+
+        # Public keys the device has refused to remove, and how many times. A refusal
+        # leaves the contact in place, so without this the next sweep re-selects the
+        # same contacts and retries forever (see issue #176).
+        self._stale_removal_failures: dict[str, int] = {}
 
         # Initialize auto-purge monitoring
         self.contact_limit = 300  # MeshCore device limit (will be updated from device info)
@@ -979,6 +1002,17 @@ class RepeaterManager:
                     else:
                         last_seen_dt = datetime.now() - timedelta(days=30)  # Default to old
 
+                    # An unset device clock reports a firmware seed, which would rank
+                    # this repeater as the oldest thing on the mesh and purge it first
+                    # even if it is active. Staleness is unknown, so it is not grounds
+                    # for removal (see issue #176).
+                    if self._is_unset_device_clock(last_seen_dt):
+                        self.logger.debug(
+                            "Not offering %s for purging: device clock is not set",
+                            sanitize_name(name),
+                        )
+                        continue
+
                     device_repeaters.append({
                         'public_key': public_key,
                         'name': name,
@@ -1131,6 +1165,15 @@ class RepeaterManager:
                                 last_seen_dt = datetime.fromtimestamp(last_seen)
                             else:
                                 last_seen_dt = last_seen
+                            if self._is_unset_device_clock(last_seen_dt):
+                                # Unknown staleness, not extreme staleness. Leaving it
+                                # in would give this companion the most purgeable score
+                                # despite possibly being active (see issue #176).
+                                self.logger.debug(
+                                    "Not offering %s for purging: device clock is not set",
+                                    sanitize_name(name),
+                                )
+                                continue
                             days_inactive = (current_time - last_seen_dt).days
                         except:
                             days_inactive = 999  # Very old if we can't parse
@@ -2498,6 +2541,15 @@ class RepeaterManager:
                                     # Assume it's already a datetime object
                                     last_advert_dt = last_advert
 
+                                # An unset device clock is not evidence of age, and
+                                # purging on it would evict active repeaters (#176).
+                                if self._is_unset_device_clock(last_advert_dt):
+                                    self.logger.debug(
+                                        f"Skipping {name}: device clock is not set "
+                                        f"(last_advert: {last_advert})"
+                                    )
+                                    break
+
                                 # Check if it's older than cutoff
                                 if last_advert_dt < cutoff_date:
                                     old_repeaters.append({
@@ -2682,6 +2734,21 @@ class RepeaterManager:
             self.logger.error(f"Error getting contact list status: {e}")
             return {}
 
+    @classmethod
+    def _is_unset_device_clock(cls, last_seen_dt: datetime) -> bool:
+        """True when a last_seen came from a device whose clock was never set.
+
+        Matches the firmware's hardcoded seeds exactly, plus anything at or below the
+        earliest of them (which also covers a raw 0 decoding to 1970). A device that
+        has been running unsynced for a while reports seed + uptime and is not
+        detectable this way; those still look stale, but they are at least removable.
+        """
+        if last_seen_dt <= datetime.fromtimestamp(cls.FIRMWARE_CLOCK_FLOOR):
+            return True
+        return any(
+            last_seen_dt == datetime.fromtimestamp(seed) for seed in cls.FIRMWARE_CLOCK_SEEDS
+        )
+
     async def _get_stale_contacts(self, days_without_advert: int = 7) -> list[dict]:
         """Get contacts that haven't sent adverts in specified days"""
         try:
@@ -2711,12 +2778,32 @@ class RepeaterManager:
                             # Assume it's already a datetime object
                             last_seen_dt = last_seen
 
+                        now = datetime.now()
+
+                        # An unset device clock reports a firmware seed, which says
+                        # nothing about when the contact was last heard. A future
+                        # timestamp cannot be a past observation either.
+                        if self._is_unset_device_clock(last_seen_dt) or last_seen_dt > now:
+                            self.logger.debug(
+                                "Ignoring unset/implausible last_seen %r for contact %s "
+                                "(device clock not set)",
+                                last_seen,
+                                sanitize_name(contact_data.get('name', 'Unknown')),
+                            )
+                            continue
+
                         if last_seen_dt < cutoff_date:
+                            public_key = contact_data.get('public_key', '')
+                            attempts = self._stale_removal_failures.get(public_key, 0)
+                            if public_key and attempts >= self.MAX_STALE_REMOVAL_ATTEMPTS:
+                                # Already given up on this one; excluded so it does not
+                                # keep occupying the removal budget or the warning log.
+                                continue
                             stale_contacts.append({
                                 'name': contact_data.get('name', contact_data.get('adv_name', 'Unknown')),
-                                'public_key': contact_data.get('public_key', ''),
+                                'public_key': public_key,
                                 'last_seen': last_seen,
-                                'days_stale': (datetime.now() - last_seen_dt).days
+                                'days_stale': (now - last_seen_dt).days
                             })
                     except Exception as e:
                         self.logger.debug(f"Error parsing timestamp for contact {sanitize_name(contact_data.get('name', 'Unknown'))}: {e}")
@@ -2784,6 +2871,7 @@ class RepeaterManager:
         """Remove stale contacts to free up space"""
         try:
             removed_count = 0
+            given_up = 0
 
             for contact in stale_contacts[:max_remove]:
                 try:
@@ -2805,6 +2893,7 @@ class RepeaterManager:
 
                     if result.type == EventType.OK:
                         removed_count += 1
+                        self._stale_removal_failures.pop(public_key, None)
                         self.logger.info(f"✅ Successfully removed stale contact: {contact_name}")
 
                         # Log the removal
@@ -2814,14 +2903,51 @@ class RepeaterManager:
                         )
                     else:
                         error_code = result.payload.get('error_code', 'unknown') if hasattr(result, 'payload') else 'unknown'
-                        self.logger.warning(f"❌ Failed to remove stale contact: {contact_name} - Error: {result.type}, Code: {error_code}")
+                        # A refusal leaves the contact on the device, so the next sweep
+                        # would pick it up again. Count the attempt and stop after a few.
+                        attempts = self._stale_removal_failures.get(public_key, 0) + 1
+                        self._stale_removal_failures[public_key] = attempts
+
+                        if attempts >= self.MAX_STALE_REMOVAL_ATTEMPTS:
+                            given_up += 1
+                            self.logger.warning(
+                                f"❌ Giving up on stale contact: {contact_name} - the device "
+                                f"refused removal {attempts} times (last error: {result.type}, "
+                                f"Code: {error_code}). It will be skipped from now on."
+                            )
+                        else:
+                            self.logger.warning(
+                                f"❌ Failed to remove stale contact: {contact_name} - "
+                                f"Error: {result.type}, Code: {error_code} "
+                                f"(attempt {attempts}/{self.MAX_STALE_REMOVAL_ATTEMPTS})"
+                            )
 
                     # Small delay between removals
                     await asyncio.sleep(1)
 
                 except Exception as e:
-                    self.logger.error(f"Error removing stale contact {sanitize_name(contact.get('name', 'Unknown'))}: {e}")
+                    # Timeouts and command exceptions are failures too. Without counting
+                    # them the contact stays eligible forever and the retry storm this
+                    # guard exists to stop can come back through the exception path.
+                    public_key = contact.get('public_key', '')
+                    if public_key:
+                        attempts = self._stale_removal_failures.get(public_key, 0) + 1
+                        self._stale_removal_failures[public_key] = attempts
+                        if attempts >= self.MAX_STALE_REMOVAL_ATTEMPTS:
+                            given_up += 1
+                    self.logger.error(
+                        f"Error removing stale contact "
+                        f"{sanitize_name(contact.get('name', 'Unknown'))}: {e}"
+                    )
                     continue
+
+            if given_up:
+                self.logger.warning(
+                    "%d stale contact(s) could not be removed by the device and are now "
+                    "excluded from cleanup. The contact list may stay near its limit; "
+                    "remove them from the companion app if space is needed.",
+                    given_up,
+                )
 
             return removed_count
 

@@ -16,6 +16,8 @@ class HfcondCommand(BaseCommand):
     """
 
     # Plugin metadata
+    # Read-only informational output; safe for scheduled {cmd:...} rendering.
+    render_safe = True
     name = "hfcond"
     keywords = ['hfcond']
     description = "Get HF band conditions for ham radio"

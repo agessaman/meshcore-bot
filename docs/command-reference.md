@@ -97,6 +97,19 @@ cmd
 
 ---
 
+### `contact`
+
+Share the bot's own contact card so you can add it and send DMs without waiting for an advert.
+
+**Usage:**
+```
+contact
+```
+
+**Response:** A clickable contact card containing the bot's public key and device name.
+
+---
+
 ### `version`
 
 Show the bot's current software version.
@@ -282,7 +295,7 @@ When no location is given, uses the sender's companion location if known, then t
 
 ### `airplanes [location] [options]` / `overhead [lat,lon]`
 
-Get aircraft tracking information using ADS-B data from airplanes.live or compatible APIs.
+Get aircraft tracking information using ADS-B data from adsb.lol or any compatible readsb/ADSBExchange v2 API.
 
 **Aliases:** `aircraft`, `planes`, `adsb`, `overhead`
 
@@ -342,12 +355,12 @@ airplanes 47.6,-122.3 radius=25 closest
 **Configuration:**
 The command can be configured in `config.ini` under `[Airplanes_Command]`:
 - `enabled` - Enable/disable the command
-- `api_url` - API endpoint URL (default: `http://api.airplanes.live/v2/`)
+- `api_url` - API endpoint URL (default: `https://api.adsb.lol/v2/`). Existing configs that still point at `api.airplanes.live` are remapped to this default. A local readsb instance or any other host is left as-is.
 - `default_radius` - Default search radius in nautical miles
 - `max_results` - Maximum number of results to return
 - `url_timeout` - API request timeout in seconds
 
-**Note:** Uses companion location from database if available, otherwise falls back to bot location from config. The API is rate-limited to 1 request per second.
+**Note:** Uses companion location from database if available, otherwise falls back to bot location from config. Keep the command cooldown at 2 seconds to stay within typical public ADS-B rate limits.
 
 ---
 
@@ -779,6 +792,27 @@ prefix free
 - Status (active/inactive)
 - Last seen time
 - Location (if available)
+
+**Data source:** By default the bot answers from its own database of repeaters it has
+heard. No external service is required, and `[External_Data] repeater_prefix_api_url`
+should be left **empty** — leaving it empty does not disable the command.
+
+Setting that option adds an optional external dataset on top: node counts come from the
+API while names and locations still come from the local database. The setting dates from
+when the project fetched data from `map.w0z.is`, which is defunct, and there is no
+drop-in public replacement. To serve your own, answer a plain `GET` with HTTP 200 and:
+
+```json
+{
+  "data": [
+    {"prefix": "AB", "node_count": 3, "node_names": ["Node One", "Node Two", "Node Three"]}
+  ]
+}
+```
+
+`prefix` is upper-cased by the bot, `node_count` is an integer, and `node_names` is a
+list of strings. The request times out after 10 seconds, and responses are cached for
+`repeater_prefix_cache_hours` (default 1).
 
 ---
 

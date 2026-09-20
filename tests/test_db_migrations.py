@@ -468,3 +468,19 @@ class TestNeighborTables:
         runner.run()
         assert "neighbor_links" in DBManager.ALLOWED_TABLES
         assert "neighbor_observations" in DBManager.ALLOWED_TABLES
+
+
+class TestObservedPathsZeroHopSignal:
+    def test_snr_rssi_columns_added(self, runner, conn):
+        runner.run()
+        cursor = conn.cursor()
+        assert _column_exists(cursor, "observed_paths", "snr") is True
+        assert _column_exists(cursor, "observed_paths", "rssi") is True
+
+    def test_migration_is_idempotent(self, conn, logger):
+        MigrationRunner(conn, logger).run()
+        MigrationRunner(conn, logger).run()
+        applied = conn.execute(
+            "SELECT COUNT(*) FROM schema_version WHERE version = 23"
+        ).fetchone()[0]
+        assert applied == 1

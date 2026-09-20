@@ -1,8 +1,8 @@
 """Tests for zero-hop neighbor discovery (modules/neighbors_discovery.py).
 
 Ported from the meshcore-packet-capture project's test_neighbors.py, minus the
-device-lock tests (the bot serialises radio commands globally in
-modules/core.py _SerializedCommands, so the module takes no lock of its own).
+device-lock tests (the bot serialises radio frames globally in
+modules/core.py _serialize_command_frames, so the module takes no lock of its own).
 """
 
 from __future__ import annotations
@@ -809,3 +809,57 @@ def test_record_neighbors_reports_zero_on_database_error(tmp_path):
         [nb.NeighborEntry(pubkey=KEY_A, snr=1.0, heard_at=0.0)], LOGGER,
     )
     assert written == 0
+
+
+def _zero_hop_rows(db):
+    with db.connection() as conn:
+        return [dict(r) for r in conn.execute(
+            "SELECT * FROM observed_paths WHERE path_length = 0"
+        )]
+
+
+def test_record_neighbors_upserts_zero_hop_observed_path(db):
+    entries = [nb.NeighborEntry(pubkey=KEY_A, snr=7.5, heard_at=0.0,
+                                status=nb.STATUS_RESPONDED)]
+    assert nb.record_neighbors(db, SELF_KEY, entries, LOGGER) == 1
+    rows = _zero_hop_rows(db)
+    assert len(rows) == 1
+    assert rows[0]["public_key"] == KEY_A
+    assert rows[0]["path_hex"] == ""
+    assert rows[0]["path_length"] == 0
+    assert rows[0]["snr"] == 7.5
+    assert rows[0]["rssi"] is None
+
+
+def test_upsert_zero_hop_discover_does_not_clear_rssi(db):
+    with db.connection() as conn:
+        nb.upsert_zero_hop_observed_path(
+            conn.cursor(), KEY_A, snr=4.0, rssi=-80.0, update_rssi=True
+        )
+        conn.commit()
+        nb.upsert_zero_hop_observed_path(
+            conn.cursor(), KEY_A, snr=9.0, update_rssi=False
+        )
+        conn.commit()
+    rows = _zero_hop_rows(db)
+    assert len(rows) == 1
+    assert rows[0]["snr"] == 9.0
+    assert rows[0]["rssi"] == -80.0
+    assert rows[0]["observation_count"] == 2
+
+
+def test_upsert_zero_hop_preserves_signal_when_refresh_has_none(db):
+    """A later empty-path advert without RF figures must not NULL the row."""
+    with db.connection() as conn:
+        nb.upsert_zero_hop_observed_path(
+            conn.cursor(), KEY_A, snr=4.0, rssi=-80.0, update_rssi=True
+        )
+        conn.commit()
+        nb.upsert_zero_hop_observed_path(
+            conn.cursor(), KEY_A, snr=None, rssi=None, update_rssi=True
+        )
+        conn.commit()
+    rows = _zero_hop_rows(db)
+    assert rows[0]["snr"] == 4.0
+    assert rows[0]["rssi"] == -80.0
+    assert rows[0]["observation_count"] == 2

@@ -58,6 +58,27 @@ attempt to restart that service while preserving the original failure status.
 
 Read the [upgrade guide](upgrade.md) before upgrading an existing installation.
 
+### Optional feature packages
+
+Two feature sets are not installed by default because most bots do not need them:
+the profanity filter (`better-profanity`, `unidecode`) and geocoding extras
+(`pycountry`, `us`). A fresh install and a `--upgrade` both prompt for each one.
+
+For an unattended run, install both without prompting:
+
+```bash
+sudo ./install-service.sh --upgrade --install-extras
+```
+
+`--install-extras` also works alongside `--update-venv`, which otherwise keeps
+whatever is already in the virtual environment and does not prompt:
+
+```bash
+sudo ./install-service.sh -u --update-venv --install-extras
+```
+
+A failed extras install is non-fatal; the bot installs and starts without them.
+
 ## Manual Installation
 
 If you prefer to install manually:
@@ -99,7 +120,7 @@ tree writable by the service account.
 
 ```bash
 sudo python3 -m venv /opt/meshcore-bot/venv
-sudo /opt/meshcore-bot/venv/bin/pip install \
+sudo /opt/meshcore-bot/venv/bin/python -m pip install \
   -r /opt/meshcore-bot/requirements.txt
 ```
 
@@ -216,7 +237,7 @@ sudo systemctl restart meshcore-bot
 1. Check service status: `sudo systemctl status meshcore-bot`
 2. View logs: `sudo journalctl -u meshcore-bot -n 50`
 3. Check configuration: `sudo nano /etc/meshcore-bot/config.ini`
-4. Verify dependencies: `/opt/meshcore-bot/venv/bin/pip list | grep meshcore`
+4. Verify dependencies: `/opt/meshcore-bot/venv/bin/python -m pip list | grep meshcore`
 
 ### Dependency Import or Syntax Errors
 

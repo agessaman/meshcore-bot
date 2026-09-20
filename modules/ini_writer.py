@@ -21,6 +21,7 @@ import os
 import re
 import shutil
 import tempfile
+import threading
 from datetime import datetime
 
 # A section header line: ``[Section]`` (optionally indented / trailing space).
@@ -37,6 +38,11 @@ _KEY_RE = re.compile(
 
 # How many timestamped backups to keep per config file.
 _MAX_BACKUPS = 20
+
+# update_ini_values is a read-modify-replace. The web viewer serves requests on
+# threads, so two concurrent saves could both read the same original and the second
+# atomic replace would discard the first one's changes. Serialise them.
+_WRITE_LOCK = threading.Lock()
 
 
 def _normalize_key(key: str) -> str:
@@ -183,6 +189,16 @@ def update_ini_values(
     # Validate before touching the file so a bad payload can never half-write.
     _check_writable(updates, deletes)
 
+    with _WRITE_LOCK:
+        return _update_ini_values_locked(config_path, updates, deletes)
+
+
+def _update_ini_values_locked(
+    config_path: str,
+    updates: dict[str, dict[str, str]],
+    deletes: dict[str, list[str] | set[str]] | None,
+) -> dict:
+    """Body of :func:`update_ini_values`, run while holding ``_WRITE_LOCK``."""
     with open(config_path, encoding="utf-8") as fh:
         lines = fh.readlines()
 

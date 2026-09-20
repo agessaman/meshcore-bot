@@ -135,7 +135,9 @@ sudo dpkg -i dist/meshcore-bot_*.deb
 
 The package installs root-owned code in `/opt/meshcore-bot/`, configuration in
 `/etc/meshcore-bot/`, mutable state in `/var/lib/meshcore-bot/`, logs in
-`/var/log/meshcore-bot/`, and creates a `meshcore-bot` system user.
+`/var/log/meshcore-bot/`, and creates a `meshcore-bot` system user. On 32-bit ARM
+(Raspberry Pi OS armv6l/armv7l) postinst applies the same piwheels index and
+`constraints-armv7.txt` pins as `install-service.sh`.
 
 ### Docker Deployment
 For containerized deployment using Docker:
@@ -274,16 +276,13 @@ log_max_bytes = 5242880    # 5 MB per file
 log_backup_count = 3       # number of rotated files to keep
 ```
 
-**Database Backup** — schedule automatic backups from the Config tab:
+**Database Backup**: schedule automatic backups from the Config tab. The viewer stores these settings in the database, not in a `[Maintenance]` section of `config.ini`:
 
-```ini
-[Maintenance]
-db_backup_enabled = true
-db_backup_schedule = daily      # daily | weekly | manual
-db_backup_time = 02:00          # HH:MM local time
-db_backup_retention_count = 7
-db_backup_dir = /data/backups
-```
+- Enabled
+- Schedule: daily, weekly, or manual
+- Time: local `HH:MM`
+- Retention count
+- Backup directory
 
 The **Maintenance Status** card in the Config tab shows the last backup time, next scheduled run, and log rotation status.
 
@@ -351,7 +350,7 @@ radio_offline_alert_email =          # alert recipient(s); falls back to nightly
 [Keywords]
 # Format: keyword = response_template
 # Variables: {sender}, {connection_info}, {snr}, {rssi}, {timestamp}, {path},
-#            {hops}, {hops_label}, {elapsed}, {path_distance}, {firstlast_distance},
+#            {hops}, {hops_label}, {elapsed}, {packet_hash}, {path_distance}, {firstlast_distance},
 #            {total_contacts}, {total_repeaters}, {total_companions}, ...
 test = "Message received from {sender} | {connection_info}"
 help = "Bot Help: test, ping, help, hello, cmd, wx, aqi, sun, moon, solar, hfcond, satpass, dice, roll, joke, dadjoke, sports, channels, path, prefix, repeater, stats, alert"
@@ -451,15 +450,8 @@ When `json_logging = true` each log line is a JSON object:
 ```
 
 ### Maintenance
-```ini
-[Maintenance]
-db_backup_enabled = false
-db_backup_schedule = daily      # daily | weekly | manual
-db_backup_time = 02:00          # HH:MM local time
-db_backup_retention_count = 7
-db_backup_dir = /data/backups
-email_attach_log = false        # attach current log file (≤ 5 MB) to nightly email before rotation
-```
+
+Configure database backups and nightly-email log attachments in the Web Viewer Config tab. These settings are stored in the SQLite `bot_metadata` table and do not use a `[Maintenance]` section in `config.ini`.
 
 ### Notifications
 ```ini
@@ -525,6 +517,7 @@ Keyword responses support these template variables:
 - `{path}` - Message routing path
 - `{hops}` - Hop count (integer or `?`)
 - `{hops_label}` - Hop count with label (`"1 hop"`, `"3 hops"`, `"?"`)
+- `{packet_hash}` - 16-char MeshCore packet identity hash (uppercase hex); empty when RF correlation did not attach routing info
 - `{path_distance}` - Estimated total path distance in km
 - `{firstlast_distance}` - First-to-last repeater distance in km
 - `{total_contacts}`, `{total_repeaters}`, `{total_companions}` - Mesh network counts (for scheduled messages)

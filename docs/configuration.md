@@ -114,6 +114,21 @@ outgoing_flood_scope_override = #west
 flood_scopes                  = #west
 ```
 
+### Managing region scopes from the web viewer
+
+The **Region Scopes** card on the web viewer's **Radio** page edits both keys
+for you. It writes `[Channels]` in `config.ini` and queues a config reload, so
+changes take effect **without restarting the bot**, and it reports what the
+reload did rather than only that the file was written.
+
+It is an editor for the same two keys, not a separate store, so values set by
+hand and values set in the UI are the same thing. Scope names are normalized on
+save the way the bot normalizes them (`west` is stored as `#west`), and a name
+containing `,`, `%` or an inner `#` is refused before anything is written.
+
+Per-channel `flood_scope.<channel>` entries are shown read-only there; edit
+those in `config.ini`.
+
 ### Public channel guard
 
 The bot **refuses to start** if `monitor_channels` includes the Public channel, unless an explicit override key is set in `[Bot]`. This prevents accidental bot deployments on the shared channel that is visible to all mesh users by default.
@@ -142,11 +157,11 @@ Many commands and features have their own section. Options there control whether
 Examples of sections that configure specific commands or features:
 
 - **`[Path_Command]`** – Path decoding and repeater selection. See [Path Command](path-command-config.md) for all options.
-- **`[Test_Command]`** – `test` / `t` behavior. Optional **`response_format`** overrides the legacy **`[Keywords] test`** string. Templates support the same placeholders as Keywords, plus **feed-style pipe filters** on placeholders (e.g. `{path_distance|pathbytes_min:2}`) implemented in `modules/response_template.py`—see comments under `[Test_Command]` in `config.ini.example`.
+- **`[Test_Command]`** – `test` / `t` behavior. Optional **`response_format`** overrides the legacy **`[Keywords] test`** string. Templates support the same placeholders as Keywords, plus **feed-style pipe filters** on placeholders (e.g. `{path_distance|pathbytes_min:2}`, `{firstlast_distance|hops_min:1}`) implemented in `modules/response_template.py`—see comments under `[Test_Command]` in `config.ini.example`.
 - **`[Prefix_Command]`** – Prefix lookup, prefix best, range limits.
 - **`[Cmd_Command]`** – `cmd` behavior. Set `cmd_reference_url` to return `Full command reference: <url>` instead of the generated compact command list.
 - **`[Weather]`** – Used by the `wx` / `gwx` commands and the Weather Service plugin (see [Weather Service](weather-service.md)).
-- **`[Airplanes_Command]`** – Aircraft/ADS-B command (API URL, radius, limits).
+- **`[Airplanes_Command]`** – Aircraft/ADS-B command (API URL, radius, limits). Default `api_url` is `https://api.adsb.lol/v2/`.
 - **`[Aurora_Command]`** – Aurora command (default coordinates).
 - **`[Alert_Command]`** – Emergency alerts (agency IDs, etc.).
 - **`[Sports_Command]`** – Sports scores (teams, leagues).
@@ -206,6 +221,47 @@ Admins can DM **`channelpause`** or **`channelresume`** (see `[Admin_ACL]` in `c
 ## Scheduled messages (`[Scheduled_Messages]`)
 
 Each entry is `<schedule_key> = <value>` where the value is normally **`channel:message`** (first colon separates channel from body). For **regional flood scope** on that send only, use **`channel:#scope:message`**: the middle segment must start with `#` (same convention as `flood_scopes` / `outgoing_flood_scope_override`). The message body may contain more colons. Omit the middle field for classic global flood. See `config.ini.example` under `[Scheduled_Messages]` for examples. The **`schedule`** command lists each job with `(#scope)` when set.
+
+### Managing schedules from the web viewer
+
+The **Schedule** page in the web viewer edits this section for you. It writes `config.ini` and queues a config reload, so new and changed schedules take effect **without restarting the bot**.
+
+It is an editor for the same `[Scheduled_Messages]` section, not a separate store, so entries added by hand and entries added in the UI are the same thing and the `schedule` command lists both.
+
+The editor builds the cron key from plain-language options (every day at a time, several times a day, certain days of the week, every N hours or minutes) and shows the resolved expression plus the next five run times before you save. "Advanced (cron)" accepts a raw expression. Existing entries always open in Advanced so a stored expression is never silently rewritten.
+
+Schedules that the bot cannot run are listed rather than hidden, marked **Not scheduled** with the reason, so a typo that stops a message from airing is visible instead of silent. The 15-minute floor for `{cmd:...}` messages is enforced in the editor too, so it is refused when you save rather than dropped later at startup.
+
+### Broadcasting a command's output (`{cmd:...}`)
+
+A scheduled message can embed the reply of any bot command with **`{cmd:<command> [args]}`**. The command runs for its text only — it transmits nothing itself — and the scheduled message carries the result. This is how you put a recurring forecast (or any other command) on the air without that command needing its own scheduling settings:
+
+```ini
+[Scheduled_Messages]
+0 6,12,18 * * * = Public:{cmd:wx Seattle}
+*/30 * * * *    = Public:Conditions now: {cmd:wx 98101}
+@hourly         = Public:{cmd:aqi Tacoma}
+```
+
+The trigger is matched against command **names and their keywords**, so `{cmd:weather Seattle}` and `{cmd:wx Seattle}` are the same command. Arguments are passed through exactly as a user would type them.
+
+A placeholder expands to **nothing** (and logs a warning) when the command is unknown, disabled in config, admin-only, times out, or returns no output — the literal `{cmd:...}` is never transmitted. If a message is empty after expansion, nothing is sent at all. Command output is not re-scanned, so a reply that happens to contain `{cmd:...}` cannot recurse.
+
+#### Airtime guards
+
+Every firing is a transmission on a shared medium, and a command placeholder makes it easy to write a cron that airs several times an hour. Two guards apply, and neither is configurable:
+
+- **A 15-minute floor.** A schedule containing `{cmd:...}` may not fire more often than every 15 minutes. An entry that does is **rejected at startup** with an error and is not scheduled at all — it does not silently run at a slower rate. The check measures the *tightest* gap between firings, so `0,1 * * * *` is treated as a 60-second schedule rather than an hourly one. Schedules with no command placeholder are unaffected.
+- **The command's own cooldown still applies.** `[<Name>_Command] cooldown_seconds` is not bypassed by scheduling. If the command is on cooldown when the schedule fires, the placeholder expands to nothing for that round and logs a warning.
+
+Other limits worth knowing:
+
+- **Only commands marked `render_safe` can be rendered.** Capture intercepts `send_response` and `send_response_chunked`, so a command that transmits by other means (`advert`), posts its own messages (`announcements`), or is DM-only (`schedule`, which would broadcast configuration) is refused. This is opt-in rather than a denylist, so a new command is never renderable by accident. The read-only informational commands (`wx`, `aqi`, `sun`, `moon`, `solar`, `hfcond`, `satpass`, `rain`, `stats`, and similar) are marked safe.
+- `[Bot] scheduled_command_timeout_seconds` (default `30`) bounds each render. Network-backed commands like `wx` need the headroom.
+
+A rendered reply longer than one message is split to the RF body budget and sent as several messages rather than failing at the device.
+
+Even within the floor, mind the cost: a `*/15 * * * *` forecast is 96 transmissions a day.
 
 ### Schedule keys (APScheduler cron, not Vixie)
 

@@ -2773,59 +2773,39 @@ class TestDbBackupDirValidation:
 class TestBackupNowRoute:
     """Tests for POST /api/maintenance/backup_now endpoint."""
 
-    def test_returns_503_when_no_scheduler(self, viewer):
-        """Returns 503 when bot/scheduler is not attached."""
-        # viewer fixture has no bot attached
-        with viewer.app.test_client() as c:
-            resp = c.post("/api/maintenance/backup_now")
+    def test_returns_503_when_no_maintenance_runner(self, viewer):
+        """Returns 503 when the viewer's maintenance runner is unavailable."""
+        with patch.object(viewer, '_maintenance_runner', None):
+            with viewer.app.test_client() as c:
+                resp = c.post("/api/maintenance/backup_now")
         assert resp.status_code == 503
         data = resp.get_json()
         assert data["success"] is False
         assert "error" in data  # Error details sanitized in 5xx responses
 
     def test_returns_200_on_successful_backup(self, viewer, tmp_path):
-        """Returns 200 with success=True and path when backup succeeds."""
-        from unittest.mock import MagicMock, patch
+        """The standalone viewer performs a real SQLite backup."""
+        backup_dir = tmp_path / "backups"
+        viewer.db_manager.set_metadata('maint.db_backup_dir', str(backup_dir))
 
-        mock_scheduler = MagicMock()
-
-        def fake_run_db_backup():
-            # Simulate what run_db_backup writes to metadata
-            viewer.db_manager.set_metadata(
-                'maint.status.db_backup_path', str(tmp_path / "test.db")
-            )
-            viewer.db_manager.set_metadata('maint.status.db_backup_outcome', 'ok')
-
-        mock_scheduler.run_db_backup = fake_run_db_backup
-        mock_bot = MagicMock()
-        mock_bot.scheduler = mock_scheduler
-
-        with patch.object(viewer, 'bot', mock_bot, create=True):
-            with viewer.app.test_client() as c:
-                resp = c.post("/api/maintenance/backup_now")
+        with viewer.app.test_client() as c:
+            resp = c.post("/api/maintenance/backup_now")
 
         assert resp.status_code == 200
         data = resp.get_json()
         assert data["success"] is True
-        assert "test.db" in data["path"]
+        assert Path(data["path"]).is_file()
+        assert Path(data["path"]).parent == backup_dir
 
     def test_returns_500_on_backup_error(self, viewer):
         """Returns 500 with success=False when backup writes an error outcome."""
-        from unittest.mock import MagicMock, patch
-
-        mock_scheduler = MagicMock()
-
         def fake_run_db_backup():
             viewer.db_manager.set_metadata('maint.status.db_backup_path', '')
             viewer.db_manager.set_metadata(
                 'maint.status.db_backup_outcome', 'error: cannot create dir'
             )
 
-        mock_scheduler.run_db_backup = fake_run_db_backup
-        mock_bot = MagicMock()
-        mock_bot.scheduler = mock_scheduler
-
-        with patch.object(viewer, 'bot', mock_bot, create=True):
+        with patch.object(viewer._maintenance_runner, 'run_db_backup', fake_run_db_backup):
             with viewer.app.test_client() as c:
                 resp = c.post("/api/maintenance/backup_now")
 

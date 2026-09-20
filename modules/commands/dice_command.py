@@ -14,6 +14,8 @@ class DiceCommand(BaseCommand):
     """Handles dice rolling commands"""
 
     # Plugin metadata
+    # Read-only informational output; safe for scheduled {cmd:...} rendering.
+    render_safe = True
     name = "dice"
     keywords = ['dice']
     description = "Roll dice for D&D and tabletop games. Use 'dice' for d6, 'dice d20' for d20, 'dice 2d6' for 2d6, 'dice d10 d6' for mixed dice, 'dice decade' for decade die (00-90), etc."
@@ -73,30 +75,6 @@ class DiceCommand(BaseCommand):
             str: Help text string.
         """
         return self.translate('commands.dice.help')
-
-    def matches_keyword(self, message: MeshMessage) -> bool:
-        """Override to handle dice-specific matching.
-
-        Args:
-            message: The received message.
-
-        Returns:
-            bool: True if message is a dice command, False otherwise.
-        """
-        content_lower = self.cleanup_message_for_matching(message)
-
-        # Check for exact "dice" match
-        if content_lower == "dice":
-            return True
-
-        # Check for dice with parameters (dice d20, dice 20, dice d6, etc.)
-        # Match any message starting with "dice " - validation happens in execute()
-        if content_lower.startswith("dice "):
-            words = content_lower.split()
-            if len(words) >= 2 and words[0] == "dice":
-                return True  # Match any dice command, validation in execute()
-
-        return False
 
     def parse_dice_notation(self, dice_input: str) -> tuple:
         """Parse dice notation and return (sides, count, is_decade).
@@ -279,22 +257,17 @@ class DiceCommand(BaseCommand):
         Returns:
             bool: True if executed successfully, False otherwise.
         """
-        content = message.content.strip()
-
-        # Handle command-style messages
-        if content.startswith('!'):
-            content = content[1:].strip()
+        _trigger, dice_part = self.split_trigger_and_args(message.content)
 
         # Default to d6 if no specification
-        if content.lower() == "dice":
+        if not dice_part:
             sides = 6
             count = 1
             results = self.roll_dice(sides, count)
             response = self.format_dice_result(sides, count, results)
             return await self.send_response(message, response)
 
-        # Parse dice specification
-        dice_part = content[5:].strip()  # Get everything after "dice "
+        # Parse dice specification after the trigger keyword / alias
 
         # Try parsing as mixed dice first (multiple dice types)
         mixed_dice = self.parse_mixed_dice(dice_part)

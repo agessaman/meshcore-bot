@@ -1046,11 +1046,10 @@
     }
 
     /**
-     * One one-hop neighbour: name, SNR bar on a fixed scale, values.
+     * One direct neighbour: name, SNR bar on a fixed scale, values.
      *
-     * Signal is shown only where the stored hop count corroborates the path
-     * evidence. For the rest the row says "no signal reading" rather than
-     * borrowing a number measured on somebody else's link.
+     * Signal is shown when a zero-hop advert or neighbor-discover measurement
+     * is stored for this node. Otherwise the row says "no signal reading".
      */
     function neighborRow(item) {
         const row = document.createElement('div');
@@ -1084,8 +1083,7 @@
         } else {
             track.classList.add('neighbor-row__track--unknown');
             const unknown = makeTextElement('span', 'no signal reading', 'neighbor-row__rssi');
-            unknown.title = 'Heard one hop away, but no corroborated direct-reception '
-                + 'measurement is stored for this node.';
+            unknown.title = 'Heard directly, but no SNR/RSSI measurement is stored for this node.';
             values.appendChild(unknown);
         }
 
@@ -1167,7 +1165,7 @@
             select: 'neighbors-window',
             container: 'neighbors-list',
             limit: 10,
-            empty: 'No one-hop adverts heard in this window.',
+            empty: 'No direct neighbours heard in this window.',
             render: (item) => neighborRow(item),
             onLoad: (data) => {
                 setText('neighbors-count', formatNumber(data.total));
@@ -1241,13 +1239,14 @@
             'Change compares the last complete calendar day against the day before it — ' +
             'not a rolling 24 hours. The headline number above it is a rolling 24-hour count.',
         'neighbors-info':
-            'Nodes whose advert reached this radio in a single hop, newest evidence first, ' +
-            'with the weakest measured links promoted to the top. Membership comes from the ' +
-            'observed path length divided by its bytes-per-hop encoding, not from the stored ' +
-            'hop count — that field claims far more direct neighbours than the path evidence ' +
-            'supports. SNR is shown only where both agree; a relayed packet\'s SNR measures ' +
-            'the last hop into this radio rather than the link to whoever sent it, so the ' +
-            'rest are left blank instead of borrowing another link\'s number.',
+            'Radios this node heard directly (MeshCore hop count 0: an empty RF path). ' +
+            'A path that already contains one hop hash is a relayed packet, not a neighbour. ' +
+            'Membership comes from those empty-path adverts plus confirmed zero-hop ' +
+            'neighbor-discover responses, not from the stored hop count — that field claims ' +
+            'far more direct neighbours than the path evidence supports. SNR/RSSI are the ' +
+            'measurement from that direct reception (or from discover, which reports SNR ' +
+            'only). A relayed packet\'s SNR measures the last hop into this radio rather ' +
+            'than the link to whoever sent it.',
         'hops-info':
             'Two distributions on one axis. Nodes: the fewest hops any of a node\'s adverts ' +
             'took to reach this radio, over 7 days. Flood packets: how far each flood packet ' +

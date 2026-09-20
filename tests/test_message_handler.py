@@ -1,12 +1,23 @@
 """Tests for MessageHandler pure logic (no network, no meshcore device)."""
 
+import asyncio
 import configparser
 import time
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from modules.message_handler import MessageHandler
+from modules.message_handler import (
+    RF_MATCH_CHANNEL_AUTHENTICATED,
+    RF_MATCH_EXACT,
+    RF_MATCH_FALLBACK,
+    RF_MATCH_KEY,
+    RF_MATCH_PARTIAL,
+    RF_MATCH_PAYLOAD,
+    RF_MATCH_PUBKEY,
+    MessageHandler,
+    rf_data_is_correlated,
+)
 from modules.models import MeshMessage
 from tests.conftest import mock_message as make_message
 
@@ -364,7 +375,7 @@ class TestFindRecentRfData:
         entry = self._rf_entry(age=1)
         handler.recent_rf_data = [entry]
         result = handler.find_recent_rf_data()
-        assert result is entry
+        assert result == {**entry, RF_MATCH_KEY: RF_MATCH_FALLBACK}
 
     def test_exact_packet_prefix_match(self, handler):
         handler.rf_data_timeout = 30
@@ -372,7 +383,7 @@ class TestFindRecentRfData:
         other = self._rf_entry(age=2, packet_prefix="00000000000000000000000000000000")
         handler.recent_rf_data = [target, other]
         result = handler.find_recent_rf_data("deadbeefdeadbeef1234567890abcdef")
-        assert result is target
+        assert result == {**target, RF_MATCH_KEY: RF_MATCH_EXACT}
 
     def test_exact_pubkey_prefix_match(self, handler):
         handler.rf_data_timeout = 30
@@ -380,7 +391,7 @@ class TestFindRecentRfData:
         other = self._rf_entry(age=2, pubkey_prefix="1111", packet_prefix="")
         handler.recent_rf_data = [target, other]
         result = handler.find_recent_rf_data("abcd")
-        assert result is target
+        assert result == {**target, RF_MATCH_KEY: RF_MATCH_PUBKEY}
 
     def test_partial_packet_prefix_match(self, handler):
         handler.rf_data_timeout = 30
@@ -389,7 +400,7 @@ class TestFindRecentRfData:
         target = self._rf_entry(age=1, packet_prefix=long_prefix, pubkey_prefix="")
         handler.recent_rf_data = [target]
         result = handler.find_recent_rf_data(partial_key)
-        assert result is target
+        assert result == {**target, RF_MATCH_KEY: RF_MATCH_PARTIAL}
 
     def test_no_key_returns_most_recent(self, handler):
         handler.rf_data_timeout = 30
@@ -406,7 +417,9 @@ class TestFindRecentRfData:
         # With max_age=5, entry is too old
         assert handler.find_recent_rf_data(max_age_seconds=5) is None
         # With max_age=30, entry is visible
-        assert handler.find_recent_rf_data(max_age_seconds=30) is entry
+        assert handler.find_recent_rf_data(max_age_seconds=30) == {
+            **entry, RF_MATCH_KEY: RF_MATCH_FALLBACK,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -666,6 +679,10 @@ class TestHandleChannelMessage:
         handler.bot.mesh_graph = None
         handler.recent_rf_data = []
         handler.enhanced_correlation = False
+        # No flood_scopes allowlist configured, which is the default. Left as a Mock
+        # this reads as truthy and these tests accidentally exercise the allowlist.
+        handler.bot.command_manager.flood_scope_keys = {}
+        handler.bot.command_manager.flood_scope_allow_global = False
 
     def _make_event(self, payload):
         event = Mock()
@@ -912,6 +929,47 @@ def _make_packet_hex(
     path_len_byte = (size_code << 6) | (hop_count & 0x3F)
     pkt = bytes([header]) + transport + bytes([path_len_byte]) + path_bytes + payload_bytes
     return pkt.hex()
+
+
+def _make_group_text_packet(
+    secret: bytes,
+    sender_timestamp: int,
+    text: str,
+    *,
+    path_bytes: bytes = b"",
+    bytes_per_hop: int = 1,
+    route_type: int = 1,
+    transport: bytes = b"",
+    attempt: int = 0,
+) -> tuple[str, bytes]:
+    """Build an authenticated GRP_TXT packet and its application payload."""
+    import hashlib
+    import hmac
+
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
+    plaintext = (
+        sender_timestamp.to_bytes(4, "little")
+        + bytes([attempt & 0x03])
+        + text.encode("utf-8")
+    )
+    plaintext += b"\x00" * ((-len(plaintext)) % 16)
+    encryptor = Cipher(algorithms.AES(secret), modes.ECB()).encryptor()
+    ciphertext = encryptor.update(plaintext) + encryptor.finalize()
+    cipher_mac = hmac.new(secret + b"\x00" * 16, ciphertext, hashlib.sha256).digest()[:2]
+    channel_hash = hashlib.sha256(secret).digest()[:1]
+    group_payload = channel_hash + cipher_mac + ciphertext
+    hop_count = len(path_bytes) // bytes_per_hop
+    packet_hex = _make_packet_hex(
+        5,
+        route_type,
+        path_bytes=path_bytes,
+        payload_bytes=group_payload,
+        hop_count=hop_count,
+        bytes_per_hop=bytes_per_hop,
+        transport=transport,
+    )
+    return packet_hex, group_payload
 
 
 # ---------------------------------------------------------------------------
@@ -1625,6 +1683,321 @@ class TestHandleRfLogData:
         assert entry["transport_code1"] is None
 
 
+class TestAuthenticatedChannelCorrelation:
+    """Issue #255: correlate CHAN events by authenticated message identity."""
+
+    SECRET_1 = bytes.fromhex("eb50a1bcb3e4e5d7bf69a57c9dada211")
+    SECRET_2 = bytes.fromhex("8b3387e9c5cdea6ac9e5edbaa115cd72")
+    SENDER_TIMESTAMP = 1_788_043_003
+    TEXT = "CoderNemesis-KY 🏷️: !test"
+
+    @staticmethod
+    def _setup(handler, channels):
+        handler.logger = Mock()
+        handler.bot.meshcore = Mock()
+        handler.bot.meshcore.channels = channels
+        handler.bot.transmission_tracker = None
+        handler.bot.web_viewer_integration = None
+
+    @staticmethod
+    async def _store_rf(
+        handler,
+        secret,
+        *,
+        path_bytes=b"",
+        bytes_per_hop=1,
+        snr=11.75,
+        rssi=-30,
+        route_type=1,
+        transport=b"",
+        attempt=0,
+        text=TEXT,
+        sender_timestamp=SENDER_TIMESTAMP,
+    ):
+        packet_hex, group_payload = _make_group_text_packet(
+            secret,
+            sender_timestamp,
+            text,
+            path_bytes=path_bytes,
+            bytes_per_hop=bytes_per_hop,
+            route_type=route_type,
+            transport=transport,
+            attempt=attempt,
+        )
+        event = Mock()
+        payload = {
+            "snr": snr,
+            "rssi": rssi,
+            "raw_hex": "0000" + packet_hex,
+            "payload": packet_hex,
+            "payload_length": len(bytes.fromhex(packet_hex)),
+            "route_type": route_type,
+            "payload_type": 5,
+            "pkt_payload": group_payload,
+        }
+        if transport:
+            payload["transport_code"] = transport.hex()
+        event.payload = payload
+        await handler.handle_rf_log_data(event)
+        return handler.channel_rf_data[-1]
+
+    @classmethod
+    def _chan(cls, channel_idx=1, **over):
+        payload = {
+            "type": "CHAN",
+            "SNR": 0.0,
+            "channel_idx": channel_idx,
+            "path_hash_mode": 0,
+            "path_len": 0,
+            "txt_type": 0,
+            "sender_timestamp": cls.SENDER_TIMESTAMP,
+            "text": cls.TEXT,
+        }
+        payload.update(over)
+        return payload
+
+    def test_channel_secrets_reads_meshcore_list_layout(self, handler):
+        """meshcore keeps channels in a list; entries without channel_idx use their position."""
+        self._setup(
+            handler,
+            [
+                {},
+                {"channel_secret": self.SECRET_1.hex()},
+                {"channel_idx": 5, "channel_key_hex": self.SECRET_2.hex()},
+                {"channel_idx": None, "channel_secret": self.SECRET_1},
+            ],
+        )
+
+        assert handler._channel_secrets() == [(1, self.SECRET_1), (5, self.SECRET_2)]
+
+    @pytest.mark.asyncio
+    async def test_zero_snr_uses_authenticated_rf_row(self, handler):
+        self._setup(
+            handler,
+            {1: {"channel_idx": 1, "channel_secret": self.SECRET_1}},
+        )
+        stored = await self._store_rf(handler, self.SECRET_1)
+
+        result = await handler._correlate_channel_message_rf_data(
+            None,
+            "",
+            self._chan(SNR=0.0),
+            scope_eligible_only=False,
+            extended_timeout=30.0,
+        )
+
+        assert result[RF_MATCH_KEY] == RF_MATCH_CHANNEL_AUTHENTICATED
+        assert result["packet_hash"] == stored["packet_hash"]
+        assert result["snr"] == 11.75
+
+    @pytest.mark.asyncio
+    async def test_issue_255_zero_snr_capture_resolves_direct_path(self, handler):
+        """CoderNemesis26's Aug 29 capture carries the exact message identity."""
+        self._setup(
+            handler,
+            {1: {"channel_idx": 1, "channel_secret": self.SECRET_1}},
+        )
+        inner_packet = (
+            "1540ca6609ada0b960f785625ad4267e43de66426f5680f9d91e7c78c48c"
+            "d2081440d26c083603ac6faac17069ecedfd66aa2ca9aa"
+        )
+        packet_info = handler.decode_meshcore_packet(inner_packet)
+        event = Mock()
+        event.payload = {
+            "snr": 11.75,
+            "rssi": 0,
+            "raw_hex": "2f00" + inner_packet,
+            "payload": inner_packet,
+            "payload_length": len(bytes.fromhex(inner_packet)),
+            "route_type": 1,
+            "payload_type": 5,
+            "pkt_payload": bytes.fromhex(packet_info["payload_hex"]),
+        }
+        await handler.handle_rf_log_data(event)
+
+        result = await handler._correlate_channel_message_rf_data(
+            None,
+            "",
+            {
+                "type": "CHAN",
+                "SNR": 0.0,
+                "channel_idx": 1,
+                "path_hash_mode": 1,
+                "path_len": 0,
+                "txt_type": 0,
+                "sender_timestamp": 1_788_042_903,
+                "text": "CoderNemesis-KY 🏷️: !test",
+            },
+            scope_eligible_only=False,
+            extended_timeout=30.0,
+        )
+
+        assert result[RF_MATCH_KEY] == RF_MATCH_CHANNEL_AUTHENTICATED
+        assert result["packet_hash"] == "82F374D969AF26A3"
+        assert result["routing_info"]["path_length"] == 0
+        assert result["routing_info"]["path_nodes"] == []
+
+    @pytest.mark.asyncio
+    async def test_first_reception_wins_over_repeater_echo(self, handler):
+        self._setup(
+            handler,
+            {1: {"channel_idx": 1, "channel_secret": self.SECRET_1}},
+        )
+        first = await self._store_rf(handler, self.SECRET_1, snr=11.75, rssi=-30)
+        echo = await self._store_rf(
+            handler,
+            self.SECRET_1,
+            path_bytes=bytes.fromhex("f0"),
+            snr=-4.0,
+            rssi=-90,
+        )
+        assert first["packet_hash"] == echo["packet_hash"]
+
+        result = await handler._correlate_channel_message_rf_data(
+            None,
+            "",
+            self._chan(SNR=0.0),
+            scope_eligible_only=False,
+            extended_timeout=30.0,
+        )
+
+        assert result["routing_info"]["path_length"] == 0
+        assert result["routing_info"]["path_nodes"] == []
+        assert result["snr"] == 11.75
+        assert result["rssi"] == -30
+
+    @pytest.mark.asyncio
+    async def test_authenticated_cache_outlives_general_rf_window(self, handler):
+        self._setup(
+            handler,
+            {1: {"channel_idx": 1, "channel_secret": self.SECRET_1}},
+        )
+        stored = await self._store_rf(handler, self.SECRET_1)
+        stored["timestamp"] = time.time() - 60
+        handler.recent_rf_data = []
+
+        result = await handler._correlate_channel_message_rf_data(
+            None,
+            "",
+            self._chan(),
+            scope_eligible_only=False,
+            extended_timeout=30.0,
+        )
+
+        assert result[RF_MATCH_KEY] == RF_MATCH_CHANNEL_AUTHENTICATED
+
+    @pytest.mark.asyncio
+    async def test_authenticated_cache_still_expires(self, handler):
+        self._setup(
+            handler,
+            {1: {"channel_idx": 1, "channel_secret": self.SECRET_1}},
+        )
+        stored = await self._store_rf(handler, self.SECRET_1)
+        stored["timestamp"] = time.time() - handler._channel_rf_cache_timeout - 1
+        handler.recent_rf_data = []
+
+        result = await handler._correlate_channel_message_rf_data(
+            None,
+            "",
+            self._chan(),
+            scope_eligible_only=False,
+            extended_timeout=30.0,
+        )
+
+        assert result is None
+
+    def test_tampered_ciphertext_is_not_authenticated(self, handler):
+        self._setup(
+            handler,
+            {1: {"channel_idx": 1, "channel_secret": self.SECRET_1}},
+        )
+        packet_hex, _group_payload = _make_group_text_packet(
+            self.SECRET_1, self.SENDER_TIMESTAMP, self.TEXT
+        )
+        packet_info = handler.decode_meshcore_packet(packet_hex)
+        payload = bytearray.fromhex(packet_info["payload_hex"])
+        payload[-1] ^= 0x01
+        packet_info["payload_hex"] = payload.hex()
+
+        assert handler._decode_authenticated_channel_identity(packet_info) is None
+
+    @pytest.mark.asyncio
+    async def test_channel_index_disambiguates_same_timestamp_and_text(self, handler):
+        self._setup(
+            handler,
+            {
+                1: {"channel_idx": 1, "channel_secret": self.SECRET_1},
+                2: {"channel_idx": 2, "channel_secret": self.SECRET_2},
+            },
+        )
+        first = await self._store_rf(handler, self.SECRET_1)
+        second = await self._store_rf(
+            handler,
+            self.SECRET_2,
+            path_bytes=bytes.fromhex("aabb"),
+            bytes_per_hop=2,
+            snr=-7.5,
+        )
+
+        result = await handler._correlate_channel_message_rf_data(
+            None,
+            "",
+            self._chan(channel_idx=2, path_hash_mode=1, path_len=1),
+            scope_eligible_only=False,
+            extended_timeout=30.0,
+        )
+
+        assert result["packet_hash"] == second["packet_hash"]
+        assert result["packet_hash"] != first["packet_hash"]
+        assert result["routing_info"]["path_nodes"] == ["AABB"]
+
+    @pytest.mark.asyncio
+    async def test_distinct_authenticated_packets_are_ambiguous(self, handler):
+        self._setup(
+            handler,
+            {1: {"channel_idx": 1, "channel_secret": self.SECRET_1}},
+        )
+        first = await self._store_rf(handler, self.SECRET_1, attempt=0)
+        second = await self._store_rf(handler, self.SECRET_1, attempt=1)
+        assert first["packet_hash"] != second["packet_hash"]
+
+        result = await handler._correlate_channel_message_rf_data(
+            None,
+            "",
+            self._chan(),
+            scope_eligible_only=False,
+            extended_timeout=30.0,
+        )
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_scope_lookup_uses_same_authenticated_first_reception(self, handler):
+        self._setup(
+            handler,
+            {1: {"channel_idx": 1, "channel_secret": self.SECRET_1}},
+        )
+        transport = bytes.fromhex("12340000")
+        stored = await self._store_rf(
+            handler,
+            self.SECRET_1,
+            route_type=0,
+            transport=transport,
+        )
+
+        result = await handler._correlate_channel_message_rf_data(
+            None,
+            "",
+            self._chan(),
+            scope_eligible_only=True,
+            extended_timeout=30.0,
+        )
+
+        assert result[RF_MATCH_KEY] == RF_MATCH_CHANNEL_AUTHENTICATED
+        assert result["packet_hash"] == stored["packet_hash"]
+        assert result["transport_code1"] == 0x3412
+
+
 # ---------------------------------------------------------------------------
 # _get_path_from_rf_data
 # ---------------------------------------------------------------------------
@@ -1788,6 +2161,7 @@ class TestRespondToMentions:
         msg = self._channel_msg("@[TestBot] ping")
         await mention_handler.process_message(msg)
         assert msg.content == "ping"
+        assert msg.original_content == "@[TestBot] ping"
 
     async def test_also_case_insensitive_strip(self, mention_handler, mention_bot):
         """'also': bot name match is case-insensitive."""
@@ -2109,3 +2483,401 @@ class TestHandleNewContactAutoManage:
         assert any("New repeater discovered" in msg for msg in log_messages)
         mesh.commands.add_contact.assert_not_called()
         rm.add_companion_from_contact_data.assert_not_called()
+
+
+class TestZeroHopObservedPathWriter:
+    def test_store_observed_path_skips_empty_and_one_byte_paths(self, handler, bot):
+        bot.db_manager = Mock()
+        handler._store_observed_path({"public_key": "aa" * 32}, "", 0, "advert")
+        handler._store_observed_path({"public_key": "aa" * 32}, "ab", 1, "advert")
+        bot.db_manager.execute_query.assert_not_called()
+        bot.db_manager.execute_update.assert_not_called()
+
+    async def test_zero_hop_advert_upserts_direct_neighbour_row(self, handler, bot):
+        bot.db_manager = Mock()
+        bot.repeater_manager = Mock()
+        bot.repeater_manager.track_contact_advertisement = AsyncMock(
+            return_value=Mock(ok=True)
+        )
+        pk = "ab" * 32
+        with patch(
+            "modules.message_handler.upsert_zero_hop_observed_path_via_manager"
+        ) as upsert:
+            await handler._process_advertisement_packet(
+                {
+                    "payload_type_name": "ADVERT",
+                    "sender_id": pk,
+                    "bytes_per_hop": 2,
+                    "path_byte_length": 0,
+                    "routing_info": {
+                        "path_hex": "",
+                        "path_length": 0,
+                        "packet_hash": "1111111111111111",
+                    },
+                },
+                {"snr": 5.5, "rssi": -77},
+            )
+        upsert.assert_called_once()
+        _args, kwargs = upsert.call_args
+        assert _args[1] == pk
+        assert kwargs["snr"] == 5.5
+        assert kwargs["rssi"] == -77
+        assert kwargs["update_rssi"] is True
+
+
+class TestRfCorrelationProvenance:
+    """Issue #80: a fallback correlation is the most recent packet heard, not this
+    message's packet. Its route must never be attributed to the message — doing so
+    recorded multi-hop messages as a single direct hop and wrote fabricated edges
+    into the mesh graph."""
+
+    def test_correlated_matches_are_attributable(self):
+        for kind in (
+            RF_MATCH_EXACT,
+            RF_MATCH_PUBKEY,
+            RF_MATCH_PARTIAL,
+            RF_MATCH_CHANNEL_AUTHENTICATED,
+        ):
+            assert rf_data_is_correlated({RF_MATCH_KEY: kind}) is True
+
+    def test_fallback_is_not_attributable(self):
+        assert rf_data_is_correlated({RF_MATCH_KEY: RF_MATCH_FALLBACK}) is False
+
+    def test_missing_marker_is_treated_as_not_attributable(self):
+        """Fail closed: an untagged dict must not be trusted with a route."""
+        assert rf_data_is_correlated({"snr": 5}) is False
+
+    def test_none_is_not_attributable(self):
+        assert rf_data_is_correlated(None) is False
+
+    def test_fallback_result_is_tagged_as_such(self, handler):
+        handler.rf_data_timeout = 30
+        entry = {
+            "timestamp": time.time() - 1,
+            "snr": 5,
+            "rssi": -80,
+            "packet_prefix": "aabbccdd",
+            "pubkey_prefix": "1122",
+        }
+        handler.recent_rf_data = [entry]
+        # Correlation key matches nothing, so this can only be the fallback.
+        result = handler.find_recent_rf_data("ffffffffffffffffffffffffffffffff")
+        assert result[RF_MATCH_KEY] == RF_MATCH_FALLBACK
+        assert rf_data_is_correlated(result) is False
+
+    def test_exact_match_is_tagged_as_attributable(self, handler):
+        handler.rf_data_timeout = 30
+        entry = {
+            "timestamp": time.time() - 1,
+            "snr": 5,
+            "rssi": -80,
+            "packet_prefix": "deadbeefdeadbeef1234567890abcdef",
+            "pubkey_prefix": "1122",
+        }
+        handler.recent_rf_data = [entry]
+        result = handler.find_recent_rf_data("deadbeefdeadbeef1234567890abcdef")
+        assert rf_data_is_correlated(result) is True
+
+    def test_tag_does_not_leak_into_the_cache(self):
+        """The cache entry itself must stay clean, or a later lookup inherits a
+        stale provenance tag from an unrelated correlation."""
+        handler = object.__new__(MessageHandler)
+        handler.logger = Mock()
+        handler.rf_data_timeout = 30
+        entry = {"timestamp": time.time() - 1, "packet_prefix": "aa", "pubkey_prefix": "bb"}
+        handler.recent_rf_data = [entry]
+        handler.find_recent_rf_data()
+        assert RF_MATCH_KEY not in entry
+
+
+class TestAmbiguousPrefixIsNotAuthoritative:
+    """A pubkey or partial prefix identifies a sender, not one transmission. When
+    several cached packets share it the match cannot carry a route (#80 follow-up)."""
+
+    @staticmethod
+    def _entry(ts_offset, **over):
+        entry = {
+            "timestamp": time.time() - ts_offset,
+            "snr": 5,
+            "rssi": -80,
+            "packet_prefix": "",
+            "pubkey_prefix": "",
+        }
+        entry.update(over)
+        return entry
+
+    def test_single_pubkey_match_is_authoritative(self, handler):
+        handler.rf_data_timeout = 30
+        handler.recent_rf_data = [self._entry(1, pubkey_prefix="abcd")]
+        result = handler.find_recent_rf_data("abcd")
+        assert result[RF_MATCH_KEY] == RF_MATCH_PUBKEY
+        assert rf_data_is_correlated(result) is True
+
+    def test_several_packets_from_one_sender_are_not_authoritative(self, handler):
+        handler.rf_data_timeout = 30
+        handler.recent_rf_data = [
+            self._entry(9, pubkey_prefix="abcd", snr=1),
+            self._entry(1, pubkey_prefix="abcd", snr=2),
+        ]
+        result = handler.find_recent_rf_data("abcd")
+        assert rf_data_is_correlated(result) is False
+        # Still the newest, so signal figures remain the best available guess.
+        assert result["snr"] == 2
+
+    def test_single_partial_match_is_authoritative(self, handler):
+        handler.rf_data_timeout = 30
+        prefix = "aabbccddeeff0011aabbccddeeff0011"
+        handler.recent_rf_data = [self._entry(1, packet_prefix=prefix)]
+        result = handler.find_recent_rf_data("aabbccddeeff0011" + "f" * 16)
+        assert rf_data_is_correlated(result) is True
+
+    def test_several_partial_matches_are_not_authoritative(self, handler):
+        handler.rf_data_timeout = 30
+        handler.recent_rf_data = [
+            self._entry(9, packet_prefix="aabbccddeeff0011" + "1" * 16),
+            self._entry(1, packet_prefix="aabbccddeeff0011" + "2" * 16),
+        ]
+        result = handler.find_recent_rf_data("aabbccddeeff0011" + "f" * 16)
+        assert rf_data_is_correlated(result) is False
+
+    def test_exact_packet_prefix_stays_authoritative_with_others_present(self, handler):
+        handler.rf_data_timeout = 30
+        exact = "deadbeefdeadbeef1234567890abcdef"
+        handler.recent_rf_data = [
+            self._entry(9, pubkey_prefix="abcd"),
+            self._entry(1, packet_prefix=exact, pubkey_prefix="abcd"),
+        ]
+        result = handler.find_recent_rf_data(exact)
+        assert result[RF_MATCH_KEY] == RF_MATCH_EXACT
+        assert rf_data_is_correlated(result) is True
+
+
+class TestGlobalFloodAuthorization:
+    """'*' in flood_scopes permits unscoped global traffic, not unknown scope, so it
+    needs positive evidence that this message's own packet was ordinary FLOOD."""
+
+    def test_correlated_plain_flood_is_confirmed(self, handler):
+        from modules.enums import RouteType
+
+        rf = {"route_type_int": RouteType.FLOOD.value, RF_MATCH_KEY: RF_MATCH_EXACT}
+        assert handler._is_confirmed_global_flood(rf) is True
+
+    def test_correlated_transport_flood_is_not_global(self, handler):
+        from modules.enums import RouteType
+
+        rf = {"route_type_int": RouteType.TRANSPORT_FLOOD.value, RF_MATCH_KEY: RF_MATCH_EXACT}
+        assert handler._is_confirmed_global_flood(rf) is False
+
+    def test_uncorrelated_flood_is_not_confirmed_while_scoped_traffic_is_present(self, handler):
+        """A fallback packet's route type says nothing about this message."""
+        from modules.enums import RouteType
+
+        rf = {"route_type_int": RouteType.FLOOD.value, RF_MATCH_KEY: RF_MATCH_FALLBACK}
+        assert handler._is_confirmed_global_flood(rf, scoped_traffic_in_window=True) is False
+
+    def test_uncorrelated_is_confirmed_when_no_scoped_traffic_was_heard(self, handler):
+        """MeshCore's CHAN payload has no correlation key, so channel messages always
+        land on the fallback. When the RF window holds no TC_FLOOD GRP_TXT at all the
+        message cannot have been scoped, which is exactly what '*' asks about."""
+        from modules.enums import RouteType
+
+        rf = {"route_type_int": RouteType.FLOOD.value, RF_MATCH_KEY: RF_MATCH_FALLBACK}
+        assert handler._is_confirmed_global_flood(rf, scoped_traffic_in_window=False) is True
+
+    def test_uncorrelated_defaults_to_assuming_scoped_traffic(self, handler):
+        """Callers that cannot answer the question get the conservative answer."""
+        from modules.enums import RouteType
+
+        rf = {"route_type_int": RouteType.FLOOD.value, RF_MATCH_KEY: RF_MATCH_FALLBACK}
+        assert handler._is_confirmed_global_flood(rf) is False
+
+    def test_absent_rf_data_is_not_confirmed(self, handler):
+        assert handler._is_confirmed_global_flood(None) is False
+        assert handler._is_confirmed_global_flood(None, scoped_traffic_in_window=False) is False
+
+    def test_missing_route_type_is_not_confirmed(self, handler):
+        assert handler._is_confirmed_global_flood({RF_MATCH_KEY: RF_MATCH_EXACT}) is False
+
+    def test_correlated_transport_flood_stays_blocked_without_scoped_traffic(self, handler):
+        """A correlated row is authoritative, so an empty scope window must not
+        launder a message the radio positively identified as TRANSPORT_FLOOD."""
+        from modules.enums import RouteType
+
+        rf = {"route_type_int": RouteType.TRANSPORT_FLOOD.value, RF_MATCH_KEY: RF_MATCH_EXACT}
+        assert handler._is_confirmed_global_flood(rf, scoped_traffic_in_window=False) is False
+
+
+class TestChannelPayloadCorrelation:
+    """MeshCore's CHAN event has no packet prefix or pubkey, so a channel message can
+    only be tied to its packet by checking the RF row against fields the decoded
+    payload restates: payload type, path length and SNR."""
+
+    CHAN = {"type": "CHAN", "SNR": 0.0, "channel_idx": 1, "path_len": 0, "text": "x: test"}
+
+    @staticmethod
+    def _row(**over):
+        row = {
+            "timestamp": time.time(),
+            "packet_prefix": "00001540b45a2077b6bdbff6f59ca5af",
+            "pubkey_prefix": None,
+            "snr": 0.0,
+            "rssi": 0,
+            "raw_hex": "00001540b45a2077",
+            "payload_type_int": 5,  # GRP_TXT
+            "packet_hash": "A1B2C3D4E5F60789",
+            "routing_info": {"path_length": 0, "packet_hash": "A1B2C3D4E5F60789"},
+        }
+        row.update(over)
+        return row
+
+    def test_matching_row_is_confirmed(self, handler):
+        assert handler._rf_data_matches_chan_payload(self._row(), self.CHAN) is True
+
+    def test_wrong_payload_type_is_rejected(self, handler):
+        assert handler._rf_data_matches_chan_payload(
+            self._row(payload_type_int=4), self.CHAN
+        ) is False
+
+    def test_path_length_mismatch_is_rejected(self, handler):
+        row = self._row(routing_info={"path_length": 2})
+        assert handler._rf_data_matches_chan_payload(row, self.CHAN) is False
+
+    def test_snr_mismatch_is_rejected(self, handler):
+        """SNR is the discriminating field: it is one reception's measured value."""
+        assert handler._rf_data_matches_chan_payload(self._row(snr=-7.5), self.CHAN) is False
+
+    def test_stale_row_is_rejected(self, handler):
+        """The RF row and its CHAN event arrive together; an old row that happens to
+        agree is a coincidence, not this message."""
+        handler.message_timeout = 10.0
+        row = self._row(timestamp=time.time() - 60)
+        assert handler._rf_data_matches_chan_payload(row, self.CHAN) is False
+
+    def test_missing_fields_are_rejected(self, handler):
+        assert handler._rf_data_matches_chan_payload(self._row(snr=None), self.CHAN) is False
+        assert handler._rf_data_matches_chan_payload(self._row(routing_info={}), self.CHAN) is False
+        assert handler._rf_data_matches_chan_payload(self._row(timestamp=None), self.CHAN) is False
+        assert handler._rf_data_matches_chan_payload(self._row(), {}) is False
+        assert handler._rf_data_matches_chan_payload(None, self.CHAN) is False
+        assert handler._rf_data_matches_chan_payload(self._row(), {"SNR": 0.0}) is False
+
+    def _correlate(self, handler, rows):
+        handler.rf_data_timeout = 15.0
+        handler.message_timeout = 10.0
+        handler.enhanced_correlation = False
+        handler.recent_rf_data = list(rows)
+        return asyncio.run(
+            handler._correlate_channel_message_rf_data(
+                None, "", self.CHAN, scope_eligible_only=False, extended_timeout=30.0
+            )
+        )
+
+    def test_fallback_is_promoted_when_the_payload_confirms_it(self, handler):
+        result = self._correlate(handler, [self._row()])
+        assert result[RF_MATCH_KEY] == RF_MATCH_PAYLOAD
+        assert rf_data_is_correlated(result) is True
+        assert result["routing_info"]["packet_hash"] == "A1B2C3D4E5F60789"
+
+    def test_fallback_stays_a_fallback_when_the_payload_disagrees(self, handler):
+        result = self._correlate(handler, [self._row(snr=-7.5)])
+        assert result[RF_MATCH_KEY] == RF_MATCH_FALLBACK
+        assert rf_data_is_correlated(result) is False
+
+    def test_promotion_does_not_mutate_the_cache(self, handler):
+        row = self._row()
+        result = self._correlate(handler, [row])
+        assert result[RF_MATCH_KEY] == RF_MATCH_PAYLOAD
+        assert RF_MATCH_KEY not in row
+        assert RF_MATCH_KEY not in handler.recent_rf_data[0]
+
+    def test_repeater_echo_does_not_displace_the_message_row(self, handler):
+        """#255: on a dense mesh a repeater's echo of the same packet is logged
+        between the reception and its CHAN event, so the newest row is the echo —
+        different path length, different measured SNR. The message's own row is
+        still in the cache and must be the one that is matched."""
+        heard = self._row(
+            timestamp=time.time() - 0.2,
+            packet_prefix="35e01500595cdf2fd7e580897cdae64a",
+            snr=13.25,
+            rssi=-32,
+            routing_info={"path_length": 0, "path_nodes": [], "packet_hash": "392926C85DCB87D0"},
+            packet_hash="392926C85DCB87D0",
+        )
+        echo = self._row(
+            packet_prefix="30f61501f0595cdf2fd7e580897cdae6",
+            snr=12.0,
+            rssi=-10,
+            routing_info={"path_length": 1, "path_nodes": ["F0"], "packet_hash": "392926C85DCB87D0"},
+            packet_hash="392926C85DCB87D0",
+        )
+        chan = {**self.CHAN, "SNR": 13.25, "path_len": 0}
+
+        handler.rf_data_timeout = 15.0
+        handler.message_timeout = 10.0
+        handler.enhanced_correlation = False
+        handler.recent_rf_data = [heard, echo]
+        result = asyncio.run(
+            handler._correlate_channel_message_rf_data(
+                None, "", chan, scope_eligible_only=False, extended_timeout=30.0
+            )
+        )
+
+        assert result[RF_MATCH_KEY] == RF_MATCH_PAYLOAD
+        assert rf_data_is_correlated(result) is True
+        assert result["packet_prefix"] == "35e01500595cdf2fd7e580897cdae64a"
+        # SNR/RSSI come from the message's own reception, not the echo's.
+        assert result["snr"] == 13.25
+        assert result["rssi"] == -32
+
+    def test_same_packet_heard_twice_alike_takes_the_newest(self, handler):
+        older = self._row(timestamp=time.time() - 0.2, packet_prefix="aa" * 16)
+        newer = self._row(packet_prefix="bb" * 16)
+        result = self._correlate(handler, [older, newer])
+        assert result[RF_MATCH_KEY] == RF_MATCH_PAYLOAD
+        assert result["packet_prefix"] == "bb" * 16
+
+    def test_two_packets_agreeing_is_ambiguous_and_stays_a_fallback(self, handler):
+        """Different packets that happen to agree on all three fields are a
+        coincidence, not evidence; #80 is what taking the guess cost."""
+        other = self._row(packet_hash="0123456789ABCDEF")
+        other["routing_info"] = {"path_length": 0, "packet_hash": "0123456789ABCDEF"}
+        result = self._correlate(handler, [self._row(timestamp=time.time() - 0.2), other])
+        assert result[RF_MATCH_KEY] == RF_MATCH_FALLBACK
+        assert rf_data_is_correlated(result) is False
+
+    def test_matching_rows_without_a_hash_are_ambiguous(self, handler):
+        rows = [
+            self._row(timestamp=time.time() - 0.2, packet_hash=None),
+            self._row(packet_hash=None),
+        ]
+        result = self._correlate(handler, rows)
+        assert result[RF_MATCH_KEY] == RF_MATCH_FALLBACK
+
+    def test_search_respects_scope_eligibility(self, handler):
+        """The scope correlation asks for TC_FLOOD rows usable for HMAC matching, so
+        the search must not hand back an ineligible row just because it matches."""
+        from modules.enums import RouteType
+
+        matching_but_ineligible = self._row(timestamp=time.time() - 0.2)
+        eligible_but_unmatched = self._row(
+            snr=-7.5,  # disagrees with the payload
+            packet_prefix="cc" * 16,
+            route_type_int=int(RouteType.TRANSPORT_FLOOD.value),
+            transport_code1=18583,
+            scope_payload_hex="ca37f40824e44f7c",
+        )
+        assert handler._is_rf_data_scope_eligible(eligible_but_unmatched) is True
+        assert handler._is_rf_data_scope_eligible(matching_but_ineligible) is False
+
+        handler.rf_data_timeout = 15.0
+        handler.message_timeout = 10.0
+        handler.enhanced_correlation = False
+        handler.recent_rf_data = [matching_but_ineligible, eligible_but_unmatched]
+        result = asyncio.run(
+            handler._correlate_channel_message_rf_data(
+                None, "", self.CHAN, scope_eligible_only=True, extended_timeout=30.0
+            )
+        )
+
+        assert result[RF_MATCH_KEY] == RF_MATCH_FALLBACK
+        assert result["packet_prefix"] == "cc" * 16

@@ -159,6 +159,9 @@ class MaintenanceRunner:
             'Data_Retention', 'neighbor_observations_retention_days', 365
         )
         stats_days = get_retention_days('Stats_Command', 'data_retention_days', 7)
+        region_warning_days = get_retention_days(
+            'Data_Retention', 'region_warning_retention_days', 90
+        )
 
         try:
             if hasattr(self.bot, 'web_viewer_integration') and self.bot.web_viewer_integration:
@@ -205,6 +208,8 @@ class MaintenanceRunner:
             # pruned here (losing it would silently drop confirmed direct links).
             self._cleanup_neighbor_observations(neighbor_observations_days)
 
+            self._cleanup_region_scope_history(region_warning_days)
+
             ran_at = _utc_now().isoformat()
             self._last_retention_stats['ran_at'] = ran_at
             try:
@@ -222,6 +227,39 @@ class MaintenanceRunner:
                 self.bot.db_manager.set_metadata('maint.status.data_retention_outcome', f'error: {e}')
             except Exception:
                 pass
+
+    def _cleanup_region_scope_history(self, retention_days: int) -> None:
+        """Prune region-scope tallies and warning events past the retention window.
+
+        Both tables are small — one tally row per channel per day, and warning
+        events are rate-limited by construction — so the window is generous.
+        """
+        if retention_days <= 0:
+            return
+        db_manager = getattr(self.bot, 'db_manager', None)
+        if not db_manager or not hasattr(db_manager, 'delete_timestamp_rows_in_chunks'):
+            return
+        # These rows are written in [Bot] timezone, not UTC, so the cutoff has to
+        # be too or the window is off by the host's offset.
+        from modules.region_warning import local_now
+        cutoff_date = (
+            local_now(getattr(self.bot, 'config', None), self.logger)
+            - datetime.timedelta(days=retention_days)
+        ).date().isoformat()
+        try:
+            db_manager.delete_timestamp_rows_in_chunks(
+                'region_scope_daily', 'date', cutoff_date,
+                progress_label='region_scope_daily retention',
+            )
+        except Exception as e:
+            self.logger.warning(f"Region scope tally retention failed: {e}")
+        try:
+            db_manager.delete_timestamp_rows_in_chunks(
+                'region_warning_events', 'created_at', cutoff_date,
+                progress_label='region_warning_events retention',
+            )
+        except Exception as e:
+            self.logger.warning(f"Region warning event retention failed: {e}")
 
     def _cleanup_neighbor_observations(self, retention_days: int) -> None:
         """Prune zero-hop neighbor observation history past the retention window.

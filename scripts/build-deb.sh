@@ -22,7 +22,7 @@ fi
 if [[ -z "${VERSION}" ]]; then
     echo "ERROR: Could not read the version from pyproject.toml" >&2
     echo "       Install tomli (Python 3.10) or pass the version explicitly:" >&2
-    echo "       ./scripts/build-deb.sh 1.0.0" >&2
+    echo "       ./scripts/build-deb.sh 1.1.0" >&2
     exit 1
 fi
 
@@ -233,15 +233,28 @@ find "${LOG_DIR}" -type f -exec chmod 0600 {} +
 VENV_BUILD="${INSTALL_ROOT}/.venv-build-$$"
 VENV_OLD="${INSTALL_ROOT}/.venv-old-$$"
 rm -rf "${VENV_BUILD}" "${VENV_OLD}"
+# 32-bit ARM: piwheels + constraints-armv7.txt (issue #269).  No-op elsewhere.
+# shellcheck source=/opt/meshcore-bot/scripts/armv7_pip_args.sh
+. "${INSTALL_ROOT}/scripts/armv7_pip_args.sh"
+configure_armv7_pip_args "${INSTALL_ROOT}/requirements.txt"
 echo "Building fresh Python virtualenv…"
 python3 -m venv "${VENV_BUILD}"
-"${VENV_BUILD}/bin/pip" install --quiet --upgrade pip
-"${VENV_BUILD}/bin/pip" install --quiet -r "${INSTALL_ROOT}/requirements.txt"
+"${VENV_BUILD}/bin/python" -m pip install --quiet --upgrade pip
+"${VENV_BUILD}/bin/python" -m pip install --quiet "${ARMV7_PIP_ARGS[@]}" -r "${INSTALL_ROOT}/requirements.txt"
 if [ -d "${INSTALL_ROOT}/venv" ]; then
     mv "${INSTALL_ROOT}/venv" "${VENV_OLD}"
 fi
 if ! mv "${VENV_BUILD}" "${INSTALL_ROOT}/venv"; then
     [ -d "${VENV_OLD}" ] && mv "${VENV_OLD}" "${INSTALL_ROOT}/venv"
+    exit 1
+fi
+# Shebangs still point at .venv-build-$$; rewrite for the final path (#229).
+# Keep VENV_OLD until rewrite succeeds so a failure can restore the prior tree.
+if ! bash "${INSTALL_ROOT}/scripts/rewrite_venv_shebangs.sh" "${INSTALL_ROOT}/venv"; then
+    if [ -d "${VENV_OLD}" ]; then
+        rm -rf "${INSTALL_ROOT}/venv"
+        mv "${VENV_OLD}" "${INSTALL_ROOT}/venv"
+    fi
     exit 1
 fi
 rm -rf "${VENV_OLD}"

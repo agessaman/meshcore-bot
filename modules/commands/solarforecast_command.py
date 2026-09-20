@@ -29,6 +29,8 @@ class SolarforecastCommand(BaseCommand):
     """Handles solar forecast commands with location support"""
 
     # Plugin metadata
+    # Read-only informational output; safe for scheduled {cmd:...} rendering.
+    render_safe = True
     name = "solarforecast"
     keywords = ['solarforecast', 'sf']
     description = "Get solar panel production forecast (usage: sf <location|repeater_name|coordinates|zipcode> [panel_size] [azimuth, 0=south] [angle])"

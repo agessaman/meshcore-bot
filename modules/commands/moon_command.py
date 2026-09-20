@@ -12,6 +12,8 @@ class MoonCommand(BaseCommand):
     """Command to get moon information"""
 
     # Plugin metadata
+    # Read-only informational output; safe for scheduled {cmd:...} rendering.
+    render_safe = True
     name = "moon"
     keywords = ['moon']
     description = "Get moon phase, rise/set times and position"

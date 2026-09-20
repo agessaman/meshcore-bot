@@ -654,25 +654,6 @@ class MultitestCommand(BaseCommand):
     def get_help_text(self) -> str:
         return self.translate('commands.multitest.help', fallback="Listens for 6 seconds and collects all unique paths from incoming messages")
 
-    def matches_keyword(self, message: MeshMessage) -> bool:
-        """Check if message matches multitest keyword"""
-        content_lower = self.cleanup_message_for_matching(message)
-
-        # Check for exact match or keyword followed by space
-        for keyword in self.keywords:
-            if content_lower == keyword or content_lower.startswith(keyword + ' '):
-                return True
-
-        # Check for variants: "mt long", "mt xlong", "multitest long", "multitest xlong"
-        if content_lower.startswith('mt ') or content_lower.startswith('multitest '):
-            parts = content_lower.split()
-            if len(parts) >= 2 and parts[0] in ['mt', 'multitest']:
-                variant = parts[1]
-                if variant in ['long', 'xlong']:
-                    return True
-
-        return False
-
     def extract_path_from_rf_data(self, rf_data: dict) -> Optional[str]:
         """Extract path in prefix string format from RF data routing_info.
         Supports 1-, 2-, and 3-byte-per-hop (2, 4, or 6 hex chars per node).
@@ -996,27 +977,16 @@ class MultitestCommand(BaseCommand):
             self.record_execution(user_id)
 
             # Determine listening duration based on command variant
-            content = message.content.strip()
-            if content.startswith('!'):
-                content = content[1:].strip()
-
-            content_lower = content.lower()
+            _trigger, args = self.split_trigger_and_args(message.content)
             listening_duration = 6.0  # Default
-            # Check for variants: "mt long", "mt xlong", "multitest long", "multitest xlong"
-            if content_lower.startswith('mt ') or content_lower.startswith('multitest '):
-                parts = content_lower.split()
-                if len(parts) >= 2 and parts[0] in ['mt', 'multitest']:
-                    variant = parts[1]
-                    if variant == 'long':
-                        listening_duration = 10.0
-                        self.logger.info(f"Multitest command (long) executed by {user_id} - starting 10 second listening window")
-                    elif variant == 'xlong':
-                        listening_duration = 14.0
-                        self.logger.info(f"Multitest command (xlong) executed by {user_id} - starting 14 second listening window")
-                    else:
-                        self.logger.info(f"Multitest command executed by {user_id} - starting 6 second listening window")
-                else:
-                    self.logger.info(f"Multitest command executed by {user_id} - starting 6 second listening window")
+            # Variants: "<trigger> long" / "<trigger> xlong" (trigger = multitest, mt, or alias)
+            variant = args.split()[0].lower() if args else ""
+            if variant == 'long':
+                listening_duration = 10.0
+                self.logger.info(f"Multitest command (long) executed by {user_id} - starting 10 second listening window")
+            elif variant == 'xlong':
+                listening_duration = 14.0
+                self.logger.info(f"Multitest command (xlong) executed by {user_id} - starting 14 second listening window")
             else:
                 self.logger.info(f"Multitest command executed by {user_id} - starting 6 second listening window")
 

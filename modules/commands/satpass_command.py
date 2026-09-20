@@ -12,6 +12,8 @@ class SatpassCommand(BaseCommand):
     """Command to get satellite pass information"""
 
     # Plugin metadata
+    # Read-only informational output; safe for scheduled {cmd:...} rendering.
+    render_safe = True
     name = "satpass"
     keywords = ['satpass']
     description = "Get satellite pass info: satpass <NORAD_number_or_shortcut> [visual]"

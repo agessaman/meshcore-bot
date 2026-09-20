@@ -23,8 +23,10 @@ class PrefixCommand(BaseCommand):
     """Handles repeater prefix lookups (1-, 2-, or 3-byte hex; longer input truncated to 3 bytes)."""
 
     # Plugin metadata
+    # Read-only informational output; safe for scheduled {cmd:...} rendering.
+    render_safe = True
     name = "prefix"
-    keywords = ['prefix', 'repeater', 'lookup']
+    keywords = ['prefix', 'lookup']
     description = "Look up repeaters by prefix (2, 4, or 6 hex chars = 1–3 bytes; longer input truncated)"
     category = "meshcore_info"
     requires_dm = False
@@ -175,11 +177,6 @@ class PrefixCommand(BaseCommand):
         if not self.api_url or self.api_url.strip() == "":
             return self.translate('commands.prefix.help_no_api', location_note=location_note)
         return self.translate('commands.prefix.help_api', location_note=location_note)
-
-    def matches_keyword(self, message: MeshMessage) -> bool:
-        """Check if message starts with 'prefix' keyword"""
-        content_lower = self.cleanup_message_for_matching(message)
-        return content_lower == 'prefix' or content_lower.startswith('prefix ')
 
     async def _parse_location_to_lat_lon(self, location: str) -> tuple[Optional[float], Optional[float], Optional[str]]:
         """Parse location string to latitude/longitude coordinates.

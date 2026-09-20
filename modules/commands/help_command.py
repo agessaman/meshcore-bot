@@ -94,30 +94,36 @@ class HelpCommand(BaseCommand):
             str: The formatted help text for the specific command.
         """
         requested_name = command_name.strip()
-        normalized_name = requested_name.lower()
+        command = None
+        candidates = [requested_name]
+        if requested_name:
+            base_name = requested_name.split(maxsplit=1)[0]
+            if base_name != requested_name:
+                candidates.append(base_name)
 
-        # Get the command instance by direct name first
-        command = (
-            self.bot.command_manager.commands.get(normalized_name)
-            or self.bot.command_manager.commands.get(requested_name)
-        )
-
-        # Then through plugin keyword mappings (if available)
-        if not command and hasattr(self.bot.command_manager, 'plugin_loader'):
-            mappings = getattr(self.bot.command_manager.plugin_loader, 'keyword_mappings', {})
-            mapped_name = mappings.get(normalized_name)
-            if mapped_name:
-                command = self.bot.command_manager.commands.get(mapped_name)
-
-        # Final fallback: resolve through runtime command keywords
-        if not command:
-            for cmd_instance in self.bot.command_manager.commands.values():
-                if (
-                    hasattr(cmd_instance, 'keywords')
-                    and normalized_name in [k.lower() for k in cmd_instance.keywords]
-                ):
-                    command = cmd_instance
-                    break
+        mappings = getattr(self.bot.command_manager.plugin_loader, 'keyword_mappings', {})
+        for lookup_name in candidates:
+            normalized_name = lookup_name.lower()
+            command = (
+                self.bot.command_manager.commands.get(normalized_name)
+                or self.bot.command_manager.commands.get(lookup_name)
+            )
+            if not command:
+                mapped_name = mappings.get(normalized_name)
+                if mapped_name:
+                    command = self.bot.command_manager.commands.get(mapped_name)
+            if not command:
+                command = next(
+                    (
+                        cmd_instance
+                        for cmd_instance in self.bot.command_manager.commands.values()
+                        if hasattr(cmd_instance, 'keywords')
+                        and normalized_name in [keyword.lower() for keyword in cmd_instance.keywords]
+                    ),
+                    None,
+                )
+            if command:
+                break
 
         if command:
             # Pass message context to get_help_text if the method supports it
@@ -313,5 +319,3 @@ class HelpCommand(BaseCommand):
                         return ', '.join(result) + suffix
                 break
         return ', '.join(result)
-
-

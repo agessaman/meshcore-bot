@@ -19,6 +19,8 @@ class DadJokeCommand(BaseCommand):
     """Handles dad joke commands using icanhazdadjoke.com API"""
 
     # Plugin metadata
+    # Read-only informational output; safe for scheduled {cmd:...} rendering.
+    render_safe = True
     name = "dadjoke"
     keywords = ['dadjoke', 'dad joke', 'dadjokes', 'dad jokes']
     description = "Get a random dad joke from icanhazdadjoke.com"
@@ -77,8 +79,13 @@ class DadJokeCommand(BaseCommand):
         Returns:
             bool: True if message matches a keyword, False otherwise.
         """
-        content_lower = self.cleanup_message_for_matching(message)
-        return any(content_lower == keyword or content_lower.startswith(keyword + ' ') for keyword in self.keywords)
+        return self._cleaned_content_matches(
+            message,
+            lambda content_lower: any(
+                content_lower == keyword or content_lower.startswith(keyword + ' ')
+                for keyword in self.keywords
+            ),
+        )
 
     def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
         """Override to add custom check (dadjoke_enabled) while using base class cooldown.

@@ -45,6 +45,61 @@ def _configure_unix_signal_handlers(loop, bot, shutdown_event: asyncio.Event) ->
         loop.add_signal_handler(signal.SIGHUP, reload_handler)
 
 
+_MAX_CONFIG_ISSUES_SHOWN = 15
+
+
+def _collect_config_issues(config_path: str) -> list[tuple[str, str]]:
+    """Errors and warnings from the config linter; ``[]`` if the linter itself fails.
+
+    Imported lazily and guarded so a broken linter can never block startup.
+    """
+    try:
+        from modules.config_validation import (
+            SEVERITY_ERROR,
+            SEVERITY_WARNING,
+            validate_config,
+        )
+
+        return [
+            (sev, msg)
+            for sev, msg in validate_config(config_path)
+            if sev in (SEVERITY_ERROR, SEVERITY_WARNING)
+        ]
+    except Exception as exc:  # noqa: BLE001 - never block startup on the linter itself
+        print(f"Config validation skipped: {exc}", file=sys.stderr)
+        return []
+
+
+def _report_config_issues(issues: list[tuple[str, str]], logger=None) -> None:
+    """Report config-linter findings through *logger*, or stderr when there is none.
+
+    A misspelled key is the most common cause of "why doesn't my setting work",
+    and the linter usually names the intended key. Sending that only to stderr put
+    it in the journal, where an operator reading the configured log file never saw
+    it. Prefer the logger so the finding lands in the log; stderr remains the
+    fallback for the window before the logger exists.
+    """
+    shown = issues[:_MAX_CONFIG_ISSUES_SHOWN]
+    overflow = len(issues) - len(shown)
+
+    def emit(severity: str, text: str) -> None:
+        if logger is None:
+            print(text, file=sys.stderr)
+        elif severity == "error":
+            logger.error(text)
+        else:
+            logger.warning(text)
+
+    for severity, message in shown:
+        emit(severity, f"Config {severity}: {message}")
+    if overflow > 0:
+        emit(
+            "warning",
+            f"Config: ... and {overflow} more issue(s); "
+            "run with --validate-config for the full report",
+        )
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="MeshCore Bot - Mesh network bot for MeshCore devices"
@@ -116,31 +171,9 @@ def main():
     # Always sanity-check the config on normal startup too — misspelled
     # sections/keys otherwise fail silently and are the most common source of
     # "why doesn't my setting work" confusion. Non-fatal: warn and continue.
-    try:
-        from modules.config_validation import (
-            SEVERITY_ERROR as _SEV_ERR,
-        )
-        from modules.config_validation import (
-            SEVERITY_WARNING as _SEV_WARN,
-        )
-        from modules.config_validation import (
-            validate_config as _startup_validate,
-        )
-        _issues = [
-            (sev, msg) for sev, msg in _startup_validate(args.config)
-            if sev in (_SEV_ERR, _SEV_WARN)
-        ]
-        _MAX_SHOWN = 15
-        for sev, msg in _issues[:_MAX_SHOWN]:
-            print(f"Config {sev}: {msg}", file=sys.stderr)
-        if len(_issues) > _MAX_SHOWN:
-            print(
-                f"Config: ... and {len(_issues) - _MAX_SHOWN} more issue(s); "
-                "run with --validate-config for the full report",
-                file=sys.stderr,
-            )
-    except Exception as exc:  # noqa: BLE001 - never block startup on the linter itself
-        print(f"Config validation skipped: {exc}", file=sys.stderr)
+    # Collected here, before anything opens the database, but reported once the
+    # bot's logger exists so the findings reach the configured log file.
+    _config_issues = _collect_config_issues(args.config)
 
     # A restore requested by the viewer is applied only here, before importing
     # and constructing MeshCoreBot (which opens the DB and launches writers).
@@ -166,7 +199,17 @@ def main():
         print(f"Applied pending database restore: {restore_result.database_path}{recovery_note}")
 
     from modules.core import MeshCoreBot
-    bot = MeshCoreBot(config_file=args.config)
+
+    try:
+        bot = MeshCoreBot(config_file=args.config)
+    except Exception:
+        # No logger to route them through, and a bad config is the likeliest reason
+        # construction failed, so stderr is both the only channel left and the one
+        # the operator is about to read.
+        _report_config_issues(_config_issues)
+        raise
+
+    _report_config_issues(_config_issues, bot.logger)
 
     # Use asyncio.run() which handles KeyboardInterrupt properly
     # For SIGTERM, we'll handle it in the async context

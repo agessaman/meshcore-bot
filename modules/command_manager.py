@@ -5,6 +5,7 @@ Handles all bot commands, keyword matching, and response generation
 """
 
 import asyncio
+import contextlib
 import random
 import time
 from dataclasses import dataclass
@@ -30,7 +31,16 @@ from .config_validation import (
     _channel_name_is_public,
     strip_optional_quotes,
 )
-from .models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, MeshMessage
+from .flood_scope import (
+    is_global_marker,
+    normalize_scope_name,
+)
+from .models import (
+    CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD,
+    DM_BODY_LIMIT,
+    MeshMessage,
+    channel_body_limit,
+)
 from .plugin_loader import PluginLoader
 from .security_utils import sanitize_name, validate_safe_path
 from .utils import check_internet_connectivity_async, decode_escape_sequences, format_keyword_response_with_placeholders
@@ -165,7 +175,7 @@ class CommandManager:
             return scope_keys
         for entry in (s.strip() for s in raw.split(",") if s.strip()):
             normalized = self._normalize_scope_name(entry)
-            if normalized in ("", "*", "0", "None"):
+            if is_global_marker(normalized):
                 self.flood_scope_allow_global = True
             elif normalized:
                 scope_keys[normalized] = sha256(normalized.encode()).digest()[:16]
@@ -176,16 +186,10 @@ class CommandManager:
             )
         return scope_keys
 
-    @staticmethod
-    def _normalize_scope_name(scope: str) -> str:
-        """Return scope with '#' prepended if it is a non-global named region without one."""
-        if scope in ("", "*", "0", "None") or scope.lower() == "none":
-            if scope.lower() == "none":
-                return "None"
-            return scope
-        if not scope.startswith("#"):
-            return "#" + scope
-        return scope
+    # Canonical implementation lives in modules.flood_scope so the web viewer,
+    # a separate process, can validate what the operator types without
+    # importing the bot's command machinery.
+    _normalize_scope_name = staticmethod(normalize_scope_name)
 
     @staticmethod
     def _normalize_channel_name_for_scope_config(channel: str) -> str:
@@ -687,7 +691,7 @@ class CommandManager:
         can be called outside of a specific command instance.
         """
         if message.is_dm:
-            return 158
+            return DM_BODY_LIMIT
         username: str | None = None
         try:
             if hasattr(self.bot, 'meshcore') and self.bot.meshcore:
@@ -701,7 +705,7 @@ class CommandManager:
             pass
         if not username:
             username = self.bot.config.get('Bot', 'bot_name', fallback='Bot')
-        max_length = max(130, 160 - len(str(username).encode('utf-8')) - 2)
+        max_length = channel_body_limit(username)
         if not MeshMessage.is_global_flood_scope(message.effective_outgoing_flood_scope(self.bot)):
             max_length -= CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD
         return max_length
@@ -1080,23 +1084,36 @@ class CommandManager:
             return False
 
         try:
-            # Name lookup first (backward compatible), then fallback to pubkey/prefix.
+            # Name lookup first (backward compatible), then pubkey/prefix in the
+            # radio snapshot and NEW_CONTACT pending list (not yet in contacts).
             contact = self.bot.meshcore.get_contact_by_name(recipient_id)
             lookup_type = "name"
-            if not contact and hasattr(self.bot.meshcore, "contacts"):
+            if not contact:
                 recipient_key = (recipient_id or "").strip()
-                contacts = self.bot.meshcore.contacts or {}
-                for contact_data in contacts.values():
-                    public_key = (contact_data.get("public_key", "") or "").strip()
-                    if not public_key:
-                        continue
-                    if public_key == recipient_key or public_key.startswith(recipient_key):
-                        contact = contact_data
-                        lookup_type = "pubkey_prefix"
-                        self.logger.debug(
-                            "Resolved DM recipient '%s' via public key prefix lookup",
-                            sanitize_name(recipient_key),
-                        )
+                sources: list[tuple[str, dict[str, Any]]] = []
+                contacts = getattr(self.bot.meshcore, "contacts", None)
+                if isinstance(contacts, dict) and contacts:
+                    sources.append(("pubkey_prefix", contacts))
+                pending = getattr(self.bot.meshcore, "pending_contacts", None)
+                if isinstance(pending, dict) and pending:
+                    sources.append(("pending_contact", pending))
+                for source_name, source in sources:
+                    for contact_data in source.values():
+                        if not isinstance(contact_data, dict):
+                            continue
+                        public_key = (contact_data.get("public_key", "") or "").strip()
+                        if not public_key:
+                            continue
+                        if public_key == recipient_key or public_key.startswith(recipient_key):
+                            contact = contact_data
+                            lookup_type = source_name
+                            self.logger.debug(
+                                "Resolved DM recipient '%s' via %s lookup",
+                                sanitize_name(recipient_key),
+                                source_name,
+                            )
+                            break
+                    if contact:
                         break
 
             if not contact:
@@ -1302,7 +1319,10 @@ class CommandManager:
             scope_to_use = (
                 resolved if resolved is not None else self._outgoing_flood_scope_override()
             ) or ""
-            scope_is_global = scope_to_use in ("", "*", "0", "None")
+            # is_global_marker, not a bare membership test: a hand-written
+            # "none" normalizes to the global marker everywhere else, so
+            # treating it as the region "#none" here would send scoped.
+            scope_is_global = is_global_marker(scope_to_use)
             if not scope_is_global:
                 scope_to_use = self._normalize_scope_name(scope_to_use)
             override_cfg = self._outgoing_flood_scope_override()
@@ -1328,37 +1348,50 @@ class CommandManager:
                     scope_to_use,
                     scope_source,
                 )
-            if not scope_is_global and not hasattr(self.bot.meshcore.commands, "set_flood_scope"):
+            scoped = not scope_is_global and hasattr(self.bot.meshcore.commands, "set_flood_scope")
+            if not scope_is_global and not scoped:
                 self.logger.warning(
                     "Regional flood scope %r requested but meshcore.commands.set_flood_scope "
                     "is unavailable; channel message will use device default (often global flood)",
                     scope_to_use,
                 )
-            elif not scope_is_global:
-                _scope_result = await self.bot.meshcore.commands.set_flood_scope(scope_to_use)
-                if _scope_result is None or getattr(_scope_result, "type", None) == "ERROR":
-                    self.logger.warning(
-                        "set_flood_scope(%s) failed (result=%s); "
-                        "message will be sent with current firmware scope",
-                        scope_to_use, _scope_result,
-                    )
 
             target = f"{channel} (channel {channel_num})"
             # Retry on no_event_received: max 2 extra attempts, 2s apart
             _max_retries = 2
             for _attempt in range(_max_retries + 1):
-                try:
-                    result = await self.bot.meshcore.commands.send_chan_msg(
-                        channel_num, content,
-                        timestamp=int(timestamp.timestamp()) if timestamp else None,
-                    )
-                finally:
-                    if not scope_is_global and hasattr(self.bot.meshcore.commands, "set_flood_scope"):
-                        _restore_result = await self.bot.meshcore.commands.set_flood_scope("*")
-                        if _restore_result is None or getattr(_restore_result, "type", None) == "ERROR":
-                            self.logger.warning(
-                                "set_flood_scope('*') restore failed (result=%s)", _restore_result
-                            )
+                # Hold the radio from set to restore so no other send goes out
+                # under this message's scope.
+                async with self.bot.radio_session() if scoped else contextlib.nullcontext():
+                    # The set is inside the try as well: a raising set_flood_scope
+                    # would otherwise leave the device pinned to this region, and
+                    # every later send would go out under it.
+                    try:
+                        if scoped:
+                            _scope_result = await self.bot.meshcore.commands.set_flood_scope(scope_to_use)
+                            if _scope_result is None or getattr(_scope_result, "type", None) == "ERROR":
+                                if _attempt == 0:
+                                    self.logger.warning(
+                                        "set_flood_scope(%s) failed (result=%s); "
+                                        "message will be sent with current firmware scope",
+                                        scope_to_use, _scope_result,
+                                    )
+                                else:
+                                    self.logger.warning(
+                                        "set_flood_scope(%s) failed on retry re-apply (result=%s)",
+                                        scope_to_use, _scope_result,
+                                    )
+                        result = await self.bot.meshcore.commands.send_chan_msg(
+                            channel_num, content,
+                            timestamp=int(timestamp.timestamp()) if timestamp else None,
+                        )
+                    finally:
+                        if scoped:
+                            _restore_result = await self.bot.meshcore.commands.set_flood_scope("*")
+                            if _restore_result is None or getattr(_restore_result, "type", None) == "ERROR":
+                                self.logger.warning(
+                                    "set_flood_scope('*') restore failed (result=%s)", _restore_result
+                                )
 
                 if self._is_no_event_received(result) and _attempt < _max_retries:
                     self.logger.warning(
@@ -1366,14 +1399,6 @@ class CommandManager:
                         f"(attempt {_attempt + 1}/{_max_retries + 1}), retrying in 2s"
                     )
                     await asyncio.sleep(2)
-                    # Re-apply scope for next attempt
-                    if not scope_is_global and hasattr(self.bot.meshcore.commands, "set_flood_scope"):
-                        _scope_result = await self.bot.meshcore.commands.set_flood_scope(scope_to_use)
-                        if _scope_result is None or getattr(_scope_result, "type", None) == "ERROR":
-                            self.logger.warning(
-                                "set_flood_scope(%s) failed on retry re-apply (result=%s)",
-                                scope_to_use, _scope_result,
-                            )
                     continue
                 break
 
@@ -1457,6 +1482,28 @@ class CommandManager:
                 return False
         return True
 
+    def _find_help_command(self, lookup_name: str) -> Any | None:
+        """Resolve an exact command name or alias."""
+        normalized_name = lookup_name.lower()
+        command = self.commands.get(normalized_name) or self.commands.get(lookup_name)
+        if command:
+            return command
+
+        if hasattr(self, 'plugin_loader') and hasattr(self.plugin_loader, 'keyword_mappings'):
+            mapped_name = self.plugin_loader.keyword_mappings.get(normalized_name)
+            if mapped_name:
+                command = self.commands.get(mapped_name)
+                if command:
+                    return command
+
+        for cmd_instance in self.commands.values():
+            if (
+                hasattr(cmd_instance, 'keywords')
+                and normalized_name in [keyword.lower() for keyword in cmd_instance.keywords]
+            ):
+                return cmd_instance
+        return None
+
     def get_help_for_command(self, command_name: str, message: MeshMessage | None = None) -> str:
         """Get help text for a specific command (LoRa-friendly compact format).
 
@@ -1473,54 +1520,17 @@ class CommandManager:
             return self.get_general_help(message)
 
         requested_name = command_name.strip()
-        normalized_name = requested_name.lower()
-
-        # First, try to find a command by exact name
-        command = self.commands.get(normalized_name) or self.commands.get(requested_name)
+        command = self._find_help_command(requested_name)
+        if not command and requested_name:
+            command = self._find_help_command(requested_name.split(maxsplit=1)[0])
         if command:
-            # Try to pass message context to get_help_text if supported
             try:
                 help_text = command.get_help_text(message)
             except TypeError:
-                # Fallback for commands that don't accept message parameter
                 help_text = command.get_help_text()
-            # Use translator if available
             if hasattr(self.bot, 'translator'):
                 return self.bot.translator.translate('commands.help.specific', command=command_name, help_text=help_text)
             return f"Help {command_name}: {help_text}"
-
-        # Next, consult plugin_loader keyword mappings (if available)
-        mapped_name: str | None = None
-        if hasattr(self, 'plugin_loader') and hasattr(self.plugin_loader, 'keyword_mappings'):
-            mapped_name = self.plugin_loader.keyword_mappings.get(normalized_name)
-        if mapped_name:
-            command = self.commands.get(mapped_name)
-            if command:
-                try:
-                    help_text = command.get_help_text(message)
-                except TypeError:
-                    help_text = command.get_help_text()
-                if hasattr(self.bot, 'translator'):
-                    return self.bot.translator.translate('commands.help.specific', command=command_name, help_text=help_text)
-                return f"Help {command_name}: {help_text}"
-
-        # If still not found, search through all commands and their keywords
-        for _cmd_name, cmd_instance in self.commands.items():
-            # Check if the requested command name matches any of this command's keywords
-            if (
-                hasattr(cmd_instance, 'keywords')
-                and normalized_name in [k.lower() for k in cmd_instance.keywords]
-            ):
-                # Try to pass message context to get_help_text if supported
-                try:
-                    help_text = cmd_instance.get_help_text(message)
-                except TypeError:
-                    # Fallback for commands that don't accept message parameter
-                    help_text = cmd_instance.get_help_text()
-                # Use translator if available
-                if hasattr(self.bot, 'translator'):
-                    return self.bot.translator.translate('commands.help.specific', command=command_name, help_text=help_text)
-                return f"Help {command_name}: {help_text}"
 
         # If still not found, return unknown command message with helpful suggestion
         # Use the help command's method to get popular commands (only primary names, no aliases)
@@ -1668,6 +1678,13 @@ class CommandManager:
             bool: True if response was sent successfully, False otherwise.
         """
         try:
+            # Render-only invocation (see render_command_output): collect the text and
+            # transmit nothing. Checked before _last_response so a background render
+            # cannot overwrite the response captured for a real user's command.
+            if getattr(message, 'capture_sink', None) is not None:
+                message.capture_sink.append(content)
+                return True
+
             # Store the response content for web viewer capture
             if hasattr(self, '_last_response'):
                 self._last_response = content
@@ -1794,6 +1811,14 @@ class CommandManager:
         """
         if not chunks:
             return True
+
+        # Render-only invocation: collect the chunks and transmit nothing. Without
+        # this a chunked command would put its output on the air while being
+        # "rendered" for a scheduled message.
+        if getattr(message, 'capture_sink', None) is not None:
+            message.capture_sink.extend(chunk for chunk in chunks if chunk)
+            return True
+
         rate_limit_key = self.get_rate_limit_key(message)
         if message.is_dm:
             rate_limit_seconds = self.bot.config.getfloat('Bot', 'bot_tx_rate_limit_seconds', fallback=1.0)
@@ -1823,6 +1848,127 @@ class CommandManager:
             rate_limit_key=rate_limit_key,
             scope=getattr(message, 'reply_scope', None),
         )
+
+    def resolve_command_by_trigger(self, trigger: str):
+        """Find the command a trigger word would invoke, or None.
+
+        Matches the command's registered name first, then its keywords, so
+        ``wx`` and ``weather`` both resolve to the same command.
+        """
+        wanted = (trigger or "").strip().lower()
+        if not wanted:
+            return None
+        for command_name, command in self.commands.items():
+            if wanted == command_name.lower():
+                return command
+            keywords = getattr(command, 'keywords', None) or []
+            if wanted in [str(k).lower() for k in keywords]:
+                return command
+        return None
+
+    async def render_command_output(
+        self,
+        spec: str,
+        *,
+        channel: str | None = None,
+        timeout: float = 30.0,
+    ) -> str | None:
+        """Run a command for its reply text without transmitting it.
+
+        Used by ``{cmd:...}`` placeholders in scheduled messages, so an operator can
+        broadcast the output of any command on a cron schedule instead of each service
+        growing its own schedule parser.
+
+        Args:
+            spec: Full invocation as an operator would type it, e.g. ``wx Seattle``.
+            channel: Channel the rendered text is destined for, so channel-scoped
+                behavior in the command sees the right context.
+            timeout: Seconds to wait before abandoning the render.
+
+        Returns:
+            The reply text, or None when the command is unknown, disabled, admin-only,
+            not renderable, times out, or produces nothing.
+        """
+        spec = (spec or "").strip()
+        if not spec:
+            return None
+
+        trigger = spec.split()[0]
+        command = self.resolve_command_by_trigger(trigger)
+        if command is None:
+            self.logger.warning("Scheduled {cmd:...} placeholder: unknown command %r", trigger)
+            return None
+
+        command_name = getattr(command, 'name', trigger)
+        # Opt-in, not a denylist. Capture only intercepts send_response and
+        # send_response_chunked, so a command that transmits by other means (advert),
+        # posts its own messages (announcements), or is DM-only (schedule) would spend
+        # airtime or leak configuration if rendered. Anything not explicitly marked
+        # render_safe is refused, so a new command is never renderable by accident.
+        if not getattr(command, 'render_safe', False):
+            self.logger.warning(
+                "Scheduled {cmd:...} placeholder: %r is not marked render_safe, so it "
+                "cannot be run for its text alone", command_name,
+            )
+            return None
+
+        section = command._derive_config_section_name()
+        if not command.get_config_value(section, 'enabled', fallback=True, value_type='bool'):
+            self.logger.warning(
+                "Scheduled {cmd:...} placeholder: %r is disabled in config", command_name
+            )
+            return None
+
+        if command.requires_admin_access():
+            self.logger.warning(
+                "Scheduled {cmd:...} placeholder: refusing to run admin command %r",
+                command_name,
+            )
+            return None
+
+        # The command's own cooldown still governs it. A schedule is not a licence to
+        # run something more often than the operator configured it to run.
+        allowed, remaining = command.check_cooldown()
+        if not allowed:
+            self.logger.warning(
+                "Scheduled {cmd:...} placeholder: %r is on cooldown for another %.0fs; skipped",
+                command_name, remaining,
+            )
+            return None
+        # Recorded before execution, matching execute_commands, so a slow or failing
+        # render cannot be retried straight past the cooldown.
+        command.record_execution()
+
+        sink: list[str] = []
+        synthetic = MeshMessage(
+            content=spec,
+            sender_id=None,
+            channel=channel,
+            is_dm=False,
+            timestamp=int(time.time()),
+            capture_sink=sink,
+        )
+
+        try:
+            await asyncio.wait_for(command.execute(synthetic), timeout=timeout)
+        except asyncio.TimeoutError:
+            self.logger.warning(
+                "Scheduled {cmd:...} placeholder: %r timed out after %ss", command_name, timeout
+            )
+            return None
+        except Exception as e:
+            self.logger.warning(
+                "Scheduled {cmd:...} placeholder: %r failed: %s: %s",
+                command_name, type(e).__name__, e,
+            )
+            return None
+
+        if not sink:
+            self.logger.warning(
+                "Scheduled {cmd:...} placeholder: %r produced no output", command_name
+            )
+            return None
+        return "\n".join(part for part in sink if part)
 
     async def execute_commands(self, message):
         """Execute command objects that handle their own responses.
@@ -1859,8 +2005,6 @@ class CommandManager:
                 if response_format is not None:
                     # This command was already handled by keyword matching
                     continue
-
-                self.logger.info(f"Command '{command_name}' matched, executing")
 
                 # Check if we should queue instead of reject (for global cooldowns near expiring)
                 should_queue, remaining = self._should_queue_command(command, message)
@@ -1905,13 +2049,25 @@ class CommandManager:
                             await self.send_response(message, error_msg)
                             response_sent = True
 
-                    # Record command execution in stats database (even if it failed checks)
+                    # Soft rejection (e.g. enabled=false): do not claim the keyword.
+                    # Matches check_keywords(), which continues so another command's
+                    # alias can handle the same trigger (e.g. test aliases=path with
+                    # Path_Command disabled).
+                    if not response_sent:
+                        self.logger.debug(
+                            f"Command '{command_name}' matched but cannot execute; trying next"
+                        )
+                        continue
+
+                    # Record command execution in stats database (hard rejection with user feedback)
                     if 'stats' in self.commands:
                         stats_command = self.commands['stats']
                         if stats_command:
                             stats_command.record_command(message, command_name, response_sent)
 
                     return
+
+                self.logger.info(f"Command '{command_name}' matched, executing")
 
                 # Check network connectivity for commands that require internet
                 if command.requires_internet:
@@ -2014,7 +2170,9 @@ class CommandManager:
                             self.logger.debug(f"Failed to capture command data for web viewer: {e}")
 
                 except Exception as e:
-                    self.logger.error(f"Error executing command '{command_name}': {e}")
+                    # exception() carries the traceback into the log; the reply below stays
+                    # str(e) so no filesystem path or extra airtime goes out over the mesh.
+                    self.logger.exception(f"Error executing command '{command_name}': {e}")
                     # Send error message to user
                     error_msg = command.translate('errors.execution_error', command=command_name, error=str(e))
                     await self.send_response(message, error_msg)

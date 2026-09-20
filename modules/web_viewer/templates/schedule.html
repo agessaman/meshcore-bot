@@ -1,0 +1,413 @@
+{% extends "base.html" %}
+
+{% block title %}Scheduled Messages - MeshCore Bot{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="mb-0">
+                    <i class="fas fa-clock"></i> Scheduled Messages
+                </h1>
+                <button class="btn btn-primary" id="addScheduleBtn">
+                    <i class="fas fa-plus"></i> New scheduled message
+                </button>
+            </div>
+
+            <div class="alert alert-info" role="alert">
+                Each scheduled message is a transmission on a shared medium. Pick the
+                longest interval that still does the job. Changes are written to
+                <code>config.ini</code> and applied without restarting the bot.
+            </div>
+
+            <div id="statusArea"></div>
+
+            <div class="card">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Schedule</th>
+                                    <th>Next run</th>
+                                    <th>Channel</th>
+                                    <th>Message</th>
+                                    <th class="text-end">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="scheduleTableBody">
+                                <tr><td colspan="5" class="text-muted">Loading…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add / edit modal -->
+<div class="modal fade" id="scheduleModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="scheduleModalTitle">New scheduled message</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label" for="scheduleMode">When should it send?</label>
+                    <select class="form-select" id="scheduleMode">
+                        <option value="daily">Every day at a time</option>
+                        <option value="times">Several times a day</option>
+                        <option value="weekly">Certain days of the week</option>
+                        <option value="interval_hours">Every N hours</option>
+                        <option value="interval_minutes">Every N minutes</option>
+                        <option value="advanced">Advanced (cron)</option>
+                    </select>
+                </div>
+
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6" id="fieldTime">
+                        <label class="form-label" for="scheduleTime">Time</label>
+                        <input type="time" class="form-control" id="scheduleTime" value="08:00">
+                    </div>
+                    <div class="col-md-6 d-none" id="fieldTimes">
+                        <label class="form-label" for="scheduleTimes">Hours (comma separated)</label>
+                        <input type="text" class="form-control" id="scheduleTimes" value="6,12,18"
+                               placeholder="6,12,18">
+                        <div class="form-text">Whole hours in 24-hour form.</div>
+                    </div>
+                    <div class="col-md-6 d-none" id="fieldEveryHours">
+                        <label class="form-label" for="scheduleEveryHours">Every N hours</label>
+                        <input type="number" class="form-control" id="scheduleEveryHours"
+                               min="1" max="23" value="2">
+                    </div>
+                    <div class="col-md-6 d-none" id="fieldEveryMinutes">
+                        <label class="form-label" for="scheduleEveryMinutes">Every N minutes</label>
+                        <input type="number" class="form-control" id="scheduleEveryMinutes"
+                               min="1" max="59" value="30">
+                    </div>
+                    <div class="col-12 d-none" id="fieldDays">
+                        <label class="form-label">Days</label>
+                        <div id="dayToggles" class="d-flex flex-wrap gap-2"></div>
+                    </div>
+                    <div class="col-12 d-none" id="fieldCron">
+                        <label class="form-label" for="scheduleCron">Cron expression</label>
+                        <input type="text" class="form-control font-monospace" id="scheduleCron"
+                               placeholder="0 6,12,18 * * *">
+                        <div class="form-text">
+                            Five fields: minute hour day-of-month month day-of-week.
+                            Day-of-week is 0=Monday here, not Sunday. Presets like
+                            <code>@daily</code> and <code>@hourly</code> also work.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" for="scheduleChannel">Channel</label>
+                    <input type="text" class="form-control" id="scheduleChannel" placeholder="Public">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" for="scheduleScope">Flood scope <span class="text-muted">(optional)</span></label>
+                    <input type="text" class="form-control" id="scheduleScope" placeholder="#sea">
+                    <div class="form-text">Leave blank for global flood.</div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" for="scheduleMessage">Message</label>
+                    <textarea class="form-control" id="scheduleMessage" rows="3"
+                              placeholder="Hello from the bot"></textarea>
+                    <div class="form-text">
+                        Use <code>\n</code> for a line break. <code>{cmd:wx Seattle}</code> sends a
+                        command's output; those may not run more often than every 15 minutes.
+                    </div>
+                </div>
+
+                <div class="card bg-body-tertiary">
+                    <div class="card-body py-2">
+                        <div class="small text-muted">Resolved schedule</div>
+                        <div class="font-monospace" id="previewCron">—</div>
+                        <div class="small text-muted mt-2">Next runs</div>
+                        <div id="previewRuns" class="small">—</div>
+                        <div id="previewError" class="small text-danger mt-2"></div>
+                        <div id="previewWarning" class="small text-warning mt-2"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveScheduleBtn">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script nonce="{{ g.csp_nonce }}">
+(function () {
+    'use strict';
+
+    // APScheduler day-of-week is 0=Monday, which is not the Vixie cron convention.
+    const DAYS = [
+        { value: 'mon', label: 'Mon' }, { value: 'tue', label: 'Tue' },
+        { value: 'wed', label: 'Wed' }, { value: 'thu', label: 'Thu' },
+        { value: 'fri', label: 'Fri' }, { value: 'sat', label: 'Sat' },
+        { value: 'sun', label: 'Sun' }
+    ];
+
+    let modal = null;
+    let editingSchedule = null;
+    let previewTimer = null;
+
+    const $ = (id) => document.getElementById(id);
+
+    function showStatus(message, kind) {
+        const area = $('statusArea');
+        area.innerHTML = '<div class="alert alert-' + kind + ' alert-dismissible fade show">'
+            + escapeHtml(message)
+            + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>';
+    }
+
+    function escapeHtml(value) {
+        const div = document.createElement('div');
+        div.textContent = value === null || value === undefined ? '' : String(value);
+        return div.innerHTML;
+    }
+
+    function api(path, options) {
+        const opts = Object.assign({ headers: {} }, options || {});
+        opts.headers['Content-Type'] = 'application/json';
+        opts.headers['X-Requested-With'] = 'XMLHttpRequest';
+        return fetch(path, opts).then(async (resp) => {
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok || data.success === false) {
+                throw new Error(data.error || ('Request failed (' + resp.status + ')'));
+            }
+            return data;
+        });
+    }
+
+    function buildDayToggles() {
+        $('dayToggles').innerHTML = DAYS.map((d) =>
+            '<div class="form-check form-check-inline">'
+            + '<input class="form-check-input day-toggle" type="checkbox" value="' + d.value + '" id="day-' + d.value + '">'
+            + '<label class="form-check-label" for="day-' + d.value + '">' + d.label + '</label>'
+            + '</div>'
+        ).join('');
+        document.querySelectorAll('.day-toggle').forEach((el) =>
+            el.addEventListener('change', schedulePreview));
+    }
+
+    function selectedDays() {
+        return Array.from(document.querySelectorAll('.day-toggle:checked')).map((el) => el.value);
+    }
+
+    /** Turn the friendly controls into a cron string the bot accepts. */
+    function composeCron() {
+        const mode = $('scheduleMode').value;
+        if (mode === 'advanced') return $('scheduleCron').value.trim();
+
+        if (mode === 'interval_minutes') {
+            const n = parseInt($('scheduleEveryMinutes').value, 10);
+            return Number.isFinite(n) && n > 0 ? '*/' + n + ' * * * *' : '';
+        }
+        if (mode === 'interval_hours') {
+            const n = parseInt($('scheduleEveryHours').value, 10);
+            return Number.isFinite(n) && n > 0 ? '0 */' + n + ' * * *' : '';
+        }
+        if (mode === 'times') {
+            const hours = $('scheduleTimes').value.split(',')
+                .map((h) => h.trim()).filter((h) => h !== '').join(',');
+            return hours ? '0 ' + hours + ' * * *' : '';
+        }
+
+        const time = $('scheduleTime').value || '08:00';
+        const [hh, mm] = time.split(':');
+        const minute = String(parseInt(mm, 10) || 0);
+        const hour = String(parseInt(hh, 10) || 0);
+        if (mode === 'weekly') {
+            const days = selectedDays();
+            return days.length ? minute + ' ' + hour + ' * * ' + days.join(',') : '';
+        }
+        return minute + ' ' + hour + ' * * *';
+    }
+
+    function syncModeFields() {
+        const mode = $('scheduleMode').value;
+        const show = (id, on) => $(id).classList.toggle('d-none', !on);
+        show('fieldTime', mode === 'daily' || mode === 'weekly');
+        show('fieldTimes', mode === 'times');
+        show('fieldEveryHours', mode === 'interval_hours');
+        show('fieldEveryMinutes', mode === 'interval_minutes');
+        show('fieldDays', mode === 'weekly');
+        show('fieldCron', mode === 'advanced');
+        schedulePreview();
+    }
+
+    function schedulePreview() {
+        clearTimeout(previewTimer);
+        previewTimer = setTimeout(runPreview, 250);
+    }
+
+    async function runPreview() {
+        const cron = composeCron();
+        $('previewCron').textContent = cron || '—';
+        $('previewError').textContent = '';
+        $('previewWarning').textContent = '';
+        if (!cron) {
+            $('previewRuns').textContent = '—';
+            return;
+        }
+        try {
+            const data = await api('/api/scheduled-messages/preview', {
+                method: 'POST',
+                body: JSON.stringify({ schedule: cron, message: $('scheduleMessage').value, count: 5 })
+            });
+            if (data.valid) {
+                $('previewRuns').innerHTML = (data.next_runs || [])
+                    .map((iso) => escapeHtml(new Date(iso).toLocaleString())).join('<br>') || '—';
+            } else {
+                $('previewRuns').textContent = '—';
+                $('previewError').textContent = data.error || 'Invalid schedule';
+            }
+            if (data.warning) $('previewWarning').textContent = data.warning;
+        } catch (err) {
+            $('previewRuns').textContent = '—';
+            $('previewError').textContent = err.message;
+        }
+    }
+
+    function openModal(entry) {
+        editingSchedule = entry ? entry.schedule : null;
+        $('scheduleModalTitle').textContent = entry ? 'Edit scheduled message' : 'New scheduled message';
+        $('scheduleChannel').value = entry ? entry.channel : '';
+        $('scheduleScope').value = entry && entry.scope ? entry.scope : '';
+        $('scheduleMessage').value = entry ? entry.message : '';
+        // Existing entries open in Advanced so the stored cron is never silently
+        // rewritten into something the friendly controls happen to produce.
+        $('scheduleMode').value = entry ? 'advanced' : 'daily';
+        $('scheduleCron').value = entry ? entry.schedule : '';
+        syncModeFields();
+        modal.show();
+    }
+
+    async function save() {
+        const cron = composeCron();
+        const payload = {
+            schedule: cron,
+            channel: $('scheduleChannel').value,
+            scope: $('scheduleScope').value,
+            message: $('scheduleMessage').value
+        };
+        const editing = editingSchedule !== null;
+        if (editing) payload.original_schedule = editingSchedule;
+
+        const btn = $('saveScheduleBtn');
+        btn.disabled = true;
+        try {
+            const result = await api('/api/scheduled-messages', {
+                method: editing ? 'PUT' : 'POST',
+                body: JSON.stringify(payload)
+            });
+            modal.hide();
+            // reload_queued false means the file changed but the running bot did not.
+            showStatus(
+                result.message || 'Saved.',
+                result.reload_queued === false ? 'warning' : 'success'
+            );
+            load();
+        } catch (err) {
+            showStatus(err.message, 'danger');
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    async function remove(entry) {
+        if (!confirm('Delete this scheduled message?\n\n'
+            + entry.schedule + '\n' + entry.channel + ': ' + entry.message)) return;
+        try {
+            const result = await api('/api/scheduled-messages', {
+                method: 'DELETE',
+                body: JSON.stringify({ schedule: entry.schedule })
+            });
+            showStatus(
+                result.message || 'Deleted.',
+                result.reload_queued === false ? 'warning' : 'success'
+            );
+            load();
+        } catch (err) {
+            showStatus(err.message, 'danger');
+        }
+    }
+
+    function renderRow(entry) {
+        const tr = document.createElement('tr');
+
+        const nextRun = (entry.next_runs && entry.next_runs.length)
+            ? new Date(entry.next_runs[0]).toLocaleString()
+            : '—';
+
+        let scheduleCell = '<span class="font-monospace">' + escapeHtml(entry.schedule) + '</span>';
+        if (entry.error) {
+            scheduleCell += '<br><span class="badge bg-danger">Not scheduled</span>';
+        } else if (entry.deprecated) {
+            scheduleCell += '<br><span class="badge bg-warning text-dark">Deprecated format</span>';
+        }
+
+        const scopeBadge = entry.scope
+            ? ' <span class="badge bg-secondary">' + escapeHtml(entry.scope) + '</span>' : '';
+
+        tr.innerHTML =
+            '<td>' + scheduleCell + '</td>'
+            + '<td>' + escapeHtml(nextRun) + '</td>'
+            + '<td>' + escapeHtml(entry.channel) + scopeBadge + '</td>'
+            + '<td class="text-break">' + escapeHtml(entry.message)
+            + (entry.error ? '<br><span class="small text-danger">' + escapeHtml(entry.error) + '</span>' : '')
+            + '</td>'
+            + '<td class="text-end text-nowrap">'
+            + '<button class="btn btn-sm btn-outline-secondary me-1 edit-btn">Edit</button>'
+            + '<button class="btn btn-sm btn-outline-danger delete-btn">Delete</button>'
+            + '</td>';
+
+        tr.querySelector('.edit-btn').addEventListener('click', () => openModal(entry));
+        tr.querySelector('.delete-btn').addEventListener('click', () => remove(entry));
+        return tr;
+    }
+
+    async function load() {
+        const body = $('scheduleTableBody');
+        try {
+            const data = await api('/api/scheduled-messages');
+            body.innerHTML = '';
+            if (!data.entries || !data.entries.length) {
+                body.innerHTML = '<tr><td colspan="5" class="text-muted">'
+                    + 'No scheduled messages yet.</td></tr>';
+                return;
+            }
+            data.entries.forEach((entry) => body.appendChild(renderRow(entry)));
+        } catch (err) {
+            body.innerHTML = '<tr><td colspan="5" class="text-danger">'
+                + escapeHtml(err.message) + '</td></tr>';
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        modal = new bootstrap.Modal($('scheduleModal'));
+        buildDayToggles();
+        $('addScheduleBtn').addEventListener('click', () => openModal(null));
+        $('saveScheduleBtn').addEventListener('click', save);
+        $('scheduleMode').addEventListener('change', syncModeFields);
+        ['scheduleTime', 'scheduleTimes', 'scheduleEveryHours', 'scheduleEveryMinutes',
+         'scheduleCron', 'scheduleMessage'].forEach((id) =>
+            $(id).addEventListener('input', schedulePreview));
+        syncModeFields();
+        load();
+    });
+})();
+</script>
+{% endblock %}

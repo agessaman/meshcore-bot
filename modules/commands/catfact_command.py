@@ -18,6 +18,8 @@ class CatfactCommand(BaseCommand):
     """
 
     # Plugin metadata
+    # Read-only informational output; safe for scheduled {cmd:...} rendering.
+    render_safe = True
     name = "catfact"
     keywords = ['catfact', 'cat', 'meow', 'purr', 'kitten']
     description = "Get a random cat fact (hidden command)"

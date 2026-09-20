@@ -15,8 +15,10 @@ from ..path_inference import (
     select_node_repeater,
     select_repeater_by_graph,
 )
+from ..response_template import format_piped_template_async
 from ..utils import (
     bytes_per_hop_from_routing_and_nodes,
+    calculate_distance,
     parse_path_string,
     public_key_has_prefix,
 )
@@ -278,9 +280,11 @@ class PathCommand(BaseCommand):
         # Check if "p" shortcut is enabled (on by default)
         self.enable_p_shortcut = bot.config.getboolean('Path_Command', 'enable_p_shortcut', fallback=True)
         if self.enable_p_shortcut:
-            # Add "p" to keywords if enabled
+            # Instance-level copy: appending to the inherited class list would leave
+            # "p" on PathCommand.keywords for every instance built later in the same
+            # process, so a reload with enable_p_shortcut = false would still answer "p".
             if "p" not in self.keywords:
-                self.keywords.append("p")
+                self.keywords = [*self.keywords, "p"]
 
         reply_prefix_raw = bot.config.get('Path_Command', 'reply_prefix', fallback='')
         self.path_reply_prefix = self._strip_quotes_from_config(reply_prefix_raw).strip()
@@ -380,10 +384,55 @@ class PathCommand(BaseCommand):
         bph = self._bytes_per_hop_from_nodes_and_routing(node_ids, routing_info)
         return bph >= self.minimum_path_bytes
 
-    def _format_path_reply_prefix(self, message: MeshMessage) -> str:
+    def _store_path_distance(
+        self, distance_km: Optional[float], message: Optional[MeshMessage]
+    ) -> None:
+        """Record the distance for this request.
+
+        Attached to the message when we have it, because the decode above awaits a
+        database lookup and a second path command can interleave there. Instance
+        state would let one request render the other's distance. The attribute
+        fallback keeps direct calls (and existing tests) working.
+        """
+        if message is not None:
+            message._path_distance_km = distance_km  # type: ignore[attr-defined]
+        self._last_path_distance_km = distance_km
+
+    def _format_path_distance(self, message: Optional[MeshMessage] = None) -> str:
+        """Render the {path_distance} placeholder; empty when the path cannot be measured.
+
+        Matches the ``{path_distance}`` name and ``12.4km`` shape already used by the
+        test command, so one prefix template reads the same across both commands.
+        """
+        # Only consult instance state when there is no request to read from. Falling
+        # back on a request-local None would render another request's distance next to
+        # a reply that has none of its own.
+        if message is not None:
+            distance = getattr(message, '_path_distance_km', None)
+        else:
+            distance = getattr(self, '_last_path_distance_km', None)
+        if distance is None:
+            return ''
+        return f"{distance:.1f}km"
+
+    async def _format_path_reply_prefix(self, message: MeshMessage) -> str:
+        """Render the configured reply prefix off the event loop.
+
+        Async because the prefix may carry a ``shorten`` filter, whose HTTP call
+        would otherwise block radio RX and every other handler for its full timeout.
+        """
         if not self.path_reply_prefix:
             return ''
-        formatted = self.format_response(message, self.path_reply_prefix).rstrip()
+        fields = self.get_standard_placeholder_fields(message)
+        fields['path_distance'] = self._format_path_distance(message)
+        formatted = (await format_piped_template_async(
+            self.path_reply_prefix,
+            {k: str(v) for k, v in fields.items()},
+            message=message,
+            logger=self.logger,
+            config=self.bot.config,
+            prefix_hex_chars=getattr(self.bot, 'prefix_hex_chars', 2),
+        )).rstrip()
         if not formatted:
             return ''
         return formatted + '\n'
@@ -397,12 +446,19 @@ class PathCommand(BaseCommand):
         )
 
     async def _decode_node_ids(
-        self, node_ids: list[str], routing_info: Optional[dict[str, Any]] = None
+        self,
+        node_ids: list[str],
+        routing_info: Optional[dict[str, Any]] = None,
+        message: Optional[MeshMessage] = None,
     ) -> str:
         self.logger.info(f"Decoding path with {len(node_ids)} nodes: {','.join(node_ids)}")
         if not self._should_resolve_repeater_names(node_ids, routing_info):
+            self._store_path_distance(None, message)
             return self._format_repeater_resolution_deferred(node_ids)
         repeater_info = await self._lookup_repeater_names(node_ids)
+        self._store_path_distance(
+            self._calculate_path_distance_km(node_ids, repeater_info, message), message
+        )
         return self._format_path_response(node_ids, repeater_info)
 
     def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
@@ -418,20 +474,6 @@ class PathCommand(BaseCommand):
             return False
         return super().can_execute(message)
 
-    def matches_keyword(self, message: MeshMessage) -> bool:
-        """Check if message starts with 'path' keyword or 'p' shortcut (if enabled)"""
-        content_lower = self.cleanup_message_for_matching(message)
-
-        # Handle "p" shortcut if enabled
-        if self.enable_p_shortcut:
-            if content_lower == "p":
-                return True  # Just "p" by itself
-            elif content_lower.startswith('p ') and len(content_lower) > 2:
-                return True  # "p " followed by path data
-
-        # Check if message starts with any of our keywords
-        return any(content_lower == keyword or content_lower.startswith(keyword + ' ') for keyword in self.keywords)
-
     async def execute(self, message: MeshMessage) -> bool:
         """Execute path decode command"""
         self.logger.info(f"Path command executed with content: {message.content}")
@@ -442,24 +484,26 @@ class PathCommand(BaseCommand):
         # Store the current message for use in _extract_path_from_recent_messages
         self._current_message = message
 
-        # Parse the message content to extract path data
-        content = message.content.strip()
-        parts = content.split()
+        # Instance state, so a value left by the previous request would otherwise be
+        # rendered next to this one's reply, including on the error paths below.
+        self._last_path_distance_km = None
 
-        if len(parts) < 2:
-            # No arguments provided - try to extract path from current message
-            response = await self._extract_path_from_recent_messages()
+        _trigger, args = self.split_trigger_and_args(message.content)
+        if not args:
+            # No arguments — decode the current message's routing path
+            response = await self._extract_path_from_recent_messages(message)
         else:
-            # Extract path data from the command
-            path_input = " ".join(parts[1:])
-            response = await self._decode_path(path_input)
+            response = await self._decode_path(args, message=message)
 
         # Send the response (may be split into multiple messages if long)
         await self._send_path_response(message, response)
         return True
 
     async def _decode_path(
-        self, path_input: str, routing_info: Optional[dict[str, Any]] = None
+        self,
+        path_input: str,
+        routing_info: Optional[dict[str, Any]] = None,
+        message: Optional[MeshMessage] = None,
     ) -> str:
         """Decode hex path data to repeater names.
         Comma-separated tokens infer hop size (2, 4, or 6 hex chars per node).
@@ -490,7 +534,7 @@ class PathCommand(BaseCommand):
             if not node_ids:
                 return self.translate('commands.path.no_valid_hex')
 
-            return await self._decode_node_ids(node_ids, routing_info)
+            return await self._decode_node_ids(node_ids, routing_info, message=message)
 
         except Exception as e:
             self.logger.error(f"Error decoding path: {e}")
@@ -695,7 +739,11 @@ class PathCommand(BaseCommand):
                             'collision': False,
                             'geographic_guess': (selection.method == 'geographic'),
                             'graph_guess': (selection.method == 'graph'),
-                            'confidence': selection.confidence
+                            'confidence': selection.confidence,
+                            # Carried through for {path_distance}; without these the
+                            # distance calculation can never find a coordinate.
+                            'latitude': selected_repeater.get('latitude'),
+                            'longitude': selected_repeater.get('longitude'),
                         }
                     elif selection.status == 'collision':
                         # Low confidence or no selection method - show collision warning
@@ -716,7 +764,9 @@ class PathCommand(BaseCommand):
                             'last_seen': repeater['last_seen'],
                             'is_active': repeater['is_active'],
                             'found': True,
-                            'collision': False
+                            'collision': False,
+                            'latitude': repeater.get('latitude'),
+                            'longitude': repeater.get('longitude'),
                         }
                     else:
                         # All repeaters filtered out (too old) - show as not found
@@ -740,7 +790,9 @@ class PathCommand(BaseCommand):
                                         'device_type': contact_data.get('type', 'Unknown'),
                                         'last_seen': 'Active',
                                         'is_active': True,
-                                        'source': 'device'
+                                        'source': 'device',
+                                        'latitude': contact_data.get('adv_lat'),
+                                        'longitude': contact_data.get('adv_lon'),
                                     })
 
                     if device_matches:
@@ -764,7 +816,9 @@ class PathCommand(BaseCommand):
                                 'is_active': match['is_active'],
                                 'found': True,
                                 'collision': False,
-                                'source': 'device'
+                                'source': 'device',
+                                'latitude': match.get('latitude'),
+                                'longitude': match.get('longitude'),
                             }
                     else:
                         repeater_info[node_id] = {
@@ -801,13 +855,20 @@ class PathCommand(BaseCommand):
         return None
 
 
-    def _get_sender_location(self) -> Optional[tuple[float, float]]:
-        """Get sender location from current message if available"""
+    def _get_sender_location(
+        self, message: Optional[MeshMessage] = None
+    ) -> Optional[tuple[float, float]]:
+        """Get sender location for this request.
+
+        Takes the request's own message; ``_current_message`` is shared instance
+        state and a concurrent path command can replace it mid-request.
+        """
         try:
-            if not hasattr(self, '_current_message') or not self._current_message:
+            request = message if message is not None else getattr(self, '_current_message', None)
+            if not request:
                 return None
 
-            sender_pubkey = self._current_message.sender_pubkey
+            sender_pubkey = request.sender_pubkey
             if not sender_pubkey:
                 return None
 
@@ -905,6 +966,45 @@ class PathCommand(BaseCommand):
             path_prefix_hex_chars=path_prefix_hex_chars,
         )
 
+    def _calculate_path_distance_km(
+        self,
+        node_ids: list[str],
+        repeater_info: dict[str, dict[str, Any]],
+        message: Optional[MeshMessage] = None,
+    ) -> Optional[float]:
+        """Total distance along sender -> each hop -> bot, in kilometres.
+
+        Returns None when any node in the chain has no usable coordinates, since a
+        partial sum would understate the real distance travelled.
+        """
+        if self.bot_latitude is None or self.bot_longitude is None:
+            return None
+
+        chain: list[tuple[float, float]] = []
+
+        sender = self._get_sender_location(message)
+        if sender is None:
+            return None
+        chain.append(sender)
+
+        for node_id in node_ids:
+            info = repeater_info.get(node_id, {})
+            # A prefix collision has no single node to measure from.
+            if not info.get('found', False) or info.get('collision', False):
+                return None
+            lat = info.get('latitude')
+            lon = info.get('longitude')
+            if lat is None or lon is None or (lat == 0 and lon == 0):
+                return None
+            chain.append((lat, lon))
+
+        chain.append((self.bot_latitude, self.bot_longitude))
+
+        total = 0.0
+        for (lat1, lon1), (lat2, lon2) in zip(chain, chain[1:], strict=False):
+            total += calculate_distance(lat1, lon1, lat2, lon2)
+        return total
+
     def _format_path_response(self, node_ids: list[str], repeater_info: dict[str, dict[str, Any]]) -> str:
         """Format the path decode response
 
@@ -962,7 +1062,7 @@ class PathCommand(BaseCommand):
 
     async def _send_path_response(self, message: MeshMessage, response: str):
         """Send path response, splitting into multiple messages if necessary"""
-        prefix = self._format_path_reply_prefix(message)
+        prefix = await self._format_path_reply_prefix(message)
         self.last_response = prefix + response if prefix else response
 
         max_length = self.get_max_message_length(message)
@@ -1007,15 +1107,18 @@ class PathCommand(BaseCommand):
             out = (prefix + current_message.rstrip()) if message_count == 0 else current_message.rstrip()
             await self.send_response(message, out, skip_user_rate_limit=True)
 
-    async def _extract_path_from_recent_messages(self) -> str:
+    async def _extract_path_from_recent_messages(
+        self, message: Optional[MeshMessage] = None
+    ) -> str:
         """Extract path from the current message's path information (same as test command).
         Prefers already-extracted routing_info.path_nodes when present (multi-byte path support).
         """
         try:
-            if not hasattr(self, '_current_message') or not self._current_message:
+            request = message if message is not None else getattr(self, '_current_message', None)
+            if not request:
                 return self.translate('commands.path.no_path')
 
-            msg = self._current_message
+            msg = request
 
             # Prefer routing_info when present (no re-parsing; preserves bytes_per_hop)
             routing_info = getattr(msg, 'routing_info', None)
@@ -1026,7 +1129,7 @@ class PathCommand(BaseCommand):
                 path_nodes = routing_info.get('path_nodes', [])
                 if path_nodes:
                     node_ids = [n.upper() for n in path_nodes]
-                    return await self._decode_node_ids(node_ids, routing_info)
+                    return await self._decode_node_ids(node_ids, routing_info, message=message)
 
             # Fallback: parse message.path string (e.g. no routing_info or legacy path)
             if not msg.path:
@@ -1039,10 +1142,10 @@ class PathCommand(BaseCommand):
             path_part = path_string.split(" via ROUTE_TYPE_")[0] if " via ROUTE_TYPE_" in path_string else path_string
 
             if ',' in path_part:
-                return await self._decode_path(path_part, routing_info)
+                return await self._decode_path(path_part, routing_info, message=message)
             hex_pattern = rf'[0-9a-fA-F]{{{getattr(self.bot, "prefix_hex_chars", 2)}}}'
             if re.search(hex_pattern, path_part):
-                return await self._decode_path(path_part, routing_info)
+                return await self._decode_path(path_part, routing_info, message=message)
             return self.translate('commands.path.path_prefix', path_string=path_string)
 
         except Exception as e:

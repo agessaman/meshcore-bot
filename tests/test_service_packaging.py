@@ -7,6 +7,7 @@ import os
 import shutil
 import sqlite3
 import subprocess
+import sys
 from pathlib import Path
 
 from scripts.migrate_service_layout import migrate_service_layout
@@ -45,9 +46,26 @@ def test_service_units_do_not_make_code_tree_writable():
     assert 'find "${CONF_DIR}" "${DATA_DIR}" -type f -exec chmod 0600' in deb_builder
     assert 'VENV_BUILD="${INSTALL_ROOT}/.venv-build-$$"' in deb_builder
     assert 'if [ ! -d "${INSTALL_ROOT}/venv" ]' not in deb_builder
+    assert 'scripts/rewrite_venv_shebangs.sh" "${INSTALL_ROOT}/venv"' in deb_builder
+    assert '/bin/python" -m pip install --quiet --upgrade pip' in deb_builder
+    assert "/bin/pip\" install" not in deb_builder
+    assert (
+        'mv "${VENV_OLD}" "${INSTALL_ROOT}/venv"' in deb_builder
+        and deb_builder.index('rewrite_venv_shebangs.sh" "${INSTALL_ROOT}/venv"')
+        < deb_builder.index('rm -rf "${VENV_OLD}"')
+    )
     assert 'scripts/debian_service_state.sh" "${BUILD_DIR}/DEBIAN/preinst"' in deb_builder
     assert 'debian_service_state.sh" restore "${2:-}"' in deb_builder
     assert 'debian_service_state.sh preremove "${1:-}"' in deb_builder
+    assert 'scripts/armv7_pip_args.sh' in deb_builder
+    assert 'configure_armv7_pip_args "${INSTALL_ROOT}/requirements.txt"' in deb_builder
+    assert 'pip install --quiet "${ARMV7_PIP_ARGS[@]}" -r "${INSTALL_ROOT}/requirements.txt"' in deb_builder
+    assert (
+        deb_builder.index('configure_armv7_pip_args "${INSTALL_ROOT}/requirements.txt"')
+        < deb_builder.index(
+            'pip install --quiet "${ARMV7_PIP_ARGS[@]}" -r "${INSTALL_ROOT}/requirements.txt"'
+        )
+    )
 
 
 def test_standalone_installer_separates_code_and_private_state():
@@ -62,6 +80,22 @@ def test_standalone_installer_separates_code_and_private_state():
     assert "source-authoritative secure install" in installer
     assert "preserve_service_alternatives.py" in installer
     assert 'VENV_BUILD="$INSTALL_DIR/.venv-build-$$"' in installer
+    assert 'rewrite_venv_shebangs.sh" "$INSTALL_DIR/venv"' in installer
+    assert 'bash "$rewrite_helper" "$venv"' in installer
+    assert "update_venv_in_place" in installer
+    assert installer.index("update_venv_in_place()") < installer.index(
+        'bash "$rewrite_helper" "$venv"'
+    )
+    assert installer.index('bash "$rewrite_helper" "$venv"') < installer.index(
+        'harden_venv_permissions "$venv"'
+    )
+    assert "Restored the previous virtualenv after shebang rewrite failure" in installer
+    assert '"$VENV_PYTHON" -m pip install --quiet "better-profanity' in installer
+    assert '"$VENV_PYTHON" -m pip install --quiet "pycountry' in installer
+    assert '"$INSTALL_DIR/venv/bin/pip"' not in installer
+    assert 'scripts/armv7_pip_args.sh' in installer
+    assert "configure_armv7_pip_args" in installer
+    assert 'pip install --quiet "${ARMV7_PIP_ARGS[@]}" -r' in installer
     assert 'Preserving existing virtual environment' not in installer
     assert "Python 3.10+ installed" in installer
     assert "sys.version_info < (3, 10)" in installer
@@ -77,6 +111,143 @@ def test_standalone_installer_separates_code_and_private_state():
     assert 'sync_executable_tree "$dest_dir" "$rollback_backup"' in installer
     assert 'sync_executable_tree "$rollback_backup" "$dest_dir"' in installer
     assert "Refusing to restart a potentially partial code tree" in installer
+
+
+def _run_armv7_pip_args(
+    machine: str, requirements: Path, extra_bash: str = ""
+) -> subprocess.CompletedProcess[str]:
+    helper = REPO_ROOT / "scripts/armv7_pip_args.sh"
+    return subprocess.run(
+        [
+            "bash",
+            "-c",
+            f"""
+            uname() {{ echo {machine}; }}
+            {extra_bash}
+            # shellcheck disable=SC1091
+            source "$1"
+            configure_armv7_pip_args "$2"
+            printf '%s\\n' "${{ARMV7_PIP_ARGS[@]}}"
+            """,
+            "armv7-pip-args-test",
+            str(helper),
+            str(requirements),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_armv7_pip_args_helper_contents() -> None:
+    helper = (REPO_ROOT / "scripts/armv7_pip_args.sh").read_text(encoding="utf-8")
+    assert "armv6l|armv7l" in helper
+    assert "--extra-index-url https://www.piwheels.org/simple" in helper
+    assert "constraints-armv7.txt" in helper
+    assert "ARMV7_PIP_ARGS+=(-c" in helper
+    assert 'source this file; do not execute it' in helper
+
+
+def test_armv7_pip_args_helper_refuses_direct_execution() -> None:
+    helper = REPO_ROOT / "scripts/armv7_pip_args.sh"
+    result = subprocess.run(
+        ["bash", str(helper)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert "source this file" in result.stderr
+
+
+def test_armv7_pip_args_helper_is_noop_off_32bit_arm(tmp_path: Path) -> None:
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("flask-compress>=1.14\n", encoding="utf-8")
+    result = _run_armv7_pip_args("x86_64", requirements)
+    assert result.stdout.strip() == ""
+    assert result.stderr.strip() == ""
+
+
+def test_armv7_pip_args_helper_selects_piwheels_on_armv6l(tmp_path: Path) -> None:
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("flask-compress>=1.14\n", encoding="utf-8")
+    (tmp_path / "constraints-armv7.txt").write_text(
+        'brotli <= 1.1.0 ; platform_machine == "armv6l"\n',
+        encoding="utf-8",
+    )
+    result = _run_armv7_pip_args("armv6l", requirements)
+    args = result.stdout.split()
+    assert args[:2] == ["--extra-index-url", "https://www.piwheels.org/simple"]
+    assert "-c" in args
+    assert str(tmp_path / "constraints-armv7.txt") in args
+    assert "32-bit ARM detected" in result.stderr
+
+
+def test_armv7_pip_args_helper_warns_when_constraints_missing(tmp_path: Path) -> None:
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("flask-compress>=1.14\n", encoding="utf-8")
+    result = _run_armv7_pip_args("armv7l", requirements)
+    assert result.stdout.split() == [
+        "--extra-index-url",
+        "https://www.piwheels.org/simple",
+    ]
+    assert "constraints-armv7.txt not found" in result.stderr
+    assert "brotli and ephem will compile from source" in result.stderr
+
+
+def test_armv7_pip_args_helper_uses_print_info_when_defined(tmp_path: Path) -> None:
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("flask-compress>=1.14\n", encoding="utf-8")
+    (tmp_path / "constraints-armv7.txt").write_text("brotli <= 1.1.0\n", encoding="utf-8")
+    result = _run_armv7_pip_args(
+        "armv7l",
+        requirements,
+        extra_bash='print_info() { echo "INFO:$1"; }',
+    )
+    assert "INFO:32-bit ARM detected" in result.stdout + result.stderr
+
+
+def test_relocated_venv_shebangs_are_rewritten(tmp_path: Path) -> None:
+    """Regression for issue #229: atomic venv mv leaves broken console shebangs."""
+    build = tmp_path / ".venv-build-test"
+    final = tmp_path / "venv"
+    subprocess.run([sys.executable, "-m", "venv", str(build)], check=True)
+
+    pip_build = build / "bin" / "pip"
+    assert pip_build.is_file()
+    shebang_before = pip_build.read_text(encoding="utf-8").splitlines()[0]
+    assert str(build) in shebang_before
+
+    build.rename(final)
+    pip_final = final / "bin" / "pip"
+    # After relocate, the baked shebang still points at the old build path.
+    assert str(build) in pip_final.read_text(encoding="utf-8").splitlines()[0]
+    try:
+        broken = subprocess.run(
+            [str(pip_final), "--version"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert broken.returncode != 0
+    except FileNotFoundError:
+        # macOS/execve reports a missing shebang interpreter as ENOENT on the
+        # script path itself rather than a non-zero exit from pip.
+        pass
+
+    rewrite = REPO_ROOT / "scripts" / "rewrite_venv_shebangs.sh"
+    subprocess.run(["bash", str(rewrite), str(final)], check=True)
+
+    shebang_after = pip_final.read_text(encoding="utf-8").splitlines()[0]
+    assert shebang_after == f"#!{final / 'bin' / 'python'}"
+    fixed = subprocess.run(
+        [str(pip_final), "--version"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert fixed.returncode == 0, fixed.stderr
+    assert "pip" in fixed.stdout.lower()
 
 
 def test_service_documentation_matches_hardened_layout() -> None:
@@ -96,6 +267,9 @@ def test_service_documentation_matches_hardened_layout() -> None:
     assert "sudo chown -R meshcore:meshcore /opt/meshcore-bot" not in service_docs
     assert "patches the meshcore file" not in service_docs
     assert "/var/lib/meshcore-bot" in service_docs
+    assert "venv/bin/python -m pip" in service_docs
+    assert "venv/bin/pip install" not in service_docs
+    assert "venv/bin/pip list" not in service_docs
     assert "Upgrading from v0.9.3 to v1.0.0" in upgrade_docs
 
 
