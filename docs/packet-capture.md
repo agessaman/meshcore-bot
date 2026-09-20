@@ -191,7 +191,7 @@ mqttN_jwt_renewal_interval = 3500
 {
   "origin": "MyBot",
   "origin_id": "ABCD1234...",
-  "timestamp": "2026-01-04T12:34:56",
+  "timestamp": "2026-01-04T12:34:56Z",
   "type": "PACKET",
   "direction": "rx",
   "len": "42",
@@ -204,6 +204,10 @@ mqttN_jwt_renewal_interval = 3500
   "hash": "ABC123..."
 }
 ```
+
+Every timestamp the bot publishes is UTC and carries a `Z` suffix, so a consumer never has
+to guess the host's timezone. A payload showing a bare local time came from a build older
+than v1.0.0 (issue #276).
 
 ### Decoded Payloads
 
@@ -257,7 +261,7 @@ independent of this setting.
 ```json
 {
   "status": "online",
-  "timestamp": "2026-01-04T12:34:56",
+  "timestamp": "2026-01-04T12:34:56Z",
   "origin": "MyBot",
   "origin_id": "ABCD1234...",
   "model": "Heltec V3",

@@ -105,6 +105,22 @@ semantic versioning.
 
 ### Fixed
 
+- MQTT brokers on `waev.app` now default to a JWT lifetime they accept (#248).
+  waev.app refuses a token whose `exp` is more than an hour past its `iat`, so the
+  project-wide 24-hour default never authenticated there and the operator saw only a
+  bare auth failure. Those hosts now get a 3600s TTL with renewal at 3500s unless a
+  value was configured for them, per broker or globally, in which case the configured
+  value still wins. The choice is logged. Only `waev.app` and its subdomains match; no
+  other broker's defaults change.
+- The `[Keywords]` newline instructions now say the escape is a *backslash* and that
+  `/n` is two literal characters (#277), and they no longer use `test` as the example
+  keyword. `test` and `t` are served by the built-in test command, not the plain
+  keyword path, so the mesh-info placeholders listed in that same block render empty
+  there. Both facts are now stated where the example lives, along with the
+  configparser continuation form, which needs no escape at all.
+- The packet-capture docs no longer show a naive local timestamp in the published
+  packet and status examples (#276). The bot has published UTC with a `Z` suffix since
+  v1.0.0; only the examples still read as local time.
 - `outgoing_flood_scope_override = none` is now read as global flood on the
   send path, as it already was everywhere else. `send_channel_message` tested
   the raw value against a fixed tuple, so the lowercase spelling became the

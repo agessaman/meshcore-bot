@@ -500,8 +500,10 @@ companion_min_inactive_days = 30
 # {elapsed} - Elapsed time (e.g. 1234ms) or "Sync Device Clock" when device clock is invalid (use {elapsed} only; do not append ms)
 # {packet_hash} - 16-char MeshCore packet identity hash (uppercase hex); renders empty when RF correlation did not attach routing info
 #
-# To add newlines in responses, use \n (single backslash + n):
-# Example: test = "Line 1\nLine 2\nLine 3"
+# To add newlines in responses, use \n — a BACKSLASH followed by n, the way a
+# shell or Python writes it. A forward slash (/n) is not an escape and is sent
+# as the two literal characters (issue #277).
+# Example: greetings = "Line 1\nLine 2\nLine 3"
 # This will output:
 # Line 1
 # Line 2
@@ -509,6 +511,20 @@ companion_min_inactive_days = 30
 #
 # To use a literal backslash + n, use \\n (double backslash + n)
 # Other escape sequences: \t (tab), \r (carriage return), \\ (literal backslash)
+#
+# A configparser continuation also works and needs no escape at all: put the
+# first line after the "=" and indent each following line by at least one space.
+#
+#   greetings = Line 1
+#               Line 2
+#
+# NOTE: `test` and `t` are NOT plain keywords. They are served by the built-in
+# test command, which renders `[Test_Command] response_format` if that is set
+# and otherwise falls back to a `test` entry here. That command supports the
+# message-based placeholders above and the pipe filters described under
+# [Test_Command], but NOT the mesh network info placeholders below — those
+# render as empty text. Same for any other built-in command name used as a
+# keyword. Pick a name no command owns for a plain keyword response.
 #
 # Available placeholders (mesh network info - same as Scheduled_Messages):
 # Total counts (ever heard):
