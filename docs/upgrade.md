@@ -11,12 +11,29 @@ command, service-plugin, or web-viewer interfaces introduced in v1.0.0. Existing
 configuration files continue to work. Back up `config.ini`, `local/`, and the bot
 database before upgrading, then use the normal installer or container update path.
 
+### Dependencies
+
+`meshcore` must be 2.3.14 or newer. This is a hard requirement, not a
+recommendation: before 2.3.13, `send_msg_with_retry` reported ACKed DMs as
+failures, so a bot on an older library logs "no ACK received after retries" for
+messages the recipient did receive, and skips the delivery bookkeeping for them.
+The normal installer and container paths pick this up on their own; a manual venv
+needs `pip install -U -r requirements.txt`.
+
 ### Database
 
 Migration 23 adds nullable `snr` and `rssi` columns to `observed_paths`. The bot
 applies it automatically and records it in `schema_version`; existing path rows and
 rows without a direct RF measurement retain `NULL` values. The migration is
 transactional and safe to run more than once.
+
+Migration 24 creates `region_scope_daily` and `region_warning_events` for the
+region-scope tallies described below. Both are new tables, so nothing existing is
+rewritten, and the migration is safe to run more than once. `region_scope_daily`
+is written for every channel message once `[Region_Warnings] track_traffic` is on
+(the default); it holds one row per channel per local date, so the growth is
+bounded by channel count rather than traffic. `region_warning_events` is pruned by
+`[Data_Retention] region_warning_retention_days` (default 90).
 
 ### Configuration and local extensions
 
@@ -33,6 +50,16 @@ transactional and safe to run more than once.
 - The Plugins page now discovers local commands and services and saves their new
   sections to `local/config.ini`. A section already present in the base config keeps
   its existing owner.
+- `[Region_Warnings]` is new. Scope **tallying** is on by default and costs no
+  airtime; the **warning** is off by default (`enabled = false`) and, when enabled,
+  starts in dry run (`dry_run = true`). Nothing is transmitted on upgrade unless you
+  turn both of those around. See `docs/region-warnings.md`.
+- `[Data_Retention] region_warning_retention_days` (default 90) prunes the warning
+  event log.
+- `[Hello_Command] include_sender` (default off) names the user the hello reply is
+  answering. Existing hello replies are unchanged.
+- `[Contact_Command] enabled` (default on) adds a `contact` command that replies with
+  the bot's own contact card. Set it to `false` if you do not want it.
 
 ### Behavior changes
 
@@ -53,6 +80,19 @@ transactional and safe to run more than once.
   between runs.
 - Proactive weather output, `!wx`, and `!gwx` share localized alert formatting.
   Russian is included, and local catalogs can override individual strings.
+- MQTT brokers on `waev.app` now default to a 3600s JWT TTL with renewal at 3500s,
+  because waev rejects a longer-lived token. An explicit `mqttN_jwt_ttl_seconds` or
+  global `jwt_ttl_seconds` still wins, so existing configurations are unchanged; the
+  substitution is logged when it applies. No other broker's defaults move.
+- The Radio page gains **Region Scopes** and **Default Region Scope** cards, so the
+  bot's own flood scopes and the radio's firmware default can be set from the web
+  viewer instead of by hand. Note that the bot leaves the radio in forced-unscoped
+  mode after any scoped send, so the firmware default stops applying until the bot
+  scopes another one — the card says so too.
+- A DM waiting for its ACK no longer holds the radio, so channel replies, other DMs,
+  and scheduled sends are no longer stalled behind one DM's retries. A region-scoped
+  channel send does still hold the radio from setting the scope through restoring it,
+  so nothing else goes out under that scope.
 
 ## Upgrading from v0.8 → v0.9
 
