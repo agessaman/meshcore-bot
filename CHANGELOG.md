@@ -30,8 +30,8 @@ semantic versioning.
   region. Configure it in `[Region_Warnings]`; retention is governed by
   `[Data_Retention] region_warning_retention_days`.
 
-  A channel sender is a display name, not an identity — MeshCore's channel
-  messages carry no public key — so DM warnings only go to a name the radio
+  A channel sender is a display name, not an identity—MeshCore's channel
+  messages carry no public key—so DM warnings only go to a name the radio
   already holds a contact for, and a message with no `Name: ` prefix is counted
   but never warned. Warnings dropped for want of a contact are counted and
   shown on the page, so a bot that keeps no contacts reports that rather than
@@ -57,7 +57,7 @@ semantic versioning.
   regional flood scopes (#283), so `[Channels] flood_scopes` and
   `outgoing_flood_scope_override` no longer have to be edited by hand. It
   writes `config.ini` and queues a hot config reload, then polls that reload and
-  reports what the bot actually did — including saying plainly when nothing
+  reports what the bot actually did—including saying plainly when nothing
   picked the change up. Scope names are normalized on save the way the bot
   normalizes them (`west` becomes `#west`), and a name containing `,`, `%` or an
   inner `#` is refused before anything is written, because those are the three
@@ -102,7 +102,7 @@ semantic versioning.
   alongside the built-in ones, tagged with `source: "local"`. Settings edited
   there route to `local/config.ini` rather than the base `config.ini`, matching
   the local overlay the bot already merges at startup via `[Bot] local_dir_path`
-  — a section already tracked in the base config keeps saving there. The web
+ —a section already tracked in the base config keeps saving there. The web
   viewer previously only read/wrote against `config.ini`, so any local plugin
   settings actually stored in the overlay were invisible and unsavable from the
   UI (#272).
@@ -121,15 +121,15 @@ semantic versioning.
   blanks the value and reports only `has_value`, matching the key-name
   redaction already used elsewhere, and the field renders as a
   `type="password"` input with a show/hide toggle. When a value is already
-  saved the field shows a `(saved — enter new value to change)` placeholder
+  saved the field shows a `(saved—enter new value to change)` placeholder
   and leaving it untouched keeps the stored secret, so an edit elsewhere on
   the form does not blank it.
 
 - Localized proactive weather messages (daily forecasts, rain nowcasts, weather
   alerts) via `services.weather_service.*` translation keys. `WeatherService` now
   uses the bot's `translator` instead of hardcoded English strings, so proactive
-  outputs respect the configured `language` setting — the same mechanism already
-  used by `!wx`, `!gwx`, `!rain` and other commands.
+  outputs respect the configured `language` setting—the same mechanism already
+  used by `wx`, `gwx`, `rain` and other commands.
 
 - Russian (`ru`) translation for the full bot UI, including all weather service
   keys, command keys, categories, and common strings.
@@ -137,11 +137,11 @@ semantic versioning.
 - `format_temperature_high_low()` now accepts an optional `translator` parameter.
   When provided, the `H`/`L` temperature labels and compass wind directions are
   locale-aware (`H`/`L` → `В`/`Н` in Russian; `WNW` → `ЗСЗ`). Passed from
-  `WeatherService`, `!wx`, and `!gwx` callers.
+  `WeatherService`, `wx`, and `gwx` callers.
 
-- `modules/alert_format.py` holds one NWS alert formatter, shared by `!wx alerts`
+- `modules/alert_format.py` holds one NWS alert formatter, shared by `wx alerts`
   and the proactive `WeatherService` broadcasts. Both now localize from the same
-  code path, so a Russian bot no longer answers `!wx alerts` in English while its
+  code path, so a Russian bot no longer answers `wx alerts` in English while its
   proactive alerts are Russian. It replaces four copies of the event-type
   abbreviation table and two of the time compactor, which had already drifted
   apart. Alert strings moved to `common.alerts.*` and wind directions to
@@ -156,7 +156,7 @@ semantic versioning.
 - Shlink is now supported as a URL shortener alongside v.gd / is.gd, selected with
   `short_url_website_service = shlink` under `[External_Data]`. It authenticates with
   `short_url_website_api_key` in an `X-Api-Key` header and needs `short_url_website`
-  set to your own instance — there is no default, and the bot skips shortening rather
+  set to your own instance—there is no default, and the bot skips shortening rather
   than sending the key to a host you did not configure.
 
 - `shorten` and `if_nonempty` response-template filters. `shorten` runs a value
@@ -165,8 +165,8 @@ semantic versioning.
   non-empty value with literal `L` and clears otherwise, which is how a whole clause
   is hidden rather than labelled: `{packet_hash|if_nonempty:"https://…/{packet_hash}"|shorten}`
   prints nothing at all when RF correlation fails, instead of a broken link. Both
-  filters also answer to their other spellings — `shorten_url` in a template,
-  `shorten_url` in a feed format, `if_notempty` — so a chain copied between a feed
+  filters also answer to their other spellings—`shorten_url` in a template,
+  `shorten_url` in a feed format, `if_notempty`—so a chain copied between a feed
   format and a command `response_format` works unchanged either way.
 
 - Response-template filter arguments may be double-quoted, and a quoted argument may
@@ -206,7 +206,7 @@ semantic versioning.
 
 - Documented installing with `pipx`, which sidesteps PEP 668 on Debian 12+, Ubuntu
   23.04+, Fedora and Arch (#222), including where `config.ini`, the database and
-  `local/` live — everything resolves relative to the config file's directory, so an
+  `local/` live—everything resolves relative to the config file's directory, so an
   absolute `--config` is what makes a pipx install deterministic.
 
 - Migration 23: nullable `snr` / `rssi` columns on `observed_paths` for
@@ -235,7 +235,7 @@ semantic versioning.
   takes precedence over the in-place `--update-venv` path, so the two can be
   combined.
 
-- `[PacketCapture] observer_name` — an optional name reported as the `origin` of
+- `[PacketCapture] observer_name`—an optional name reported as the `origin` of
   MQTT packet and status payloads. It lets the observer/analyzer identity differ
   from the MeshCore RF node, which is useful when one bot name is already taken
   by the radio's advertised name. Unset (the default) keeps the previous
@@ -314,7 +314,7 @@ semantic versioning.
 - A region-scoped channel message now restores global flood even when
   `set_flood_scope` raises. The restore only ran in the `finally` around the
   send, so a set that raised left the device pinned to that region and every
-  later send — channel replies, DMs, scheduled sends — went out under it.
+  later send—channel replies, DMs, scheduled sends—went out under it.
 
 - A DM waiting for its ACK no longer holds the radio. Radio commands were
   serialized per call, so a DM's retry loop kept every other command waiting
@@ -374,7 +374,7 @@ semantic versioning.
 - Weather output no longer leaks translation key paths into mesh broadcasts. The
   localization pass replaced several `dict.get(key, fallback)` lookups with bare
   `translate()` calls, and `Translator.translate` returns the dotted key path when
-  a key is missing from both the locale and the English fallback — deliberate, so
+  a key is missing from both the locale and the English fallback—deliberate, so
   missing translations are visible in development, but it reaches the air in
   production. An NWS title we cannot classify (`event_type = "Unknown"`, e.g.
   "Hazardous Weather Outlook") rendered as
@@ -391,7 +391,7 @@ semantic versioning.
   hardcoded English month list, so any locale with translated months took the wrong
   branch and then failed the regex, truncating mid-string:
   `🟠Flood Warning King до июн 28 6 дн от NWS SEA`. Adding a space before AM/PM —
-  needed because Russian writes "6 дня", not "6дня" — broke the same regex for
+  needed because Russian writes "6 дня", not "6дня"—broke the same regex for
   English too, spending 8 characters of a 130-byte budget on a redundant date and
   pushing the shortened URL out. Times are now carried as parsed parts and rendered
   through a per-locale `common.alerts.time_12h` template, so nothing re-parses
@@ -405,13 +405,13 @@ semantic versioning.
   the existing `common.date_time.month_abbreviations` instead of the duplicate
   `services.weather_service.months` block the pass had added.
 
-- `!gwx` display units follow the `[Weather]` unit config instead of the response
+- `gwx` display units follow the `[Weather]` unit config instead of the response
   language. Visibility and pressure were switched on `base_language != 'en'`, so a
   bot with `language = ru` and the default `temperature_unit = fahrenheit` printed
   Fahrenheit temperatures beside kilometers, and `en-GB` was forced to miles. Which
   pressure unit reads as normal is a locale convention rather than a
   metric/imperial split, so each catalog now names its own via
-  `commands.gwx.pressure_unit` (`mmhg` for `ru`, `hpa` elsewhere) — previously
+  `commands.gwx.pressure_unit` (`mmhg` for `ru`, `hpa` elsewhere)—previously
   every non-English locale inherited mmHg from the English catalog, whose
   `pressure_mmhg` string contained Russian text ("мм рт. ст."), giving German and
   French users Cyrillic pressure units. The Russian `visibility` string, which the
@@ -425,26 +425,26 @@ semantic versioning.
   documented in the function docstring but not in the file, and hardcoding `H:`/`L:`
   remains available for operators who want English labels regardless of language.
 
-- `!gwx` high/low labels follow the reply's language. `_format_high_low` passed
+- `gwx` high/low labels follow the reply's language. `_format_high_low` passed
   `bot.translator` rather than the per-message translator, so with
   `auto_detect_language` on, an English-default bot answering a Russian sender
   localized the rest of the line but not `H:`/`L:`. The same call in `wx_command`
   is fixed alongside it.
 
-- `!gwx` no longer overruns the RF byte limit on multi-byte locales. The check
+- `gwx` no longer overruns the RF byte limit on multi-byte locales. The check
   guarding the extra conditions block compared a character count against a budget
   derived from bytes, while the rest of the function used `_count_display_width`
   (UTF-8 bytes). Cyrillic is two bytes per character, so the check saw roughly half
   the real size and appended the block after the budget was already spent.
 
-- `!wx hourly` no longer answers `commands.wx.hourly_not_available` when NOAA
+- `wx hourly` no longer answers `commands.wx.hourly_not_available` when NOAA
   returns no hourly periods. The key was never in any catalog, so the raw key
   path reached the user; predates this branch, found while auditing every
   translation key the weather modules reference.
 
 - Restored nine `commands.gwx` English strings that the localization pass reworded
   for no functional reason, including the configuration hint in
-  `mqtt_weather_no_subscriber` — "MQTT weather subscriber is not active (enable
+  `mqtt_weather_no_subscriber`—"MQTT weather subscriber is not active (enable
   [MqttWeather] and custom.mqtt_weather.* topics)" had become "MQTT weather
   subscriber not active", dropping the only pointer to the two keys a
   mis-configured operator needs. The rewordings had also diverged from the
@@ -459,7 +459,7 @@ semantic versioning.
   gap. The reporter's message was heard directly (`SNR 13.25`, 0 hops) and again via
   repeater `f0` 185 ms later (`SNR 12.0`, 1 hop); both rows carry packet hash
   `392926C85DCB87D0`, but the check saw only the echo, disagreed on path length and
-  SNR, and left the route unresolved — so the bot withheld a path it had decoded
+  SNR, and left the route unresolved—so the bot withheld a path it had decoded
   correctly. The cache is now searched for the row the payload matches instead of
   testing just the most recent one. Rows that agree must resolve to a single packet
   hash, so two unrelated packets that happen to agree stay a fallback and #80's
@@ -469,7 +469,7 @@ semantic versioning.
 
 - MQTT brokers no longer flap in a reconnect storm (#248). Three things stacked up.
   First, the packet-capture watchdog ran `client.reconnect()` from its own thread
-  every 30 seconds whenever `is_connected()` was false — which includes every moment
+  every 30 seconds whenever `is_connected()` was false—which includes every moment
   paho's network thread is inside its own backoff. Two threads driving one client's
   socket produced duplicate CONNACKs, spurious `MQTT_ERR_PROTOCOL` disconnects, and a
   fixed-interval retry that flattened paho's 1→120s backoff into a hot loop. The
@@ -480,7 +480,7 @@ semantic versioning.
   one cluster (`mqtt-a` and `mqtt-b` of the same service) evicted each other's session
   on a six-second cycle. IDs are now distinct per broker. Third, a disconnect logged a
   bare `rc=`, which reads against the CONNACK table even though paho reports
-  `MQTT_ERR_*` there — `rc=2` is a protocol error, not "client identifier rejected" —
+  `MQTT_ERR_*` there—`rc=2` is a protocol error, not "client identifier rejected" —
   so it now names the code.
 
 - A renewed MQTT auth token is now actually put in force. MQTT presents credentials
@@ -557,7 +557,7 @@ semantic versioning.
 
 - `message_stats.path` no longer reports another packet's route (#80). When RF
   correlation failed, `find_recent_rf_data` fell back to the most recent packet in the
-  cache, and the caller attributed that packet's route to the message — which is how a
+  cache, and the caller attributed that packet's route to the message—which is how a
   multi-hop message was occasionally recorded as a single direct hop. Correlation
   results are now tagged with how they were matched, and an uncorrelated fallback is no
   longer allowed to supply a route for either channel messages or DMs. The route is
@@ -582,14 +582,14 @@ semantic versioning.
 
 - Stale-contact cleanup no longer retries forever (#176). When the device refuses to
   remove a contact the contact stays in the list, so every sweep re-selected it and
-  logged the same failure again — hundreds of `Failed to remove stale contact` warnings
+  logged the same failure again—hundreds of `Failed to remove stale contact` warnings
   that only a restart cleared. A contact is now dropped from cleanup after
   3 consecutive refusals, with one summary warning explaining that the list may stay
   near its limit. A successful removal clears the count.
 
 - Contacts whose device clock was never set are no longer treated as stale. MeshCore
-  seeds an unset clock with a hardcoded time — `1715770351` (15 May 2024) or
-  `1772323200` (1 Mar 2026) — so a never-synced node advertises that seed rather than
+  seeds an unset clock with a hardcoded time—`1715770351` (15 May 2024) or
+  `1772323200` (1 Mar 2026)—so a never-synced node advertises that seed rather than
   a real observation. The bot read it as extreme staleness, which put unsynced but
   perfectly active contacts at the top of the removal list, consuming the whole
   per-sweep budget and repeatedly trying to evict live nodes. This is what the
@@ -605,7 +605,7 @@ semantic versioning.
 
 - Command execution failures log a full traceback instead of a bare exception
   message, so the failing file and line are visible without reproducing the error.
-  The reply sent over the mesh is unchanged — it still carries only the exception
+  The reply sent over the mesh is unchanged—it still carries only the exception
   text, with no filesystem path and no extra airtime.
 
 ## [1.0.0] — 2026-08-07
