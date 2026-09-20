@@ -1532,6 +1532,8 @@ enabled = true
 # channels =
 [Hello_Command]
 enabled = true
+# Name the sender in the reply (channel messages only), so a busy channel
+# can tell whose greeting was answered.
 include_sender = false
 # channels =
 [Dice_Command]

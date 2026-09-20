@@ -8,6 +8,11 @@ semantic versioning.
 
 ### Added
 
+- `[Hello_Command] include_sender` (default off) names the user the hello reply is
+  answering, so a busy channel can tell whose greeting the bot picked up (#292). The
+  mention takes the place of the random human descriptor, keeping the translated
+  sentence intact, and is dropped when it would push the reply past the channel body
+  budget. DMs are unaffected.
 - `generate_website.py` accepts `--link-css URL` and `--embed-css FILE` to layer
   custom CSS on top of the built-in style chosen with `--style` (#288). Embedded
   CSS is appended to the page's `<style>` block, keeping the page a single file;
