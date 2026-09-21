@@ -6,6 +6,10 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Changed
+
+- The footer's MeshCore link now points at the official site, meshcore.io.
+
 ## [1.1.0] - 2026-09-20
 
 ### Added
