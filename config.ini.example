@@ -296,6 +296,11 @@ max_response_hops = 7
 # Responses will be sent with the same scope hash when correlation succeeds.
 # Example: flood_scopes = *,#west,#east
 # Use * to allow replies to unscoped FLOOD messages.
+# A blank flood_scopes still answers channel commands, but the reply is ordinary
+# global FLOOD. The bot does not mirror the sender's region. Mirroring needs the
+# region name listed (for example *,#home). The * entry keeps unscoped flood
+# allowed. The bot matches the inbound transport code by HMAC against those
+# names; it cannot recover a region name from the 16-bit code alone.
 # Leave blank or commented to use the default (all).
 # flood_scopes = #region, #otherregion
 
