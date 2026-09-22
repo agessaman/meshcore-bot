@@ -364,10 +364,46 @@ class TestCaptureChannelMessage:
         msg.hops = 0
         msg.path = ""
         msg.is_dm = True
+        msg.routing_info = None
         bi.capture_channel_message(msg)
         ts, data, _, *_dims = bi._write_queue.get_nowait()
         parsed = json.loads(data)
         assert parsed["is_dm"] is True
+        assert "packet_hash" not in parsed
+
+    def test_stores_packet_hash_from_routing_info(self):
+        """#270: message rows carry packet_hash so routes can link back to the packet."""
+        bi = _make_bot_integration()
+        msg = MeshMessage(
+            content="hello",
+            sender_id="aa",
+            channel="general",
+            hops=1,
+            is_dm=False,
+            routing_info={"packet_hash": "ABCDEF0123456789", "path_length": 1},
+        )
+        bi.capture_channel_message(msg)
+        _, data, row_type, *_dims = bi._write_queue.get_nowait()
+        assert row_type == "message"
+        parsed = json.loads(data)
+        assert parsed["packet_hash"] == "ABCDEF0123456789"
+
+    def test_omits_missing_or_all_zero_packet_hash(self):
+        """#270: do not invent a hash when routing_info lacks a real one."""
+        bi = _make_bot_integration()
+        for routing_info in (None, {}, {"packet_hash": ""}, {"packet_hash": "0000000000000000"}):
+            msg = MeshMessage(
+                content="hello",
+                sender_id="aa",
+                channel="general",
+                hops=0,
+                is_dm=False,
+                routing_info=routing_info,
+            )
+            bi.capture_channel_message(msg)
+            _, data, _, *_dims = bi._write_queue.get_nowait()
+            parsed = json.loads(data)
+            assert "packet_hash" not in parsed, routing_info
 
 
 # ---------------------------------------------------------------------------
