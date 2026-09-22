@@ -80,7 +80,8 @@ If your MeshCore device supports TCP/IP (via gateway or bridge), configure it in
 ```ini
 [Connection]
 connection_type = tcp
-hostname = 192.168.1.60  # Your device's IP or hostname
+# Your device's IP or hostname
+hostname = 192.168.1.60
 tcp_port = 5000
 ```
 Then comment out or remove the `devices` section in `docker-compose.yml`.
@@ -121,7 +122,8 @@ Make sure your `config.ini` has:
 ```ini
 [Web_Viewer]
 enabled = true
-host = 0.0.0.0  # Required for Docker port mapping
+# Required for Docker port mapping
+host = 0.0.0.0
 port = 8080
 ```
 
