@@ -122,6 +122,12 @@ class WxCommand(BaseCommand):
     ERROR_FETCHING_DATA = "Error fetching weather data"
     NO_ALERTS = "No weather alerts"
 
+    # Floor for the forecast body once a location prefix has been reserved out of
+    # the frame budget, so a long "City, State: " can never squeeze the forecast
+    # down to nothing (or negative, which the -10/-20 arithmetic in the period
+    # formatters would turn into dropped fields).
+    MIN_BODY_BUDGET = 40
+
     def __init__(self, bot):
         super().__init__(bot)
         self.wx_enabled = self.get_config_value('Wx_Command', 'enabled', fallback=True, value_type='bool')
@@ -982,24 +988,34 @@ class WxCommand(BaseCommand):
             # Get max message length dynamically
             max_length = self.get_max_message_length(message) if message else 130
 
+            # location_prefix is prepended to the formatted body below, so it has to
+            # come out of the same frame budget. Formatting the body to the full
+            # budget and then prefixing it overruns the frame by the prefix's own
+            # length -- "Lockhart, Texas: " alone is 17 bytes, enough to push an
+            # emoji-dense forecast past the 160-byte firmware limit. The alert text
+            # goes out as its own message and keeps the full budget.
+            body_max_length = max(
+                max_length - self._count_display_width(location_prefix), self.MIN_BODY_BUDGET
+            )
+
             # Get weather forecast based on type
             if forecast_type == "tomorrow":
-                forecast_periods, points_data = self.get_noaa_weather(lat, lon, return_periods=True, max_length=max_length)
+                forecast_periods, points_data = self.get_noaa_weather(lat, lon, return_periods=True, max_length=body_max_length)
                 if forecast_periods == self.ERROR_FETCHING_DATA:
                     return self.translate('commands.wx.error_fetching')
-                weather = self.format_tomorrow_forecast(forecast_periods, max_length=max_length)
+                weather = self.format_tomorrow_forecast(forecast_periods, max_length=body_max_length)
             elif forecast_type == "multiday":
-                forecast_periods, points_data = self.get_noaa_weather(lat, lon, return_periods=True, max_length=max_length)
+                forecast_periods, points_data = self.get_noaa_weather(lat, lon, return_periods=True, max_length=body_max_length)
                 if forecast_periods == self.ERROR_FETCHING_DATA:
                     return self.translate('commands.wx.error_fetching')
-                weather = self.format_multiday_forecast(forecast_periods, num_days, max_length=max_length)
+                weather = self.format_multiday_forecast(forecast_periods, num_days, max_length=body_max_length)
             elif forecast_type == "hourly":
                 hourly_periods, points_data = self.get_noaa_hourly_weather(lat, lon)
                 if hourly_periods == self.ERROR_FETCHING_DATA:
                     return self.translate('commands.wx.error_fetching')
-                weather = self.format_hourly_forecast(hourly_periods, max_length=max_length)
+                weather = self.format_hourly_forecast(hourly_periods, max_length=body_max_length)
             else:  # default
-                weather, points_data = self.get_noaa_weather(lat, lon, max_length=max_length)
+                weather, points_data = self.get_noaa_weather(lat, lon, max_length=body_max_length)
                 if weather == self.ERROR_FETCHING_DATA:
                     return self.translate('commands.wx.error_fetching')
 

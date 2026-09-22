@@ -1,5 +1,6 @@
 """Tests for modules.command_manager."""
 
+import re
 import time
 from configparser import ConfigParser
 from pathlib import Path
@@ -8,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 import pytest
 
 from modules.command_manager import CommandManager, InternetStatusCache
-from modules.models import MeshMessage
+from modules.models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, MeshMessage
 from tests.conftest import mock_message
 
 
@@ -43,6 +44,11 @@ def cm_bot(mock_logger):
     bot.tx_delay_ms = 0
     bot.is_radio_zombie = False
     return bot
+
+
+def _strip_part_suffix(text: str) -> str:
+    """Drop a trailing " (i/n)" ordering marker so content can be compared."""
+    return re.sub(r" \(\d+/\d+\)$", "", text)
 
 
 def make_manager(bot, commands=None):
@@ -1209,3 +1215,376 @@ class TestExecuteCommandsErrorPath:
         sent = manager.send_response.await_args.args[1]
         assert sent == "errors.execution_error: kaboom"
         assert ".py" not in sent and "command_manager" not in sent
+
+
+class TestChannelBodyBudget:
+    """Tests for channel_body_budget — the shared RF size for one channel body."""
+
+    def test_budget_subtracts_sender_prefix(self, cm_bot):
+        manager = make_manager(cm_bot)
+        # "TestBot" is 7 bytes, plus 2 for the ": " framing.
+        assert manager.channel_body_budget(channel="general") == 160 - 7 - 2
+
+    def test_multibyte_bot_name_counted_in_bytes(self, cm_bot):
+        cm_bot.config.set("Bot", "bot_name", "ComchanBot \U0001f916")
+        manager = make_manager(cm_bot)
+        # 11 ASCII chars + a 4-byte emoji = 15 bytes.
+        assert manager.channel_body_budget(channel="general") == 160 - 15 - 2
+
+    def test_regional_scope_costs_extra_bytes(self, cm_bot):
+        manager = make_manager(cm_bot)
+        globally = manager.channel_body_budget(channel="general")
+        regional = manager.channel_body_budget(channel="general", scope="#west")
+        assert globally - regional == CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD
+
+    def test_global_scope_markers_cost_nothing(self, cm_bot):
+        manager = make_manager(cm_bot)
+        baseline = manager.channel_body_budget(channel="general")
+        for marker in ("", "*", "0", "None"):
+            assert manager.channel_body_budget(channel="general", scope=marker) == baseline
+
+    def test_outgoing_override_is_budgeted_for(self, cm_bot):
+        """An override the send will apply has to shrink the budget, or chunks overshoot."""
+        cm_bot.config.set("Channels", "outgoing_flood_scope_override", "#west")
+        manager = make_manager(cm_bot)
+        assert manager.channel_body_budget(channel="general") == (
+            160 - 7 - 2 - CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD
+        )
+
+
+class TestSendChannelMessageLengthGuard:
+    """An oversized channel body must be split, never handed to the firmware whole.
+
+    A body over the budget produces no confirmation event, so the send burns its
+    no_event_received retries and the stalled transport then reads as dead —
+    the radio-reconnect loop reported against the webhook service.
+    """
+
+    def _wire_radio(self, cm_bot):
+        from meshcore import EventType
+
+        cm_bot.connected = True
+        cm_bot.channel_manager = Mock()
+        cm_bot.channel_manager.get_channel_number = Mock(return_value=5)
+        cm_bot.meshcore = Mock()
+        cm_bot.meshcore.commands = Mock(spec=["send_chan_msg"])
+        cm_bot.meshcore.commands.send_chan_msg = AsyncMock(
+            return_value=Mock(type=EventType.MSG_SENT, payload=None)
+        )
+        cm_bot.bot_tx_rate_limiter.wait_for_tx = AsyncMock(return_value=None)
+        cm_bot.channel_sent_listeners = []
+        return cm_bot.meshcore.commands.send_chan_msg
+
+    @pytest.mark.asyncio
+    async def test_within_budget_sends_once_unchanged(self, cm_bot):
+        send_chan_msg = self._wire_radio(cm_bot)
+        manager = make_manager(cm_bot)
+
+        result = await manager.send_channel_message("general", "short and sweet")
+
+        assert result is True
+        send_chan_msg.assert_awaited_once()
+        assert send_chan_msg.await_args[0][1] == "short and sweet"
+
+    @pytest.mark.asyncio
+    async def test_oversized_body_is_split_to_budget(self, cm_bot):
+        send_chan_msg = self._wire_radio(cm_bot)
+        manager = make_manager(cm_bot)
+        budget = manager.channel_body_budget(channel="ky-wx")
+        # The message from the reported failure: 173 bytes against a ~151-byte budget.
+        content = (
+            "The Heat Advisory for the I-35 Corridor and Coastal Plains (Hays, "
+            "Bexar, Comal, Guadalupe, Caldwell, Atascosa, Wilson, Karnes, "
+            "Gonzales, De Witt) has expired as of 7 PM CDT."
+        )
+        assert len(content.encode("utf-8")) > budget
+
+        with patch("modules.command_manager.asyncio.sleep", new=AsyncMock()):
+            result = await manager.send_channel_message("ky-wx", content)
+
+        assert result is True
+        assert send_chan_msg.await_count > 1
+        for call in send_chan_msg.await_args_list:
+            assert len(call[0][1].encode("utf-8")) <= budget
+
+    @pytest.mark.asyncio
+    async def test_split_preserves_every_word(self, cm_bot):
+        send_chan_msg = self._wire_radio(cm_bot)
+        manager = make_manager(cm_bot)
+        content = " ".join(f"word{i}" for i in range(60))
+
+        with patch("modules.command_manager.asyncio.sleep", new=AsyncMock()):
+            await manager.send_channel_message("general", content)
+
+        sent = " ".join(_strip_part_suffix(call[0][1]) for call in send_chan_msg.await_args_list)
+        assert sent.split() == content.split()
+
+    @pytest.mark.asyncio
+    async def test_multibyte_split_stays_within_budget(self, cm_bot):
+        send_chan_msg = self._wire_radio(cm_bot)
+        manager = make_manager(cm_bot)
+        budget = manager.channel_body_budget(channel="general")
+        content = "ä" * 200  # 400 UTF-8 bytes
+
+        with patch("modules.command_manager.asyncio.sleep", new=AsyncMock()):
+            await manager.send_channel_message("general", content)
+
+        for call in send_chan_msg.await_args_list:
+            assert len(call[0][1].encode("utf-8")) <= budget
+        rejoined = "".join(
+            _strip_part_suffix(call[0][1]) for call in send_chan_msg.await_args_list
+        )
+        assert rejoined == content
+
+    @pytest.mark.asyncio
+    async def test_split_parts_are_numbered_in_order(self, cm_bot):
+        send_chan_msg = self._wire_radio(cm_bot)
+        manager = make_manager(cm_bot)
+
+        with patch("modules.command_manager.asyncio.sleep", new=AsyncMock()):
+            await manager.send_channel_message("general", "y " * 300)
+
+        sent = [call[0][1] for call in send_chan_msg.await_args_list]
+        total = len(sent)
+        assert total > 1
+        for i, text in enumerate(sent, 1):
+            assert text.endswith(f" ({i}/{total})")
+
+    @pytest.mark.asyncio
+    async def test_unsplit_message_is_not_numbered(self, cm_bot):
+        send_chan_msg = self._wire_radio(cm_bot)
+        manager = make_manager(cm_bot)
+
+        await manager.send_channel_message("general", "fits in one frame")
+
+        assert send_chan_msg.await_args[0][1] == "fits in one frame"
+
+    @pytest.mark.asyncio
+    async def test_chunked_send_does_not_resplit(self, cm_bot):
+        """send_channel_messages_chunked already sized its chunks; re-entry would loop."""
+        send_chan_msg = self._wire_radio(cm_bot)
+        manager = make_manager(cm_bot)
+        chunks = ["first part", "second part"]
+
+        with patch("modules.command_manager.asyncio.sleep", new=AsyncMock()):
+            result = await manager.send_channel_messages_chunked("general", chunks)
+
+        assert result is True
+        assert [call[0][1] for call in send_chan_msg.await_args_list] == chunks
+
+    @pytest.mark.asyncio
+    async def test_guard_runs_before_rate_limit_accounting(self, cm_bot):
+        """The split path owns its own limiting; the guard must not double-charge."""
+        self._wire_radio(cm_bot)
+        manager = make_manager(cm_bot)
+        manager._check_rate_limits = AsyncMock(return_value=(True, ""))
+        content = "x" * 400
+
+        with patch("modules.command_manager.asyncio.sleep", new=AsyncMock()):
+            await manager.send_channel_message("general", content)
+
+        # One check per chunk sent, not an extra one for the unsplit body.
+        expected = len(
+            manager.split_text_into_utf8_chunks(
+                content, manager.channel_body_budget(channel="general")
+            )
+        )
+        assert manager._check_rate_limits.await_count == expected
+
+
+class TestSplitTextIntoNumberedUtf8Chunks:
+    """The suffix comes out of the same budget as the body, so it has to be reserved."""
+
+    def test_fitting_text_is_returned_unsuffixed(self):
+        assert CommandManager.split_text_into_numbered_utf8_chunks("short", 100) == ["short"]
+
+    def test_every_part_is_tagged_with_its_position(self):
+        chunks = CommandManager.split_text_into_numbered_utf8_chunks("a " * 200, 60)
+        total = len(chunks)
+        assert total > 1
+        for i, chunk in enumerate(chunks, 1):
+            assert chunk.endswith(f" ({i}/{total})")
+
+    def test_suffix_is_inside_the_byte_budget(self):
+        for budget in (32, 40, 60, 100, 130, 143):
+            chunks = CommandManager.split_text_into_numbered_utf8_chunks("word " * 200, budget)
+            for chunk in chunks:
+                assert len(chunk.encode("utf-8")) <= budget, (budget, chunk)
+
+    def test_budget_holds_when_the_count_reaches_double_digits(self):
+        """Crossing ten parts widens the suffix, which must not push a part over."""
+        chunks = CommandManager.split_text_into_numbered_utf8_chunks("token " * 300, 40)
+        assert len(chunks) >= 10
+        assert chunks[-1].endswith(f" ({len(chunks)}/{len(chunks)})")
+        for chunk in chunks:
+            assert len(chunk.encode("utf-8")) <= 40
+
+    def test_multibyte_text_never_splits_a_codepoint(self):
+        text = "日本語のテキスト " * 20
+        chunks = CommandManager.split_text_into_numbered_utf8_chunks(text, 50)
+        for chunk in chunks:
+            assert len(chunk.encode("utf-8")) <= 50
+        rejoined = "".join(_strip_part_suffix(c) for c in chunks)
+        assert rejoined.replace(" ", "") == text.replace(" ", "")
+
+    def test_content_survives_the_round_trip(self):
+        text = " ".join(f"tok{i}" for i in range(120))
+        chunks = CommandManager.split_text_into_numbered_utf8_chunks(text, 70)
+        assert " ".join(_strip_part_suffix(c) for c in chunks).split() == text.split()
+
+
+class TestSplitKeepsLinksIntact:
+    """A link cut across a chunk boundary arrives on the mesh unclickable.
+
+    Whitespace boundaries cannot land inside a link, so the exposure is the
+    hard-split fallback: text with no break opportunity before the link, such as
+    CJK or a punctuation-joined "...40mph|https://...".
+    """
+
+    SHORT_LINK = "https://is.gd/a1B2c3"
+    NWS_LINK = (
+        "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0."
+        "abcdef1234567890abcdef12.001.1"
+    )
+
+    @staticmethod
+    def _bodies(chunks):
+        return [_strip_part_suffix(c) for c in chunks]
+
+    def test_link_after_a_space_survives(self):
+        text = (
+            "\U0001f7e1Wind Adv Lockhart TX til 9PM CDT by NWS Austin/San Antonio, "
+            f"gusts to 40mph this evening {self.SHORT_LINK}"
+        )
+        chunks = CommandManager.split_text_into_numbered_utf8_chunks(text, 60)
+        assert len(chunks) > 1
+        assert any(self.SHORT_LINK in b for b in self._bodies(chunks))
+
+    def test_punctuation_joined_link_survives(self):
+        text = f"Wind Adv Lockhart TX til 9PM by NWS EWX gusts 40mph|{self.SHORT_LINK}"
+        chunks = CommandManager.split_text_into_numbered_utf8_chunks(text, 60)
+        assert any(self.SHORT_LINK in b for b in self._bodies(chunks))
+
+    def test_link_after_unspaced_cjk_survives(self):
+        """The regression case: a hard split cut a link that had room to travel whole."""
+        text = f"大阪の天気{self.SHORT_LINK}"
+        chunks = CommandManager.split_text_into_utf8_chunks(text, 30)
+        assert any(self.SHORT_LINK in c for c in chunks)
+        assert chunks[0] == "大阪の天気"
+
+    def test_hyphenated_text_with_no_spaces_before_the_link(self):
+        """No whitespace anywhere in the window, so only the retreat can save this."""
+        text = f"WindAdv-Lockhart-TX-til-9PM-EWX|{self.SHORT_LINK}"
+        chunks = CommandManager.split_text_into_utf8_chunks(text, 40)
+        assert any(self.SHORT_LINK in c for c in chunks)
+        assert chunks[0] == "WindAdv-Lockhart-TX-til-9PM-EWX|"
+
+    def test_unspaced_www_link_survives(self):
+        link = "www.weather.gov/austin"
+        text = f"Gusts40mph-TakeShelter-CaldwellCounty:{link}"
+        chunks = CommandManager.split_text_into_utf8_chunks(text, 45)
+        assert any(link in c for c in chunks)
+
+    def test_retreat_runs_on_the_second_chunk_too(self):
+        """A message with two unspaced links must keep both, not just the first."""
+        a, b = "https://is.gd/aaa1111", "https://is.gd/bbb2222"
+        text = f"FloodWarn-Hays:{a}|Details-Comal:{b}"
+        chunks = CommandManager.split_text_into_utf8_chunks(text, 40)
+        assert any(a in c for c in chunks), chunks
+        assert any(b in c for c in chunks), chunks
+
+    def test_long_nws_link_survives_a_real_budget(self):
+        text = (
+            "\U0001f534Tornado Warning Caldwell TX til 7:45PM by NWS EWX take shelter "
+            f"now {self.NWS_LINK}"
+        )
+        chunks = CommandManager.split_text_into_numbered_utf8_chunks(text, 143)
+        assert any(self.NWS_LINK in b for b in self._bodies(chunks))
+
+    def test_multiple_links_all_survive(self):
+        a, b = "https://is.gd/aaa1111", "https://is.gd/bbb2222"
+        text = f"Flood Warn {a} details {b} stay clear of low water crossings"
+        bodies = self._bodies(
+            CommandManager.split_text_into_numbered_utf8_chunks(text, 80)
+        )
+        assert any(a in body for body in bodies)
+        assert any(b in body for body in bodies)
+
+    def test_www_link_survives(self):
+        link = "www.weather.gov/austin/warnings"
+        text = f"Details at{link} tonight for Caldwell county and surrounding areas"
+        bodies = self._bodies(
+            CommandManager.split_text_into_numbered_utf8_chunks(text, 45)
+        )
+        assert any(link in body for body in bodies)
+
+    def test_link_at_the_start_survives(self):
+        text = f"{self.SHORT_LINK} flooding reported near the river crossing tonight"
+        bodies = self._bodies(
+            CommandManager.split_text_into_numbered_utf8_chunks(text, 40)
+        )
+        assert any(self.SHORT_LINK in body for body in bodies)
+
+    def test_chunks_still_respect_the_budget(self):
+        text = f"Wind Adv Lockhart TX til 9PM by NWS EWX gusts 40mph|{self.SHORT_LINK}"
+        for budget in (32, 40, 60, 80, 143):
+            for chunk in CommandManager.split_text_into_numbered_utf8_chunks(text, budget):
+                assert len(chunk.encode("utf-8")) <= budget, (budget, chunk)
+
+    def test_retreating_never_produces_an_empty_chunk(self):
+        text = f"a{self.SHORT_LINK}"
+        chunks = CommandManager.split_text_into_utf8_chunks(text, 12)
+        assert all(chunk for chunk in chunks)
+
+    def test_plain_prose_is_not_mistaken_for_a_link(self):
+        """A bare host.tld pattern in prose must not move split points."""
+        text = "Gusts to 40mph.Take shelter now and avoid travel on I-35 through Hays"
+        assert CommandManager.split_text_into_utf8_chunks(
+            text, 40
+        ) == CommandManager.split_text_into_utf8_chunks(text, 40)
+        for chunk in CommandManager.split_text_into_utf8_chunks(text, 40):
+            assert len(chunk.encode("utf-8")) <= 40
+
+
+class TestLinksSplitAcross:
+    """Reporting the one case that cannot be fixed within a fixed frame."""
+
+    def test_reports_a_link_too_long_for_any_chunk(self):
+        link = "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.abcdef.001.1"
+        text = f"Alert {link}"
+        chunks = CommandManager.split_text_into_numbered_utf8_chunks(text, 40)
+        assert CommandManager.links_split_across(text, chunks) == [link]
+
+    def test_reports_nothing_when_links_survive(self):
+        link = "https://is.gd/a1B2c3"
+        text = f"Wind Adv Lockhart TX til 9PM by NWS EWX gusts 40mph {link}"
+        chunks = CommandManager.split_text_into_numbered_utf8_chunks(text, 60)
+        assert CommandManager.links_split_across(text, chunks) == []
+
+    def test_reports_nothing_for_text_without_links(self):
+        text = "Wind Advisory for Lockhart TX until 9PM CDT this evening, gusts 40mph"
+        chunks = CommandManager.split_text_into_numbered_utf8_chunks(text, 40)
+        assert CommandManager.links_split_across(text, chunks) == []
+
+
+class TestLinkSpanStraddling:
+    def test_index_inside_a_link_is_reported(self):
+        text = "abc https://example.com/x def"
+        span = CommandManager._link_span_straddling(text, 12)
+        assert span == (4, 25)
+
+    def test_index_on_a_boundary_is_not_straddling(self):
+        text = "abc https://example.com/x def"
+        assert CommandManager._link_span_straddling(text, 4) is None
+        assert CommandManager._link_span_straddling(text, 25) is None
+
+    def test_index_outside_every_link(self):
+        text = "abc https://example.com/x def"
+        assert CommandManager._link_span_straddling(text, 2) is None
+        assert CommandManager._link_span_straddling(text, 27) is None
+
+    def test_second_of_two_links(self):
+        text = "https://a.example/1 mid https://b.example/22"
+        span = CommandManager._link_span_straddling(text, 30)
+        assert span == (24, len(text))
+        assert text[span[0]:span[1]] == "https://b.example/22"

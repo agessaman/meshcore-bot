@@ -239,6 +239,19 @@ SECTIONS: dict[str, SectionMeta] = {
     }),
     "Weather_Service": SectionMeta(keys={
         "enabled": KeyMeta(type="bool"),
+        "weather_alerts_enabled": KeyMeta(type="bool", default="true"),
+        # Typed so the startup lint catches a malformed value -- an inline
+        # "# comment" on the value line most of all, since configparser keeps it
+        # in the string and the getint() in WeatherService.__init__ then raises,
+        # taking the entire service down with one terse log line.
+        "weather_alarm": KeyMeta(default="6:00"),
+        "poll_weather_alerts_interval": KeyMeta(type="int", default="600000"),
+        "poll_rain_nowcast_interval": KeyMeta(type="int", default="900000"),
+        "rain_nowcast_lead_minutes": KeyMeta(type="int", default="60"),
+        "rain_nowcast_renotify_minutes": KeyMeta(type="int", default="30"),
+        "rain_nowcast_threshold_mm": KeyMeta(type="float", default="0.1"),
+        "rain_nowcast_announce_ending": KeyMeta(type="bool", default="true"),
+        "blitz_collection_interval": KeyMeta(type="int", default="600000"),
         "rain_nowcast_cache_seconds": KeyMeta(type="int", default="300"),
         # Siblings of the documented rain_nowcast_* keys, read but not shown.
         "rain_nowcast_show_amount": KeyMeta(type="bool", default="true"),

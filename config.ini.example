@@ -2219,8 +2219,18 @@ weather_channel = #weather
 # Weather alerts will be sent to this channel
 alerts_channel = #weather
 
+# Poll NOAA for weather alerts and post them to alerts_channel (true/false).
+# Set false to stop alert monitoring on its own — daily forecasts, rain nowcasts,
+# storm detection and the weather commands all keep working. Useful outside the
+# US, where NOAA has no coverage (the service already stops polling after the
+# API reports that, but this skips it entirely), or where another source already
+# feeds alerts to the mesh.
+# Default: true
+weather_alerts_enabled = true
+
 # Weather alert polling interval (milliseconds)
 # How often to check for new weather alerts
+# Ignored when weather_alerts_enabled = false
 # Default: 600000 (10 minutes)
 poll_weather_alerts_interval = 600000
 
@@ -2436,6 +2446,13 @@ port = 8765
 # secret_token = changeme
 
 # Maximum message length in characters (excess is silently truncated). Default: 200
+#
+# This is a cap on the total text accepted per request, NOT a single-message limit.
+# A MeshCore channel body only has about 130 bytes (the firmware's 160-byte text
+# limit less the "<botname>: " prefix), so anything longer is split and sent as
+# several mesh messages, each tagged " (1/2)", " (2/2)" and so on. Raising this
+# value therefore buys more airtime per request rather than longer single
+# messages.
 # max_message_length = 200
 
 # Comma-separated channel whitelist. If set, only these channels may be posted to.
@@ -2461,7 +2478,8 @@ port = 8765
 # Direct message:
 #   {"dm_to": "SomeUser", "message": "Private message"}
 #
-# Response: {"ok": true}  or  {"error": "..."}
+# Response: {"ok": true, "parts": 1}  or  {"error": "..."}
+#   parts = how many mesh messages the text was split into.
 # ---------------------------------------------------------------------------
 [RepeaterPrefixCollision_Service]
 # Enable repeater prefix collision notifications (true/false)

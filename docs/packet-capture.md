@@ -41,11 +41,16 @@ mqtt1_topic_packets = meshcore/{IATA}/{PUBLIC_KEY}/packets
 
 ```ini
 [PacketCapture]
-enabled = true                    # Enable packet capture
-output_file = packets.json        # Optional: save to file
-verbose = false                   # Detailed packet logging
-debug = false                     # Debug mode
-mqtt_skip_unparseable_packets = true   # Skip MQTT when content hash is all zeros (strict path reject / short buffer)
+# Enable packet capture
+enabled = true
+# Optional: save to file
+output_file = packets.json
+# Detailed packet logging
+verbose = false
+# Debug mode
+debug = false
+# Skip MQTT when content hash is all zeros (strict path reject / short buffer)
+mqtt_skip_unparseable_packets = true
 
 # Optional: skip MQTT for ADVERT packets whose Ed25519 signature does not verify (damaged or spoofed mesh payload).
 # Does not affect file/JSONL capture.
@@ -60,14 +65,17 @@ observer_name = CustomObserverBot
 
 #### Option 1: On-Device Signing (Recommended)
 ```ini
-auth_token_method = device        # Use device's built-in signing
+# Use device's built-in signing
+auth_token_method = device
 # No private key file needed
 ```
 
 #### Option 2: Python Signing
 ```ini
-auth_token_method = python        # Use Python signing
-private_key_path = /path/to/key.txt  # Path to private key file
+# Use Python signing
+auth_token_method = python
+# Path to private key file
+private_key_path = /path/to/key.txt
 ```
 
 ### MQTT Brokers
@@ -79,7 +87,8 @@ Configure multiple brokers using `mqttN_*` pattern:
 mqtt1_enabled = true
 mqtt1_server = mqtt-us-v1.letsmesh.net
 mqtt1_port = 443
-mqtt1_transport = websockets      # tcp or websockets
+# tcp or websockets
+mqtt1_transport = websockets
 mqtt1_use_tls = true
 mqtt1_use_auth_token = true
 mqtt1_topic_status = meshcore/{IATA}/{PUBLIC_KEY}/status
@@ -164,11 +173,15 @@ Two separate settings:
 Per-broker keys override the global values for that broker only. Omit them to inherit globals.
 
 ```ini
-stats_in_status_enabled = true    # Include device stats in status
-stats_refresh_interval = 300      # Publish status every 5 minutes
+# Include device stats in status
+stats_in_status_enabled = true
+# Publish status every 5 minutes
+stats_refresh_interval = 300
 
-jwt_ttl_seconds = 86400           # Default JWT exp − iat (24 hours) for all brokers unless overridden
-jwt_renewal_interval = 43200      # Default proactive refresh cadence (12 hours); 0 = no renewal task
+# Default JWT exp − iat (24 hours) for all brokers unless overridden
+jwt_ttl_seconds = 86400
+# Default proactive refresh cadence (12 hours); 0 = no renewal task
+jwt_renewal_interval = 43200
 
 # Example on a broker that requires 60-minute tokens and refresh halfway through:
 # mqtt1_jwt_ttl_seconds = 3600
@@ -341,8 +354,10 @@ Configure up to 10 brokers (mqtt1_* through mqtt10_*). Each broker has independe
 ### Health Monitoring
 
 ```ini
-health_check_interval = 30        # Check connection every 30s
-health_check_grace_period = 2     # Allow 2 failures before warning
+# Check connection every 30s
+health_check_interval = 30
+# Allow 2 failures before warning
+health_check_grace_period = 2
 ```
 
 ### Log Rotation
@@ -400,8 +415,10 @@ first-party RF measurement between two full 32-byte public keys.
 ```ini
 [PacketCapture]
 enabled = true
-neighbors_enabled = true          # the only switch you need
-neighbors_interval_hours = 24     # clamped to 12-336
+# the only switch you need
+neighbors_enabled = true
+# clamped to 12-336
+neighbors_interval_hours = 24
 ```
 
 That one setting turns the whole feature on. Every enabled broker publishes the
