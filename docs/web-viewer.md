@@ -310,10 +310,13 @@ window; older days stay frozen at the value recorded then.
   from or written to the radio. This is a different setting from the radio's
   Default Region Scope above: this one decides what the bot sends and answers,
   that one is the radio's fallback for anything the bot leaves unscoped
-  - *Which scopes the bot replies to*: `flood_scopes`. Either "reply whatever
-    the scope" (the key is left empty, which is also the default) or an
-    allowlist of named regions, optionally including unscoped FLOOD via the
-    "also reply to unscoped messages" box, which is the `*` entry
+  - *Which scopes the bot replies to*: `flood_scopes`. Left empty (the default),
+    the bot still answers channel commands, but replies go out as ordinary
+    global FLOOD and do not mirror the sender's region. An allowlist of named
+    regions enables mirroring for those names (for example `*,#home`); the
+    "also reply to unscoped messages" box is the `*` entry that keeps unscoped
+    FLOOD allowed. The bot matches inbound transport codes by HMAC against
+    those names and cannot recover a region name from the 16-bit code alone
   - *Default outgoing scope*: `outgoing_flood_scope_override`, used for sends
     that carry no scope of their own (scheduled messages, feeds, webhooks) and
     for replies whose incoming scope could not be matched. Blank means global
