@@ -608,8 +608,8 @@
 
 {% block extra_js %}
         <script nonce="{{ g.csp_nonce }}">
-// Display hint only — mutations are enforced server-side via authenticated_admin.
-const IS_ADMIN = {{ 'true' if (not auth_enabled or is_admin) else 'false' }};
+// IS_ADMIN comes from base.html (display hint only; mutations are enforced
+// server-side via authenticated_admin). Redeclaring it here is a SyntaxError.
 
 class ModernContactsManager {
     constructor() {

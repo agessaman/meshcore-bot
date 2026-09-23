@@ -1329,6 +1329,24 @@ class TestRoleBasedAccess:
         assert auth_viewer.app.config["SESSION_COOKIE_HTTPONLY"] is True
         assert auth_viewer.app.config["SESSION_COOKIE_SAMESITE"] == "Lax"
 
+    def test_is_admin_declared_once_per_page(self, auth_client, client):
+        """base.html declares IS_ADMIN; a second top-level const is a SyntaxError."""
+        for c in (auth_client, client):
+            for page in ("/", "/realtime", "/mesh", "/contacts"):
+                html = c.get(page).get_data(as_text=True)
+                assert html.count("const IS_ADMIN") == 1, f"{page} redeclares IS_ADMIN"
+
+    def test_banner_admin_buttons_hidden_from_anonymous(self, auth_client):
+        html = auth_client.get("/").get_data(as_text=True)
+        assert 'id="zombie-recover-btn"' not in html
+        assert 'id="offline-clear-btn"' not in html
+
+    def test_banner_admin_buttons_shown_to_admin(self, auth_client):
+        auth_client.post("/login", data={"password": "secret123"})
+        html = auth_client.get("/").get_data(as_text=True)
+        assert 'id="zombie-recover-btn"' in html
+        assert 'id="offline-clear-btn"' in html
+
 
 # ===========================================================================
 # Open-access routes (no auth required even with password enabled)
