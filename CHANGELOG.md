@@ -14,6 +14,12 @@ semantic versioning.
   publicly, but live Socket.IO streams stay admin-only because they (and
   `/api/channels`) can expose decrypted traffic and channel keys.
 
+### Fixed
+
+- The web viewer login no longer redirects off-site after sign-in. The `next`
+  check let `///host` and `/\host` through, which browsers treat as another
+  origin.
+
 ### Changed
 
 - The footer's MeshCore link now points at the official site, meshcore.io.
