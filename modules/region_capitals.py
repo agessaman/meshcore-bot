@@ -13,7 +13,10 @@ from typing import Optional
 
 # Short warning appended when a bare region defaults to its capital. ~71 bytes —
 # fits the 160-byte channel budget alongside any nowcast line (verified).
-REGION_DEFAULT_NOTE = "⚠️ no city given — showing capital; try a city for detail"
+# Kept short on purpose: this rides along with a forecast inside one channel
+# frame (see models.CHANNEL_FRAME_TEXT_LIMIT). The long form cost 63 bytes,
+# more than the room left beside a rain forecast, so it was being cut mid-word.
+REGION_DEFAULT_NOTE = "⚠️ capital shown; name a city"
 
 # US state name -> (capital, abbreviation). Keyed by the full state name only;
 # bare 2-letter abbreviations are too ambiguous ("in", "or", "la", "me") to map.

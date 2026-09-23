@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from modules import region_warning
+from modules.models import channel_body_limit
 
 
 @pytest.fixture
@@ -81,7 +82,8 @@ class TestRegionWarningsApi:
     def test_limits_account_for_the_bot_name(self, viewer):
         data = viewer.app.test_client().get("/api/region-warnings").get_json()
         assert data["limits"]["dm"] == region_warning.DM_BODY_LIMIT
-        assert data["limits"]["channel"] == max(130, 160 - len("TestBot") - 2)
+        # The API must report the same budget the send path uses, not its own copy.
+        assert data["limits"]["channel"] == channel_body_limit("TestBot")
 
     def test_traffic_reflects_seeded_tallies(self, viewer):
         _seed_tally(viewer)

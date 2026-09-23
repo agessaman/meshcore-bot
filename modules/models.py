@@ -13,20 +13,45 @@ CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD = 10
 # A DM carries no username prefix, so the whole cipher block is body.
 DM_BODY_LIMIT = 158
 
+# Channel text the mesh will actually relay, in UTF-8 bytes, including the
+# "<username>: " prefix.
+#
+# NOT the firmware's MAX_TEXT_LEN of 160. That governs whether the local radio
+# accepts the text; it says nothing about whether repeaters forward the frame.
+# Channel text is AES-128 encrypted in 16-byte blocks and the payload carries a
+# channel-hash byte plus a 2-byte MAC, so a frame costs
+# ``3 + roundup16(4 + text)`` bytes, and every hop appends 2 more path bytes.
+#
+# Measured on a live mesh (analyzer packets b6e4f88b180d2d8a / 0bf2843bce623095,
+# the same channel six seconds apart): 152 bytes of text encrypts to a 160-byte
+# block, a 163-byte payload, a 165-byte frame -- repeated by exactly one repeater
+# and then dropped. 47 bytes of text reached 15 observers at up to 11 hops. Every
+# frame observed relaying was 147 bytes or smaller.
+#
+# 124 keeps the block at 128 and the payload at 131, the largest payload directly
+# observed relaying (7+ hops). Because the block pads to 16, any value from 125 to
+# 140 costs the same 144-byte block and 113 to 124 the same 128-byte one, so this
+# is the top of its block rather than an arbitrary cut.
+CHANNEL_FRAME_TEXT_LIMIT = 124
+
+# Floor for the body once a long username has been charged against the frame
+# limit, so a verbose name cannot leave nothing to say.
+CHANNEL_BODY_FLOOR = 32
+
 
 def channel_body_limit(username: Optional[str]) -> int:
     """Global-scope body budget in UTF-8 bytes for a channel message from ``username``.
 
-    Channel messages go out as ``"<username>: <body>"``, so the budget is the
-    160-byte cipher block minus the name and the ``": "``. Regional scope costs
-    a further ``CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD``, which callers
+    Channel messages go out as ``"<username>: <body>"``, so the budget is
+    ``CHANNEL_FRAME_TEXT_LIMIT`` minus the name and the ``": "``. Regional scope
+    costs a further ``CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD``, which callers
     subtract themselves once they know the outgoing scope.
 
     Shared by the command layer and the web viewer, which computes the same
     number in a process that has no bot object.
     """
     name = str(username or "Bot")
-    return max(130, 160 - len(name.encode("utf-8")) - 2)
+    return max(CHANNEL_FRAME_TEXT_LIMIT - len(name.encode("utf-8")) - 2, CHANNEL_BODY_FLOOR)
 
 
 @dataclass
