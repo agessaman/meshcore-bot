@@ -1259,6 +1259,16 @@ class BotDataViewer:
             '/api/mesh/resolve-path',
         ])
 
+        def _is_local_redirect(url: str) -> bool:
+            # Browsers read '//host' and '/\host' as another origin, and strip
+            # tabs/newlines before parsing, so '/\t/host' becomes '//host' too.
+            if not url.startswith('/') or any(c in url for c in '\\\t\r\n'):
+                return False
+            if url.startswith('//'):
+                return False
+            parsed = urlparse(url)
+            return not (parsed.scheme or parsed.netloc)
+
         def _normalize_request_path(path: str) -> str:
             if path != '/' and path.endswith('/'):
                 path = path.rstrip('/')
@@ -1279,11 +1289,13 @@ class BotDataViewer:
                 return
             if session.get('authenticated_admin'):
                 return
-            if request.method == 'GET' and path in _PUBLIC_PAGE_PATHS:
+            # HEAD and OPTIONS are answered by Flask from the GET route with no
+            # body, so they are as safe as the GET they shadow.
+            if request.method in ('GET', 'HEAD', 'OPTIONS') and (
+                path in _PUBLIC_PAGE_PATHS or path in _PUBLIC_API_GET_PATHS
+            ):
                 return
-            if request.method == 'GET' and path in _PUBLIC_API_GET_PATHS:
-                return
-            if request.method == 'POST' and path in _PUBLIC_API_POST_PATHS:
+            if request.method in ('POST', 'OPTIONS') and path in _PUBLIC_API_POST_PATHS:
                 return
             if path.startswith('/api/'):
                 return make_response(jsonify({'error': 'Admin authentication required'}), 401)
@@ -1405,9 +1417,11 @@ class BotDataViewer:
                 if hmac.compare_digest(provided, expected):
                     session.clear()
                     session['authenticated_admin'] = True
+                    # Ties this login's Socket.IO connections together so logout
+                    # can drop them (a socket keeps its connect-time session).
+                    session['admin_login_id'] = secrets.token_urlsafe(16)
                     next_url = request.args.get('next', '/')
-                    parsed = urlparse(next_url)
-                    if parsed.scheme or parsed.netloc or not next_url.startswith('/'):
+                    if not _is_local_redirect(next_url):
                         next_url = '/'
                     return redirect(next_url)
                 return render_template('login.html', error='Invalid password')
@@ -1415,8 +1429,11 @@ class BotDataViewer:
 
         @self.app.route('/logout')
         def logout():
-            """Logout and clear session"""
+            """Logout, clear session, and drop this login's live sockets"""
+            login_id = session.get('admin_login_id')
             session.clear()
+            if login_id:
+                self._disconnect_login_sockets(login_id)
             return redirect(url_for('index'))
 
         @self.app.route('/')
@@ -5358,6 +5375,7 @@ class BotDataViewer:
 
                     # Track client
                     self.connected_clients[client_id] = {
+                        'admin_login_id': session.get('admin_login_id'),
                         'connected_at': time.time(),
                         'last_activity': time.time(),
                         'subscribed_commands': False,
@@ -5549,6 +5567,23 @@ class BotDataViewer:
             except Exception as emit_error:
                 # If we can't emit, just log it
                 self.logger.error(f"Error emitting error message: {emit_error}")
+
+    def _disconnect_login_sockets(self, login_id):
+        """Disconnect every Socket.IO client opened under the given admin login."""
+        with self._clients_lock:
+            sids = [
+                sid for sid, info in self.connected_clients.items()
+                if info.get('admin_login_id') == login_id
+            ]
+        for sid in sids:
+            try:
+                self.socketio.server.disconnect(sid, namespace='/')
+            except Exception as e:
+                self.logger.warning(f"Could not disconnect socket {sid} on logout: {e}")
+            with self._clients_lock:
+                self.connected_clients.pop(sid, None)
+        if sids:
+            self.logger.info(f"Logout disconnected {len(sids)} live socket(s)")
 
     def _handle_command_data(self, command_data):
         """Handle incoming command data from bot"""
