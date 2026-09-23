@@ -166,9 +166,17 @@ class TestFormatElapsedDisplay:
 
     def test_valid_recent_timestamp_returns_ms(self):
         import time
-        ts = time.time() - 1.5  # 1.5 seconds ago
+        ts = time.time() - 0.5  # 0.5 seconds ago
         result = format_elapsed_display(ts)
         assert "ms" in result
+        assert "Sync" not in result
+
+    def test_valid_recent_timestamp_returns_s(self):
+        import time
+        ts = time.time() - 1.5  # 1.5 seconds ago
+        result = format_elapsed_display(ts)
+        assert "s" in result
+        assert "ms" not in result
         assert "Sync" not in result
 
     def test_future_timestamp_returns_sync_message(self):

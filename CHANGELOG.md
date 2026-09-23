@@ -6,13 +6,144 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Changed
+
+- The footer's MeshCore link now points at the official site, meshcore.io.
+
+## [1.1.0] - 2026-09-20
+
 ### Added
+
+- `[Weather_Service] weather_alerts_enabled` (default `true`) turns the NOAA
+  weather-alert polling loop off on its own. Alert monitoring previously started
+  unconditionally with the service, so the only way to stop it was to disable
+  `[Weather_Service]` altogether and lose daily forecasts, rain nowcasts, storm
+  detection and the weather commands with it. Set it to `false` where another
+  source already feeds alerts to the mesh, or outside the US where NOAA has no
+  coverage—the service does stop polling on its own once the API reports that,
+  but this skips the attempt entirely. `poll_weather_alerts_interval` is ignored
+  when it is off, and the toggle is exposed in the web viewer's Plugins page.
+
+- Region-code monitoring and an optional automatic warning to senders whose
+  channel messages carry no regional flood scope (#279). The bot classifies
+  every channel message it hears as scoped, global (unscoped) or unknown and
+  tallies the result per channel per day, which costs no airtime and is on by
+  default. A new `Settings -> Region Warnings` page in the web viewer shows how
+  much unscoped traffic the mesh actually carries before any decision to spend
+  airtime on it.
+
+  Warnings themselves are off by default and start in dry run, where every
+  decision is logged and consumes the same cooldowns and daily cap it would
+  when live, so the log is a true preview rather than an upper bound. A sender
+  must send `min_unscoped_messages` confirmed-unscoped messages, and the
+  warning is fenced by a per-sender cooldown, a mesh-wide cooldown and a daily
+  cap, all read from the database so a restart cannot release a burst. Warnings
+  fire only on positive RF evidence of an unscoped FLOOD; a message the radio
+  could not classify is never warned about. Channel-delivered warnings are sent
+  at global scope, because a scoped reply could not reach someone outside the
+  region. Configure it in `[Region_Warnings]`; retention is governed by
+  `[Data_Retention] region_warning_retention_days`.
+
+  A channel sender is a display name, not an identity—MeshCore's channel
+  messages carry no public key—so DM warnings only go to a name the radio
+  already holds a contact for, and a message with no `Name: ` prefix is counted
+  but never warned. Warnings dropped for want of a contact are counted and
+  shown on the page, so a bot that keeps no contacts reports that rather than
+  showing an empty log beside a status card claiming it is sending.
+  `docs/region-warnings.md` says all of this plainly rather than implying the
+  bot knows who it is talking to.
+
+- The Radio page's Node Settings card now reads and writes the radio's own
+  **Default Region Scope** (#283), beside the path hash size. This is the
+  firmware setting (`NodePrefs.default_scope_name` / `default_scope_key`) the
+  radio falls back to for any send the bot does not scope itself. Firmware
+  without the setting is reported as not having answered rather than shown as
+  an empty field, and a stored key that is not the stored name's hash is
+  flagged, because the radio routes by the key and the name beside it is only a
+  label. Clearing it sends the firmware's own bare-frame form rather than the
+  meshcore library's reset helpers, none of which can clear the field: `None`
+  raises, `""` earns ILLEGAL_ARG, and `"*"` only works through a padding
+  off-by-one. The card says plainly that the bot leaves the radio in
+  forced-unscoped mode after any scoped send, so this default stops applying
+  until the bot scopes another one.
+
+- A **Region Scopes** card on the web viewer's Radio page sets the bot's own
+  regional flood scopes (#283), so `[Channels] flood_scopes` and
+  `outgoing_flood_scope_override` no longer have to be edited by hand. It
+  writes `config.ini` and queues a hot config reload, then polls that reload and
+  reports what the bot actually did—including saying plainly when nothing
+  picked the change up. Scope names are normalized on save the way the bot
+  normalizes them (`west` becomes `#west`), and a name containing `,`, `%` or an
+  inner `#` is refused before anything is written, because those are the three
+  characters that do not survive a trip through a comma-separated INI value read
+  with interpolation on. Per-channel `flood_scope.<channel>` entries are listed
+  read-only beside the default, since they are the reason a channel can ignore
+  it.
+
+- `docs/develop-command-scripts.md` walks through writing a command plugin that
+  integrates correctly with the bot framework, including developing against
+  `[Bot] local_dir_path` (#259).
+
+- `[Hello_Command] include_sender` (default off) names the user the hello reply is
+  answering, so a busy channel can tell whose greeting the bot picked up (#292). The
+  mention takes the place of the random human descriptor, keeping the translated
+  sentence intact, and is dropped when it would push the reply past the channel body
+  budget. DMs are unaffected.
+
+- `generate_website.py` accepts `--link-css URL` and `--embed-css FILE` to layer
+  custom CSS on top of the built-in style chosen with `--style` (#288). Embedded
+  CSS is appended to the page's `<style>` block, keeping the page a single file;
+  a linked stylesheet loads after it, so both override built-in rules of equal
+  specificity. Both flags also apply to `--sample` pages, and an unreadable
+  `--embed-css` file stops generation with an error. See
+  `docs/command-reference-website.md` for examples and the CSS class reference.
+
+- Add the `contact` command (#293), which replies with the bot's own contact
+  card so a user can add the bot and DM it without waiting for an advert. Useful
+  for bots that do not advertise. Enabled by default; disable with
+  `[Contact_Command] enabled = false`.
+
+- `generate_website.py` now lists the local commands installed under
+  `[Bot] local_dir_path` and omits commands disabled in the configuration file
+  (#287). It also reads the `<local_dir_path>/config.ini` overlay the way the
+  bot does, which is where the settings UI saves a local plugin's state, and it
+  resolves a command's section and legacy `enabled` aliases through the bot's
+  own helpers, so `[Jokes] joke_enabled = false` is honored rather than silently
+  ignored.
+
+- Local commands and local services (dropped into `local/commands` and
+  `local/service_plugins`) now appear in the web viewer's Plugins settings page
+  alongside the built-in ones, tagged with `source: "local"`. Settings edited
+  there route to `local/config.ini` rather than the base `config.ini`, matching
+  the local overlay the bot already merges at startup via `[Bot] local_dir_path`
+ —a section already tracked in the base config keeps saving there. The web
+  viewer previously only read/wrote against `config.ini`, so any local plugin
+  settings actually stored in the overlay were invisible and unsavable from the
+  UI (#272).
+
+- `[Test_Command] distance_unit` (`auto`, `km`, `mi`) for `{path_distance}` and
+  `{firstlast_distance}` (#275). `auto` (the default) follows the reply language:
+  miles for `en` / `en-US`, kilometres for every other locale, including `en-GB`,
+  which shares the English catalog but not US units. Repeater-selection distances
+  stay in kilometres; only the printed placeholders convert.
+
+- `password` field type for a plugin's `settings_schema`, so a secret like
+  a password for a command renders masked in the web viewer's Plugins page
+  instead of as plain text (#273). It validates and serializes exactly like `str`
+  (the value is still stored in plaintext in `config.ini`); the masking is a
+  UI concern only. The plaintext secret never reaches the browser: the view
+  blanks the value and reports only `has_value`, matching the key-name
+  redaction already used elsewhere, and the field renders as a
+  `type="password"` input with a show/hide toggle. When a value is already
+  saved the field shows a `(saved—enter new value to change)` placeholder
+  and leaving it untouched keeps the stored secret, so an edit elsewhere on
+  the form does not blank it.
 
 - Localized proactive weather messages (daily forecasts, rain nowcasts, weather
   alerts) via `services.weather_service.*` translation keys. `WeatherService` now
   uses the bot's `translator` instead of hardcoded English strings, so proactive
-  outputs respect the configured `language` setting — the same mechanism already
-  used by `!wx`, `!gwx`, `!rain` and other commands.
+  outputs respect the configured `language` setting—the same mechanism already
+  used by `wx`, `gwx`, `rain` and other commands.
 
 - Russian (`ru`) translation for the full bot UI, including all weather service
   keys, command keys, categories, and common strings.
@@ -20,11 +151,11 @@ semantic versioning.
 - `format_temperature_high_low()` now accepts an optional `translator` parameter.
   When provided, the `H`/`L` temperature labels and compass wind directions are
   locale-aware (`H`/`L` → `В`/`Н` in Russian; `WNW` → `ЗСЗ`). Passed from
-  `WeatherService`, `!wx`, and `!gwx` callers.
+  `WeatherService`, `wx`, and `gwx` callers.
 
-- `modules/alert_format.py` holds one NWS alert formatter, shared by `!wx alerts`
+- `modules/alert_format.py` holds one NWS alert formatter, shared by `wx alerts`
   and the proactive `WeatherService` broadcasts. Both now localize from the same
-  code path, so a Russian bot no longer answers `!wx alerts` in English while its
+  code path, so a Russian bot no longer answers `wx alerts` in English while its
   proactive alerts are Russian. It replaces four copies of the event-type
   abbreviation table and two of the time compactor, which had already drifted
   apart. Alert strings moved to `common.alerts.*` and wind directions to
@@ -36,12 +167,286 @@ semantic versioning.
   the bot's default; `wx_international` was reaching for the private
   `_response_translator` ContextVar to do this.
 
+- Shlink is now supported as a URL shortener alongside v.gd / is.gd, selected with
+  `short_url_website_service = shlink` under `[External_Data]`. It authenticates with
+  `short_url_website_api_key` in an `X-Api-Key` header and needs `short_url_website`
+  set to your own instance—there is no default, and the bot skips shortening rather
+  than sending the key to a host you did not configure.
+
+- `shorten` and `if_nonempty` response-template filters. `shorten` runs a value
+  through the configured shortener and falls back to the original URL when shortening
+  fails, so a clause is never lost to a network error. `if_nonempty:L` replaces a
+  non-empty value with literal `L` and clears otherwise, which is how a whole clause
+  is hidden rather than labelled: `{packet_hash|if_nonempty:"https://…/{packet_hash}"|shorten}`
+  prints nothing at all when RF correlation fails, instead of a broken link. Both
+  filters also answer to their other spellings—`shorten_url` in a template,
+  `shorten_url` in a feed format, `if_notempty`—so a chain copied between a feed
+  format and a command `response_format` works unchanged either way.
+
+- Response-template filter arguments may be double-quoted, and a quoted argument may
+  contain nested `{field}` placeholders: `{d|prefix_if_nonempty:"Dist {sender}: "}`.
+  The quote ends the argument, so further filters can follow it. An unquoted
+  `prefix_if_nonempty` argument still consumes the rest of the placeholder, which is
+  what lets its literal contain `|`, so that form must stay last in its chain.
+
+- `mqttN_keepalive` (default 60) sets the MQTT PINGREQ interval per broker. It was
+  hardcoded at 60 before, which is long for websockets through a proxy that drops
+  idle connections.
+
+- `hops_min:N` response-template filter, alongside `pathbytes_min:N`. It clears a
+  field unless the message actually travelled at least N hops, so
+  `{firstlast_distance|hops_min:1|prefix_if_nonempty: | F/L Dist: }` drops the whole
+  clause on a direct message. The distance placeholders render `N/A` when there is no
+  path, and `prefix_if_nonempty` treats that as a value and prints its label, so a
+  gate was needed; `pathbytes_min` was the only one available and it asks how the path
+  is *encoded*, which meant throwing away a measurable one-byte multi-hop distance to
+  suppress the direct case. `hops_min` asks about the route instead. An unknown hop
+  count clears the field rather than guessing.
+
+- `{packet_hash}` placeholder for `[Keywords]` responses, the test command's
+  `response_format` and the path command's `reply_prefix`: the 16-char MeshCore
+  packet identity hash (uppercase hex) of the packet that carried the request, so a
+  reply can be tied back to a specific transmission when comparing paths. It comes
+  only from the routing info of an RF packet actually correlated to the message, and
+  renders empty otherwise, so a hash from an unrelated transmission is never shown.
+
+- **Scheduled messages can be managed from the web viewer** (#174). A new Schedule page
+  lists every `[Scheduled_Messages]` entry with its next run time and offers add, edit
+  and delete. Changes are written to `config.ini` and applied by a queued config reload,
+  so no restart is needed. The schedule builder composes the cron key from plain-language
+  options and previews the next five runs; entries the bot cannot run are shown as
+  **Not scheduled** with the reason rather than hidden. It edits the same config section
+  the bot already uses, so there is no second source of truth.
+
+- Documented installing with `pipx`, which sidesteps PEP 668 on Debian 12+, Ubuntu
+  23.04+, Fedora and Arch (#222), including where `config.ini`, the database and
+  `local/` live—everything resolves relative to the config file's directory, so an
+  absolute `--config` is what makes a pipx install deterministic.
+
+- Migration 23: nullable `snr` / `rssi` columns on `observed_paths` for
+  zero-hop advert rows.
+
+- `{cmd:<command> [args]}` placeholders in `[Scheduled_Messages]`: a scheduled message
+  can embed the reply of any bot command, so a recurring forecast is
+  `0 6,12,18 * * * = Public:{cmd:wx Seattle}` rather than a per-service schedule
+  setting. The command runs for its text only and transmits nothing itself
+  (`CommandManager.render_command_output`); unknown, disabled, admin-only, timing-out
+  and silent commands expand to nothing rather than airing raw placeholder text.
+  Bounded by the new `[Bot] scheduled_command_timeout_seconds` (default 30). Two
+  non-configurable airtime guards apply: a schedule using `{cmd:...}` must not fire
+  more often than every 15 minutes (rejected at startup, measured by the tightest gap
+  so `0,1 * * * *` counts as 60 seconds), and the command's own `cooldown_seconds` is
+  still enforced.
+
+- `{path_distance}` is now available in the path command's `[Path_Command] reply_prefix`,
+  reporting total distance travelled (sender → hops → bot, e.g. `12.4km`) and rendering
+  empty when any node in the chain has no usable coordinates. The prefix now supports the
+  same pipe filters as the test command's `response_format`, so
+  `{path_distance|prefix_if_nonempty:📏 }` drops the label along with the value.
+
+- `install-service.sh --install-extras` installs the optional profanity-filter and
+  geocoding packages without prompting, for unattended installs and upgrades. It
+  takes precedence over the in-place `--update-venv` path, so the two can be
+  combined.
+
+- `[PacketCapture] observer_name`—an optional name reported as the `origin` of
+  MQTT packet and status payloads. It lets the observer/analyzer identity differ
+  from the MeshCore RF node, which is useful when one bot name is already taken
+  by the radio's advertised name. Unset (the default) keeps the previous
+  behavior: the connected device name, falling back to `[Bot] bot_name`.
+
+- `local_translation_path` in `[Localization]` points at your own translation
+  catalog, merged over the distributed one key by key, so you can translate a
+  local command or override a single shipped string without editing a file that
+  an upgrade will replace. Defaults to the `translations/` directory inside
+  `[Bot] local_dir_path`, resolved to an absolute path so it does not depend on
+  the working directory.
+
+### Changed
+
+- `meshcore` now requires 2.3.14 or newer. Before 2.3.13, `send_msg_with_retry`
+  reported ACKed DMs as failures: it subscribed to the ACK only after `send_msg`
+  returned, so an ACK queued right behind `MSG_SENT` was dispatched with no
+  listener, and each attempt accepted only its own ACK code, so a late ACK
+  answering an earlier attempt was ignored (meshcore_py#108). The bot logged
+  "no ACK received after retries" and skipped the delivery bookkeeping for
+  messages the recipient had in fact received.
+
+- `{elapsed}` in test/keyword replies renders as seconds once the delay is a
+  second or more (`1.5s` instead of `1500ms`), so a typical ack stays shorter
+  (#275). Sub-second times still print as milliseconds.
+
+- Response templates are parsed by a character-by-character state machine rather
+  than by splitting on delimiters. Placeholders can now nest (`{"Dist: {d|hops_min:1}"}`)
+  and filter arguments can be quoted. Field values are substituted into the output
+  and never re-scanned, so a sender-supplied phrase still cannot inject a placeholder.
+
+- Web viewer navigation is grouped: Radio, Scheduled Messages, Greeter, Feeds, Plugins
+  and Configuration now sit under a single **Settings** gear menu, leaving Dashboard,
+  Real-time, Contacts, Mesh Graph and Logs on the bar. The current page is highlighted,
+  including the gear when a settings page is open.
+
+- Added notes on connecting to waev.app MQTT brokers to the `packet_capture.md` file.
+
 ### Fixed
+
+- Splitting a long message no longer cuts a link in half. A whitespace boundary
+  can never land inside a link, so the exposure was the hard-split fallback —
+  text with no break opportunity before the link, such as CJK (no spaces at all)
+  or a punctuation-joined `"…40mph|https://…"`. The boundary now retreats to where
+  the link starts so it travels whole in the next part. A link too long for a part
+  of its own still has to be cut; that is logged as a warning naming the link,
+  since the remedy is to shorten links before sending rather than a code change.
+  Both the DM and channel split paths get this, as does the webhook.
+
+- `gwx`/`wx` NOAA forecasts no longer overrun the RF frame by the width of their
+  location prefix. `get_weather_for_location` formatted the forecast body to the
+  full byte budget and then prepended `"City, State: "`, so the assembled reply
+  could exceed the frame by the prefix's own length — 17 bytes for
+  `"Lockhart, Texas: "`, 26 for `"Williamson County, Texas: "`. The prefix is now
+  reserved out of the budget before the body is formatted, floored so a long
+  county name cannot starve the forecast. The alert text, which is sent as its own
+  message without a prefix, keeps the full budget.
+
+  This surfaced as an emoji-dense forecast being split into two mesh messages
+  despite looking well under the limit: the budget is 160 UTF-8 **bytes** less the
+  `"<botname>: "` prefix, and `°F`, `☀️`, `💨`, `💧`, `👁️` and `📊` each cost 2–7
+  bytes, so a 124-character forecast measured 152 bytes. Before the channel length
+  guard landed, that message was dropped by the radio instead.
+
+  The international `gwx` path (`wx_international.py`) already reserved its prefix
+  but measured it with `len()`; it now measures UTF-8 bytes, so a non-ASCII city
+  name such as `"München, DE: "` is charged what it actually costs.
+
+- Webhook posts longer than one mesh frame are split across several channel
+  messages instead of being handed to the radio whole. `[Webhook]
+  max_message_length` truncated at 200 characters, but a MeshCore channel body
+  only holds the firmware's 160-byte text limit less the `"<botname>: "`
+  prefix—about 130 bytes, and 143 for a 15-byte bot name. The device dropped the
+  oversized payload without emitting the event the send waits for, so
+  `send_channel_message` burned all three of its `no_event_received` retries
+  (~45s), returned 500 to the caller, and left the transport stalled long enough
+  for the poll to read it as dead and bounce the radio. Each reconnect cleared
+  the channel cache, so a retry then failed differently, with
+  `Channel 'x' not found`. `max_message_length` is now documented as a cap on
+  the total text accepted per request rather than a single-message limit, and a
+  successful response reports the part count: `{"ok": true, "parts": 2}`.
+
+- `command_manager.send_channel_message` grew the central length guard that
+  `send_dm` has had all along: a body over the RF budget is split to fit and sent
+  as several messages rather than put on the air undeliverable. Any caller—a
+  service, a scheduled broadcast, a plugin—could previously wedge the radio
+  this way. The shared budget lives in the new `channel_body_budget`, which
+  accounts for the bot name in UTF-8 bytes and for the extra header bytes a
+  regional flood scope costs (including one resolved from
+  `flood_scope.<channel>` or `outgoing_flood_scope_override` after the caller
+  hands the body over). A split's parts are tagged `" (1/2)"`, `" (2/2)"` and so
+  on, since a mesh does not guarantee delivery order and nothing else
+  distinguishes a continuation from a standalone post. The suffix is reserved out
+  of the same byte budget as the body, and because reserving it can force one
+  more part—and crossing ten parts widens the suffix again—the reservation
+  iterates until it covers the count it produced. A message that fits in one part
+  carries no suffix.
+
+- MQTT brokers on `waev.app` now default to a JWT lifetime they accept (#248).
+  waev.app refuses a token whose `exp` is more than an hour past its `iat`, so the
+  project-wide 24-hour default never authenticated there and the operator saw only a
+  bare auth failure. Those hosts now get a 3600s TTL with renewal at 3500s unless a
+  value was configured for them, per broker or globally, in which case the configured
+  value still wins. The choice is logged. Only `waev.app` and its subdomains match; no
+  other broker's defaults change.
+
+- The `[Keywords]` newline instructions now say the escape is a *backslash* and that
+  `/n` is two literal characters (#277), and they no longer use `test` as the example
+  keyword. `test` and `t` are served by the built-in test command, not the plain
+  keyword path, so the mesh-info placeholders listed in that same block render empty
+  there. Both facts are now stated where the example lives, along with the
+  configparser continuation form, which needs no escape at all.
+
+- The packet-capture docs no longer show a naive local timestamp in the published
+  packet and status examples (#276). The bot has published UTC with a `Z` suffix since
+  v1.0.0; only the examples still read as local time.
+
+- `outgoing_flood_scope_override = none` is now read as global flood on the
+  send path, as it already was everywhere else. `send_channel_message` tested
+  the raw value against a fixed tuple, so the lowercase spelling became the
+  region `#none` and sent scoped.
+
+- Striped and hovered table rows in the web viewer's dark mode no longer render
+  Bootstrap's light-theme text color on a dark background (about 1.3:1
+  contrast). The dark overrides set a background but not a color, so every
+  `.table-striped` page was affected.
+
+- `[Joke_Command] joke_enabled` and `[DadJoke_Command] dadjoke_enabled` are now
+  listed in the shared legacy-alias table. Both commands accepted that spelling
+  at runtime through their own fallback, but the settings UI read only the
+  `[Jokes]` spelling, so a bot disabled the same-section way showed as enabled
+  on the plugin settings page.
+
+- A region-scoped channel message now restores global flood even when
+  `set_flood_scope` raises. The restore only ran in the `finally` around the
+  send, so a set that raised left the device pinned to that region and every
+  later send—channel replies, DMs, scheduled sends—went out under it.
+
+- A DM waiting for its ACK no longer holds the radio. Radio commands were
+  serialized per call, so a DM's retry loop kept every other command waiting
+  through all of its ACK timeouts (up to ~36 s with the default three attempts),
+  stalling channel replies, other DMs, and scheduled sends. The lock now covers
+  one frame and the radio's immediate reply, and ACK and remote-response waits
+  run outside it, so neighbor scope requests no longer stall replies either. A
+  region-scoped channel message now holds the radio from setting its flood scope
+  through restoring it, so no other send goes out under that scope.
+
+- A radio connection is no longer accepted when every channel read times out or
+  returns no usable channel data (#266). Startup and reconnect now retry the
+  channel scan three times, keep an empty result out of the valid cache and
+  database, then fail the connection cleanly so the normal restart/reconnect
+  path can try again instead of running a bot that cannot route replies.
+
+- Daily Weather Service forecasts now retry transient Open-Meteo failures at
+  5, 15, and 30 minutes after the original run (#264). HTTP 429, 500, 502, 503,
+  and 504 responses plus transport failures use one replaceable retry job,
+  while permanent HTTP errors stop immediately and a successful retry sends
+  the forecast only once.
+
+- `help <command> <subcommand>` now resolves help for the base command while
+  preserving the full message for context-aware help text (#285). Exact
+  multi-word aliases such as `dad joke` and `ps aux` still take precedence
+  over the base-command fallback.
+
+- Service installers no longer leave `venv/bin/pip` and other console scripts
+  pointing at the temporary build environment after an atomic virtualenv swap.
+  `--update-venv` also repairs already-broken shebangs before replacing the old
+  environment (#229).
+
+- Direct messages from newly advertised companions resolve through
+  `pending_contacts` until the next contact snapshot, so a successful command ACK
+  is no longer followed by a failed keyword reply.
+
+- Command matching preserves the original on-air message body while using a
+  cleaned copy for mention and trigger matching. Commands and web-viewer events no
+  longer receive content altered as a side effect of dispatch (#267).
+
+- The dark mesh map uses OpenFreeMap instead of Carto's retired unauthenticated
+  raster tiles. Browsers without the required WebGL support fall back to an
+  inverted OpenStreetMap layer instead of displaying a blank map.
+
+- ARMv7 service and Debian-package installs use the piwheels index and the shipped
+  compatibility constraints consistently, avoiding source builds and incompatible
+  dependency selections on 32-bit Raspberry Pi systems (#269).
+
+- Published packet payloads carry UTC in every time field, not just `timestamp`
+  (#278). `time` and `date` came from a local `datetime.now()` while the
+  `timestamp` beside them was UTC, so a consumer reading the pair off a bot in a
+  non-UTC zone saw a skew of exactly that zone's offset and flagged the observer's
+  clock as wrong. The original script took those two fields off the firmware log
+  line, which runs on the device's UTC clock, so a host-local reading was never
+  intended. All three fields now render one UTC instant.
 
 - Weather output no longer leaks translation key paths into mesh broadcasts. The
   localization pass replaced several `dict.get(key, fallback)` lookups with bare
   `translate()` calls, and `Translator.translate` returns the dotted key path when
-  a key is missing from both the locale and the English fallback — deliberate, so
+  a key is missing from both the locale and the English fallback—deliberate, so
   missing translations are visible in development, but it reaches the air in
   production. An NWS title we cannot classify (`event_type = "Unknown"`, e.g.
   "Hazardous Weather Outlook") rendered as
@@ -58,7 +463,7 @@ semantic versioning.
   hardcoded English month list, so any locale with translated months took the wrong
   branch and then failed the regex, truncating mid-string:
   `🟠Flood Warning King до июн 28 6 дн от NWS SEA`. Adding a space before AM/PM —
-  needed because Russian writes "6 дня", not "6дня" — broke the same regex for
+  needed because Russian writes "6 дня", not "6дня"—broke the same regex for
   English too, spending 8 characters of a 130-byte budget on a redundant date and
   pushing the shortened URL out. Times are now carried as parsed parts and rendered
   through a per-locale `common.alerts.time_12h` template, so nothing re-parses
@@ -72,13 +477,13 @@ semantic versioning.
   the existing `common.date_time.month_abbreviations` instead of the duplicate
   `services.weather_service.months` block the pass had added.
 
-- `!gwx` display units follow the `[Weather]` unit config instead of the response
+- `gwx` display units follow the `[Weather]` unit config instead of the response
   language. Visibility and pressure were switched on `base_language != 'en'`, so a
   bot with `language = ru` and the default `temperature_unit = fahrenheit` printed
   Fahrenheit temperatures beside kilometers, and `en-GB` was forced to miles. Which
   pressure unit reads as normal is a locale convention rather than a
   metric/imperial split, so each catalog now names its own via
-  `commands.gwx.pressure_unit` (`mmhg` for `ru`, `hpa` elsewhere) — previously
+  `commands.gwx.pressure_unit` (`mmhg` for `ru`, `hpa` elsewhere)—previously
   every non-English locale inherited mmHg from the English catalog, whose
   `pressure_mmhg` string contained Russian text ("мм рт. ст."), giving German and
   French users Cyrillic pressure units. The Russian `visibility` string, which the
@@ -92,26 +497,26 @@ semantic versioning.
   documented in the function docstring but not in the file, and hardcoding `H:`/`L:`
   remains available for operators who want English labels regardless of language.
 
-- `!gwx` high/low labels follow the reply's language. `_format_high_low` passed
+- `gwx` high/low labels follow the reply's language. `_format_high_low` passed
   `bot.translator` rather than the per-message translator, so with
   `auto_detect_language` on, an English-default bot answering a Russian sender
   localized the rest of the line but not `H:`/`L:`. The same call in `wx_command`
   is fixed alongside it.
 
-- `!gwx` no longer overruns the RF byte limit on multi-byte locales. The check
+- `gwx` no longer overruns the RF byte limit on multi-byte locales. The check
   guarding the extra conditions block compared a character count against a budget
   derived from bytes, while the rest of the function used `_count_display_width`
   (UTF-8 bytes). Cyrillic is two bytes per character, so the check saw roughly half
   the real size and appended the block after the budget was already spent.
 
-- `!wx hourly` no longer answers `commands.wx.hourly_not_available` when NOAA
+- `wx hourly` no longer answers `commands.wx.hourly_not_available` when NOAA
   returns no hourly periods. The key was never in any catalog, so the raw key
   path reached the user; predates this branch, found while auditing every
   translation key the weather modules reference.
 
 - Restored nine `commands.gwx` English strings that the localization pass reworded
   for no functional reason, including the configuration hint in
-  `mqtt_weather_no_subscriber` — "MQTT weather subscriber is not active (enable
+  `mqtt_weather_no_subscriber`—"MQTT weather subscriber is not active (enable
   [MqttWeather] and custom.mqtt_weather.* topics)" had become "MQTT weather
   subscriber not active", dropping the only pointer to the two keys a
   mis-configured operator needs. The rewordings had also diverged from the
@@ -126,7 +531,7 @@ semantic versioning.
   gap. The reporter's message was heard directly (`SNR 13.25`, 0 hops) and again via
   repeater `f0` 185 ms later (`SNR 12.0`, 1 hop); both rows carry packet hash
   `392926C85DCB87D0`, but the check saw only the echo, disagreed on path length and
-  SNR, and left the route unresolved — so the bot withheld a path it had decoded
+  SNR, and left the route unresolved—so the bot withheld a path it had decoded
   correctly. The cache is now searched for the row the payload matches instead of
   testing just the most recent one. Rows that agree must resolve to a single packet
   hash, so two unrelated packets that happen to agree stay a fallback and #80's
@@ -136,7 +541,7 @@ semantic versioning.
 
 - MQTT brokers no longer flap in a reconnect storm (#248). Three things stacked up.
   First, the packet-capture watchdog ran `client.reconnect()` from its own thread
-  every 30 seconds whenever `is_connected()` was false — which includes every moment
+  every 30 seconds whenever `is_connected()` was false—which includes every moment
   paho's network thread is inside its own backoff. Two threads driving one client's
   socket produced duplicate CONNACKs, spurious `MQTT_ERR_PROTOCOL` disconnects, and a
   fixed-interval retry that flattened paho's 1→120s backoff into a hot loop. The
@@ -147,7 +552,7 @@ semantic versioning.
   one cluster (`mqtt-a` and `mqtt-b` of the same service) evicted each other's session
   on a six-second cycle. IDs are now distinct per broker. Third, a disconnect logged a
   bare `rc=`, which reads against the CONNACK table even though paho reports
-  `MQTT_ERR_*` there — `rc=2` is a protocol error, not "client identifier rejected" —
+  `MQTT_ERR_*` there—`rc=2` is a protocol error, not "client identifier rejected" —
   so it now names the code.
 
 - A renewed MQTT auth token is now actually put in force. MQTT presents credentials
@@ -216,46 +621,54 @@ semantic versioning.
   least one operator running under `tmux` with nothing to restart it. The confirmation
   spells out that the bot stops completely and only returns if systemd or Docker
   restarts it.
+
 - Corrected the `[External_Data] repeater_prefix_api_url` comment, which claimed that
   leaving it empty "disables prefix command functionality" (#70). Empty is the normal
   setup: the prefix command answers from the bot's own database. The option only adds
   an optional external dataset, and its JSON contract is now documented.
+
 - `message_stats.path` no longer reports another packet's route (#80). When RF
   correlation failed, `find_recent_rf_data` fell back to the most recent packet in the
-  cache, and the caller attributed that packet's route to the message — which is how a
+  cache, and the caller attributed that packet's route to the message—which is how a
   multi-hop message was occasionally recorded as a single direct hop. Correlation
   results are now tagged with how they were matched, and an uncorrelated fallback is no
   longer allowed to supply a route for either channel messages or DMs. The route is
   left unresolved instead of being fabricated. This also stopped a wrong edge being
   written to the mesh graph, and stopped the `path` command receiving another packet's
   `routing_info`. SNR and RSSI still use the fallback as before.
+
 - Dashboard **One-hop neighbours** now lists radios this node heard directly
   (MeshCore hop count 0: empty RF path), not originators of 1-hop relayed
   adverts. Empty-path adverts are stored in `observed_paths` with SNR/RSSI;
   neighbor-discover cycles refresh SNR on those rows. A one-time backfill
   copies recent zero-hop ADVERTs out of `packet_stream`.
+
 - **Airplanes / ADS-B** no longer depends on the public airplanes.live API,
   which now returns HTTP 403 for unregistered clients (#244). Default
   endpoint is `https://api.adsb.lol/v2/`; existing `api_url` values pointing
   at `api.airplanes.live` are remapped automatically. Local readsb URLs are
   unchanged.
+
 - `cmd` no longer lists commands that are disabled in `config.ini`. Commands
   with no `[<Name>_Command]` section at all are still listed, as before.
+
 - Stale-contact cleanup no longer retries forever (#176). When the device refuses to
   remove a contact the contact stays in the list, so every sweep re-selected it and
-  logged the same failure again — hundreds of `Failed to remove stale contact` warnings
+  logged the same failure again—hundreds of `Failed to remove stale contact` warnings
   that only a restart cleared. A contact is now dropped from cleanup after
   3 consecutive refusals, with one summary warning explaining that the list may stay
   near its limit. A successful removal clears the count.
+
 - Contacts whose device clock was never set are no longer treated as stale. MeshCore
-  seeds an unset clock with a hardcoded time — `1715770351` (15 May 2024) or
-  `1772323200` (1 Mar 2026) — so a never-synced node advertises that seed rather than
+  seeds an unset clock with a hardcoded time—`1715770351` (15 May 2024) or
+  `1772323200` (1 Mar 2026)—so a never-synced node advertises that seed rather than
   a real observation. The bot read it as extreme staleness, which put unsynced but
   perfectly active contacts at the top of the removal list, consuming the whole
   per-sweep budget and repeatedly trying to evict live nodes. This is what the
   `722 days ago` entries in #176 were: the 15 May 2024 seed, not contacts last heard
   in 2024. A raw `0` (decoding to 1970) is covered too, and genuine adverts near a
   seed are unaffected.
+
 - The same unset-clock check now guards every purge path, not just stale-contact
   cleanup. `_get_repeaters_for_purging`, `_get_companions_for_purging` and
   `purge_old_repeaters` all ranked an unset clock as maximum age, so an active node
@@ -264,7 +677,7 @@ semantic versioning.
 
 - Command execution failures log a full traceback instead of a bare exception
   message, so the failing file and line are visible without reproducing the error.
-  The reply sent over the mesh is unchanged — it still carries only the exception
+  The reply sent over the mesh is unchanged—it still carries only the exception
   text, with no filesystem path and no extra airtime.
 
 ### Changed
@@ -591,12 +1004,6 @@ considered stable; breaking changes to them will come with a major version bump.
 
 ### Fixed
 
-- Service installers no longer leave `venv/bin/pip` (and other console scripts)
-  with shebangs pointing at the temporary `.venv-build-$$` path after the atomic
-  virtualenv swap. Optional package prompts and documented pip invocations now
-  use `venv/bin/python -m pip`. `--update-venv` rewrites shebangs in place so
-  already-broken installs heal without a full rebuild, and the previous venv is
-  kept until rewrite succeeds (issue #229).
 - Data retention now runs shortly after startup and then daily. It no longer
   requires 24 hours of uninterrupted uptime before the first cleanup, and its
   timer remains independent from the nightly maintenance email.
@@ -894,6 +1301,8 @@ hardening fixes.
   v0.9.0.
 - Discord integration, kg7qin integration notes (`f2936be`, `de6279c`).
 
+[Unreleased]: https://github.com/agessaman/meshcore-bot/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/agessaman/meshcore-bot/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/agessaman/meshcore-bot/compare/v0.9.3...v1.0.0
 [0.9.3]: https://github.com/agessaman/meshcore-bot/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/agessaman/meshcore-bot/compare/v0.9.1...v0.9.2

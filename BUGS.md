@@ -8,7 +8,7 @@ file is kept only for historical reference.
 
 ## Outstanding known issues
 
-As of **v1.0.0**.
+As of **v1.1.0**.
 
 ### High priority
 

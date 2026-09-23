@@ -9,13 +9,16 @@ import copy
 import hmac as hmac_mod
 import time
 from collections import OrderedDict
+from collections.abc import Iterable
 from hashlib import sha256
 from typing import Any, TypedDict
 
 from .enums import AdvertFlags, DeviceRole, PayloadType, PayloadVersion, RouteType
 from .graph_trace_helper import update_mesh_graph_from_trace_data
+from .meshcore_payload_decode import channel_hash_for_key, decrypt_group_text
 from .models import MeshMessage
 from .neighbors_discovery import upsert_zero_hop_observed_path_via_manager
+from .region_warning import VERDICT_GLOBAL, VERDICT_SCOPED, VERDICT_UNKNOWN
 from .security_utils import sanitize_input, sanitize_name
 from .utils import (
     calculate_packet_hash,
@@ -28,6 +31,10 @@ from .utils import (
 # MessageHandler.find_recent_rf_data. Anything other than a fallback is known to be
 # this message's own packet; a fallback is merely the most recent packet heard, so its
 # route belongs to some other transmission and must not be attributed (issue #80).
+# Stand-in used when a channel message carries no "Name: " prefix to extract a
+# sender from. It is not a node: every such message would share this identity.
+CHANNEL_SENDER_FALLBACK = "Channel User"
+
 RF_MATCH_KEY = "_rf_match"
 RF_MATCH_EXACT = "exact"
 RF_MATCH_PUBKEY = "pubkey"
@@ -36,6 +43,7 @@ RF_MATCH_PARTIAL = "partial"
 # prefix. Channel messages have no prefix to match on, so this is the only positive
 # correlation available to them (see _rf_data_matches_chan_payload).
 RF_MATCH_PAYLOAD = "payload"
+RF_MATCH_CHANNEL_AUTHENTICATED = "channel_authenticated"
 RF_MATCH_FALLBACK = "fallback"
 
 
@@ -75,6 +83,11 @@ class MessageHandler:
 
         # Time-based cache for recent RF log data
         self.recent_rf_data: list[dict[str, Any]] = []
+
+        # Authenticated channel rows outlive the short best-effort RF window.
+        # A queued CHANNEL_MSG_RECV can be delayed while the mesh stays busy.
+        self.channel_rf_data: list[dict[str, Any]] = []
+        self._channel_rf_cache_timeout = max(300.0, self.rf_data_timeout * 4)
 
         # Message correlation system to prevent race conditions
         self.pending_messages: dict[str, PendingMessageEntry] = {}  # Store messages waiting for RF data
@@ -311,6 +324,107 @@ class MessageHandler:
             return False
         return int(payload_type) == self._grp_txt_payload_type_int()
 
+    def _classify_channel_flood_scope(
+        self,
+        *,
+        reply_scope: str | None,
+        recent_rf_data: dict[str, Any] | None,
+        packet_info: dict[str, Any] | None,
+        scope_rf_data: dict[str, Any] | None,
+        scope_packet_info: dict[str, Any] | None,
+    ) -> str:
+        """Classify a channel message's flood scope as scoped, global, or unknown.
+
+        "Scoped" means the message carried a region code (a TC_FLOOD transport
+        code), whether or not that code matches one of ours. "Global" means it
+        was proven to be an ordinary unscoped FLOOD. Anything else is unknown.
+
+        Every test here needs RF data correlated to *this* message, and the
+        scoped tests run before the global one, so both kinds of ambiguity
+        resolve away from ``global``. That direction matters: ``global`` is the
+        verdict that can spend airtime telling someone to fix their config, and
+        a message whose scope the radio did not witness is not evidence that the
+        sender omitted a region.
+
+        In particular this does **not** use ``_is_confirmed_global_flood``'s
+        second route, which infers "unscoped" from the absence of any
+        scope-eligible packet in the window. That inference is sound enough to
+        decide whether a ``*`` entry in ``flood_scopes`` authorizes a reply — the
+        cost of being wrong is one reply the operator broadly wanted — but it is
+        an argument from absence, and the cost of being wrong here is an
+        unsolicited message accusing someone of a misconfiguration they may not
+        have. Channel messages still correlate through
+        ``_find_rf_row_matching_chan_payload`` (payload type, path length and
+        SNR all agreeing), so the ordinary case is unaffected.
+        """
+        if reply_scope:
+            return VERDICT_SCOPED
+
+        # A correlated scope-eligible row *is* a TC_FLOOD GRP_TXT for this
+        # message: it carried a transport code, so a region was set even though
+        # it is not one this bot has keys for.
+        if (
+            scope_rf_data
+            and rf_data_is_correlated(scope_rf_data)
+            and self._is_rf_data_scope_eligible(scope_rf_data, scope_packet_info)
+        ):
+            return VERDICT_SCOPED
+
+        if recent_rf_data and rf_data_is_correlated(recent_rf_data):
+            route_type = self._effective_route_type_int(recent_rf_data, packet_info)
+            if route_type == int(RouteType.TRANSPORT_FLOOD.value):
+                return VERDICT_SCOPED
+
+        if rf_data_is_correlated(recent_rf_data) and self._is_confirmed_global_flood(
+            recent_rf_data,
+            packet_info,
+            scoped_traffic_in_window=scope_rf_data is not None,
+        ):
+            return VERDICT_GLOBAL
+
+        return VERDICT_UNKNOWN
+
+    async def _observe_flood_scope(
+        self,
+        *,
+        sender_id: str | None,
+        sender_pubkey: str | None,
+        channel: str | None,
+        sender_timestamp: Any,
+        reply_scope: str | None,
+        recent_rf_data: dict[str, Any] | None,
+        packet_info: dict[str, Any] | None,
+        scope_rf_data: dict[str, Any] | None,
+        scope_packet_info: dict[str, Any] | None,
+    ) -> None:
+        """Hand this channel message's scope verdict to the region-warning monitor.
+
+        Messages the radio cached from before this connection are skipped: on a
+        reconnect they arrive as a burst of old traffic, and counting them would
+        both distort the tallies and let a stale message earn someone a warning.
+        """
+        monitor = getattr(self.bot, "region_warning_monitor", None)
+        if monitor is None:
+            return
+        if self._is_old_cached_message(sender_timestamp):
+            return
+        try:
+            verdict = self._classify_channel_flood_scope(
+                reply_scope=reply_scope,
+                recent_rf_data=recent_rf_data,
+                packet_info=packet_info,
+                scope_rf_data=scope_rf_data,
+                scope_packet_info=scope_packet_info,
+            )
+            await monitor.observe(
+                verdict=verdict,
+                sender_id=sender_id,
+                sender_pubkey=sender_pubkey,
+                channel=channel,
+            )
+        except Exception:
+            self.logger.exception("Flood scope observation failed")
+
     def _is_old_cached_message(self, timestamp: Any) -> bool:
         """Check if a message timestamp indicates it's from before bot connection.
 
@@ -343,6 +457,180 @@ class MessageHandler:
         except (TypeError, ValueError):
             # If we can't parse timestamp, process the message (safer to process than skip)
             return False
+
+    @staticmethod
+    def _channel_message_identity(
+        channel_idx: Any, sender_timestamp: Any, txt_type: Any, text: Any
+    ) -> str | None:
+        """Return the identity shared by an authenticated RF row and CHAN event."""
+        try:
+            idx = int(channel_idx)
+            timestamp = int(sender_timestamp)
+            message_type = int(txt_type)
+        except (TypeError, ValueError):
+            return None
+        if not 0 <= idx <= 0xFFFF or not 0 <= timestamp <= 0xFFFFFFFF:
+            return None
+        if not 0 <= message_type <= 0xFF or not isinstance(text, str):
+            return None
+
+        digest = sha256()
+        digest.update(b"meshcore-channel-message-v1\0")
+        digest.update(idx.to_bytes(2, "little"))
+        digest.update(timestamp.to_bytes(4, "little"))
+        digest.update(bytes([message_type]))
+        digest.update(text.rstrip("\x00").encode("utf-8"))
+        return digest.hexdigest()
+
+    def _channel_secrets(self) -> list[tuple[int, bytes]]:
+        """Return configured channel indexes and keys without logging secrets."""
+        meshcore = getattr(self.bot, "meshcore", None)
+        channels = getattr(meshcore, "channels", None)
+        items: Iterable[tuple[int, Any]]
+        if isinstance(channels, dict):
+            items = channels.items()
+        elif isinstance(channels, list):
+            items = enumerate(channels)
+        else:
+            return []
+
+        result: list[tuple[int, bytes]] = []
+        for fallback_idx, channel in items:
+            if not isinstance(channel, dict):
+                continue
+            # Annotated Any: with a mixed Any | int default, mypy matches .get()'s
+            # None-default overload and infers Any | None. int() rejects None anyway.
+            raw_idx: Any = channel.get("channel_idx", fallback_idx)
+            try:
+                channel_idx = int(raw_idx)
+            except (TypeError, ValueError):
+                continue
+
+            secret = channel.get("channel_secret")
+            if isinstance(secret, str):
+                try:
+                    secret = bytes.fromhex(secret)
+                except ValueError:
+                    secret = None
+            if not isinstance(secret, (bytes, bytearray)):
+                key_hex = channel.get("channel_key_hex")
+                if isinstance(key_hex, str):
+                    try:
+                        secret = bytes.fromhex(key_hex)
+                    except ValueError:
+                        secret = None
+            if isinstance(secret, bytearray):
+                secret = bytes(secret)
+            if isinstance(secret, bytes) and len(secret) == 16 and any(secret):
+                result.append((channel_idx, secret))
+        return result
+
+    def _decode_authenticated_channel_identity(
+        self, packet_info: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        """Authenticate a decoded GRP_TXT packet and derive its CHAN identity."""
+        if not packet_info or packet_info.get("payload_type") != self._grp_txt_payload_type_int():
+            return None
+        payload_hex = packet_info.get("payload_hex")
+        if not isinstance(payload_hex, str):
+            return None
+        try:
+            group_payload = bytes.fromhex(payload_hex)
+        except ValueError:
+            return None
+        if len(group_payload) < 3:
+            return None
+
+        channel_hash = f"{group_payload[0]:02x}"
+        cipher_mac = group_payload[1:3]
+        ciphertext = group_payload[3:]
+        for channel_idx, secret in self._channel_secrets():
+            if channel_hash_for_key(secret) != channel_hash:
+                continue
+            decrypted = decrypt_group_text(ciphertext, cipher_mac, secret)
+            if not decrypted:
+                continue
+            txt_type = int(decrypted["flags"]) >> 2
+            identity = self._channel_message_identity(
+                channel_idx,
+                decrypted["timestamp"],
+                txt_type,
+                decrypted["message"],
+            )
+            if identity is None:
+                return None
+            return {
+                "channel_message_id": identity,
+                "channel_idx": channel_idx,
+                "channel_attempt": int(decrypted["flags"]) & 0x03,
+            }
+        return None
+
+    def _cache_authenticated_channel_rf_data(
+        self,
+        rf_data: dict[str, Any],
+        packet_info: dict[str, Any] | None,
+        current_time: float,
+    ) -> None:
+        identity = self._decode_authenticated_channel_identity(packet_info)
+        if identity is None:
+            return
+        rf_data.update(identity)
+        self.channel_rf_data.append(rf_data)
+        cutoff = current_time - self._channel_rf_cache_timeout
+        self.channel_rf_data = [
+            row for row in self.channel_rf_data if row.get("timestamp", 0) >= cutoff
+        ]
+        if len(self.channel_rf_data) > self._max_rf_cache_size:
+            self.channel_rf_data = self.channel_rf_data[-self._max_rf_cache_size :]
+
+    def _find_authenticated_channel_rf_data(
+        self, payload: dict[str, Any] | None
+    ) -> tuple[dict[str, Any] | None, bool]:
+        """Find the first RF reception for an authenticated channel message.
+
+        The companion logs raw RF before duplicate suppression and queues only
+        the first unseen channel packet. Repeater echoes share the packet hash,
+        so the earliest row is the reception represented by CHANNEL_MSG_RECV.
+        The boolean prevents weaker matching after an authenticated ambiguity.
+        """
+        if not payload:
+            return None, False
+        identity = self._channel_message_identity(
+            payload.get("channel_idx"),
+            payload.get("sender_timestamp"),
+            payload.get("txt_type"),
+            payload.get("text"),
+        )
+        if identity is None:
+            return None, False
+        now = time.time()
+        max_age = getattr(
+            self,
+            "_channel_rf_cache_timeout",
+            max(300.0, getattr(self, "rf_data_timeout", 15.0) * 4),
+        )
+        matches = [
+            row
+            for row in getattr(self, "channel_rf_data", [])
+            if row.get("channel_message_id") == identity
+            and isinstance(row.get("timestamp"), (int, float))
+            and now - row["timestamp"] <= max_age
+        ]
+        if not matches:
+            return None, False
+
+        packet_hashes = {row.get("packet_hash") for row in matches}
+        if len(packet_hashes) != 1 or not all(packet_hashes):
+            self.logger.warning(
+                "Authenticated channel message matched %d distinct or unidentified packets; "
+                "leaving RF attribution unresolved",
+                len(packet_hashes),
+            )
+            return None, True
+
+        selected = min(matches, key=lambda row: row.get("timestamp", float("inf")))
+        return {**selected, RF_MATCH_KEY: RF_MATCH_CHANNEL_AUTHENTICATED}, True
 
     async def handle_contact_message(self, event: Any, metadata: dict[str, Any] | None = None) -> None:
         """Handle incoming contact message (DM).
@@ -1300,6 +1588,9 @@ class MessageHandler:
                         if _lib_pkt_hex
                         else (decoded_packet.get("payload_hex") if decoded_packet else None),
                     }
+                    self._cache_authenticated_channel_rf_data(
+                        rf_data, decoded_packet, current_time
+                    )
                     if rf_data.get("route_type_int") == 0:
                         self.logger.debug(
                             "TC_FLOOD scope fields: tc_code1=%s payload_type=%s payload_hex_prefix=%s",
@@ -1500,6 +1791,19 @@ class MessageHandler:
         extended_timeout: float,
     ) -> dict[str, Any] | None:
         """Correlate a channel message with cached RF log rows (strategies 1–4)."""
+        authenticated, authenticated_identity_seen = self._find_authenticated_channel_rf_data(payload)
+        if authenticated_identity_seen:
+            if authenticated is None:
+                return None
+            if scope_eligible_only and not self._is_rf_data_scope_eligible(authenticated):
+                return None
+            self.logger.debug(
+                "Authenticated channel message matched first RF reception %s (packet %s)",
+                (authenticated.get("packet_prefix") or "?")[:16],
+                authenticated.get("packet_hash") or "?",
+            )
+            return authenticated
+
         recent_rf_data: dict[str, Any] | None = None
 
         if message_packet_prefix:
@@ -1516,6 +1820,13 @@ class MessageHandler:
             message_id = f"{correlation_key}_{int(time.time() * 1000)}"
             self.store_message_for_correlation(message_id, payload)
             await asyncio.sleep(0.1)
+            authenticated, authenticated_identity_seen = self._find_authenticated_channel_rf_data(payload)
+            if authenticated_identity_seen:
+                if authenticated is None:
+                    return None
+                if scope_eligible_only and not self._is_rf_data_scope_eligible(authenticated):
+                    return None
+                return authenticated
             recent_rf_data = self.correlate_message_with_rf_data(message_id)
 
         if not recent_rf_data:
@@ -2318,7 +2629,7 @@ class MessageHandler:
 
             # Get sender information from text field if it's in "SENDER: message" format
             text = payload.get("text", "")
-            sender_id = "Channel User"  # Default fallback
+            sender_id = CHANNEL_SENDER_FALLBACK  # Default fallback
 
             # Try to extract sender from text field (e.g., "HOWL: Test" -> "HOWL")
             message_content = text  # Default to full text
@@ -2541,6 +2852,24 @@ class MessageHandler:
                         "RF data is an uncorrelated fallback from another packet, so it "
                         "cannot authorise a reply under flood_scopes"
                     )
+
+            # Region-code observation happens here, ahead of the flood_scopes
+            # allowlist below, because an unscoped message is exactly what that
+            # allowlist drops — running it after the gate would blind the
+            # monitor to the traffic it exists to measure.
+            await self._observe_flood_scope(
+                # A message with no "Name: " prefix has no attributable sender,
+                # so it is counted but can never earn anyone a warning.
+                sender_id=None if sender_id == CHANNEL_SENDER_FALLBACK else sender_id,
+                sender_pubkey=payload.get("pubkey_prefix", ""),
+                channel=channel_name,
+                sender_timestamp=payload.get("sender_timestamp", 0),
+                reply_scope=reply_scope,
+                recent_rf_data=recent_rf_data,
+                packet_info=packet_info,
+                scope_rf_data=scope_rf_data,
+                scope_packet_info=scope_packet_info,
+            )
 
             # Allowlist enforcement: when flood_scopes is configured, only reply to
             # messages whose scope matched an entry.  Unscoped FLOOD is allowed only

@@ -62,11 +62,13 @@ nav:
     - Path Command: path-command-config.md
     - Config validation: config-validation.md
     - Scheduled messages: scheduled-messages.md
+    - Region warnings: region-warnings.md
   - Web Viewer: web-viewer.md
   - Command Reference:
     - Overview: command-reference.md
     - Repeater Commands: repeater-commands.md
     - Custom Command Website: command-reference-website.md
+    - Developing Commands: develop-command-scripts.md
   - Service Plugins:
     - Overview: service-plugins.md
     - Discord Bridge: discord-bridge.md

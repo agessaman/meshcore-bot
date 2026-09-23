@@ -253,6 +253,25 @@ class TestGetSpecificHelp:
         result = cmd.get_specific_help("sched")
         assert isinstance(result, str)
 
+    def test_multiword_alias_is_checked_before_subcommand_fallback(self):
+        bot = _make_bot()
+        dadjoke_cmd = MagicMock()
+        dadjoke_cmd.get_help_text = Mock(return_value="Dad joke help")
+        dadjoke_cmd.keywords = ["dadjoke", "dad joke"]
+        unrelated_cmd = MagicMock()
+        unrelated_cmd.get_help_text = Mock(return_value="Wrong help")
+        unrelated_cmd.keywords = ["dad"]
+        bot.command_manager.commands = {
+            "dadjoke": dadjoke_cmd,
+            "dad": unrelated_cmd,
+        }
+        cmd = HelpCommand(bot)
+
+        cmd.get_specific_help("dad joke")
+
+        dadjoke_cmd.get_help_text.assert_called_once()
+        unrelated_cmd.get_help_text.assert_not_called()
+
     def test_no_get_help_text_attribute(self):
         """Command without get_help_text returns no_help key."""
         bot = _make_bot()

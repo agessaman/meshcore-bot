@@ -10,6 +10,24 @@ from typing import Any, Optional
 # Firmware reserves extra bytes for regional (non-global) TC_FLOOD scope on channel text.
 CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD = 10
 
+# A DM carries no username prefix, so the whole cipher block is body.
+DM_BODY_LIMIT = 158
+
+
+def channel_body_limit(username: Optional[str]) -> int:
+    """Global-scope body budget in UTF-8 bytes for a channel message from ``username``.
+
+    Channel messages go out as ``"<username>: <body>"``, so the budget is the
+    160-byte cipher block minus the name and the ``": "``. Regional scope costs
+    a further ``CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD``, which callers
+    subtract themselves once they know the outgoing scope.
+
+    Shared by the command layer and the web viewer, which computes the same
+    number in a process that has no bot object.
+    """
+    name = str(username or "Bot")
+    return max(130, 160 - len(name.encode("utf-8")) - 2)
+
 
 @dataclass
 class MeshMessage:

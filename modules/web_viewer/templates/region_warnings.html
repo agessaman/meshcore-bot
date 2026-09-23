@@ -1,0 +1,890 @@
+{% extends "base.html" %}
+
+{% block title %}Region Warnings - MeshCore Bot Data Viewer{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Theme-aware tokens. Bootstrap's .text-warning (#ffc107) is 1.6:1 on a
+       white card, and its chart-friendly oranges/grays are picked for dark
+       surfaces, so each value is chosen per theme against the surface it
+       actually lands on. Fills clear 3:1 against the card; text clears 4.5:1. */
+    :root {
+        --rw-alert: #b45309;      /* 5.0:1 on white */
+        --rw-global: #e8590c;     /* 3.6:1 on white */
+        --rw-scoped: #198754;     /* 4.5:1 on white */
+        --rw-unknown: #868e96;    /* 3.3:1 on white */
+    }
+    [data-theme="dark"] {
+        --rw-alert: #fdba74;      /* 8.2:1 on the dark card */
+        --rw-global: #fd7e14;     /* 5.4:1 */
+        --rw-scoped: #2fa36b;     /* 4.4:1 */
+        --rw-unknown: #9ca3af;    /* 5.4:1 */
+    }
+
+    .rw-alert { color: var(--rw-alert); }
+
+    .rw-status {
+        border-left: 4px solid var(--border-color);
+    }
+    .rw-status.rw-status--off { border-left-color: #6c757d; }
+    .rw-status.rw-status--dry { border-left-color: #0d6efd; }
+    .rw-status.rw-status--live { border-left-color: var(--rw-global); }
+
+    .rw-figure {
+        font-size: 2rem;
+        line-height: 1.1;
+        font-variant-numeric: tabular-nums;
+    }
+    .rw-figure-label {
+        font-size: .8rem;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        color: var(--text-muted);
+    }
+
+    /* Stacked proportion bar. Every segment also carries its number in the
+       table beside it, so the colors are a summary and never the only signal. */
+    .rw-bar {
+        display: flex;
+        height: 10px;
+        border-radius: 5px;
+        overflow: hidden;
+        background-color: var(--bg-tertiary);
+    }
+    .rw-bar span { display: block; height: 100%; }
+    .rw-seg-global { background-color: var(--rw-global); }
+    .rw-seg-scoped { background-color: var(--rw-scoped); }
+    .rw-seg-unknown { background-color: var(--rw-unknown); }
+
+    /* Keep a swatch glued to its label: a wrap between them leaves an
+       unlabelled dot at the end of a line on narrow screens. */
+    .rw-legend > span {
+        display: inline-block;
+        white-space: nowrap;
+        margin-right: 1rem;
+    }
+    /* The gray band only appears in the daily columns, so its legend swatch is
+       the one place the channel bars and that chart have to agree. */
+    .rw-unknown-note::before {
+        content: '';
+        display: inline-block;
+        width: .6rem;
+        height: .6rem;
+        border-radius: 2px;
+        margin-right: .3rem;
+        background-color: var(--rw-unknown);
+    }
+
+    .rw-legend-dot {
+        display: inline-block;
+        width: .65rem;
+        height: .65rem;
+        border-radius: 2px;
+        margin-right: .35rem;
+        vertical-align: baseline;
+    }
+
+    /* Day columns. The track is transparent on purpose: a filled one would
+       read as another stacked segment next to the gray "couldn't tell" band. */
+    .rw-days {
+        display: flex;
+        align-items: flex-end;
+        gap: 3px;
+        height: 84px;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .rw-day {
+        flex: 1 1 0;
+        min-width: 6px;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+    }
+    .rw-day > div {
+        border-radius: 3px 3px 0 0;
+        overflow: hidden;
+    }
+    .rw-day span { display: block; width: 100%; }
+
+    .rw-channel-name {
+        font-family: var(--bs-font-monospace, monospace);
+        white-space: nowrap;
+    }
+
+    /* Clamp each decision's text to two lines: the warning wording repeats on
+       every row, so at full height it buries the columns that actually differ.
+       Wrapping rather than a nowrap ellipsis keeps the table narrow enough that
+       a phone scrolls the page instead of the table's own horizontal overflow. */
+    .rw-event-detail {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        min-width: 12rem;
+    }
+
+    .rw-modes { max-width: 34rem; }
+    .rw-mode-option {
+        display: flex;
+        gap: .75rem;
+        align-items: flex-start;
+        padding: .7rem .85rem;
+        border: 1px solid var(--border-color);
+        border-radius: .375rem;
+        cursor: pointer;
+        background-color: var(--bg-color);
+    }
+    .rw-mode-option + .rw-mode-option { margin-top: .5rem; }
+    .rw-mode-option:hover { background-color: var(--bg-secondary); }
+    .rw-mode-option:focus-within {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 .2rem rgba(13, 110, 253, .25);
+    }
+    .rw-mode-option input { margin-top: .25rem; flex: none; }
+    .rw-mode-option.rw-mode-selected {
+        border-color: #0d6efd;
+        background-color: var(--bg-secondary);
+    }
+
+    .rw-preview {
+        background-color: var(--log-entry-bg);
+        border: 1px solid var(--border-color);
+        border-radius: .375rem;
+        padding: .6rem .75rem;
+        font-family: var(--bs-font-monospace, monospace);
+        font-size: .875rem;
+        white-space: pre-wrap;
+        word-break: break-word;
+        min-height: 3.2rem;
+    }
+
+    .rw-empty {
+        color: var(--text-muted);
+        text-align: center;
+        padding: 1.75rem .5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-1"><i class="fas fa-globe"></i> Region Warnings</h1>
+        <p class="text-muted mb-4">
+            A MeshCore client with no region code floods every message to the whole mesh.
+            This page counts how much of that your bot hears, and can optionally tell those senders.
+        </p>
+    </div>
+</div>
+
+<!-- What the bot is doing right now -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card rw-status rw-status--off" id="rw-status-card">
+            <div class="card-body d-flex flex-wrap align-items-center gap-3">
+                <div class="flex-grow-1">
+                    <h2 class="h5 mb-1" id="rw-status-title">Loading…</h2>
+                    <div class="text-muted small" id="rw-status-detail">Reading current settings.</div>
+                </div>
+                <div class="text-lg-end" id="rw-status-budget"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Evidence -->
+<div class="row mb-4">
+    <div class="col-lg-8 mb-4 mb-lg-0">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <span><i class="fas fa-chart-simple"></i> Channel traffic by scope</span>
+                <div>
+                    <label class="visually-hidden" for="rw-window">Window</label>
+                    <select class="form-select form-select-sm" id="rw-window">
+                        <option value="7">Last 7 days</option>
+                        <option value="14" selected>Last 14 days</option>
+                        <option value="30">Last 30 days</option>
+                        <option value="90">Last 90 days</option>
+                    </select>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="mb-3 small rw-legend">
+                    <span><span class="rw-legend-dot rw-seg-global"></span>No region code</span>
+                    <span><span class="rw-legend-dot rw-seg-scoped"></span>Region code set</span>
+                    <span><span class="rw-legend-dot rw-seg-unknown"></span>Couldn't tell (not in the bars)</span>
+                </div>
+                <div id="rw-traffic"><div class="loading">Loading traffic…</div></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card h-100">
+            <div class="card-header"><i class="fas fa-calendar-day"></i> Daily volume</div>
+            <div class="card-body">
+                <div id="rw-days-wrap">
+                    <div class="rw-days" id="rw-days"></div>
+                    <div class="d-flex justify-content-between small text-muted mt-2" id="rw-days-range"></div>
+                    <hr>
+                </div>
+                <div id="rw-totals"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Settings -->
+<div class="row mb-4">
+    <div class="col-12">
+        <form class="card" id="rw-form" novalidate>
+            <div class="card-header"><i class="fas fa-sliders-h"></i> Settings</div>
+            <div class="card-body">
+                <fieldset class="mb-4">
+                    <legend class="h6">What the bot does</legend>
+                    <div class="rw-modes" role="radiogroup" aria-label="Region warning mode">
+                        <label class="rw-mode-option" for="rw-mode-off">
+                            <input class="form-check-input" type="radio" name="rw-mode" id="rw-mode-off" value="off">
+                            <span>
+                                <strong>Count only</strong>
+                                <span class="d-block text-muted small">Tally scopes for this page. Nothing is ever transmitted.</span>
+                            </span>
+                        </label>
+                        <label class="rw-mode-option" for="rw-mode-dry">
+                            <input class="form-check-input" type="radio" name="rw-mode" id="rw-mode-dry" value="dry">
+                            <span>
+                                <strong>Dry run</strong>
+                                <span class="d-block text-muted small">Decide warnings and log them below, but transmit nothing. Cooldowns and the daily cap apply, so the log shows exactly what going live would send &mdash; which also means a previewed sender stays on cooldown after you go live.</span>
+                            </span>
+                        </label>
+                        <label class="rw-mode-option" for="rw-mode-live">
+                            <input class="form-check-input" type="radio" name="rw-mode" id="rw-mode-live" value="live">
+                            <span>
+                                <strong>Send warnings</strong>
+                                <span class="d-block text-muted small">Spends airtime automatically, within the limits below.</span>
+                            </span>
+                        </label>
+                    </div>
+                    <div class="small text-muted mt-2" id="rw-mode-note" hidden>
+                        Everything below is still saved while the bot is only counting;
+                        it just isn't used until you pick dry run or send.
+                    </div>
+                    <div class="form-check form-switch mt-3">
+                        <input class="form-check-input" type="checkbox" id="rw-track-traffic" checked>
+                        <label class="form-check-label" for="rw-track-traffic">
+                            Keep counting scopes
+                            <span class="d-block text-muted small">Off stops the tallies above. Warnings still work; you just lose the evidence.</span>
+                        </label>
+                    </div>
+                </fieldset>
+
+                <fieldset class="mb-4">
+                    <legend class="h6">Who hears it</legend>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label" for="rw-delivery">Delivery</label>
+                            <select class="form-select" id="rw-delivery">
+                                <option value="dm">Direct message to the sender</option>
+                                <option value="channel">Reply on the channel</option>
+                            </select>
+                            <div class="form-text" id="rw-delivery-help"></div>
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label" for="rw-channels">Channels to watch</label>
+                            <input type="text" class="form-control" id="rw-channels"
+                                   placeholder="Leave empty for every channel"
+                                   aria-describedby="rw-channels-help">
+                            <div class="form-text" id="rw-channels-help">
+                                Comma-separated. The <code>#</code> is optional.
+                            </div>
+                            <div class="mt-2" id="rw-channel-chips"></div>
+                        </div>
+                    </div>
+                </fieldset>
+
+                <fieldset class="mb-4">
+                    <legend class="h6">Limits</legend>
+                    <div class="row g-3">
+                        <div class="col-sm-6 col-xl-3">
+                            <label class="form-label" for="rw-min-unscoped">Warn after</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="rw-min-unscoped" min="1" max="100" step="1">
+                                <span class="input-group-text">msgs</span>
+                            </div>
+                            <div class="form-text">Unscoped messages from one sender.</div>
+                        </div>
+                        <div class="col-sm-6 col-xl-3">
+                            <label class="form-label" for="rw-sender-cooldown">Per-sender cooldown</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="rw-sender-cooldown" min="0" max="8760" step="1">
+                                <span class="input-group-text">hours</span>
+                            </div>
+                            <div class="form-text">0 disables.</div>
+                        </div>
+                        <div class="col-sm-6 col-xl-3">
+                            <label class="form-label" for="rw-mesh-cooldown">Mesh-wide cooldown</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="rw-mesh-cooldown" min="0" max="10080" step="1">
+                                <span class="input-group-text">min</span>
+                            </div>
+                            <div class="form-text">Minimum gap between any two warnings.</div>
+                        </div>
+                        <div class="col-sm-6 col-xl-3">
+                            <label class="form-label" for="rw-daily-cap">Daily cap</label>
+                            <input type="number" class="form-control" id="rw-daily-cap" min="0" max="1000" step="1">
+                            <div class="form-text">0 means unlimited.</div>
+                        </div>
+                    </div>
+                </fieldset>
+
+                <fieldset>
+                    <legend class="h6">Message</legend>
+                    <div class="row g-3">
+                        <div class="col-lg-7">
+                            <label class="form-label" for="rw-message">Warning text</label>
+                            <textarea class="form-control" id="rw-message" rows="3"
+                                      aria-describedby="rw-message-help"></textarea>
+                            <div class="form-text" id="rw-message-help">
+                                <code>{sender}</code> and <code>{channel}</code> are substituted.
+                            </div>
+                            <button type="button" class="btn btn-link btn-sm px-0" id="rw-reset-message">
+                                Reset to the default wording
+                            </button>
+                        </div>
+                        <div class="col-lg-5">
+                            <span class="form-label d-block">Preview</span>
+                            <div class="rw-preview" id="rw-preview"></div>
+                            <div class="small mt-2" id="rw-bytes"></div>
+                            <div class="small text-muted" id="rw-preview-note"></div>
+                        </div>
+                    </div>
+                </fieldset>
+            </div>
+            <div class="card-footer d-flex flex-wrap align-items-center gap-3">
+                <button type="submit" class="btn btn-primary" id="rw-save">Save settings</button>
+                <button type="button" class="btn btn-outline-secondary" id="rw-revert">Revert</button>
+                <span id="rw-save-status" role="status" aria-live="polite"></span>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Log -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-list-check"></i> Recent warning decisions</span>
+                <button class="btn btn-sm btn-outline-secondary" type="button" id="rw-refresh">
+                    <i class="fas fa-rotate"></i> Refresh
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover align-middle mb-0">
+                        <thead class="table-dark">
+                            <tr>
+                                <th scope="col">When</th>
+                                <th scope="col">Sender</th>
+                                <th scope="col">Channel</th>
+                                <th scope="col">Outcome</th>
+                                <th scope="col">Message</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rw-events">
+                            <tr><td colspan="5" class="rw-empty">Loading…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script nonce="{{ g.csp_nonce }}">
+(function () {
+    'use strict';
+
+    const SAMPLE_SENDER = 'Wandering Node';
+    const SAMPLE_CHANNEL = 'general';
+
+    const el = (id) => document.getElementById(id);
+    const encoder = new TextEncoder();
+
+    function escapeHtml(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+        }[c]));
+    }
+
+    function plural(n, word) {
+        return n + ' ' + word + (n === 1 ? '' : 's');
+    }
+
+    class RegionWarnings {
+        constructor() {
+            this.data = null;
+            this.windowDays = 14;
+            this.bindEvents();
+            this.load();
+        }
+
+        bindEvents() {
+            el('rw-window').addEventListener('change', (e) => {
+                this.windowDays = parseInt(e.target.value, 10) || 14;
+                this.load();
+            });
+            el('rw-refresh').addEventListener('click', () => this.load());
+            el('rw-form').addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.save();
+            });
+            el('rw-revert').addEventListener('click', () => {
+                if (this.data) {
+                    this.fillForm(this.data.settings);
+                    this.setStatus('Reverted to the saved settings.', 'text-muted');
+                }
+            });
+            el('rw-reset-message').addEventListener('click', () => {
+                if (!this.data) return;
+                el('rw-message').value = this.data.default_message || '';
+                this.refreshPreview();
+            });
+            el('rw-message').addEventListener('input', () => this.refreshPreview());
+            el('rw-delivery').addEventListener('change', () => this.refreshPreview());
+            el('rw-channels').addEventListener('input', () => this.markSelectedChips());
+            document.querySelectorAll('input[name="rw-mode"]').forEach((input) => {
+                input.addEventListener('change', () => this.refreshMode());
+            });
+        }
+
+        async load() {
+            try {
+                const resp = await fetch('/api/region-warnings?days=' + this.windowDays, {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                if (!resp.ok) throw new Error('Request failed (' + resp.status + ')');
+                this.data = await resp.json();
+            } catch (err) {
+                el('rw-status-title').textContent = 'Could not load region warning data';
+                el('rw-status-detail').textContent = err.message;
+                return;
+            }
+            this.fillForm(this.data.settings);
+            this.renderStatus();
+            this.renderTraffic();
+            this.renderDays();
+            this.renderChannelChips();
+            this.renderEvents();
+        }
+
+        // -- form ------------------------------------------------------------
+
+        currentMode() {
+            const checked = document.querySelector('input[name="rw-mode"]:checked');
+            return checked ? checked.value : 'off';
+        }
+
+        fillForm(settings) {
+            const isTrue = (v) => String(v).toLowerCase() === 'true';
+            const enabled = isTrue(settings.enabled);
+            const dryRun = isTrue(settings.dry_run);
+            const mode = !enabled ? 'off' : (dryRun ? 'dry' : 'live');
+            el('rw-mode-' + mode).checked = true;
+            el('rw-track-traffic').checked = isTrue(settings.track_traffic);
+            el('rw-delivery').value = settings.delivery || 'dm';
+            el('rw-channels').value = settings.channels || '';
+            el('rw-min-unscoped').value = settings.min_unscoped_messages;
+            el('rw-sender-cooldown').value = settings.per_sender_cooldown_hours;
+            el('rw-mesh-cooldown').value = settings.mesh_cooldown_minutes;
+            el('rw-daily-cap').value = settings.max_warnings_per_day;
+            el('rw-message').value = settings.message || '';
+            this.refreshMode();
+            this.markSelectedChips();
+        }
+
+        refreshMode() {
+            const mode = this.currentMode();
+            document.querySelectorAll('.rw-mode-option').forEach((option) => {
+                const input = option.querySelector('input');
+                option.classList.toggle('rw-mode-selected', !!input && input.checked);
+            });
+            // The rest of the form describes warnings, which "count only" never
+            // sends — but the values are still written, and disabling the fields
+            // would both say otherwise and stop anyone drafting their wording
+            // before they turn it on. Say it in a sentence instead.
+            el('rw-mode-note').hidden = mode !== 'off';
+            this.refreshPreview();
+        }
+
+        refreshPreview() {
+            const limits = (this.data && this.data.limits) || { dm: 158, channel: 130 };
+            const delivery = el('rw-delivery').value;
+            const limit = delivery === 'channel' ? limits.channel : limits.dm;
+            const text = (el('rw-message').value || '')
+                .replace(/\{sender\}/g, SAMPLE_SENDER)
+                .replace(/\{channel\}/g, SAMPLE_CHANNEL)
+                .trim();
+            el('rw-preview').textContent = text || '(no message)';
+
+            const bytes = encoder.encode(text).length;
+            const over = bytes > limit;
+            const label = delivery === 'channel' ? 'channel reply' : 'direct message';
+            el('rw-bytes').innerHTML = over
+                ? '<span class="text-danger"><i class="fas fa-triangle-exclamation"></i> ' + bytes
+                  + ' of ' + limit + ' bytes — the end will be cut off in a ' + label + '.</span>'
+                : '<span class="text-muted">' + bytes + ' of ' + limit + ' bytes in a ' + label + '.</span>';
+
+            const raw = el('rw-message').value || '';
+            const used = [];
+            if (raw.indexOf('{sender}') >= 0) used.push('{sender} = ' + SAMPLE_SENDER);
+            if (raw.indexOf('{channel}') >= 0) used.push('{channel} = ' + SAMPLE_CHANNEL);
+            el('rw-preview-note').textContent = used.length ? 'Shown with ' + used.join(', ') + '.' : '';
+
+            el('rw-delivery-help').textContent = delivery === 'channel'
+                ? 'Sent at global scope so it reaches someone outside your region — everyone on the channel sees it.'
+                : 'Costs the least airtime, and only the sender sees it. Only goes to '
+                  + 'senders the radio already has a contact for.';
+        }
+
+        async save() {
+            const mode = this.currentMode();
+            if (mode === 'live') {
+                const unfenced = [
+                    Number(el('rw-mesh-cooldown').value) === 0 && 'no gap between warnings',
+                    Number(el('rw-sender-cooldown').value) === 0 && 'no per-sender cooldown',
+                    Number(el('rw-daily-cap').value) === 0 && 'no daily cap',
+                ].filter(Boolean);
+                let text = 'Send warnings for real?\n\n'
+                    + 'The bot will transmit unprompted on the mesh whenever a sender '
+                    + 'meets the limits below.';
+                if (unfenced.length) {
+                    // All three at zero is three clicks away and would let one
+                    // chatty channel turn into a burst of DMs.
+                    text += '\n\nWith ' + unfenced.join(', ')
+                        + ', nothing bounds how many go out.';
+                }
+                const ok = window.confirm(text);
+                if (!ok) return;
+            }
+            const payload = {
+                enabled: mode !== 'off',
+                dry_run: mode !== 'live',
+                track_traffic: el('rw-track-traffic').checked,
+                delivery: el('rw-delivery').value,
+                channels: el('rw-channels').value,
+                message: el('rw-message').value,
+                min_unscoped_messages: el('rw-min-unscoped').value,
+                per_sender_cooldown_hours: el('rw-sender-cooldown').value,
+                mesh_cooldown_minutes: el('rw-mesh-cooldown').value,
+                max_warnings_per_day: el('rw-daily-cap').value,
+            };
+
+            const button = el('rw-save');
+            button.disabled = true;
+            this.setStatus('Saving…', 'text-muted');
+            try {
+                const resp = await fetch('/api/region-warnings/settings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: JSON.stringify(payload),
+                });
+                const result = await resp.json();
+                if (!resp.ok || !result.success) {
+                    throw new Error(result.error || 'Save failed');
+                }
+                // Re-read rather than patch in place: the status strip's budget
+                // is derived from the cap that was just changed.
+                await this.load();
+                this.setStatus(
+                    result.reload_queued
+                        ? 'Saved. The bot picks this up shortly.'
+                        : 'Saved to config.ini. Restart the bot to apply.',
+                    'text-success',
+                );
+            } catch (err) {
+                this.setStatus(err.message, 'text-danger');
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        setStatus(text, cls) {
+            const node = el('rw-save-status');
+            node.className = cls || '';
+            node.textContent = text;
+        }
+
+        // -- rendering -------------------------------------------------------
+
+        renderStatus() {
+            const s = this.data.settings;
+            const budget = this.data.budget || {};
+            const enabled = String(s.enabled).toLowerCase() === 'true';
+            const dryRun = String(s.dry_run).toLowerCase() === 'true';
+            const card = el('rw-status-card');
+            card.classList.remove('rw-status--off', 'rw-status--dry', 'rw-status--live');
+
+            let title;
+            let detail;
+            if (!enabled) {
+                card.classList.add('rw-status--off');
+                title = 'Counting only — nothing is transmitted';
+                detail = String(s.track_traffic).toLowerCase() === 'true'
+                    ? 'Scopes are tallied below so you can see the problem before spending airtime on it.'
+                    : 'Scope tallying is off too, so this page will stop gaining new data.';
+            } else {
+                const how = s.delivery === 'channel' ? 'a channel reply' : 'a direct message';
+                const where = s.channels ? 'on ' + s.channels : 'on every channel';
+                if (dryRun) {
+                    card.classList.add('rw-status--dry');
+                    title = 'Dry run — warnings are decided but not sent';
+                    detail = 'Would send ' + how + ' ' + where
+                        + ' after ' + plural(parseInt(s.min_unscoped_messages, 10), 'unscoped message') + '.';
+                } else {
+                    card.classList.add('rw-status--live');
+                    title = 'Sending warnings';
+                    detail = 'Sends ' + how + ' ' + where
+                        + ' after ' + plural(parseInt(s.min_unscoped_messages, 10), 'unscoped message') + '.';
+                }
+            }
+            el('rw-status-title').textContent = title;
+            el('rw-status-detail').textContent = detail;
+
+            if (!enabled) {
+                el('rw-status-budget').innerHTML = '';
+                return;
+            }
+            const used = budget.used_today || 0;
+            const failed = budget.failed_today || 0;
+            const withheld = budget.withheld_today || 0;
+            // Dry runs and real sends are different events and must not share a
+            // figure: a morning's preview would otherwise read as transmissions.
+            const shown = dryRun
+                ? (budget.previewed_today || 0)
+                : (budget.delivered_today || 0);
+            // The cap is a ceiling on new warnings, not a rewrite of history: a
+            // lowered cap can leave today already over it, and "7 of 6" would
+            // read as a bug rather than as "no more today".
+            let capLine;
+            if (budget.unlimited) {
+                capLine = '<span class="rw-alert">No daily cap</span>';
+            } else if (used >= budget.cap) {
+                capLine = '<span class="rw-alert">Daily cap of ' + budget.cap + ' reached</span>';
+            } else {
+                capLine = escapeHtml(budget.remaining + ' of ' + budget.cap + ' left today');
+            }
+            const last = budget.last_warning_at
+                ? 'Last at ' + escapeHtml(budget.last_warning_at)
+                : 'None yet';
+            // The big number is delivered, not attempted: a count of four beside
+            // "last warning: none yet" reads as a bug. Attempts still show,
+            // because they are what the cap actually spends.
+            el('rw-status-budget').innerHTML =
+                '<div class="rw-figure">' + shown + '</div>'
+                + '<div class="rw-figure-label">'
+                +   (dryRun ? 'would send today' : 'sent today') + '</div>'
+                + (failed
+                    ? '<div class="small rw-alert">' + plural(failed, 'failed attempt')
+                      + ', also counted</div>'
+                    : '')
+                + (withheld
+                    ? '<div class="small rw-alert">' + withheld + ' withheld: '
+                      + (withheld === 1 ? 'no contact by that name' : 'no contact by those names')
+                      + '</div>'
+                    : '')
+                + '<div class="small mt-1">' + capLine + '</div>'
+                + '<div class="small text-muted">' + last + '</div>';
+        }
+
+        renderTraffic() {
+            const traffic = this.data.traffic || {};
+            const channels = traffic.channels || [];
+            const host = el('rw-traffic');
+            if (!channels.length) {
+                host.innerHTML = '<div class="rw-empty">'
+                    + 'No channel messages classified yet. Numbers appear here as the bot hears traffic.'
+                    + '</div>';
+                return;
+            }
+            const rows = channels.map((c) => {
+                // The bar spans the classified messages only, so its orange width
+                // IS the percentage printed beside it. Scaling it over the total
+                // instead put a 28.7% segment next to the label "33.7%".
+                const classified = c.scoped + c.global;
+                const pct = (n) => (classified ? (100 * n / classified) : 0).toFixed(2) + '%';
+                const share = c.unscoped_pct == null
+                    ? '<span class="text-muted">not enough data</span>'
+                    : '<strong>' + c.unscoped_pct + '%</strong> with no region code';
+                const coverage = c.total
+                    ? Math.round(100 * c.unknown / c.total) : 0;
+                return ''
+                    + '<div class="mb-3">'
+                    + '  <div class="d-flex justify-content-between align-items-baseline gap-2">'
+                    + '    <span class="rw-channel-name">' + escapeHtml(c.channel) + '</span>'
+                    + '    <span class="small text-muted">' + share + '</span>'
+                    + '  </div>'
+                    + '  <div class="rw-bar my-1" role="img" aria-label="'
+                    +      escapeHtml(c.channel) + ': ' + c.global + ' unscoped of '
+                    +      classified + ' classified, ' + c.unknown + ' unclassified">'
+                    + '    <span class="rw-seg-global" style="width:' + pct(c.global) + '"></span>'
+                    + '    <span class="rw-seg-scoped" style="width:' + pct(c.scoped) + '"></span>'
+                    + '  </div>'
+                    + '  <div class="small text-muted">'
+                    +      c.global + ' unscoped &middot; ' + c.scoped + ' scoped'
+                    +      (c.unknown
+                            ? ' &middot; <span class="rw-unknown-note">' + c.unknown
+                              + " couldn't tell (" + coverage + '% of traffic)</span>'
+                            : '')
+                    + '  </div>'
+                    + '</div>';
+            });
+            host.innerHTML = rows.join('');
+        }
+
+        renderDays() {
+            const series = this.data.series || [];
+            const host = el('rw-days');
+            const peak = series.reduce(
+                (max, d) => Math.max(max, d.scoped + d.global + d.unknown), 0);
+            // An empty 84px track plus a date range reads as a broken chart
+            // rather than as "no data"; the summary below says it in words.
+            el('rw-days-wrap').hidden = peak === 0;
+            host.innerHTML = series.map((d) => {
+                const total = d.scoped + d.global + d.unknown;
+                const height = peak ? Math.max(2, Math.round(100 * total / peak)) : 0;
+                const seg = (n) => (total ? (100 * n / total) : 0).toFixed(2) + '%';
+                const label = d.date + ': ' + d.global + ' unscoped, ' + d.scoped
+                    + ' scoped, ' + d.unknown + " couldn't tell";
+                return '<div class="rw-day" title="' + escapeHtml(label) + '">'
+                    + '<div style="height:' + height + '%" aria-hidden="true">'
+                    + '<span class="rw-seg-global" style="height:' + seg(d.global) + '"></span>'
+                    + '<span class="rw-seg-scoped" style="height:' + seg(d.scoped) + '"></span>'
+                    + '<span class="rw-seg-unknown" style="height:' + seg(d.unknown) + '"></span>'
+                    + '</div></div>';
+            }).join('');
+
+            if (series.length) {
+                el('rw-days-range').innerHTML =
+                    '<span>' + escapeHtml(series[0].date) + '</span>'
+                    + '<span>' + escapeHtml(series[series.length - 1].date) + '</span>';
+            } else {
+                el('rw-days-range').innerHTML = '';
+            }
+
+            el('rw-days').setAttribute(
+                'aria-label',
+                'Daily message volume by scope over the last ' + series.length + ' days.');
+
+            const totals = (this.data.traffic || {}).totals || {};
+            const classified = (totals.scoped || 0) + (totals.global || 0);
+            const num = (n) => Number(n || 0).toLocaleString();
+            if (!classified && !totals.unknown) {
+                el('rw-totals').innerHTML =
+                    '<div class="text-muted small">Nothing classified in this window yet.</div>';
+                return;
+            }
+            el('rw-totals').innerHTML = ''
+                + '<div class="rw-figure rw-alert">'
+                +   (totals.unscoped_pct == null ? '—' : totals.unscoped_pct + '%') + '</div>'
+                + '<div class="text-muted">of classified traffic had no region code</div>'
+                + '<div class="small text-muted mt-2">'
+                +   num(totals.global) + ' unscoped of ' + num(classified) + ' classified'
+                +   (totals.unknown
+                        ? ' &middot; ' + num(totals.unknown) + " the radio couldn't classify"
+                        : '')
+                + '</div>';
+        }
+
+        renderChannelChips() {
+            const known = this.data.known_channels || [];
+            const host = el('rw-channel-chips');
+            if (!known.length) {
+                host.innerHTML = '';
+                return;
+            }
+            host.innerHTML = known.map((name) =>
+                '<button type="button" class="btn btn-sm btn-outline-secondary me-1 mb-1" '
+                + 'data-channel="' + escapeHtml(name) + '">' + escapeHtml(name) + '</button>'
+            ).join('');
+            host.querySelectorAll('button[data-channel]').forEach((button) => {
+                button.addEventListener('click', () => {
+                    const input = el('rw-channels');
+                    const raw = button.dataset.channel.replace(/^#/, '').toLowerCase();
+                    const parts = this.selectedChannels();
+                    const at = parts.indexOf(raw);
+                    if (at >= 0) parts.splice(at, 1); else parts.push(raw);
+                    input.value = parts.join(', ');
+                    this.markSelectedChips();
+                });
+            });
+            this.markSelectedChips();
+        }
+
+        selectedChannels() {
+            return el('rw-channels').value.split(',')
+                .map((p) => p.trim().replace(/^#/, '').toLowerCase())
+                .filter(Boolean);
+        }
+
+        // A chip that is already in the allowlist has to look different from one
+        // that is not, or clicking it is a coin flip between adding and removing.
+        markSelectedChips() {
+            const selected = this.selectedChannels();
+            document.querySelectorAll('#rw-channel-chips button[data-channel]')
+                .forEach((button) => {
+                    const raw = button.dataset.channel.replace(/^#/, '').toLowerCase();
+                    const on = selected.includes(raw);
+                    button.classList.toggle('btn-secondary', on);
+                    button.classList.toggle('btn-outline-secondary', !on);
+                    button.setAttribute('aria-pressed', on ? 'true' : 'false');
+                });
+        }
+
+        renderEvents() {
+            const events = this.data.events || [];
+            const body = el('rw-events');
+            if (!events.length) {
+                const withheld = (this.data.budget || {}).withheld_today || 0;
+                body.innerHTML = '<tr><td colspan="5" class="rw-empty">'
+                    + (withheld
+                        // "Nothing happened" and "everything was dropped" look
+                        // identical from an empty table; say which it is.
+                        ? escapeHtml(plural(withheld, 'warning'))
+                          + ' withheld today because no contact matched the sender. '
+                          + 'Direct messages only go to names the radio knows &mdash; '
+                          + 'switch delivery to the channel to reach everyone.'
+                        : 'No warnings decided yet. Turn on dry run to see what would be sent.')
+                    + '</td></tr>';
+                return;
+            }
+            const badge = {
+                sent: '<span class="badge bg-success">Sent</span>',
+                dry_run: '<span class="badge bg-primary">Dry run</span>',
+                failed: '<span class="badge bg-danger">Failed</span>',
+            };
+            body.innerHTML = events.map((e) => ''
+                + '<tr>'
+                + '<td class="text-nowrap small">' + escapeHtml(e.created_at) + '</td>'
+                + '<td>' + escapeHtml(e.sender_id) + '</td>'
+                + '<td class="rw-channel-name small">' + escapeHtml(e.channel || '—') + '</td>'
+                + '<td class="text-nowrap">' + (badge[e.action] || escapeHtml(e.action))
+                +   ' <span class="text-muted small text-uppercase">'
+                +   escapeHtml(e.delivery) + '</span></td>'
+                + '<td class="small"><span class="rw-event-detail" title="'
+                +   escapeHtml(e.detail || '') + '">' + escapeHtml(e.detail || '') + '</span></td>'
+                + '</tr>'
+            ).join('');
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => new RegionWarnings());
+})();
+</script>
+{% endblock %}

@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from modules.message_handler import (
+    RF_MATCH_CHANNEL_AUTHENTICATED,
     RF_MATCH_EXACT,
     RF_MATCH_FALLBACK,
     RF_MATCH_KEY,
@@ -930,6 +931,47 @@ def _make_packet_hex(
     return pkt.hex()
 
 
+def _make_group_text_packet(
+    secret: bytes,
+    sender_timestamp: int,
+    text: str,
+    *,
+    path_bytes: bytes = b"",
+    bytes_per_hop: int = 1,
+    route_type: int = 1,
+    transport: bytes = b"",
+    attempt: int = 0,
+) -> tuple[str, bytes]:
+    """Build an authenticated GRP_TXT packet and its application payload."""
+    import hashlib
+    import hmac
+
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
+    plaintext = (
+        sender_timestamp.to_bytes(4, "little")
+        + bytes([attempt & 0x03])
+        + text.encode("utf-8")
+    )
+    plaintext += b"\x00" * ((-len(plaintext)) % 16)
+    encryptor = Cipher(algorithms.AES(secret), modes.ECB()).encryptor()
+    ciphertext = encryptor.update(plaintext) + encryptor.finalize()
+    cipher_mac = hmac.new(secret + b"\x00" * 16, ciphertext, hashlib.sha256).digest()[:2]
+    channel_hash = hashlib.sha256(secret).digest()[:1]
+    group_payload = channel_hash + cipher_mac + ciphertext
+    hop_count = len(path_bytes) // bytes_per_hop
+    packet_hex = _make_packet_hex(
+        5,
+        route_type,
+        path_bytes=path_bytes,
+        payload_bytes=group_payload,
+        hop_count=hop_count,
+        bytes_per_hop=bytes_per_hop,
+        transport=transport,
+    )
+    return packet_hex, group_payload
+
+
 # ---------------------------------------------------------------------------
 # decode_meshcore_packet
 # ---------------------------------------------------------------------------
@@ -1641,6 +1683,321 @@ class TestHandleRfLogData:
         assert entry["transport_code1"] is None
 
 
+class TestAuthenticatedChannelCorrelation:
+    """Issue #255: correlate CHAN events by authenticated message identity."""
+
+    SECRET_1 = bytes.fromhex("eb50a1bcb3e4e5d7bf69a57c9dada211")
+    SECRET_2 = bytes.fromhex("8b3387e9c5cdea6ac9e5edbaa115cd72")
+    SENDER_TIMESTAMP = 1_788_043_003
+    TEXT = "CoderNemesis-KY 🏷️: !test"
+
+    @staticmethod
+    def _setup(handler, channels):
+        handler.logger = Mock()
+        handler.bot.meshcore = Mock()
+        handler.bot.meshcore.channels = channels
+        handler.bot.transmission_tracker = None
+        handler.bot.web_viewer_integration = None
+
+    @staticmethod
+    async def _store_rf(
+        handler,
+        secret,
+        *,
+        path_bytes=b"",
+        bytes_per_hop=1,
+        snr=11.75,
+        rssi=-30,
+        route_type=1,
+        transport=b"",
+        attempt=0,
+        text=TEXT,
+        sender_timestamp=SENDER_TIMESTAMP,
+    ):
+        packet_hex, group_payload = _make_group_text_packet(
+            secret,
+            sender_timestamp,
+            text,
+            path_bytes=path_bytes,
+            bytes_per_hop=bytes_per_hop,
+            route_type=route_type,
+            transport=transport,
+            attempt=attempt,
+        )
+        event = Mock()
+        payload = {
+            "snr": snr,
+            "rssi": rssi,
+            "raw_hex": "0000" + packet_hex,
+            "payload": packet_hex,
+            "payload_length": len(bytes.fromhex(packet_hex)),
+            "route_type": route_type,
+            "payload_type": 5,
+            "pkt_payload": group_payload,
+        }
+        if transport:
+            payload["transport_code"] = transport.hex()
+        event.payload = payload
+        await handler.handle_rf_log_data(event)
+        return handler.channel_rf_data[-1]
+
+    @classmethod
+    def _chan(cls, channel_idx=1, **over):
+        payload = {
+            "type": "CHAN",
+            "SNR": 0.0,
+            "channel_idx": channel_idx,
+            "path_hash_mode": 0,
+            "path_len": 0,
+            "txt_type": 0,
+            "sender_timestamp": cls.SENDER_TIMESTAMP,
+            "text": cls.TEXT,
+        }
+        payload.update(over)
+        return payload
+
+    def test_channel_secrets_reads_meshcore_list_layout(self, handler):
+        """meshcore keeps channels in a list; entries without channel_idx use their position."""
+        self._setup(
+            handler,
+            [
+                {},
+                {"channel_secret": self.SECRET_1.hex()},
+                {"channel_idx": 5, "channel_key_hex": self.SECRET_2.hex()},
+                {"channel_idx": None, "channel_secret": self.SECRET_1},
+            ],
+        )
+
+        assert handler._channel_secrets() == [(1, self.SECRET_1), (5, self.SECRET_2)]
+
+    @pytest.mark.asyncio
+    async def test_zero_snr_uses_authenticated_rf_row(self, handler):
+        self._setup(
+            handler,
+            {1: {"channel_idx": 1, "channel_secret": self.SECRET_1}},
+        )
+        stored = await self._store_rf(handler, self.SECRET_1)
+
+        result = await handler._correlate_channel_message_rf_data(
+            None,
+            "",
+            self._chan(SNR=0.0),
+            scope_eligible_only=False,
+            extended_timeout=30.0,
+        )
+
+        assert result[RF_MATCH_KEY] == RF_MATCH_CHANNEL_AUTHENTICATED
+        assert result["packet_hash"] == stored["packet_hash"]
+        assert result["snr"] == 11.75
+
+    @pytest.mark.asyncio
+    async def test_issue_255_zero_snr_capture_resolves_direct_path(self, handler):
+        """CoderNemesis26's Aug 29 capture carries the exact message identity."""
+        self._setup(
+            handler,
+            {1: {"channel_idx": 1, "channel_secret": self.SECRET_1}},
+        )
+        inner_packet = (
+            "1540ca6609ada0b960f785625ad4267e43de66426f5680f9d91e7c78c48c"
+            "d2081440d26c083603ac6faac17069ecedfd66aa2ca9aa"
+        )
+        packet_info = handler.decode_meshcore_packet(inner_packet)
+        event = Mock()
+        event.payload = {
+            "snr": 11.75,
+            "rssi": 0,
+            "raw_hex": "2f00" + inner_packet,
+            "payload": inner_packet,
+            "payload_length": len(bytes.fromhex(inner_packet)),
+            "route_type": 1,
+            "payload_type": 5,
+            "pkt_payload": bytes.fromhex(packet_info["payload_hex"]),
+        }
+        await handler.handle_rf_log_data(event)
+
+        result = await handler._correlate_channel_message_rf_data(
+            None,
+            "",
+            {
+                "type": "CHAN",
+                "SNR": 0.0,
+                "channel_idx": 1,
+                "path_hash_mode": 1,
+                "path_len": 0,
+                "txt_type": 0,
+                "sender_timestamp": 1_788_042_903,
+                "text": "CoderNemesis-KY 🏷️: !test",
+            },
+            scope_eligible_only=False,
+            extended_timeout=30.0,
+        )
+
+        assert result[RF_MATCH_KEY] == RF_MATCH_CHANNEL_AUTHENTICATED
+        assert result["packet_hash"] == "82F374D969AF26A3"
+        assert result["routing_info"]["path_length"] == 0
+        assert result["routing_info"]["path_nodes"] == []
+
+    @pytest.mark.asyncio
+    async def test_first_reception_wins_over_repeater_echo(self, handler):
+        self._setup(
+            handler,
+            {1: {"channel_idx": 1, "channel_secret": self.SECRET_1}},
+        )
+        first = await self._store_rf(handler, self.SECRET_1, snr=11.75, rssi=-30)
+        echo = await self._store_rf(
+            handler,
+            self.SECRET_1,
+            path_bytes=bytes.fromhex("f0"),
+            snr=-4.0,
+            rssi=-90,
+        )
+        assert first["packet_hash"] == echo["packet_hash"]
+
+        result = await handler._correlate_channel_message_rf_data(
+            None,
+            "",
+            self._chan(SNR=0.0),
+            scope_eligible_only=False,
+            extended_timeout=30.0,
+        )
+
+        assert result["routing_info"]["path_length"] == 0
+        assert result["routing_info"]["path_nodes"] == []
+        assert result["snr"] == 11.75
+        assert result["rssi"] == -30
+
+    @pytest.mark.asyncio
+    async def test_authenticated_cache_outlives_general_rf_window(self, handler):
+        self._setup(
+            handler,
+            {1: {"channel_idx": 1, "channel_secret": self.SECRET_1}},
+        )
+        stored = await self._store_rf(handler, self.SECRET_1)
+        stored["timestamp"] = time.time() - 60
+        handler.recent_rf_data = []
+
+        result = await handler._correlate_channel_message_rf_data(
+            None,
+            "",
+            self._chan(),
+            scope_eligible_only=False,
+            extended_timeout=30.0,
+        )
+
+        assert result[RF_MATCH_KEY] == RF_MATCH_CHANNEL_AUTHENTICATED
+
+    @pytest.mark.asyncio
+    async def test_authenticated_cache_still_expires(self, handler):
+        self._setup(
+            handler,
+            {1: {"channel_idx": 1, "channel_secret": self.SECRET_1}},
+        )
+        stored = await self._store_rf(handler, self.SECRET_1)
+        stored["timestamp"] = time.time() - handler._channel_rf_cache_timeout - 1
+        handler.recent_rf_data = []
+
+        result = await handler._correlate_channel_message_rf_data(
+            None,
+            "",
+            self._chan(),
+            scope_eligible_only=False,
+            extended_timeout=30.0,
+        )
+
+        assert result is None
+
+    def test_tampered_ciphertext_is_not_authenticated(self, handler):
+        self._setup(
+            handler,
+            {1: {"channel_idx": 1, "channel_secret": self.SECRET_1}},
+        )
+        packet_hex, _group_payload = _make_group_text_packet(
+            self.SECRET_1, self.SENDER_TIMESTAMP, self.TEXT
+        )
+        packet_info = handler.decode_meshcore_packet(packet_hex)
+        payload = bytearray.fromhex(packet_info["payload_hex"])
+        payload[-1] ^= 0x01
+        packet_info["payload_hex"] = payload.hex()
+
+        assert handler._decode_authenticated_channel_identity(packet_info) is None
+
+    @pytest.mark.asyncio
+    async def test_channel_index_disambiguates_same_timestamp_and_text(self, handler):
+        self._setup(
+            handler,
+            {
+                1: {"channel_idx": 1, "channel_secret": self.SECRET_1},
+                2: {"channel_idx": 2, "channel_secret": self.SECRET_2},
+            },
+        )
+        first = await self._store_rf(handler, self.SECRET_1)
+        second = await self._store_rf(
+            handler,
+            self.SECRET_2,
+            path_bytes=bytes.fromhex("aabb"),
+            bytes_per_hop=2,
+            snr=-7.5,
+        )
+
+        result = await handler._correlate_channel_message_rf_data(
+            None,
+            "",
+            self._chan(channel_idx=2, path_hash_mode=1, path_len=1),
+            scope_eligible_only=False,
+            extended_timeout=30.0,
+        )
+
+        assert result["packet_hash"] == second["packet_hash"]
+        assert result["packet_hash"] != first["packet_hash"]
+        assert result["routing_info"]["path_nodes"] == ["AABB"]
+
+    @pytest.mark.asyncio
+    async def test_distinct_authenticated_packets_are_ambiguous(self, handler):
+        self._setup(
+            handler,
+            {1: {"channel_idx": 1, "channel_secret": self.SECRET_1}},
+        )
+        first = await self._store_rf(handler, self.SECRET_1, attempt=0)
+        second = await self._store_rf(handler, self.SECRET_1, attempt=1)
+        assert first["packet_hash"] != second["packet_hash"]
+
+        result = await handler._correlate_channel_message_rf_data(
+            None,
+            "",
+            self._chan(),
+            scope_eligible_only=False,
+            extended_timeout=30.0,
+        )
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_scope_lookup_uses_same_authenticated_first_reception(self, handler):
+        self._setup(
+            handler,
+            {1: {"channel_idx": 1, "channel_secret": self.SECRET_1}},
+        )
+        transport = bytes.fromhex("12340000")
+        stored = await self._store_rf(
+            handler,
+            self.SECRET_1,
+            route_type=0,
+            transport=transport,
+        )
+
+        result = await handler._correlate_channel_message_rf_data(
+            None,
+            "",
+            self._chan(),
+            scope_eligible_only=True,
+            extended_timeout=30.0,
+        )
+
+        assert result[RF_MATCH_KEY] == RF_MATCH_CHANNEL_AUTHENTICATED
+        assert result["packet_hash"] == stored["packet_hash"]
+        assert result["transport_code1"] == 0x3412
+
+
 # ---------------------------------------------------------------------------
 # _get_path_from_rf_data
 # ---------------------------------------------------------------------------
@@ -2175,7 +2532,12 @@ class TestRfCorrelationProvenance:
     into the mesh graph."""
 
     def test_correlated_matches_are_attributable(self):
-        for kind in (RF_MATCH_EXACT, RF_MATCH_PUBKEY, RF_MATCH_PARTIAL):
+        for kind in (
+            RF_MATCH_EXACT,
+            RF_MATCH_PUBKEY,
+            RF_MATCH_PARTIAL,
+            RF_MATCH_CHANNEL_AUTHENTICATED,
+        ):
             assert rf_data_is_correlated({RF_MATCH_KEY: kind}) is True
 
     def test_fallback_is_not_attributable(self):

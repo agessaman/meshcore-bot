@@ -50,8 +50,8 @@ LEGACY_ENABLED_KEY_RE = re.compile(r"^[a-z]+_enabled$")
 # behavior and the UI can never disagree.
 # Maps canonical section -> ordered ((legacy_section, legacy_key), ...).
 LEGACY_ENABLED_ALIASES: dict[str, tuple[tuple[str, str], ...]] = {
-    "Joke_Command": (("Jokes", "joke_enabled"),),
-    "DadJoke_Command": (("Jokes", "dadjoke_enabled"),),
+    "Joke_Command": (("Joke_Command", "joke_enabled"), ("Jokes", "joke_enabled")),
+    "DadJoke_Command": (("DadJoke_Command", "dadjoke_enabled"), ("Jokes", "dadjoke_enabled")),
     "Stats_Command": (("Stats_Command", "stats_enabled"), ("Stats", "stats_enabled")),
     "Sports_Command": (("Sports_Command", "sports_enabled"), ("Sports", "sports_enabled")),
     "Hacker_Command": (("Hacker_Command", "hacker_enabled"), ("Hacker", "hacker_enabled")),
@@ -239,6 +239,19 @@ SECTIONS: dict[str, SectionMeta] = {
     }),
     "Weather_Service": SectionMeta(keys={
         "enabled": KeyMeta(type="bool"),
+        "weather_alerts_enabled": KeyMeta(type="bool", default="true"),
+        # Typed so the startup lint catches a malformed value -- an inline
+        # "# comment" on the value line most of all, since configparser keeps it
+        # in the string and the getint() in WeatherService.__init__ then raises,
+        # taking the entire service down with one terse log line.
+        "weather_alarm": KeyMeta(default="6:00"),
+        "poll_weather_alerts_interval": KeyMeta(type="int", default="600000"),
+        "poll_rain_nowcast_interval": KeyMeta(type="int", default="900000"),
+        "rain_nowcast_lead_minutes": KeyMeta(type="int", default="60"),
+        "rain_nowcast_renotify_minutes": KeyMeta(type="int", default="30"),
+        "rain_nowcast_threshold_mm": KeyMeta(type="float", default="0.1"),
+        "rain_nowcast_announce_ending": KeyMeta(type="bool", default="true"),
+        "blitz_collection_interval": KeyMeta(type="int", default="600000"),
         "rain_nowcast_cache_seconds": KeyMeta(type="int", default="300"),
         # Siblings of the documented rain_nowcast_* keys, read but not shown.
         "rain_nowcast_show_amount": KeyMeta(type="bool", default="true"),
@@ -265,6 +278,18 @@ SECTIONS: dict[str, SectionMeta] = {
         "dead_air_delay_seconds": KeyMeta(type="int", default="0"),
         "defer_to_human_greeting": KeyMeta(type="bool"),
         "levenshtein_distance": KeyMeta(type="int", default="0"),
+    }),
+    "Region_Warnings": SectionMeta(keys={
+        "enabled": KeyMeta(type="bool", default="false"),
+        "dry_run": KeyMeta(type="bool", default="true"),
+        "delivery": KeyMeta(default="dm"),
+        "channels": KeyMeta(),
+        "message": KeyMeta(),
+        "min_unscoped_messages": KeyMeta(type="int", default="3"),
+        "per_sender_cooldown_hours": KeyMeta(type="float", default="168"),
+        "mesh_cooldown_minutes": KeyMeta(type="float", default="30"),
+        "max_warnings_per_day": KeyMeta(type="int", default="6"),
+        "track_traffic": KeyMeta(type="bool", default="true"),
     }),
     "Announcements_Command": SectionMeta(dynamic_keys=True),
     "Alert_Command": SectionMeta(dynamic_keys=True),

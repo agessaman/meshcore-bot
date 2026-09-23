@@ -286,11 +286,21 @@ respond_to_dms = true
 # Code default when omitted: 64. This example uses 7 for a tighter local mesh.
 max_response_hops = 7
 
+# The Radio page in the web viewer edits flood_scopes and
+# outgoing_flood_scope_override for you and reloads the bot, so you only need to
+# set them here if you prefer the file. Per-channel flood_scope.<channel> entries
+# below are shown there read-only and still have to be edited here.
+
 # List of region scopes (comma-separated) that the bot will reply to when messages arrive on those scopes.
 # Replies mirror scope via RF correlation (TC_FLOOD / GRP_TXT); stale ADVERT/other packets are not used for scope.
 # Responses will be sent with the same scope hash when correlation succeeds.
 # Example: flood_scopes = *,#west,#east
 # Use * to allow replies to unscoped FLOOD messages.
+# A blank flood_scopes still answers channel commands, but the reply is ordinary
+# global FLOOD. The bot does not mirror the sender's region. Mirroring needs the
+# region name listed (for example *,#home). The * entry keeps unscoped flood
+# allowed. The bot matches the inbound transport code by HMAC against those
+# names; it cannot recover a region name from the 16-bit code alone.
 # Leave blank or commented to use the default (all).
 # flood_scopes = #region, #otherregion
 
@@ -309,6 +319,77 @@ max_response_hops = 7
 # flood_scope.general = #west
 # flood_scope.weather = #sea
 # flood_scope.#local = *
+
+[Region_Warnings]
+# Regional flood scope ("region code") monitoring, and an optional automatic
+# note to senders who never set one.
+#
+# A MeshCore client with no region configured sends every channel message as a
+# plain FLOOD, which every repeater on the mesh rebroadcasts. A client with a
+# region sends a TC_FLOOD whose transport code confines it to repeaters holding
+# that region key. This section is about the first kind.
+#
+# Tallying is free and on by default: the bot classifies each channel message it
+# hears as scoped, global (unscoped) or unknown and counts it per channel per
+# day. The Region Warnings page in the web viewer shows the result. Nothing is
+# transmitted unless you also set enabled = true below.
+#
+# A message is only ever counted as global on positive RF evidence, correlated
+# to that message, that it was an unscoped FLOOD. When the radio did not witness
+# enough to tell, it counts as unknown and can never earn a warning.
+#
+# Note that a channel sender is a display name, not an identity: MeshCore's
+# channel messages carry no public key, so anyone with the channel key can send
+# under any name. DM warnings therefore only go to a name the radio already has
+# a contact for, and the ones dropped for that reason are counted on the Region
+# Warnings page. See docs/region-warnings.md.
+track_traffic = true
+
+# Send a warning to senders whose messages are confirmed unscoped.
+# This spends airtime automatically. Off by default.
+enabled = false
+
+# Preview mode. While true, warnings are decided and logged exactly as they
+# would be sent — including consuming the cooldowns and the daily cap — but
+# nothing is transmitted. Watch the Region Warnings page for a while before
+# turning this off.
+dry_run = true
+
+# How the warning reaches the sender:
+#   dm      — a direct message to the sender (default; costs the least airtime).
+#             Only sent to a name the radio already has a contact for.
+#   channel — a reply on the channel they posted to, always at global scope,
+#             because a scoped reply would not reach someone outside your region
+delivery = dm
+
+# Only warn about messages on these channels (comma-separated, # optional).
+# Leave empty to consider every channel the bot hears.
+# channels = general, public
+
+# The warning text. {sender} and {channel} are substituted. Keep it short: a DM
+# body is 158 bytes and a channel reply is smaller still, and anything longer is
+# truncated. For delivery = channel, include @[{sender}] so they see it.
+# No '%' — configparser reads this file with interpolation on, so a bare percent
+# sign breaks every later read of the section.
+# message = Heads up: your messages have no region code, so they flood the whole mesh. Setting one in your MeshCore app keeps things quiet. Thanks!
+
+# How many confirmed-unscoped messages a sender must send before they earn a
+# warning, so one stray global flood does not cost anyone a DM. The run resets
+# after 24 hours of quiet, when the sender posts a scoped message, and on
+# restart.
+min_unscoped_messages = 3
+
+# Do not warn the same sender again within this many hours, counting failed
+# attempts as well as delivered ones. 0 disables.
+per_sender_cooldown_hours = 168
+
+# Minimum gap between warnings to anyone, in minutes. 0 disables.
+mesh_cooldown_minutes = 30
+
+# Hard ceiling on warning attempts per local day, failures included. 0 means
+# unlimited (not recommended).
+max_warnings_per_day = 6
+
 [Banned_Users]
 # List of banned sender names (comma-separated). Matching is prefix (starts-with):
 # "Awful Username" also matches "Awful Username 🍆". No bot responses in channels or DMs.
@@ -424,8 +505,10 @@ companion_min_inactive_days = 30
 # {elapsed} - Elapsed time (e.g. 1234ms) or "Sync Device Clock" when device clock is invalid (use {elapsed} only; do not append ms)
 # {packet_hash} - 16-char MeshCore packet identity hash (uppercase hex); renders empty when RF correlation did not attach routing info
 #
-# To add newlines in responses, use \n (single backslash + n):
-# Example: test = "Line 1\nLine 2\nLine 3"
+# To add newlines in responses, use \n — a BACKSLASH followed by n, the way a
+# shell or Python writes it. A forward slash (/n) is not an escape and is sent
+# as the two literal characters (issue #277).
+# Example: greetings = "Line 1\nLine 2\nLine 3"
 # This will output:
 # Line 1
 # Line 2
@@ -433,6 +516,20 @@ companion_min_inactive_days = 30
 #
 # To use a literal backslash + n, use \\n (double backslash + n)
 # Other escape sequences: \t (tab), \r (carriage return), \\ (literal backslash)
+#
+# A configparser continuation also works and needs no escape at all: put the
+# first line after the "=" and indent each following line by at least one space.
+#
+#   greetings = Line 1
+#               Line 2
+#
+# NOTE: `test` and `t` are NOT plain keywords. They are served by the built-in
+# test command, which renders `[Test_Command] response_format` if that is set
+# and otherwise falls back to a `test` entry here. That command supports the
+# message-based placeholders above and the pipe filters described under
+# [Test_Command], but NOT the mesh network info placeholders below — those
+# render as empty text. Same for any other built-in command name used as a
+# keyword. Pick a name no command owns for a plain keyword response.
 #
 # Available placeholders (mesh network info - same as Scheduled_Messages):
 # Total counts (ever heard):
@@ -1035,6 +1132,10 @@ mesh_connections_retention_days = 7
 # grows very slowly and a long window is cheap. The neighbor_links aggregate that
 # the mesh graph reads is never pruned.
 neighbor_observations_retention_days = 365
+#
+# Regional flood scope tallies and region-warning events (see [Region_Warnings]).
+# Both are tiny — one tally row per channel per day — so a long window is cheap.
+region_warning_retention_days = 90
 [Path_Command]
 # Enable or disable the path command
 enabled = true
@@ -1536,8 +1637,14 @@ enabled = true
 # channels =
 [Hello_Command]
 enabled = true
+# Name the sender in the reply (channel messages only), so a busy channel
+# can tell whose greeting was answered.
+include_sender = false
 # channels =
 [Dice_Command]
+enabled = true
+# channels =
+[Contact_Command]
 enabled = true
 # channels =
 [Cmd_Command]
@@ -1574,6 +1681,16 @@ enabled = true
 require_path_bytes_greater_or_equal_to = 0
 # Optional response when rejected by path-byte requirement; leave empty for silent reject
 require_path_bytes_failure_response =
+
+# Unit for the {path_distance} and {firstlast_distance} placeholders.
+# auto (default) = follow the reply language: miles for en / en-US, kilometres
+#                  for every other locale, en-GB included (it shares the English
+#                  catalog but not the units)
+# km             = always kilometres
+# mi             = always miles
+# An invalid value falls back to auto with a startup warning. This only changes
+# what is printed; repeater-selection distances are always computed in km.
+distance_unit = auto
 
 # Optional: full ack template for test/t. When set, overrides [Keywords] test for this command only.
 # Same placeholders as Keywords (sender, phrase, phrase_part, connection_info, path, hops, hops_label,
@@ -2111,8 +2228,18 @@ weather_channel = #weather
 # Weather alerts will be sent to this channel
 alerts_channel = #weather
 
+# Poll NOAA for weather alerts and post them to alerts_channel (true/false).
+# Set false to stop alert monitoring on its own — daily forecasts, rain nowcasts,
+# storm detection and the weather commands all keep working. Useful outside the
+# US, where NOAA has no coverage (the service already stops polling after the
+# API reports that, but this skips it entirely), or where another source already
+# feeds alerts to the mesh.
+# Default: true
+weather_alerts_enabled = true
+
 # Weather alert polling interval (milliseconds)
 # How often to check for new weather alerts
+# Ignored when weather_alerts_enabled = false
 # Default: 600000 (10 minutes)
 poll_weather_alerts_interval = 600000
 
@@ -2328,6 +2455,13 @@ port = 8765
 # secret_token = changeme
 
 # Maximum message length in characters (excess is silently truncated). Default: 200
+#
+# This is a cap on the total text accepted per request, NOT a single-message limit.
+# A MeshCore channel body only has about 130 bytes (the firmware's 160-byte text
+# limit less the "<botname>: " prefix), so anything longer is split and sent as
+# several mesh messages, each tagged " (1/2)", " (2/2)" and so on. Raising this
+# value therefore buys more airtime per request rather than longer single
+# messages.
 # max_message_length = 200
 
 # Comma-separated channel whitelist. If set, only these channels may be posted to.
@@ -2353,7 +2487,8 @@ port = 8765
 # Direct message:
 #   {"dm_to": "SomeUser", "message": "Private message"}
 #
-# Response: {"ok": true}  or  {"error": "..."}
+# Response: {"ok": true, "parts": 1}  or  {"error": "..."}
+#   parts = how many mesh messages the text was split into.
 # ---------------------------------------------------------------------------
 [RepeaterPrefixCollision_Service]
 # Enable repeater prefix collision notifications (true/false)

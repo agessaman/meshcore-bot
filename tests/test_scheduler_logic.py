@@ -158,6 +158,16 @@ class TestSetupScheduledMessages:
         assert len(self._message_jobs(scheduler)) == 1
         self._teardown(scheduler)
 
+    def test_scheduled_message_tolerates_short_scheduler_delay(self, scheduler):
+        scheduler.bot.config.add_section("Scheduled_Messages")
+        scheduler.bot.config.set("Scheduled_Messages", "0900", "general: Good morning!")
+        self._setup_and_call(scheduler)
+
+        job = self._message_jobs(scheduler)[0]
+        assert job.misfire_grace_time == 300
+        assert job.coalesce is True
+        self._teardown(scheduler)
+
     def test_deprecated_hhmm_logs_migration_warning(self, scheduler):
         scheduler.bot.config.add_section("Scheduled_Messages")
         scheduler.bot.config.set("Scheduled_Messages", "0900", "general: Hi")

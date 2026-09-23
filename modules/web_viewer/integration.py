@@ -594,6 +594,12 @@ class BotIntegration:
                 'path': getattr(message, 'path', ''),
                 'is_dm': bool(getattr(message, 'is_dm', False)),
             }
+            routing_info = getattr(message, 'routing_info', None) or {}
+            if not isinstance(routing_info, dict):
+                routing_info = {}
+            packet_hash = routing_info.get('packet_hash')
+            if packet_hash and str(packet_hash).strip('0'):
+                data['packet_hash'] = packet_hash
             self._insert_packet_stream_row(json.dumps(data), 'message', "channel message")
         except Exception as e:
             self.bot.logger.debug(f"Error storing channel message for web viewer: {e}")

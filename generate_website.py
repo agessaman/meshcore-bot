@@ -24,6 +24,7 @@ try:
     from modules.config_validation import strip_optional_quotes
     from modules.db_manager import DBManager
     from modules.plugin_loader import PluginLoader
+    from modules.settings_schema import command_section_name, read_enabled
     from modules.utils import resolve_path
 except ImportError as e:
     print("Error: Missing required dependencies.")
@@ -39,10 +40,11 @@ except ImportError as e:
 class MinimalBot:
     """Minimal bot mock for plugin loading without full bot initialization"""
 
-    def __init__(self, config, logger, db_manager=None):
+    def __init__(self, config, logger, db_manager=None, bot_root=None):
         self.config = config
         self.logger = logger
         self.db_manager = db_manager
+        self.bot_root = bot_root
 
         # Dummy translator
         class DummyTranslator:
@@ -920,11 +922,25 @@ def setup_logging():
 
 
 def read_config(config_file: str = "config.ini") -> configparser.ConfigParser:
-    """Read and parse config.ini file"""
+    """Read config.ini, then overlay `<local_dir_path>/config.ini` if present.
+
+    Mirrors `Bot._read_config_snapshot` in modules/core.py. The overlay is where
+    the settings UI writes a local plugin's settings, so without it the
+    generated page would advertise commands the running bot refuses.
+    """
     config = configparser.ConfigParser()
     if not os.path.exists(config_file):
         raise FileNotFoundError(f"Config file not found: {config_file}")
     config.read(config_file)
+
+    bot_root = os.path.dirname(os.path.abspath(config_file))
+    local_config = os.path.join(
+        resolve_path(config.get('Bot', 'local_dir_path', fallback='local'), bot_root),
+        'config.ini',
+    )
+    if os.path.isfile(local_config):
+        config.read(local_config)
+
     return config
 
 
@@ -1144,8 +1160,49 @@ def get_command_popularity(db_path: Optional[str], commands: dict[str, Any]) -> 
     return popularity
 
 
-def filter_commands(commands: dict[str, Any], admin_commands: list[str]) -> dict[str, Any]:
-    """Filter out admin and hidden commands"""
+def resolve_local_commands_dir(
+    config: configparser.ConfigParser, bot_root: str, logger: logging.Logger
+) -> Optional[str]:
+    """Resolve the local commands directory, or None when it does not exist.
+
+    PluginLoader treats None as "no local commands", so a bot without a local
+    directory loads only the built-in plugins.
+    """
+    local_dir_path = config.get('Bot', 'local_dir_path', fallback='local')
+    local_commands_dir = resolve_path(os.path.join(local_dir_path, 'commands'), bot_root)
+
+    if not os.path.isdir(local_commands_dir):
+        logger.info(f"Local commands directory not found: {local_commands_dir}")
+        return None
+
+    logger.info(f"Using local commands directory: {local_commands_dir}")
+    return local_commands_dir
+
+
+def is_command_enabled(cmd_instance: Any, config: configparser.ConfigParser) -> bool:
+    """Report whether a command is enabled in the config.
+
+    Defers to the same section derivation and legacy `enabled` aliases the bot
+    uses at runtime, so a command the bot will not answer is not advertised on
+    the generated page. Commands with no name and commands with no explicit
+    setting are treated as enabled.
+
+    Args:
+        cmd_instance: Command instance to check
+        config: Config parser instance
+
+    Returns:
+        bool: True if command is enabled, False otherwise
+    """
+    cmd_name = getattr(cmd_instance, 'name', None)
+    if not cmd_name:
+        return True
+
+    return read_enabled(config, command_section_name(cmd_name), default=True)
+
+
+def filter_commands(commands: dict[str, Any], admin_commands: list[str], config: configparser.ConfigParser) -> dict[str, Any]:
+    """Filter out admin, hidden, and disabled commands"""
     filtered = {}
 
     # Categories to exclude from public reference
@@ -1154,6 +1211,10 @@ def filter_commands(commands: dict[str, Any], admin_commands: list[str]) -> dict
     for cmd_name, cmd_instance in commands.items():
         # Skip commands in excluded categories
         if hasattr(cmd_instance, 'category') and cmd_instance.category in excluded_categories:
+            continue
+
+        # Skip commands that mark themselves hidden
+        if getattr(cmd_instance, 'hidden', False):
             continue
 
         # Get primary command name
@@ -1169,6 +1230,10 @@ def filter_commands(commands: dict[str, Any], admin_commands: list[str]) -> dict
 
         # Skip commands with no keywords (automatic/system commands)
         if hasattr(cmd_instance, 'keywords') and not cmd_instance.keywords:
+            continue
+
+        # Skip commands that are disabled in config
+        if not is_command_enabled(cmd_instance, config):
             continue
 
         filtered[cmd_name] = cmd_instance
@@ -1284,7 +1349,7 @@ def format_monitor_channels(monitor_channels: list[str], html: bool = False) -> 
         return ", ".join(formatted[:-1]) + f", or {formatted[-1]}"
 
 
-def generate_html(bot_name: str, title: str, introduction: str, commands: list[tuple[str, Any]], monitor_channels: list[str] = None, channels_data: dict[str, dict[str, str]] = None, style: str = 'default') -> str:
+def generate_html(bot_name: str, title: str, introduction: str, commands: list[tuple[str, Any]], monitor_channels: list[str] = None, channels_data: dict[str, dict[str, str]] = None, style: str = 'default', link_css: Optional[str] = None, custom_css: Optional[str] = None) -> str:
     """Generate the HTML content"""
 
     if monitor_channels is None:
@@ -1519,6 +1584,17 @@ def generate_html(bot_name: str, title: str, introduction: str, commands: list[t
 
         channels_html += '</div>\n'
 
+    # Custom CSS cascades after the built-in style: embedded CSS is appended to
+    # the <style> block and a linked stylesheet follows it, so both can override
+    # built-in rules of equal specificity.
+    css_content = generate_builtin_css(style)
+    if custom_css:
+        css_content += "\n\n        /* Custom CSS overrides */\n" + custom_css
+
+    external_css_link = ""
+    if link_css:
+        external_css_link = f'\n    <link rel="stylesheet" href="{escape_html(link_css)}">'
+
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1529,7 +1605,144 @@ def generate_html(bot_name: str, title: str, introduction: str, commands: list[t
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="{STYLES[style]['fonts_url']}" rel="stylesheet">
     <style>
-        :root {{
+{css_content}
+    </style>{external_css_link}
+</head>"""
+
+    # Continue with body
+    html_content += f"""
+<body>
+    <div class="atmosphere"></div>
+    <div class="grid-overlay"></div>
+
+    <div class="sidebar-overlay"></div>
+
+    <button class="mobile-menu-toggle" aria-label="Toggle navigation menu">
+        <span class="hamburger"></span>
+        <span class="hamburger"></span>
+        <span class="hamburger"></span>
+    </button>
+
+    <div class="container">
+        {nav_html}
+
+        <div class="main-content">
+            <header>
+                <div class="header-content">
+                    <div class="header-title">
+                        <h1>{escape_html(bot_name)}</h1>
+                    </div>
+                    <div class="intro">
+                        {escape_html(introduction).replace(chr(10), '<br>')}{channels_suffix}
+                    </div>
+                </div>
+            </header>
+
+            <main>
+                {commands_html}
+                {channels_html}
+            </main>
+
+            <footer>
+                <p>Generated command reference for {escape_html(bot_name)}</p>
+            </footer>
+        </div>
+    </div>
+
+    <script>
+        // Handle mobile menu toggle
+        (function() {{
+            'use strict';
+
+            const menuToggle = document.querySelector('.mobile-menu-toggle');
+            const sidebar = document.querySelector('.sidebar-nav');
+            const overlay = document.querySelector('.sidebar-overlay');
+
+            if (menuToggle && sidebar) {{
+                function toggleMenu() {{
+                    const isOpen = sidebar.classList.contains('open');
+                    if (isOpen) {{
+                        menuToggle.classList.remove('active');
+                        sidebar.classList.remove('open');
+                        if (overlay) {{
+                            overlay.classList.remove('visible');
+                        }}
+                    }} else {{
+                        menuToggle.classList.add('active');
+                        sidebar.classList.add('open');
+                        if (overlay) {{
+                            overlay.classList.add('visible');
+                        }}
+                    }}
+                }}
+
+                function closeMenu() {{
+                    menuToggle.classList.remove('active');
+                    sidebar.classList.remove('open');
+                    if (overlay) {{
+                        overlay.classList.remove('visible');
+                    }}
+                }}
+
+                menuToggle.addEventListener('click', function(e) {{
+                    e.stopPropagation();
+                    e.preventDefault();
+                    toggleMenu();
+                    return false;
+                }});
+
+                // Handle overlay clicks - overlay now only covers area after sidebar
+                if (overlay) {{
+                    overlay.addEventListener('click', function(e) {{
+                        closeMenu();
+                    }});
+                }}
+
+                // Handle nav link clicks - don't prevent default, let browser handle navigation
+                const navLinks = sidebar.querySelectorAll('.nav-link');
+                navLinks.forEach(link => {{
+                    link.addEventListener('click', function(e) {{
+                        if (window.innerWidth <= 1200) {{
+                            // Close menu after a delay to allow navigation
+                            setTimeout(function() {{
+                                closeMenu();
+                            }}, 200);
+                        }}
+                    }});
+                }});
+            }}
+
+            // Handle keyword expansion
+            const expandButtons = document.querySelectorAll('.keyword-expand');
+
+            expandButtons.forEach(button => {{
+                button.addEventListener('click', function() {{
+                    const hiddenAliases = this.getAttribute('data-hidden').split(',');
+                    const commandKeywords = this.closest('.command-keywords');
+
+                    // Hide the expand button
+                    this.classList.add('expanded');
+
+                    // Add hidden aliases as visible badges
+                    hiddenAliases.forEach(alias => {{
+                        const badge = document.createElement('span');
+                        badge.className = 'keyword-badge keyword-hidden visible';
+                        badge.textContent = alias.trim();
+                        commandKeywords.appendChild(badge);
+                    }});
+                }});
+            }});
+        }})();
+    </script>
+</body>
+</html>"""
+
+    return html_content
+
+
+def generate_builtin_css(style: str) -> str:
+    """Generate the built-in CSS for a given style"""
+    return f"""        :root {{
             {STYLES[style]['css_vars']}
         }}
 
@@ -2368,136 +2581,7 @@ def generate_html(bot_name: str, title: str, introduction: str, commands: list[t
         }}
 
         /* Style-specific CSS overrides */
-        {STYLES[style].get('css_overrides', '')}
-    </style>
-</head>
-<body>
-    <div class="atmosphere"></div>
-    <div class="grid-overlay"></div>
-
-    <div class="sidebar-overlay"></div>
-
-    <button class="mobile-menu-toggle" aria-label="Toggle navigation menu">
-        <span class="hamburger"></span>
-        <span class="hamburger"></span>
-        <span class="hamburger"></span>
-    </button>
-
-    <div class="container">
-        {nav_html}
-
-        <div class="main-content">
-            <header>
-                <div class="header-content">
-                    <div class="header-title">
-                        <h1>{escape_html(bot_name)}</h1>
-                    </div>
-                    <div class="intro">
-                        {escape_html(introduction).replace(chr(10), '<br>')}{channels_suffix}
-                    </div>
-                </div>
-            </header>
-
-            <main>
-                {commands_html}
-                {channels_html}
-            </main>
-
-            <footer>
-                <p>Generated command reference for {escape_html(bot_name)}</p>
-            </footer>
-        </div>
-    </div>
-
-    <script>
-        // Handle mobile menu toggle
-        (function() {{
-            'use strict';
-
-            const menuToggle = document.querySelector('.mobile-menu-toggle');
-            const sidebar = document.querySelector('.sidebar-nav');
-            const overlay = document.querySelector('.sidebar-overlay');
-
-            if (menuToggle && sidebar) {{
-                function toggleMenu() {{
-                    const isOpen = sidebar.classList.contains('open');
-                    if (isOpen) {{
-                        menuToggle.classList.remove('active');
-                        sidebar.classList.remove('open');
-                        if (overlay) {{
-                            overlay.classList.remove('visible');
-                        }}
-                    }} else {{
-                        menuToggle.classList.add('active');
-                        sidebar.classList.add('open');
-                        if (overlay) {{
-                            overlay.classList.add('visible');
-                        }}
-                    }}
-                }}
-
-                function closeMenu() {{
-                    menuToggle.classList.remove('active');
-                    sidebar.classList.remove('open');
-                    if (overlay) {{
-                        overlay.classList.remove('visible');
-                    }}
-                }}
-
-                menuToggle.addEventListener('click', function(e) {{
-                    e.stopPropagation();
-                    e.preventDefault();
-                    toggleMenu();
-                    return false;
-                }});
-
-                // Handle overlay clicks - overlay now only covers area after sidebar
-                if (overlay) {{
-                    overlay.addEventListener('click', function(e) {{
-                        closeMenu();
-                    }});
-                }}
-
-                // Handle nav link clicks - don't prevent default, let browser handle navigation
-                const navLinks = sidebar.querySelectorAll('.nav-link');
-                navLinks.forEach(link => {{
-                    link.addEventListener('click', function(e) {{
-                        if (window.innerWidth <= 1200) {{
-                            // Close menu after a delay to allow navigation
-                            setTimeout(function() {{
-                                closeMenu();
-                            }}, 200);
-                        }}
-                    }});
-                }});
-            }}
-
-            // Handle keyword expansion
-            const expandButtons = document.querySelectorAll('.keyword-expand');
-
-            expandButtons.forEach(button => {{
-                button.addEventListener('click', function() {{
-                    const hiddenAliases = this.getAttribute('data-hidden').split(',');
-                    const commandKeywords = this.closest('.command-keywords');
-
-                    // Hide the expand button
-                    this.classList.add('expanded');
-
-                    // Add hidden aliases as visible badges
-                    hiddenAliases.forEach(alias => {{
-                        const badge = document.createElement('span');
-                        badge.className = 'keyword-badge keyword-hidden visible';
-                        badge.textContent = alias.trim();
-                        commandKeywords.appendChild(badge);
-                    }});
-                }});
-            }});
-        }})();
-    </script>
-</body>
-</html>"""
-
-    return html_content
+        {STYLES[style].get('css_overrides', '')}"""
 
 
 def list_styles():
@@ -2513,7 +2597,7 @@ def list_styles():
         print(f"  {' ' * max_len}  {style_info['description']}\n")
 
 
-def generate_samples(config_file):
+def generate_samples(config_file, link_css: Optional[str] = None, custom_css: Optional[str] = None):
     """Generate sample HTML files for all styles with an index page."""
     logger = logging.getLogger(__name__)
 
@@ -2539,7 +2623,7 @@ def generate_samples(config_file):
     channels_data = load_channels_from_config(config)
 
     # Setup minimal bot for plugin loading
-    minimal_bot = MinimalBot(config, logger)
+    minimal_bot = MinimalBot(config, logger, bot_root=bot_root)
 
     # Initialize database manager if database exists
     db_path = get_database_path(config, bot_root)
@@ -2552,15 +2636,14 @@ def generate_samples(config_file):
     else:
         minimal_bot.db_manager = None
 
+    local_commands_dir = resolve_local_commands_dir(config, bot_root, logger)
+
     # Load plugins
-    plugin_loader = PluginLoader(minimal_bot)
+    plugin_loader = PluginLoader(minimal_bot, local_commands_dir=local_commands_dir)
     commands = plugin_loader.load_all_plugins()
 
-    # Filter out admin and hidden commands
-    public_commands = {
-        name: cmd for name, cmd in commands.items()
-        if name not in admin_commands and not getattr(cmd, 'hidden', False)
-    }
+    # Filter out admin, hidden, and disabled commands
+    public_commands = filter_commands(commands, admin_commands, config)
     public_commands.update(get_randomline_commands(config))
 
     # Sort commands
@@ -2582,7 +2665,9 @@ def generate_samples(config_file):
             commands=sorted_commands,
             monitor_channels=monitor_channels,
             channels_data=channels_data,
-            style=style_name
+            style=style_name,
+            link_css=link_css,
+            custom_css=custom_css
         )
 
         output_path = os.path.join(output_dir, f'{style_name}.html')
@@ -2730,6 +2815,18 @@ def main():
         help='Generate sample pages for all styles with an index.html'
     )
 
+    parser.add_argument(
+        '--link-css',
+        metavar='URL',
+        help='Link a stylesheet after the built-in style so its rules override it'
+    )
+
+    parser.add_argument(
+        '--embed-css',
+        metavar='FILE',
+        help='Inline CSS from a local file after the built-in style so its rules override it'
+    )
+
     args = parser.parse_args()
 
     # Handle --list-styles flag
@@ -2737,9 +2834,19 @@ def main():
         list_styles()
         sys.exit(0)
 
+    # Read --embed-css up front so a bad path fails before plugins load
+    custom_css = None
+    if args.embed_css:
+        try:
+            with open(args.embed_css, encoding='utf-8') as f:
+                custom_css = f.read()
+        except (OSError, UnicodeDecodeError) as e:
+            logger.error(f"Could not read --embed-css file {args.embed_css}: {e}")
+            sys.exit(1)
+
     # Handle --sample flag
     if args.sample:
-        generate_samples(args.config)
+        generate_samples(args.config, link_css=args.link_css, custom_css=custom_css)
         sys.exit(0)
 
     config_file = args.config
@@ -2774,7 +2881,7 @@ def main():
         logger.info(f"Monitor channels: {monitor_channels}")
 
         # Setup minimal bot for plugin loading
-        minimal_bot = MinimalBot(config, logger)
+        minimal_bot = MinimalBot(config, logger, bot_root=bot_root)
 
         # Initialize database manager if database exists
         db_path = get_database_path(config, bot_root)
@@ -2789,14 +2896,16 @@ def main():
             logger.info("No database found, using default command ordering")
             minimal_bot.db_manager = None
 
+        local_commands_dir = resolve_local_commands_dir(config, bot_root, logger)
+
         # Load plugins
         logger.info("Loading command plugins...")
-        plugin_loader = PluginLoader(minimal_bot)
+        plugin_loader = PluginLoader(minimal_bot, local_commands_dir=local_commands_dir)
         commands = plugin_loader.load_all_plugins()
         logger.info(f"Loaded {len(commands)} commands")
 
-        # Filter out admin and hidden commands
-        filtered_commands = filter_commands(commands, admin_commands)
+        # Filter out admin, hidden, and disabled commands
+        filtered_commands = filter_commands(commands, admin_commands, config)
         filtered_commands.update(get_randomline_commands(config))
         logger.info(f"Filtered to {len(filtered_commands)} public commands")
 
@@ -2822,7 +2931,7 @@ def main():
 
         # Generate HTML
         logger.info("Generating HTML...")
-        html_content = generate_html(bot_name, title, introduction, sorted_commands, monitor_channels, channels_data, style)
+        html_content = generate_html(bot_name, title, introduction, sorted_commands, monitor_channels, channels_data, style, args.link_css, custom_css)
 
         # Create website directory
         website_dir = os.path.join(bot_root, "website")

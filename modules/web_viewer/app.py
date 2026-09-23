@@ -44,6 +44,7 @@ from flask import (
 )
 from flask_socketio import SocketIO, disconnect, emit
 
+from modules import flood_scope, region_warning
 from modules.database_restore import (
     DEFAULT_MAX_RESTORE_BYTES,
     DatabaseRestoreError,
@@ -54,6 +55,8 @@ from modules.db_retention import (
     retention_delete_settings,
 )
 from modules.ini_writer import IniValueError, update_ini_values
+from modules.maintenance import MaintenanceRunner
+from modules.models import channel_body_limit
 from modules.scheduled_message_admin import (
     SECTION as SCHEDULED_MESSAGES_SECTION,
 )
@@ -258,9 +261,6 @@ class BotDataViewer:
         if not os.path.isabs(config_path):
             config_path = str(self.bot_root / config_path)
 
-        # Load configuration before logging so [Logging] log_file can select
-        # journal/console-only vs file logging (same rules as the main bot).
-        self.config = self._load_config(config_path)
         self.config_path = config_path  # kept for config.ini write-back endpoints
 
         # Resolve db_path relative to the config file's directory — matches core.py's bot_root
@@ -269,6 +269,10 @@ class BotDataViewer:
         # elsewhere (e.g. a separate deployment directory), resulting in a blank realtime monitor
         # because the web viewer and bot opened different database files.
         self._config_base = Path(config_path).parent.resolve() if os.path.exists(config_path) else self.bot_root
+
+        # Load configuration before logging so [Logging] log_file can select
+        # journal/console-only vs file logging (same rules as the main bot).
+        self.config = self._load_merged_config()
 
         self._setup_logging()
 
@@ -509,6 +513,37 @@ class BotDataViewer:
             config.read(config_path)
         return config
 
+    def _load_merged_config(self):
+        """Load base config.ini plus its local overlay, mirroring core.py.
+
+        core.py's ``_read_config_snapshot`` reads the base ``config.ini``,
+        looks up ``[Bot] local_dir_path`` (fallback ``"local"``), resolves it
+        relative to the bot root, and — if ``<local_dir_path>/config.ini``
+        exists — reads it into the *same* parser so it overlays the base
+        values section-by-section/key-by-key. The web viewer needs the same
+        merged view so settings edited via the local overlay show up here.
+        """
+        base_parser = configparser.ConfigParser()
+        if os.path.exists(self.config_path):
+            base_parser.read(self.config_path, encoding="utf-8")
+        base_sections = set(base_parser.sections())
+
+        local_dir_path_str = base_parser.get("Bot", "local_dir_path", fallback="local")
+        self.local_dir = Path(resolve_path(local_dir_path_str, self._config_base))
+        self.local_config_path = str(self.local_dir / "config.ini")
+
+        local_only = configparser.ConfigParser()
+        if os.path.exists(self.local_config_path):
+            local_only.read(self.local_config_path, encoding="utf-8")
+        local_sections = set(local_only.sections())
+
+        if os.path.exists(self.local_config_path):
+            base_parser.read(self.local_config_path, encoding="utf-8")
+
+        self._base_sections = base_sections
+        self._local_sections = local_sections
+        return base_parser
+
     def _get_version_info(self) -> dict[str, str | None]:
         """Get version info for footer via centralized version resolver. Never raises."""
         info = resolve_application_version()
@@ -602,6 +637,14 @@ class BotDataViewer:
 
             # Now set db_manager on the minimal bot for RepeaterManager
             minimal_bot.db_manager = self.db_manager
+
+            # The viewer runs as a separate process, so it cannot call the bot's
+            # MessageScheduler directly. MaintenanceRunner only needs this small
+            # bot facade for manual database backups.
+            self._maintenance_runner = MaintenanceRunner(
+                minimal_bot,
+                get_current_time=datetime.now,
+            )
 
             # The viewer only needs RepeaterManager for the manual geocode
             # endpoint, so defer its setup until that endpoint is actually used.
@@ -1241,6 +1284,7 @@ class BotDataViewer:
                 'contacts',
                 'plugins_page',
                 'greeter',
+                'region_warnings_page',
                 'logs',
                 'multibyte_rollout',
                 'mesh',
@@ -1363,6 +1407,11 @@ class BotDataViewer:
             """Greeter management page"""
             return render_template('greeter.html')
 
+        @self.app.route('/region-warnings')
+        def region_warnings_page():
+            """Regional flood scope monitoring and warning settings."""
+            return render_template('region_warnings.html')
+
         @self.app.route('/feeds')
         def feeds():
             """Feed management page"""
@@ -1419,8 +1468,13 @@ class BotDataViewer:
             """Return the settings view for every discovered command/service."""
             try:
                 # Re-read config from disk so the UI reflects external edits.
-                self.config = self._load_config(self.config_path)
-                view = build_plugin_settings_view(self.config, logger=self.logger)
+                self.config = self._load_merged_config()
+                view = build_plugin_settings_view(
+                    self.config,
+                    logger=self.logger,
+                    local_commands_dir=str(self.local_dir / "commands"),
+                    local_services_dir=str(self.local_dir / "service_plugins"),
+                )
                 return jsonify({'plugins': view})
             except Exception:
                 self.logger.exception("Error building plugin settings view")
@@ -1436,8 +1490,13 @@ class BotDataViewer:
             try:
                 data = request.get_json(silent=True) or {}
                 # Locate the plugin entry so we have its schema + section.
-                self.config = self._load_config(self.config_path)
-                view = build_plugin_settings_view(self.config, logger=self.logger)
+                self.config = self._load_merged_config()
+                view = build_plugin_settings_view(
+                    self.config,
+                    logger=self.logger,
+                    local_commands_dir=str(self.local_dir / "commands"),
+                    local_services_dir=str(self.local_dir / "service_plugins"),
+                )
                 entry = next(
                     (e for e in view if e['kind'] == kind and e['name'] == name),
                     None,
@@ -1552,7 +1611,26 @@ class BotDataViewer:
                         if brx.match(k) and k.lower() not in written:
                             deletes.setdefault(section, []).append(k)
 
-                store = get_settings_store(self.config, self.config_path, self.db_manager)
+                if section in self._local_sections:
+                    target_path = self.local_config_path
+                elif section in self._base_sections:
+                    target_path = self.config_path
+                else:
+                    # Brand-new section: local commands default into the local
+                    # overlay, everything else into the base config.
+                    target_path = (
+                        self.local_config_path if entry.get('source') == 'local' else self.config_path
+                    )
+
+                if target_path == self.local_config_path and not os.path.exists(target_path):
+                    # update_ini_values() requires the target file to already
+                    # exist (it reads + backs up before writing) — local/config.ini
+                    # may not exist yet on a fresh install.
+                    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+                    with open(target_path, 'w', encoding='utf-8') as f:
+                        f.write('')
+
+                store = get_settings_store(self.config, target_path, self.db_manager)
                 result = store.write_sections(updates, deletes)
                 backup_path = result.get('backup_path', '') if isinstance(result, dict) else ''
 
@@ -2140,12 +2218,11 @@ class BotDataViewer:
         def api_maintenance_backup_now():
             """Trigger an immediate DB backup outside the normal schedule."""
             try:
-                bot = getattr(self, 'bot', None)
-                scheduler = getattr(bot, 'scheduler', None) if bot else None
-                if scheduler is None or not hasattr(scheduler, 'run_db_backup'):
-                    return jsonify({'success': False, 'error': 'Scheduler not available'}), 503
-                scheduler.run_db_backup()
-                # Read outcome written by _run_db_backup
+                runner = getattr(self, '_maintenance_runner', None)
+                if runner is None:
+                    return jsonify({'success': False, 'error': 'Maintenance runner not available'}), 503
+                runner.run_db_backup()
+                # Read the outcome written by MaintenanceRunner.
                 path = self.db_manager.get_metadata('maint.status.db_backup_path') or ''
                 outcome = self.db_manager.get_metadata('maint.status.db_backup_outcome') or ''
                 if outcome.startswith('error'):
@@ -3973,25 +4050,378 @@ class BotDataViewer:
                 if conn:
                     conn.close()
 
+        # ── Region warnings (regional flood scope) ───────────────────────────
+
+        def _region_warning_channel_limit() -> int:
+            """Channel body budget for a global-scope send.
+
+            The device's own name is authoritative for the command layer, but
+            the viewer is a separate process with no radio, so it falls back to
+            the configured one. They match on any install where the bot manages
+            the device name.
+            """
+            name = (self.config.get('Bot', 'bot_name', fallback='Bot') or 'Bot').strip()
+            return channel_body_limit(name or 'Bot')
+
+        @self.app.route('/api/region-warnings')
+        def api_region_warnings():
+            """Settings, traffic tallies, budget and recent decisions for the page."""
+            try:
+                # Re-read from disk so the page reflects edits made elsewhere.
+                self.config = self._load_merged_config()
+                settings = region_warning.load_settings(self.config)
+                try:
+                    days = max(1, min(int(request.args.get('days', 14)), 90))
+                except (TypeError, ValueError):
+                    days = 14
+
+                known_channels = []
+                try:
+                    known_channels = [
+                        c.get('name') for c in self._get_channels() if c.get('name')
+                    ]
+                except Exception:
+                    pass
+
+                return jsonify({
+                    'settings': region_warning.settings_to_config_values(settings),
+                    'defaults': region_warning.settings_to_config_values(
+                        region_warning.RegionWarningSettings()
+                    ),
+                    'default_message': region_warning.DEFAULT_MESSAGE,
+                    'traffic': region_warning.traffic_summary(
+                        self.db_manager, self.config, days, self.logger
+                    ),
+                    'series': region_warning.daily_series(
+                        self.db_manager, self.config, days, self.logger
+                    ),
+                    'budget': region_warning.warning_budget(
+                        self.db_manager, settings, self.config, self.logger
+                    ),
+                    'events': region_warning.recent_events(self.db_manager, 50),
+                    'limits': {
+                        'dm': region_warning.DM_BODY_LIMIT,
+                        'channel': _region_warning_channel_limit(),
+                    },
+                    'known_channels': known_channels,
+                })
+            except Exception:
+                self.logger.exception("Error building region warning view")
+                return jsonify({'error': 'Internal error — see server logs'}), 500
+
+        @self.app.route('/api/region-warnings/settings', methods=['POST'])
+        def api_region_warnings_save():
+            """Persist [Region_Warnings] and queue a hot config reload."""
+            data = request.get_json(silent=True) or {}
+
+            def _as_bool(key, default):
+                raw = data.get(key, default)
+                if isinstance(raw, bool):
+                    return raw
+                return str(raw).strip().lower() in ('1', 'true', 'yes', 'on')
+
+            def _as_number(key, default, minimum=0.0, maximum=None):
+                raw = data.get(key, default)
+                try:
+                    value = float(raw)
+                except (TypeError, ValueError):
+                    raise ValueError(f'{key} must be a number')
+                if value < minimum:
+                    raise ValueError(f'{key} must be at least {minimum:g}')
+                if maximum is not None and value > maximum:
+                    raise ValueError(f'{key} must be at most {maximum:g}')
+                return value
+
+            try:
+                delivery = str(data.get('delivery', 'dm')).strip().lower()
+                if delivery not in (region_warning.DELIVERY_DM, region_warning.DELIVERY_CHANNEL):
+                    raise ValueError('delivery must be "dm" or "channel"')
+
+                message = str(data.get('message') or '').strip() or region_warning.DEFAULT_MESSAGE
+                if '\n' in message or '\r' in message:
+                    raise ValueError('message must be a single line')
+                if '%' in message:
+                    # config.ini is read with configparser's interpolation on, so a
+                    # bare % raises on every later read of the section — including
+                    # the bot's own config validation, which would then reject every
+                    # hot reload until someone hand-edited the file.
+                    raise ValueError('message cannot contain "%"; write "percent" instead')
+                if len(message) > 500:
+                    # Far above the 158-byte send budget, but this lands in
+                    # config.ini and in every timestamped backup of it.
+                    raise ValueError('message must be 500 characters or fewer')
+
+                channels = data.get('channels')
+                if isinstance(channels, list):
+                    channel_parts = channels
+                else:
+                    channel_parts = str(channels or '').split(',')
+                normalized_channels = []
+                for part in channel_parts:
+                    name = region_warning.normalize_channel(part)
+                    if name and name not in normalized_channels:
+                        normalized_channels.append(name)
+
+                settings = region_warning.RegionWarningSettings(
+                    enabled=_as_bool('enabled', False),
+                    dry_run=_as_bool('dry_run', True),
+                    delivery=delivery,
+                    channels=tuple(normalized_channels),
+                    message=message,
+                    min_unscoped_messages=int(_as_number('min_unscoped_messages', 3, 1, 100)),
+                    per_sender_cooldown_hours=_as_number('per_sender_cooldown_hours', 168, 0, 8760),
+                    mesh_cooldown_minutes=_as_number('mesh_cooldown_minutes', 30, 0, 10080),
+                    max_warnings_per_day=int(_as_number('max_warnings_per_day', 6, 0, 1000)),
+                    track_traffic=_as_bool('track_traffic', True),
+                )
+            except ValueError as exc:
+                return jsonify({'success': False, 'error': str(exc)}), 400
+
+            section = region_warning.CONFIG_SECTION
+            target_path = (
+                self.local_config_path
+                if section in self._local_sections
+                else self.config_path
+            )
+            try:
+                store = get_settings_store(self.config, target_path, self.db_manager)
+                result = store.write_values(
+                    section, region_warning.settings_to_config_values(settings)
+                )
+            except IniValueError as exc:
+                return jsonify({'success': False, 'error': str(exc)}), 400
+            except Exception:
+                self.logger.exception("Error saving region warning settings")
+                return jsonify({'success': False, 'error': 'Internal error — see server logs'}), 500
+
+            backup_path = result.get('backup_path', '') if isinstance(result, dict) else ''
+            reload_queued = _queue_config_reload()
+
+            self.logger.info(
+                "Region warning settings saved (enabled=%s, dry_run=%s, delivery=%s)",
+                settings.enabled, settings.dry_run, settings.delivery,
+            )
+            return jsonify({
+                'success': True,
+                'backup_path': backup_path,
+                'reload_queued': reload_queued,
+                'settings': region_warning.settings_to_config_values(settings),
+            })
+
+        # ── Region scopes ([Channels] flood_scopes) ──────────────────────────
+
+        def _region_scope_target_path():
+            """Where a [Channels] write lands: the local overlay wins if it has
+            the section, because that is the copy the merged config reads last."""
+            return (
+                self.local_config_path
+                if 'Channels' in self._local_sections
+                else self.config_path
+            )
+
+        def _region_scope_view():
+            """Effective region-scope settings, read the way the bot reads them."""
+            # [Channels] is canonical; [Bot] is still honoured with a warning by
+            # CommandManager, so read it the same way or the page would show
+            # "replies to every scope" while the bot enforces an allowlist.
+            raw = ''
+            legacy_section = None
+            for section in ('Channels', 'Bot'):
+                if self.config.has_section(section) and self.config.has_option(
+                    section, 'flood_scopes'
+                ):
+                    candidate = (self.config.get(section, 'flood_scopes') or '').strip()
+                    if not candidate:
+                        continue
+                    raw = candidate
+                    if section != 'Channels':
+                        legacy_section = section
+                    break
+
+            scopes, allow_global = flood_scope.split_allowlist(raw)
+            override_raw = ''
+            if self.config.has_section('Channels') and self.config.has_option(
+                'Channels', 'outgoing_flood_scope_override'
+            ):
+                override_raw = (
+                    self.config.get('Channels', 'outgoing_flood_scope_override') or ''
+                ).strip()
+            override = (
+                '' if flood_scope.is_global_marker(override_raw)
+                else flood_scope.normalize_scope_name(override_raw)
+            )
+
+            # Read-only, but it is the answer to "why does that channel ignore
+            # the default?", so the page shows it rather than making the
+            # operator open config.ini to find out.
+            channel_overrides = []
+            if self.config.has_section('Channels'):
+                for key, value in self.config.items('Channels'):
+                    if not key.startswith('flood_scope.') or len(key) <= len('flood_scope.'):
+                        continue
+                    configured = (value or '').strip()
+                    channel_overrides.append({
+                        'channel': key[len('flood_scope.'):],
+                        'scope': (
+                            '' if flood_scope.is_global_marker(configured)
+                            else flood_scope.normalize_scope_name(configured)
+                        ),
+                    })
+            channel_overrides.sort(key=lambda entry: entry['channel'].lower())
+
+            target = _region_scope_target_path()
+            if target == self.local_config_path:
+                target_label = os.path.join(
+                    os.path.basename(os.path.dirname(target)), os.path.basename(target)
+                )
+            else:
+                target_label = os.path.basename(target)
+
+            return {
+                'allowlist_active': bool(scopes or allow_global),
+                'scopes': scopes,
+                'allow_global': allow_global,
+                'outgoing_override': override,
+                'channel_overrides': channel_overrides,
+                'legacy_section': legacy_section,
+                'target': target_label,
+                'max_name_length': flood_scope.MAX_SCOPE_NAME_LENGTH,
+            }
+
+        @self.app.route('/api/region-scopes')
+        def api_region_scopes_get():
+            """Regional flood scopes from [Channels], as the bot resolves them."""
+            try:
+                # Re-read from disk so the page reflects edits made elsewhere,
+                # and so the local-overlay target is resolved against what is
+                # on disk now rather than at viewer startup.
+                self.config = self._load_merged_config()
+                return jsonify(_region_scope_view())
+            except Exception:
+                self.logger.exception("Error reading region scopes")
+                return jsonify({'error': 'Internal error — see server logs'}), 500
+
+        @self.app.route('/api/region-scopes', methods=['POST'])
+        def api_region_scopes_save():
+            """Persist [Channels] flood_scopes / outgoing_flood_scope_override."""
+            data = request.get_json(silent=True) or {}
+
+            def _as_bool(key, default=False):
+                raw = data.get(key, default)
+                if isinstance(raw, bool):
+                    return raw
+                return str(raw).strip().lower() in ('1', 'true', 'yes', 'on')
+
+            try:
+                submitted = data.get('scopes')
+                if isinstance(submitted, (list, tuple)):
+                    entries = [str(part).strip() for part in submitted if str(part).strip()]
+                else:
+                    entries = flood_scope.parse_scope_list(submitted)
+
+                allow_global = _as_bool('allow_global', False)
+                scopes: list[str] = []
+                for entry in entries:
+                    canonical = flood_scope.validate_scope_name(entry)
+                    # '*' typed into the list box means the same thing as the
+                    # checkbox; fold it in rather than writing it twice.
+                    if flood_scope.is_global_marker(canonical):
+                        allow_global = True
+                    elif canonical not in scopes:
+                        scopes.append(canonical)
+
+                allowlist_enabled = _as_bool('allowlist_enabled', bool(scopes or allow_global))
+                if allowlist_enabled and not scopes and not allow_global:
+                    raise ValueError(
+                        'Add at least one region scope, or turn the allowlist off '
+                        'so the bot replies whatever the scope'
+                    )
+
+                # '*' last, matching the order config.ini.example documents.
+                flood_scopes_value = (
+                    flood_scope.format_scope_list(scopes + (['*'] if allow_global else []))
+                    if allowlist_enabled else ''
+                )
+
+                override_raw = str(data.get('outgoing_override') or '').strip()
+                # Every global marker means the same send path, but only the
+                # empty value keeps send_channel_message from logging "override
+                # was not applied" on each global send. Store the quiet one.
+                override_value = (
+                    '' if flood_scope.is_global_marker(override_raw)
+                    else flood_scope.validate_scope_name(override_raw)
+                )
+            except ValueError as exc:
+                return jsonify({'success': False, 'error': str(exc)}), 400
+
+            try:
+                # Resolve the write target against the config on disk now: the
+                # local overlay may have grown a [Channels] section since the
+                # viewer started, and it would silently win over a base write.
+                self.config = self._load_merged_config()
+                store = get_settings_store(
+                    self.config, _region_scope_target_path(), self.db_manager
+                )
+                result = store.write_values('Channels', {
+                    'flood_scopes': flood_scopes_value,
+                    'outgoing_flood_scope_override': override_value,
+                })
+            except IniValueError as exc:
+                return jsonify({'success': False, 'error': str(exc)}), 400
+            except OSError:
+                self.logger.exception("Error writing region scopes")
+                return jsonify({
+                    'success': False,
+                    'error': 'Could not write config.ini — check file permissions',
+                }), 500
+            except Exception:
+                self.logger.exception("Error saving region scopes")
+                return jsonify({'success': False, 'error': 'Internal error — see server logs'}), 500
+
+            backup_path = result.get('backup_path', '') if isinstance(result, dict) else ''
+            reload_op_id = _queue_config_reload_id()
+
+            self.logger.info(
+                "Region scopes saved: flood_scopes=%r outgoing_flood_scope_override=%r",
+                flood_scopes_value, override_value,
+            )
+            return jsonify({
+                'success': True,
+                'backup_path': backup_path,
+                'reload_queued': reload_op_id is not None,
+                'reload_operation_id': reload_op_id,
+                'settings': _region_scope_view(),
+            })
+
         # Feed management API endpoints
         def _schedule_tz():
             from modules.utils import get_config_timezone
             tz, _name = get_config_timezone(self.config, self.logger)
             return tz
 
-        def _queue_config_reload():
-            """Ask the bot to re-read config.ini; it re-registers scheduled jobs."""
+        def _queue_config_reload_id():
+            """Queue a config reload and return its operation id, or None.
+
+            The id lets a caller poll /api/channel-operations/<id> and report
+            what the bot actually did with the edit, instead of claiming
+            success because a row was inserted.
+            """
             try:
                 with self.db_manager.connection() as conn:
-                    conn.cursor().execute(
+                    cursor = conn.cursor()
+                    cursor.execute(
                         "INSERT INTO channel_operations (operation_type, status) "
                         "VALUES ('config_reload', 'pending')"
                     )
                     conn.commit()
-                return True
+                    return cursor.lastrowid
             except Exception:
                 self.logger.exception("Failed to queue config reload")
-                return False
+                return None
+
+        def _queue_config_reload():
+            """Ask the bot to re-read config.ini; it re-registers scheduled jobs."""
+            return _queue_config_reload_id() is not None
 
         # The duplicate check and the write have to be one critical section, or two
         # concurrent creates for the same schedule both pass the check and the second
@@ -4649,19 +5079,36 @@ class BotDataViewer:
 
         @self.app.route('/api/radio/firmware/config/write', methods=['POST'])
         def api_firmware_config_write():
-            """Queue a firmware config write. Body: {path_hash_mode: int}.
-            Poll /api/channel-operations/<id> for result."""
+            """Queue a firmware config write. Body may carry ``path_hash_mode``
+            and/or ``default_flood_scope`` (a region name, or empty/null to
+            clear the radio's default). Poll /api/channel-operations/<id>."""
             try:
                 data = request.get_json(silent=True) or {}
-                allowed = {'path_hash_mode'}
+                allowed = {'path_hash_mode', 'default_flood_scope'}
                 payload = {k: v for k, v in data.items() if k in allowed}
                 if not payload:
-                    return jsonify({'error': 'No valid fields provided (path_hash_mode)'}), 400
+                    return jsonify({
+                        'error': 'No valid fields provided '
+                                 '(path_hash_mode, default_flood_scope)'
+                    }), 400
                 if 'path_hash_mode' in payload:
                     mode = int(payload['path_hash_mode'])
                     if not (0 <= mode <= 2):
                         return jsonify({'error': 'path_hash_mode must be 0-2 (bytes per hop = mode + 1)'}), 400
                     payload['path_hash_mode'] = mode
+                if 'default_flood_scope' in payload:
+                    raw = str(payload['default_flood_scope'] or '').strip()
+                    try:
+                        # A global marker means "no default scope", which the
+                        # radio spells as a cleared field, so both arrive here
+                        # as the empty string.
+                        canonical = (
+                            '' if flood_scope.is_global_marker(raw)
+                            else flood_scope.validate_device_scope_name(raw)
+                        )
+                    except ValueError as exc:
+                        return jsonify({'error': str(exc)}), 400
+                    payload['default_flood_scope'] = canonical
                 with self.db_manager.connection() as conn:
                     cursor = conn.cursor()
                     cursor.execute(

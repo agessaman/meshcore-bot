@@ -17,7 +17,8 @@ my_position_lat = 47.6062
 my_position_lon = -122.3321
 
 # Daily forecast time
-weather_alarm = 6:00              # Or "sunrise" / "sunset"
+# Or "sunrise" / "sunset"
+weather_alarm = 6:00
 
 # Channels
 weather_channel = #weather
@@ -30,34 +31,61 @@ alerts_channel = #weather
 
 ## Configuration
 
+> **Do not put a `#` comment on the same line as a value.** The bot's config
+> parser does not strip inline comments, so
+> `poll_rain_nowcast_interval = 900000  # every 15 min` is read as the literal
+> string `"900000  # every 15 min"`, `getint()` raises, and **the whole weather
+> service fails to load** — no forecasts and no alerts, with only one
+> `Failed to load service weather_service` line in the log. Inline comments
+> cannot simply be enabled either: `#` is a legitimate value character here
+> (`weather_channel = #weather`, `flood_scope = #west`), so switching them on
+> would blank every channel and scope instead. Put comments on their own line,
+> as below.
+
 ### Basic Settings
 
 ```ini
 [Weather_Service]
 enabled = true
-my_position_lat = 47.6062         # Your latitude (required)
-my_position_lon = -122.3321       # Your longitude (required)
-weather_alarm = 6:00              # Time for daily forecast (HH:MM or sunrise/sunset)
-weather_channel = #weather        # Channel for forecasts
-alerts_channel = #weather         # Channel for weather alerts
+# Your latitude (required)
+my_position_lat = 47.6062
+# Your longitude (required)
+my_position_lon = -122.3321
+# Time for daily forecast (HH:MM or sunrise/sunset)
+weather_alarm = 6:00
+# Channel for forecasts
+weather_channel = #weather
+# Channel for weather alerts
+alerts_channel = #weather
 ```
 
 ### Alert Polling
 
 ```ini
-poll_weather_alerts_interval = 600000  # Check for alerts every 10 minutes (milliseconds)
+# Poll NOAA for alerts (default: true)
+weather_alerts_enabled = true
+# Check every 10 minutes (milliseconds)
+poll_weather_alerts_interval = 600000
 ```
+
+Set `weather_alerts_enabled = false` to stop alert monitoring on its own. Daily
+forecasts, rain nowcasts, storm detection and the weather commands are
+unaffected, and `poll_weather_alerts_interval` is then ignored.
 
 ### Rain Nowcast (Proactive)
 
 Automatically posts a heads-up when rain is about to start at your position:
 
 ```ini
-rain_nowcast_enabled = true            # Auto-announce incoming rain (opt-in; default: false)
+# Auto-announce incoming rain (opt-in; default: false)
+rain_nowcast_enabled = true
 # rain_channel = #weather              # Defaults to weather_channel
-poll_rain_nowcast_interval = 900000    # Check every 15 minutes (milliseconds)
-rain_nowcast_lead_minutes = 60         # Only announce if rain starts within 60 min
-rain_nowcast_renotify_minutes = 30     # Cooldown between pushes
+# Check every 15 minutes (milliseconds)
+poll_rain_nowcast_interval = 900000
+# Only announce if rain starts within 60 min
+rain_nowcast_lead_minutes = 60
+# Cooldown between pushes
+rain_nowcast_renotify_minutes = 30
 # rain_nowcast_announce_ending = true  # Also announce when rain is about to stop
 # rain_nowcast_threshold_mm = 0.1      # Sensitivity (mm per 15-min bucket)
 ```
@@ -78,7 +106,8 @@ only announce incoming rain.
 Requires `paho-mqtt` library.
 
 ```ini
-blitz_collection_interval = 600000     # Aggregate lightning every 10 minutes
+# Aggregate lightning every 10 minutes
+blitz_collection_interval = 600000
 
 # Define detection area (optional)
 blitz_area_min_lat = 47.0
@@ -141,7 +170,8 @@ Works worldwide (no API key). Set `rain_nowcast_enabled = false` to disable.
 
 ### Weather Alerts (US Only)
 
-Monitors NOAA weather alerts and posts new alerts to `alerts_channel`:
+Monitors NOAA weather alerts and posts new alerts to `alerts_channel`. Set
+`weather_alerts_enabled = false` to disable, as with the rain nowcast above:
 
 **Example Output:**
 ```
@@ -186,9 +216,12 @@ Uses [Open-Meteo API](https://open-meteo.com/) (free, no API key required).
 Inherited from `[Weather]` section (see Weather command docs):
 ```ini
 [Weather]
-temperature_unit = fahrenheit     # fahrenheit or celsius
-wind_speed_unit = mph             # mph, ms, kn
-precipitation_unit = inch         # inch or mm
+# fahrenheit or celsius
+temperature_unit = fahrenheit
+# mph, ms, kn
+wind_speed_unit = mph
+# inch or mm
+precipitation_unit = inch
 ```
 
 ---
@@ -199,6 +232,10 @@ Weather alerts use NOAA API which is **US-only**. For other countries:
 - Daily forecasts work worldwide via Open-Meteo
 - Weather alerts won't be available
 - Lightning detection works worldwide via Blitzortung
+
+The service stops polling on its own once the NOAA API reports no coverage, so
+leaving alerts enabled outside the US is harmless; `weather_alerts_enabled =
+false` skips the attempt entirely.
 
 ---
 
@@ -225,7 +262,8 @@ Common issues:
 ### No Weather Alerts
 
 1. **US only** - NOAA alerts only work in the United States
-2. **Check polling** - Service logs "Starting weather alerts polling"
+2. **Check polling** - Service logs "Starting weather alerts polling". If it logs
+   "Weather alert polling disabled" instead, `weather_alerts_enabled` is false
 3. **New alerts only** - Only alerts issued since last check are sent
 
 ### Lightning Not Working

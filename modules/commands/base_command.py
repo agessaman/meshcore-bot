@@ -19,7 +19,12 @@ from ..command_prefix import (
     normalize_command_content,
 )
 from ..config_schema import LEGACY_ENABLED_ALIASES
-from ..models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, MeshMessage
+from ..models import (
+    CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD,
+    DM_BODY_LIMIT,
+    MeshMessage,
+    channel_body_limit,
+)
 from ..security_utils import validate_pubkey_format
 from ..utils import (
     format_elapsed_display,
@@ -689,7 +694,7 @@ class BaseCommand(ABC):
             int: Maximum message body length in UTF-8 bytes.
         """
         if message.is_dm:
-            return 158
+            return DM_BODY_LIMIT
 
         # For channel messages, calculate based on bot username length
         # Try to get device username from meshcore first (actual radio username)
@@ -712,9 +717,7 @@ class BaseCommand(ABC):
         if not username:
             username = self.bot.config.get('Bot', 'bot_name', fallback='Bot')
 
-        # 160 bytes are available for channel messages
-        # Calculate max length: 160 - username_length - 2 (for ": ")
-        max_length = max(130, 160 - len(str(username).encode('utf-8')) - 2)
+        max_length = channel_body_limit(username)
         if not MeshMessage.is_global_flood_scope(message.effective_outgoing_flood_scope(self.bot)):
             max_length -= CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD
         return max_length

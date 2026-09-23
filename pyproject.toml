@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "meshcore-bot"
-version = "1.0.0"
+version = "1.1.0"
 description = "MeshCore Bot with commands for mesh testing, utilities, and service integration."
 readme = "README.md"
 # Table form rather than the SPDX string form: the string form needs
@@ -33,8 +33,8 @@ dependencies = [
     "maidenhead>=1.4.0",
     "pytz>=2023.3",
     "aiohttp>=3.8.0",
-    # 2.3.8+ required for zero-hop neighbour discovery (see requirements.txt)
-    "meshcore>=2.3.8",
+    # 2.3.14+ required for send_msg_with_retry's ACK handling (see requirements.txt)
+    "meshcore>=2.3.14",
     "openmeteo-requests>=1.7.2",
     "requests-cache>=1.1.1",
     "retry-requests>=1.0.0",
@@ -156,6 +156,7 @@ module = [
     "modules.security_utils",
     "modules.commands.base_command",
     "modules.commands.rain_command",
+    "modules.region_warning",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

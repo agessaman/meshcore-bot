@@ -14,6 +14,16 @@ Config section ``[Webhook]``::
     allowed_channels =             # comma-separated whitelist; empty = all channels
     max_message_length = 200       # truncate messages exceeding this length
 
+A message longer than one MeshCore frame is split across several mesh messages
+rather than sent whole: the firmware's text limit is 160 bytes and a channel
+body rides inside ``"<botname>: <body>"``, so an over-long payload is dropped by
+the device without an acknowledgement. Each part of a multi-part send is tagged
+``" (i/n)"`` so a reader can order them on a mesh that does not guarantee
+delivery order; a message that fits in one part carries no suffix.
+``max_message_length`` still bounds how much text is accepted (and therefore how
+much airtime one request can buy); it is a character cap across all parts, not a
+single-frame limit.
+
 HTTP API
 --------
 POST /webhook
@@ -33,7 +43,7 @@ POST /webhook
         {"dm_to": "SomeUser", "message": "Private message"}
 
 Response codes:
-    200  {"ok": true}
+    200  {"ok": true, "parts": 1}   parts = mesh messages the text was split into
     400  {"error": "..."}   bad/missing fields
     401  {"error": "Unauthorized"}   wrong / missing token
     405  method not allowed
@@ -44,11 +54,13 @@ Response codes:
          few seconds.
 """
 
+import json
 import secrets
 import time
 from collections import OrderedDict
 from typing import Any, Optional
 
+from ..models import DM_BODY_LIMIT
 from .base_service import BaseServicePlugin
 
 try:
@@ -75,7 +87,9 @@ class WebhookService(BaseServicePlugin):
          "help": "If set, requests must include it via 'Authorization: Bearer' or 'X-Webhook-Token'. "
                  "Empty disables auth (not recommended)."},
         {"key": "max_message_length", "label": "Max message length", "type": "int", "min": 1, "default": 200,
-         "help": "Excess is silently truncated."},
+         "help": "Total characters accepted per request; excess is silently truncated. Text longer "
+                 "than one mesh frame is split across several messages tagged '(1/2)', '(2/2)', "
+                 "so a large value here buys more airtime per request."},
         {"key": "allowed_channels", "label": "Allowed channels", "type": "list", "default": "",
          "help": "Comma-separated channel whitelist. Empty = any channel."},
         {"key": "flood_scope", "label": "Flood scope", "type": "str", "default": "",
@@ -240,7 +254,9 @@ class WebhookService(BaseServicePlugin):
                 text='{"error": "Missing required field: message"}',
             )
 
-        # Truncate to configured limit
+        # Cap the total text accepted. This bounds how much airtime one request can
+        # buy; it is not a single-frame limit — the send path splits what is left
+        # into as many mesh messages as the RF budget needs.
         if len(message_text) > self.max_message_length:
             message_text = message_text[: self.max_message_length]
 
@@ -276,7 +292,7 @@ class WebhookService(BaseServicePlugin):
                     if body_scope_raw
                     else self.get_mesh_flood_scope()
                 )
-                sent = await self._send_channel_message(
+                sent, parts = await self._send_channel_message(
                     channel, message_text, scope=mesh_scope
                 )
                 if not sent:
@@ -289,11 +305,12 @@ class WebhookService(BaseServicePlugin):
                         text='{"error": "Failed to send message"}',
                     )
                 self.logger.info(
-                    f"Webhook: sent to #{channel} from {request.remote}: "
+                    f"Webhook: sent to #{channel} from {request.remote} "
+                    f"in {parts} part(s): "
                     f"{message_text[:60]}{'...' if len(message_text) > 60 else ''}"
                 )
             else:
-                sent = await self._send_dm(dm_to, message_text)
+                sent, parts = await self._send_dm(dm_to, message_text)
                 if not sent:
                     self.logger.error(
                         f"Webhook: failed to send DM to '{dm_to}' from {request.remote}"
@@ -304,7 +321,8 @@ class WebhookService(BaseServicePlugin):
                         text='{"error": "Failed to send message"}',
                     )
                 self.logger.info(
-                    f"Webhook: sent DM to {dm_to} from {request.remote}: "
+                    f"Webhook: sent DM to {dm_to} from {request.remote} "
+                    f"in {parts} part(s): "
                     f"{message_text[:60]}{'...' if len(message_text) > 60 else ''}"
                 )
         except Exception as exc:
@@ -318,7 +336,7 @@ class WebhookService(BaseServicePlugin):
         return aio_web.Response(
             status=200,
             content_type="application/json",
-            text='{"ok": true}',
+            text=json.dumps({"ok": True, "parts": parts}),
         )
 
     # ------------------------------------------------------------------
@@ -341,29 +359,72 @@ class WebhookService(BaseServicePlugin):
     # Message dispatch
     # ------------------------------------------------------------------
 
-    async def _send_channel_message(
-        self, channel: str, message: str, *, scope: str | None = None
-    ) -> bool:
-        """Send a message to a MeshCore channel via command_manager."""
+    def _command_manager(self) -> Any:
         cm = getattr(self.bot, "command_manager", None)
         if cm is None:
             raise RuntimeError("command_manager not available on bot")
-        return await cm.send_channel_message(
+        return cm
+
+    async def _send_channel_message(
+        self, channel: str, message: str, *, scope: str | None = None
+    ) -> tuple[bool, int]:
+        """Send a message to a MeshCore channel, splitting it to fit the RF budget.
+
+        A channel body larger than one frame is undeliverable: the device drops it
+        without the confirmation event the send waits for, which costs three
+        retries and then looks like a dead transport. Split it here so each part
+        goes out whole. Multi-part sends are tagged ``" (i/n)"`` so a reader can
+        order them; a message that fits in one part carries no suffix.
+
+        Returns:
+            (ok, parts) — whether every part was sent, and how many there were.
+        """
+        cm = self._command_manager()
+        budget = cm.channel_body_budget(channel=channel, scope=scope)
+        chunks = cm.split_text_into_numbered_utf8_chunks(message, budget)
+        if len(chunks) == 1:
+            ok = await cm.send_channel_message(
+                channel,
+                chunks[0],
+                skip_user_rate_limit=True,
+                rate_limit_key=None,
+                scope=scope,
+            )
+            return bool(ok), 1
+        self.logger.info(
+            f"Webhook: message for #{channel} is {len(message.encode('utf-8'))} bytes; "
+            f"splitting into {len(chunks)} mesh messages ({budget}-byte budget)"
+        )
+        for link in cm.links_split_across(message, chunks):
+            self.logger.warning(
+                f"Webhook: link too long for one {budget}-byte message and had to be "
+                f"cut, so it will not be clickable: {link}"
+            )
+        ok = await cm.send_channel_messages_chunked(
             channel,
-            message,
+            chunks,
             skip_user_rate_limit=True,
             rate_limit_key=None,
             scope=scope,
         )
+        return bool(ok), len(chunks)
 
-    async def _send_dm(self, recipient: str, message: str) -> bool:
-        """Send a direct message via command_manager."""
-        cm = getattr(self.bot, "command_manager", None)
-        if cm is None:
-            raise RuntimeError("command_manager not available on bot")
-        return await cm.send_dm(
+    async def _send_dm(self, recipient: str, message: str) -> tuple[bool, int]:
+        """Send a direct message via command_manager.
+
+        ``send_dm`` applies its own byte guard and splits oversized bodies, so the
+        whole text goes over in one call; the part count is derived with the same
+        helper and budget it uses.
+
+        Returns:
+            (ok, parts) — whether the send succeeded, and how many parts it took.
+        """
+        cm = self._command_manager()
+        parts = len(cm.split_text_into_utf8_chunks(message, DM_BODY_LIMIT))
+        ok = await cm.send_dm(
             recipient,
             message,
             skip_user_rate_limit=True,
             rate_limit_key=None,
         )
+        return bool(ok), parts

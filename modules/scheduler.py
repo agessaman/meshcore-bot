@@ -22,6 +22,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
 from meshcore.events import EventType
 
+from .flood_scope import scope_key_hex
 from .maintenance import MaintenanceRunner
 from .models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD
 from .scheduled_message_cron import (
@@ -49,6 +50,11 @@ _RADIO_OPERATION_TYPES = (
     'radio_advert',
 )
 _CONFIG_OPERATION_TYPES = ('config_reload',)
+
+# Let short host stalls or CPU pressure delay a scheduled transmission without
+# dropping it. Coalescing prevents a long suspension from replaying multiple
+# stale occurrences onto the mesh when the process resumes.
+SCHEDULE_MISFIRE_GRACE_SECONDS = 300
 
 
 class MessageScheduler:
@@ -109,7 +115,13 @@ class MessageScheduler:
         # Stop and recreate the APScheduler to avoid duplicate jobs on reload
         self._shutdown_apscheduler_if_running()
         tz, _ = get_config_timezone(self.bot.config, self.logger)
-        self._apscheduler = BackgroundScheduler(timezone=tz)
+        self._apscheduler = BackgroundScheduler(
+            timezone=tz,
+            job_defaults={
+                'misfire_grace_time': SCHEDULE_MISFIRE_GRACE_SECONDS,
+                'coalesce': True,
+            },
+        )
         self.scheduled_messages.clear()
 
         if self.bot.config.has_section('Scheduled_Messages'):
@@ -775,7 +787,7 @@ class MessageScheduler:
         last_job_count = 0
         last_job_log_time = 0
 
-        while self.bot.connected:
+        while self.bot.keep_running:
             current_time = self.get_current_time()
 
             # Log current time every 5 minutes for debugging
@@ -1478,7 +1490,7 @@ class MessageScheduler:
             self.logger.exception(f"Error in _process_config_operations: {e}")
 
     async def _firmware_read_op(self):
-        """Read the path hash mode from radio firmware (device query)."""
+        """Read the path hash mode and default flood scope from radio firmware."""
         import asyncio
         try:
             meshcore = getattr(self.bot, 'meshcore', None)
@@ -1489,10 +1501,59 @@ class MessageScheduler:
                 meshcore.commands.get_path_hash_mode(), timeout=10
             )
 
-            return True, {'path_hash_mode': path_hash_mode}
+            result: dict[str, Any] = {'path_hash_mode': path_hash_mode}
+            result.update(await self._read_default_flood_scope(meshcore))
+            return True, result
         except Exception as e:
             self.logger.error(f"Firmware read failed: {e}")
             return False, {'error': str(e)}
+
+    async def _read_default_flood_scope(self, meshcore) -> dict[str, Any]:
+        """Read the radio's own default flood scope, if it has one to report.
+
+        Never raises: firmware without CMD_GET_DEFAULT_FLOOD_SCOPE answers with
+        an error or not at all, and that must not cost the caller the path hash
+        mode it asked for in the same read. The absence of the keys is how the
+        page knows the radio did not answer, which is not the same as the radio
+        answering "no scope set".
+        """
+        getter = getattr(meshcore.commands, 'get_default_flood_scope', None)
+        if getter is None:
+            self.logger.debug(
+                "meshcore library has no get_default_flood_scope; skipping"
+            )
+            return {}
+        try:
+            event = await asyncio.wait_for(getter(), timeout=10)
+        except Exception as e:  # noqa: BLE001 - optional read, never fatal
+            self.logger.info("Default flood scope read unavailable: %s", e)
+            return {}
+
+        if event is None or getattr(event, 'type', None) == EventType.ERROR:
+            self.logger.info(
+                "Radio did not report a default flood scope (result=%s)", event
+            )
+            return {}
+
+        payload = getattr(event, 'payload', None) or {}
+        name = payload.get('scope_name', '') or ''
+        key = payload.get('scope_key', '') or ''
+        # A radio with no default scope sends the one-byte sentinel, which the
+        # library turns into an empty payload. Report that as the cleared
+        # state, distinct from the radio never having answered.
+        result: dict[str, Any] = {
+            'default_scope_name': name,
+            'default_scope_key': key,
+            'default_scope_supported': True,
+        }
+        if name and key:
+            # The name is a label stored beside the key; the radio routes by
+            # the key. A build-flag default stores the name without its '#'
+            # while hashing the '#' form, so compare on the normalized name.
+            result['default_scope_key_matches'] = (
+                scope_key_hex(name).lower() == key.lower()
+            )
+        return result
 
     async def _firmware_write_op(self, payload: dict):
         """Write the path hash mode to radio firmware."""
@@ -1517,6 +1578,13 @@ class MessageScheduler:
                 if not ok:
                     errors.append(f"set_path_hash_mode({mode}) failed: {result}")
 
+            if 'default_flood_scope' in payload:
+                scope = payload['default_flood_scope']
+                ok, error = await self._write_default_flood_scope(meshcore, scope)
+                results['default_flood_scope'] = ok
+                if error:
+                    errors.append(error)
+
             success = len(errors) == 0
             response: dict[str, Any] = {'results': results}
             if errors:
@@ -1525,6 +1593,43 @@ class MessageScheduler:
         except Exception as e:
             self.logger.error(f"Firmware write failed: {e}")
             return False, {'error': str(e)}
+
+    async def _write_default_flood_scope(self, meshcore, scope) -> tuple[bool, str]:
+        """Set or clear the radio's default flood scope.
+
+        Clearing does not go through the library. ``set_default_flood_scope``
+        cannot do it: ``None`` raises on ``len(None)``, ``""`` makes the
+        firmware answer ILLEGAL_ARG, and ``"*"`` only works because the frame
+        is padded by character count rather than by the name it wrote, leaving
+        it one byte short of the length the firmware reads as "a scope
+        follows". The firmware's own contract for clearing is a bare
+        CMD_SET_DEFAULT_FLOOD_SCOPE with nothing after it, so send that.
+        """
+        from meshcore.packets import CommandType
+
+        setter = getattr(meshcore.commands, 'set_default_flood_scope', None)
+        if setter is None:
+            return False, (
+                'This meshcore library version cannot set the default flood scope'
+            )
+
+        if scope:
+            result = await asyncio.wait_for(setter(scope), timeout=10)
+            label = f'set_default_flood_scope({scope})'
+        else:
+            result = await asyncio.wait_for(
+                meshcore.commands.send(
+                    bytearray([CommandType.SET_DEFAULT_FLOOD_SCOPE.value]),
+                    [EventType.OK, EventType.ERROR],
+                ),
+                timeout=10,
+            )
+            label = 'clear default_flood_scope'
+
+        ok = getattr(result, 'type', None) == EventType.OK
+        if ok:
+            return True, ''
+        return False, f'{label} failed: {result}'
 
     async def _radio_params_read_op(self):
         """Read current radio and node parameters via SELF_INFO (appstart)."""
