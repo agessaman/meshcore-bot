@@ -437,13 +437,14 @@
                             <i class="fas fa-project-diagram"></i> Mesh Graph
                         </a>
                     </li>
-                    {% if multibyte_monitor_enabled %}
+                    {% if multibyte_monitor_enabled and (not auth_enabled or is_admin) %}
                     <li class="nav-item">
                         <a class="nav-link {{ 'active' if request.path == '/multibyte-rollout' }}" href="/multibyte-rollout">
                             <i class="fas fa-code-branch"></i> Multibyte
                         </a>
                     </li>
                     {% endif %}
+                    {% if not auth_enabled or is_admin %}
                     <li class="nav-item">
                         <a class="nav-link {{ 'active' if request.path == '/logs' }}" href="/logs">
                             <i class="fas fa-file-alt"></i> Logs
@@ -502,10 +503,24 @@
                             </li>
                         </ul>
                     </li>
+                    {% endif %}
                 </ul>
 
                 <!-- Dark Mode Toggle and Connection Status -->
                 <div class="navbar-nav d-flex align-items-center">
+                    {% if auth_enabled %}
+                    <div class="nav-item me-3">
+                        {% if is_admin %}
+                        <a href="/logout" class="btn btn-sm btn-outline-light">
+                            <i class="fas fa-sign-out-alt"></i> Logout
+                        </a>
+                        {% else %}
+                        <a href="/login" class="btn btn-sm btn-outline-light">
+                            <i class="fas fa-sign-in-alt"></i> Admin Login
+                        </a>
+                        {% endif %}
+                    </div>
+                    {% endif %}
                     <div class="nav-item me-3">
                         <button class="dark-mode-toggle" id="dark-mode-toggle" aria-label="Toggle dark mode"
                             title="Toggle dark mode">
@@ -736,6 +751,10 @@
 
     <!-- Base JavaScript -->
     <script nonce="{{ g.csp_nonce }}">
+        // Display hint only — server enforces authenticated_admin.
+        const AUTH_ENABLED = {{ 'true' if auth_enabled else 'false' }};
+        const IS_ADMIN = {{ 'true' if (not auth_enabled or is_admin) else 'false' }};
+
         // Global connection management
         class ModernConnectionManager {
             constructor() {
@@ -744,8 +763,14 @@
                 this.lastActivity = null;
                 this.pingInterval = null;
 
-                this.initializeSocket();
-                this.startPingInterval();
+                // Live Socket.IO stays admin-only when a password is configured
+                // (packet/message streams can include private mesh traffic).
+                if (IS_ADMIN) {
+                    this.initializeSocket();
+                    this.startPingInterval();
+                } else {
+                    this.updateConnectionStatus('Login for live updates', 'disconnected');
+                }
             }
 
             initializeSocket() {

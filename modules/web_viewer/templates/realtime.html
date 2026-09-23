@@ -818,9 +818,10 @@
         console.warn('MeshCore decoder unavailable:', e);
     });
 
-    // Reuse the shared socket from base.html's ModernConnectionManager
-    const socket = window.connectionManager.socket;
-    
+    // Reuse the shared socket from base.html's ModernConnectionManager.
+    // When auth is enabled, anonymous users have no socket (live streams stay admin-only).
+    const socket = window.connectionManager && window.connectionManager.socket;
+
     // Connection status
     let commandConnected = false;
     let packetConnected = false;
@@ -1022,7 +1023,12 @@
             });
     }
     
-    // Socket event handlers
+    // Socket event handlers (admin session only — anonymous has no live firehose)
+    if (!socket) {
+        updateStatus('command-status', 'Admin login required', 'warning');
+        updateStatus('packet-status', 'Admin login required', 'warning');
+        updateStatus('message-status', 'Admin login required', 'warning');
+    } else {
     socket.on('connect', function() {
         updateStatus('command-status', 'Connected', 'success');
         updateStatus('packet-status', 'Connected', 'success');
@@ -1074,6 +1080,7 @@
     socket.on('message_data', function(data) {
         addMessageEntry(data);
     });
+    } // end admin-only socket handlers
 
     // ── Live Channel Messages ──────────────────────────────────────────────
 
@@ -1294,6 +1301,7 @@
     let pingInterval = null;
     
     function startPingInterval() {
+        if (!socket) return;
         if (pingInterval) clearInterval(pingInterval);
         pingInterval = setInterval(function() {
             if (socket.connected) {
@@ -1309,11 +1317,13 @@
         }
     }
     
+    if (socket) {
     socket.on('pong', function() {
         // Connection is alive, update status
         updateStatus('command-status', 'Connected', 'success');
         updateStatus('packet-status', 'Connected', 'success');
     });
+    }
 
     // Helper functions
     function updateStatus(elementId, text, type) {

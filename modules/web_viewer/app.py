@@ -5,6 +5,7 @@ Bot montoring web interface using Flask-SocketIO 5.x
 """
 
 import configparser
+import hmac
 import json
 import logging
 import os
@@ -591,6 +592,9 @@ class BotDataViewer:
                     radio_offline = False
                     radio_offline_since = None
                     bot_initializing = False
+                auth_enabled = bool(self.web_viewer_password)
+                # Session bit only — missing password is not an admin session.
+                is_admin = bool(session.get('authenticated_admin'))
                 return {
                     'greeter_enabled': greeter_enabled,
                     'feed_manager_enabled': feed_manager_enabled,
@@ -602,6 +606,8 @@ class BotDataViewer:
                     'radio_offline': radio_offline,
                     'radio_offline_since': radio_offline_since,
                     'bot_initializing': bot_initializing,
+                    'auth_enabled': auth_enabled,
+                    'is_admin': is_admin,
                 }
             except Exception as e:
                 self.logger.exception("Template context processor failed: %s", e)
@@ -616,6 +622,8 @@ class BotDataViewer:
                     'radio_zombie_since': None,
                     'radio_offline': False,
                     'radio_offline_since': None,
+                    'auth_enabled': bool(getattr(self, 'web_viewer_password', '')),
+                    'is_admin': False,
                 }
 
     def _init_databases(self):
@@ -1211,12 +1219,50 @@ class BotDataViewer:
                 error_message='Something went wrong on our end. The error has been logged.',
             ), 500)
 
-        # Authentication middleware (BUG-001)
+        # Authentication middleware (BUG-001).
+        # Fail closed when a password is configured: only the public allowlist
+        # below is reachable without authenticated_admin. Everything else
+        # (config, logs, radio, mutations, channel keys, sockets) stays admin.
         _EXEMPT_PATHS = frozenset([
             '/login', '/logout',
             '/apple-touch-icon.png', '/favicon-32x32.png', '/favicon-16x16.png',
             '/site.webmanifest', '/favicon.ico',
+            # Bot→viewer ingest uses X-Stream-Token, not the admin session.
+            '/api/stream_data',
         ])
+
+        # Issue #240 public HTML surface (Realtime page renders; live socket stays admin).
+        _PUBLIC_PAGE_PATHS = frozenset([
+            '/', '/realtime', '/contacts', '/mesh',
+        ])
+
+        # Anonymous-safe GET APIs: mesh-visible / aggregate data only. No channel
+        # keys, config, logs, backups, or private message firehose.
+        _PUBLIC_API_GET_PATHS = frozenset([
+            '/api/health',
+            '/api/banner-status',
+            '/api/stats',
+            '/api/dashboard/summary',
+            '/api/dashboard/series',
+            '/api/dashboard/top',
+            '/api/dashboard/windows',
+            '/api/contacts',
+            '/api/contact-detail',
+            '/api/mesh/nodes',
+            '/api/mesh/edges',
+            '/api/mesh/stats',
+        ])
+
+        # Read-only POST helpers used by public Contacts / Mesh info panels.
+        _PUBLIC_API_POST_PATHS = frozenset([
+            '/api/decode-path',
+            '/api/mesh/resolve-path',
+        ])
+
+        def _normalize_request_path(path: str) -> str:
+            if path != '/' and path.endswith('/'):
+                path = path.rstrip('/')
+            return path or '/'
 
         @self.app.before_request
         def create_csp_nonce():
@@ -1225,16 +1271,23 @@ class BotDataViewer:
 
         @self.app.before_request
         def require_auth():
+            """Enforce admin auth except for the explicit public allowlist."""
             if not self.web_viewer_password:
-                return  # Auth disabled — no password configured
-            if request.path in _EXEMPT_PATHS or request.path.startswith('/static/'):
+                return  # Auth disabled — no password configured (legacy open mode)
+            path = _normalize_request_path(request.path)
+            if path in _EXEMPT_PATHS or path.startswith('/static/'):
                 return
-            if session.get('authenticated'):
+            if session.get('authenticated_admin'):
                 return
-            if request.path.startswith('/api/'):
-                return make_response(jsonify({'error': 'Authentication required'}), 401)
-            next_url = request.path
-            return redirect(url_for('login', next=next_url))
+            if request.method == 'GET' and path in _PUBLIC_PAGE_PATHS:
+                return
+            if request.method == 'GET' and path in _PUBLIC_API_GET_PATHS:
+                return
+            if request.method == 'POST' and path in _PUBLIC_API_POST_PATHS:
+                return
+            if path.startswith('/api/'):
+                return make_response(jsonify({'error': 'Admin authentication required'}), 401)
+            return redirect(url_for('login', next=path))
 
         @self.app.before_request
         def csrf_protection():
@@ -1332,13 +1385,26 @@ class BotDataViewer:
 
         @self.app.route('/login', methods=['GET', 'POST'])
         def login():
-            """Login page for web viewer authentication"""
+            """Login page for admin authentication"""
             if not self.web_viewer_password:
                 return redirect(url_for('index'))
             if request.method == 'POST':
                 password = request.form.get('password', '')
-                if password == self.web_viewer_password:
-                    session['authenticated'] = True
+                # Hash both sides so compare_digest always sees equal-length
+                # digests (avoids TypeError / length short-circuit on ==).
+                expected = hmac.new(
+                    b'web-viewer-login',
+                    self.web_viewer_password.encode('utf-8'),
+                    'sha256',
+                ).digest()
+                provided = hmac.new(
+                    b'web-viewer-login',
+                    password.encode('utf-8'),
+                    'sha256',
+                ).digest()
+                if hmac.compare_digest(provided, expected):
+                    session.clear()
+                    session['authenticated_admin'] = True
                     next_url = request.args.get('next', '/')
                     parsed = urlparse(next_url)
                     if parsed.scheme or parsed.netloc or not next_url.startswith('/'):
@@ -1350,8 +1416,8 @@ class BotDataViewer:
         @self.app.route('/logout')
         def logout():
             """Logout and clear session"""
-            session.pop('authenticated', None)
-            return redirect(url_for('login'))
+            session.clear()
+            return redirect(url_for('index'))
 
         @self.app.route('/')
         def index():
@@ -5269,8 +5335,10 @@ class BotDataViewer:
                     self.logger.warning("Connect event received but client_id is None")
                     return False
 
-                # Reject unauthenticated SocketIO connections when auth is enabled (BUG-001)
-                if self.web_viewer_password and not session.get('authenticated'):
+                # Reject unauthenticated SocketIO connections when auth is enabled.
+                # Live packet/message/log streams stay admin-only — they can carry
+                # decrypted channel traffic and operator logs (deviation from #240).
+                if self.web_viewer_password and not session.get('authenticated_admin'):
                     self.logger.warning(f"Rejected unauthenticated SocketIO connection from {client_id}")
                     with suppress(Exception):
                         disconnect()

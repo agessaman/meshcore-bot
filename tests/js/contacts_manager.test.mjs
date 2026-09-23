@@ -38,6 +38,8 @@ function loadManagerClass() {
     const context = vm.createContext({
         AbortController,
         URLSearchParams,
+        // Template injects IS_ADMIN for display; tests assume admin UI (legacy).
+        IS_ADMIN: true,
         Chart: function Chart() {},
         bootstrap: {
             Dropdown: class Dropdown {},
