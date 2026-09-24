@@ -6,6 +6,20 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Web viewer admin role when `web_viewer_password` is set: Dashboard, Contacts,
+  and Mesh Graph are readable anonymously; Radio, Config, Logs, and all
+  mutating APIs require an admin session. The Realtime page still renders
+  publicly, but live Socket.IO streams stay admin-only because they (and
+  `/api/channels`) can expose decrypted traffic and channel keys.
+
+### Fixed
+
+- The web viewer login no longer redirects off-site after sign-in. The `next`
+  check let `///host` and `/\host` through, which browsers treat as another
+  origin.
+
 ### Changed
 
 - The footer's MeshCore link now points at the official site, meshcore.io.
