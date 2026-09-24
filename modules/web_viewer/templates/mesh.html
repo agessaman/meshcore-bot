@@ -3591,8 +3591,12 @@
     });
 
     function setupSocketIO() {
-        const socket = window.connectionManager.socket;
-        
+        const socket = window.connectionManager && window.connectionManager.socket;
+        if (!socket) {
+            // Anonymous viewers use REST polling only; live mesh socket is admin-only.
+            return;
+        }
+
         socket.emit('subscribe_mesh');
         
         function onMeshUpdate(reloadNodes) {

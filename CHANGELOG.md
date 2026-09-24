@@ -8,6 +8,12 @@ semantic versioning.
 
 ### Added
 
+- Web viewer admin role when `web_viewer_password` is set: Dashboard, Contacts,
+  and Mesh Graph are readable anonymously; Radio, Config, Logs, and all
+  mutating APIs require an admin session. The Realtime page still renders
+  publicly, but live Socket.IO streams stay admin-only because they (and
+  `/api/channels`) can expose decrypted traffic and channel keys.
+
 - `[Weather_Service] weather_alerts_enabled` (default `true`) turns the NOAA
   weather-alert polling loop off on its own. Alert monitoring previously started
   unconditionally with the service, so the only way to stop it was to disable
@@ -23,6 +29,10 @@ semantic versioning.
 - The footer's MeshCore link now points at the official site, meshcore.io.
 
 ### Fixed
+
+- The web viewer login no longer redirects off-site after sign-in. The `next`
+  check let `///host` and `/\host` through, which browsers treat as another
+  origin.
 
 - Channel messages are now sized to 155 bytes of `"<name>: <text>"` instead of 160. The firmware encrypts 5 header bytes ahead of the text in 16-byte blocks, so 155 fills the 160-byte block exactly, while the last 5 bytes up to 160 added a whole extra block of airtime. This applies to command replies, chunked webhook and scheduled messages, and the web viewer's limits. The scheduler now uses the shared `channel_body_limit` instead of its own copy of the arithmetic.
 
