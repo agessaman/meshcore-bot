@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from modules.models import MeshMessage
+from modules.models import MeshMessage, channel_body_limit
 
 
 class _Recorder:
@@ -500,7 +500,8 @@ class TestScheduledSendFitsTheRfBudget:
 
     def test_budget_accounts_for_the_username_prefix(self):
         sched = self._sched(bot_name="LongBotName")
-        assert sched._channel_body_budget(None) == 160 - len("LongBotName") - 2
+        # Scheduled sends share the command layer's budget rather than recomputing it.
+        assert sched._channel_body_budget(None) == channel_body_limit("LongBotName")
 
     def test_scoped_sends_get_a_smaller_budget(self):
         sched = self._sched()

@@ -28,7 +28,7 @@ from ..location import (
 )
 from ..models import MeshMessage
 from ..region_capitals import REGION_DEFAULT_NOTE, region_capital_query
-from ..utils import geocode_city_sync, geocode_zipcode_sync
+from ..utils import geocode_city_sync, geocode_zipcode_sync, truncate_to_bytes
 from .base_command import BaseCommand
 
 # Re-exports for weather_service / tests that import display helpers from rain_command.
@@ -1184,10 +1184,17 @@ class RainCommand(BaseCommand):
             response = self._format_result(
                 result, label, asked_word=asked_word, mismatch=mismatch, prob=prob, temp_f=temp_f,
             )
-        if region_note:
-            response = f"{response} {region_note}"
+        # Byte budget, byte trim: these replies are dense with emoji (🌧️ ☀️ ⚠️) and
+        # an em dash, so a character count understates the frame by 20+ bytes and
+        # the "fits" branch would overrun the budget and spill into a second message.
         max_len = self.get_max_message_length(message)
-        if len(response) > max_len:
-            response = response[: max_len - 3] + "..."
+        if region_note:
+            # The note is context; the forecast is the answer. Append it only when
+            # it fits whole, rather than letting the trim below cut it mid-word.
+            with_note = f"{response} {region_note}"
+            if len(with_note.encode("utf-8")) <= max_len:
+                response = with_note
+        if len(response.encode("utf-8")) > max_len:
+            response = truncate_to_bytes(response, max_len - 3).rstrip() + "..."
         await self.send_response(message, response)
         return True

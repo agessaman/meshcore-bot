@@ -41,6 +41,7 @@ from typing import Any, Optional
 
 from modules.models import DM_BODY_LIMIT as _DM_BODY_LIMIT
 from modules.models import channel_body_limit
+from modules.utils import truncate_to_bytes  # re-exported: callers use region_warning.truncate_to_bytes
 
 CONFIG_SECTION = "Region_Warnings"
 
@@ -213,14 +214,6 @@ def render_message(template: str, sender: Optional[str], channel: Optional[str])
     for token, value in replacements.items():
         text = text.replace(token, value)
     return text.strip()
-
-
-def truncate_to_bytes(text: str, limit: int) -> str:
-    """Trim ``text`` to ``limit`` UTF-8 bytes without splitting a character."""
-    encoded = text.encode("utf-8")
-    if len(encoded) <= limit:
-        return text
-    return encoded[:limit].decode("utf-8", errors="ignore")
 
 
 # ---------------------------------------------------------------------------

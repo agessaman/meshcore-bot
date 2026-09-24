@@ -24,7 +24,7 @@ from meshcore.events import EventType
 
 from .flood_scope import scope_key_hex
 from .maintenance import MaintenanceRunner
-from .models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD
+from .models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, channel_body_limit
 from .scheduled_message_cron import (
     is_valid_legacy_hhmm,
     parse_schedule_key,
@@ -608,7 +608,8 @@ class MessageScheduler:
     def _channel_body_budget(self, scope: str | None) -> int:
         """UTF-8 byte budget for one channel message body.
 
-        Mirrors BaseCommand.get_max_message_length: channel sends are framed as
+        Defers to ``models.channel_body_limit``, the same helper
+        ``BaseCommand.get_max_message_length`` uses: channel sends are framed as
         "<username>: <body>", and a regional flood scope costs extra header bytes.
         """
         username = ""
@@ -630,10 +631,13 @@ class MessageScheduler:
         if not isinstance(username, str):
             username = ""
 
-        budget = 160 - len(username.encode("utf-8")) - 2
+        # Shared with the command layer and the web viewer: a scheduled broadcast
+        # sized against a different number than a command reply would either waste
+        # airtime or overrun the firmware's text limit.
+        budget = channel_body_limit(username)
         if (scope or "").strip():
             budget -= CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD
-        return max(budget, 32)
+        return budget
 
     def _effective_send_scope(self, channel: str, scope: str | None) -> str | None:
         """The scope the send will actually use, not just the one on the schedule.

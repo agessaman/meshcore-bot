@@ -10,7 +10,12 @@ from modules.commands.joke_command import JokeCommand
 from modules.commands.ping_command import PingCommand
 from modules.commands.sports_command import SportsCommand
 from modules.commands.stats_command import StatsCommand
-from modules.models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, MeshMessage
+from modules.models import (
+    CHANNEL_BODY_FLOOR,
+    CHANNEL_FRAME_TEXT_LIMIT,
+    CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD,
+    MeshMessage,
+)
 from tests.conftest import mock_message
 
 
@@ -198,7 +203,7 @@ class TestGetMaxMessageLength:
         command_mock_bot.config.set("Bot", "bot_name", "LongBotName")
         cmd = _TestCommand(command_mock_bot)
         msg = mock_message(content="x", channel="general", is_dm=False)
-        assert cmd.get_max_message_length(msg) == 147  # 160 - 11 - 2
+        assert cmd.get_max_message_length(msg) == CHANNEL_FRAME_TEXT_LIMIT - 11 - 2
 
     def test_channel_prefers_meshcore_username_utf8_bytes(self, command_mock_bot):
         meshcore = Mock()
@@ -207,7 +212,7 @@ class TestGetMaxMessageLength:
         command_mock_bot.config.set("Bot", "bot_name", "fallback")
         cmd = _TestCommand(command_mock_bot)
         msg = mock_message(content="x", channel="general", is_dm=False)
-        assert cmd.get_max_message_length(msg) == 153  # 160 - 5 - 2
+        assert cmd.get_max_message_length(msg) == CHANNEL_FRAME_TEXT_LIMIT - 5 - 2
 
     def test_channel_unicode_username_uses_utf8_not_char_count(self, command_mock_bot):
         """Emoji radio name: 4 chars, 16 UTF-8 bytes — budget must use byte length."""
@@ -216,21 +221,25 @@ class TestGetMaxMessageLength:
         command_mock_bot.meshcore = meshcore
         cmd = _TestCommand(command_mock_bot)
         msg = mock_message(content="x", channel="general", is_dm=False)
-        assert cmd.get_max_message_length(msg) == 142  # 160 - 16 - 2
+        assert cmd.get_max_message_length(msg) == CHANNEL_FRAME_TEXT_LIMIT - 16 - 2
 
-    def test_channel_very_long_username_hits_130_byte_floor(self, command_mock_bot):
+    def test_channel_very_long_username_hits_the_body_floor(self, command_mock_bot):
+        """A name long enough to eat the whole frame still leaves a usable body."""
         command_mock_bot.meshcore = None
-        command_mock_bot.config.set("Bot", "bot_name", "A" * 40)
+        command_mock_bot.config.set("Bot", "bot_name", "A" * 130)
         cmd = _TestCommand(command_mock_bot)
         msg = mock_message(content="x", channel="general", is_dm=False)
-        assert cmd.get_max_message_length(msg) == 130  # max(130, 160 - 40 - 2)
+        assert CHANNEL_FRAME_TEXT_LIMIT - 130 - 2 < CHANNEL_BODY_FLOOR
+        assert cmd.get_max_message_length(msg) == CHANNEL_BODY_FLOOR
 
     def test_channel_regional_reply_scope_reduces_budget_by_10_bytes(self, command_mock_bot):
         command_mock_bot.meshcore = None
         command_mock_bot.config.set("Bot", "bot_name", "LongBotName")
         cmd = _TestCommand(command_mock_bot)
         msg = mock_message(content="x", channel="general", is_dm=False, reply_scope="#west")
-        assert cmd.get_max_message_length(msg) == 147 - CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD
+        assert cmd.get_max_message_length(msg) == (
+            CHANNEL_FRAME_TEXT_LIMIT - 11 - 2 - CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD
+        )
 
 
 class TestFormatResponse:

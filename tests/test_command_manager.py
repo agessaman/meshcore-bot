@@ -9,8 +9,22 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 import pytest
 
 from modules.command_manager import CommandManager, InternetStatusCache
-from modules.models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, MeshMessage
+from modules.models import (
+    CHANNEL_FRAME_TEXT_LIMIT,
+    CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD,
+    MeshMessage,
+)
 from tests.conftest import mock_message
+
+
+def _regional_budget(bot_name: str) -> int:
+    """Channel body budget for *bot_name* once a regional flood scope is charged."""
+    return (
+        CHANNEL_FRAME_TEXT_LIMIT
+        - len(bot_name.encode("utf-8"))
+        - 2
+        - CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD
+    )
 
 
 @pytest.fixture
@@ -1117,31 +1131,29 @@ class TestGetMaxMessageLength:
     def test_channel_uses_bot_name_utf8_bytes(self):
         mgr = self._make_manager(bot_name="LongBotName")
         msg = MeshMessage(content="x", channel="general", is_dm=False)
-        # 160 - utf8("LongBotName") - 2 = 160 - 11 - 2 = 147
-        assert mgr.get_max_message_length(msg) == 147
+        assert mgr.get_max_message_length(msg) == CHANNEL_FRAME_TEXT_LIMIT - 11 - 2
 
     def test_channel_uses_meshcore_username_utf8_bytes(self):
         mgr = self._make_manager(bot_name="fallback", username="Radio")
         msg = MeshMessage(content="x", channel="general", is_dm=False)
-        # 160 - utf8("Radio") - 2 = 160 - 5 - 2 = 153
-        assert mgr.get_max_message_length(msg) == 153
+        assert mgr.get_max_message_length(msg) == CHANNEL_FRAME_TEXT_LIMIT - 5 - 2
 
     def test_channel_regional_reply_scope_reduces_budget_by_10_bytes(self):
         mgr = self._make_manager(bot_name="LongBotName")
         msg = MeshMessage(content="x", channel="general", is_dm=False, reply_scope="#west")
-        assert mgr.get_max_message_length(msg) == 137  # 147 - 10
+        assert mgr.get_max_message_length(msg) == _regional_budget("LongBotName")
 
     def test_channel_outgoing_flood_scope_override_reduces_budget_by_10_bytes(self):
         mgr = self._make_manager(bot_name="LongBotName")
         mgr.bot.config.set("Channels", "outgoing_flood_scope_override", "#west")
         msg = MeshMessage(content="x", channel="general", is_dm=False)
-        assert mgr.get_max_message_length(msg) == 137
+        assert mgr.get_max_message_length(msg) == _regional_budget("LongBotName")
 
     def test_channel_flood_scope_reduces_budget_by_10_bytes(self):
         mgr = self._make_manager(bot_name="LongBotName")
         mgr.bot.config.set("Channels", "flood_scope.weather", "#sea")
         msg = MeshMessage(content="x", channel="#Weather", is_dm=False)
-        assert mgr.get_max_message_length(msg) == 137
+        assert mgr.get_max_message_length(msg) == _regional_budget("LongBotName")
 
     def test_parity_with_base_command_get_max_message_length(self):
         """CommandManager must mirror BaseCommand byte budgets (PR #128)."""
@@ -1223,13 +1235,13 @@ class TestChannelBodyBudget:
     def test_budget_subtracts_sender_prefix(self, cm_bot):
         manager = make_manager(cm_bot)
         # "TestBot" is 7 bytes, plus 2 for the ": " framing.
-        assert manager.channel_body_budget(channel="general") == 160 - 7 - 2
+        assert manager.channel_body_budget(channel="general") == CHANNEL_FRAME_TEXT_LIMIT - 7 - 2
 
     def test_multibyte_bot_name_counted_in_bytes(self, cm_bot):
         cm_bot.config.set("Bot", "bot_name", "ComchanBot \U0001f916")
         manager = make_manager(cm_bot)
         # 11 ASCII chars + a 4-byte emoji = 15 bytes.
-        assert manager.channel_body_budget(channel="general") == 160 - 15 - 2
+        assert manager.channel_body_budget(channel="general") == CHANNEL_FRAME_TEXT_LIMIT - 15 - 2
 
     def test_regional_scope_costs_extra_bytes(self, cm_bot):
         manager = make_manager(cm_bot)
@@ -1247,9 +1259,7 @@ class TestChannelBodyBudget:
         """An override the send will apply has to shrink the budget, or chunks overshoot."""
         cm_bot.config.set("Channels", "outgoing_flood_scope_override", "#west")
         manager = make_manager(cm_bot)
-        assert manager.channel_body_budget(channel="general") == (
-            160 - 7 - 2 - CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD
-        )
+        assert manager.channel_body_budget(channel="general") == _regional_budget("TestBot")
 
 
 class TestSendChannelMessageLengthGuard:

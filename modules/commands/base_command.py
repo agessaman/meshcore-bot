@@ -682,7 +682,8 @@ class BaseCommand(ABC):
         """Calculate the maximum payload size for the message body in UTF-8 bytes.
 
         Channel messages are formatted as "<username>: <message>", so the body budget is:
-        160 - utf8_byte_len(username) - 2 (for ": "), matching firmware cipher block limits.
+        CHANNEL_FRAME_TEXT_LIMIT - utf8_byte_len(username) - 2 (for ": "); see
+        ``models.channel_body_limit``.
         Regional (non-global) flood scope subtracts CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD bytes.
 
         DM (contact) messages have no username prefix; max safe payload is 158 bytes.

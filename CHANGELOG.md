@@ -14,20 +14,6 @@ semantic versioning.
   publicly, but live Socket.IO streams stay admin-only because they (and
   `/api/channels`) can expose decrypted traffic and channel keys.
 
-### Fixed
-
-- The web viewer login no longer redirects off-site after sign-in. The `next`
-  check let `///host` and `/\host` through, which browsers treat as another
-  origin.
-
-### Changed
-
-- The footer's MeshCore link now points at the official site, meshcore.io.
-
-## [1.1.0] - 2026-09-20
-
-### Added
-
 - `[Weather_Service] weather_alerts_enabled` (default `true`) turns the NOAA
   weather-alert polling loop off on its own. Alert monitoring previously started
   unconditionally with the service, so the only way to stop it was to disable
@@ -37,6 +23,84 @@ semantic versioning.
   coverage—the service does stop polling on its own once the API reports that,
   but this skips the attempt entirely. `poll_weather_alerts_interval` is ignored
   when it is off, and the toggle is exposed in the web viewer's Plugins page.
+
+### Changed
+
+- The footer's MeshCore link now points at the official site, meshcore.io.
+
+### Fixed
+
+- The web viewer login no longer redirects off-site after sign-in. The `next`
+  check let `///host` and `/\host` through, which browsers treat as another
+  origin.
+
+- Channel messages are now sized to 155 bytes of `"<name>: <text>"` instead of 160. The firmware encrypts 5 header bytes ahead of the text in 16-byte blocks, so 155 fills the 160-byte block exactly, while the last 5 bytes up to 160 added a whole extra block of airtime. This applies to command replies, chunked webhook and scheduled messages, and the web viewer's limits. The scheduler now uses the shared `channel_body_limit` instead of its own copy of the arithmetic.
+
+- Bot names longer than 28 bytes no longer produce channel messages the firmware truncates. The body budget had a 130-byte floor that ignored the name, so a long name pushed the framed text past the firmware's 160-byte limit and the end of the message was cut off. `CHANNEL_BODY_FLOOR` is now 32 bytes and only applies to names over 121 bytes.
+
+- The `rain` command trimmed its reply by character count against a byte budget, so an emoji-dense forecast (🌧️ ☀️ ⚠️ plus an em dash) overran it by 20-odd bytes while measuring as a fit. It now trims in UTF-8 bytes. `REGION_DEFAULT_NOTE` is also shorter (63 bytes to 33), and the note is appended only when it fits whole rather than being cut mid-word. `truncate_to_bytes` moved from `region_warning` to `utils`, where any command can reach it without importing a feature module.
+
+- Splitting a long message no longer cuts a link in half. A whitespace boundary
+  can never land inside a link, so the exposure was the hard-split fallback —
+  text with no break opportunity before the link, such as CJK (no spaces at all)
+  or a punctuation-joined `"…40mph|https://…"`. The boundary now retreats to where
+  the link starts so it travels whole in the next part. A link too long for a part
+  of its own still has to be cut; that is logged as a warning naming the link,
+  since the remedy is to shorten links before sending rather than a code change.
+  Both the DM and channel split paths get this, as does the webhook.
+
+- `gwx`/`wx` NOAA forecasts no longer overrun the RF frame by the width of their
+  location prefix. `get_weather_for_location` formatted the forecast body to the
+  full byte budget and then prepended `"City, State: "`, so the assembled reply
+  could exceed the frame by the prefix's own length — 17 bytes for
+  `"Lockhart, Texas: "`, 26 for `"Williamson County, Texas: "`. The prefix is now
+  reserved out of the budget before the body is formatted, floored so a long
+  county name cannot starve the forecast. The alert text, which is sent as its own
+  message without a prefix, keeps the full budget.
+
+  This surfaced as an emoji-dense forecast being split into two mesh messages
+  despite looking well under the limit: the budget is 160 UTF-8 **bytes** less the
+  `"<botname>: "` prefix, and `°F`, `☀️`, `💨`, `💧`, `👁️` and `📊` each cost 2–7
+  bytes, so a 124-character forecast measured 152 bytes. Before the channel length
+  guard landed, that message was dropped by the radio instead.
+
+  The international `gwx` path (`wx_international.py`) already reserved its prefix
+  but measured it with `len()`; it now measures UTF-8 bytes, so a non-ASCII city
+  name such as `"München, DE: "` is charged what it actually costs.
+
+- Webhook posts longer than one mesh frame are split across several channel
+  messages instead of being handed to the radio whole. `[Webhook]
+  max_message_length` truncated at 200 characters, but a MeshCore channel body
+  only holds the firmware's 160-byte text limit less the `"<botname>: "`
+  prefix—about 130 bytes, and 143 for a 15-byte bot name. The device dropped the
+  oversized payload without emitting the event the send waits for, so
+  `send_channel_message` burned all three of its `no_event_received` retries
+  (~45s), returned 500 to the caller, and left the transport stalled long enough
+  for the poll to read it as dead and bounce the radio. Each reconnect cleared
+  the channel cache, so a retry then failed differently, with
+  `Channel 'x' not found`. `max_message_length` is now documented as a cap on
+  the total text accepted per request rather than a single-message limit, and a
+  successful response reports the part count: `{"ok": true, "parts": 2}`.
+
+- `command_manager.send_channel_message` grew the central length guard that
+  `send_dm` has had all along: a body over the RF budget is split to fit and sent
+  as several messages rather than put on the air undeliverable. Any caller—a
+  service, a scheduled broadcast, a plugin—could previously wedge the radio
+  this way. The shared budget lives in the new `channel_body_budget`, which
+  accounts for the bot name in UTF-8 bytes and for the extra header bytes a
+  regional flood scope costs (including one resolved from
+  `flood_scope.<channel>` or `outgoing_flood_scope_override` after the caller
+  hands the body over). A split's parts are tagged `" (1/2)"`, `" (2/2)"` and so
+  on, since a mesh does not guarantee delivery order and nothing else
+  distinguishes a continuation from a standalone post. The suffix is reserved out
+  of the same byte budget as the body, and because reserving it can force one
+  more part—and crossing ten parts widens the suffix again—the reservation
+  iterates until it covers the count it produced. A message that fits in one part
+  carries no suffix.
+
+## [1.1.0] - 2026-09-20
+
+### Added
 
 - Region-code monitoring and an optional automatic warning to senders whose
   channel messages carry no regional flood scope (#279). The bot classifies
@@ -301,66 +365,6 @@ semantic versioning.
   including the gear when a settings page is open.
 
 - Added notes on connecting to waev.app MQTT brokers to the `packet_capture.md` file.
-
-### Fixed
-
-- Splitting a long message no longer cuts a link in half. A whitespace boundary
-  can never land inside a link, so the exposure was the hard-split fallback —
-  text with no break opportunity before the link, such as CJK (no spaces at all)
-  or a punctuation-joined `"…40mph|https://…"`. The boundary now retreats to where
-  the link starts so it travels whole in the next part. A link too long for a part
-  of its own still has to be cut; that is logged as a warning naming the link,
-  since the remedy is to shorten links before sending rather than a code change.
-  Both the DM and channel split paths get this, as does the webhook.
-
-- `gwx`/`wx` NOAA forecasts no longer overrun the RF frame by the width of their
-  location prefix. `get_weather_for_location` formatted the forecast body to the
-  full byte budget and then prepended `"City, State: "`, so the assembled reply
-  could exceed the frame by the prefix's own length — 17 bytes for
-  `"Lockhart, Texas: "`, 26 for `"Williamson County, Texas: "`. The prefix is now
-  reserved out of the budget before the body is formatted, floored so a long
-  county name cannot starve the forecast. The alert text, which is sent as its own
-  message without a prefix, keeps the full budget.
-
-  This surfaced as an emoji-dense forecast being split into two mesh messages
-  despite looking well under the limit: the budget is 160 UTF-8 **bytes** less the
-  `"<botname>: "` prefix, and `°F`, `☀️`, `💨`, `💧`, `👁️` and `📊` each cost 2–7
-  bytes, so a 124-character forecast measured 152 bytes. Before the channel length
-  guard landed, that message was dropped by the radio instead.
-
-  The international `gwx` path (`wx_international.py`) already reserved its prefix
-  but measured it with `len()`; it now measures UTF-8 bytes, so a non-ASCII city
-  name such as `"München, DE: "` is charged what it actually costs.
-
-- Webhook posts longer than one mesh frame are split across several channel
-  messages instead of being handed to the radio whole. `[Webhook]
-  max_message_length` truncated at 200 characters, but a MeshCore channel body
-  only holds the firmware's 160-byte text limit less the `"<botname>: "`
-  prefix—about 130 bytes, and 143 for a 15-byte bot name. The device dropped the
-  oversized payload without emitting the event the send waits for, so
-  `send_channel_message` burned all three of its `no_event_received` retries
-  (~45s), returned 500 to the caller, and left the transport stalled long enough
-  for the poll to read it as dead and bounce the radio. Each reconnect cleared
-  the channel cache, so a retry then failed differently, with
-  `Channel 'x' not found`. `max_message_length` is now documented as a cap on
-  the total text accepted per request rather than a single-message limit, and a
-  successful response reports the part count: `{"ok": true, "parts": 2}`.
-
-- `command_manager.send_channel_message` grew the central length guard that
-  `send_dm` has had all along: a body over the RF budget is split to fit and sent
-  as several messages rather than put on the air undeliverable. Any caller—a
-  service, a scheduled broadcast, a plugin—could previously wedge the radio
-  this way. The shared budget lives in the new `channel_body_budget`, which
-  accounts for the bot name in UTF-8 bytes and for the extra header bytes a
-  regional flood scope costs (including one resolved from
-  `flood_scope.<channel>` or `outgoing_flood_scope_override` after the caller
-  hands the body over). A split's parts are tagged `" (1/2)"`, `" (2/2)"` and so
-  on, since a mesh does not guarantee delivery order and nothing else
-  distinguishes a continuation from a standalone post. The suffix is reserved out
-  of the same byte budget as the body, and because reserving it can force one
-  more part—and crossing ten parts widens the suffix again—the reservation
-  iterates until it covers the count it produced. A message that fits in one part
-  carries no suffix.
 
 - MQTT brokers on `waev.app` now default to a JWT lifetime they accept (#248).
   waev.app refuses a token whose `exp` is more than an hour past its `iat`, so the

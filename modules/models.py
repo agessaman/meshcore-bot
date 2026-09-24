@@ -13,20 +13,36 @@ CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD = 10
 # A DM carries no username prefix, so the whole cipher block is body.
 DM_BODY_LIMIT = 158
 
+# Channel text budget in UTF-8 bytes, covering the whole "<username>: <body>".
+#
+# The firmware accepts up to MAX_TEXT_LEN (160) and silently truncates past it,
+# but 155 is the better ceiling. The firmware encrypts a 4-byte timestamp and a
+# 1-byte text type ahead of the text, and AES pads to 16-byte blocks: 5 + 155
+# fills the 160-byte block exactly (a 163-byte payload), while the last 5 bytes
+# up to 160 spill into another block (a 179-byte payload) and cost 16 bytes of
+# airtime for 5 bytes of text. Both sizes are legal packets that repeaters
+# forward; this is about airtime per byte, not whether the mesh relays it.
+CHANNEL_FRAME_TEXT_LIMIT = 155
+
+# Floor for the body once a long username has been charged against the frame
+# limit, so a verbose name cannot leave nothing to say. Only names over 121
+# bytes reach it.
+CHANNEL_BODY_FLOOR = 32
+
 
 def channel_body_limit(username: Optional[str]) -> int:
     """Global-scope body budget in UTF-8 bytes for a channel message from ``username``.
 
-    Channel messages go out as ``"<username>: <body>"``, so the budget is the
-    160-byte cipher block minus the name and the ``": "``. Regional scope costs
-    a further ``CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD``, which callers
+    Channel messages go out as ``"<username>: <body>"``, so the budget is
+    ``CHANNEL_FRAME_TEXT_LIMIT`` minus the name and the ``": "``. Regional scope
+    costs a further ``CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD``, which callers
     subtract themselves once they know the outgoing scope.
 
     Shared by the command layer and the web viewer, which computes the same
     number in a process that has no bot object.
     """
     name = str(username or "Bot")
-    return max(130, 160 - len(name.encode("utf-8")) - 2)
+    return max(CHANNEL_FRAME_TEXT_LIMIT - len(name.encode("utf-8")) - 2, CHANNEL_BODY_FLOOR)
 
 
 @dataclass
