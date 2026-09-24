@@ -13,29 +13,20 @@ CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD = 10
 # A DM carries no username prefix, so the whole cipher block is body.
 DM_BODY_LIMIT = 158
 
-# Channel text the mesh will actually relay, in UTF-8 bytes, including the
-# "<username>: " prefix.
+# Channel text budget in UTF-8 bytes, covering the whole "<username>: <body>".
 #
-# NOT the firmware's MAX_TEXT_LEN of 160. That governs whether the local radio
-# accepts the text; it says nothing about whether repeaters forward the frame.
-# Channel text is AES-128 encrypted in 16-byte blocks and the payload carries a
-# channel-hash byte plus a 2-byte MAC, so a frame costs
-# ``3 + roundup16(4 + text)`` bytes, and every hop appends 2 more path bytes.
-#
-# Measured on a live mesh (analyzer packets b6e4f88b180d2d8a / 0bf2843bce623095,
-# the same channel six seconds apart): 152 bytes of text encrypts to a 160-byte
-# block, a 163-byte payload, a 165-byte frame -- repeated by exactly one repeater
-# and then dropped. 47 bytes of text reached 15 observers at up to 11 hops. Every
-# frame observed relaying was 147 bytes or smaller.
-#
-# 124 keeps the block at 128 and the payload at 131, the largest payload directly
-# observed relaying (7+ hops). Because the block pads to 16, any value from 125 to
-# 140 costs the same 144-byte block and 113 to 124 the same 128-byte one, so this
-# is the top of its block rather than an arbitrary cut.
-CHANNEL_FRAME_TEXT_LIMIT = 124
+# The firmware accepts up to MAX_TEXT_LEN (160) and silently truncates past it,
+# but 155 is the better ceiling. The firmware encrypts a 4-byte timestamp and a
+# 1-byte text type ahead of the text, and AES pads to 16-byte blocks: 5 + 155
+# fills the 160-byte block exactly (a 163-byte payload), while the last 5 bytes
+# up to 160 spill into another block (a 179-byte payload) and cost 16 bytes of
+# airtime for 5 bytes of text. Both sizes are legal packets that repeaters
+# forward; this is about airtime per byte, not whether the mesh relays it.
+CHANNEL_FRAME_TEXT_LIMIT = 155
 
 # Floor for the body once a long username has been charged against the frame
-# limit, so a verbose name cannot leave nothing to say.
+# limit, so a verbose name cannot leave nothing to say. Only names over 121
+# bytes reach it.
 CHANNEL_BODY_FLOOR = 32
 
 

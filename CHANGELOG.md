@@ -24,36 +24,11 @@ semantic versioning.
 
 ### Fixed
 
-- Channel messages are sized to what the mesh will relay, not to what the local
-  radio accepts. The budget was the firmware's 160-byte `MAX_TEXT_LEN` less the
-  `"<botname>: "` prefix, but channel text is AES-128 encrypted in 16-byte blocks
-  alongside a channel-hash byte and a 2-byte MAC, so 152 bytes of text becomes a
-  163-byte payload and a 165-byte frame—and a frame that large is not forwarded.
-  Measured on a live mesh (analyzer packets `b6e4f88b180d2d8a` and
-  `0bf2843bce623095`, the same channel six seconds apart): the 165-byte part was
-  repeated by exactly one repeater and went no further, while the 69-byte part
-  reached 15 observers at up to 11 hops. Every frame observed relaying was 147
-  bytes or smaller. A body filled to the old limit was worse still, framing to 160
-  bytes and a 179-byte payload.
+- Channel messages are now sized to 155 bytes of `"<name>: <text>"` instead of 160. The firmware encrypts 5 header bytes ahead of the text in 16-byte blocks, so 155 fills the 160-byte block exactly, while the last 5 bytes up to 160 added a whole extra block of airtime. This applies to command replies, chunked webhook and scheduled messages, and the web viewer's limits. The scheduler now uses the shared `channel_body_limit` instead of its own copy of the arithmetic.
 
-  `models.CHANNEL_FRAME_TEXT_LIMIT` now caps channel text at 124 bytes including
-  the prefix, keeping the cipher at 128 and the payload at 131, the largest
-  directly observed relaying. Because the block pads to 16, that is the top of its
-  block rather than an arbitrary cut. The `max(130, ...)` floor in
-  `channel_body_limit` is gone: it sat *above* the new cap and would have defeated
-  it for every bot name. `CHANNEL_BODY_FLOOR` (32) replaces it so a verbose name
-  still leaves something to say. The scheduler's private copy of the arithmetic now
-  defers to the shared helper, so a scheduled broadcast is sized like a command
-  reply. Replies are shorter and split more often, which is the point: the parts
-  arrive.
+- Bot names longer than 28 bytes no longer produce channel messages the firmware truncates. The body budget had a 130-byte floor that ignored the name, so a long name pushed the framed text past the firmware's 160-byte limit and the end of the message was cut off. `CHANNEL_BODY_FLOOR` is now 32 bytes and only applies to names over 121 bytes.
 
-- The `rain` command trimmed its reply by character count against a byte budget,
-  so an emoji-dense forecast (🌧️ ☀️ ⚠️ plus an em dash) overran the frame by 20-odd
-  bytes while measuring as a fit. It now trims in UTF-8 bytes. `REGION_DEFAULT_NOTE`
-  is also shorter (63 bytes to 33): the long form did not fit beside a forecast, and
-  the note is now appended only when it fits whole rather than being cut mid-word.
-  `truncate_to_bytes` moved from `region_warning` to `utils`, where any command can
-  reach it without importing a feature module.
+- The `rain` command trimmed its reply by character count against a byte budget, so an emoji-dense forecast (🌧️ ☀️ ⚠️ plus an em dash) overran it by 20-odd bytes while measuring as a fit. It now trims in UTF-8 bytes. `REGION_DEFAULT_NOTE` is also shorter (63 bytes to 33), and the note is appended only when it fits whole rather than being cut mid-word. `truncate_to_bytes` moved from `region_warning` to `utils`, where any command can reach it without importing a feature module.
 
 - Splitting a long message no longer cuts a link in half. A whitespace boundary
   can never land inside a link, so the exposure was the hard-split fallback —

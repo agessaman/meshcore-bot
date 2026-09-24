@@ -226,10 +226,10 @@ class TestGetMaxMessageLength:
     def test_channel_very_long_username_hits_the_body_floor(self, command_mock_bot):
         """A name long enough to eat the whole frame still leaves a usable body."""
         command_mock_bot.meshcore = None
-        command_mock_bot.config.set("Bot", "bot_name", "A" * 100)
+        command_mock_bot.config.set("Bot", "bot_name", "A" * 130)
         cmd = _TestCommand(command_mock_bot)
         msg = mock_message(content="x", channel="general", is_dm=False)
-        assert CHANNEL_FRAME_TEXT_LIMIT - 100 - 2 < CHANNEL_BODY_FLOOR
+        assert CHANNEL_FRAME_TEXT_LIMIT - 130 - 2 < CHANNEL_BODY_FLOOR
         assert cmd.get_max_message_length(msg) == CHANNEL_BODY_FLOOR
 
     def test_channel_regional_reply_scope_reduces_budget_by_10_bytes(self, command_mock_bot):

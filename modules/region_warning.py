@@ -216,8 +216,6 @@ def render_message(template: str, sender: Optional[str], channel: Optional[str])
     return text.strip()
 
 
-
-
 # ---------------------------------------------------------------------------
 # Read helpers — shared with the web viewer, which has no bot object
 # ---------------------------------------------------------------------------

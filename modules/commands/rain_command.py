@@ -1186,7 +1186,7 @@ class RainCommand(BaseCommand):
             )
         # Byte budget, byte trim: these replies are dense with emoji (🌧️ ☀️ ⚠️) and
         # an em dash, so a character count understates the frame by 20+ bytes and
-        # the "fits" branch would send something the mesh will not relay.
+        # the "fits" branch would overrun the budget and spill into a second message.
         max_len = self.get_max_message_length(message)
         if region_note:
             # The note is context; the forecast is the answer. Append it only when

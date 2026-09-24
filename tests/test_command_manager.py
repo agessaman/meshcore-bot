@@ -14,6 +14,7 @@ from modules.models import (
     CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD,
     MeshMessage,
 )
+from tests.conftest import mock_message
 
 
 def _regional_budget(bot_name: str) -> int:
@@ -24,7 +25,6 @@ def _regional_budget(bot_name: str) -> int:
         - 2
         - CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD
     )
-from tests.conftest import mock_message
 
 
 @pytest.fixture

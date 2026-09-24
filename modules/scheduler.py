@@ -633,7 +633,7 @@ class MessageScheduler:
 
         # Shared with the command layer and the web viewer: a scheduled broadcast
         # sized against a different number than a command reply would either waste
-        # airtime or build a frame the mesh declines to relay.
+        # airtime or overrun the firmware's text limit.
         budget = channel_body_limit(username)
         if (scope or "").strip():
             budget -= CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD

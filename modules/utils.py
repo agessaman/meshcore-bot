@@ -455,7 +455,7 @@ def truncate_to_bytes(text: str, limit: int) -> str:
 
     Mesh budgets are byte budgets. Trimming with ``len(text)`` instead overshoots
     by however much the emoji and accents in the string cost beyond one byte each,
-    which is exactly the kind of message the radio then declines to relay.
+    so a reply that measured as a fit spills into a second message.
     """
     if limit <= 0:
         return ""
