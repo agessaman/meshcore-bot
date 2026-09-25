@@ -93,12 +93,29 @@ class AkkuCommand(BaseCommand):
             await self.send_response(message, text)
             return True
 
-        lines = []
-        for r in rows:
-            mark = self._mark(r)
-            lines.append(f"{r['name']} {self._volt(r)}{mark} ({_age(now - r['ts'])})")
-        await self.send_response(message, "\n".join(lines))
+        lines = [f"{r['name']} {self._volt(r)}{self._mark(r)} ({_age(now - r['ts'])})" for r in rows]
+        chunks = self._pack(lines, self.get_max_message_length(message))
+        if len(chunks) == 1:
+            await self.send_response(message, chunks[0])
+        else:
+            await self.send_response_chunked(message, chunks)
         return True
+
+    @staticmethod
+    def _pack(lines: list[str], max_bytes: int) -> list[str]:
+        """Join lines into as few messages as fit the mesh byte limit."""
+        chunks: list[str] = []
+        current = ""
+        for line in lines:
+            candidate = f"{current}\n{line}" if current else line
+            if current and len(candidate.encode("utf-8")) > max_bytes:
+                chunks.append(current)
+                current = line
+            else:
+                current = candidate
+        if current:
+            chunks.append(current)
+        return chunks
 
     @staticmethod
     def _volt(r) -> str:

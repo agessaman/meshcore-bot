@@ -206,6 +206,27 @@ class TestAkkuCommand:
         await cmd.execute(mock_message("akku xyz"))
         assert "Kein Repeater" in self._reply(cmd)
 
+    async def test_many_repeaters_split_into_mesh_sized_messages(self, cmd, bot, test_db):
+        now = int(time.time())
+        for i in range(12):
+            test_db.execute_update(
+                "INSERT INTO repeater_telemetry (ts, name, ok, bat_mv) VALUES (?, ?, 1, 3900)",
+                (now, f"Repeater-Nummer-{i:02d}"))
+        cmd.get_max_message_length = Mock(return_value=130)
+        cmd.bot.command_manager.send_response_chunked = AsyncMock(return_value=True)
+        await cmd.execute(mock_message("akku"))
+        chunks = cmd.bot.command_manager.send_response_chunked.await_args.args[1]
+        assert len(chunks) > 1
+        assert all(len(c.encode("utf-8")) <= 130 for c in chunks)
+        assert sum(c.count("Repeater-Nummer") for c in chunks) == 12
+
+    async def test_state_keyed_by_config_label_when_contact_vanishes(self, service, bot):
+        await service.poll_all()
+        bot.meshcore.get_contact_by_name.side_effect = lambda n: None
+        await service.poll_all()
+        await service.poll_all()
+        assert "Rep1" in _sent(bot)[-1] and "antwortet nicht" in _sent(bot)[-1]
+
     async def test_poll_now(self, cmd, service):
         await cmd.execute(mock_message("akku jetzt"))
         assert service._poll_now.is_set()

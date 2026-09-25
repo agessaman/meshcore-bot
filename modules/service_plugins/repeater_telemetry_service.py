@@ -280,10 +280,12 @@ class RepeaterTelemetryService(BaseServicePlugin):
         return contact
 
     async def poll_one(self, target: RepeaterTarget) -> PollResult:
+        # Samples and alert state are keyed by the configured label so a repeater
+        # keeps one history even when it drops out of the contact list.
+        name = target.label
         contact = self._find_contact(target.label)
         if contact is None:
-            return PollResult(ok=False, name=target.label, error="not in contacts")
-        name = contact.get("adv_name") or target.label
+            return PollResult(ok=False, name=name, error="not in contacts")
         pubkey = contact.get("public_key", "")
         cmds = self.bot.meshcore.commands
         timeout = self.request_timeout_s
@@ -312,7 +314,10 @@ class RepeaterTelemetryService(BaseServicePlugin):
         if sent is None or sent.type == EventType.ERROR:
             return False
         wait_s = timeout or max(5.0, sent.payload.get("suggested_timeout", 8000) / 800)
-        event = await self.bot.meshcore.wait_for_event(EventType.LOGIN_SUCCESS, timeout=wait_s)
+        prefix = (contact.get("public_key") or "")[:12]
+        event = await self.bot.meshcore.wait_for_event(
+            EventType.LOGIN_SUCCESS, attribute_filters={"pubkey_prefix": prefix} if prefix else None, timeout=wait_s
+        )
         return event is not None
 
     # ----------------------------------------------------------------- database
