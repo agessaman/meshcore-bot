@@ -77,6 +77,7 @@ nav:
     - Weather Service: weather-service.md
     - Earthquake Service: earthquake-service.md
     - Repeater Prefix Collision: repeater-prefix-collision-service.md
+    - Repeater Telemetry: repeater-telemetry.md
     - World Cup: worldcup.md
     - Feed Management: FEEDS.md
   - FAQ: faq.md

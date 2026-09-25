@@ -2665,3 +2665,49 @@ enabled = false
 # api_url = https://example.com/checkins
 # api_key = YOUR_API_KEY
 # Or set CHECKIN_API_KEY in the environment (takes precedence).
+
+# -----------------------------------------------------------------------------
+# Repeater telemetry: poll repeater status (battery, uptime, RSSI) and warn on
+# low battery or unreachable repeaters. See docs/repeater-telemetry.md.
+# The 'akku' command shows the latest readings ([Akku_Command]).
+# -----------------------------------------------------------------------------
+[RepeaterTelemetry_Service]
+enabled = false
+# Comma-separated name:password (name = contact name, or public-key prefix >= 4 hex chars).
+# The password can be the repeater's guest password. Without ':password' an empty password is sent.
+repeaters =
+# How often all repeaters are polled (minutes) and pause between two repeaters (seconds)
+interval_minutes = 60
+delay_between_seconds = 30
+# Wait before the first poll after startup (seconds), so contacts are loaded
+initial_delay_seconds = 120
+# 0 = use the timeout suggested by the radio for login/status requests
+request_timeout_seconds = 0
+# Battery thresholds in millivolts (Li-ion defaults). 0 mV readings are ignored.
+warn_mv = 3500
+critical_mv = 3300
+# Voltage must rise this much above a threshold before the alert clears
+hysteresis_mv = 100
+# Re-send an unchanged active alert after this many hours (0 = never)
+repeat_alert_hours = 12
+# Consecutive failed polls before an "offline" alert (0 = disable offline alerts)
+offline_after_failures = 3
+# Where alerts go: mesh channel and/or DMs (comma-separated contact names)
+alert_channel =
+alert_dm =
+# Only send alerts to Discord/Telegram (discord_webhook_urls / telegram_chat_ids), not the mesh
+silence_mesh_output = false
+# Delete samples older than this many days
+retention_days = 90
+# Optional message templates. Placeholders: {name} {volt} {mv} {fails}
+# template_warn = ⚠️ Akku niedrig: {name} {volt:.2f} V
+# template_critical = 🪫 Akku KRITISCH: {name} {volt:.2f} V
+# template_recovered = 🔋 Akku wieder ok: {name} {volt:.2f} V
+# template_offline = 📴 Repeater {name} antwortet nicht ({fails}x)
+# template_online = 📶 Repeater {name} wieder erreichbar ({volt:.2f} V)
+# discord_webhook_urls =
+# telegram_chat_ids =
+# flood_scope =
+
+[Akku_Command]
+enabled = true
