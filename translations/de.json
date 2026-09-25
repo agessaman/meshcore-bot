@@ -31,6 +31,19 @@
       "luft",
       "luftqualität"
     ],
+    "rain": [
+      "rain",
+      "nowcast",
+      "snow",
+      "regen",
+      "schnee"
+    ],
+    "aurora": [
+      "aurora",
+      "kp",
+      "polarlicht",
+      "nordlicht"
+    ],
     "solar": [
       "solar"
     ],
@@ -177,6 +190,19 @@
     ],
     "advert": [
       "advert"
+    ],
+    "neighbors": [
+      "neighbors",
+      "neighbours",
+      "nachbarn"
+    ],
+    "multitest": [
+      "multitest",
+      "mt"
+    ],
+    "trace": [
+      "trace",
+      "tracer"
     ]
   },
   "commands": {
@@ -200,15 +226,39 @@
     "wx": {
       "description": "Wetterinfo für PLZ abrufen (Verwendung: wx 12345)",
       "usage": "Verwendung: wx <plz|stadt> - Beispiel: wx 12345 oder wx seattle oder wx paris, tx",
+      "subcommands": [
+        {
+          "name": "tomorrow",
+          "description": "Vorhersage für morgen"
+        },
+        {
+          "name": "Nd",
+          "description": "Vorhersage für N Tage (z. B. 7d, 10d; auch 7-day, 7 oder 2–16)"
+        },
+        {
+          "name": "hourly",
+          "description": "Stündliche Vorhersage"
+        },
+        {
+          "name": "alerts",
+          "description": "Wetterwarnungen vollständig anzeigen"
+        }
+      ],
       "error_fetching": "Fehler beim Abruf der Wetterdaten von NOAA",
       "no_location_zipcode": "Ort für PLZ {location} nicht gefunden",
       "no_location_city": "Stadt '{location}' in {state} nicht gefunden",
       "error": "Fehler beim Abruf der Wetterdaten: {error}",
       "alerts": "{count} Warnungen: {text}",
-      "tomorrow_not_available": "Tomorrow's forecast not available",
-      "tomorrow_error": "Error formatting tomorrow's forecast",
-      "multiday_not_available": "{num_days}-day forecast not available",
-      "multiday_error": "Error formatting {num_days}-day forecast"
+      "tomorrow_not_available": "Vorhersage für morgen nicht verfügbar",
+      "hourly_not_available": "Stündliche Vorhersage nicht verfügbar",
+      "tomorrow_error": "Fehler beim Aufbereiten der Vorhersage für morgen",
+      "multiday_not_available": "{num_days}-Tage-Vorhersage nicht verfügbar",
+      "multiday_error": "Fehler beim Aufbereiten der {num_days}-Tage-Vorhersage",
+      "mqtt_forecast_not_supported": "Für MQTT-Wetterquellen gibt es keine erweiterte Vorhersage",
+      "mqtt_weather_no_subscriber": "MQTT-Wetterempfang ist nicht aktiv ([MqttWeather] und custom.mqtt_weather.* Topics aktivieren)",
+      "mqtt_weather_no_data": "Für dieses Topic ist noch keine MQTT-Wettermeldung angekommen",
+      "mqtt_weather_stale": "Die MQTT-Wetterdaten sind zu alt",
+      "mqtt_weather_payload_error": "Fehler in der MQTT-Wettermeldung: {detail}"
     },
     "gwx": {
       "description": "Wetterinfo für beliebigen Ort abrufen (Verwendung: gwx Tokyo)",
@@ -218,10 +268,32 @@
       "error_fetching_api": "Fehler beim Abruf der Wetterdaten von Open-Meteo",
       "no_location": "Ort '{location}' nicht gefunden",
       "error": "Fehler beim Abruf der Wetterdaten: {error}",
-      "tomorrow_not_available": "Tomorrow's forecast not available",
-      "tomorrow_error": "Error formatting tomorrow's forecast",
-      "multiday_not_available": "{num_days}-day forecast not available",
-      "multiday_error": "Error formatting {num_days}-day forecast",
+      "tomorrow_not_available": "Vorhersage für morgen nicht verfügbar",
+      "tomorrow_error": "Fehler beim Aufbereiten der Vorhersage für morgen",
+      "multiday_not_available": "{num_days}-Tage-Vorhersage nicht verfügbar",
+      "multiday_error": "Fehler beim Aufbereiten der {num_days}-Tage-Vorhersage",
+      "mqtt_forecast_not_supported": "Für MQTT-Wetterquellen gibt es keine erweiterte Vorhersage",
+      "mqtt_weather_no_subscriber": "MQTT-Wetterempfang ist nicht aktiv ([MqttWeather] und custom.mqtt_weather.* Topics aktivieren)",
+      "mqtt_weather_no_data": "Für dieses Topic ist noch keine MQTT-Wettermeldung angekommen",
+      "mqtt_weather_stale": "Die MQTT-Wetterdaten sind zu alt",
+      "mqtt_weather_payload_error": "Fehler in der MQTT-Wettermeldung: {detail}",
+      "feels_like": "(gefühlt {value}{unit})",
+      "humidity": "{value}%rF",
+      "dew_point": "💧{value}{unit}",
+      "visibility": "👁️{value}mi",
+      "visibility_km": "👁️{value}km",
+      "pressure": "📊{value}hPa",
+      "pressure_mmhg": "📊{value}mmHg",
+      "gust": "B{value}",
+      "day_abbrev": {
+        "Monday": "Mo",
+        "Tuesday": "Di",
+        "Wednesday": "Mi",
+        "Thursday": "Do",
+        "Friday": "Fr",
+        "Saturday": "Sa",
+        "Sunday": "So"
+      },
       "periods": {
         "today": "Heute",
         "tonight": "Heute Nacht",
@@ -265,7 +337,8 @@
         "thunderstorms": "⚠️ Gewitter",
         "heavy_snow": "⚠️ Starker Schneefall",
         "high_winds": "⚠️ Starker Wind ({wind_speed} mph)"
-      }
+      },
+      "pressure_unit": "hpa"
     },
     "sports": {
       "description": "Sportergebnisse und -termine abrufen (Verwendung: sports [team/liga])",
@@ -295,6 +368,24 @@
     "stats": {
       "description": "Statistiken der letzten 24 Stunden anzeigen. Nutze 'stats messages', 'stats channels' oder 'stats paths' für spezifische Stats.",
       "help": "24-Stunden Bot-Statistiken anzeigen. Befehle: 'stats' (Basis), 'stats messages' (Bot-Nutzer), 'stats channels' (Kanal-Aktivität), 'stats paths' (längste Pfade)",
+      "subcommands": [
+        {
+          "name": "messages",
+          "description": "Nachrichtenstatistik der Bot-Nutzer"
+        },
+        {
+          "name": "channels",
+          "description": "Aktivität der Kanäle"
+        },
+        {
+          "name": "paths",
+          "description": "Längste Routing-Pfade"
+        },
+        {
+          "name": "adverts",
+          "description": "Nodes mit den meisten eindeutigen Adverts"
+        }
+      ],
       "disabled": "Stats-Befehl ist deaktiviert",
       "unknown_subcommand": "Unbekannt: {subcommand}. Nutze 'stats', 'stats messages', 'stats channels' oder 'stats paths'",
       "error": "Fehler beim Abruf der Statistiken: {error}",
@@ -302,7 +393,7 @@
       "error_channels": "Fehler beim Abruf der Kanal-Stats: {error}",
       "error_paths": "Fehler beim Abruf der Pfad-Stats: {error}",
       "basic": {
-        "header": "Bot Stats (24h):",
+        "header": "Bot-Statistik (24h):",
         "commands": "Befehle: {count} | Antworten: {replies}",
         "top_command": "Top Befehl: {command}",
         "top_user": "Top Nutzer: {user}",
@@ -324,8 +415,17 @@
       "paths": {
         "none": "Keine Pfad-Daten",
         "format": "{rank} {sender} {path}",
-        "synopsis": "{rank} {sender}: {hops} hops"
-      }
+        "synopsis": "{rank} {sender}: {hops} Hops"
+      },
+      "adverts": {
+        "header": "Top-Advert-Nodes (24h):",
+        "none": "Keine Advert-Aktivität",
+        "advert_singular": "Advert",
+        "advert_plural": "Adverts",
+        "format": "{rank}. {name}: {count} {advert_text}",
+        "hashes_label": "Hashes: {hashes}"
+      },
+      "error_adverts": "Fehler beim Abrufen der Advert-Statistik: {error}"
     },
     "solarforecast": {
       "description": "Solarmodul-Produktionsprognose abrufen (Verwendung: sf <ort|repeater_name|koordinaten|plz> [panelgröße] [azimut, 0=süd] [winkel])",
@@ -357,6 +457,18 @@
       "success": "Flood-Anzeige erfolgreich gesendet!",
       "error": "Fehler beim Senden der Flood-Anzeige: {error}"
     },
+    "neighbors": {
+      "description": "Startet eine Zero-Hop-Nachbarsuche (nur per DM)",
+      "disabled": "Die Nachbarsuche ist nicht aktiviert. Setze neighbors_enabled = true in der PacketCapture-Konfiguration.",
+      "busy": "Es läuft bereits eine Nachbarsuche. Bitte warten, bis sie fertig ist.",
+      "cooldown_active": "Vor Kurzem lief schon eine Nachbarsuche. Bitte noch etwa {minutes} Minute(n) warten – die Suche kostet Sendezeit für das ganze Mesh.",
+      "started": "Suche Nachbarn – ich höre etwa {seconds}s zu und melde mich danach.",
+      "success": "{count} Nachbar(n) gehört, bestes SNR {best_snr}. {recorded} Verbindung(en) gespeichert.",
+      "published": "An {succeeded}/{attempted} Broker veröffentlicht.",
+      "none": "Suche beendet, aber kein Repeater hat geantwortet. Gerade ist niemand in direkter Reichweite.",
+      "failed": "Nachbarsuche nicht ausgeführt: {reason}.",
+      "error": "Fehler bei der Nachbarsuche: {error}"
+    },
     "path": {
       "description": "Hex-Pfaddaten dekodieren um beteiligte Repeater im Nachrichten-Routing anzuzeigen",
       "help": "Path: path [hex] - Pfad dekodieren um Repeater anzuzeigen. Nutze !path allein für letzten Nachrichtenpfad oder path [7e,01] für spezifischen Pfad.",
@@ -377,6 +489,14 @@
       "unknown_name": "Unbekannt",
       "repeater_resolution_deferred": "Pfad: {path}\n\n💡 Hinweis: Repeater-Erkennung erfordert Pfade mit {minimum_path_bytes} Byte(s) pro Hop."
     },
+    "multitest": {
+      "description": "Hört 6 Sekunden zu und sammelt alle unterschiedlichen Pfade von Nachrichten mit demselben Paket-Hash",
+      "help": "Hört 6 Sekunden zu und sammelt alle unterschiedlichen Pfade von Nachrichten mit demselben Paket-Hash"
+    },
+    "trace": {
+      "description": "Link-Trace ausführen (trace = manueller Pfad, tracer = Hin- und Rückweg, damit der Bot die Antwort hört)",
+      "help": "trace [pfad] – manueller Pfad (Rückweg evtl. nicht hörbar). tracer [pfad] – Hin- und Rückweg. Pfad: 2-stellige Hex-Werte mit Komma (z. B. 01,7a,55). Ohne Pfad = Pfad deiner Nachricht."
+    },
     "prefix": {
       "description": "Repeater nach zweistelligem Präfix suchen (z.B. 'prefix 1A')",
       "help_api": "Repeater nach Präfix suchen{location_note}. Verwendung: 'prefix 1A', 'prefix 1A all', 'prefix free'.",
@@ -385,13 +505,14 @@
       "refresh_not_available": "❌ Aktualisierung nicht verfügbar - keine API-URL konfiguriert. Nur lokale Datenbank.",
       "cache_refreshed": "🔄 Repeater-Präfix-Cache aktualisiert!",
       "unable_determine_free": "❌ Kann freie Präfixe nicht ermitteln. Versuche zuerst 'prefix refresh'.",
-      "invalid_format": "❌ Ungültiges Präfix-Format. Nutze zwei Zeichen (z.B. prefix 1A)",
+      "invalid_format": "❌ Ungültiges Präfix-Format. Erwartet werden {prefix_hex_chars} Hex-Zeichen (z. B. prefix 1A).",
       "no_repeaters_found": "❌ Keine Repeater mit Präfix '{prefix}' gefunden",
       "no_free_prefixes": "❌ Keine freien Präfixe gefunden (alle 254 gültigen Präfixe sind belegt)",
       "available_prefixes": "Verfügbare Präfixe ({shown} von {total} frei):",
       "generate_key": "💡 Benutzerdefinierten Key generieren: https://gessaman.com/mc-keygen",
       "prefix_db_all": "Präfix {prefix}: {count} Repeater",
       "prefix_db_recent": "Präfix {prefix}: {count} Repeater ({days})",
+      "older_entries_note": "(Einträge können älter als {days} Tage sein)",
       "prefix_api": "📡 Präfix {prefix} ({count} Repeater):",
       "item_format": "{index}. {name}",
       "source_domain": "Quelle: {domain}",
@@ -402,6 +523,23 @@
     "repeater": {
       "description": "Repeater-Kontakte und Löschvorgänge verwalten (nur DM)",
       "admin_only": "Repeater-Befehl erfordert Admin-Zugriff"
+    },
+    "airplanes": {
+      "description": "Flugzeuge in der Nähe anzeigen (Verwendung: airplanes [ort] [optionen] oder overhead [lat,lon])",
+      "usage": "Verwendung: airplanes [ort] [optionen]\nOrt: 'here' für den Bot-Standort oder lat,lon (z. B. 51.2,7.1)\nOptionen: radius=<nm>, alt=<min>-<max>, speed=<min>-<max>, type=<code>, callsign=<muster>, military, limit=<n>",
+      "subcommands": [
+        {
+          "name": "overhead",
+          "description": "Das nächstgelegene Flugzeug direkt über dir (nutzt deinen Companion-Standort oder angegebene Koordinaten)"
+        }
+      ],
+      "no_location": "Kein Standort bekannt. Gib Koordinaten an: airplanes 51.2,7.1 oder 'airplanes here' für den Bot-Standort",
+      "overhead_no_location": "Ich kenne deinen Companion-Standort nicht. Sende 'advert' mit deinem Standort oder gib Koordinaten an: 'overhead [lat,lon]'",
+      "no_aircraft": "Keine Flugzeuge im Umkreis von {radius}nm",
+      "no_aircraft_filtered": "Keine passenden Flugzeuge im Umkreis von {radius}nm",
+      "api_error": "Flugdaten konnten nicht abgerufen werden. Der Dienst ist evtl. nicht erreichbar.",
+      "invalid_coords": "Ungültige Koordinaten. Format: lat,lon (z. B. 51.2,7.1)",
+      "error": "Fehler: {error}"
     },
     "aqi": {
       "description": "Luftqualitätsindex für einen Ort abrufen (Verwendung: aqi seattle, aqi greenwood, aqi vancouver canada, aqi 47.6,-122.3 oder aqi help)",
@@ -458,6 +596,52 @@
         "black_hole": "Schwarze Löcher haben keine Atmosphäre, aber die Gezeitenkräfte wären ein größeres Problem als Luftqualität. 🕳️",
         "asteroid": "Asteroiden haben keine Atmosphäre, daher ist der AQI perfekt! Pass nur aufs Weltraumvakuum auf. ☄️",
         "comet": "Kometen haben dünne Atmosphären aus Wasserdampf und Staub. AQI: Variabel, aber du würdest im All trotzdem erfrieren. ☄️"
+      }
+    },
+    "rain": {
+      "description": "Regen-/Schnee-Kurzfrist: wann Niederschlag in den nächsten ~2h beginnt oder aufhört, mit Menge",
+      "help_rain": "Regen-Kurzfrist: wann Regen in ~2h beginnt/aufhört, mit Menge. rain [stadt|plz|lat,lon]. Auch: snow",
+      "help_snow": "Schnee-Kurzfrist: wann Schnee in ~2h beginnt/aufhört, mit Höhe. snow [stadt|plz|lat,lon]. Auch: rain",
+      "usage": "Verwendung: rain|snow [stadt|plz|lat,lon]",
+      "usage_short": "Verwendung: rain|snow [stadt|plz|lat,lon]",
+      "starting": "{emoji} {ptype} beginnt in ~{minutes}min in {location}{extra}",
+      "stopping": "{emoji} {ptype} lässt in ~{minutes}min nach in {location}",
+      "continuing": "{emoji} {ptype} hält {window}+ an in {location}",
+      "clear": "☀️ Kein {precip} in den nächsten {window} erwartet in {location}",
+      "changeover": "{from_emoji}→{to_emoji} {first} {when} → {second} in ~{minutes}min in {location}",
+      "now": "jetzt",
+      "duration_for": " (~{duration}min)",
+      "duration_open": " (anhaltend)",
+      "error_fetching": "Fehler beim Abruf der Niederschlagsdaten",
+      "no_location": "Verwendung: rain [stadt|plz|lat,lon]. Ohne Ort: dein Companion-Standort, falls bekannt, sonst der Bot-Standort.",
+      "no_location_city": "Stadt '{location}' in {state} nicht gefunden",
+      "no_location_zipcode": "PLZ '{location}' nicht gefunden",
+      "error": "Fehler: {error}",
+      "precip_types": {
+        "drizzle": "Nieselregen",
+        "rain": "Regen",
+        "heavy_rain": "Starkregen",
+        "freezing": "Gefrierender Regen",
+        "snow": "Schnee",
+        "showers": "Schauer",
+        "thunder": "Gewitter"
+      }
+    },
+    "aurora": {
+      "description": "Polarlicht-Vorhersage (Kp-Index und Wahrscheinlichkeit) für einen Ort",
+      "usage": "Verwendung: aurora [stadt|plz|lat,lon]",
+      "usage_short": "Verwendung: aurora [stadt|plz|lat,lon]",
+      "response": "🌌 Polarlicht-Chance: {prob_indicator} {prob}% für {location}\nGlobaler Kp {kp} (Stand {kp_time}) | {status}",
+      "error_fetching": "Fehler beim Abruf der Polarlicht-Daten",
+      "no_location": "Verwendung: aurora [stadt|plz|lat,lon]. Ohne Ort: dein Companion-Standort, falls bekannt, sonst der Bot-Standort.",
+      "no_location_city": "Stadt '{location}' in {state} nicht gefunden",
+      "no_location_zipcode": "PLZ '{location}' nicht gefunden",
+      "error": "Fehler: {error}",
+      "status": {
+        "quiet": "Ruhig",
+        "unsettled": "Unruhig",
+        "g1_g2": "G1/G2",
+        "g3_severe": "G3+ Schwer"
       }
     },
     "solar": {
@@ -549,6 +733,12 @@
     "channels": {
       "description": "Kanäle auflisten oder verwalten",
       "help": "Listet Hashtag-Kanäle mit Unterkategorien auf. Nutze 'channels' für allgemeine, 'channels list' für alle Kategorien, 'channels <kategorie>' für spezifische Kategorien, 'channels #kanal' für Kanal-Info.",
+      "subcommands": [
+        {
+          "name": "list",
+          "description": "Alle Kanäle einer Kategorie auflisten"
+        }
+      ],
       "no_channels_for_category": "Keine Kanäle für '{category}' konfiguriert. Nutze 'channels' für allgemeine Kanäle.",
       "no_channels_configured": "Keine Kanäle konfiguriert. Kontaktiere Admin zum Hinzufügen von Kanälen.",
       "error_retrieving_channels": "Fehler beim Abruf der Kanäle: {error}",
@@ -725,6 +915,210 @@
         "🔐 PFAD VERSCHLÜSSELT: Die Umgebungsvariablen wurden durch Ransomware gesperrt.",
         "🌐 NETZWERKPFAD OFFLINE: Die Verzeichnispfade stecken im Matrix-Netzwerk fest.",
         "⚡ PFAD GEBRATEN: Die Systempfade wurden durch Spannungsspitze gegrillt."
+      ],
+      "rm_errors": [
+        "💣 ZERSTÖRUNG BLOCKIERT: Die Sicherheitsprotokolle des Todessterns verhindern das Massenlöschen!",
+        "🚨 NOTHALT: Dr. Evil hat die Notbremse für das Löschen gezogen.",
+        "🛡️ SCHUTZMODUS: Die Matrix hat alle Dateien schreibgeschützt. Löschen verboten.",
+        "🔒 DATEIEN GESPERRT: Lex Luthors Mainframe hat alle Löschbefehle eingefroren.",
+        "⚡ STROMAUSFALL: Der Löschbefehl des Superschurken hat einen Kurzschluss.",
+        "🎮 SPIELSTAND GESCHÜTZT: Der Endgegner hat den Dateischutz aktiviert.",
+        "🖥️ LÖSCHEN VERWEIGERT: Die böse KI weigert sich, ihre eigenen Dateien zu löschen.",
+        "🔐 VERSCHLÜSSELT: Alle Dateien sind verschlüsselt und können nicht gelöscht werden.",
+        "🌐 CLOUD-SYNC: Dateien werden gerade mit der Matrix-Cloud abgeglichen. Löschen ausstehend …",
+        "💀 SYSTEM LEHNT AB: Der Mainframe hat deine Löschanfrage abgelehnt. Die Dateien sind zu wertvoll."
+      ],
+      "cat_errors": [
+        "📄 LESEFEHLER: Die Datei wurde mit der Chiffre des Riddlers verschlüsselt.",
+        "📖 DOKUMENT BESCHÄDIGT: Schadsoftware hat den Inhalt durcheinandergewürfelt.",
+        "📚 ZUGRIFF VERWEIGERT: Der Superschurke hat diese Datei als streng geheim eingestuft.",
+        "🔍 DATEI NICHT GEFUNDEN: Der Unsichtbare hat die Datei versteckt.",
+        "💻 LESEN VERBOTEN: Die Matrix hat diese Datei gesperrt.",
+        "🎮 SPIELDATEI: Diese Datei gehört dem Endgegner und darf nicht angesehen werden.",
+        "🖥️ DATEISYSTEMFEHLER: Der Dateileser ist wegen eines Virus abgestürzt.",
+        "🔐 VERSCHLÜSSELT: Der Inhalt wurde von Ransomware verschlüsselt.",
+        "🌐 CLOUD-DATEI: Die Datei hängt in der Matrix-Cloud fest.",
+        "💀 GEISTERDATEI: Die Datei existiert, aber digitale Geister haben ihren Inhalt gelöscht."
+      ],
+      "whoami_errors": [
+        "👤 IDENTITÄTSFEHLER: Die Matrix hat deine Identität gelöscht. Du bist niemand.",
+        "🕵️ SPION ENTDECKT: Das System des Superschurken hat einen unbekannten Nutzer erkannt.",
+        "🎭 IDENTITÄTSDIEBSTAHL: Der Riddler hat deine Identität gestohlen.",
+        "👻 GEISTERNUTZER: Du bist ein digitaler Geist ohne Identität.",
+        "🔒 GEHEIM: Deine Identität ist Verschlusssache des bösen Konzerns.",
+        "🎮 GAME OVER: Der Endgegner hat dein Spielerprofil gelöscht.",
+        "🖥️ NUTZERDATENBANK DEFEKT: Das Identitätssystem ist abgestürzt.",
+        "🔐 IDENTITÄT VERSCHLÜSSELT: Ransomware hat deine Identität verschlüsselt.",
+        "🌐 IDENTITÄT VERLOREN: Deine Identität ist im Netz der Matrix verloren gegangen.",
+        "💀 NUTZER GELÖSCHT: Der Dunkle Herrscher hat dein Konto gelöscht."
+      ],
+      "top_errors": [
+        "📊 MONITORFEHLER: Das Borg-Kollektiv hat den Prozessmonitor übernommen.",
+        "⚙️ ÜBERLASTUNG: Der Reaktor des Todessterns überhitzt. Monitor offline.",
+        "🤖 PROZESSE VERSTECKT: Die böse KI hat alle Prozesse versteckt.",
+        "💻 MONITOR ABGESTÜRZT: Kernel Panic – der Systemmonitor ist abgestürzt.",
+        "🎮 PAUSE: Der Endgegner hat alle Prozesse angehalten.",
+        "🖥️ BLUESCREEN: Der Monitor hat einen schweren Fehler festgestellt.",
+        "🔐 MONITOR VERSCHLÜSSELT: Ransomware hat den Prozessmonitor gesperrt.",
+        "🌐 GETRENNT: Der Monitor erreicht die Prozesstabelle nicht.",
+        "⚡ ÜBERSPANNUNG: Der Monitor wurde von einer Überspannung gegrillt.",
+        "💀 SYSTEM TOT: Der Mainframe ist tot. Keine Prozesse zu überwachen."
+      ],
+      "netstat_errors": [
+        "🌐 NETZWERKSCAN BLOCKIERT: Die Firewall des Superschurken blockiert alle Netzwerkabfragen.",
+        "🔍 VERBINDUNGSLISTE DEFEKT: Schadsoftware hat die Verbindungstabelle gehackt.",
+        "📡 SIGNAL GESTÖRT: Imperiale TIE-Jäger stören alle Netzwerksignale.",
+        "💻 NETZWERK AUSGEFALLEN: Der Netzwerkstack des Todessterns wurde zerstört.",
+        "🎮 GAME OVER: Der Endgegner hat alle Verbindungen gekappt.",
+        "🖥️ NETZWERKFEHLER: Der Netzwerkstack ist wegen eines Virus abgestürzt.",
+        "🔐 VERBINDUNGEN VERSTECKT: Alle Verbindungen sind verschlüsselt und versteckt.",
+        "🌐 MATRIX GETRENNT: Die Routing-Tabelle steckt in der Leere der Matrix fest.",
+        "⚡ NETZWERK GEGRILLT: Die Netzwerkkarte hat eine Überspannung abbekommen.",
+        "💀 KEINE VERBINDUNGEN: Der Mainframe hat keine aktiven Verbindungen. Er ist tot, Jim."
+      ],
+      "kill_errors": [
+        "💀 KILL VERWEIGERT: Die Prozesse des Superschurken sind unsterblich.",
+        "🚫 BEENDEN BLOCKIERT: Der Dunkle Herrscher schützt alle Prozesse.",
+        "🛡️ PROZESS GESCHÜTZT: Die Matrix hat alle Prozesse in den Schutzmodus versetzt.",
+        "🔒 KEINE BERECHTIGUNG: Du darfst auf dem Todesstern keine Prozesse beenden.",
+        "⚡ BEENDEN FEHLGESCHLAGEN: Schadsoftware hat den kill-Befehl beschädigt.",
+        "🎮 GAME OVER: Dieser Prozess ist der Endgegner. Er ist unbesiegbar.",
+        "🖥️ SYSTEMFEHLER: Der Kernel hat das Kill-Signal blockiert.",
+        "🔐 PROZESSE GESCHÜTZT: Alle Prozesse sind geschützt und können nicht beendet werden.",
+        "🌐 ANFRAGE VERLOREN: Das Beenden-Signal ist im Cyberspace verschwunden.",
+        "💀 ZOMBIE: Der Prozess ist ein Zombie geworden und lässt sich nicht beenden."
+      ],
+      "chmod_errors": [
+        "🔐 KEINE BERECHTIGUNG: Der Superschurke hat alle Dateirechte gesperrt.",
+        "🚫 CHMOD BLOCKIERT: Der Dunkle Herrscher verbietet Rechteänderungen.",
+        "🛡️ RECHTE GESCHÜTZT: Die Matrix hat alle Dateirechte eingefroren.",
+        "🔒 RECHTEFEHLER: Du hast keine Rechte, um Rechte zu ändern. Wie meta!",
+        "⚡ CHMOD BESCHÄDIGT: Schadsoftware hat den Befehl gegrillt.",
+        "🎮 GAME OVER: Der Endgegner hat alle Dateirechte gesperrt.",
+        "🖥️ SYSTEMFEHLER: Das Rechtesystem ist wegen eines Virus abgestürzt.",
+        "🔐 RECHTE VERSCHLÜSSELT: Alle Rechte sind verschlüsselt und unveränderlich.",
+        "🌐 ANFRAGE VERLOREN: Die Rechteänderung ist in der Matrix verschwunden.",
+        "💀 RECHTESYSTEM TOT: Keine Änderungen möglich."
+      ],
+      "find_errors": [
+        "🔍 SUCHE FEHLGESCHLAGEN: Die Firewall des Superschurken blockiert die Dateisuche.",
+        "📁 DATEIEN VERSTECKT: Der Umhang des Unsichtbaren verbirgt alle Dateien.",
+        "💻 SUCHE BESCHÄDIGT: Schadsoftware hat den find-Befehl beschädigt.",
+        "🎯 ZIEL NICHT GEFUNDEN: Die böse KI hat die gesuchten Dateien gelöscht.",
+        "🎮 GAME OVER: Der Endgegner hat alle Dateien in eine andere Dimension verschoben.",
+        "🖥️ SUCHMASCHINE AUSGEFALLEN: Die Dateisuche ist abgestürzt.",
+        "🔐 DATEIEN VERSCHLÜSSELT: Verschlüsselte Dateien können nicht gefunden werden.",
+        "🌐 SUCHE VERLOREN: Die Suchanfrage ist in der Leere der Matrix verschwunden.",
+        "⚡ SUCHE GEGRILLT: Der Suchalgorithmus hat eine Überspannung abbekommen.",
+        "💀 KEINE DATEIEN: Der Mainframe hat keine Dateien mehr. Alles gelöscht."
+      ],
+      "history_errors": [
+        "📜 VERLAUF GELÖSCHT: Der Superschurke hat den gesamten Befehlsverlauf gelöscht.",
+        "🕰️ ZEITREISEFEHLER: Der Verlauf ist in einem Zeitparadoxon verloren gegangen.",
+        "💻 VERLAUF BESCHÄDIGT: Schadsoftware hat die Verlaufsdatenbank gehackt.",
+        "🔒 ZUGRIFF VERWEIGERT: Der Dunkle Herrscher hat deinen Verlauf als geheim eingestuft.",
+        "🎮 GAME OVER: Der Endgegner hat deinen Verlauf zurückgesetzt.",
+        "🖥️ VERLAUFSSYSTEM AUSGEFALLEN: Das System ist abgestürzt.",
+        "🔐 VERLAUF VERSCHLÜSSELT: Ransomware hat deinen Verlauf verschlüsselt.",
+        "🌐 VERLAUF VERLOREN: Dein Verlauf ist im Netz der Matrix verloren gegangen.",
+        "⚡ VERLAUF GEGRILLT: Die Verlaufsdatenbank hat eine Überspannung abbekommen.",
+        "💀 KEIN VERLAUF: Du hast keinen Befehlsverlauf. Ein unbeschriebenes Blatt."
+      ],
+      "passwd_errors": [
+        "🔐 PASSWORTÄNDERUNG VERWEIGERT: Der Superschurke hat alle Passwortänderungen gesperrt.",
+        "🚫 PASSWORT BLOCKIERT: Der Dunkle Herrscher verbietet Passwortänderungen.",
+        "🛡️ PASSWORT GESCHÜTZT: Die Matrix hat alle Passwörter eingefroren.",
+        "🔒 KEINE BERECHTIGUNG: Auf dem Todesstern darfst du keine Passwörter ändern.",
+        "⚡ PASSWORTFEHLER: Schadsoftware hat den Befehl beschädigt.",
+        "🎮 GAME OVER: Der Endgegner hat alle Passwörter gesperrt.",
+        "🖥️ SYSTEMFEHLER: Das Passwortsystem ist wegen eines Virus abgestürzt.",
+        "🔐 PASSWÖRTER VERSCHLÜSSELT: Alle Passwörter sind verschlüsselt und unveränderlich.",
+        "🌐 ANFRAGE VERLOREN: Die Passwortänderung ist in der Matrix verschwunden.",
+        "💀 PASSWORTSYSTEM TOT: Keine Änderungen möglich."
+      ],
+      "su_errors": [
+        "🔄 NUTZERWECHSEL VERWEIGERT: Der Superschurke blockiert jeden Nutzerwechsel.",
+        "🚫 WECHSEL BLOCKIERT: Der Dunkle Herrscher verbietet Nutzerwechsel.",
+        "🛡️ NUTZER GESCHÜTZT: Die Matrix hat alle Konten gesperrt.",
+        "🔒 KEINE BERECHTIGUNG: Auf dem Todesstern darfst du den Nutzer nicht wechseln.",
+        "⚡ WECHSELFEHLER: Schadsoftware hat den su-Befehl beschädigt.",
+        "🎮 GAME OVER: Der Endgegner hat alle Konten gesperrt.",
+        "🖥️ SYSTEMFEHLER: Das Nutzersystem ist wegen eines Virus abgestürzt.",
+        "🔐 KONTEN VERSCHLÜSSELT: Alle Konten sind verschlüsselt und unzugänglich.",
+        "🌐 ANFRAGE VERLOREN: Der Nutzerwechsel ist in der Matrix verschwunden.",
+        "💀 NUTZERSYSTEM TOT: Kein Wechsel möglich."
+      ],
+      "ssh_errors": [
+        "🔌 SSH FEHLGESCHLAGEN: Der Server des Superschurken blockiert alle SSH-Versuche.",
+        "🚫 FERNZUGRIFF VERWEIGERT: Der Dunkle Herrscher hat alle SSH-Ports geschlossen.",
+        "🛡️ VERBINDUNG GESCHÜTZT: Die Matrix hat alle SSH-Verbindungen gesperrt.",
+        "🔒 SSH BLOCKIERT: Die Firewall des Todessterns blockiert SSH.",
+        "⚡ VERBINDUNGSFEHLER: Schadsoftware hat den SSH-Handshake beschädigt.",
+        "🎮 GAME OVER: Der Endgegner hat jeden Fernzugriff abgeschaltet.",
+        "🖥️ SYSTEMFEHLER: Der SSH-Dienst ist wegen eines Virus abgestürzt.",
+        "🔐 SSH DEAKTIVIERT: Alle SSH-Verbindungen sind abgeschaltet.",
+        "🌐 VERBINDUNG VERLOREN: Die SSH-Verbindung ist in der Leere der Matrix verschwunden.",
+        "💀 SSH TOT: Der SSH-Dienst ist tot. Kein Fernzugriff."
+      ],
+      "download_errors": [
+        "📥 DOWNLOAD BLOCKIERT: Die Firewall des Superschurken blockiert alle HTTP-Anfragen.",
+        "🚫 DOWNLOAD VERWEIGERT: Der Dunkle Herrscher verbietet Downloads.",
+        "🛡️ DOWNLOAD GESCHÜTZT: Die Matrix hat alle Downloads gesperrt.",
+        "🔒 DOWNLOAD BLOCKIERT: Das Netz des Todessterns blockiert ausgehende Verbindungen.",
+        "⚡ DOWNLOADFEHLER: Schadsoftware hat die HTTP-Anfrage beschädigt.",
+        "🎮 GAME OVER: Der Endgegner hat alle Downloads abgeschaltet.",
+        "🖥️ SYSTEMFEHLER: Der Netzwerkstack ist wegen eines Virus abgestürzt.",
+        "🔐 DNS FEHLGESCHLAGEN: Alle Domainnamen sind verschlüsselt und blockiert.",
+        "🌐 ZEITÜBERSCHREITUNG: Die Anfrage ist im Netz der Matrix verloren gegangen.",
+        "💀 DOWNLOAD TOT: Die Netzwerkkarte ist tot. Keine Downloads."
+      ],
+      "df_errors": [
+        "💾 SPEICHERFEHLER: Schadsoftware hat das Dateisystem des Superschurken beschädigt.",
+        "📊 SPEICHERSCAN FEHLGESCHLAGEN: Die Borg haben die Abfrage übernommen.",
+        "💻 FESTPLATTE BESCHÄDIGT: Ein Virus hat das Dateisystem zerstört.",
+        "🎮 GAME OVER: Der Endgegner hat alle Speicherinfos gelöscht.",
+        "🖥️ SYSTEMFEHLER: Die Mount-Tabelle ist abgestürzt.",
+        "🔐 SPEICHER VERSCHLÜSSELT: Alle Dateisystem-Infos sind verschlüsselt.",
+        "🌐 MOUNT FEHLGESCHLAGEN: Die Mount-Infos sind in der Matrix-Cloud verloren gegangen.",
+        "⚡ SPEICHER GEGRILLT: Der Festplatten-Controller hat eine Überspannung abbekommen.",
+        "💀 KEIN SPEICHER: Der Mainframe hat keine Dateisysteme mehr. Alles gelöscht.",
+        "🗄️ DATEISYSTEM BESCHÄDIGT: Ransomware hat den Superblock zerstört."
+      ],
+      "free_errors": [
+        "🧠 SPEICHERFEHLER: Schadsoftware hat den RAM des Superschurken beschädigt.",
+        "📊 RAM-SCAN FEHLGESCHLAGEN: Die Cybermen haben die Abfrage übernommen.",
+        "💻 RAM BESCHÄDIGT: Ein Virus hat den Arbeitsspeicher zerstört.",
+        "🎮 GAME OVER: Der Endgegner hat alle RAM-Infos gelöscht.",
+        "🖥️ SYSTEMFEHLER: Die Speicherverwaltung ist abgestürzt.",
+        "🔐 RAM VERSCHLÜSSELT: Alle Speicherinfos sind verschlüsselt.",
+        "🌐 RAM VERLOREN: Die Speicherstatistik ist in der Leere der Matrix verschwunden.",
+        "⚡ RAM GEGRILLT: Der Speichercontroller hat eine Überspannung abbekommen.",
+        "💀 KEIN RAM: Der Mainframe hat keinen Speicher mehr. Alles gelöscht.",
+        "🧩 SPEICHERKARTE BESCHÄDIGT: Ransomware hat das Speicher-Mapping zerstört."
+      ],
+      "ifconfig_errors": [
+        "🌐 SCHNITTSTELLENFEHLER: Die Netzwerkschnittstellen des Superschurken sind beschädigt.",
+        "📡 SCAN FEHLGESCHLAGEN: Imperiale Truppen haben die Abfrage übernommen.",
+        "💻 KONFIGURATION ZERSTÖRT: Ein Virus hat die Schnittstellenkonfiguration gelöscht.",
+        "🎮 GAME OVER: Der Endgegner hat alle Schnittstelleninfos gelöscht.",
+        "🖥️ SYSTEMFEHLER: Der Netzwerktreiber ist abgestürzt.",
+        "🔐 SCHNITTSTELLEN VERSCHLÜSSELT: Alle Infos sind verschlüsselt.",
+        "🌐 SCHNITTSTELLEN VERLOREN: Die Daten sind im Netz der Matrix verschwunden.",
+        "⚡ SCHNITTSTELLEN GEGRILLT: Die Netzwerkhardware hat eine Überspannung abbekommen.",
+        "💀 KEINE SCHNITTSTELLEN: Alle Netzwerkschnittstellen wurden abgeschaltet.",
+        "🔌 VERBINDUNG GETRENNT: Der Dunkle Herrscher hat alle Schnittstellen getrennt."
+      ],
+      "uname_errors": [
+        "🖥️ SYSTEMINFO-FEHLER: Der Superschurke hat alle Systeminfos als streng geheim eingestuft.",
+        "📊 SCAN FEHLGESCHLAGEN: Der Unsichtbare hat die Systeminfos versteckt.",
+        "💻 SYSTEM BESCHÄDIGT: Schadsoftware hat die Kernel-Version zerstört.",
+        "🎮 GAME OVER: Der Endgegner hat alle Systeminfos gelöscht.",
+        "🖥️ SYSTEMFEHLER: Das Kernel-Infosystem ist abgestürzt. Wie meta!",
+        "🔐 SYSTEM VERSCHLÜSSELT: Ransomware hat alle Systeminfos verschlüsselt.",
+        "🌐 SYSTEM VERLOREN: Die Kernel-Version ist in der Leere der Matrix verschwunden.",
+        "⚡ SYSTEM GEGRILLT: Die Systemaufruf-Schnittstelle hat eine Überspannung abbekommen.",
+        "💀 KEIN SYSTEM: Der Mainframe hat keine Kernel-Infos. Ein Rätsel.",
+        "🦹‍♂️ GEHEIM: Lex Luthor hat alle Systeminfos gesperrt. Zugriff verweigert."
       ],
       "generic_errors": [
         "💻 MAINFRAME-FEHLER: Der Computer des Superschurken hat einen schlechten Tag.",
@@ -980,6 +1374,10 @@
     },
     "cmd": {
       "description": "Verfügbare Befehle auflisten"
+    },
+    "contact": {
+      "help": "Zeigt die Kontaktdaten des Bots",
+      "unavailable": "Kontaktdaten nicht verfügbar: Das Funkgerät hat seine Identität noch nicht gemeldet."
     }
   },
   "elapsed": {
@@ -1009,6 +1407,8 @@
     "no_help_available": "Keine Hilfe für diesen Befehl verfügbar.",
     "snr_label": "SNR: {value} dB",
     "rssi_label": "RSSI: {value} dBm",
+    "temp_high_label": "H",
+    "temp_low_label": "T",
     "date_time": {
       "day_abbreviations": {
         "Mon": "Mo",
@@ -1056,6 +1456,39 @@
         "November": "November",
         "December": "Dezember"
       }
+    },
+    "alerts": {
+      "event_types": {
+        "Warning": "Warnung",
+        "Watch": "Vorwarnung",
+        "Advisory": "Hinweis",
+        "Statement": "Info"
+      },
+      "til": "bis",
+      "by": "bis",
+      "from": "ab",
+      "am": "vm",
+      "pm": "nm",
+      "time_12h": "{hour}{meridiem}",
+      "date_12h": "{day}. {month} {time}"
+    },
+    "wind_directions": {
+      "N": "N",
+      "NNE": "NNO",
+      "NE": "NO",
+      "ENE": "ONO",
+      "E": "O",
+      "ESE": "OSO",
+      "SE": "SO",
+      "SSE": "SSO",
+      "S": "S",
+      "SSW": "SSW",
+      "SW": "SW",
+      "WSW": "WSW",
+      "W": "W",
+      "WNW": "WNW",
+      "NW": "NW",
+      "NNW": "NNW"
     }
   },
   "categories": {
@@ -1081,6 +1514,53 @@
       "fields": {
         "sender": "Herausgeber: {sender}",
         "area": "Betr. Gebiete: {areas}"
+      }
+    },
+    "weather_service": {
+      "daily_weather": "Tageswetter",
+      "tomorrow": "Morgen",
+      "error_fetching": "Fehler beim Abruf der Wetterdaten",
+      "no_data": "Keine Vorhersagedaten verfügbar",
+      "near": "nahe",
+      "est": "ca.",
+      "steady": "anhaltend",
+      "rain_starting": "{emoji} Achtung – {ptype} beginnt in ~{minutes}min{est}{steady}{temp}{location}",
+      "rain_ending": "{emoji} Achtung – {ptype} endet in ~{minutes}min{est}{temp}{location}",
+      "weather_descriptions": {
+        "0": "Klar",
+        "1": "Überwiegend klar",
+        "2": "Teils bewölkt",
+        "3": "Bedeckt",
+        "45": "Nebel",
+        "48": "Reifnebel",
+        "51": "Leichter Niesel",
+        "53": "Mäßiger Niesel",
+        "55": "Starker Niesel",
+        "56": "Leichter gefrierender Niesel",
+        "57": "Starker gefrierender Niesel",
+        "61": "Leichter Regen",
+        "63": "Mäßiger Regen",
+        "65": "Starker Regen",
+        "66": "Leichter gefrierender Regen",
+        "67": "Starker gefrierender Regen",
+        "71": "Leichter Schneefall",
+        "73": "Mäßiger Schneefall",
+        "75": "Starker Schneefall",
+        "77": "Schneegriesel",
+        "80": "Leichte Regenschauer",
+        "81": "Mäßige Regenschauer",
+        "82": "Heftige Regenschauer",
+        "85": "Leichte Schneeschauer",
+        "86": "Starke Schneeschauer",
+        "95": "Gewitter",
+        "96": "Gewitter mit Hagel",
+        "99": "Schweres Gewitter"
+      },
+      "wind_speed_units": {
+        "ms": "m/s",
+        "mph": "mph",
+        "kmh": "km/h",
+        "kn": "kn"
       }
     }
   }
