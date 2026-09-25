@@ -177,6 +177,38 @@ class TestPolling:
         assert bot.db_manager.execute_query("SELECT * FROM repeater_telemetry WHERE name='old'") == []
 
 
+class TestWebSettings:
+    async def test_web_settings_override_config_and_admins_capped(self, service, bot):
+        from modules import repeater_telemetry_store as store
+        with bot.db_manager.connection() as conn:
+            store.save_settings(conn, {"admins": ["A1", "A2"], "alert_channel": "", "warn_mv": 3700})
+        service._load_settings()
+        assert service.admins == ["A1", "A2"] and service.warn_mv == 3700
+        bot.meshcore.commands.req_status_sync.return_value = _status(3650)
+        await service.poll_all()
+        assert [c.args[0] for c in bot.command_manager.send_dm.await_args_list] == ["A1", "A2"]
+        assert _sent(bot) == []
+
+    async def test_paused_skips_polling(self, service, bot):
+        from modules import repeater_telemetry_store as store
+        with bot.db_manager.connection() as conn:
+            store.save_settings(conn, {"paused": True})
+        service._load_settings()
+        assert service.paused is True
+
+    async def test_web_poll_request_wakes_wait(self, service, bot, monkeypatch):
+        import modules.service_plugins.repeater_telemetry_service as mod
+        from modules import repeater_telemetry_store as store
+        monkeypatch.setattr(mod, "SETTINGS_TICK_SECONDS", 0.05)
+        service._handled_poll_request = 0
+        with bot.db_manager.connection() as conn:
+            store.request_poll(conn)
+        started = time.monotonic()
+        stopping = await service._wait(30)
+        assert stopping is False and time.monotonic() - started < 5
+        assert service._handled_poll_request > 0
+
+
 class TestAkkuCommand:
     @pytest.fixture
     def cmd(self, command_mock_bot, service):

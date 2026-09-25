@@ -185,6 +185,7 @@ from modules.repeater_manager import RepeaterManager, validate_repeater_tables
 from modules.utils import resolve_path
 from modules.web_viewer.config_panels import CONFIG_PANELS, PANEL_CATEGORIES
 from modules.web_viewer.integration import normalized_web_viewer_password
+from modules.web_viewer.repeater_telemetry_routes import register_repeater_telemetry_routes
 
 
 def _read_limited_requests_response(
@@ -1284,6 +1285,7 @@ class BotDataViewer:
                 'plugins_page',
                 'greeter',
                 'region_warnings_page',
+                'repeater_akku_page',
                 'logs',
                 'multibyte_rollout',
                 'mesh',
@@ -1410,6 +1412,8 @@ class BotDataViewer:
         def region_warnings_page():
             """Regional flood scope monitoring and warning settings."""
             return render_template('region_warnings.html')
+
+        register_repeater_telemetry_routes(self)
 
         @self.app.route('/feeds')
         def feeds():

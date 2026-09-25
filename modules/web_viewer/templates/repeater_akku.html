@@ -1,0 +1,578 @@
+{% extends "base.html" %}
+
+{% block title %}Repeater-Akku - MeshCore Bot{% endblock %}
+
+{% block extra_css %}
+<style>
+    :root {
+        --ra-ok: #198754;
+        --ra-warn: #b45309;
+        --ra-crit: #dc3545;
+        --ra-muted: #6c757d;
+    }
+    [data-theme="dark"] {
+        --ra-ok: #2fa36b;
+        --ra-warn: #fdba74;
+        --ra-crit: #f1707b;
+        --ra-muted: #9ca3af;
+    }
+    .ra-ok { color: var(--ra-ok); }
+    .ra-warn { color: var(--ra-warn); }
+    .ra-crit { color: var(--ra-crit); }
+    .ra-muted { color: var(--ra-muted); }
+    .ra-volt { font-variant-numeric: tabular-nums; font-weight: 600; }
+    #ra-status-table tbody tr { cursor: pointer; }
+    #ra-status-table tbody tr.table-active td { font-weight: 600; }
+    .ra-row + .ra-row { margin-top: .5rem; }
+    .ra-chart-wrap { position: relative; height: 280px; }
+    .ra-section-title { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--ra-muted); margin: 1.25rem 0 .5rem; }
+    .ra-section-title:first-child { margin-top: 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <h1 class="h3 mb-0 me-auto"><i class="fas fa-car-battery me-2"></i>Repeater-Akku</h1>
+        <span id="ra-paused-badge" class="badge bg-secondary d-none">Überwachung pausiert</span>
+        <button id="ra-refresh" class="btn btn-outline-secondary btn-sm" type="button">
+            <i class="fas fa-sync-alt me-1"></i>Aktualisieren
+        </button>
+        <button id="ra-poll" class="btn btn-primary btn-sm" type="button">
+            <i class="fas fa-satellite-dish me-1"></i>Jetzt abfragen
+        </button>
+    </div>
+
+    <div id="ra-service-off" class="alert alert-warning d-none" role="alert">
+        <strong>Der Dienst ist noch nicht aktiviert.</strong>
+        Trage in der <code>config.ini</code> <code>[RepeaterTelemetry_Service]</code> mit
+        <code>enabled = true</code> ein und starte den Bot einmal neu. Alles Weitere lässt sich danach hier einstellen.
+    </div>
+    <div id="ra-message" class="alert d-none" role="status"></div>
+
+    <div class="row g-3">
+        <div class="col-xl-7">
+            <div class="card mb-3">
+                <div class="card-header d-flex align-items-center">
+                    <span class="me-auto"><i class="fas fa-list me-2"></i>Übersicht</span>
+                    <small class="ra-muted">Zeile anklicken für den Verlauf</small>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table id="ra-status-table" class="table table-hover mb-0 align-middle">
+                            <thead>
+                                <tr>
+                                    <th>Repeater</th>
+                                    <th>Akku</th>
+                                    <th>Zustand</th>
+                                    <th>Messung</th>
+                                    <th>Laufzeit</th>
+                                    <th>RSSI</th>
+                                    <th>Letzter Versuch</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ra-status-body"></tbody>
+                        </table>
+                    </div>
+                    <p id="ra-status-empty" class="p-3 mb-0 ra-muted d-none">
+                        Noch keine Repeater eingetragen. Füge rechts unter „Einstellungen“ deine Repeater hinzu.
+                    </p>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header d-flex flex-wrap align-items-center gap-2">
+                    <span class="me-auto"><i class="fas fa-chart-line me-2"></i>Verlauf</span>
+                    <select id="ra-history-name" class="form-select form-select-sm w-auto" aria-label="Repeater"></select>
+                    <select id="ra-history-days" class="form-select form-select-sm w-auto" aria-label="Zeitraum">
+                        <option value="1">24 Stunden</option>
+                        <option value="7" selected>7 Tage</option>
+                        <option value="30">30 Tage</option>
+                        <option value="90">90 Tage</option>
+                    </select>
+                </div>
+                <div class="card-body">
+                    <div class="ra-chart-wrap"><canvas id="ra-chart" aria-label="Akkuverlauf"></canvas></div>
+                    <p id="ra-history-empty" class="ra-muted mb-0 d-none">Für diesen Zeitraum gibt es noch keine Messwerte.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-5">
+            <form id="ra-form" class="card" novalidate>
+                <div class="card-header"><i class="fas fa-sliders-h me-2"></i>Einstellungen</div>
+                <div class="card-body">
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="ra-paused">
+                        <label class="form-check-label" for="ra-paused">Überwachung pausieren</label>
+                    </div>
+
+                    <div class="ra-section-title">Repeater</div>
+                    <div id="ra-repeaters"></div>
+                    <button id="ra-add-repeater" class="btn btn-outline-secondary btn-sm mt-2" type="button">
+                        <i class="fas fa-plus me-1"></i>Repeater hinzufügen
+                    </button>
+                    <div class="form-text">
+                        Name wie in den Kontakten des Bots (oder Public-Key-Anfang). Als Passwort reicht das Gast-Passwort.
+                        Ein leeres Passwortfeld lässt ein gespeichertes Passwort unverändert.
+                    </div>
+                    <datalist id="ra-known-repeaters"></datalist>
+
+                    <div class="ra-section-title">Admins (bekommen Warnungen per MeshCore-Direktnachricht)</div>
+                    <div id="ra-admins"></div>
+                    <button id="ra-add-admin" class="btn btn-outline-secondary btn-sm mt-2" type="button">
+                        <i class="fas fa-plus me-1"></i>Admin hinzufügen
+                    </button>
+                    <div class="form-text">Bis zu <span id="ra-max-admins">5</span> Admins. Der Name muss in den Kontakten des Bots stehen.</div>
+                    <datalist id="ra-known-contacts"></datalist>
+
+                    <div class="ra-section-title">Schwellwerte</div>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label class="form-label" for="ra-warn">Warnung unter</label>
+                            <div class="input-group input-group-sm">
+                                <input class="form-control" type="number" step="0.01" min="0" id="ra-warn">
+                                <span class="input-group-text">V</span>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label" for="ra-critical">Kritisch unter</label>
+                            <div class="input-group input-group-sm">
+                                <input class="form-control" type="number" step="0.01" min="0" id="ra-critical">
+                                <span class="input-group-text">V</span>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label" for="ra-hysteresis">Hysterese</label>
+                            <div class="input-group input-group-sm">
+                                <input class="form-control" type="number" step="10" min="0" id="ra-hysteresis">
+                                <span class="input-group-text">mV</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-text">Richtwerte für Li-Ion: Warnung 3,5 V, kritisch 3,3 V. Die Hysterese verhindert ständiges Hin und Her um den Schwellwert.</div>
+
+                    <div class="ra-section-title">Abfrage</div>
+                    <div class="row g-2">
+                        <div class="col-4">
+                            <label class="form-label" for="ra-interval">Intervall</label>
+                            <div class="input-group input-group-sm">
+                                <input class="form-control" type="number" min="5" id="ra-interval">
+                                <span class="input-group-text">min</span>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label" for="ra-delay">Pause</label>
+                            <div class="input-group input-group-sm">
+                                <input class="form-control" type="number" min="5" id="ra-delay">
+                                <span class="input-group-text">s</span>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label" for="ra-timeout">Timeout</label>
+                            <div class="input-group input-group-sm">
+                                <input class="form-control" type="number" min="0" id="ra-timeout">
+                                <span class="input-group-text">s</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-text">Pause = Wartezeit zwischen zwei Repeatern. Timeout 0 = automatisch.</div>
+
+                    <div class="ra-section-title">Warnungen</div>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label class="form-label" for="ra-repeat">Wiederholen nach</label>
+                            <div class="input-group input-group-sm">
+                                <input class="form-control" type="number" min="0" step="0.5" id="ra-repeat">
+                                <span class="input-group-text">h</span>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label" for="ra-offline">Offline nach</label>
+                            <div class="input-group input-group-sm">
+                                <input class="form-control" type="number" min="0" id="ra-offline">
+                                <span class="input-group-text">Fehlversuchen</span>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label" for="ra-channel">Zusätzlich in Kanal</label>
+                            <input class="form-control form-control-sm" type="text" id="ra-channel" placeholder="z. B. #admin (optional)">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label" for="ra-retention">Verlauf aufbewahren</label>
+                            <div class="input-group input-group-sm">
+                                <input class="form-control" type="number" min="1" id="ra-retention">
+                                <span class="input-group-text">Tage</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox" id="ra-silence">
+                        <label class="form-check-label" for="ra-silence">Nicht ins Mesh senden (nur Telegram/Discord)</label>
+                    </div>
+                    <div class="form-text">Wiederholen 0 = eine Warnung nur einmal senden. Offline 0 = keine Offline-Meldungen.</div>
+
+                    <details class="mt-3">
+                        <summary class="ra-section-title d-inline">Meldungstexte anpassen</summary>
+                        <div id="ra-templates" class="mt-2"></div>
+                        <div class="form-text">Platzhalter: <code>{name}</code>, <code>{volt:.2f}</code>, <code>{mv}</code>, <code>{fails}</code>. Leeres Feld = Standardtext.</div>
+                    </details>
+                </div>
+                <div class="card-footer d-flex flex-wrap gap-2">
+                    <button id="ra-save" class="btn btn-success" type="submit"><i class="fas fa-save me-1"></i>Speichern</button>
+                    <button id="ra-reset" class="btn btn-outline-danger ms-auto" type="button" title="Einstellungen aus der Weboberfläche verwerfen, config.ini gilt wieder">
+                        Auf config.ini zurücksetzen
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script nonce="{{ g.csp_nonce }}">
+(function () {
+    'use strict';
+
+    const TEMPLATE_LABELS = {
+        warn: 'Akku niedrig',
+        critical: 'Akku kritisch',
+        recovered: 'Akku wieder ok',
+        offline: 'Repeater antwortet nicht',
+        online: 'Repeater wieder erreichbar',
+    };
+    const LEVEL_TEXT = { ok: 'ok', warn: 'niedrig', critical: 'kritisch' };
+    const LEVEL_CLASS = { ok: 'ra-ok', warn: 'ra-warn', critical: 'ra-crit' };
+
+    let data = null;
+    let chart = null;
+    let selectedName = null;
+
+    const $ = (id) => document.getElementById(id);
+
+    /** Build a DOM element; children are strings (as text) or nodes. */
+    function el(tag, attrs, ...children) {
+        const node = document.createElement(tag);
+        Object.entries(attrs || {}).forEach(([k, v]) => {
+            if (v === null || v === undefined || v === false) return;
+            if (k === 'class') node.className = v;
+            else if (k === 'dataset') Object.assign(node.dataset, v);
+            else node.setAttribute(k, v === true ? '' : String(v));
+        });
+        children.flat().forEach((c) => {
+            if (c === null || c === undefined) return;
+            node.appendChild(typeof c === 'string' || typeof c === 'number' ? document.createTextNode(String(c)) : c);
+        });
+        return node;
+    }
+
+    function showMessage(text, kind) {
+        const box = $('ra-message');
+        box.textContent = text;
+        box.className = 'alert alert-' + (kind || 'info');
+        if (kind === 'success') setTimeout(() => box.classList.add('d-none'), 5000);
+    }
+
+    function age(ts) {
+        if (!ts) return '–';
+        const s = Math.max(0, Math.floor(Date.now() / 1000 - ts));
+        if (s < 60) return 'gerade eben';
+        if (s < 3600) return 'vor ' + Math.floor(s / 60) + ' min';
+        if (s < 86400) return 'vor ' + Math.floor(s / 3600) + ' h';
+        return 'vor ' + Math.floor(s / 86400) + ' d';
+    }
+
+    function uptime(sec) {
+        if (sec === null || sec === undefined) return '–';
+        const d = Math.floor(sec / 86400);
+        const h = Math.floor((sec % 86400) / 3600);
+        return d > 0 ? d + ' d ' + h + ' h' : h + ' h';
+    }
+
+    function volt(mv) {
+        return mv ? (mv / 1000).toFixed(2).replace('.', ',') + ' V' : '–';
+    }
+
+    async function api(url, options) {
+        const opts = Object.assign({ headers: {} }, options || {});
+        opts.headers['X-Requested-With'] = 'XMLHttpRequest';
+        if (opts.body) opts.headers['Content-Type'] = 'application/json';
+        const resp = await fetch(url, opts);
+        let body = {};
+        try { body = await resp.json(); } catch (e) { /* non-JSON error */ }
+        if (!resp.ok) throw new Error(body.error || ('Fehler ' + resp.status));
+        return body;
+    }
+
+    // ------------------------------------------------------------ status
+
+    function renderStatus() {
+        const tbody = $('ra-status-body');
+        tbody.replaceChildren();
+        const rows = data.status || [];
+        $('ra-status-empty').classList.toggle('d-none', rows.length > 0);
+        rows.forEach((r) => {
+            let state;
+            if (r.offline) {
+                state = el('span', { class: 'ra-crit' }, el('i', { class: 'fas fa-plug me-1' }), 'nicht erreichbar');
+            } else if (r.last_ok === false) {
+                state = el('span', { class: 'ra-warn', title: r.last_error || '' }, 'letzter Versuch fehlgeschlagen');
+            } else if (r.bat_mv === null) {
+                state = el('span', { class: 'ra-muted' }, 'noch keine Daten');
+            } else {
+                state = el('span', { class: LEVEL_CLASS[r.level] || '' }, LEVEL_TEXT[r.level] || r.level);
+            }
+            const tr = el('tr', { dataset: { name: r.name }, class: r.name === selectedName ? 'table-active' : '' },
+                el('td', {}, r.name),
+                el('td', { class: 'ra-volt ' + (r.bat_mv ? (LEVEL_CLASS[r.level] || '') : 'ra-muted') }, volt(r.bat_mv)),
+                el('td', {}, state),
+                el('td', {}, age(r.sample_ts)),
+                el('td', {}, uptime(r.uptime_s)),
+                el('td', {}, r.last_rssi === null ? '–' : r.last_rssi + ' dBm'),
+                el('td', { title: r.last_error || '' }, age(r.last_try_ts)),
+            );
+            tr.addEventListener('click', () => selectRepeater(r.name));
+            tbody.appendChild(tr);
+        });
+
+        const sel = $('ra-history-name');
+        sel.replaceChildren(...rows.map((r) => el('option', { value: r.name }, r.name)));
+        if (rows.length && !rows.some((r) => r.name === selectedName)) selectedName = rows[0].name;
+        if (selectedName) sel.value = selectedName;
+    }
+
+    function selectRepeater(name) {
+        selectedName = name;
+        $('ra-history-name').value = name;
+        document.querySelectorAll('#ra-status-body tr').forEach((tr) => {
+            tr.classList.toggle('table-active', tr.dataset.name === name);
+        });
+        loadHistory();
+    }
+
+    // ------------------------------------------------------------ history
+
+    async function loadHistory() {
+        if (!selectedName || typeof Chart === 'undefined') {
+            $('ra-history-empty').classList.toggle('d-none', !!selectedName);
+            return;
+        }
+        const days = $('ra-history-days').value;
+        let hist;
+        try {
+            hist = await api('/api/repeater-telemetry/history?name=' + encodeURIComponent(selectedName) + '&days=' + days);
+        } catch (e) {
+            showMessage('Verlauf konnte nicht geladen werden: ' + e.message, 'danger');
+            return;
+        }
+        const points = hist.samples.filter((s) => s.ok && s.bat_mv).map((s) => ({ x: s.ts * 1000, y: s.bat_mv / 1000 }));
+        const fails = hist.samples.filter((s) => !s.ok).map((s) => ({ x: s.ts * 1000, y: null }));
+        $('ra-history-empty').classList.toggle('d-none', points.length > 0);
+
+        const s = data.settings;
+        const t0 = Date.now() - days * 86400000;
+        const line = (y) => [{ x: t0, y: y / 1000 }, { x: Date.now(), y: y / 1000 }];
+        const css = getComputedStyle(document.documentElement);
+        const color = (name) => css.getPropertyValue(name).trim() || '#888';
+
+        const datasets = [
+            { label: 'Akku (V)', data: points, borderColor: '#0d6efd', backgroundColor: '#0d6efd33', tension: .25, pointRadius: 2, fill: false },
+            { label: 'Warnung', data: line(s.warn_mv), borderColor: color('--ra-warn'), borderDash: [6, 4], pointRadius: 0, borderWidth: 1 },
+            { label: 'Kritisch', data: line(s.critical_mv), borderColor: color('--ra-crit'), borderDash: [6, 4], pointRadius: 0, borderWidth: 1 },
+        ];
+        const labelFmt = (ms) => new Date(ms).toLocaleString('de-DE', days > 2
+            ? { day: '2-digit', month: '2-digit' }
+            : { hour: '2-digit', minute: '2-digit' });
+
+        if (chart) chart.destroy();
+        chart = new Chart($('ra-chart'), {
+            type: 'line',
+            data: { datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                parsing: false,
+                interaction: { mode: 'nearest', intersect: false },
+                scales: {
+                    x: { type: 'linear', min: t0, max: Date.now(), ticks: { callback: labelFmt, maxTicksLimit: 8 } },
+                    y: { title: { display: true, text: 'Volt' } },
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            title: (items) => items.length ? new Date(items[0].parsed.x).toLocaleString('de-DE') : '',
+                            label: (item) => item.dataset.label + ': ' + item.parsed.y.toFixed(2).replace('.', ',') + ' V',
+                        },
+                    },
+                    subtitle: {
+                        display: fails.length > 0,
+                        text: fails.length + ' fehlgeschlagene Abfrage(n) im Zeitraum',
+                    },
+                },
+            },
+        });
+    }
+
+    // ------------------------------------------------------------ settings form
+
+    function repeaterRow(r) {
+        const name = el('input', { class: 'form-control form-control-sm', type: 'text', list: 'ra-known-repeaters',
+            placeholder: 'Repeater-Name', value: r ? r.name : '', 'aria-label': 'Repeater-Name' });
+        const pw = el('input', { class: 'form-control form-control-sm', type: 'password', autocomplete: 'new-password',
+            placeholder: r && r.has_password ? 'gespeichert (leer = unverändert)' : 'Passwort (optional)', 'aria-label': 'Passwort' });
+        const clearPw = el('input', { class: 'form-check-input', type: 'checkbox', title: 'Gespeichertes Passwort löschen' });
+        const remove = el('button', { class: 'btn btn-outline-danger btn-sm', type: 'button', title: 'Entfernen' }, el('i', { class: 'fas fa-trash' }));
+        const row = el('div', { class: 'ra-row d-flex gap-2 align-items-center ra-repeater' },
+            el('div', { class: 'flex-grow-1' }, name),
+            el('div', { class: 'flex-grow-1' }, pw),
+            r && r.has_password ? el('label', { class: 'form-check small mb-0 text-nowrap', title: 'Gespeichertes Passwort löschen' }, clearPw, ' löschen') : null,
+            remove);
+        remove.addEventListener('click', () => { row.remove(); updateButtons(); });
+        row._get = () => ({ name: name.value.trim(), password: pw.value, clear_password: clearPw.checked });
+        return row;
+    }
+
+    function adminRow(value) {
+        const name = el('input', { class: 'form-control form-control-sm', type: 'text', list: 'ra-known-contacts',
+            placeholder: 'Kontaktname', value: value || '', 'aria-label': 'Admin' });
+        const remove = el('button', { class: 'btn btn-outline-danger btn-sm', type: 'button', title: 'Entfernen' }, el('i', { class: 'fas fa-trash' }));
+        const row = el('div', { class: 'ra-row d-flex gap-2 ra-admin' }, el('div', { class: 'flex-grow-1' }, name), remove);
+        remove.addEventListener('click', () => { row.remove(); updateButtons(); });
+        row._get = () => name.value.trim();
+        return row;
+    }
+
+    function updateButtons() {
+        const lim = data.limits;
+        $('ra-add-admin').disabled = document.querySelectorAll('.ra-admin').length >= lim.max_admins;
+        $('ra-add-repeater').disabled = document.querySelectorAll('.ra-repeater').length >= lim.max_repeaters;
+    }
+
+    function fillForm() {
+        const s = data.settings;
+        $('ra-max-admins').textContent = data.limits.max_admins;
+        $('ra-paused').checked = !!s.paused;
+        $('ra-paused-badge').classList.toggle('d-none', !s.paused);
+        $('ra-repeaters').replaceChildren(...s.repeaters.map(repeaterRow));
+        $('ra-admins').replaceChildren(...s.admins.map(adminRow));
+        $('ra-known-repeaters').replaceChildren(...data.known_repeaters.map((n) => el('option', { value: n })));
+        $('ra-known-contacts').replaceChildren(...data.known_contacts.map((n) => el('option', { value: n })));
+        $('ra-warn').value = (s.warn_mv / 1000).toFixed(2);
+        $('ra-critical').value = (s.critical_mv / 1000).toFixed(2);
+        $('ra-hysteresis').value = s.hysteresis_mv;
+        $('ra-interval').value = s.interval_minutes;
+        $('ra-delay').value = s.delay_between_seconds;
+        $('ra-timeout').value = s.request_timeout_seconds;
+        $('ra-repeat').value = s.repeat_alert_hours;
+        $('ra-offline').value = s.offline_after_failures;
+        $('ra-channel').value = s.alert_channel || '';
+        $('ra-retention').value = s.retention_days;
+        $('ra-silence').checked = !!s.silence_mesh_output;
+        $('ra-templates').replaceChildren(...Object.keys(TEMPLATE_LABELS).map((k) => {
+            const id = 'ra-tpl-' + k;
+            const current = s['template_' + k];
+            const isDefault = current === data.default_templates[k];
+            return el('div', { class: 'mb-2' },
+                el('label', { class: 'form-label small mb-0', for: id }, TEMPLATE_LABELS[k]),
+                el('input', { class: 'form-control form-control-sm', type: 'text', id, dataset: { key: 'template_' + k },
+                    value: isDefault ? '' : current, placeholder: data.default_templates[k] }));
+        }));
+        updateButtons();
+    }
+
+    function collectForm() {
+        const num = (id) => $(id).value === '' ? null : Number($(id).value);
+        const payload = {
+            paused: $('ra-paused').checked,
+            repeaters: Array.from(document.querySelectorAll('.ra-repeater')).map((r) => r._get()).filter((r) => r.name),
+            admins: Array.from(document.querySelectorAll('.ra-admin')).map((r) => r._get()).filter(Boolean),
+            warn_mv: Math.round(num('ra-warn') * 1000),
+            critical_mv: Math.round(num('ra-critical') * 1000),
+            hysteresis_mv: num('ra-hysteresis'),
+            interval_minutes: num('ra-interval'),
+            delay_between_seconds: num('ra-delay'),
+            request_timeout_seconds: num('ra-timeout'),
+            repeat_alert_hours: num('ra-repeat'),
+            offline_after_failures: num('ra-offline'),
+            alert_channel: $('ra-channel').value.trim(),
+            retention_days: num('ra-retention'),
+            silence_mesh_output: $('ra-silence').checked,
+        };
+        document.querySelectorAll('#ra-templates input').forEach((i) => { payload[i.dataset.key] = i.value; });
+        return payload;
+    }
+
+    // ------------------------------------------------------------ actions
+
+    async function load() {
+        try {
+            data = await api('/api/repeater-telemetry');
+        } catch (e) {
+            showMessage('Daten konnten nicht geladen werden: ' + e.message, 'danger');
+            return;
+        }
+        $('ra-service-off').classList.toggle('d-none', data.service_enabled);
+        renderStatus();
+        fillForm();
+        loadHistory();
+    }
+
+    async function refreshStatus() {
+        try {
+            data = Object.assign(data || {}, await api('/api/repeater-telemetry'));
+            renderStatus();
+            loadHistory();
+        } catch (e) {
+            showMessage('Aktualisieren fehlgeschlagen: ' + e.message, 'danger');
+        }
+    }
+
+    $('ra-form').addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        const btn = $('ra-save');
+        btn.disabled = true;
+        try {
+            await api('/api/repeater-telemetry/settings', { method: 'POST', body: JSON.stringify(collectForm()) });
+            showMessage('Gespeichert. Der Bot übernimmt die Änderungen innerhalb weniger Sekunden.', 'success');
+            await load();
+        } catch (e) {
+            showMessage('Nicht gespeichert: ' + e.message, 'danger');
+        } finally {
+            btn.disabled = false;
+        }
+    });
+
+    $('ra-reset').addEventListener('click', async () => {
+        if (!window.confirm('Alle hier gespeicherten Einstellungen verwerfen? Danach gelten wieder die Werte aus der config.ini.')) return;
+        try {
+            await api('/api/repeater-telemetry/reset', { method: 'POST' });
+            showMessage('Zurückgesetzt – es gelten wieder die Werte aus der config.ini.', 'success');
+            await load();
+        } catch (e) {
+            showMessage('Zurücksetzen fehlgeschlagen: ' + e.message, 'danger');
+        }
+    });
+
+    $('ra-poll').addEventListener('click', async () => {
+        try {
+            await api('/api/repeater-telemetry/poll', { method: 'POST' });
+            showMessage('Abfrage angestoßen. Die Ergebnisse erscheinen in ein bis zwei Minuten.', 'info');
+            setTimeout(refreshStatus, 60000);
+        } catch (e) {
+            showMessage('Abfrage konnte nicht gestartet werden: ' + e.message, 'danger');
+        }
+    });
+
+    $('ra-add-repeater').addEventListener('click', () => { $('ra-repeaters').appendChild(repeaterRow(null)); updateButtons(); });
+    $('ra-add-admin').addEventListener('click', () => { $('ra-admins').appendChild(adminRow('')); updateButtons(); });
+    $('ra-refresh').addEventListener('click', refreshStatus);
+    $('ra-history-name').addEventListener('change', (ev) => selectRepeater(ev.target.value));
+    $('ra-history-days').addEventListener('change', loadHistory);
+
+    load();
+    setInterval(refreshStatus, 120000);
+})();
+</script>
+{% endblock %}

@@ -2669,6 +2669,8 @@ enabled = false
 # -----------------------------------------------------------------------------
 # Repeater telemetry: poll repeater status (battery, uptime, RSSI) and warn on
 # low battery or unreachable repeaters. See docs/repeater-telemetry.md.
+# Everything below can also be set in the web viewer (Settings > Repeater-Akku);
+# values saved there take precedence over this section.
 # The 'akku' command shows the latest readings ([Akku_Command]).
 # -----------------------------------------------------------------------------
 [RepeaterTelemetry_Service]
@@ -2692,9 +2694,13 @@ hysteresis_mv = 100
 repeat_alert_hours = 12
 # Consecutive failed polls before an "offline" alert (0 = disable offline alerts)
 offline_after_failures = 3
-# Where alerts go: mesh channel and/or DMs (comma-separated contact names)
+# Admins who get alerts as MeshCore DM: up to 5 comma-separated contact names
+admins =
+# Optional: also post alerts to this mesh channel (e.g. #admin)
 alert_channel =
-alert_dm =
+# alert_dm = (older name for admins, still read)
+# Pause polling without disabling the service
+paused = false
 # Only send alerts to Discord/Telegram (discord_webhook_urls / telegram_chat_ids), not the mesh
 silence_mesh_output = false
 # Delete samples older than this many days
