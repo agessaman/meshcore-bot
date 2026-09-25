@@ -617,6 +617,10 @@ category.funfact = fun
 #       0 8 * * *     = every day at 08:00 (in [Bot] timezone)
 #       30 12 * * mon = every Monday at 12:30
 #       30 12 * * 0   = same (Monday) — see APScheduler note below
+#   - Flexible crontab using unordered fields with suffix identifiers (e.g. 9h,
+#     45m, 28d), month/day-of-week names (e.g. mon, thu, feb, nov), ordinate
+#     prefixes for days-of-week (e.g. 1st, 2nd, last). See scheduled-messages.md
+#     for complete description and examples.
 #   - Preset aliases (@yearly @annually @monthly @weekly @daily @midnight @hourly).
 #     These expand to the 5-field forms above; @weekly is Monday 00:00 (not Sunday).
 #   - Deprecated (still accepted, logs a warning): HHMM = daily at that 24h clock time

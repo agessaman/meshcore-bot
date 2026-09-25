@@ -698,6 +698,121 @@ semantic versioning.
   The reply sent over the mesh is unchanged—it still carries only the exception
   text, with no filesystem path and no extra airtime.
 
+### Changed
+
+- Response templates are parsed by a character-by-character state machine rather
+  than by splitting on delimiters. Placeholders can now nest (`{"Dist: {d|hops_min:1}"}`)
+  and filter arguments can be quoted. Field values are substituted into the output
+  and never re-scanned, so a sender-supplied phrase still cannot inject a placeholder.
+
+- Web viewer navigation is grouped: Radio, Scheduled Messages, Greeter, Feeds, Plugins
+  and Configuration now sit under a single **Settings** gear menu, leaving Dashboard,
+  Real-time, Contacts, Mesh Graph and Logs on the bar. The current page is highlighted,
+  including the gear when a settings page is open.
+- Added notes on connecting to waev.app MQTT brokers to the `packet_capture.md` file.
+
+### Added
+
+- Shlink is now supported as a URL shortener alongside v.gd / is.gd, selected with
+  `short_url_website_service = shlink` under `[External_Data]`. It authenticates with
+  `short_url_website_api_key` in an `X-Api-Key` header and needs `short_url_website`
+  set to your own instance — there is no default, and the bot skips shortening rather
+  than sending the key to a host you did not configure.
+
+- `shorten` and `if_nonempty` response-template filters. `shorten` runs a value
+  through the configured shortener and falls back to the original URL when shortening
+  fails, so a clause is never lost to a network error. `if_nonempty:L` replaces a
+  non-empty value with literal `L` and clears otherwise, which is how a whole clause
+  is hidden rather than labelled: `{packet_hash|if_nonempty:"https://…/{packet_hash}"|shorten}`
+  prints nothing at all when RF correlation fails, instead of a broken link. Both
+  filters also answer to their other spellings — `shorten_url` in a template,
+  `shorten_url` in a feed format, `if_notempty` — so a chain copied between a feed
+  format and a command `response_format` works unchanged either way.
+
+- Response-template filter arguments may be double-quoted, and a quoted argument may
+  contain nested `{field}` placeholders: `{d|prefix_if_nonempty:"Dist {sender}: "}`.
+  The quote ends the argument, so further filters can follow it. An unquoted
+  `prefix_if_nonempty` argument still consumes the rest of the placeholder, which is
+  what lets its literal contain `|`, so that form must stay last in its chain.
+
+- `mqttN_keepalive` (default 60) sets the MQTT PINGREQ interval per broker. It was
+  hardcoded at 60 before, which is long for websockets through a proxy that drops
+  idle connections.
+
+- `hops_min:N` response-template filter, alongside `pathbytes_min:N`. It clears a
+  field unless the message actually travelled at least N hops, so
+  `{firstlast_distance|hops_min:1|prefix_if_nonempty: | F/L Dist: }` drops the whole
+  clause on a direct message. The distance placeholders render `N/A` when there is no
+  path, and `prefix_if_nonempty` treats that as a value and prints its label, so a
+  gate was needed; `pathbytes_min` was the only one available and it asks how the path
+  is *encoded*, which meant throwing away a measurable one-byte multi-hop distance to
+  suppress the direct case. `hops_min` asks about the route instead. An unknown hop
+  count clears the field rather than guessing.
+
+- `{packet_hash}` placeholder for `[Keywords]` responses, the test command's
+  `response_format` and the path command's `reply_prefix`: the 16-char MeshCore
+  packet identity hash (uppercase hex) of the packet that carried the request, so a
+  reply can be tied back to a specific transmission when comparing paths. It comes
+  only from the routing info of an RF packet actually correlated to the message, and
+  renders empty otherwise, so a hash from an unrelated transmission is never shown.
+
+- **Scheduled messages can be managed from the web viewer** (#174). A new Schedule page
+  lists every `[Scheduled_Messages]` entry with its next run time and offers add, edit
+  and delete. Changes are written to `config.ini` and applied by a queued config reload,
+  so no restart is needed. The schedule builder composes the cron key from plain-language
+  options and previews the next five runs; entries the bot cannot run are shown as
+  **Not scheduled** with the reason rather than hidden. It edits the same config section
+  the bot already uses, so there is no second source of truth.
+- **Flexible cron format for `[Scheduled_Messages]`**, alongside standard 5-field cron.
+  Fields can appear in any order using suffixes (`9h`, `30m`, `15d`, `3w` for ISO week)
+  plus month/day-of-week names, so schedules that plain cron cannot express — "the 4th
+  Tuesday of the month" (`4th tue 19:00`) or "the last Friday" (`last fri`) — no longer
+  need a hand-rolled day-of-month list that drifts across months of different lengths.
+  Optional `start:YYYY-MM-DD` / `end:YYYY-MM-DD` bound a schedule to a date range. The
+  web viewer's schedule builder gets a matching "Flexible (cron)" mode, and the edit
+  modal now detects which mode a stored schedule belongs to instead of always opening in
+  Advanced. Because `:` is the INI key/value separator, a flexible-cron key containing
+  an HH:MM time is stored in `config.ini` with `:` encoded as `!` (e.g.
+  `4th tue 14!00 jan-oct = ...`) and decoded back on every read; `HHMM` without a colon
+  needs no encoding.
+- Documented installing with `pipx`, which sidesteps PEP 668 on Debian 12+, Ubuntu
+  23.04+, Fedora and Arch (#222), including where `config.ini`, the database and
+  `local/` live — everything resolves relative to the config file's directory, so an
+  absolute `--config` is what makes a pipx install deterministic.
+- Migration 23: nullable `snr` / `rssi` columns on `observed_paths` for
+  zero-hop advert rows.
+- `{cmd:<command> [args]}` placeholders in `[Scheduled_Messages]`: a scheduled message
+  can embed the reply of any bot command, so a recurring forecast is
+  `0 6,12,18 * * * = Public:{cmd:wx Seattle}` rather than a per-service schedule
+  setting. The command runs for its text only and transmits nothing itself
+  (`CommandManager.render_command_output`); unknown, disabled, admin-only, timing-out
+  and silent commands expand to nothing rather than airing raw placeholder text.
+  Bounded by the new `[Bot] scheduled_command_timeout_seconds` (default 30). Two
+  non-configurable airtime guards apply: a schedule using `{cmd:...}` must not fire
+  more often than every 15 minutes (rejected at startup, measured by the tightest gap
+  so `0,1 * * * *` counts as 60 seconds), and the command's own `cooldown_seconds` is
+  still enforced.
+- `{path_distance}` is now available in the path command's `[Path_Command] reply_prefix`,
+  reporting total distance travelled (sender → hops → bot, e.g. `12.4km`) and rendering
+  empty when any node in the chain has no usable coordinates. The prefix now supports the
+  same pipe filters as the test command's `response_format`, so
+  `{path_distance|prefix_if_nonempty:📏 }` drops the label along with the value.
+- `install-service.sh --install-extras` installs the optional profanity-filter and
+  geocoding packages without prompting, for unattended installs and upgrades. It
+  takes precedence over the in-place `--update-venv` path, so the two can be
+  combined.
+- `[PacketCapture] observer_name` — an optional name reported as the `origin` of
+  MQTT packet and status payloads. It lets the observer/analyzer identity differ
+  from the MeshCore RF node, which is useful when one bot name is already taken
+  by the radio's advertised name. Unset (the default) keeps the previous
+  behavior: the connected device name, falling back to `[Bot] bot_name`.
+- `local_translation_path` in `[Localization]` points at your own translation
+  catalog, merged over the distributed one key by key, so you can translate a
+  local command or override a single shipped string without editing a file that
+  an upgrade will replace. Defaults to the `translations/` directory inside
+  `[Bot] local_dir_path`, resolved to an absolute path so it does not depend on
+  the working directory.
+
 ## [1.0.0] — 2026-08-07
 
 v1.0.0 marks the first stable release. It adds zero-hop neighbor discovery, a
