@@ -83,13 +83,6 @@ git clone https://github.com/Techsuchti/meshcore-bot-Meshwbl.git meshcore-bot
 cd meshcore-bot
 ```
 
-> **Hinweis:** Solange die neuen Funktionen (deutsche Oberfläche, Repeater-Akku,
-> Anleitung) noch nicht in `main` übernommen sind, zusätzlich diesen Branch wählen:
->
-> ```bash
-> git checkout feature/repeater-telemetry
-> ```
-
 ---
 
 ## 5. Bot als Dienst installieren
