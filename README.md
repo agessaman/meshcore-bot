@@ -1,5 +1,11 @@
 # MeshCore Bot
 
+> **🇩🇪 Mod by [Mesh.Weserbergland.cc](https://mesh.weserbergland.cc)** – diese Version enthält eine
+> deutsche Weboberfläche, eine Anleitung im Menü und eine Akku-Überwachung für Repeater mit
+> Warnungen an bis zu 5 Admins. **Deutsche Installationsanleitung: [INSTALLATION.md](INSTALLATION.md)**
+>
+> Basiert auf [agessaman/meshcore-bot](https://github.com/agessaman/meshcore-bot).
+
 A Python bot that connects to MeshCore mesh networks via serial port, BLE, or TCP/IP. The bot responds to messages containing configured keywords, executes commands, and provides various data services including weather, solar conditions, and satellite pass information. A web viewer provides a browser-based dashboard for monitoring and managing the bot.
 
 

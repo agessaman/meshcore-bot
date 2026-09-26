@@ -53,6 +53,7 @@
 
         <article class="col-lg-9 guide">
             <h1 class="h3 mb-3"><i class="fas fa-book me-2"></i>Anleitung</h1>
+            <p class="text-muted small mb-2">Mod by <a href="https://mesh.weserbergland.cc" target="_blank" rel="noopener noreferrer">Mesh.Weserbergland.cc</a> · basiert auf <a href="https://github.com/agessaman/meshcore-bot" target="_blank" rel="noopener noreferrer">agessaman/meshcore-bot</a></p>
             <p class="lead">Alles Wichtige zum MeshCore-Bot und dieser Weboberfläche – vom Einrichten über die Befehle bis zur Akku-Überwachung der Repeater.</p>
 
             <section id="start">
@@ -63,11 +64,12 @@
                     <li><strong>Weboberfläche einschalten</strong> (falls noch nicht geschehen):
 <pre>[Web_Viewer]
 enabled = true
+auto_start = true
 host = 0.0.0.0
 port = 8080
 web_viewer_password = EinSicheresPasswort</pre>
                         Danach ist sie unter <code>http://&lt;IP-des-Bot-Rechners&gt;:8080</code> erreichbar.</li>
-                    <li><strong>Bot neu starten</strong>, damit Änderungen an der <code>config.ini</code> greifen. Als Dienst installiert: <code>sudo systemctl restart meshcore-bot</code>.</li>
+                    <li><strong>Bot neu starten</strong>, damit Änderungen an der <code>config.ini</code> greifen. Als Dienst installiert: <code>sudo systemctl restart meshcore-bot</code>. Die Datei liegt dann unter <code>/etc/meshcore-bot/config.ini</code>.</li>
                 </ol>
                 <p class="tip">Viele Einstellungen lassen sich direkt hier in der Weboberfläche ändern (Menü <em>Einstellungen</em>). Die meisten gelten sofort – nur beim Ein- oder Ausschalten von Diensten ist ein Neustart nötig.</p>
             </section>

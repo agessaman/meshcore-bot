@@ -88,3 +88,12 @@ def test_guide_anchor_links_resolve():
     ids = set(re.findall(r'\bid="([^"]+)"', html))
     for anchor in re.findall(r'href="#([^"]+)"', html):
         assert anchor in ids, anchor
+
+
+def test_mod_credit_in_footer_and_login(client):
+    html = client.get("/anleitung").get_data(as_text=True)
+    footer = html[html.index("<footer"):html.index("</footer>")]
+    assert "Mod by" in footer and "https://mesh.weserbergland.cc" in footer
+    assert "https://github.com/agessaman/meshcore-bot" in footer  # upstream credit stays
+    login = (WEB / "templates" / "login.html").read_text(encoding="utf-8")
+    assert "Mesh.Weserbergland.cc" in login

@@ -16,6 +16,8 @@ auf der Seite **Repeater-Akku**.
 
    [Web_Viewer]
    enabled = true
+   auto_start = true
+   host = 0.0.0.0
    web_viewer_password = EinSicheresPasswort
    ```
 
