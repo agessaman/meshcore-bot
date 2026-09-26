@@ -36,6 +36,11 @@ def register_repeater_telemetry_routes(viewer: Any) -> None:
         except sqlite3.Error:
             return []
 
+    @app.route('/anleitung')
+    def guide_page():
+        """German user guide for the bot and the web interface."""
+        return render_template('anleitung.html')
+
     @app.route('/repeater-akku')
     def repeater_akku_page():
         """Repeater battery monitoring (German UI)."""

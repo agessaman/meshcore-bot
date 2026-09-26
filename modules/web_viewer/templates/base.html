@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ ui_language|default('en') }}">
 
 <head>
     <meta charset="UTF-8">
@@ -449,6 +449,11 @@
                             <i class="fas fa-file-alt"></i> Logs
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link {{ 'active' if request.path == '/anleitung' }}" href="/anleitung">
+                            <i class="fas fa-book"></i> Anleitung
+                        </a>
+                    </li>
 
                     {#- Configuration pages live behind one gear so the bar stays about
                         what the mesh is doing, not how the bot is set up. -#}
@@ -732,6 +737,11 @@
 
     <!-- Moment.js for date formatting -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+    {% if ui_language == 'de' %}
+    <!-- German UI (see static/js/ui-i18n-de.js) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/locale/de.min.js"></script>
+    <script src="{{ url_for('static', filename='js/ui-i18n-de.js') }}"></script>
+    {% endif %}
 
     <!-- Chart.js for graphs -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>

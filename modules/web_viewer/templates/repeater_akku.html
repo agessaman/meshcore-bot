@@ -301,7 +301,7 @@
         if (opts.body) opts.headers['Content-Type'] = 'application/json';
         const resp = await fetch(url, opts);
         let body = {};
-        try { body = await resp.json(); } catch (e) { /* non-JSON error */ }
+        try { body = await resp.json(); } catch { /* non-JSON error */ }
         if (!resp.ok) throw new Error(body.error || ('Fehler ' + resp.status));
         return body;
     }

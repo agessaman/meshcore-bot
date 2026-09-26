@@ -186,6 +186,7 @@ from modules.utils import resolve_path
 from modules.web_viewer.config_panels import CONFIG_PANELS, PANEL_CATEGORIES
 from modules.web_viewer.integration import normalized_web_viewer_password
 from modules.web_viewer.repeater_telemetry_routes import register_repeater_telemetry_routes
+from modules.web_viewer.ui_i18n import resolve_ui_language
 
 
 def _read_limited_requests_response(
@@ -603,6 +604,7 @@ class BotDataViewer:
                     'radio_offline': radio_offline,
                     'radio_offline_since': radio_offline_since,
                     'bot_initializing': bot_initializing,
+                    'ui_language': resolve_ui_language(self.config),
                 }
             except Exception as e:
                 self.logger.exception("Template context processor failed: %s", e)
@@ -617,6 +619,7 @@ class BotDataViewer:
                     'radio_zombie_since': None,
                     'radio_offline': False,
                     'radio_offline_since': None,
+                    'ui_language': 'en',
                 }
 
     def _init_databases(self):
@@ -1286,6 +1289,7 @@ class BotDataViewer:
                 'greeter',
                 'region_warnings_page',
                 'repeater_akku_page',
+                'guide_page',
                 'logs',
                 'multibyte_rollout',
                 'mesh',

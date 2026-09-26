@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+
+{% block title %}Anleitung - MeshCore Bot{% endblock %}
+
+{% block extra_css %}
+<style>
+    .guide-toc { position: sticky; top: 1rem; }
+    .guide-toc .nav-link { padding: .2rem .5rem; font-size: .9rem; }
+    .guide-toc .nav-link.sub { padding-left: 1.25rem; font-size: .85rem; }
+    .guide h2 { font-size: 1.35rem; margin-top: 2.25rem; padding-top: .75rem; border-top: 1px solid var(--border-color, #dee2e6); }
+    .guide h2:first-of-type { margin-top: 0; border-top: 0; padding-top: 0; }
+    .guide h3 { font-size: 1.05rem; margin-top: 1.5rem; }
+    .guide section { scroll-margin-top: 1rem; }
+    .guide table { font-size: .92rem; }
+    .guide td:first-child { white-space: nowrap; }
+    .guide pre { background: var(--bg-secondary, #f6f8fa); border-radius: .375rem; padding: .75rem 1rem; font-size: .85rem; }
+    .guide .tip { border-left: 4px solid #0d6efd; padding: .5rem .9rem; background: rgba(13,110,253,.06); border-radius: .25rem; }
+    .guide .warn { border-left: 4px solid #b45309; padding: .5rem .9rem; background: rgba(180,83,9,.08); border-radius: .25rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3" data-no-i18n>
+    <div class="row g-4">
+        <nav class="col-lg-3 d-none d-lg-block" aria-label="Inhalt">
+            <div class="guide-toc card">
+                <div class="card-header"><i class="fas fa-list-ul me-2"></i>Inhalt</div>
+                <div class="card-body py-2">
+                    <nav class="nav flex-column">
+                        <a class="nav-link" href="#start">Erste Schritte</a>
+                        <a class="nav-link" href="#bedienen">Bot im Mesh bedienen</a>
+                        <a class="nav-link" href="#befehle">Befehlsübersicht</a>
+                        <a class="nav-link" href="#web">Die Weboberfläche</a>
+                        <a class="nav-link sub" href="#web-uebersicht">Übersicht</a>
+                        <a class="nav-link sub" href="#web-echtzeit">Echtzeit &amp; Logs</a>
+                        <a class="nav-link sub" href="#web-kontakte">Kontakte &amp; Mesh-Graph</a>
+                        <a class="nav-link sub" href="#web-funk">Funkgerät</a>
+                        <a class="nav-link sub" href="#web-zeitplan">Geplante Nachrichten</a>
+                        <a class="nav-link sub" href="#web-feeds">Feeds &amp; Begrüßung</a>
+                        <a class="nav-link sub" href="#web-region">Regionswarnungen</a>
+                        <a class="nav-link sub" href="#web-plugins">Plugins</a>
+                        <a class="nav-link sub" href="#web-konfig">Konfiguration</a>
+                        <a class="nav-link" href="#akku">Repeater-Akku</a>
+                        <a class="nav-link" href="#admins">Admins &amp; Rechte</a>
+                        <a class="nav-link" href="#sprache">Sprache</a>
+                        <a class="nav-link" href="#sicherheit">Sicherheit</a>
+                        <a class="nav-link" href="#update">Updates &amp; Sicherung</a>
+                        <a class="nav-link" href="#hilfe">Fehlerbehebung</a>
+                    </nav>
+                </div>
+            </div>
+        </nav>
+
+        <article class="col-lg-9 guide">
+            <h1 class="h3 mb-3"><i class="fas fa-book me-2"></i>Anleitung</h1>
+            <p class="lead">Alles Wichtige zum MeshCore-Bot und dieser Weboberfläche – vom Einrichten über die Befehle bis zur Akku-Überwachung der Repeater.</p>
+
+            <section id="start">
+                <h2>Erste Schritte</h2>
+                <p>Der Bot läuft auf einem Rechner (z. B. Raspberry Pi), an dem ein MeshCore-Companion-Funkgerät per USB, Bluetooth oder WLAN hängt. Er liest die Nachrichten im Mesh mit und antwortet auf Befehle.</p>
+                <ol>
+                    <li><strong>Grundeinstellungen</strong> stehen in der Datei <code>config.ini</code> im Bot-Ordner: Verbindung zum Funkgerät (<code>[Connection]</code>), Bot-Name (<code>[Bot]</code>) und die Kanäle, auf denen der Bot zuhört (<code>[Channels] monitor_channels</code>).</li>
+                    <li><strong>Weboberfläche einschalten</strong> (falls noch nicht geschehen):
+<pre>[Web_Viewer]
+enabled = true
+host = 0.0.0.0
+port = 8080
+web_viewer_password = EinSicheresPasswort</pre>
+                        Danach ist sie unter <code>http://&lt;IP-des-Bot-Rechners&gt;:8080</code> erreichbar.</li>
+                    <li><strong>Bot neu starten</strong>, damit Änderungen an der <code>config.ini</code> greifen. Als Dienst installiert: <code>sudo systemctl restart meshcore-bot</code>.</li>
+                </ol>
+                <p class="tip">Viele Einstellungen lassen sich direkt hier in der Weboberfläche ändern (Menü <em>Einstellungen</em>). Die meisten gelten sofort – nur beim Ein- oder Ausschalten von Diensten ist ein Neustart nötig.</p>
+            </section>
+
+            <section id="bedienen">
+                <h2>Bot im Mesh bedienen</h2>
+                <ul>
+                    <li><strong>Im Kanal:</strong> Schreibe einen Befehl (z. B. <code>ping</code> oder <code>wetter</code>) in einen Kanal, den der Bot beobachtet. Er antwortet im selben Kanal.</li>
+                    <li><strong>Per Direktnachricht (DM):</strong> Schreibe den Bot direkt an. Manche Befehle funktionieren nur so (in der Tabelle unten mit „DM“ markiert).</li>
+                    <li><strong>Hilfe im Mesh:</strong> <code>help</code> (oder <code>hilfe</code>) listet die Befehle, <code>help &lt;befehl&gt;</code> erklärt einen Befehl.</li>
+                </ul>
+                <p>Eine Mesh-Nachricht ist kurz (etwa 130–150 Zeichen). Längere Antworten verteilt der Bot automatisch auf mehrere Nachrichten.</p>
+            </section>
+
+            <section id="befehle">
+                <h2>Befehlsübersicht</h2>
+                <p>Welche Befehle aktiv sind, legst du unter <a href="/plugins">Einstellungen → Plugins</a> fest.</p>
+                <h3>Test &amp; Info</h3>
+                <table class="table table-sm">
+                    <tbody>
+                        <tr><td><code>ping</code></td><td>Antwortet mit „Pong!“ – schneller Verbindungstest.</td></tr>
+                        <tr><td><code>test</code>, <code>t</code></td><td>Antwortet mit Verbindungsinfos (Hops, Pfad, Signal).</td></tr>
+                        <tr><td><code>path</code></td><td>Zeigt, über welche Repeater deine Nachricht kam.</td></tr>
+                        <tr><td><code>multitest</code>, <code>mt</code></td><td>Sammelt 6 Sekunden lang alle Wege, auf denen deine Nachricht ankommt.</td></tr>
+                        <tr><td><code>trace</code>, <code>tracer</code></td><td>Verbindungstest entlang eines Pfads (tracer = hin und zurück).</td></tr>
+                        <tr><td><code>prefix &lt;hex&gt;</code></td><td>Welcher Repeater hat dieses Präfix? <code>prefix free</code> zeigt freie Präfixe.</td></tr>
+                        <tr><td><code>stats</code></td><td>Statistik der letzten 24 Stunden.</td></tr>
+                        <tr><td><code>channels</code></td><td>Liste bekannter Hashtag-Kanäle.</td></tr>
+                        <tr><td><code>cmd</code>, <code>help</code></td><td>Befehlsliste und Hilfe.</td></tr>
+                        <tr><td><code>version</code>, <code>contact</code></td><td>Bot-Version bzw. Kontaktdaten des Bots.</td></tr>
+                        <tr><td><code>schedule</code></td><td>Anstehende geplante Nachrichten.</td></tr>
+                    </tbody>
+                </table>
+                <h3>Repeater</h3>
+                <table class="table table-sm">
+                    <tbody>
+                        <tr><td><code>akku</code></td><td>Akkuspannung aller überwachten Repeater (siehe <a href="#akku">Repeater-Akku</a>).</td></tr>
+                        <tr><td><code>akku &lt;name&gt;</code></td><td>Details zu einem Repeater: Spannung, Laufzeit, RSSI, Erreichbarkeit.</td></tr>
+                        <tr><td><code>akku jetzt</code></td><td>Startet sofort eine neue Abfrage.</td></tr>
+                        <tr><td><code>neighbors</code> <span class="badge bg-secondary">DM</span></td><td>Sucht direkte Nachbarn (Zero-Hop). Kostet Sendezeit, nur für Admins.</td></tr>
+                        <tr><td><code>repeater</code> <span class="badge bg-secondary">DM</span></td><td>Repeater-Kontakte verwalten und bereinigen (Admin).</td></tr>
+                    </tbody>
+                </table>
+                <h3>Wetter &amp; Umwelt</h3>
+                <table class="table table-sm">
+                    <tbody>
+                        <tr><td><code>wx</code>, <code>wetter</code></td><td>Wetter und Vorhersage. <code>wx tomorrow</code>, <code>wx 7d</code>, <code>wx hourly</code>.</td></tr>
+                        <tr><td><code>gwx &lt;ort&gt;</code></td><td>Wetter für einen beliebigen Ort weltweit.</td></tr>
+                        <tr><td><code>regen</code>, <code>schnee</code></td><td>Beginnt oder endet Niederschlag in den nächsten ~2 Stunden?</td></tr>
+                        <tr><td><code>aqi</code>, <code>luft</code></td><td>Luftqualität.</td></tr>
+                        <tr><td><code>sun</code>, <code>moon</code></td><td>Sonnenauf-/-untergang, Mondphase.</td></tr>
+                        <tr><td><code>solar</code>, <code>hfcond</code></td><td>Sonnenaktivität und KW-Ausbreitung (Amateurfunk).</td></tr>
+                        <tr><td><code>polarlicht</code>, <code>aurora</code></td><td>Polarlicht-Chance und Kp-Index.</td></tr>
+                        <tr><td><code>sf &lt;ort&gt;</code></td><td>Ertragsprognose für eine PV-Anlage.</td></tr>
+                        <tr><td><code>satpass</code></td><td>Satelliten-Überflüge.</td></tr>
+                        <tr><td><code>airplanes</code></td><td>Flugzeuge in der Nähe (ADS-B).</td></tr>
+                    </tbody>
+                </table>
+                <h3>Spaß</h3>
+                <table class="table table-sm">
+                    <tbody>
+                        <tr><td><code>joke</code>, <code>dadjoke</code></td><td>Ein Witz.</td></tr>
+                        <tr><td><code>dice</code>, <code>roll</code></td><td>Würfeln bzw. Zufallszahl (<code>roll 50</code> = 1–50).</td></tr>
+                        <tr><td><code>magic8</code></td><td>Die magische Wahrsagekugel.</td></tr>
+                        <tr><td><code>hello</code>, <code>hacker</code>, <code>catfact</code></td><td>Grüße, „Hacker“-Sprüche, Katzen-Fakten.</td></tr>
+                        <tr><td><code>sports</code>, <code>wc</code></td><td>Sportergebnisse, Fußball-WM.</td></tr>
+                    </tbody>
+                </table>
+                <h3>Verwaltung (nur Admins, per DM)</h3>
+                <table class="table table-sm">
+                    <tbody>
+                        <tr><td><code>reload</code></td><td>Konfiguration ohne Neustart neu laden.</td></tr>
+                        <tr><td><code>status</code></td><td>Laufzeitstatus des Bots.</td></tr>
+                        <tr><td><code>advert</code></td><td>Flood-Advert senden (max. einmal pro Stunde).</td></tr>
+                        <tr><td><code>announce</code></td><td>Ankündigung in Kanäle senden.</td></tr>
+                        <tr><td><code>channelpause</code></td><td>Bot-Antworten in einem Kanal pausieren/fortsetzen.</td></tr>
+                        <tr><td><code>feed</code></td><td>RSS-/API-Feeds verwalten.</td></tr>
+                        <tr><td><code>webviewer</code></td><td>Weboberfläche steuern.</td></tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section id="web">
+                <h2>Die Weboberfläche</h2>
+                <p>Die Seiten erreichst du über das Menü oben. Unter <em>Einstellungen</em> sind alle Seiten zum Konfigurieren zusammengefasst. Über <i class="fas fa-moon"></i> oben rechts schaltest du den Dunkelmodus um.</p>
+
+                <section id="web-uebersicht">
+                    <h3><i class="fas fa-tachometer-alt me-1"></i> Übersicht</h3>
+                    <p>Kennzahlen der letzten 24 Stunden (Nachrichten, Befehle, gehörte Nodes, neue Nodes) mit 30-Tage-Verlauf, dazu Top-Kanäle, -Befehle und -Nutzer, aktivste Repeater, direkte Nachbarn und die Hop-Verteilung. Oben siehst du, ob Bot, Datenbank und Funkgerät in Ordnung sind.</p>
+                </section>
+
+                <section id="web-echtzeit">
+                    <h3><i class="fas fa-broadcast-tower me-1"></i> Echtzeit &amp; Logs</h3>
+                    <p><strong>Echtzeit</strong> zeigt live die Kanalnachrichten, die Befehle an den Bot und alle empfangenen Pakete. Ein Klick auf ein Paket zeigt seinen Aufbau Byte für Byte. <strong>Logs</strong> zeigt das Protokoll des Bots live, filterbar nach Stufe (DEBUG bis CRITICAL) – die erste Anlaufstelle bei Problemen.</p>
+                </section>
+
+                <section id="web-kontakte">
+                    <h3><i class="fas fa-users me-1"></i> Kontakte &amp; Mesh-Graph</h3>
+                    <p><strong>Kontakte</strong> listet alle je gehörten Nodes mit Rolle, Standort, Entfernung, Hops, Signal und Zeitpunkt. Filtern, sortieren, mit Stern markieren, exportieren (CSV/JSON) und inaktive Kontakte bereinigen ist hier möglich. Ein Klick auf einen Pfad zeigt die beteiligten Repeater.</p>
+                    <p><strong>Mesh-Graph</strong> zeigt die Verbindungen zwischen Repeatern als Netz oder auf der Karte. Mit dem Filter <em>Nachweis</em> blendest du unsichere Verbindungen aus.</p>
+                </section>
+
+                <section id="web-funk">
+                    <h3><i class="fas fa-broadcast-tower me-1"></i> Funkgerät</h3>
+                    <p>Frequenz, Bandbreite, Spreading Factor, Coding Rate und Sendeleistung lesen und schreiben; Node-Name und Standort setzen; Adverts senden; Kanäle anlegen und löschen; Regionen (Scopes) festlegen.</p>
+                    <p class="warn"><strong>Vorsicht:</strong> Geänderte Funkparameter müssen zu allen anderen Geräten im Mesh passen, sonst ist der Bot nicht mehr erreichbar. Änderungen am Funkgerät werden über den laufenden Bot ausgeführt – der Bot muss dafür verbunden sein.</p>
+                </section>
+
+                <section id="web-zeitplan">
+                    <h3><i class="fas fa-clock me-1"></i> Geplante Nachrichten</h3>
+                    <p>Nachrichten, die der Bot zu festen Zeiten in einen Kanal sendet: täglich, mehrmals täglich, an bestimmten Wochentagen, alle N Minuten/Stunden oder per Cron-Ausdruck. Wähle das längste Intervall, das reicht – jede Nachricht belegt den gemeinsamen Funkkanal.</p>
+                </section>
+
+                <section id="web-feeds">
+                    <h3><i class="fas fa-rss me-1"></i> Feeds &amp; Begrüßung</h3>
+                    <p><strong>Feeds</strong> (wenn aktiviert): RSS- oder API-Quellen abonnieren und neue Einträge automatisch in einen Kanal senden – mit eigenem Ausgabeformat, Filtern und Vorschau.</p>
+                    <p><strong>Begrüßung</strong> (wenn aktiviert): Der Bot begrüßt neue Nutzer bei ihrer ersten Nachricht. Hier siehst du, wer schon begrüßt wurde.</p>
+                </section>
+
+                <section id="web-region">
+                    <h3><i class="fas fa-globe me-1"></i> Regionswarnungen</h3>
+                    <p>Zählt, wie viele Nachrichten ohne Regionscode ins ganze Mesh gehen, und kann deren Absender freundlich darauf hinweisen. Modi: <em>Nur zählen</em> (sendet nichts), <em>Probelauf</em> (protokolliert, was gesendet würde) und <em>Warnungen senden</em>.</p>
+                </section>
+
+                <section id="web-plugins">
+                    <h3><i class="fas fa-puzzle-piece me-1"></i> Plugins</h3>
+                    <p>Jeden Befehl und jeden Dienst ein- oder ausschalten und seine Einstellungen ändern. Beim Speichern wird eine Sicherung der <code>config.ini</code> angelegt, Kommentare bleiben erhalten. Befehls-Einstellungen gelten nach wenigen Sekunden; Dienste ein- oder ausschalten braucht einen Neustart des Bots.</p>
+                </section>
+
+                <section id="web-konfig">
+                    <h3><i class="fas fa-sliders-h me-1"></i> Konfiguration</h3>
+                    <p>E-Mail-Benachrichtigungen (nächtliche Zusammenfassung, Alarm bei Funkproblemen), Log-Rotation, Wartungsstatus, Datenbank-Informationen und -Werkzeuge (optimieren, alte Daten löschen) sowie Sicherung und Wiederherstellung der Datenbank.</p>
+                </section>
+            </section>
+
+            <section id="akku">
+                <h2>Repeater-Akku</h2>
+                <p>Der Bot meldet sich regelmäßig an deinen Repeatern an, fragt ihren Status ab und warnt die Admins per MeshCore-Direktnachricht, wenn der Akku schwach wird oder ein Repeater nicht mehr antwortet.</p>
+                <h3>Einrichten</h3>
+                <ol>
+                    <li>Einmalig in der <code>config.ini</code> aktivieren und den Bot neu starten:
+<pre>[RepeaterTelemetry_Service]
+enabled = true</pre></li>
+                    <li><a href="/repeater-akku">Einstellungen → Repeater-Akku</a> öffnen.</li>
+                    <li><strong>Repeater</strong> eintragen: den Namen wie in den Kontakten des Bots (oder den Anfang des Public Keys) und das Passwort des Repeaters. Das Gast-Passwort reicht.</li>
+                    <li>Bis zu <strong>5 Admins</strong> eintragen – Kontaktnamen, die der Bot kennt.</li>
+                    <li>Schwellwerte prüfen und <strong>Speichern</strong>. Der Bot übernimmt das nach wenigen Sekunden, ohne Neustart.</li>
+                </ol>
+                <h3>Warnungen</h3>
+                <table class="table table-sm">
+                    <tbody>
+                        <tr><td>⚠️ Akku niedrig</td><td>Spannung unter der Warnschwelle (Standard 3,5 V).</td></tr>
+                        <tr><td>🪫 Akku kritisch</td><td>Spannung unter der kritischen Schwelle (Standard 3,3 V).</td></tr>
+                        <tr><td>🔋 Akku wieder ok</td><td>Spannung liegt wieder um die Hysterese (Standard 100 mV) über der Schwelle.</td></tr>
+                        <tr><td>📴 Antwortet nicht</td><td>Nach mehreren fehlgeschlagenen Abfragen in Folge (Standard 3).</td></tr>
+                        <tr><td>📶 Wieder erreichbar</td><td>Der Repeater antwortet wieder.</td></tr>
+                    </tbody>
+                </table>
+                <p>Eine Warnung kommt nur, wenn sich der Zustand ändert, und wird bei Bedarf nach der eingestellten Zeit wiederholt. Optional gehen Warnungen zusätzlich in einen Kanal oder an Telegram/Discord. Die Texte kannst du unter „Meldungstexte anpassen“ ändern.</p>
+                <p class="tip">Auf der Seite siehst du den Verlauf der Spannung als Diagramm. Mit <em>Jetzt abfragen</em> startest du sofort einen Durchlauf, im Mesh geht das mit <code>akku jetzt</code>.</p>
+            </section>
+
+            <section id="admins">
+                <h2>Admins &amp; Rechte</h2>
+                <p>Es gibt zwei Arten von „Admins“:</p>
+                <ul>
+                    <li><strong>Bot-Admins</strong> dürfen geschützte Befehle nutzen (<code>reload</code>, <code>repeater</code>, <code>neighbors</code> …). Sie stehen in der <code>config.ini</code> mit ihrem vollständigen Public Key (64 Hex-Zeichen):
+<pre>[Admin_ACL]
+admin_pubkeys = 1a2b3c...,4d5e6f...
+admin_commands = repeater,webviewer,reload,channelpause,neighbors</pre>
+                        Tipp: <code>akku</code> kannst du bei <code>admin_commands</code> ergänzen, damit nur Admins <code>akku jetzt</code> auslösen können.</li>
+                    <li><strong>Akku-Admins</strong> bekommen die Warnungen der Repeater-Überwachung. Sie werden auf der Seite <a href="/repeater-akku">Repeater-Akku</a> mit ihrem Kontaktnamen eingetragen (bis zu 5).</li>
+                </ul>
+            </section>
+
+            <section id="sprache">
+                <h2>Sprache</h2>
+                <p>Die Antworten des Bots und diese Weboberfläche richten sich nach:</p>
+<pre>[Localization]
+language = de</pre>
+                <p>Soll nur die Weboberfläche eine andere Sprache haben, setze <code>[Web_Viewer] ui_language = en</code> oder <code>de</code>. Mit <code>auto_detect_language = true</code> antwortet der Bot bei Grüßen in der Sprache des Absenders.</p>
+            </section>
+
+            <section id="sicherheit">
+                <h2>Sicherheit</h2>
+                <ul>
+                    <li>Ist die Weboberfläche mit <code>host = 0.0.0.0</code> im Netz erreichbar, <strong>immer ein Passwort setzen</strong> (<code>web_viewer_password</code>). Ohne Passwort kann jeder im Netz alles ändern – auch Funkparameter.</li>
+                    <li>Die Weboberfläche nicht direkt ins Internet stellen. Für den Zugriff von unterwegs besser ein VPN nutzen.</li>
+                    <li>Repeater-Passwörter werden in der Bot-Datenbank gespeichert und nie an den Browser geschickt. Nutze möglichst das Gast-Passwort, nicht das Admin-Passwort des Repeaters.</li>
+                </ul>
+            </section>
+
+            <section id="update">
+                <h2>Updates &amp; Sicherung</h2>
+                <ul>
+                    <li><strong>Datenbank sichern:</strong> <a href="/config">Einstellungen → Konfiguration</a> → Datenbank-Sicherung. Dort lässt sich auch eine tägliche automatische Sicherung einstellen.</li>
+                    <li><strong>config.ini:</strong> Die Plugins-Seite legt bei jedem Speichern eine Sicherung mit Zeitstempel an.</li>
+                    <li><strong>Bot aktualisieren</strong> (im Bot-Ordner):
+<pre>git pull
+sudo systemctl restart meshcore-bot</pre></li>
+                </ul>
+            </section>
+
+            <section id="hilfe">
+                <h2>Fehlerbehebung</h2>
+                <table class="table table-sm">
+                    <tbody>
+                        <tr><td>Bot antwortet nicht</td><td>Beobachtet der Bot den Kanal (<code>monitor_channels</code>)? Ist der Befehl unter Plugins aktiv? Ein Blick in die <a href="/logs">Logs</a> zeigt meist den Grund.</td></tr>
+                        <tr><td>„Funkgerät offline“</td><td>Kabel/Strom des Funkgeräts prüfen. Das Banner oben bietet „Offline-Markierung aufheben“ bzw. „Neu verbinden“.</td></tr>
+                        <tr><td>Repeater „antwortet nicht“</td><td>Steht der Repeater in den Kontakten des Bots? Stimmt das Passwort? Ist er in Funkreichweite? Die Fehlermeldung steht beim Überfahren von „Letzter Versuch“.</td></tr>
+                        <tr><td>Akku-Admin bekommt keine DM</td><td>Der Name muss genau so in den Kontakten des Bots stehen, und der Admin muss erreichbar sein.</td></tr>
+                        <tr><td>Einstellung wirkt nicht</td><td>Dienste ein-/ausschalten braucht einen Neustart. Manche Werte in der <code>config.ini</code> ebenfalls.</td></tr>
+                        <tr><td>Seite lädt nicht</td><td>Läuft der Bot? Stimmen Port und <code>host</code> unter <code>[Web_Viewer]</code>? Blockiert eine Firewall den Port?</td></tr>
+                    </tbody>
+                </table>
+                <p class="text-muted small">Weitere Details stehen in der Dokumentation im Ordner <code>docs/</code> des Bots (englisch; die Akku-Überwachung ist in <code>docs/repeater-telemetry.md</code> auf Deutsch beschrieben).</p>
+            </section>
+        </article>
+    </div>
+</div>
+{% endblock %}

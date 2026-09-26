@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ ui_language|default('en') }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -205,5 +205,8 @@
             </div>
         </div>
     </div>
+    {% if ui_language == 'de' %}
+    <script src="{{ url_for('static', filename='js/ui-i18n-de.js') }}"></script>
+    {% endif %}
 </body>
 </html>

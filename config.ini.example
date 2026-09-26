@@ -1827,6 +1827,10 @@ auto_start = false
 # true: expose page/nav/API endpoint
 multibyte_monitor_enabled = false
 
+# Web interface language: en or de. Empty = follow [Localization] language
+# (falls back to English for languages without a UI translation).
+# ui_language =
+
 # Cache the expensive lifetime multi-byte mesh aggregation for this many seconds.
 # Concurrent graph requests share one computation. The mesh page also coalesces
 # live edge events into one refresh every 30 seconds.
