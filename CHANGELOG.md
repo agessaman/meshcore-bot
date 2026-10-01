@@ -30,6 +30,8 @@ semantic versioning.
 
 ### Fixed
 
+- A radio that rejects `set_flood_scope` is now reported. The check compared the reply's `EventType` to the string `"ERROR"`, which never matches, so a rejected regional scope (the message then goes out at whatever scope the radio holds) and a rejected restore to global flood (the radio stays pinned to the region for every later send) were both silent.
+
 - The web viewer login no longer redirects off-site after sign-in. The `next`
   check let `///host` and `/\host` through, which browsers treat as another
   origin.
