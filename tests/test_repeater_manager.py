@@ -1872,3 +1872,86 @@ class TestUnsetClockIsNotGroundsForPurging:
             'a': {'public_key': 'A', 'adv_name': 'genuinely-old', 'type': 2, 'last_advert': old},
         }))
         assert len(await mgr._get_repeaters_for_purging(5)) == 1
+
+
+class TestTrackAdvertGeocodesOffLoop:
+    """Reverse geocoding for a new advert must not run on the event loop thread."""
+
+    def test_geocoding_runs_in_a_worker_thread(self, rm):
+        import threading
+
+        threads = []
+
+        def fake_extract(advert_data, should_geocode=True, packet_hash=None):
+            if should_geocode:
+                threads.append(threading.current_thread().name)
+            return {
+                'latitude': 47.6, 'longitude': -122.3,
+                'city': 'Seattle' if should_geocode else None,
+                'state': 'WA' if should_geocode else None,
+                'country': 'US' if should_geocode else None,
+            }
+
+        rm._extract_location_data = fake_extract
+        advert = {'public_key': 'ab' * 32, 'name': 'GeoNode', 'type': 2, 'adv_lat': 47.6, 'adv_lon': -122.3}
+
+        async def run():
+            loop_thread = threading.current_thread().name
+            result = await rm.track_contact_advertisement(advert, packet_hash='1234567890abcdef')
+            return loop_thread, result
+
+        loop_thread, result = asyncio.run(run())
+        assert result.ok is True
+        assert threads and threads[0] != loop_thread
+        row = rm.db_manager.execute_query(
+            "SELECT city, state, country FROM complete_contact_tracking WHERE public_key = ?", ('ab' * 32,)
+        )
+        assert row and row[0]['city'] == 'Seattle'
+
+    def test_duplicate_packet_is_skipped_before_geocoding(self, rm):
+        calls = []
+
+        def fake_extract(advert_data, should_geocode=True, packet_hash=None):
+            calls.append(should_geocode)
+            return {'latitude': 47.6, 'longitude': -122.3, 'city': None, 'state': None, 'country': None}
+
+        rm._extract_location_data = fake_extract
+        advert = {'public_key': 'cd' * 32, 'name': 'DupNode', 'type': 2}
+        asyncio.run(rm.track_contact_advertisement(advert, packet_hash='feedfacefeedface'))
+        calls.clear()
+        result = asyncio.run(rm.track_contact_advertisement(advert, packet_hash='feedfacefeedface'))
+        assert result.duplicate_packet is True
+        assert calls == []
+
+    def test_concurrent_adverts_for_one_contact_geocode_once(self, rm):
+        import threading
+
+        geocodes = []
+
+        def fake_extract(advert_data, should_geocode=True, packet_hash=None):
+            if should_geocode:
+                geocodes.append(packet_hash)
+                threading.Event().wait(0.05)
+            return {
+                'latitude': 47.6, 'longitude': -122.3,
+                'city': 'Seattle' if should_geocode else None,
+                'state': 'WA' if should_geocode else None,
+                'country': 'US' if should_geocode else None,
+            }
+
+        rm._extract_location_data = fake_extract
+        advert = {'public_key': 'ef' * 32, 'name': 'BurstNode', 'type': 2, 'adv_lat': 47.6, 'adv_lon': -122.3}
+
+        async def run():
+            return await asyncio.gather(*(
+                rm.track_contact_advertisement(advert, packet_hash=f'{i:016x}') for i in range(1, 7)
+            ))
+
+        results = asyncio.run(run())
+        assert all(r.ok for r in results)
+        assert len(geocodes) == 1
+        assert rm._advert_locks == {}
+        row = rm.db_manager.execute_query(
+            "SELECT advert_count, city FROM complete_contact_tracking WHERE public_key = ?", ('ef' * 32,)
+        )
+        assert row[0]['advert_count'] == 6 and row[0]['city'] == 'Seattle'
