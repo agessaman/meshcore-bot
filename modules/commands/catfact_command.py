@@ -114,10 +114,7 @@ class CatfactCommand(BaseCommand):
         Returns:
             List[str]: A list of cat fact strings.
         """
-        facts = self.translate_get_value('commands.catfact.facts')
-        if facts and isinstance(facts, list) and len(facts) > 0:
-            return facts
-        return self.cat_facts_fallback
+        return self.translated_or('commands.catfact.facts', self.cat_facts_fallback)
 
     def get_help_text(self) -> str:
         """Get help text for the catfact command.

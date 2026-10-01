@@ -242,10 +242,7 @@ class HelloCommand(BaseCommand):
         Returns:
             List[str]: A list of greeting opening strings.
         """
-        openings = self.translate_get_value('commands.hello.greeting_openings')
-        if openings and isinstance(openings, list) and len(openings) > 0:
-            return openings
-        return self.greeting_openings_fallback
+        return self.translated_or('commands.hello.greeting_openings', self.greeting_openings_fallback)
 
     def get_morning_greetings(self) -> list[str]:
         """Get morning greetings from translations or fallback.
@@ -253,10 +250,7 @@ class HelloCommand(BaseCommand):
         Returns:
             List[str]: A list of morning greeting strings.
         """
-        greetings = self.translate_get_value('commands.hello.morning_greetings')
-        if greetings and isinstance(greetings, list) and len(greetings) > 0:
-            return greetings
-        return self.morning_greetings_fallback
+        return self.translated_or('commands.hello.morning_greetings', self.morning_greetings_fallback)
 
     def get_afternoon_greetings(self) -> list[str]:
         """Get afternoon greetings from translations or fallback.
@@ -264,10 +258,7 @@ class HelloCommand(BaseCommand):
         Returns:
             List[str]: A list of afternoon greeting strings.
         """
-        greetings = self.translate_get_value('commands.hello.afternoon_greetings')
-        if greetings and isinstance(greetings, list) and len(greetings) > 0:
-            return greetings
-        return self.afternoon_greetings_fallback
+        return self.translated_or('commands.hello.afternoon_greetings', self.afternoon_greetings_fallback)
 
     def get_evening_greetings(self) -> list[str]:
         """Get evening greetings from translations or fallback.
@@ -275,10 +266,7 @@ class HelloCommand(BaseCommand):
         Returns:
             List[str]: A list of evening greeting strings.
         """
-        greetings = self.translate_get_value('commands.hello.evening_greetings')
-        if greetings and isinstance(greetings, list) and len(greetings) > 0:
-            return greetings
-        return self.evening_greetings_fallback
+        return self.translated_or('commands.hello.evening_greetings', self.evening_greetings_fallback)
 
     def get_human_descriptors(self) -> list[str]:
         """Get human descriptors from translations or fallback.
@@ -286,10 +274,7 @@ class HelloCommand(BaseCommand):
         Returns:
             List[str]: A list of human descriptor strings.
         """
-        descriptors = self.translate_get_value('commands.hello.human_descriptors')
-        if descriptors and isinstance(descriptors, list) and len(descriptors) > 0:
-            return descriptors
-        return self.human_descriptors_fallback
+        return self.translated_or('commands.hello.human_descriptors', self.human_descriptors_fallback)
 
     def get_emoji_responses(self) -> dict[str, list[str]]:
         """Get emoji responses from translations or fallback.
@@ -297,10 +282,7 @@ class HelloCommand(BaseCommand):
         Returns:
             Dict[str, List[str]]: A dictionary mapping emojis to lists of response strings.
         """
-        responses = self.translate_get_value('commands.hello.emoji_responses')
-        if responses and isinstance(responses, dict) and len(responses) > 0:
-            return responses
-        return self.emoji_responses_fallback
+        return self.translated_or('commands.hello.emoji_responses', self.emoji_responses_fallback, dict)
 
     def get_help_text(self) -> str:
         """Get help text for the hello command.

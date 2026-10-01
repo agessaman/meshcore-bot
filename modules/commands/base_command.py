@@ -161,6 +161,18 @@ class BaseCommand(ABC):
             return translator.get_value(key)
         return None
 
+    def translated_or(self, key: str, fallback: Any, kind: type = list) -> Any:
+        """The translation at ``key`` when it is a non-empty ``kind``, else ``fallback``.
+
+        For list/dict-valued catalog entries (greetings, facts) whose command
+        also carries built-in defaults for catalogs that leave the key out or
+        empty.
+        """
+        value = self.translate_get_value(key)
+        if value and isinstance(value, kind):
+            return value
+        return fallback
+
     def detect_response_language(self, message: MeshMessage) -> Optional[str]:
         """Detect the language to answer ``message`` in, or None to keep default.
 
