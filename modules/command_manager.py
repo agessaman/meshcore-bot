@@ -417,10 +417,18 @@ class CommandManager:
         success = await command.execute(message)
 
         # Record in stats
-        if 'stats' in self.commands:
-            stats_command = self.commands['stats']
-            if stats_command:
-                stats_command.record_command(message, command.name, success)
+        self.record_command_stat(message, command.name, success)
+
+    def record_command_stat(self, message: MeshMessage, command_name: str, response_sent: bool) -> None:
+        """Record one command execution in the stats table, if the stats command is loaded."""
+        stats_command = self.commands.get('stats')
+        if stats_command:
+            stats_command.record_command(message, command_name, response_sent)
+
+    def _chunk_spacing_seconds(self) -> float:
+        """Pause between the parts of a multi-part send: the TX rate limit plus slack, at least 1 s."""
+        rate_limit_seconds = self.bot.config.getfloat('Bot', 'bot_tx_rate_limit_seconds', fallback=1.0)
+        return max(rate_limit_seconds + 0.5, 1.0)
 
     async def _apply_tx_delay(self):
         """Apply transmission delay to prevent message collisions"""
@@ -505,6 +513,37 @@ class CommandManager:
         payload = result.payload if hasattr(result, 'payload') else {}
         return isinstance(payload, dict) and payload.get('reason') == 'no_event_received'
 
+    def _record_transmission(
+        self, content: str, target: str, message_type: str, command_id: str | None
+    ) -> str | None:
+        """Register an outgoing send for repeat tracking; never lets tracking break the send.
+
+        Returns the command id used, generating ``<type>_<target>_<epoch>`` when none
+        was given and a tracker is present.
+        """
+        try:
+            if hasattr(self.bot, 'transmission_tracker') and self.bot.transmission_tracker:
+                if not command_id:
+                    command_id = f"{message_type}_{target}_{int(time.time())}"
+                self.bot.transmission_tracker.record_transmission(
+                    content=content,
+                    target=target,
+                    message_type=message_type,
+                    command_id=command_id
+                )
+        except Exception as e:
+            self.logger.debug(f"Error recording transmission for repeat tracking: {e}")
+        return command_id
+
+    def _record_successful_send(self, rate_limit_key: str | None) -> None:
+        """Charge a successful send to the global, TX and (when enabled) per-user limiters."""
+        self.bot.rate_limiter.record_send()
+        self.bot.bot_tx_rate_limiter.record_tx()
+        if getattr(self.bot, 'per_user_rate_limit_enabled', False) and rate_limit_key:
+            per_user = getattr(self.bot, 'per_user_rate_limiter', None)
+            if per_user:
+                per_user.record_send(rate_limit_key)
+
     def _handle_send_result(
         self,
         result,
@@ -543,12 +582,7 @@ class CommandManager:
                     self.logger.info(f"✅ {operation_name} sent and ACK received from {target}")
                 else:
                     self.logger.info(f"✅ {operation_name} sent to {target}")
-                self.bot.rate_limiter.record_send()
-                self.bot.bot_tx_rate_limiter.record_tx()
-                if getattr(self.bot, 'per_user_rate_limit_enabled', False) and rate_limit_key:
-                    per_user = getattr(self.bot, 'per_user_rate_limiter', None)
-                    if per_user:
-                        per_user.record_send(rate_limit_key)
+                self._record_successful_send(rate_limit_key)
                 return True
 
             # Handle unexpected event types
@@ -560,12 +594,7 @@ class CommandManager:
                 if isinstance(error_payload, dict) and error_payload.get('reason') == 'no_event_received':
                     # Message likely sent but confirmation timed out - treat as success with warning
                     self.logger.warning(f"Channel message sent to {target} but confirmation event not received (message may have been sent)")
-                    self.bot.rate_limiter.record_send()
-                    self.bot.bot_tx_rate_limiter.record_tx()
-                    if getattr(self.bot, 'per_user_rate_limit_enabled', False) and rate_limit_key:
-                        per_user = getattr(self.bot, 'per_user_rate_limiter', None)
-                        if per_user:
-                            per_user.record_send(rate_limit_key)
+                    self._record_successful_send(rate_limit_key)
                     return True
 
             # Unknown event type - log warning
@@ -574,12 +603,7 @@ class CommandManager:
 
         # Assume success if result exists but has no type attribute
         self.logger.info(f"✅ {operation_name} sent to {target} (result: {result})")
-        self.bot.rate_limiter.record_send()
-        self.bot.bot_tx_rate_limiter.record_tx()
-        if getattr(self.bot, 'per_user_rate_limit_enabled', False) and rate_limit_key:
-            per_user = getattr(self.bot, 'per_user_rate_limiter', None)
-            if per_user:
-                per_user.record_send(rate_limit_key)
+        self._record_successful_send(rate_limit_key)
         return True
 
     def load_keywords(self) -> dict[str, str]:
@@ -1136,10 +1160,7 @@ class CommandManager:
             response_sent = True
 
         # Record command execution in stats database
-        if 'stats' in self.commands:
-            stats_command = self.commands['stats']
-            if stats_command:
-                stats_command.record_command(message, 'advert', response_sent)
+        self.record_command_stat(message, 'advert', response_sent)
 
     async def send_dm(
         self,
@@ -1233,20 +1254,7 @@ class CommandManager:
             else:
                 self.logger.info("Sending DM to %s", sanitize_name(contact_name))
 
-            # Record transmission for repeat tracking (don't let this block sending)
-            try:
-                if hasattr(self.bot, 'transmission_tracker') and self.bot.transmission_tracker:
-                    if not command_id:
-                        command_id = f"dm_{contact_name}_{int(time.time())}"
-                    self.bot.transmission_tracker.record_transmission(
-                        content=content,
-                        target=contact_name,
-                        message_type='dm',
-                        command_id=command_id
-                    )
-            except Exception as e:
-                self.logger.debug(f"Error recording transmission for repeat tracking: {e}")
-                # Don't fail the send if transmission tracking fails
+            command_id = self._record_transmission(content, contact_name, 'dm', command_id)
 
             # Central DM length guard: firmware MAX_TEXT_LEN is 160; bot budget is 158.
             dm_max_bytes = DM_BODY_LIMIT
@@ -1260,10 +1268,7 @@ class CommandManager:
                     content_bytes,
                     len(chunks),
                 )
-                rate_limit_seconds = self.bot.config.getfloat(
-                    "Bot", "bot_tx_rate_limit_seconds", fallback=1.0
-                )
-                sleep_time = max(rate_limit_seconds + 0.5, 1.0)
+                sleep_time = self._chunk_spacing_seconds()
                 for i, chunk in enumerate(chunks):
                     if i > 0:
                         await self.bot.bot_tx_rate_limiter.wait_for_tx()
@@ -1439,20 +1444,7 @@ class CommandManager:
 
             self.logger.info(f"Sending channel message to {channel} (channel {channel_num}): {content}")
 
-            # Record transmission for repeat tracking (don't let this block sending)
-            try:
-                if hasattr(self.bot, 'transmission_tracker') and self.bot.transmission_tracker:
-                    if not command_id:
-                        command_id = f"channel_{channel}_{int(time.time())}"
-                    self.bot.transmission_tracker.record_transmission(
-                        content=content,
-                        target=channel,
-                        message_type='channel',
-                        command_id=command_id
-                    )
-            except Exception as e:
-                self.logger.debug(f"Error recording transmission for repeat tracking: {e}")
-                # Don't fail the send if transmission tracking fails
+            command_id = self._record_transmission(content, channel, 'channel', command_id)
 
             # Optional flood scope (region): set before send, restore after
             resolved = self.resolve_channel_send_scope(scope=scope, channel=channel)
@@ -1601,8 +1593,7 @@ class CommandManager:
         """
         if not chunks:
             return True
-        rate_limit_seconds = self.bot.config.getfloat('Bot', 'bot_tx_rate_limit_seconds', fallback=1.0)
-        sleep_time = max(rate_limit_seconds + 0.5, 1.0)
+        sleep_time = self._chunk_spacing_seconds()
         for i, chunk in enumerate(chunks):
             if i > 0:
                 await self.bot.bot_tx_rate_limiter.wait_for_tx()
@@ -1994,8 +1985,7 @@ class CommandManager:
 
         rate_limit_key = self.get_rate_limit_key(message)
         if message.is_dm:
-            rate_limit_seconds = self.bot.config.getfloat('Bot', 'bot_tx_rate_limit_seconds', fallback=1.0)
-            sleep_time = max(rate_limit_seconds + 0.5, 1.0)
+            sleep_time = self._chunk_spacing_seconds()
             for i, chunk in enumerate(chunks):
                 if i > 0:
                     await self.bot.bot_tx_rate_limiter.wait_for_tx()
@@ -2184,10 +2174,7 @@ class CommandManager:
                 if should_queue and self._queue_command(command, message, remaining):
                     # Successfully queued - silently return (no message sent)
                     # Still record in stats as attempted
-                    if 'stats' in self.commands:
-                        stats_command = self.commands['stats']
-                        if stats_command:
-                            stats_command.record_command(message, command_name, False)
+                    self.record_command_stat(message, command_name, False)
                     return
                     # Queue failed (user already has queued command) - fall through to normal rejection
 
@@ -2228,10 +2215,7 @@ class CommandManager:
                         continue
 
                     # Record command execution in stats database (hard rejection with user feedback)
-                    if 'stats' in self.commands:
-                        stats_command = self.commands['stats']
-                        if stats_command:
-                            stats_command.record_command(message, command_name, response_sent)
+                    self.record_command_stat(message, command_name, response_sent)
 
                     return
 
@@ -2250,10 +2234,7 @@ class CommandManager:
                         await self.send_response(message, error_msg)
 
                         # Record command execution in stats database (error response was sent)
-                        if 'stats' in self.commands:
-                            stats_command = self.commands['stats']
-                            if stats_command:
-                                stats_command.record_command(message, command_name, True)
+                        self.record_command_stat(message, command_name, True)
                         return
 
                 try:
@@ -2278,10 +2259,7 @@ class CommandManager:
                         response_sent = True
 
                     # Record command execution in stats database
-                    if 'stats' in self.commands:
-                        stats_command = self.commands['stats']
-                        if stats_command:
-                            stats_command.record_command(message, command_name, response_sent)
+                    self.record_command_stat(message, command_name, response_sent)
 
                     # Capture command data for web viewer
                     if (hasattr(self.bot, 'web_viewer_integration') and
@@ -2341,10 +2319,7 @@ class CommandManager:
                     await self.send_response(message, error_msg)
 
                     # Record command execution in stats database (error response was sent)
-                    if 'stats' in self.commands:
-                        stats_command = self.commands['stats']
-                        if stats_command:
-                            stats_command.record_command(message, command_name, True)  # Error message counts as response
+                    self.record_command_stat(message, command_name, True)  # Error message counts as response
 
                     # Capture failed command for web viewer
                     if (hasattr(self.bot, 'web_viewer_integration') and
