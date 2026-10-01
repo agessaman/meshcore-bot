@@ -162,3 +162,19 @@ def test_add_period_details_matrix():
                         )
                     )
     assert_golden("noaa_wx_period_details", results)
+
+
+def test_a_tomorrow_period_without_forecast_text_is_skipped_not_fatal():
+    # A null shortForecast must not break the reply (it used to be skipped by the guard).
+    data = copy.deepcopy(_load("miami"))  # starts with Tonight
+    periods = data["forecast"]["properties"]["periods"]
+    for period in periods[1:]:
+        period["temperature"] = None
+        period["shortForecast"] = None
+    lat, lon = _latlon(data)
+    with patch("modules.commands.wx_command.datetime", _FrozenDateTime):
+        cmd = _wx()
+        cmd.noaa_session, _ = _session(data)
+        weather, points = cmd.get_noaa_weather(lat, lon)
+    assert weather.startswith("Tonight:")
+    assert points is not None

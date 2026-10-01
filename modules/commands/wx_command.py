@@ -1182,10 +1182,13 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
                 period_detailed = period.get('detailedForecast', '')
                 period_short = period.get('shortForecast', '')
                 night = is_current_tonight or is_current_night
-                forecast_text = (
-                    self._abbreviate_noaa_forecast(period_short) if night and len(period_short) > 20 else period_short
-                )
-                period_head = self._noaa_period_str(period, forecast_text)
+                period_head = None
+                if period.get('temperature', '') and period_short:
+                    # Shorten long forecast text (especially when current is a night period)
+                    forecast_text = (
+                        self._abbreviate_noaa_forecast(period_short) if night and len(period_short) > 20 else period_short
+                    )
+                    period_head = self._noaa_period_str(period, forecast_text)
                 if period_head:
                     # Be more aggressive about adding wind when current is a night period
                     wind_threshold = 115 if night else 120
