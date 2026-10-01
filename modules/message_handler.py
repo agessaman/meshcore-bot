@@ -60,6 +60,18 @@ class PendingMessageEntry(TypedDict):
     processed: bool
 
 
+def split_path_hex(path_hex: str, hex_chars: int) -> list[str]:
+    """Split a hex path into lowercase node IDs of ``hex_chars`` each.
+
+    When the path does not divide evenly (or yields nothing), fall back to
+    one-byte (two-character) nodes, the legacy path encoding.
+    """
+    nodes = [path_hex[i : i + hex_chars].lower() for i in range(0, len(path_hex), hex_chars)]
+    if (len(path_hex) % hex_chars) != 0 or not nodes:
+        nodes = [path_hex[i : i + 2].lower() for i in range(0, len(path_hex), 2)]
+    return nodes
+
+
 class MessageHandler:
     """Handles incoming messages and routes them to command processors.
 
@@ -2310,11 +2322,7 @@ class MessageHandler:
         if n <= 0:
             n = 2
         path_hex = path_bytes.hex()
-        nodes = [path_hex[i : i + n].upper() for i in range(0, len(path_hex), n)]
-        # Legacy fallback: if remainder or no nodes, treat as 1-byte-per-hop
-        if (len(path_hex) % n) != 0 or not nodes:
-            nodes = [path_hex[i : i + 2].upper() for i in range(0, len(path_hex), 2)]
-        return path_hex, nodes
+        return path_hex, [node.upper() for node in split_path_hex(path_hex, n)]
 
     def _path_hex_to_nodes(self, path_hex: str) -> list[str]:
         """Chunk path_hex string into node list using configured prefix length, with legacy 2-char fallback.
@@ -2326,10 +2334,7 @@ class MessageHandler:
         n = getattr(self.bot, "prefix_hex_chars", 2)
         if n <= 0:
             n = 2
-        nodes = [path_hex[i : i + n].lower() for i in range(0, len(path_hex), n)]
-        if (len(path_hex) % n) != 0 or not nodes:
-            nodes = [path_hex[i : i + 2].lower() for i in range(0, len(path_hex), 2)]
-        return nodes
+        return split_path_hex(path_hex, n)
 
     def _get_path_from_rf_data(
         self, rf_data: dict[str, Any], payload_hex: str | None = None, packet_info: dict[str, Any] | None = None
@@ -2365,9 +2370,7 @@ class MessageHandler:
         if path_hex and len(path_hex) >= 2:
             bytes_per_hop = packet_info.get("bytes_per_hop", 1)
             n = (bytes_per_hop * 2) if bytes_per_hop and bytes_per_hop >= 1 else 2
-            path_nodes_list = [path_hex[i : i + n].lower() for i in range(0, len(path_hex), n)]
-            if (len(path_hex) % n) != 0:
-                path_nodes_list = [path_hex[i : i + 2].lower() for i in range(0, len(path_hex), 2)]
+            path_nodes_list = split_path_hex(path_hex, n)
             if path_nodes_list:
                 return (",".join(path_nodes_list), path_nodes_list, len(path_nodes_list))
         path_info = packet_info.get("path_info") or {}
@@ -3067,9 +3070,7 @@ class MessageHandler:
             # Parse path to extract from_prefix and to_prefix (use bytes_per_hop when provided for multi-byte paths)
             hex_chars = (bytes_per_hop or 1) * 2
             if bytes_per_hop is not None and bytes_per_hop > 0:
-                path_nodes = [path_hex[i : i + hex_chars].lower() for i in range(0, len(path_hex), hex_chars)]
-                if (len(path_hex) % hex_chars) != 0 or not path_nodes:
-                    path_nodes = [path_hex[i : i + 2].lower() for i in range(0, len(path_hex), 2)]
+                path_nodes = split_path_hex(path_hex, hex_chars)
             else:
                 path_nodes = self._path_hex_to_nodes(path_hex)
 
@@ -3618,9 +3619,7 @@ class MessageHandler:
 
             if bytes_per_hop is not None and bytes_per_hop > 0:
                 hex_chars = bytes_per_hop * 2
-                path_nodes = [hex_path[i : i + hex_chars].lower() for i in range(0, len(hex_path), hex_chars)]
-                if (len(hex_path) % hex_chars) != 0 or not path_nodes:
-                    path_nodes = [hex_path[i : i + 2].lower() for i in range(0, len(hex_path), 2)]
+                path_nodes = split_path_hex(hex_path, hex_chars)
                 if path_nodes:
                     return ",".join(path_nodes)
                 return "Direct"
