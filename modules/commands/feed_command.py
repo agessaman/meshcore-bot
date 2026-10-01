@@ -17,6 +17,8 @@ class FeedCommand(BaseCommand):
 
     # Plugin metadata
     name = "feed"
+    admin_only = True
+    enabled_attr = "feed_enabled"
     keywords = ['feed', 'feeds', 'rss', 'subscription', 'subscriptions']
     description = "Manage RSS and API feed subscriptions (usage: feed subscribe rss <url> <channel> [name])"
     category = "admin"
@@ -45,18 +47,6 @@ class FeedCommand(BaseCommand):
             fallback=feed_manager_allow_private,
             value_type='bool',
         )
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed (enabled, admin only)"""
-        if not self.feed_enabled:
-            return False
-        if not self.requires_admin_access():
-            return False
-        return super().can_execute(message)
-
-    def requires_admin_access(self) -> bool:
-        """Feed command requires admin access"""
-        return True
 
     async def execute(self, message: MeshMessage) -> bool:
         """Execute the feed command"""

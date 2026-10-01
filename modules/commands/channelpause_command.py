@@ -13,6 +13,7 @@ class ChannelPauseCommand(BaseCommand):
     """Pause or resume channel-triggered bot responses (greeter, keywords, commands)."""
 
     name = "channelpause"
+    admin_only = True
     keywords = ["channelpause", "channelresume"]
     description = "Pause or resume bot responses on channels (DM only, admin only)"
     requires_dm = True
@@ -21,14 +22,6 @@ class ChannelPauseCommand(BaseCommand):
 
     def __init__(self, bot):
         super().__init__(bot)
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        if not self.requires_admin_access():
-            return False
-        return super().can_execute(message, skip_channel_check=skip_channel_check)
-
-    def requires_admin_access(self) -> bool:
-        return True
 
     def get_help_text(self) -> str:
         return (

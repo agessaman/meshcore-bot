@@ -13,6 +13,7 @@ class ReloadCommand(BaseCommand):
 
     # Plugin metadata
     name = "reload"
+    admin_only = True
     keywords = ["reload", "reloadconfig", "configreload"]
     description = "Reload bot configuration without restart (DM only, admin only)"
     requires_dm = True
@@ -26,16 +27,6 @@ class ReloadCommand(BaseCommand):
             bot: The bot instance.
         """
         super().__init__(bot)
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed (admin only)"""
-        if not self.requires_admin_access():
-            return False
-        return super().can_execute(message)
-
-    def requires_admin_access(self) -> bool:
-        """Reload command requires admin access"""
-        return True
 
     def get_help_text(self) -> str:
         """Get help text for the reload command.

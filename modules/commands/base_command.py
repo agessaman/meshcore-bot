@@ -76,6 +76,10 @@ class BaseCommand(ABC):
     # command checks it itself.
     enabled_attr: Optional[str] = None
 
+    # Commands that are always admin-only, whatever [Admin_ACL] admin_commands
+    # lists. requires_admin_access() is still the method callers ask.
+    admin_only: bool = False
+
     # Documentation fields - to be overridden by subclasses for website generation
     short_description: str = ""  # Brief description for website (without usage syntax)
     usage: str = ""  # Usage syntax, e.g., "wx <zipcode|city> [tomorrow|7d|hourly|alerts]"
@@ -1304,6 +1308,8 @@ class BaseCommand(ABC):
 
     def requires_admin_access(self) -> bool:
         """Check if this command requires admin access"""
+        if self.admin_only:
+            return True
         if not hasattr(self.bot, 'config') or not self.bot.config.has_section('Admin_ACL'):
             return False
 

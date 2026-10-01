@@ -47,3 +47,16 @@ def test_switch_is_read_at_call_time():
     cmd = _Switchable(_bot(), enabled=True)
     cmd.switchable_enabled = False
     assert cmd.can_execute(_dm()) is False
+
+
+def test_admin_only_requires_admin_without_acl_config():
+    class _Admin(BaseCommand):
+        name = "adminonly"
+        admin_only = True
+
+        async def execute(self, message):  # pragma: no cover - not exercised
+            return True
+
+    cmd = _Admin(_bot())
+    assert cmd.requires_admin_access() is True
+    assert _Switchable(_bot(), enabled=True).requires_admin_access() is False
