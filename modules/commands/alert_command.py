@@ -920,7 +920,8 @@ class AlertCommand(BaseCommand):
 
         # Send all messages with delays between them
         for i, msg in enumerate(messages):
-            await self.send_response(message, msg)
+            # Only the first part is subject to the reply limiter.
+            await self.send_response(message, msg, skip_user_rate_limit=i > 0)
             # Wait between messages (except after the last one)
             if i < len(messages) - 1:
                 await asyncio.sleep(2.0)

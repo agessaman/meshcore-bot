@@ -165,7 +165,8 @@ class RepeaterCommand(BaseCommand):
             await asyncio.sleep(sleep_time)
 
             # Send second message
-            await self.send_response(message, response[2])
+            # Second part of the same reply: the reply limiter already let the first through.
+            await self.send_response(message, response[2], skip_user_rate_limit=True)
         else:
             # Send single message as usual
             await self.send_response(message, response)

@@ -256,27 +256,22 @@ class TestBotTxRateLimiterWaitForTx:
         asyncio.run(limiter.wait_for_tx())
 
     def test_wait_for_tx_loop_body_executed(self):
-        """Make can_tx() return False once then True, exercising the loop body."""
-        limiter = BotTxRateLimiter(seconds=60)
+        """A recent transmission makes wait_for_tx sleep out the rest of the interval."""
+        limiter = BotTxRateLimiter(seconds=0.2)
         limiter.record_tx()
-        # Backdate last_tx just enough so can_tx() is True after we monkey-patch
-        # it to be False on the first call only, ensuring the loop body runs.
-        call_count = [0]
-        original_can_tx = limiter.can_tx
-
-        def patched_can_tx():
-            call_count[0] += 1
-            if call_count[0] == 1:
-                # First call: report not ready (exercises loop body).
-                # We also set last_tx far in the past so time_until_next_tx() == 0
-                # to avoid any real asyncio.sleep.
-                limiter.last_tx = time.monotonic() - 200
-                return False
-            return original_can_tx()
-
-        limiter.can_tx = patched_can_tx
+        started = time.monotonic()
         asyncio.run(limiter.wait_for_tx())
-        assert call_count[0] >= 2
+        assert time.monotonic() - started >= 0.19
+        assert limiter.get_stats()["total_throttled"] >= 1
+
+    def test_wait_for_tx_claims_the_slot(self):
+        """Returning from wait_for_tx claims the slot, so a second caller waits."""
+        limiter = BotTxRateLimiter(seconds=0.2)
+        asyncio.run(limiter.wait_for_tx())  # idle: returns at once and claims
+        assert limiter.can_tx() is False
+        started = time.monotonic()
+        asyncio.run(limiter.wait_for_tx())
+        assert time.monotonic() - started >= 0.19
 
 
 class TestNominatimRateLimiterGetLock:
