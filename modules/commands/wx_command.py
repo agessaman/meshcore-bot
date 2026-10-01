@@ -14,11 +14,6 @@ from typing import Callable, Optional, ParamSpec, TypeVar
 import requests
 
 from .. import alert_format
-from ..clients.mqtt_weather import (
-    get_mqtt_weather_topic,
-    load_mqtt_weather_format_config,
-    mqtt_weather_display_for_topic,
-)
 
 # First-party modules with only required dependencies; they always import.
 from ..clients.wxsim_parser import WXSIMParser
@@ -31,6 +26,7 @@ from ..utils import (
     geocode_zipcode_sync,
     normalize_us_state,
 )
+from ..weather_common import WeatherCommandMixin
 from .alternatives.wx_international import GlobalWxCommand
 from .base_command import BaseCommand
 from .rain_command import nws_http_means_no_coverage
@@ -42,13 +38,14 @@ _P = ParamSpec("_P")
 _T = TypeVar("_T")
 
 
-class WxCommand(BaseCommand):
+class WxCommand(WeatherCommandMixin, BaseCommand):
     """Handles weather commands with zipcode support"""
 
     # Plugin metadata
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "wx"
+    translation_ns = "commands.wx"
     keywords = ['wx', 'weather', 'wxa', 'wxalert']
     description = "Get weather information for a zip code (usage: wx 12345)"
     category = "weather"
@@ -155,11 +152,6 @@ class WxCommand(BaseCommand):
 
             # Lazy: None = unknown, False = NOAA alerts unavailable (non-US / no coverage)
             self._nws_alerts_available = None
-
-    def _format_high_low(self, high: Optional[float], low: Optional[float], temp_symbol: str) -> str:
-        """Format high/low using [Weather] temperature_*_format templates."""
-        return format_temperature_high_low(self.bot.config, high, low, temp_symbol, self.logger,
-                                           translator=self.response_translator)
 
     @staticmethod
     def _noaa_period_temp_symbol(period: dict) -> str:
@@ -285,39 +277,6 @@ class WxCommand(BaseCommand):
             self.logger.debug("No default WXSIM source configured")
 
         return None
-
-    def _get_custom_mqtt_weather_topic(self, location: Optional[str] = None) -> Optional[str]:
-        """MQTT topic for custom.mqtt_weather.<name> (see get_mqtt_weather_topic)."""
-        return get_mqtt_weather_topic(self.bot.config, location)
-
-    def _mqtt_weather_line(
-        self,
-        topic: str,
-        forecast_type: str,
-        location_name: Optional[str],
-    ) -> str:
-        """Format cached MQTT payload for wx output."""
-        if forecast_type != "default":
-            return self.translate("commands.wx.mqtt_forecast_not_supported")
-
-        fmt = load_mqtt_weather_format_config(self.bot.config)
-        cache = getattr(self.bot, "mqtt_weather_cache", None)
-        text, err = mqtt_weather_display_for_topic(topic, cache, fmt)
-        if text is not None:
-            if location_name:
-                return f"{location_name}: {text}"
-            return text
-        return self._mqtt_weather_error_key(err)
-
-    def _mqtt_weather_error_key(self, err: Optional[str]) -> str:
-        if err == "no_cache":
-            return self.translate("commands.wx.mqtt_weather_no_subscriber")
-        if err in ("no_data", "empty_payload", "empty_after_sanitize"):
-            return self.translate("commands.wx.mqtt_weather_no_data")
-        if err == "stale":
-            return self.translate("commands.wx.mqtt_weather_stale")
-        detail = (err or "unknown").replace("_", " ")
-        return self.translate("commands.wx.mqtt_weather_payload_error", detail=detail)
 
     def _get_wxsim_weather(self, source_url: str, forecast_type: str = "default",
                                 num_days: int = 7, message: MeshMessage = None,
@@ -1894,76 +1853,6 @@ class WxCommand(BaseCommand):
                 result += pressure_str
 
         return result
-
-    def _count_display_width(self, text: str) -> int:
-        """Count UTF-8 byte length of text. Matches RF packet byte limit from get_max_message_length()."""
-        return len(text.encode('utf-8'))
-
-    async def _send_multiday_forecast(self, message: MeshMessage, forecast_text: str):
-        """Send multi-day forecast response, splitting into multiple messages if needed"""
-        # Get max message length dynamically
-        max_length = self.get_max_message_length(message)
-
-        lines = forecast_text.split('\n')
-
-        # Remove empty lines
-        lines = [line.strip() for line in lines if line.strip()]
-
-        if not lines:
-            return
-
-        # If single line and under max_length chars, send as-is
-        if self._count_display_width(forecast_text) <= max_length:
-            await self.send_response(message, forecast_text)
-            return
-
-        # Multi-line message - try to fit as many days as possible in one message
-        # Only split when necessary (message would exceed max_length chars)
-        current_message = ""
-        message_count = 0
-
-        for i, line in enumerate(lines):
-            if not line:
-                continue
-
-            # Check if adding this line would exceed max_length characters (using display width)
-            test_message = current_message + "\n" + line if current_message else line
-
-            # Only split if message would exceed max_length chars (using display width)
-            if self._count_display_width(test_message) > max_length:
-                # Send current message and start new one
-                if current_message:
-                    # Per-user rate limit applies only to first message (trigger); skip for continuations
-                    await self.send_response(
-                        message, current_message,
-                        skip_user_rate_limit=(message_count > 0)
-                    )
-                    message_count += 1
-                    # Wait between messages (same as other commands)
-                    if i < len(lines):
-                        await asyncio.sleep(2.0)
-
-                    current_message = line
-                else:
-                    # Single line is too long, send it anyway (will be truncated by bot)
-                    await self.send_response(
-                        message, line,
-                        skip_user_rate_limit=(message_count > 0)
-                    )
-                    message_count += 1
-                    if i < len(lines) - 1:
-                        await asyncio.sleep(2.0)
-                    current_message = ""
-            else:
-                # Add line to current message (fits within max_length chars)
-                if current_message:
-                    current_message += "\n" + line
-                else:
-                    current_message = line
-
-        # Send the last message if there's content (continuation; skip per-user rate limit)
-        if current_message:
-            await self.send_response(message, current_message, skip_user_rate_limit=True)
 
     def get_weather_alerts_noaa(self, lat: float, lon: float, return_full_data: bool = False) -> tuple:
         """Get weather alerts from NOAA with full metadata extraction and prioritization

@@ -11,20 +11,15 @@ from typing import Any, Optional, Union
 
 import requests
 
-from ...clients.mqtt_weather import (
-    get_mqtt_weather_topic,
-    load_mqtt_weather_format_config,
-    mqtt_weather_display_for_topic,
-)
 from ...clients.wxsim_parser import WXSIMParser
 from ...location import get_bot_lat_lon, get_companion_lat_lon
 from ...models import MeshMessage
 from ...utils import (
-    format_temperature_high_low,
     geocode_city_sync,
     geocode_zipcode_sync,
     rate_limited_nominatim_reverse_sync,
 )
+from ...weather_common import WeatherCommandMixin
 from ..base_command import BaseCommand
 
 # Multiday: plain digits, 7day/7-day, or suffix form 7d/10d (min 2, max below). Open-Meteo allows up to 16 forecast days.
@@ -37,11 +32,12 @@ VISIBILITY_CAP_MI = 20
 VISIBILITY_CAP_KM = 32
 
 
-class GlobalWxCommand(BaseCommand):
+class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
     """Handles global weather commands with city/location support"""
 
     # Plugin metadata
     name = "gwx"
+    translation_ns = "commands.gwx"
     keywords = ['gwx', 'globalweather', 'gwxa']
     description = "Get weather information for any global location (usage: gwx Tokyo)"
     category = "weather"
@@ -110,11 +106,6 @@ class GlobalWxCommand(BaseCommand):
         """
         return self.temperature_unit == 'celsius'
 
-    def _format_high_low(self, high: Optional[Union[int, float]], low: Optional[Union[int, float]], temp_symbol: str) -> str:
-        """Format high/low using [Weather] temperature_*_format templates."""
-        return format_temperature_high_low(self.bot.config, high, low, temp_symbol, self.logger,
-                                           translator=self.response_translator)
-
     def _load_weather_model(self) -> Optional[str]:
         """Load and normalize Open-Meteo model selection from config.
 
@@ -168,34 +159,6 @@ class GlobalWxCommand(BaseCommand):
     def _get_bot_location(self) -> Optional[tuple[float, float]]:
         """Get bot location from config ([Bot] bot_latitude, bot_longitude)."""
         return get_bot_lat_lon(self.bot, self.logger)
-
-    def _get_custom_mqtt_weather_topic(self, location: Optional[str] = None) -> Optional[str]:
-        return get_mqtt_weather_topic(self.bot.config, location)
-
-    def _mqtt_weather_line(
-        self,
-        topic: str,
-        forecast_type: str,
-        location_name: Optional[str],
-    ) -> str:
-        if forecast_type != "default":
-            return self.translate("commands.gwx.mqtt_forecast_not_supported")
-
-        fmt = load_mqtt_weather_format_config(self.bot.config)
-        cache = getattr(self.bot, "mqtt_weather_cache", None)
-        text, err = mqtt_weather_display_for_topic(topic, cache, fmt)
-        if text is not None:
-            if location_name:
-                return f"{location_name}: {text}"
-            return text
-        if err == "no_cache":
-            return self.translate("commands.gwx.mqtt_weather_no_subscriber")
-        if err in ("no_data", "empty_payload", "empty_after_sanitize"):
-            return self.translate("commands.gwx.mqtt_weather_no_data")
-        if err == "stale":
-            return self.translate("commands.gwx.mqtt_weather_stale")
-        detail = (err or "unknown").replace("_", " ")
-        return self.translate("commands.gwx.mqtt_weather_payload_error", detail=detail)
 
     def _get_custom_wxsim_source(self, location: Optional[str] = None) -> Optional[str]:
         """Get custom WXSIM source URL from config.
@@ -1240,83 +1203,6 @@ class GlobalWxCommand(BaseCommand):
         except Exception as e:
             self.logger.error(f"Error formatting {num_days}-day forecast: {e}")
             return self.translate('commands.gwx.multiday_error', num_days=num_days)
-
-    def _count_display_width(self, text: str) -> int:
-        """Count UTF-8 byte length of text. Matches RF packet byte limit from get_max_message_length()."""
-        return len(text.encode('utf-8'))
-
-    async def _send_multiday_forecast(self, message: MeshMessage, forecast_text: str) -> None:
-        """Send multi-day forecast response, splitting into multiple messages if needed.
-
-        Args:
-            message: The original message (for reply context).
-            forecast_text: The full forecast text (lines separated by \n).
-        """
-        import asyncio
-
-        # Get max message length dynamically
-        max_length = self.get_max_message_length(message)
-
-        lines = forecast_text.split('\n')
-
-        # Remove empty lines
-        lines = [line.strip() for line in lines if line.strip()]
-
-        if not lines:
-            return
-
-        # If single line and under max_length chars, send as-is
-        if self._count_display_width(forecast_text) <= max_length:
-            await self.send_response(message, forecast_text)
-            return
-
-        # Multi-line message - try to fit as many days as possible in one message
-        # Only split when necessary (message would exceed max_length chars)
-        current_message = ""
-        message_count = 0
-
-        for i, line in enumerate(lines):
-            if not line:
-                continue
-
-            # Check if adding this line would exceed max_length characters (using display width)
-            test_message = current_message + "\n" + line if current_message else line
-
-            # Only split if message would exceed max_length chars (using display width)
-            if self._count_display_width(test_message) > max_length:
-                # Send current message and start new one
-                if current_message:
-                    # Per-user rate limit applies only to first message (trigger); skip for continuations
-                    await self.send_response(
-                        message, current_message,
-                        skip_user_rate_limit=(message_count > 0)
-                    )
-                    message_count += 1
-                    # Wait between messages (same as other commands)
-                    if i < len(lines):
-                        await asyncio.sleep(2.0)
-
-                    current_message = line
-                else:
-                    # Single line is too long, send it anyway (will be truncated by bot)
-                    await self.send_response(
-                        message, line,
-                        skip_user_rate_limit=(message_count > 0)
-                    )
-                    message_count += 1
-                    if i < len(lines) - 1:
-                        await asyncio.sleep(2.0)
-                    current_message = ""
-            else:
-                # Add line to current message (fits within max_length)
-                if current_message:
-                    current_message += "\n" + line
-                else:
-                    current_message = line
-
-        # Send the last message if there's content (continuation; skip per-user rate limit)
-        if current_message:
-            await self.send_response(message, current_message, skip_user_rate_limit=True)
 
     def _degrees_to_direction(self, degrees: float) -> str:
         """Convert wind direction in degrees to compass direction with emoji.
