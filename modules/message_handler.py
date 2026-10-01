@@ -9,7 +9,7 @@ import copy
 import hmac as hmac_mod
 import time
 from collections import OrderedDict
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from hashlib import sha256
 from typing import Any, TypedDict
 
@@ -644,6 +644,13 @@ class MessageHandler:
         selected = min(matches, key=lambda row: row.get("timestamp", float("inf")))
         return {**selected, RF_MATCH_KEY: RF_MATCH_CHANNEL_AUTHENTICATED}, True
 
+    def _find_contact(self, predicate: Callable[[dict[str, Any]], bool]) -> dict[str, Any] | None:
+        """The first radio contact matching ``predicate``, or None (also when there are no contacts)."""
+        contacts = getattr(self.bot.meshcore, "contacts", None)
+        if not contacts:
+            return None
+        return next((contact for contact in contacts.values() if predicate(contact)), None)
+
     def _viewer_bridge(self) -> Any:
         """The web viewer's bot-side bridge, or None when the viewer integration is off."""
         integration = getattr(self.bot, "web_viewer_integration", None)
@@ -792,23 +799,18 @@ class MessageHandler:
             # Look up contact name from pubkey prefix
             sender_id = sanitize_name(payload.get("pubkey_prefix", ""))
             sender_name = sender_id  # Default to sender_id
-            if hasattr(self.bot.meshcore, "contacts") and self.bot.meshcore.contacts:
-                for _contact_key, contact_data in self.bot.meshcore.contacts.items():
-                    if contact_data.get("public_key", "").startswith(sender_id):
-                        # Use the contact name if available, otherwise use adv_name
-                        contact_name = sanitize_name(contact_data.get("name", contact_data.get("adv_name", sender_id)))
-                        sender_name = contact_name
-                        break
+            # An empty prefix matches the first contact here; that is long-standing
+            # behavior for the display name, but the full key below requires a prefix.
+            contact = self._find_contact(lambda c: c.get("public_key", "").startswith(sender_id))
+            if contact:
+                # Use the contact name if available, otherwise use adv_name
+                sender_name = sanitize_name(contact.get("name", contact.get("adv_name", sender_id)))
 
             # Get the full public key from contacts if available
             sender_pubkey = sender_id  # Default to pubkey prefix (same value as sender_id at this point)
-            if sender_id and hasattr(self.bot.meshcore, "contacts") and self.bot.meshcore.contacts:
-                for _contact_key, contact_data in self.bot.meshcore.contacts.items():
-                    if contact_data.get("public_key", "").startswith(sender_id):
-                        # Use the full public key from the contact
-                        sender_pubkey = contact_data.get("public_key", sender_id)
-                        self.logger.debug(f"Found full public key for {sender_name}: {sender_pubkey[:16]}...")
-                        break
+            if sender_id and contact:
+                sender_pubkey = contact.get("public_key", sender_id)
+                self.logger.debug(f"Found full public key for {sender_name}: {sender_pubkey[:16]}...")
 
             # Sanitize message content to prevent injection attacks
             # Note: Firmware enforces 150-char limit at hardware level, so we disable length check
@@ -2810,13 +2812,12 @@ class MessageHandler:
 
             # Get the full public key from contacts if available
             sender_pubkey = payload.get("pubkey_prefix", "")
-            if sender_pubkey and hasattr(self.bot.meshcore, "contacts") and self.bot.meshcore.contacts:
-                for _contact_key, contact_data in self.bot.meshcore.contacts.items():
-                    if contact_data.get("public_key", "").startswith(sender_pubkey):
-                        # Use the full public key from the contact
-                        sender_pubkey = contact_data.get("public_key", sender_pubkey)
-                        self.logger.debug(f"Found full public key for {sender_id}: {sender_pubkey[:16]}...")
-                        break
+            if sender_pubkey:
+                prefix = sender_pubkey
+                contact = self._find_contact(lambda c: c.get("public_key", "").startswith(prefix))
+                if contact:
+                    sender_pubkey = contact.get("public_key", sender_pubkey)
+                    self.logger.debug(f"Found full public key for {sender_id}: {sender_pubkey[:16]}...")
 
             # Elapsed: "Nms" when device clock is valid, or "Sync Device Clock" when invalid.
             _translator = getattr(self.bot, "translator", None)
@@ -3526,21 +3527,11 @@ class MessageHandler:
                 return
 
             # Try to find the contact to get stored path information
-            if hasattr(self.bot.meshcore, "contacts") and self.bot.meshcore.contacts:
-                contact = None
-
-                # Look for contact by name first
-                for _contact_key, contact_data in self.bot.meshcore.contacts.items():
-                    if contact_data.get("adv_name") == sender_id:
-                        contact = contact_data
-                        break
-
-                # If not found by name, try by pubkey prefix
-                if not contact:
-                    for _contact_key, contact_data in self.bot.meshcore.contacts.items():
-                        if contact_data.get("public_key", "").startswith(pubkey_prefix):
-                            contact = contact_data
-                            break
+            if getattr(self.bot.meshcore, "contacts", None):
+                # By name first, then by pubkey prefix
+                contact = self._find_contact(lambda c: c.get("adv_name") == sender_id) or self._find_contact(
+                    lambda c: c.get("public_key", "").startswith(pubkey_prefix)
+                )
 
                 if contact:
                     out_path = contact.get("out_path", "")
