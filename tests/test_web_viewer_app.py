@@ -605,7 +605,7 @@ class TestApiMeshEdgesEvidence:
                     return fixed_now
                 return fixed_now.replace(tzinfo=timezone.utc).astimezone(tz)
 
-        monkeypatch.setattr('modules.web_viewer.app.datetime', FixedDateTime)
+        monkeypatch.setattr('modules.web_viewer.mesh_evidence.datetime', FixedDateTime)
         cutoff = fixed_now - timedelta(days=7)
         _seed_observed_path(
             viewer_with_db.db_path,
