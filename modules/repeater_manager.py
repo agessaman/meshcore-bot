@@ -226,6 +226,16 @@ class RepeaterManager:
             self.logger.error(f"Failed to initialize repeater database: {e}")
             raise
 
+    def _is_duplicate_advert_packet(self, conn, public_key: str, packet_hash: Optional[str]) -> bool:
+        """True when this advert packet_hash was already recorded for this contact."""
+        if not packet_hash or packet_hash == "0000000000000000":
+            return False
+        return bool(self.db_manager.execute_query_on_connection(
+            conn,
+            'SELECT id FROM unique_advert_packets WHERE public_key = ? AND packet_hash = ?',
+            (public_key, packet_hash)
+        ))
+
     async def track_contact_advertisement(
         self, advert_data: dict, signal_info: Optional[dict] = None, packet_hash: Optional[str] = None
     ) -> TrackAdvertResult:
@@ -265,6 +275,37 @@ class RepeaterManager:
             out_path_len = advert_data.get('out_path_len', -1)
             out_bytes_per_hop = advert_data.get('out_bytes_per_hop')
 
+            # Decide on reverse geocoding before the write block and do it off the
+            # event loop: it is a blocking, rate-limited Nominatim call, and the
+            # write block below must stay free of awaits so concurrent adverts
+            # cannot interleave between its reads and writes.
+            with self.db_manager.connection() as conn:
+                if self._is_duplicate_advert_packet(conn, public_key, packet_hash):
+                    self.logger.debug(f"Skipping duplicate advert packet for {name}: {(packet_hash or '')[:8]}... (already processed)")
+                    return TrackAdvertResult(ok=True, duplicate_packet=True)
+                prior = self.db_manager.execute_query_on_connection(
+                    conn,
+                    'SELECT latitude, longitude, city, state, country FROM complete_contact_tracking WHERE public_key = ?',
+                    (public_key,)
+                )
+            self.logger.debug(f"🔍 Extracting location data for {name}...")
+            location_info = self._extract_location_data(advert_data, should_geocode=False)
+            self.logger.debug(f"📍 Location data extracted: {location_info}")
+            should_geocode, location_info = self._should_geocode_location(
+                location_info, prior[0] if prior else None, name, packet_hash
+            )
+            if should_geocode:
+                self.logger.debug(f"📍 Re-extracting location data with geocoding for {name}")
+                location_info = await asyncio.to_thread(
+                    self._extract_location_data, advert_data, True, packet_hash
+                )
+                self.logger.debug(f"📍 Location data with geocoding: {location_info}")
+
+                # Update geocoding cache if we have a valid packet_hash (skip invalid/default hashes)
+                if packet_hash and packet_hash != "0000000000000000" and location_info.get('latitude') and location_info.get('longitude'):
+                    self.geocoding_cache[packet_hash] = time.time()
+                    self.logger.debug(f"📍 Cached geocoding for packet_hash {packet_hash[:16]}...")
+
             # Wrap all DB operations in a single transaction for atomicity
             with self.db_manager.connection() as conn:
                 # Check if this packet_hash was already processed for this contact
@@ -288,26 +329,6 @@ class RepeaterManager:
                 )
 
                 current_time = datetime.now()
-
-                # Extract location data first (without geocoding)
-                self.logger.debug(f"🔍 Extracting location data for {name}...")
-                location_info = self._extract_location_data(advert_data, should_geocode=False)
-                self.logger.debug(f"📍 Location data extracted: {location_info}")
-
-                # Check if we need to perform geocoding based on location changes
-                existing_data = existing[0] if existing else None
-                should_geocode, location_info = self._should_geocode_location(location_info, existing_data, name, packet_hash)
-
-                # Re-extract location data with geocoding if needed
-                if should_geocode:
-                    self.logger.debug(f"📍 Re-extracting location data with geocoding for {name}")
-                    location_info = self._extract_location_data(advert_data, should_geocode=True, packet_hash=packet_hash)
-                    self.logger.debug(f"📍 Location data with geocoding: {location_info}")
-
-                    # Update geocoding cache if we have a valid packet_hash (skip invalid/default hashes)
-                    if packet_hash and packet_hash != "0000000000000000" and location_info.get('latitude') and location_info.get('longitude'):
-                        self.geocoding_cache[packet_hash] = time.time()
-                        self.logger.debug(f"📍 Cached geocoding for packet_hash {packet_hash[:16]}...")
 
                 if existing:
                     # Update existing entry
@@ -2068,9 +2089,11 @@ class RepeaterManager:
                     should_geocode, location_info = self._should_geocode_location(location_info, existing_data, name)
 
                     if should_geocode:
-                        city_from_coords = self._get_city_from_coordinates(
+                        # Nominatim is a blocking, rate-limited HTTP call; keep it off the loop.
+                        city_from_coords = await asyncio.to_thread(
+                            self._get_city_from_coordinates,
                             location_info['latitude'],
-                            location_info['longitude']
+                            location_info['longitude'],
                         )
                         if city_from_coords:
                             location_info['city'] = city_from_coords
@@ -3517,7 +3540,9 @@ class RepeaterManager:
 
                 try:
                     # Get full location information from coordinates
-                    location_info = self._get_full_location_from_coordinates(latitude, longitude, packet_hash=None)
+                    location_info = await asyncio.to_thread(
+                        self._get_full_location_from_coordinates, latitude, longitude, None
+                    )
 
                     # Debug logging to see what we got
                     self.logger.debug(f"Geocoding result for {name}: city='{location_info['city']}', state='{location_info['state']}', country='{location_info['country']}'")
@@ -3690,11 +3715,9 @@ class RepeaterManager:
 
             # Attempt geocoding
             try:
-                # Get city from coordinates
-                city = self._get_city_from_coordinates(lat, lon)
-
-                # Get state and country from coordinates
-                state, country = self._get_state_country_from_coordinates(lat, lon)
+                # Blocking, rate-limited Nominatim calls; keep them off the loop.
+                city = await asyncio.to_thread(self._get_city_from_coordinates, lat, lon)
+                state, country = await asyncio.to_thread(self._get_state_country_from_coordinates, lat, lon)
 
                 # Update the contact with geocoded data
                 updates = []

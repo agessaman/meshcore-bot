@@ -30,6 +30,8 @@ semantic versioning.
 
 ### Fixed
 
+- Reverse geocoding for contact adverts no longer blocks the bot. `track_contact_advertisement`, background geocoding, the repeater scan and the geolocation backfill called rate-limited Nominatim synchronously from async code, so every other task (command replies, sends, the mesh reader) stalled for the length of each lookup, including the rate limiter's sleep. These calls now run in a worker thread. Advert tracking decides whether to geocode before its write block and re-checks the duplicate-packet guard inside it, so concurrent adverts still cannot double-count.
+
 - The web viewer login no longer redirects off-site after sign-in. The `next`
   check let `///host` and `/\host` through, which browsers treat as another
   origin.

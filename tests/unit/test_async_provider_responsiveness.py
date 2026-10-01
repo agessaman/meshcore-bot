@@ -436,6 +436,8 @@ _BLOCKING_METHODS = frozenset({
     "_resolve_location",
     "_coordinates_to_location_string",
     "_get_city_from_coordinates",
+    "_get_state_country_from_coordinates",
+    "_get_full_location_from_coordinates",
     "_zip_to_city_string",
     "_suffix_for_coords",
     "_reverse_geocode",
@@ -477,8 +479,10 @@ class _InlineBlockingCallFinder(ast.NodeVisitor):
 def test_no_blocking_geocode_on_async_paths() -> None:
     repo_root = pathlib.Path(__file__).resolve().parents[2]
     offenders: list[str] = []
-    for root in ("modules/commands", "modules/service_plugins"):
-        for path in sorted((repo_root / root).rglob("*.py")):
+    paths = [p for root in ("modules/commands", "modules/service_plugins") for p in sorted((repo_root / root).rglob("*.py"))]
+    paths.append(repo_root / "modules" / "repeater_manager.py")
+    for path in paths:
+        if True:
             try:
                 tree = ast.parse(path.read_text(encoding="utf-8"))
             except (SyntaxError, UnicodeDecodeError):
