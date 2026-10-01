@@ -1331,36 +1331,29 @@ class CommandManager:
     ) -> bool:
         """Send a single DM payload that is already within the RF byte budget."""
         try:
-            # Try to use send_msg_with_retry if available (meshcore-2.1.6+)
             try:
-                # Use the meshcore commands interface for send_msg_with_retry
-                if hasattr(self.bot.meshcore, 'commands') and hasattr(self.bot.meshcore.commands, 'send_msg_with_retry'):
-                    self.logger.debug("Using send_msg_with_retry for improved reliability")
+                self.logger.debug("Using send_msg_with_retry for improved reliability")
 
-                    # Use send_msg_with_retry with configurable retry parameters
-                    max_attempts = self.bot.config.getint('Bot', 'dm_max_retries', fallback=3)
-                    max_flood_attempts = self.bot.config.getint('Bot', 'dm_max_flood_attempts', fallback=2)
-                    flood_after = self.bot.config.getint('Bot', 'dm_flood_after', fallback=2)
-                    timeout = 0  # Use suggested timeout from meshcore
-                    min_timeout = self._dm_min_ack_timeout()
+                # Use send_msg_with_retry with configurable retry parameters
+                max_attempts = self.bot.config.getint('Bot', 'dm_max_retries', fallback=3)
+                max_flood_attempts = self.bot.config.getint('Bot', 'dm_max_flood_attempts', fallback=2)
+                flood_after = self.bot.config.getint('Bot', 'dm_flood_after', fallback=2)
+                timeout = 0  # Use suggested timeout from meshcore
+                min_timeout = self._dm_min_ack_timeout()
 
-                    self.logger.debug(
-                        f"Attempting DM send with {max_attempts} max attempts "
-                        f"(ACK wait at least {min_timeout:g}s per attempt)"
-                    )
-                    result = await self.bot.meshcore.commands.send_msg_with_retry(
-                        contact,
-                        content,
-                        max_attempts=max_attempts,
-                        max_flood_attempts=max_flood_attempts,
-                        flood_after=flood_after,
-                        timeout=timeout,
-                        min_timeout=min_timeout,
-                    )
-                else:
-                    # Fallback to regular send_msg for older meshcore versions
-                    self.logger.debug("send_msg_with_retry not available, using send_msg")
-                    result = await self.bot.meshcore.commands.send_msg(contact, content)
+                self.logger.debug(
+                    f"Attempting DM send with {max_attempts} max attempts "
+                    f"(ACK wait at least {min_timeout:g}s per attempt)"
+                )
+                result = await self.bot.meshcore.commands.send_msg_with_retry(
+                    contact,
+                    content,
+                    max_attempts=max_attempts,
+                    max_flood_attempts=max_flood_attempts,
+                    flood_after=flood_after,
+                    timeout=timeout,
+                    min_timeout=min_timeout,
+                )
 
             except AttributeError:
                 # Fallback to regular send_msg for older meshcore versions
@@ -1506,13 +1499,7 @@ class CommandManager:
                     scope_to_use,
                     scope_source,
                 )
-            scoped = not scope_is_global and hasattr(self.bot.meshcore.commands, "set_flood_scope")
-            if not scope_is_global and not scoped:
-                self.logger.warning(
-                    "Regional flood scope %r requested but meshcore.commands.set_flood_scope "
-                    "is unavailable; channel message will use device default (often global flood)",
-                    scope_to_use,
-                )
+            scoped = not scope_is_global
 
             target = f"{channel} (channel {channel_num})"
             # Retry on no_event_received: max 2 extra attempts, 2s apart
