@@ -22,8 +22,6 @@ from apscheduler.jobstores.base import JobLookupError
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
 from .. import alert_format
 from ..commands.rain_command import (
@@ -38,6 +36,7 @@ from ..commands.rain_command import (
     precip_descriptor,
     reverse_geocode_region,
 )
+from ..http_retry import make_retry_session
 from ..url_shortener import shorten_url_sync
 from ..utils import format_temperature_high_low, get_config_timezone
 from .base_service import BaseServicePlugin
@@ -275,27 +274,8 @@ class WeatherService(BaseServicePlugin):
         return model
 
     def _create_retry_session(self) -> requests.Session:
-        """Create a requests session with retry logic for API calls.
-
-        Returns:
-            requests.Session: Configured session with retry adapter.
-        """
-        session = requests.Session()
-        retry_strategy = Retry(
-            total=2,
-            backoff_factor=0.3,
-            status_forcelist=[500, 502, 503, 504],
-            allowed_methods=["GET"],
-            raise_on_status=False
-        )
-        adapter = HTTPAdapter(
-            max_retries=retry_strategy,
-            pool_connections=10,
-            pool_maxsize=20
-        )
-        session.mount("https://", adapter)
-        session.mount("http://", adapter)
-        return session
+        """Create a requests session with retry logic for API calls."""
+        return make_retry_session()
 
     def _run_api_session_call(self, callback: Any, *args: Any, **kwargs: Any) -> Any:
         """Run one complete synchronous session operation under the session lock."""

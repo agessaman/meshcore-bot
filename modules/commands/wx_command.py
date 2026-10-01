@@ -12,8 +12,6 @@ from datetime import datetime, timedelta
 from typing import Callable, Optional, ParamSpec, TypeVar
 
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
 from .. import alert_format
 from ..clients.mqtt_weather import (
@@ -24,6 +22,7 @@ from ..clients.mqtt_weather import (
 
 # First-party modules with only required dependencies; they always import.
 from ..clients.wxsim_parser import WXSIMParser
+from ..http_retry import make_retry_session
 from ..models import MeshMessage
 from ..utils import (
     format_temperature_high_low,
@@ -168,31 +167,7 @@ class WxCommand(BaseCommand):
 
     def _create_retry_session(self) -> requests.Session:
         """Create a requests session with retry logic for NOAA API calls"""
-        session = requests.Session()
-
-        # Configure retry strategy
-        # Retry on: connection errors, timeout errors, and 5xx server errors
-        # Reduced to 2 retries (total 3 attempts) for faster failure recovery
-        retry_strategy = Retry(
-            total=2,  # Total number of retries (3 total attempts: 1 initial + 2 retries)
-            backoff_factor=0.3,  # Wait 0.3s, 0.6s between retries (faster backoff)
-            status_forcelist=[500, 502, 503, 504],  # Retry on these HTTP status codes
-            allowed_methods=["GET"],  # Only retry GET requests
-            raise_on_status=False  # Don't raise exception on status codes, let us handle it
-        )
-
-        # Mount the adapter with connection pooling for better performance
-        # pool_connections: number of connection pools to cache
-        # pool_maxsize: maximum number of connections to save in the pool
-        adapter = HTTPAdapter(
-            max_retries=retry_strategy,
-            pool_connections=10,  # Reuse connections for better performance
-            pool_maxsize=20
-        )
-        session.mount("https://", adapter)
-        session.mount("http://", adapter)
-
-        return session
+        return make_retry_session()
 
     def _run_sync_provider(
         self,
