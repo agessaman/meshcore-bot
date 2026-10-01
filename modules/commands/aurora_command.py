@@ -23,6 +23,7 @@ class AuroraCommand(BaseCommand):
     render_safe = True
 
     name = "aurora"
+    honors_skip_channel_check = False
     enabled_attr = "aurora_enabled"
     keywords = ["aurora", "kp"]
     description = "Get aurora forecast (KP index and probability) for a location"

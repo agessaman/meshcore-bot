@@ -205,6 +205,18 @@ class MeshCoreBot:
         self.channel_rate_limiter = self._load_channel_rate_limiter()
         self.tx_delay_ms = self.config.getint('Bot', 'tx_delay_ms', fallback=250)
 
+        # Radio health, set before any command or service plugin is built, since
+        # their constructors may read is_radio_offline / is_radio_zombie. Zombie: the firmware stopped acting on commands and only a
+        # power cycle recovers it. Offline: repeated send timeouts. The probe
+        # timestamp starts on the first health-loop pass, hence None until then.
+        self._radio_zombie_detected = False
+        self._radio_fail_count = 0
+        self._tcp_probe_fail_count = 0
+        self._radio_offline = False
+        self._send_consecutive_failures = 0
+        self._last_radio_probe: float | None = None
+        self._last_health_update = 0.0
+
         # Initialize translator for localization BEFORE CommandManager
         # This ensures translated keywords are available when commands are loaded
         try:
@@ -363,16 +375,6 @@ class MeshCoreBot:
         # Web-viewer reboot/reconnect ops in flight (a count, since they can overlap)
         self._radio_relinks_in_progress = 0
 
-        # Radio health. Zombie: the firmware stopped acting on commands and only a
-        # power cycle recovers it. Offline: repeated send timeouts. The probe
-        # timestamp starts on the first health-loop pass, hence None until then.
-        self._radio_zombie_detected = False
-        self._radio_fail_count = 0
-        self._tcp_probe_fail_count = 0
-        self._radio_offline = False
-        self._send_consecutive_failures = 0
-        self._last_radio_probe: float | None = None
-        self._last_health_update = 0.0
 
         # Serialize host->radio commands: one companion frame in flight at a
         # time, with a minimum inter-command gap so the firmware's single

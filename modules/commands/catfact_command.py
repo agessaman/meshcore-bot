@@ -21,6 +21,7 @@ class CatfactCommand(BaseCommand):
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "catfact"
+    honors_skip_channel_check = False
     enabled_attr = "catfact_enabled"
     keywords = ['catfact', 'cat', 'meow', 'purr', 'kitten']
     description = "Get a random cat fact (hidden command)"

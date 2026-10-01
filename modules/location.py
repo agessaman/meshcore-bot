@@ -628,8 +628,13 @@ def get_config_default_lat_lon(bot: Any, section: str) -> Optional[tuple[float, 
     return None
 
 
-def get_companion_lat_lon(bot: Any, message: Any, logger: Any = None) -> Optional[tuple[float, float]]:
-    """The sender's most recent advertised position from contact tracking, or None."""
+def get_companion_lat_lon(
+    bot: Any, message: Any, logger: Any = None, error_level: str = "debug"
+) -> Optional[tuple[float, float]]:
+    """The sender's most recent advertised position from contact tracking, or None.
+
+    A lookup error is logged on ``logger`` at ``error_level`` and returns None.
+    """
     try:
         sender_pubkey = getattr(message, "sender_pubkey", None)
         if not sender_pubkey or not hasattr(bot, "db_manager"):
@@ -649,7 +654,7 @@ def get_companion_lat_lon(bot: Any, message: Any, logger: Any = None) -> Optiona
             return (float(row["latitude"]), float(row["longitude"]))
     except Exception as e:
         if logger is not None:
-            logger.debug(f"Error getting companion location: {e}")
+            getattr(logger, error_level)(f"Error getting companion location: {e}")
     return None
 
 

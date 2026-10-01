@@ -42,6 +42,7 @@ class AqiCommand(BaseCommand):
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "aqi"
+    honors_skip_channel_check = False
     enabled_attr = "aqi_enabled"
     keywords = ['aqi', 'air', 'airquality', 'air_quality']
     description = "Get Air Quality Index for a location (usage: aqi seattle, aqi greenwood, aqi vancouver canada, aqi 47.6,-122.3, or aqi help)"

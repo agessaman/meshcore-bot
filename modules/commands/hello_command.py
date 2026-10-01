@@ -20,6 +20,7 @@ class HelloCommand(BaseCommand):
 
     # Plugin metadata
     name = "hello"
+    honors_skip_channel_check = False
     enabled_attr = "hello_enabled"
     keywords = ['hello', 'hi', 'hey', 'howdy', 'greetings', 'salutations', 'good morning', 'good afternoon', 'good evening', 'good night', 'yo', 'sup', 'whats up', 'what\'s up', 'morning', 'afternoon', 'evening', 'night', 'gday', 'g\'day', 'hola', 'bonjour', 'ciao', 'namaste', 'aloha', 'shalom', 'konnichiwa', 'guten tag', 'buenos dias', 'buenas tardes', 'buenas noches']
     description = "Responds to greetings with robot-themed responses"

@@ -40,6 +40,7 @@ class SportsCommand(BaseCommand):
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "sports"
+    honors_skip_channel_check = False
     enabled_attr = "sports_enabled"
     keywords = ['sports', 'score', 'scores']
     description = "Get sports scores and schedules (usage: sports [team/league])"

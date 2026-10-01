@@ -226,7 +226,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
 
     def _get_companion_location(self, message: MeshMessage) -> Optional[tuple[float, float]]:
         """Get companion/sender location from the contact-tracking database."""
-        return get_companion_lat_lon(self.bot, message, self.logger)
+        return get_companion_lat_lon(self.bot, message, self.logger, error_level="warning")
 
     def _get_bot_location(self) -> Optional[tuple[float, float]]:
         """Get bot location from config ([Bot] bot_latitude, bot_longitude)."""
@@ -3143,3 +3143,7 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
             line = line.replace(key, value).replace(key.capitalize(), value).replace(key.upper(), value)
 
         return line
+
+    async def get_weather_for_zipcode(self, zipcode: str) -> str:
+        """Get weather data for a specific zipcode (legacy method)"""
+        return await self.get_weather_for_location(zipcode, "zipcode")

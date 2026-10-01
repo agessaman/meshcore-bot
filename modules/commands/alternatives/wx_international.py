@@ -141,7 +141,7 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
 
     def _get_companion_location(self, message: MeshMessage) -> Optional[tuple[float, float]]:
         """Get companion/sender location from the contact-tracking database."""
-        return get_companion_lat_lon(self.bot, message, self.logger)
+        return get_companion_lat_lon(self.bot, message, self.logger, error_level="warning")
 
     def _get_bot_location(self) -> Optional[tuple[float, float]]:
         """Get bot location from config ([Bot] bot_latitude, bot_longitude)."""

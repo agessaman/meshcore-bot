@@ -404,6 +404,40 @@ class MessageHandler:
         integration = getattr(self.bot, "web_viewer_integration", None)
         return integration.bot_integration if integration else None
 
+    def _log_dm_routing_from_rf(self, message_pubkey: str) -> None:
+        """Log the route of a DM's correlated RF packet (INFO), when one is found.
+
+        Only for DMs without raw_hex, correlated by sender pubkey. This is
+        logging only: the route actually attached to the message is decided
+        later in handle_contact_message.
+        """
+        recent_rf_data = self.find_recent_rf_data(message_pubkey)
+        if not (recent_rf_data and recent_rf_data.get("raw_hex")):
+            return
+        decoded_packet = self.decode_meshcore_packet(recent_rf_data["raw_hex"], recent_rf_data.get("payload"))
+        if not decoded_packet:
+            return
+        self.logger.debug(f"Decoded packet for routing from RF data: {decoded_packet}")
+        if not recent_rf_data.get("routing_info"):
+            return
+        if not rf_data_is_correlated(recent_rf_data):
+            self.logger.debug("Ignoring routing info from an uncorrelated fallback packet")
+            return
+        routing_info = recent_rf_data["routing_info"]
+        self.logger.debug(f"Found routing info: {routing_info}")
+        path_len = routing_info.get("path_length", 0)
+        if path_len > 0:
+            path_hex = routing_info.get("path_hex", "")
+            path_nodes = routing_info.get("path_nodes", [])
+            route_type = routing_info.get("route_type", "Unknown")
+            if path_nodes:
+                path_info = f"{','.join(path_nodes)} ({path_len} hops via {route_type})"
+            else:
+                path_info = f"Path: {path_hex} ({path_len} hops via {route_type})"
+            self.logger.info(f"🛣️  MESSAGE ROUTING: {path_info}")
+        else:
+            self.logger.info(f"📡 DIRECT MESSAGE: Direct via {routing_info.get('route_type', 'Unknown')}")
+
     async def handle_contact_message(self, event: Any, metadata: dict[str, Any] | None = None) -> None:
         """Handle incoming contact message (DM).
 
@@ -436,6 +470,8 @@ class MessageHandler:
             message_raw_hex = payload.get("raw_hex", "")
             message_packet_prefix = message_raw_hex[:32] if message_raw_hex else None
             message_pubkey = payload.get("pubkey_prefix", "")  # Keep for contact lookup
+            if not message_packet_prefix and message_pubkey:
+                self._log_dm_routing_from_rf(message_pubkey)
 
             # Get additional metadata - try multiple sources for SNR and RSSI
             snr: float | None = None

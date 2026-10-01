@@ -85,6 +85,12 @@ class BaseCommand(ABC):
     # lists. requires_admin_access() is still the method callers ask.
     admin_only: bool = False
 
+    # Whether can_execute honors skip_channel_check. Commands whose own override
+    # used to drop the argument (it called super().can_execute(message)) set this
+    # to False so they keep enforcing their channel list even when a delegating
+    # caller asks to skip it. Fixing that is a behavior change, kept separate.
+    honors_skip_channel_check: bool = True
+
     # Documentation fields - to be overridden by subclasses for website generation
     short_description: str = ""  # Brief description for website (without usage syntax)
     usage: str = ""  # Usage syntax, e.g., "wx <zipcode|city> [tomorrow|7d|hourly|alerts]"
@@ -615,6 +621,9 @@ class BaseCommand(ABC):
         # The command's own enable switch, when it names one
         if self.enabled_attr is not None and not getattr(self, self.enabled_attr):
             return False
+
+        if not self.honors_skip_channel_check:
+            skip_channel_check = False
 
         # Check channel access (standardized channel override)
         if not skip_channel_check and not self.is_channel_allowed(message):

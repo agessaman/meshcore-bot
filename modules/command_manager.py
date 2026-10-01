@@ -2384,3 +2384,7 @@ class CommandManager:
         """Reload a specific plugin"""
         return self.plugin_loader.reload_plugin(plugin_name)
 
+    def get_plugin_metadata(self, plugin_name: str | None = None) -> dict[str, Any]:
+        """Get plugin metadata"""
+        return self.plugin_loader.get_plugin_metadata(plugin_name)
+

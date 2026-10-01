@@ -10,7 +10,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from ..flood_scope import section_flood_scope
+# Absolute on purpose: the local-service loader also executes this file as
+# local_services.base_service, where a relative parent import cannot resolve.
+from modules.flood_scope import section_flood_scope
 
 
 @dataclass

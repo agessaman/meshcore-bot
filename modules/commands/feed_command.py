@@ -17,6 +17,7 @@ class FeedCommand(BaseCommand):
 
     # Plugin metadata
     name = "feed"
+    honors_skip_channel_check = False
     admin_only = True
     enabled_attr = "feed_enabled"
     keywords = ['feed', 'feeds', 'rss', 'subscription', 'subscriptions']

@@ -13,6 +13,7 @@ class ReloadCommand(BaseCommand):
 
     # Plugin metadata
     name = "reload"
+    honors_skip_channel_check = False
     admin_only = True
     keywords = ["reload", "reloadconfig", "configreload"]
     description = "Reload bot configuration without restart (DM only, admin only)"

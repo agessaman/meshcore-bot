@@ -26,6 +26,7 @@ class Magic8Command(BaseCommand):
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "magic8"
+    honors_skip_channel_check = False
     enabled_attr = "magic8_enabled"
     keywords = ['magic8']
     description = "Emulates the classic Magic 8-ball toy'"

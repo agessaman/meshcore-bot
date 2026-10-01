@@ -15,6 +15,7 @@ class CmdCommand(BaseCommand):
 
     # Plugin metadata
     name = "cmd"
+    honors_skip_channel_check = False
     enabled_attr = "cmd_enabled"
     keywords = ['cmd', 'cmds', 'command', 'commands']
     description = "Lists available commands in compact format"

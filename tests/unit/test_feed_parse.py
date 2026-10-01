@@ -73,3 +73,10 @@ def test_allow_private_falls_back_to_feed_command():
     cfg = _config(Feed_Command={"allow_private_urls": "true"}, Feed_Manager={"allow_private_urls": "false"})
     assert fp.feed_allow_private_urls(cfg) is False
     assert fp.feed_allow_private_urls(_config(Feed_Command={"allow_private_urls": "true"}, Feed_Manager={})) is True
+
+
+def test_feed_manager_still_exports_the_size_defaults():
+    from modules import feed_manager
+
+    assert feed_manager.DEFAULT_MAX_FEED_RESPONSE_BYTES == fp.DEFAULT_MAX_FEED_RESPONSE_BYTES
+    assert feed_manager.DEFAULT_MAX_PARSED_FEED_ITEMS == fp.DEFAULT_MAX_PARSED_FEED_ITEMS

@@ -19,6 +19,7 @@ class SunCommand(BaseCommand):
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "sun"
+    honors_skip_channel_check = False
     enabled_attr = "sun_enabled"
     keywords = ['sun']
     description = "Get sunrise/sunset times"

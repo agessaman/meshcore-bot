@@ -29,6 +29,7 @@ class PathCommand(BaseCommand):
 
     # Plugin metadata
     name = "path"
+    honors_skip_channel_check = False
     enabled_attr = "path_enabled"
     keywords = ["path", "decode", "route"]
     description = "Decode hex path data to show which repeaters were involved in message routing"

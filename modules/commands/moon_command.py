@@ -15,6 +15,7 @@ class MoonCommand(BaseCommand):
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "moon"
+    honors_skip_channel_check = False
     enabled_attr = "moon_enabled"
     keywords = ['moon']
     description = "Get moon phase, rise/set times and position"

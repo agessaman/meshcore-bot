@@ -462,6 +462,7 @@ class MultitestCommand(BaseCommand):
 
     # Plugin metadata
     name = "multitest"
+    honors_skip_channel_check = False
     enabled_attr = "multitest_enabled"
     keywords = ['multitest', 'mt']
     description = "Listens for 6 seconds and collects all unique paths from incoming messages"

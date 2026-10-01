@@ -32,7 +32,9 @@ from modules.feed_format import (
     sort_feed_items,
     truncate_to_budget,
 )
-from modules.feed_parse import (
+from modules.feed_parse import (  # noqa: F401 - the DEFAULT_* names are re-exported
+    DEFAULT_MAX_FEED_RESPONSE_BYTES,
+    DEFAULT_MAX_PARSED_FEED_ITEMS,
     api_item_fields,
     feed_allow_private_urls,
     feed_max_parsed_items,

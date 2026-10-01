@@ -727,6 +727,7 @@ class RainCommand(BaseCommand):
     render_safe = True
 
     name = "rain"
+    honors_skip_channel_check = False
     enabled_attr = "rain_enabled"
     keywords = ["rain", "nowcast", "snow"]
     description = "Rain/snow nowcast: when precip starts or stops in the next ~2h, with amount"

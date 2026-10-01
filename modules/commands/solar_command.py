@@ -19,6 +19,7 @@ class SolarCommand(BaseCommand):
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "solar"
+    honors_skip_channel_check = False
     enabled_attr = "solar_enabled"
     keywords = ['solar']
     description = "Get current solar conditions and HF band info"

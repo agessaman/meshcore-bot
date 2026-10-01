@@ -21,6 +21,7 @@ class ChannelsCommand(BaseCommand):
 
     # Plugin metadata
     name = "channels"
+    honors_skip_channel_check = False
     enabled_attr = "channels_enabled"
     keywords = ['channels', 'channel']
     description = "Lists hashtag channels with sub-categories. Use 'channels' for general, 'channels list' for all categories, 'channels <category>' for specific categories, 'channels #channel' for specific channel info."

@@ -19,6 +19,7 @@ class RepeaterCommand(BaseCommand):
 
     # Plugin metadata
     name = "repeater"
+    honors_skip_channel_check = False
     enabled_attr = "repeater_enabled"
     keywords = ["repeater", "repeaters", "rp"]
     description = "Manage repeater contacts and purging operations (DM only)"

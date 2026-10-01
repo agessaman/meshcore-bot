@@ -18,6 +18,7 @@ class TraceCommand(BaseCommand):
     """Trace (manual path) and Tracer (reciprocal path) for link diagnostics."""
 
     name = "trace"
+    honors_skip_channel_check = False
     enabled_attr = "trace_enabled"
     keywords = ["trace", "tracer"]
     description = "Run a trace along a path (trace=manual if path given, else round-trip; tracer=always round-trip)"

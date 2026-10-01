@@ -21,6 +21,7 @@ class HelpCommand(BaseCommand):
 
     # Plugin metadata
     name = "help"
+    honors_skip_channel_check = False
     enabled_attr = "help_enabled"
     keywords = ['help']
     description = "Shows commands. Use 'help <command>' for details."

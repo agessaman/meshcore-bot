@@ -28,6 +28,7 @@ class TestCommand(BaseCommand):
 
     # Plugin metadata
     name = "test"
+    honors_skip_channel_check = False
     enabled_attr = "test_enabled"
     keywords = ['test', 't']
     description = "Responds to 'test' or 't' with connection info"

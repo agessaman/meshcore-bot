@@ -15,6 +15,7 @@ class SatpassCommand(BaseCommand):
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "satpass"
+    honors_skip_channel_check = False
     enabled_attr = "satpass_enabled"
     keywords = ['satpass']
     description = "Get satellite pass info: satpass <NORAD_number_or_shortcut> [visual]"

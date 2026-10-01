@@ -176,6 +176,7 @@ class AlertCommand(BaseCommand):
 
     # Plugin metadata
     name = "alert"
+    honors_skip_channel_check = False
     enabled_attr = "alert_enabled"
     keywords = ['alert', 'alerts', 'incident', 'incidents']
     description = "Get active emergency incidents (usage: alert seattle, alert 98258, alert 178th seattle, alert seattle all)"

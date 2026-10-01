@@ -26,6 +26,7 @@ class PrefixCommand(BaseCommand):
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "prefix"
+    honors_skip_channel_check = False
     enabled_attr = "prefix_enabled"
     keywords = ['prefix', 'lookup']
     description = "Look up repeaters by prefix (2, 4, or 6 hex chars = 1–3 bytes; longer input truncated)"

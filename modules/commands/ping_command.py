@@ -19,6 +19,7 @@ class PingCommand(BaseCommand):
 
     # Plugin metadata
     name = "ping"
+    honors_skip_channel_check = False
     enabled_attr = "ping_enabled"
     keywords = ['ping']
     description = "Responds to 'ping' with 'Pong!'"

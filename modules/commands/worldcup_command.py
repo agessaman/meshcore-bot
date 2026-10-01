@@ -38,6 +38,7 @@ class WorldCupCommand(BaseCommand):
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "worldcup"
+    honors_skip_channel_check = False
     enabled_attr = "worldcup_enabled"
     keywords = ["wc", "worldcup"]
     description = "FIFA World Cup scores, standings, and nation results (in-season only)"

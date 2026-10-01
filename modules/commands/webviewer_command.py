@@ -13,6 +13,7 @@ class WebViewerCommand(BaseCommand):
 
     # Plugin metadata
     name = "webviewer"
+    honors_skip_channel_check = False
     enabled_attr = "webviewer_enabled"
     keywords = ["webviewer", "web", "viewer", "wv"]
     description = "Manage web viewer integration (DM only)"

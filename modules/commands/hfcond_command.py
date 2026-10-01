@@ -19,6 +19,7 @@ class HfcondCommand(BaseCommand):
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "hfcond"
+    honors_skip_channel_check = False
     enabled_attr = "hfcond_enabled"
     keywords = ['hfcond']
     description = "Get HF band conditions for ham radio"

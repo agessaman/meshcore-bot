@@ -60,3 +60,23 @@ def test_admin_only_requires_admin_without_acl_config():
     cmd = _Admin(_bot())
     assert cmd.requires_admin_access() is True
     assert _Switchable(_bot(), enabled=True).requires_admin_access() is False
+
+
+def test_legacy_commands_still_enforce_channels_when_asked_to_skip():
+    """Commands whose old override dropped skip_channel_check keep doing so."""
+    from modules.commands.ping_command import PingCommand
+    from modules.commands.version_command import VersionCommand
+
+    assert PingCommand.honors_skip_channel_check is False
+    assert VersionCommand.honors_skip_channel_check is True
+
+    class _Legacy(_Switchable):
+        honors_skip_channel_check = False
+
+    cmd = _Legacy(_bot(), enabled=True)
+    cmd.allowed_channels = ["allowed"]
+    blocked = MeshMessage(content="switchable", sender_id="Ann", channel="blocked", is_dm=False)
+    assert cmd.can_execute(blocked, skip_channel_check=True) is False
+    modern = _Switchable(_bot(), enabled=True)
+    modern.allowed_channels = ["allowed"]
+    assert modern.can_execute(blocked, skip_channel_check=True) is True

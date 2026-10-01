@@ -539,3 +539,28 @@ class PluginLoader:
             self.logger.error(f"Error reloading plugin {plugin_name}: {e}")
             return False
 
+    def validate_plugin(self, plugin_instance: BaseCommand) -> list[str]:
+        """Validate a plugin instance and return any issues"""
+        issues = []
+        metadata = plugin_instance.get_metadata()
+
+        # Check required metadata
+        if not metadata.get('name'):
+            issues.append("Plugin missing 'name' metadata")
+
+        if not metadata.get('description'):
+            issues.append("Plugin missing 'description' metadata")
+
+        # Check if execute method is implemented
+        if not hasattr(plugin_instance, 'execute'):
+            issues.append("Plugin missing 'execute' method")
+
+        # Check for keyword conflicts
+        for keyword in metadata.get('keywords', []):
+            if keyword.lower() in self.keyword_mappings:
+                existing_plugin = self.keyword_mappings[keyword.lower()]
+                if existing_plugin != metadata['name']:
+                    issues.append(f"Keyword '{keyword}' conflicts with plugin '{existing_plugin}'")
+
+        return issues
+
