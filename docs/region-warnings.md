@@ -89,7 +89,7 @@ Both cooldowns and the cap read from the database rather than from memory, so re
 
 ### Message
 
-`{sender}` and `{channel}` are substituted. Keep it short: a DM body is 158 UTF-8 bytes and a channel reply is smaller still (160 minus your bot's name, and 10 bytes less again when the reply goes out under a region), and anything longer is truncated. The page shows the byte count live against whichever limit applies.
+`{sender}` and `{channel}` are substituted. Keep it short: a DM body is 158 UTF-8 bytes and a channel reply is smaller still (155 minus your bot's name and the `: ` after it, and 10 bytes less again when the reply goes out under a region), and anything longer is truncated. The page shows the byte count live against whichever limit applies.
 
 For channel delivery, include `@[{sender}]` so the person you are addressing sees it.
 

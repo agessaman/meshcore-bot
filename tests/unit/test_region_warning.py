@@ -2,6 +2,7 @@
 
 import configparser
 import sqlite3
+import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, Mock
@@ -703,12 +704,63 @@ class TestDelivery:
         cmd_mgr.channel_body_budget.return_value = 120
         await monitor.observe(
             verdict=VERDICT_GLOBAL, sender_id="Ann", sender_pubkey="ab", channel="#gen")
-        cmd_mgr.resolve_channel_send_scope.assert_called_once_with(
-            config_section=region_warning.CONFIG_SECTION, channel="#gen")
+        cmd_mgr.resolve_channel_send_scope.assert_called_once_with(channel="#gen")
         cmd_mgr.channel_body_budget.assert_called_once_with(channel="#gen", scope="#west")
         call = cmd_mgr.send_channel_message.call_args
         assert call[0][0] == "#gen"
         assert call[1]["scope"] == "#west"
+
+    async def test_section_flood_scope_wins_and_is_normalized(self):
+        monitor = _monitor(
+            enabled="true", dry_run="false", delivery="channel",
+            min_unscoped_messages=1, mesh_cooldown_minutes=0, flood_scope="west")
+        await monitor.observe(
+            verdict=VERDICT_GLOBAL, sender_id="Ann", sender_pubkey="ab", channel="#gen")
+        cmd_mgr = monitor.bot.command_manager
+        cmd_mgr.resolve_channel_send_scope.assert_not_called()
+        assert cmd_mgr.send_channel_message.call_args[1]["scope"] == "#west"
+
+    @pytest.mark.parametrize("bad", ["#we,st", "#a#b", "#"])
+    async def test_invalid_section_scope_is_a_failed_attempt(self, bad):
+        """Never handed to set_flood_scope, whose failure path sends anyway."""
+        monitor = _monitor(
+            enabled="true", dry_run="false", delivery="channel",
+            min_unscoped_messages=1, mesh_cooldown_minutes=30, flood_scope=bad)
+        await monitor.observe(
+            verdict=VERDICT_GLOBAL, sender_id="Ann", sender_pubkey="ab", channel="#gen")
+        monitor.bot.command_manager.send_channel_message.assert_not_called()
+        rows = monitor.bot.db_manager.execute_query(
+            "SELECT action, detail FROM region_warning_events")
+        assert [r["action"] for r in rows] == [region_warning.ACTION_FAILED]
+        assert "flood_scope" in rows[0]["detail"]
+        assert not monitor._mesh_cooldown_active(time.monotonic())
+
+    async def test_scope_resolution_error_is_a_failed_attempt_not_a_sent_row(self):
+        """A raising config read used to leave a 'sent' row that never transmitted."""
+        monitor = _monitor(
+            enabled="true", dry_run="false", delivery="channel",
+            min_unscoped_messages=1, mesh_cooldown_minutes=30)
+        monitor.bot.command_manager.resolve_channel_send_scope.side_effect = (
+            configparser.InterpolationSyntaxError("flood_scope", "Channels", "bad %"))
+        await monitor.observe(
+            verdict=VERDICT_GLOBAL, sender_id="Ann", sender_pubkey="ab", channel="#gen")
+        monitor.bot.command_manager.send_channel_message.assert_not_called()
+        rows = monitor.bot.db_manager.execute_query(
+            "SELECT action FROM region_warning_events")
+        assert [r["action"] for r in rows] == [region_warning.ACTION_FAILED]
+        assert not monitor._mesh_cooldown_active(time.monotonic())
+
+    async def test_dry_run_logs_the_body_the_send_would_use(self):
+        monitor = _monitor(
+            enabled="true", dry_run="true", delivery="channel",
+            min_unscoped_messages=1, mesh_cooldown_minutes=0, message="x" * 400)
+        monitor.bot.command_manager.channel_body_budget.return_value = 111
+        await monitor.observe(
+            verdict=VERDICT_GLOBAL, sender_id="Ann", sender_pubkey="ab", channel="#gen")
+        rows = monitor.bot.db_manager.execute_query(
+            "SELECT action, detail FROM region_warning_events")
+        assert rows[0]["action"] == region_warning.ACTION_DRY_RUN
+        assert len(rows[0]["detail"]) == 111
 
     async def test_channel_delivery_leaves_unset_scope_to_the_send(self):
         """None lets send_channel_message apply outgoing_flood_scope_override."""
