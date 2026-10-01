@@ -18,6 +18,7 @@ class TraceCommand(BaseCommand):
     """Trace (manual path) and Tracer (reciprocal path) for link diagnostics."""
 
     name = "trace"
+    enabled_attr = "trace_enabled"
     keywords = ["trace", "tracer"]
     description = "Run a trace along a path (trace=manual if path given, else round-trip; tracer=always round-trip)"
     requires_dm = False
@@ -79,11 +80,6 @@ class TraceCommand(BaseCommand):
             self.bot_label = "[Bot]"
         output_fmt = (self.bot.config.get("Trace_Command", "output_format", fallback="inline") or "inline").strip().lower()
         self.output_format = output_fmt if output_fmt in ("inline", "vertical") else "inline"
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        if not self.trace_enabled:
-            return False
-        return super().can_execute(message)
 
     def get_help_text(self) -> str:
         return (

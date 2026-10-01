@@ -21,6 +21,7 @@ class HelpCommand(BaseCommand):
 
     # Plugin metadata
     name = "help"
+    enabled_attr = "help_enabled"
     keywords = ['help']
     description = "Shows commands. Use 'help <command>' for details."
     category = "basic"
@@ -41,19 +42,6 @@ class HelpCommand(BaseCommand):
         """
         super().__init__(bot)
         self.help_enabled = self.get_config_value('Help_Command', 'enabled', fallback=True, value_type='bool')
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        if not self.help_enabled:
-            return False
-        return super().can_execute(message)
 
     def get_help_text(self) -> str:
         """Get help text for the help command.

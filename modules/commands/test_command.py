@@ -28,6 +28,7 @@ class TestCommand(BaseCommand):
 
     # Plugin metadata
     name = "test"
+    enabled_attr = "test_enabled"
     keywords = ['test', 't']
     description = "Responds to 'test' or 't' with connection info"
     category = "basic"
@@ -82,19 +83,6 @@ class TestCommand(BaseCommand):
                         self.logger.warning(f"Invalid bot coordinates in config: {lat}, {lon}")
         except Exception as e:
             self.logger.warning(f"Error reading bot location from config: {e}")
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        if not self.test_enabled:
-            return False
-        return super().can_execute(message)
 
     def get_help_text(self) -> str:
         """Get help text for the command.

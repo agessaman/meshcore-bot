@@ -20,6 +20,7 @@ class HelloCommand(BaseCommand):
 
     # Plugin metadata
     name = "hello"
+    enabled_attr = "hello_enabled"
     keywords = ['hello', 'hi', 'hey', 'howdy', 'greetings', 'salutations', 'good morning', 'good afternoon', 'good evening', 'good night', 'yo', 'sup', 'whats up', 'what\'s up', 'morning', 'afternoon', 'evening', 'night', 'gday', 'g\'day', 'hola', 'bonjour', 'ciao', 'namaste', 'aloha', 'shalom', 'konnichiwa', 'guten tag', 'buenos dias', 'buenas tardes', 'buenas noches']
     description = "Responds to greetings with robot-themed responses"
     category = "basic"
@@ -440,22 +441,6 @@ class HelloCommand(BaseCommand):
         defined_emoji_pattern = r'[🖖👋😊😄🤗👋🏻👋🏼👋🏽👋🏾👋🏿✌️🙏🙋🙋‍♂️🙋‍♀️👽👾🛸\s]+$'
 
         return bool(re.match(defined_emoji_pattern, cleaned_text))
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        # Check if hello command is enabled
-        if not self.hello_enabled:
-            return False
-
-        # Call parent can_execute() which includes channel checking, cooldown, etc.
-        return super().can_execute(message)
 
     def get_emoji_response(self, text: str, bot_name: str, mention: str = "") -> str:
         """Get appropriate response for emoji-only message.

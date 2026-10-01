@@ -26,6 +26,7 @@ class PrefixCommand(BaseCommand):
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "prefix"
+    enabled_attr = "prefix_enabled"
     keywords = ['prefix', 'lookup']
     description = "Look up repeaters by prefix (2, 4, or 6 hex chars = 1–3 bytes; longer input truncated)"
     category = "meshcore_info"
@@ -153,19 +154,6 @@ class PrefixCommand(BaseCommand):
             self.prefix_best_max_edge_age_days = 30
             self.prefix_best_location_radius_km = 50.0
             self.prefix_best_do_not_suggest = []
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        if not self.prefix_enabled:
-            return False
-        return super().can_execute(message)
 
     def get_help_text(self) -> str:
         """Get help text for the prefix command.

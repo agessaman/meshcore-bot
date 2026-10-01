@@ -70,6 +70,12 @@ class BaseCommand(ABC):
     render_safe: bool = False
     category: str = "general"
 
+    # Name of the instance attribute holding this command's own enable switch
+    # (usually read from ``[<Section>] enabled`` in ``__init__``). can_execute
+    # refuses while it is false, before any other check. None: no switch, or the
+    # command checks it itself.
+    enabled_attr: Optional[str] = None
+
     # Documentation fields - to be overridden by subclasses for website generation
     short_description: str = ""  # Brief description for website (without usage syntax)
     usage: str = ""  # Usage syntax, e.g., "wx <zipcode|city> [tomorrow|7d|hourly|alerts]"
@@ -590,6 +596,10 @@ class BaseCommand(ABC):
         Returns:
             bool: True if the command can be executed, False otherwise.
         """
+        # The command's own enable switch, when it names one
+        if self.enabled_attr is not None and not getattr(self, self.enabled_attr):
+            return False
+
         # Check channel access (standardized channel override)
         if not skip_channel_check and not self.is_channel_allowed(message):
             return False

@@ -462,6 +462,7 @@ class MultitestCommand(BaseCommand):
 
     # Plugin metadata
     name = "multitest"
+    enabled_attr = "multitest_enabled"
     keywords = ['multitest', 'mt']
     description = "Listens for 6 seconds and collects all unique paths from incoming messages"
     category = "meshcore_info"
@@ -501,19 +502,6 @@ class MultitestCommand(BaseCommand):
         if self._execution_lock is None:
             self._execution_lock = asyncio.Lock()
         return self._execution_lock
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        if not self.multitest_enabled:
-            return False
-        return super().can_execute(message)
 
     def _load_config(self):
         """Load configuration for multitest command"""

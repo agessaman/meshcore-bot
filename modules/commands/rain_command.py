@@ -725,6 +725,7 @@ class RainCommand(BaseCommand):
     render_safe = True
 
     name = "rain"
+    enabled_attr = "rain_enabled"
     keywords = ["rain", "nowcast", "snow"]
     description = "Rain/snow nowcast: when precip starts or stops in the next ~2h, with amount"
     category = "weather"
@@ -803,11 +804,6 @@ class RainCommand(BaseCommand):
         )
         self._reverse_cache: dict[str, tuple[Optional[str], Optional[str]]] = {}
         self._zip_cache: dict[str, str] = {}
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        if not self.rain_enabled:
-            return False
-        return super().can_execute(message)
 
     def _create_retry_session(self) -> requests.Session:
         """Session with light retry/backoff for the Open-Meteo call."""

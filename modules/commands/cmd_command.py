@@ -15,6 +15,7 @@ class CmdCommand(BaseCommand):
 
     # Plugin metadata
     name = "cmd"
+    enabled_attr = "cmd_enabled"
     keywords = ['cmd', 'cmds', 'command', 'commands']
     description = "Lists available commands in compact format"
     category = "basic"
@@ -35,19 +36,6 @@ class CmdCommand(BaseCommand):
         self.cmd_reference_url = self.get_config_value(
             'Cmd_Command', 'cmd_reference_url', fallback='', value_type='str'
         ).strip()
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        if not self.cmd_enabled:
-            return False
-        return super().can_execute(message)
 
     def get_help_text(self) -> str:
         """Get help text for the cmd command.

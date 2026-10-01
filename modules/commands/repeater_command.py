@@ -19,6 +19,7 @@ class RepeaterCommand(BaseCommand):
 
     # Plugin metadata
     name = "repeater"
+    enabled_attr = "repeater_enabled"
     keywords = ["repeater", "repeaters", "rp"]
     description = "Manage repeater contacts and purging operations (DM only)"
     requires_dm = True
@@ -29,19 +30,6 @@ class RepeaterCommand(BaseCommand):
     def __init__(self, bot):
         super().__init__(bot)
         self.repeater_enabled = self.get_config_value('Repeater_Command', 'enabled', fallback=True, value_type='bool')
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        if not self.repeater_enabled:
-            return False
-        return super().can_execute(message)
 
     def _get_deprecation_warning(self, web_viewer_url: str = None) -> str:
         """Get deprecation warning message for commands replaced by web viewer.

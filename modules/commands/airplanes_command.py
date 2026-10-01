@@ -55,6 +55,7 @@ class AirplanesCommand(BaseCommand):
     # Read-only informational output; safe for scheduled {cmd:...} rendering.
     render_safe = True
     name = "airplanes"
+    enabled_attr = "airplanes_enabled"
     keywords = ['airplanes', 'aircraft', 'planes', 'adsb', 'overhead']
     description = "Get aircraft overhead (usage: airplanes [location] [options] or overhead [lat,lon])"
     category = "general"
@@ -99,19 +100,6 @@ class AirplanesCommand(BaseCommand):
         # Channel payload can be as low as 130 bytes; three compact lines are reliable.
         self.max_results = self.get_config_value('Airplanes_Command', 'max_results', fallback=3, value_type='int')
         self.url_timeout = self.get_config_value('Airplanes_Command', 'url_timeout', fallback=10, value_type='int')
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if this command can be executed with the given message.
-
-        Args:
-            message: The message triggering the command.
-
-        Returns:
-            bool: True if command is enabled and checks pass, False otherwise.
-        """
-        if not self.airplanes_enabled:
-            return False
-        return super().can_execute(message)
 
     def get_help_text(self) -> str:
         """Get help text for this command.

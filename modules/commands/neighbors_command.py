@@ -38,6 +38,7 @@ class NeighborsCommand(BaseCommand):
 
     # Plugin metadata
     name = "neighbors"
+    enabled_attr = "command_enabled"
     keywords = ['neighbors', 'neighbours']
     description = "Runs a zero-hop neighbor discovery cycle (DM only)"
     requires_dm = True
@@ -66,20 +67,6 @@ class NeighborsCommand(BaseCommand):
             str: The help text for this command.
         """
         return self.translate('commands.neighbors.description')
-
-    def can_execute(self, message: MeshMessage, skip_channel_check: bool = False) -> bool:
-        """Check if the neighbors command can be executed.
-
-        Args:
-            message: The message triggering the command.
-            skip_channel_check: Passed through to the base implementation.
-
-        Returns:
-            bool: True if the command can be executed, False otherwise.
-        """
-        if not self.command_enabled:
-            return False
-        return super().can_execute(message, skip_channel_check=skip_channel_check)
 
     def _get_capture_service(self) -> Any:
         """The packet capture service instance, or None when unavailable."""
