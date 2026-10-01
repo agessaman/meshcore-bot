@@ -117,6 +117,14 @@ dm_max_flood_attempts = 2
 # Number of attempts before switching to flood mode
 dm_flood_after = 2
 
+# Shortest time in seconds to wait for a DM's ACK on each attempt. The radio's
+# own estimate is built from airtime and hop count with little fixed allowance,
+# so on fast presets a zero-hop attempt can wait barely a second, shorter than
+# the ACK takes to come back, and a delivered DM is reported as failed. An ACK
+# still ends the wait at once; this only delays giving up on a DM that is never
+# acknowledged. 0 uses the radio's estimate alone; at most 60.
+dm_min_ack_timeout = 8
+
 # Timezone for bot operations
 # Use standard timezone names (e.g., America/New_York, Europe/London, UTC)
 # Leave empty to use system timezone

@@ -15,6 +15,7 @@ import sqlite3
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Optional
 
@@ -329,49 +330,136 @@ class MessageScheduler:
         if self.bot.is_radio_zombie:
             self.logger.warning("send_scheduled_message suppressed — radio is in zombie state")
             return
-        if self.bot.is_radio_offline:
+        allowed, trial = self.bot._admit_measured_send()
+        if not allowed:
             self.logger.warning("send_scheduled_message suppressed — radio is offline (repeated send timeouts)")
             return
 
-        current_time = self.get_current_time()
-        scope_note = f" [{scope}]" if scope else ""
-        self.logger.info(
-            f"📅 Sending scheduled message at {current_time.strftime('%H:%M:%S')} "
-            f"to {channel}{scope_note}: {message}"
-        )
+        try:
+            current_time = self.get_current_time()
+            scope_note = f" [{scope}]" if scope else ""
+            self.logger.info(
+                f"📅 Sending scheduled message at {current_time.strftime('%H:%M:%S')} "
+                f"to {channel}{scope_note}: {message}"
+            )
 
-        import asyncio
-
-        # Use the main event loop if available, otherwise create a new one
-        # This prevents deadlock when the main loop is already running
-        if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
-            # Schedule coroutine in the running main event loop
-            future = asyncio.run_coroutine_threadsafe(
-                self._send_scheduled_message_async(
+            self._run_measured_send(
+                lambda: self._send_scheduled_message_async(
                     channel, message, schedule_key=schedule_key, scope=scope
                 ),
-                self.bot.main_event_loop,
+                trial,
+                error_label="Error sending scheduled message",
+                loop_gone_label="Event loop gone during scheduled message",
+                reports_outcome=True,
+                run_fallback=self._run_in_temporary_loop,
             )
-            # Wait for completion (with timeout to prevent indefinite blocking)
-            try:
-                future.result(timeout=60)  # 60 second timeout
-                self.bot._record_send_success()
-            except RuntimeError as e:
-                self.logger.warning("Event loop gone during scheduled message: %s", e)
-            except Exception as e:
-                self.logger.error(f"Error sending scheduled message: {type(e).__name__}: {e}")
-                self.bot._record_send_failure(scheduler=self)
-        else:
-            # Fallback: create a temporary event loop and close it when done
+        except BaseException:
+            # A no-op when the send already settled the trial.
+            self.bot._record_send_inconclusive(trial)
+            raise
+
+    @staticmethod
+    def _run_in_temporary_loop(coro: Any) -> Any:
+        """Run *coro* on a new event loop and close it (scheduled-message fallback)."""
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+
+    @staticmethod
+    def _run_in_current_loop(coro: Any) -> Any:
+        """Run *coro* on this thread's event loop, creating one if needed (advert fallback)."""
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
             loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        return loop.run_until_complete(coro)
+
+    def _run_measured_send(
+        self,
+        make_coro: Callable[[], Any],
+        trial: int,
+        *,
+        error_label: str,
+        loop_gone_label: str | None,
+        reports_outcome: bool,
+        run_fallback: Callable[[Any], Any],
+    ) -> None:
+        """Run one measured send and feed its outcome to the radio-offline breaker.
+
+        On the running main loop (waiting at most 60 s): an exception, the
+        timeout included, records a failure; completion records a success,
+        unless the send reports its own outcome and returned False: for an
+        ordinary send that is inconclusive (no counter moves), while a trial
+        that returned False ends until the next answered probe. With no running
+        main loop the send runs on a local loop and, as before, only a trial is
+        settled. A trial (``trial`` is its id) runs under ``_as_offline_trial``
+        and is always settled, whatever exits.
+        """
+        settled = False
+        try:
+            main_loop = getattr(self.bot, 'main_event_loop', None)
+            if main_loop and main_loop.is_running():
+                send = make_coro()
+                coro = self.bot._as_offline_trial(send, trial) if trial else send
+                try:
+                    try:
+                        future = asyncio.run_coroutine_threadsafe(coro, main_loop)
+                    except BaseException:
+                        coro.close()
+                        send.close()
+                        raise
+                    try:
+                        outcome = future.result(timeout=60)  # 60 second timeout
+                    except BaseException:
+                        if trial:
+                            # A trial that ran out of time must not resume and transmit later.
+                            future.cancel()
+                        raise
+                except RuntimeError as e:
+                    if loop_gone_label is None:
+                        self.logger.error(f"{error_label}: {type(e).__name__}: {e}")
+                        self.bot._record_send_failure(scheduler=self, trial=trial)
+                    else:
+                        self.logger.warning("%s: %s", loop_gone_label, e)
+                        self.bot._record_send_inconclusive(trial)
+                except Exception as e:
+                    self.logger.error(f"{error_label}: {type(e).__name__}: {e}")
+                    self.bot._record_send_failure(scheduler=self, trial=trial)
+                else:
+                    # False means the send reported failure (or nothing was sent)
+                    # without the 60 s wait running out: it does not count toward
+                    # the outage threshold, but a trial that did not succeed ends.
+                    if outcome or not reports_outcome:
+                        self.bot._record_send_success(trial)
+                    elif trial:
+                        self.bot._end_offline_trial(trial)
+                    else:
+                        self.bot._record_send_inconclusive(trial)
+                settled = True
+                return
+
+            # Fallback: no running main loop
+            coro = make_coro()
+            if not trial:
+                run_fallback(coro)
+                return
             try:
-                loop.run_until_complete(
-                    self._send_scheduled_message_async(
-                        channel, message, schedule_key=schedule_key, scope=scope
-                    )
-                )
-            finally:
-                loop.close()
+                outcome = run_fallback(self.bot._as_offline_trial(coro, trial))
+            except Exception:
+                self.bot._record_send_failure(scheduler=self, trial=trial)
+                settled = True
+                raise
+            if outcome or not reports_outcome:
+                self.bot._record_send_success(trial)
+            else:
+                self.bot._end_offline_trial(trial)
+            settled = True
+        finally:
+            if trial and not settled:
+                self.bot._record_send_inconclusive(trial)
 
     async def _get_mesh_info(self) -> dict[str, Any]:
         """Get mesh network information for scheduled messages"""
@@ -700,8 +788,8 @@ class MessageScheduler:
         *,
         schedule_key: str = "",
         scope: str | None = None,
-    ):
-        """Send a scheduled message (async implementation)"""
+    ) -> bool:
+        """Send a scheduled message (async implementation); True when it went out."""
         stagger = self._scheduled_message_stagger_seconds(schedule_key)
         if stagger > 0:
             self.logger.debug(
@@ -718,7 +806,7 @@ class MessageScheduler:
                     "Scheduled message for %s is empty after expanding command "
                     "placeholders; nothing sent", channel
                 )
-                return
+                return False
 
         # Check if message contains mesh info placeholders
         if self._has_mesh_info_placeholders(message):
@@ -751,20 +839,19 @@ class MessageScheduler:
                 "Scheduled message for %s split into %d chunks to fit the RF budget",
                 channel, len(chunks),
             )
-            await _asyncio.wait_for(
+            return bool(await _asyncio.wait_for(
                 self.bot.command_manager.send_channel_messages_chunked(
                     channel, chunks, skip_user_rate_limit=True, scope=scope
                 ),
                 timeout=send_timeout * len(chunks),
-            )
-            return
+            ))
 
-        await _asyncio.wait_for(
+        return bool(await _asyncio.wait_for(
             self.bot.command_manager.send_channel_message(
                 channel, message, skip_user_rate_limit=True, scope=scope
             ),
             timeout=send_timeout,
-        )
+        ))
 
     def start(self):
         """Start the scheduler in a separate thread"""
@@ -1046,40 +1133,27 @@ class MessageScheduler:
         if self.bot.is_radio_zombie:
             self.logger.warning("send_interval_advert suppressed — radio is in zombie state")
             return
-        if self.bot.is_radio_offline:
+        allowed, trial = self.bot._admit_measured_send()
+        if not allowed:
             self.logger.warning("send_interval_advert suppressed — radio is offline (repeated send timeouts)")
             return
 
-        current_time = self.get_current_time()
-        self.logger.info(f"📢 Sending interval-based flood advert at {current_time.strftime('%H:%M:%S')}")
+        try:
+            current_time = self.get_current_time()
+            self.logger.info(f"📢 Sending interval-based flood advert at {current_time.strftime('%H:%M:%S')}")
 
-        import asyncio
-
-        # Use the main event loop if available, otherwise create a new one
-        # This prevents deadlock when the main loop is already running
-        if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
-            # Schedule coroutine in the running main event loop
-            future = asyncio.run_coroutine_threadsafe(
-                self._send_interval_advert_async(),
-                self.bot.main_event_loop
+            self._run_measured_send(
+                self._send_interval_advert_async,
+                trial,
+                error_label="Error sending interval advert",
+                loop_gone_label=None,
+                reports_outcome=False,
+                run_fallback=self._run_in_current_loop,
             )
-            # Wait for completion (with timeout to prevent indefinite blocking)
-            try:
-                future.result(timeout=60)  # 60 second timeout
-                self.bot._record_send_success()
-            except Exception as e:
-                self.logger.error(f"Error sending interval advert: {type(e).__name__}: {e}")
-                self.bot._record_send_failure(scheduler=self)
-        else:
-            # Fallback: create new event loop if main loop not available
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
-            # Run the async function in the event loop
-            loop.run_until_complete(self._send_interval_advert_async())
+        except BaseException:
+            # A no-op when the send already settled the trial.
+            self.bot._record_send_inconclusive(trial)
+            raise
 
     async def _send_interval_advert_async(self):
         """Send an interval-based advert (async implementation)"""
