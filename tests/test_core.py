@@ -992,7 +992,12 @@ class TestRadioOfflineRecovery:
         self.alerts: list = []
         self._thread_patch = patch("threading.Thread")
         thread_cls = self._thread_patch.start()
-        thread_cls.side_effect = lambda *a, **k: self.alerts.append(k) or MagicMock()
+        # Count alert-email threads; let every other thread (e.g. asyncio.to_thread workers) run.
+        thread_cls.side_effect = lambda *a, **k: (
+            self.alerts.append(k) or MagicMock()
+            if k.get("target") == self.scheduler.send_radio_offline_alert_email
+            else _RealThread(*a, **k)
+        )
         for _ in range(3):
             bot._record_send_failure(scheduler=self.scheduler)
         assert bot.is_radio_offline is True
@@ -1344,6 +1349,53 @@ class TestRadioOfflineRecovery:
             with pytest.raises(RuntimeError):
                 send()
             assert bot._radio_offline_trial == 'armed'  # not stranded in flight
+
+    def test_a_reply_can_take_the_trial_and_clear_the_outage(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        self._probe_ok(bot)
+        _, trial = bot._admit_measured_send()
+        seen = {}
+
+        async def send():
+            seen['offline_inside_send'] = bot.is_radio_offline
+            return True
+
+        assert asyncio.run(bot._send_as_offline_trial(trial, send)) is True
+        assert seen['offline_inside_send'] is False
+        assert bot.is_radio_offline is False
+        assert bot.db_manager.get_metadata('bot.radio_offline') == 'false'
+
+    def test_a_failed_reply_trial_waits_for_the_next_probe(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        self._probe_ok(bot)
+        _, trial = bot._admit_measured_send()
+
+        async def send():
+            return False
+
+        assert asyncio.run(bot._send_as_offline_trial(trial, send)) is False
+        assert bot.is_radio_offline is True
+        assert bot._radio_offline_trial is None
+        assert len(self.alerts) == 1
+
+    def test_command_manager_send_claims_the_trial_and_settles_it(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        bot.connected = True
+        bot.meshcore = MagicMock()
+        refused = AsyncMock(return_value=(False, None))  # e.g. rate limited: the send returns False
+        with patch.object(type(bot.command_manager), "_check_rate_limits", refused):
+            # No armed trial: suppressed before reaching the rate limiter.
+            assert asyncio.run(bot.command_manager.send_channel_message("general", "hi")) is False
+            assert refused.await_count == 0
+            self._probe_ok(bot)
+            # Armed: this send takes the trial, passes the guard under it, and fails it.
+            assert asyncio.run(bot.command_manager.send_channel_message("general", "hi")) is False
+            assert refused.await_count == 1
+            assert bot._radio_offline_trial is None
+            # The next send is suppressed again until another probe.
+            assert asyncio.run(bot.command_manager.send_dm("someone", "hi")) is False
+            assert refused.await_count == 1
+        assert bot.is_radio_offline is True
 
     def test_viewer_clear_of_an_old_outage_leaves_a_newer_one(self, tmp_path):
         bot = self._offline_bot(tmp_path)
