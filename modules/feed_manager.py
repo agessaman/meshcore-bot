@@ -5,7 +5,6 @@ Handles polling feeds and sending updates to channels
 """
 
 import asyncio
-import contextlib
 import hashlib
 import json
 import os
@@ -33,15 +32,19 @@ from modules.feed_format import (
     sort_feed_items,
     truncate_to_budget,
 )
+from modules.feed_parse import (
+    api_item_fields,
+    feed_allow_private_urls,
+    feed_max_parsed_items,
+    feed_max_response_bytes,
+    rss_entry_published,
+)
 from modules.security_utils import (
     SafeAiohttpResolver,
     SafeUrlPolicy,
     UnsafeUrlError,
     safe_aiohttp_request,
 )
-
-DEFAULT_MAX_FEED_RESPONSE_BYTES = 2 * 1024 * 1024
-DEFAULT_MAX_PARSED_FEED_ITEMS = 500
 
 
 def _useful_feed_content_type(content_type: str, feed_type: str) -> bool:
@@ -87,20 +90,10 @@ class FeedManager:
             self.max_message_length = 130
             self.default_output_format = '{emoji} {body|truncate:100} - {date}\n{link|truncate:50}'
             self.default_send_interval = 2.0
-            self.max_response_bytes = DEFAULT_MAX_FEED_RESPONSE_BYTES
-            self.max_parsed_items = DEFAULT_MAX_PARSED_FEED_ITEMS
+            self.max_response_bytes = feed_max_response_bytes(bot.config)
+            self.max_parsed_items = feed_max_parsed_items(bot.config)
             self.shorten_feed_urls = False
-            if bot.config.has_section('Feed_Command'):
-                try:
-                    self.allow_private_urls = bot.config.getboolean(
-                        'Feed_Command',
-                        'allow_private_urls',
-                        fallback=False,
-                    )
-                except ValueError:
-                    self.allow_private_urls = False
-            else:
-                self.allow_private_urls = False
+            self.allow_private_urls = feed_allow_private_urls(bot.config)
         else:
             self.enabled = bot.config.getboolean('Feed_Manager', 'feed_manager_enabled', fallback=False)
             self.default_check_interval = bot.config.getint('Feed_Manager', 'default_check_interval_seconds', fallback=300)
@@ -136,41 +129,12 @@ class FeedManager:
             )
             self.default_output_format = bot.config.get('Feed_Manager', 'default_output_format', fallback='{emoji} {body|truncate:100} - {date}\n{link|truncate:50}')
             self.default_send_interval = bot.config.getfloat('Feed_Manager', 'default_message_send_interval_seconds', fallback=2.0)
-            self.max_response_bytes = max(
-                1024,
-                bot.config.getint(
-                    'Feed_Manager',
-                    'max_response_bytes',
-                    fallback=DEFAULT_MAX_FEED_RESPONSE_BYTES,
-                ),
-            )
-            self.max_parsed_items = max(
-                1,
-                bot.config.getint(
-                    'Feed_Manager',
-                    'max_parsed_items',
-                    fallback=DEFAULT_MAX_PARSED_FEED_ITEMS,
-                ),
-            )
+            self.max_response_bytes = feed_max_response_bytes(bot.config)
+            self.max_parsed_items = feed_max_parsed_items(bot.config)
             self.shorten_feed_urls = bot.config.getboolean(
                 'Feed_Manager', 'shorten_urls', fallback=False
             )
-            if bot.config.has_section('Feed_Command'):
-                try:
-                    feed_command_allow_private = bot.config.getboolean(
-                        'Feed_Command',
-                        'allow_private_urls',
-                        fallback=False,
-                    )
-                except ValueError:
-                    feed_command_allow_private = False
-            else:
-                feed_command_allow_private = False
-            self.allow_private_urls = bot.config.getboolean(
-                'Feed_Manager',
-                'allow_private_urls',
-                fallback=feed_command_allow_private,
-            )
+            self.allow_private_urls = feed_allow_private_urls(bot.config)
 
         # Rate limiting per domain
         self._domain_last_request: dict[str, float] = {}
@@ -451,18 +415,12 @@ class FeedManager:
                         f"{entry.get('title', '')}{entry.get('link', '')}".encode()
                     ).hexdigest()
 
-                # Parse published date
-                published = None
-                if hasattr(entry, 'published_parsed') and entry.published_parsed:
-                    with contextlib.suppress(Exception):
-                        published = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
-
                 all_items.append({
                     'id': item_id,
                     'title': entry.get('title', 'Untitled'),
                     'link': entry.get('link', ''),
                     'description': entry.get('description', ''),
-                    'published': published
+                    'published': rss_entry_published(entry),
                 })
 
             # Apply sorting if configured (before filtering, so we can properly track the last item)
@@ -579,10 +537,7 @@ class FeedManager:
 
             # Extract items
             id_field = parser_config.get('id_field', 'id')
-            title_field = parser_config.get('title_field', 'title')
-            description_field = parser_config.get('description_field', 'description')  # New: allow custom description field
-            timestamp_field = parser_config.get('timestamp_field', 'created_at')
-            emoji_field = parser_config.get('emoji_field', 'emoji')  # New: allow custom per-item emoji field
+            # title/description/timestamp/emoji fields are read by api_item_fields
 
             # Collect ALL items first (don't break early, as sorting may reorder them)
             all_items = []
@@ -595,51 +550,7 @@ class FeedManager:
                 if not item_id:
                     continue
 
-                # Parse timestamp if available - support nested paths
-                published = None
-                if timestamp_field:
-                    ts_value = self._get_nested_value(item_data, timestamp_field)
-                    if ts_value:
-                        try:
-                            if isinstance(ts_value, (int, float)):
-                                published = datetime.fromtimestamp(ts_value, tz=timezone.utc)
-                            elif isinstance(ts_value, str):
-                                # Try Microsoft date format first
-                                if ts_value.startswith('/Date('):
-                                    published = self._parse_microsoft_date(ts_value)
-                                else:
-                                    # Try ISO format
-                                    try:
-                                        published = datetime.fromisoformat(ts_value.replace('Z', '+00:00'))
-                                    except ValueError:
-                                        # Try common formats
-                                        for fmt in ['%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d']:
-                                            try:
-                                                published = datetime.strptime(ts_value, fmt)
-                                                if published.tzinfo is None:
-                                                    published = published.replace(tzinfo=timezone.utc)
-                                                break
-                                            except ValueError:
-                                                continue
-                        except Exception:
-                            pass
-
-                # Get description - support nested paths
-                description = ''
-                if description_field:
-                    desc_value = self._get_nested_value(item_data, description_field)
-                    if desc_value:
-                        description = str(desc_value)
-
-                all_items.append({
-                    'id': item_id,
-                    'title': self._get_nested_value(item_data, title_field, 'Untitled'),
-                    'emoji': self._get_nested_value(item_data, emoji_field, ''),
-                    'link': item_data.get('link', ''),
-                    'description': description,
-                    'published': published,
-                    'raw': item_data  # Store full raw response for field access
-                })
+                all_items.append({'id': item_id, **api_item_fields(item_data, parser_config)})
 
             # Apply sorting if configured (before filtering, so we can properly track the last item)
             sort_config_str = feed.get('sort_config')

@@ -175,12 +175,17 @@ def _strip_ansi_codes(text: str) -> str:
 
 
 from modules.config_snapshot import config_to_redacted_sections
-from modules.feed_filter_eval import get_nested_value, item_passes_filter_config, parse_microsoft_date
+from modules.feed_filter_eval import item_passes_filter_config
 from modules.feed_format import format_feed_message, sort_feed_items
 from modules.feed_manager import (
-    DEFAULT_MAX_FEED_RESPONSE_BYTES,
-    DEFAULT_MAX_PARSED_FEED_ITEMS,
     _useful_feed_content_type,
+)
+from modules.feed_parse import (
+    api_item_fields,
+    feed_allow_private_urls,
+    feed_max_parsed_items,
+    feed_max_response_bytes,
+    rss_entry_published,
 )
 from modules.repeater_manager import RepeaterManager, validate_repeater_tables
 from modules.utils import resolve_path
@@ -8575,7 +8580,6 @@ class BotDataViewer:
 
     def _preview_feed_items(self, feed_url: str, feed_type: str, output_format: str, api_config: dict[str, Any] | None = None, filter_config: dict[str, Any] | None = None, sort_config: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """Preview feed items with custom output format (standalone, doesn't require bot)"""
-        from datetime import datetime
 
         import feedparser
 
@@ -8583,47 +8587,11 @@ class BotDataViewer:
             items = []
 
             # Validate URL for SSRF protection
-            if self.config.has_section('Feed_Command'):
-                try:
-                    feed_command_allow_private = self.config.getboolean(
-                        'Feed_Command', 'allow_private_urls', fallback=False
-                    )
-                except ValueError:
-                    feed_command_allow_private = False
-            else:
-                feed_command_allow_private = False
-            allow_private_feeds = (
-                self.config.getboolean(
-                    'Feed_Manager',
-                    'allow_private_urls',
-                    fallback=feed_command_allow_private,
-                )
-                if self.config.has_section('Feed_Manager')
-                else feed_command_allow_private
-            )
-            url_policy = SafeUrlPolicy(allow_private=allow_private_feeds)
+            url_policy = SafeUrlPolicy(allow_private=feed_allow_private_urls(self.config))
             if not url_policy.validate(feed_url):
                 raise ValueError("Invalid or unsafe feed URL")
-            max_response_bytes = max(
-                1024,
-                self.config.getint(
-                    'Feed_Manager',
-                    'max_response_bytes',
-                    fallback=DEFAULT_MAX_FEED_RESPONSE_BYTES,
-                )
-                if self.config.has_section('Feed_Manager')
-                else DEFAULT_MAX_FEED_RESPONSE_BYTES,
-            )
-            max_parsed_items = max(
-                1,
-                self.config.getint(
-                    'Feed_Manager',
-                    'max_parsed_items',
-                    fallback=DEFAULT_MAX_PARSED_FEED_ITEMS,
-                )
-                if self.config.has_section('Feed_Manager')
-                else DEFAULT_MAX_PARSED_FEED_ITEMS,
-            )
+            max_response_bytes = feed_max_response_bytes(self.config)
+            max_parsed_items = feed_max_parsed_items(self.config)
             preview_parse_limit = min(20, max_parsed_items)
 
             if feed_type == 'rss':
@@ -8648,18 +8616,11 @@ class BotDataViewer:
 
                 # Get items (we'll filter and limit later)
                 for entry in parsed.entries[:preview_parse_limit]:
-                    # Parse published date
-                    published = None
-                    if hasattr(entry, 'published_parsed') and entry.published_parsed:
-                        with suppress(Exception):
-                            pt = entry.published_parsed
-                            published = datetime(pt[0], pt[1], pt[2], pt[3], pt[4], pt[5], tzinfo=timezone.utc)
-
                     items.append({
                         'title': entry.get('title', 'Untitled'),
                         'description': entry.get('description', ''),
                         'link': entry.get('link', ''),
-                        'published': published
+                        'published': rss_entry_published(entry),
                     })
 
             elif feed_type == 'api':
@@ -8733,12 +8694,6 @@ class BotDataViewer:
                 if not isinstance(items_data, list):
                     items_data = [items_data]
 
-                # Get items (we'll filter and limit later)
-                title_field = parser_config.get('title_field', 'title')
-                description_field = parser_config.get('description_field', 'description')
-                timestamp_field = parser_config.get('timestamp_field', 'created_at')
-                emoji_field = parser_config.get('emoji_field', 'emoji')
-
                 for item_data in items_data[:preview_parse_limit]:
                     # Ensure item_data is a dict
                     if not isinstance(item_data, dict):
@@ -8750,50 +8705,7 @@ class BotDataViewer:
                             # Try to convert to dict or skip
                             continue
 
-                    # Parse timestamp if available - support nested paths
-                    published = None
-                    if timestamp_field:
-                        ts_value = get_nested_value(item_data, timestamp_field)
-                        if ts_value:
-                            try:
-                                if isinstance(ts_value, (int, float)):
-                                    published = datetime.fromtimestamp(ts_value, tz=timezone.utc)
-                                elif isinstance(ts_value, str):
-                                    # Try Microsoft date format first
-                                    if ts_value.startswith('/Date('):
-                                        published = parse_microsoft_date(ts_value)
-                                    else:
-                                        # Try ISO format
-                                        try:
-                                            published = datetime.fromisoformat(ts_value.replace('Z', '+00:00'))
-                                        except ValueError:
-                                            # Try common formats
-                                            for fmt in ['%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d']:
-                                                try:
-                                                    published = datetime.strptime(ts_value, fmt)
-                                                    if published.tzinfo is None:
-                                                        published = published.replace(tzinfo=timezone.utc)
-                                                    break
-                                                except ValueError:
-                                                    continue
-                            except Exception:
-                                pass
-
-                    # Get description - support nested paths
-                    description = ''
-                    if description_field:
-                        desc_value = get_nested_value(item_data, description_field)
-                        if desc_value:
-                            description = str(desc_value)
-
-                    items.append({
-                        'title': get_nested_value(item_data, title_field, 'Untitled'),
-                        'emoji': get_nested_value(item_data, emoji_field, ''),
-                        'description': description,
-                        'link': item_data.get('link', '') if isinstance(item_data, dict) else '',
-                        'published': published,
-                        'raw': item_data  # Store raw data for format string access
-                    })
+                    items.append(api_item_fields(item_data, parser_config))
 
             # Apply sorting if configured
             if sort_config:
