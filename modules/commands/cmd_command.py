@@ -4,7 +4,7 @@ Cmd command for the MeshCore Bot
 Lists available commands in a compact, comma-separated format for LoRa
 """
 
-from typing import Any, Optional
+from typing import Optional
 
 from ..models import MeshMessage
 from .base_command import BaseCommand
@@ -44,18 +44,6 @@ class CmdCommand(BaseCommand):
             str: The help text for this command.
         """
         return "Lists commands in compact format."
-
-    def _is_command_valid_for_channel(self, cmd_name: str, cmd_instance: Any, message: Optional[MeshMessage]) -> bool:
-        """Return True if this command is valid in the message's channel context."""
-        if message is None:
-            return True
-        if hasattr(cmd_instance, 'is_channel_allowed') and callable(cmd_instance.is_channel_allowed):
-            if not cmd_instance.is_channel_allowed(message):
-                return False
-        if hasattr(self.bot.command_manager, '_is_channel_trigger_allowed'):
-            if not self.bot.command_manager._is_channel_trigger_allowed(cmd_name, message):
-                return False
-        return True
 
     def _get_commands_list(self, message: Optional[MeshMessage] = None, max_length: Optional[int] = None) -> str:
         """Get a compact list of available commands, prioritizing important ones.

@@ -44,6 +44,11 @@ _response_translator: ContextVar[Optional[Any]] = ContextVar(
 )
 
 
+# get_config_value value types: the typed getters, plus 'str' and 'list'
+_CONFIG_TYPED_GETTERS = {'bool': 'getboolean', 'int': 'getint', 'float': 'getfloat'}
+_CONFIG_VALUE_TYPES = frozenset({'str', 'list', *_CONFIG_TYPED_GETTERS})
+
+
 class BaseCommand(ABC):
     """Base class for all bot commands - Plugin Interface.
 
@@ -299,34 +304,18 @@ class BaseCommand(ABC):
                     if not self.bot.config.has_option(sec, key):
                         continue
 
-                    raw_value = self.bot.config.get(sec, key)
-
-                    # Type conversion
-                    if value_type == 'str':
-                        value = raw_value
-                    elif value_type == 'bool':
-                        value = self.bot.config.getboolean(sec, key, fallback=fallback)
-                    elif value_type == 'int':
-                        value = self.bot.config.getint(sec, key, fallback=fallback)
-                    elif value_type == 'float':
-                        value = self.bot.config.getfloat(sec, key, fallback=fallback)
-                    elif value_type == 'list':
-                        # Parse comma-separated list
-                        value = [item.strip() for item in raw_value.split(',') if item.strip()]
-                    else:
+                    if value_type not in _CONFIG_VALUE_TYPES:
                         self.logger.warning(f"Unknown value_type '{value_type}' for {sec}.{key}, returning as string")
-                        value = raw_value
+                    value = self._read_typed_option(sec, key, value_type, fallback)
 
-                    # If we got a value (not fallback), return it
-                    if value != fallback or self.bot.config.has_option(sec, key):
-                        # Log migration notice on first use of old/legacy section
-                        if sec == old_section:
-                            self.logger.info(f"Config migration: Using old section '[{old_section}]' for '{key}'. "
-                                           f"Please update to '[{new_section}]' in config.ini")
-                        elif legacy_sec and sec == legacy_sec:
-                            self.logger.info(f"Config migration: Using old section '[{legacy_sec}]' for '{key}'. "
-                                           f"Please update to '[{new_section}]' in config.ini")
-                        return value
+                    # Log migration notice on first use of old/legacy section
+                    if sec == old_section:
+                        self.logger.info(f"Config migration: Using old section '[{old_section}]' for '{key}'. "
+                                       f"Please update to '[{new_section}]' in config.ini")
+                    elif legacy_sec and sec == legacy_sec:
+                        self.logger.info(f"Config migration: Using old section '[{legacy_sec}]' for '{key}'. "
+                                       f"Please update to '[{new_section}]' in config.ini")
+                    return value
                 except (ValueError, TypeError) as e:
                     self.logger.debug(f"Config conversion error for {sec}.{key}: {e}")
                     continue
@@ -341,18 +330,7 @@ class BaseCommand(ABC):
             for legacy_sec, legacy_key in aliases:
                 if self.bot.config.has_section(legacy_sec) and self.bot.config.has_option(legacy_sec, legacy_key):
                     try:
-                        if value_type == 'bool':
-                            value = self.bot.config.getboolean(legacy_sec, legacy_key, fallback=fallback)
-                        elif value_type == 'int':
-                            value = self.bot.config.getint(legacy_sec, legacy_key, fallback=fallback)
-                        elif value_type == 'float':
-                            value = self.bot.config.getfloat(legacy_sec, legacy_key, fallback=fallback)
-                        elif value_type == 'list':
-                            raw = self.bot.config.get(legacy_sec, legacy_key)
-                            value = [item.strip() for item in raw.split(',') if item.strip()]
-                        else:
-                            value = self.bot.config.get(legacy_sec, legacy_key)
-                        return value
+                        return self._read_typed_option(legacy_sec, legacy_key, value_type, fallback)
                     except (ValueError, TypeError) as e:
                         self.logger.debug(f"Config conversion error for {legacy_sec}.{legacy_key}: {e}")
 
@@ -369,6 +347,28 @@ class BaseCommand(ABC):
             bool: True if execution was successful, False otherwise.
         """
         pass
+
+    def _read_typed_option(self, section: str, key: str, value_type: str, fallback: Any) -> Any:
+        """Read one existing option as ``bool``/``int``/``float``, a comma ``list``, or a string."""
+        getter = _CONFIG_TYPED_GETTERS.get(value_type)
+        if getter is not None:
+            return getattr(self.bot.config, getter)(section, key, fallback=fallback)
+        raw_value = self.bot.config.get(section, key)
+        if value_type == 'list':
+            return [item.strip() for item in raw_value.split(',') if item.strip()]
+        return raw_value
+
+    def _is_command_valid_for_channel(self, cmd_name: str, cmd_instance: Any, message: Optional[MeshMessage]) -> bool:
+        """Whether another command may be offered in ``message``'s channel (for help/cmd listings)."""
+        if message is None:
+            return True
+        if hasattr(cmd_instance, 'is_channel_allowed') and callable(cmd_instance.is_channel_allowed):
+            if not cmd_instance.is_channel_allowed(message):
+                return False
+        if hasattr(self.bot.command_manager, '_is_channel_trigger_allowed'):
+            if not self.bot.command_manager._is_channel_trigger_allowed(cmd_name, message):
+                return False
+        return True
 
     def get_help_text(self) -> str:
         """Get help text for this command.

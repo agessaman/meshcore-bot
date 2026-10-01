@@ -5,7 +5,7 @@ Provides help information for commands and general usage
 """
 
 from collections import defaultdict
-from typing import Any, Optional
+from typing import Optional
 
 from ..models import MeshMessage
 from .base_command import BaseCommand
@@ -141,18 +141,6 @@ class HelpCommand(BaseCommand):
         help_text += self.translate('commands.help.usage_examples')
         help_text += self.translate('commands.help.custom_syntax')
         return help_text
-
-    def _is_command_valid_for_channel(self, cmd_name: str, cmd_instance: Any, message: Optional[MeshMessage]) -> bool:
-        """Return True if this command is valid in the message's channel context."""
-        if message is None:
-            return True
-        if hasattr(cmd_instance, 'is_channel_allowed') and callable(cmd_instance.is_channel_allowed):
-            if not cmd_instance.is_channel_allowed(message):
-                return False
-        if hasattr(self.bot.command_manager, '_is_channel_trigger_allowed'):
-            if not self.bot.command_manager._is_channel_trigger_allowed(cmd_name, message):
-                return False
-        return True
 
     # Reserved suffix appended by command_manager.get_general_help (must match there)
     HELP_LIST_SUFFIX = " | More: 'help <command>'"
