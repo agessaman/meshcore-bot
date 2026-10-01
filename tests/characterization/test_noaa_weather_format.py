@@ -133,3 +133,32 @@ def test_noaa_forecast_text_with_long_forecasts(name):
                 cmd.noaa_session, _ = _session(data, drop_periods=drop)
                 results[f"drop{drop}-len{max_length}"] = cmd.get_noaa_weather(lat, lon, max_length=max_length)[0]
     assert_golden(f"noaa_wx_long_{name}", results)
+
+
+DETAIL_TEXTS = [
+    "Mostly sunny, with a high near 70. Humidity 45%. Dew point 52. Visibility 10 miles.",
+    "Showers likely. Chance of precipitation is 60%. Wind gusts as high as 25 mph. Pressure 1012 mb.",
+    "Rain. Chance of precipitation is 90%. Humidity around 88 percent. Gusts up to 40 mph.",
+    "Clear. Low around 40.",
+    "Cloudy with a 40% chance of rain. Humidity 70%. Wind gusts as high as 30 mph.",
+]
+OBSERVATIONS = [
+    None,
+    {"humidity": 52, "dew_point": 48, "visibility": 9, "wind_gusts": "18mph", "pressure": 1016},
+    {"humidity": 0, "dew_point": None, "visibility": 10},
+]
+
+
+def test_add_period_details_matrix():
+    cmd = _wx()
+    results = []
+    for text in DETAIL_TEXTS:
+        for observation in OBSERVATIONS:
+            for length in (0, 40, 80, 100, 115):
+                for budget in (130, 200):
+                    results.append(
+                        cmd._add_period_details(
+                            " | Today: ☀️Sunny 75°", text, length, max_length=budget, observation_data=observation
+                        )
+                    )
+    assert_golden("noaa_wx_period_details", results)
