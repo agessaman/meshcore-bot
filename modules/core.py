@@ -504,7 +504,8 @@ class MeshCoreBot:
 
         Distinct from zombie state — the radio may still be forwarding received
         packets but is not completing outbound sends.  Cleared automatically
-        when a send succeeds, so no manual intervention is required.
+        when a send succeeds, when a health probe gets an answer, when the radio
+        reconnects, or when the web viewer's "Clear Offline Flag" is used.
         """
         return bool(getattr(self, '_radio_offline', False))
 
@@ -564,12 +565,42 @@ class MeshCoreBot:
             )
         self._send_consecutive_failures = 0
         if was_offline:
-            self._radio_offline = False
-            try:
-                self.db_manager.set_metadata('bot.radio_offline', 'false')
-                self.db_manager.set_metadata('bot.radio_offline_since', '')
-            except Exception:
-                pass
+            self._clear_radio_offline_flag()
+
+    def _clear_radio_offline(self, reason: str) -> None:
+        """Leave radio-offline state because the radio has shown it is reachable.
+
+        Every outbound send is suppressed while offline, so a successful send can
+        never be what clears it; the health probe, a reconnect and the web
+        viewer's clear action call this instead.
+        """
+        if not self.is_radio_offline:
+            return
+        self.logger.info("Clearing radio-offline state: %s", reason)
+        self._send_consecutive_failures = 0
+        self._clear_radio_offline_flag()
+
+    def _sync_radio_offline_from_metadata(self) -> None:
+        """Honor the web viewer's "Clear Offline Flag".
+
+        The viewer runs in its own process and can only write bot_metadata, so
+        the health loop checks here whether the flag was cleared there.
+        """
+        if not self.is_radio_offline:
+            return
+        try:
+            if self.db_manager.get_metadata('bot.radio_offline') == 'false':
+                self._clear_radio_offline("cleared from the web viewer")
+        except Exception as e:
+            self.logger.debug(f"Could not read radio-offline metadata: {e}")
+
+    def _clear_radio_offline_flag(self) -> None:
+        self._radio_offline = False
+        try:
+            self.db_manager.set_metadata('bot.radio_offline', 'false')
+            self.db_manager.set_metadata('bot.radio_offline_since', '')
+        except Exception:
+            pass
 
     def load_config(self) -> None:
         """Load configuration from file.
@@ -1867,6 +1898,7 @@ long_jokes = false
                 self._radio_zombie_detected = False
                 self._radio_fail_count = 0
                 self._tcp_probe_fail_count = 0
+                self._clear_radio_offline("the radio reconnected")
                 try:
                     self.db_manager.set_metadata('bot.radio_zombie', 'false')
                     self.db_manager.set_metadata('bot.radio_zombie_since', '')
@@ -2115,6 +2147,7 @@ long_jokes = false
                 self.logger.info("Radio health probe recovered — resetting fail counter")
             self._radio_fail_count = 0
             self._tcp_probe_fail_count = 0
+            self._clear_radio_offline("the radio answered a health probe")
             return True
         except asyncio.TimeoutError:
             if is_tcp:
@@ -2491,6 +2524,8 @@ long_jokes = false
                             self.web_viewer_integration.restart_viewer()
                         except (AttributeError, TypeError) as e:
                             print(f"Web viewer health check failed: {e}")
+
+                self._sync_radio_offline_from_metadata()
 
                 # Periodically probe radio responsiveness
                 # Skip entirely once a zombie is confirmed — only a power cycle

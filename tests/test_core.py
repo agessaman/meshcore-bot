@@ -966,6 +966,60 @@ class TestRadioOfflineState:
         assert bot.is_radio_offline is True
 
 
+class TestRadioOfflineRecovery:
+    """Radio-offline state must be leavable while every send is suppressed."""
+
+    def _offline_bot(self, tmp_path: Path) -> "MeshCoreBot":
+        config_file = tmp_path / "config.ini"
+        db_path = tmp_path / "bot.db"
+        _write_config(config_file, db_path)
+        bot = MeshCoreBot(config_file=str(config_file))
+        for _ in range(3):
+            bot._record_send_failure()
+        assert bot.is_radio_offline is True
+        assert bot.db_manager.get_metadata('bot.radio_offline') == 'true'
+        return bot
+
+    def test_successful_health_probe_clears_offline(self, tmp_path):
+        from meshcore import EventType
+
+        bot = self._offline_bot(tmp_path)
+        bot.meshcore = MagicMock()
+        bot.meshcore.is_connected = True
+        bot.meshcore.commands.get_time = AsyncMock(return_value=MagicMock(type=EventType.CURRENT_TIME))
+        assert asyncio.run(bot._probe_radio_health()) is True
+        assert bot.is_radio_offline is False
+        assert bot._send_consecutive_failures == 0
+        assert bot.db_manager.get_metadata('bot.radio_offline') == 'false'
+
+    def test_failed_probe_leaves_offline(self, tmp_path):
+        from meshcore import EventType
+
+        bot = self._offline_bot(tmp_path)
+        bot.meshcore = MagicMock()
+        bot.meshcore.is_connected = True
+        bot.meshcore.commands.get_time = AsyncMock(return_value=MagicMock(type=EventType.ERROR))
+        asyncio.run(bot._probe_radio_health())
+        assert bot.is_radio_offline is True
+
+    def test_web_viewer_clear_is_picked_up(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        bot._sync_radio_offline_from_metadata()
+        assert bot.is_radio_offline is True  # metadata still says offline
+        bot.db_manager.set_metadata('bot.radio_offline', 'false')
+        bot._sync_radio_offline_from_metadata()
+        assert bot.is_radio_offline is False
+        assert bot._send_consecutive_failures == 0
+
+    def test_clear_is_a_no_op_when_online(self, tmp_path):
+        config_file = tmp_path / "config.ini"
+        _write_config(config_file, tmp_path / "bot.db")
+        bot = MeshCoreBot(config_file=str(config_file))
+        bot.logger = MagicMock()
+        bot._clear_radio_offline("test")
+        bot.logger.info.assert_not_called()
+
+
 class TestSendStartupAdvertTimeout:
     """Coverage for startup advert timeout handling."""
 

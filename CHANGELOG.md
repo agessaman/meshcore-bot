@@ -30,6 +30,8 @@ semantic versioning.
 
 ### Fixed
 
+- Radio-offline state no longer latches until a restart. After `radio_offline_threshold` send timeouts the bot suppresses every outbound send, but the only thing that cleared the state was a successful send, so it never cleared. A health probe the radio answers, a reconnect, or the web viewer's "Clear Offline Flag" now clear it; the viewer runs in its own process, so its button only wrote the database, and the bot now picks that up.
+
 - The web viewer login no longer redirects off-site after sign-in. The `next`
   check let `///host` and `/\host` through, which browsers treat as another
   origin.
