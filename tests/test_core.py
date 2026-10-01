@@ -1041,7 +1041,7 @@ class TestRadioOfflineRecovery:
         bot = self._offline_bot(tmp_path)
         self._probe_ok(bot)
         assert bot.is_radio_offline is True  # interactive sends still suppressed
-        assert bot._admit_measured_send() == (True, True)
+        assert bot._admit_measured_send() == (True, 1)
         assert bot._admit_measured_send() == (False, False)  # the trial is taken once
 
     def test_concurrent_admission_lets_exactly_one_trial_through(self, tmp_path):
@@ -1062,18 +1062,18 @@ class TestRadioOfflineRecovery:
             worker.start()
         for worker in workers:
             worker.join(timeout=5)
-        assert results.count((True, True)) == 1
+        assert results.count((True, 1)) == 1
         assert results.count((False, False)) == 7
 
     def test_only_the_trial_send_sees_the_radio_online(self, tmp_path):
         bot = self._offline_bot(tmp_path)
         self._probe_ok(bot)
-        bot._admit_measured_send()
+        _, trial = bot._admit_measured_send()
 
         async def inside():
             return bot.is_radio_offline
 
-        assert asyncio.run(bot._as_offline_trial(inside())) is False
+        assert asyncio.run(bot._as_offline_trial(inside(), trial)) is False
         assert bot.is_radio_offline is True
 
     def test_successful_trial_send_clears_the_outage(self, tmp_path):
@@ -1175,6 +1175,10 @@ class TestRadioOfflineRecovery:
             target=lambda: [bot._record_send_failure(scheduler=self.scheduler) for _ in range(3)]
         )
         tripper.start()
+        deadline = time.time() + 5
+        while not bot._radio_offline and time.time() < deadline:
+            time.sleep(0.01)
+        assert bot._radio_offline is True  # the newer outage has tripped in memory
         release.set()
         clearer.join(timeout=5)
         tripper.join(timeout=5)
@@ -1183,6 +1187,103 @@ class TestRadioOfflineRecovery:
         bot._last_offline_metadata_check = 0.0
         bot._sync_radio_offline_from_metadata()
         assert bot.is_radio_offline is True
+
+    def test_trial_is_settled_when_submission_to_the_loop_fails(self, tmp_path):
+        from modules.scheduler import MessageScheduler
+
+        bot = self._offline_bot(tmp_path)
+        self._probe_ok(bot)
+        bot.main_event_loop = MagicMock()
+        bot.main_event_loop.is_running.return_value = True
+
+        def closed_loop(coro, loop):
+            coro.close()
+            raise RuntimeError("Event loop is closed")
+
+        with patch.object(MessageScheduler, "setup_scheduled_messages"):
+            scheduler = MessageScheduler(bot)
+        with patch("asyncio.run_coroutine_threadsafe", side_effect=closed_loop):
+            scheduler.send_scheduled_message("general", "hello")
+            scheduler.send_interval_advert()
+        # The scheduled message's loss of the loop is inconclusive and re-arms;
+        # the advert treats it as a failure, ending the trial until the next probe.
+        assert bot._radio_offline_trial is None
+        assert bot.is_radio_offline is True
+
+    def test_fallback_trial_send_is_settled_by_its_outcome(self, tmp_path):
+        from modules.scheduler import MessageScheduler
+
+        bot = self._offline_bot(tmp_path)
+        self._probe_ok(bot)
+        seen = {}
+
+        async def fake_send(channel, message, **kwargs):
+            seen['offline_inside_send'] = bot.is_radio_offline
+            return True
+
+        bot.command_manager = MagicMock()
+        bot.command_manager.send_channel_message = fake_send
+        bot.config.set("Bot", "scheduled_message_max_stagger_seconds", "0")
+        bot.main_event_loop = None
+        with patch.object(MessageScheduler, "setup_scheduled_messages"):
+            scheduler = MessageScheduler(bot)
+        scheduler._effective_send_scope = lambda channel, scope: scope
+        scheduler._channel_body_budget = lambda scope: 1000
+        scheduler.send_scheduled_message("general", "hello")
+        assert seen['offline_inside_send'] is False
+        assert bot.is_radio_offline is False
+        assert bot._radio_offline is False
+
+    def test_trial_is_settled_even_when_preparing_the_send_raises(self, tmp_path):
+        from modules.scheduler import MessageScheduler
+
+        bot = self._offline_bot(tmp_path)
+        self._probe_ok(bot)
+        _, trial = bot._admit_measured_send()
+        with patch.object(MessageScheduler, "setup_scheduled_messages"):
+            scheduler = MessageScheduler(bot)
+
+        def broken():
+            raise ValueError("cannot build the send")
+
+        with pytest.raises(ValueError):
+            scheduler._run_measured_send(
+                broken, trial, error_label="x", loop_gone_label=None,
+                reports_outcome=False, run_fallback=scheduler._run_in_temporary_loop,
+            )
+        assert bot._radio_offline_trial == 'armed'
+
+    def test_an_older_trial_cannot_act_during_a_newer_one(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        self._probe_ok(bot)
+        _, first = bot._admit_measured_send()
+        bot._record_send_failure(scheduler=self.scheduler, trial=first)  # timed out
+        self._probe_ok(bot)
+        _, second = bot._admit_measured_send()
+        assert second != first
+
+        async def inside():
+            return bot.is_radio_offline
+
+        # The timed-out first send, still running, is not let through ...
+        assert asyncio.run(bot._as_offline_trial(inside(), first)) is True
+        assert asyncio.run(bot._as_offline_trial(inside(), second)) is False
+        # ... and its late settlement does not touch the newer trial.
+        bot._record_send_inconclusive(first)
+        assert bot._radio_offline_trial == 'in_flight'
+        bot._record_send_failure(scheduler=self.scheduler, trial=first)
+        assert bot._radio_offline_trial == 'in_flight'
+
+    def test_viewer_clear_of_an_old_outage_leaves_a_newer_one(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        old_generation = bot._radio_offline_generation
+        bot._record_send_success()
+        for _ in range(3):
+            bot._record_send_failure(scheduler=self.scheduler)
+        assert bot._clear_radio_offline_state(expected_generation=old_generation) is False
+        assert bot.is_radio_offline is True
+        assert bot._clear_radio_offline_state(expected_generation=bot._radio_offline_generation) is True
+        assert bot.is_radio_offline is False
 
     def test_viewer_check_is_throttled(self, tmp_path):
         bot = self._offline_bot(tmp_path)

@@ -126,10 +126,10 @@ _radio_session_held: contextvars.ContextVar[bool] = contextvars.ContextVar(
     "radio_session_held", default=False
 )
 
-# True inside the one measured send admitted as a trial while radio-offline
+# The id of the radio-offline trial the current task was admitted as
 # (MeshCoreBot._as_offline_trial), so is_radio_offline lets only that send out.
-_OFFLINE_TRIAL_SEND: contextvars.ContextVar[bool] = contextvars.ContextVar(
-    "offline_trial_send", default=False
+_OFFLINE_TRIAL_SEND: contextvars.ContextVar[int] = contextvars.ContextVar(
+    "offline_trial_send", default=0
 )
 
 
@@ -518,7 +518,14 @@ class MeshCoreBot:
         """
         if not getattr(self, '_radio_offline', False):
             return False
-        return not (getattr(self, '_radio_offline_trial', None) == 'in_flight' and _OFFLINE_TRIAL_SEND.get())
+        return not self._holds_offline_trial(_OFFLINE_TRIAL_SEND.get())
+
+    def _holds_offline_trial(self, trial: int) -> bool:
+        """True when *trial* is the id of the trial send currently in flight."""
+        return bool(trial) and (
+            getattr(self, '_radio_offline_trial', None) == 'in_flight'
+            and getattr(self, '_radio_offline_trial_id', 0) == trial
+        )
 
     def _offline_lock(self) -> threading.Lock:
         """Guards the offline state, which the scheduler thread and the event loop both change."""
@@ -534,29 +541,32 @@ class MeshCoreBot:
             lock = self._radio_offline_publish_lock = threading.RLock()
         return lock
 
-    def _admit_measured_send(self) -> tuple[bool, bool]:
-        """Decide whether a measured scheduler send may go out: ``(allowed, is_trial)``.
+    def _admit_measured_send(self) -> tuple[bool, int]:
+        """Decide whether a measured scheduler send may go out: ``(allowed, trial_id)``.
 
-        While offline, a probe-armed trial is claimed here, once, so concurrent
-        callers cannot all pass. The caller settles it with
-        ``_record_send_success``, ``_record_send_failure`` or
-        ``_record_send_inconclusive``, and runs the send under ``_as_offline_trial``.
+        ``trial_id`` is 0 for an ordinary send. While offline, a probe-armed
+        trial is claimed here, once, so concurrent callers cannot all pass. The
+        caller runs the send under ``_as_offline_trial(coro, trial_id)`` and
+        settles it with ``_record_send_success``, ``_record_send_failure`` or
+        ``_record_send_inconclusive``; settlements naming an older trial are
+        ignored.
         """
         with self._offline_lock():
             if not getattr(self, '_radio_offline', False):
-                return True, False
+                return True, 0
             if getattr(self, '_radio_offline_trial', None) == 'armed':
                 self._radio_offline_trial = 'in_flight'
-                return True, True
-            return False, False
+                self._radio_offline_trial_id = getattr(self, '_radio_offline_trial_id', 0) + 1
+                return True, self._radio_offline_trial_id
+            return False, 0
 
     @staticmethod
-    async def _as_offline_trial(coro: "Any") -> "Any":
-        """Run *coro* as the offline trial send, so the send-path guards let it through."""
-        _OFFLINE_TRIAL_SEND.set(True)
+    async def _as_offline_trial(coro: "Any", trial: int) -> "Any":
+        """Run *coro* as offline trial *trial*, so the send-path guards let it through."""
+        _OFFLINE_TRIAL_SEND.set(trial)
         return await coro
 
-    def _record_send_failure(self, scheduler: "Any | None" = None) -> None:
+    def _record_send_failure(self, scheduler: "Any | None" = None, trial: int = 0) -> None:
         """Increment the consecutive-send-failure counter.
 
         Called by the scheduler when an outbound send times out at the
@@ -583,7 +593,7 @@ class MeshCoreBot:
             )
             failures = self._send_consecutive_failures
             if getattr(self, '_radio_offline', False):
-                if getattr(self, '_radio_offline_trial', None) == 'in_flight':
+                if self._holds_offline_trial(trial):
                     self._radio_offline_trial = None
                     self.logger.warning(
                         "Trial send after a health probe failed; outbound sends stay suppressed"
@@ -628,14 +638,14 @@ class MeshCoreBot:
         if was_offline:
             self._clear_radio_offline_state()
 
-    def _record_send_inconclusive(self) -> None:
+    def _record_send_inconclusive(self, trial: int = 0) -> None:
         """A measured send finished without showing whether the radio transmits.
 
         Nothing was sent, or the send reported failure without timing out, so
-        neither counter moves; a trial goes back to waiting for the next send.
+        neither counter moves; trial *trial* goes back to waiting for the next send.
         """
         with self._offline_lock():
-            if getattr(self, '_radio_offline_trial', None) == 'in_flight':
+            if self._holds_offline_trial(trial):
                 self._radio_offline_trial = 'armed'
 
     def _allow_offline_trial(self, reason: str) -> None:
@@ -646,9 +656,18 @@ class MeshCoreBot:
             self._radio_offline_trial = 'armed'
         self.logger.info("Radio offline, but %s; the next scheduled send goes out on trial", reason)
 
-    def _clear_radio_offline_state(self) -> None:
-        """Leave radio-offline state entirely (counter, trial, alert latch, banner)."""
+    def _clear_radio_offline_state(self, expected_generation: int | None = None) -> bool:
+        """Leave radio-offline state entirely (counter, trial, alert latch, banner).
+
+        With *expected_generation*, only if that outage is still the current
+        one; returns whether anything was cleared.
+        """
         with self._offline_lock():
+            if expected_generation is not None and not (
+                getattr(self, '_radio_offline', False)
+                and getattr(self, '_radio_offline_generation', 0) == expected_generation
+            ):
+                return False
             self._radio_offline = False
             self._radio_offline_trial = None
             self._radio_offline_alerted = False
@@ -656,6 +675,7 @@ class MeshCoreBot:
             self._send_consecutive_failures = 0
             self._radio_offline_generation = getattr(self, '_radio_offline_generation', 0) + 1
         self._publish_offline_state()
+        return True
 
     def _publish_offline_state(self) -> None:
         """Write the current offline state to bot_metadata for the web viewer.
@@ -682,21 +702,28 @@ class MeshCoreBot:
                     if getattr(self, '_radio_offline_generation', 0) == generation:
                         self._radio_offline_persisted_generation = generation
 
-    def _sync_radio_offline_from_metadata(self) -> None:
+    def _radio_offline_sync_due(self) -> bool:
+        """True (and starts the 30 s throttle) when the viewer-clear check should run."""
+        if not getattr(self, '_radio_offline', False):
+            return False
+        now = time.time()
+        if now - getattr(self, '_last_offline_metadata_check', 0.0) < 30:
+            return False
+        self._last_offline_metadata_check = now
+        return True
+
+    def _sync_radio_offline_from_metadata(self, *, check_due: bool = True) -> None:
         """Honor the web viewer's "Clear Offline Flag", and retry an unconfirmed write.
 
         The viewer runs in its own process and can only write bot_metadata, so
         the health loop checks here (at most every 30 s) whether it stored
         'false'. Only once this process has confirmed its own 'true' for the
         current outage, so a read that races the bot's own trip cannot cancel
-        it; until then, it retries that write.
+        it; until then, it retries that write. This blocks on the database, so
+        the health loop runs it in a worker thread.
         """
-        if not getattr(self, '_radio_offline', False):
+        if check_due and not self._radio_offline_sync_due():
             return
-        now = time.time()
-        if now - getattr(self, '_last_offline_metadata_check', 0.0) < 30:
-            return
-        self._last_offline_metadata_check = now
         with self._offline_publish_lock():
             with self._offline_lock():
                 generation = getattr(self, '_radio_offline_generation', 0)
@@ -709,13 +736,8 @@ class MeshCoreBot:
             except Exception as e:
                 self.logger.debug(f"Could not read radio-offline metadata: {e}")
                 return
-            if not cleared:
-                return
-            with self._offline_lock():
-                current = getattr(self, '_radio_offline', False) and getattr(self, '_radio_offline_generation', 0) == generation
-            if current:
-                self.logger.info("Clearing radio-offline state: cleared from the web viewer")
-                self._clear_radio_offline_state()
+            if cleared and self._clear_radio_offline_state(expected_generation=generation):
+                self.logger.info("Cleared radio-offline state: cleared from the web viewer")
 
     def load_config(self) -> None:
         """Load configuration from file.
@@ -2608,7 +2630,8 @@ long_jokes = false
         try:
             while self.keep_running:
                 # Before the transport check, so a viewer clear works while disconnected.
-                self._sync_radio_offline_from_metadata()
+                if self._radio_offline_sync_due():
+                    await asyncio.to_thread(self._sync_radio_offline_from_metadata, check_due=False)
 
                 # Backup: meshcore transport dropped (DISCONNECTED event is primary)
                 if self.meshcore and not self.meshcore.is_connected:
