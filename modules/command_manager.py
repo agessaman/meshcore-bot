@@ -419,6 +419,11 @@ class CommandManager:
         # Record in stats
         self.record_command_stat(message, command.name, success)
 
+    def _viewer_bridge(self) -> Any:
+        """The web viewer's bot-side bridge, or None when the viewer integration is off."""
+        integration = getattr(self.bot, "web_viewer_integration", None)
+        return integration.bot_integration if integration else None
+
     def record_command_stat(self, message: MeshMessage, command_name: str, response_sent: bool) -> None:
         """Record one command execution in the stats table, if the stats command is loaded."""
         stats_command = self.commands.get('stats')
@@ -2262,9 +2267,7 @@ class CommandManager:
                     self.record_command_stat(message, command_name, response_sent)
 
                     # Capture command data for web viewer
-                    if (hasattr(self.bot, 'web_viewer_integration') and
-                        self.bot.web_viewer_integration and
-                        self.bot.web_viewer_integration.bot_integration):
+                    if viewer := self._viewer_bridge():
                         try:
                             # Use the response we found, or default
                             if response is None:
@@ -2304,7 +2307,7 @@ class CommandManager:
                                             self.logger.debug(f"Linked command {command_id} to confirmed transmission: {record.message_type} to {record.target}")
                                             break
 
-                            self.bot.web_viewer_integration.bot_integration.capture_command(
+                            viewer.capture_command(
                                 message, command_name, response, success if success is not None else True, command_id
                             )
                         except Exception as e:
@@ -2322,12 +2325,10 @@ class CommandManager:
                     self.record_command_stat(message, command_name, True)  # Error message counts as response
 
                     # Capture failed command for web viewer
-                    if (hasattr(self.bot, 'web_viewer_integration') and
-                        self.bot.web_viewer_integration and
-                        self.bot.web_viewer_integration.bot_integration):
+                    if viewer := self._viewer_bridge():
                         try:
                             command_id = f"{command_name}_{message.sender_id}_{int(time.time())}"
-                            self.bot.web_viewer_integration.bot_integration.capture_command(
+                            viewer.capture_command(
                                 message, command_name, f"Error: {e}", False, command_id
                             )
                         except Exception as capture_error:

@@ -632,6 +632,11 @@ class MessageHandler:
         selected = min(matches, key=lambda row: row.get("timestamp", float("inf")))
         return {**selected, RF_MATCH_KEY: RF_MATCH_CHANNEL_AUTHENTICATED}, True
 
+    def _viewer_bridge(self) -> Any:
+        """The web viewer's bot-side bridge, or None when the viewer integration is off."""
+        integration = getattr(self.bot, "web_viewer_integration", None)
+        return integration.bot_integration if integration else None
+
     async def handle_contact_message(self, event: Any, metadata: dict[str, Any] | None = None) -> None:
         """Handle incoming contact message (DM).
 
@@ -1403,11 +1408,7 @@ class MessageHandler:
                                 self.logger.info(log_message)
 
                             # Capture full packet data for web viewer (for all packets)
-                            if (
-                                hasattr(self.bot, "web_viewer_integration")
-                                and self.bot.web_viewer_integration
-                                and self.bot.web_viewer_integration.bot_integration
-                            ):
+                            if viewer := self._viewer_bridge():
                                 decoded_packet["routing_info"] = routing_info
                                 if is_trace and trace_route_hashes:
                                     decoded_packet["path"] = list(trace_route_hashes)
@@ -1419,7 +1420,7 @@ class MessageHandler:
                                 decoded_packet["snr"] = snr_value
                                 if "rssi" in payload:
                                     decoded_packet["rssi"] = payload.get("rssi")
-                                self.bot.web_viewer_integration.bot_integration.capture_full_packet_data(decoded_packet)
+                                viewer.capture_full_packet_data(decoded_packet)
 
                             # Process ADVERT packets for contact tracking (regardless of path length)
                             if routing_info["payload_type"] == "ADVERT":
@@ -2868,13 +2869,9 @@ class MessageHandler:
             await self.process_message(message)
 
             # Capture for web viewer live monitor
-            if (
-                hasattr(self.bot, "web_viewer_integration")
-                and self.bot.web_viewer_integration
-                and self.bot.web_viewer_integration.bot_integration
-            ):
+            if viewer := self._viewer_bridge():
                 try:
-                    self.bot.web_viewer_integration.bot_integration.capture_channel_message(message)
+                    viewer.capture_channel_message(message)
                 except Exception:
                     pass
 
@@ -3782,13 +3779,9 @@ class MessageHandler:
                     success = False
 
                 # Capture keyword command data for web viewer
-                if (
-                    hasattr(self.bot, "web_viewer_integration")
-                    and self.bot.web_viewer_integration
-                    and self.bot.web_viewer_integration.bot_integration
-                ):
+                if viewer := self._viewer_bridge():
                     try:
-                        self.bot.web_viewer_integration.bot_integration.capture_command(
+                        viewer.capture_command(
                             message, keyword, response, success, command_id
                         )
                     except Exception as e:
@@ -4084,11 +4077,7 @@ class MessageHandler:
                     )
 
                     # Notify web viewer of new node
-                    if (
-                        hasattr(self.bot, "web_viewer_integration")
-                        and self.bot.web_viewer_integration
-                        and self.bot.web_viewer_integration.bot_integration
-                    ):
+                    if viewer := self._viewer_bridge():
                         try:
                             node_data = {
                                 "public_key": public_key,
@@ -4096,7 +4085,7 @@ class MessageHandler:
                                 "name": contact_name,
                                 "role": "repeater",
                             }
-                            self.bot.web_viewer_integration.bot_integration.send_mesh_node_update(node_data)
+                            viewer.send_mesh_node_update(node_data)
                         except Exception as e:
                             self.logger.debug(f"Failed to notify web viewer of new node: {e}")
 
