@@ -35,7 +35,7 @@ class _Cmd(BaseCommand):
 def _shapes():
     yield "self_info=None", None
     for combo in itertools.product(VALUES, repeat=len(FIELDS)):
-        present = {f: (f"{v}-{f}" if v == "Dev" else v) for f, v in zip(FIELDS, combo) if v is not None}
+        present = {f: (f"{v}-{f}" if v == "Dev" else v) for f, v in zip(FIELDS, combo, strict=True) if v is not None}
         label = ",".join(f"{k}={v!r}" for k, v in present.items()) or "empty"
         yield f"dict[{label}]", dict(present)
         yield f"obj[{label}]", SimpleNamespace(**present)

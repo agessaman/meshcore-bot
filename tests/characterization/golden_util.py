@@ -53,7 +53,7 @@ def _diff(exp: Any, got: Any, path: str = "") -> list[str]:
         if len(exp) != len(got):
             return [f"{path}: length {len(exp)} -> {len(got)}"]
         out = []
-        for i, (a, b) in enumerate(zip(exp, got)):
+        for i, (a, b) in enumerate(zip(exp, got, strict=True)):
             out.extend(_diff(a, b, f"{path}[{i}]"))
         return out
     return [] if exp == got else [f"{path}: {exp!r} -> {got!r}"]
