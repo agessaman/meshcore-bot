@@ -843,44 +843,32 @@ class MeshCoreBot:
                 )
                 new_translator_cache = {new_language: new_translator}
 
-                old_state = {
-                    "config": old_config,
-                    "local_root": self._local_root,
-                    "rate_limiter": self.rate_limiter,
-                    "bot_tx_rate_limiter": self.bot_tx_rate_limiter,
-                    "per_user_rate_limit_enabled": self.per_user_rate_limit_enabled,
-                    "per_user_rate_limiter": self.per_user_rate_limiter,
-                    "nominatim_rate_limiter": self.nominatim_rate_limiter,
-                    "channel_rate_limiter": self.channel_rate_limiter,
-                    "tx_delay_ms": self.tx_delay_ms,
-                    "translator": self.translator,
-                    "translation_path": self.translation_path,
-                    "local_translation_path": self.local_translation_path,
-                    "translator_cache": self._translator_cache,
-                    "command_config_state": self._command_config_state(
-                        self.command_manager
-                    ),
-                    "max_channels": self.channel_manager.max_channels,
+                candidate = {
+                    "config": new_config,
+                    "_local_root": new_local_root,
+                    "rate_limiter": new_rate_limiter,
+                    "bot_tx_rate_limiter": new_bot_tx_rate_limiter,
+                    "per_user_rate_limit_enabled": new_per_user_enabled,
+                    "per_user_rate_limiter": new_per_user_rate_limiter,
+                    "nominatim_rate_limiter": new_nominatim_rate_limiter,
+                    "channel_rate_limiter": new_channel_rate_limiter,
+                    "tx_delay_ms": new_tx_delay_ms,
+                    "translation_path": new_translation_path,
+                    "local_translation_path": new_local_translation_path,
+                    "_translator_cache": new_translator_cache,
+                    "translator": new_translator,
                 }
+                old_state = {name: getattr(self, name) for name in candidate}
+                old_command_config_state = self._command_config_state(self.command_manager)
+                old_max_channels = self.channel_manager.max_channels
 
                 scheduler_apply_started = False
                 try:
                     # Atomic complete-snapshot publication.  Component reference
                     # swaps follow under the single-writer lock and are all
                     # restored if any component rejects the candidate.
-                    self.config = new_config
-                    self._local_root = new_local_root
-                    self.rate_limiter = new_rate_limiter
-                    self.bot_tx_rate_limiter = new_bot_tx_rate_limiter
-                    self.per_user_rate_limit_enabled = new_per_user_enabled
-                    self.per_user_rate_limiter = new_per_user_rate_limiter
-                    self.nominatim_rate_limiter = new_nominatim_rate_limiter
-                    self.channel_rate_limiter = new_channel_rate_limiter
-                    self.tx_delay_ms = new_tx_delay_ms
-                    self.translation_path = new_translation_path
-                    self.local_translation_path = new_local_translation_path
-                    self._translator_cache = new_translator_cache
-                    self.translator = new_translator
+                    for name, value in candidate.items():
+                        setattr(self, name, value)
                     # Commands and nested delegates require the real bot. They
                     # are therefore constructed after candidate publication,
                     # inside the rollback boundary, rather than against a
@@ -917,25 +905,10 @@ class MeshCoreBot:
                         self.scheduler.setup_scheduled_messages()
                         self.logger.info("Scheduler config reloaded")
                 except (Exception, SystemExit):
-                    self.config = old_state["config"]
-                    self._local_root = old_state["local_root"]
-                    self.rate_limiter = old_state["rate_limiter"]
-                    self.bot_tx_rate_limiter = old_state["bot_tx_rate_limiter"]
-                    self.per_user_rate_limit_enabled = old_state[
-                        "per_user_rate_limit_enabled"
-                    ]
-                    self.per_user_rate_limiter = old_state["per_user_rate_limiter"]
-                    self.nominatim_rate_limiter = old_state["nominatim_rate_limiter"]
-                    self.channel_rate_limiter = old_state["channel_rate_limiter"]
-                    self.tx_delay_ms = old_state["tx_delay_ms"]
-                    self.translator = old_state["translator"]
-                    self.translation_path = old_state["translation_path"]
-                    self.local_translation_path = old_state["local_translation_path"]
-                    self._translator_cache = old_state["translator_cache"]
-                    self._apply_command_config_state(
-                        self.command_manager, old_state["command_config_state"]
-                    )
-                    self.channel_manager.max_channels = old_state["max_channels"]
+                    for name, value in old_state.items():
+                        setattr(self, name, value)
+                    self._apply_command_config_state(self.command_manager, old_command_config_state)
+                    self.channel_manager.max_channels = old_max_channels
                     set_config(old_config)
                     if getattr(self, 'region_warning_monitor', None):
                         self.region_warning_monitor.reload_config()
