@@ -37,6 +37,7 @@ from ..commands.rain_command import (
     reverse_geocode_region,
 )
 from ..http_retry import make_retry_session
+from ..nws_alerts import SERVICE_SPECIAL_RULES, entry_nws_headline, entry_summary, entry_title, parse_alert_fields
 from ..url_shortener import shorten_url_sync
 from ..utils import format_temperature_high_low, get_config_timezone
 from ..weather_common import load_open_meteo_model
@@ -1519,9 +1520,7 @@ class WeatherService(BaseServicePlugin):
             Optional[Dict[str, Any]]: Alert dict with event, event_type, severity, expires, office, etc., or None on error.
         """
         try:
-            # Extract title
-            title_elem = entry.getElementsByTagName("title")
-            title = title_elem[0].childNodes[0].nodeValue if title_elem and title_elem[0].childNodes else ""
+            title = entry_title(entry)
 
             if not title:
                 return None
@@ -1576,210 +1575,12 @@ class WeatherService(BaseServicePlugin):
                     else:
                         link_url = href
 
-            # Extract summary/content
-            summary = ""
-            summary_elem = entry.getElementsByTagName("summary")
-            if summary_elem and summary_elem[0].childNodes:
-                summary = summary_elem[0].childNodes[0].nodeValue if summary_elem[0].childNodes[0].nodeValue else ""
-            if not summary:
-                content_elem = entry.getElementsByTagName("content")
-                if content_elem and content_elem[0].childNodes:
-                    summary = content_elem[0].childNodes[0].nodeValue if content_elem[0].childNodes[0].nodeValue else ""
-
-            # Extract NWS headline parameter
-            nws_headline = ""
-            params = entry.getElementsByTagName("cap:parameter")
-            if not params:
-                params = entry.getElementsByTagName("parameter")
-
-            for param in params:
-                value_name_elem = param.getElementsByTagName("valueName")
-                value_elem = param.getElementsByTagName("value")
-                if value_name_elem and value_elem and value_name_elem[0].childNodes and value_elem[0].childNodes:
-                    value_name = value_name_elem[0].childNodes[0].nodeValue if value_name_elem[0].childNodes[0].nodeValue else ""
-                    if value_name == "NWSheadline":
-                        nws_headline = value_elem[0].childNodes[0].nodeValue if value_elem[0].childNodes[0].nodeValue else ""
-                        break
-
-            # Extract CAP metadata
-            event = ""
-            severity = "Unknown"
-            urgency = "Unknown"
-            certainty = "Unknown"
-            effective = ""
-            expires = ""
-            area_desc = ""
-            office = ""
-
-            # Parse title to extract key info
-            title_lower = title.lower()
-
-            # Extract event type from title
-            if "warning" in title_lower:
-                event_type = "Warning"
-                event_match = re.search(r'^([^W]+?)\s+Warning', title, re.IGNORECASE)
-                if event_match:
-                    event = event_match.group(1).strip()
-            elif "watch" in title_lower:
-                event_type = "Watch"
-                event_match = re.search(r'^([^W]+?)\s+Watch', title, re.IGNORECASE)
-                if event_match:
-                    event = event_match.group(1).strip()
-            elif "advisory" in title_lower:
-                event_type = "Advisory"
-                event_match = re.search(r'^([^A]+?)\s+Advisory', title, re.IGNORECASE)
-                if event_match:
-                    event = event_match.group(1).strip()
-            elif "statement" in title_lower:
-                event_type = "Statement"
-                event_match = re.search(r'^([^S]+?)\s+Statement', title, re.IGNORECASE)
-                event = event_match.group(1).strip() if event_match else "Special"
-
-                # For Special Statements, extract meaningful description from NWS headline
-                if event.lower() in ["special", "special weather"] and nws_headline:
-                    headline_lower = nws_headline.lower()
-                    if any(phrase in headline_lower for phrase in ['debris flow', 'mudslide']):
-                        event = "Debris Flow"
-                    elif 'landslide' in headline_lower:
-                        event = "Landslide (Burn)" if ('burn' in headline_lower or 'burned area' in headline_lower) else "Landslide"
-                    elif any(phrase in headline_lower for phrase in ['flash flood', 'river flood', 'flood', 'flooding']):
-                        event = "Flood"
-                    elif any(phrase in headline_lower for phrase in ['high wind', 'strong wind', 'damaging wind', 'wind', 'gust']):
-                        event = "Wind"
-                    elif any(phrase in headline_lower for phrase in ['heavy rain', 'excessive rain', 'rain', 'rainfall', 'precipitation']):
-                        if not any(word in headline_lower for word in ['landslide', 'flood', 'wind', 'snow']):
-                            event = "Rainfall"
-                    elif any(phrase in headline_lower for phrase in ['heavy snow', 'blizzard', 'winter storm', 'snow', 'winter']):
-                        event = "Snow"
-                    elif any(phrase in headline_lower for phrase in ['dense fog', 'low visibility', 'fog', 'visibility']):
-                        event = "Fog" if 'fog' in headline_lower else "Visibility"
-                    elif any(phrase in headline_lower for phrase in ['extreme heat', 'excessive heat', 'heat', 'temperature']):
-                        event = "Heat" if 'heat' in headline_lower else "Temperature"
-                    elif any(phrase in headline_lower for phrase in ['storm surge', 'coastal flood', 'marine', 'coastal']):
-                        event = "Marine"
-                    else:
-                        # Extract first meaningful word
-                        headline_words = headline_lower.split()
-                        skip_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'will', 'lead', 'increased', 'threat', 'remains', 'effect', 'until', 'during', 'last', 'week', 'including', 'today'}
-                        meaningful_words = [w for w in headline_words if w not in skip_words and len(w) > 3]
-                        if meaningful_words:
-                            event = meaningful_words[0].capitalize()
-
-                # Fallback to summary if still generic
-                if event.lower() in ["special", "special weather"] and summary:
-                    summary_lower = summary.lower()
-                    if any(word in summary_lower for word in ['landslide', 'debris flow', 'mudslide']):
-                        event = "Landslide"
-                    elif any(word in summary_lower for word in ['hydrologic', 'river', 'flood', 'stream']):
-                        event = "Hydrologic"
-                    elif any(word in summary_lower for word in ['marine', 'coastal', 'beach', 'surf']):
-                        event = "Marine"
-                    elif any(word in summary_lower for word in ['wind', 'gust']):
-                        event = "Wind"
-                    elif any(word in summary_lower for word in ['rain', 'precipitation', 'shower', 'rainfall']):
-                        event = "Rainfall"
-
-                if event.lower() in ["special", "special weather"]:
-                    event = "Weather" if "weather" in title_lower else "Special"
-            else:
-                event_type = "Unknown"
-                event = title.split()[0] if title else ""
-
-            # Extract times from title
-            issued_match = re.search(r'issued\s+([^u]+?)\s+until\s+(.+?)\s+by', title, re.IGNORECASE)
-            if issued_match:
-                effective = issued_match.group(1).strip()
-                expires = issued_match.group(2).strip()
-            else:
-                until_match = re.search(r'until\s+(.+?)\s+by', title, re.IGNORECASE)
-                if until_match:
-                    expires = until_match.group(1).strip()
-
-            # Extract office from title
-            office_match = re.search(r'by\s+(.+?)$', title, re.IGNORECASE)
-            if office_match:
-                office = office_match.group(1).strip()
-
-            # Try to extract CAP elements
-            def get_node_value(node):
-                if not node or not node.childNodes:
-                    return ""
-                text_parts = []
-                for child in node.childNodes:
-                    if child.nodeType == child.TEXT_NODE or hasattr(child, 'nodeValue') and child.nodeValue:
-                        text_parts.append(child.nodeValue)
-                return " ".join(text_parts).strip()
-
-            for child in entry.childNodes:
-                if hasattr(child, 'tagName'):
-                    tag_name = child.tagName
-                    tag_lower = tag_name.lower()
-
-                    if ('event' in tag_lower or tag_name.endswith(':event')) and not event:
-                        event_val = get_node_value(child)
-                        if event_val:
-                            event = event_val
-                    elif 'severity' in tag_lower or tag_name.endswith(':severity'):
-                        severity_val = get_node_value(child)
-                        if severity_val:
-                            severity = severity_val
-                    elif 'urgency' in tag_lower or tag_name.endswith(':urgency'):
-                        urgency_val = get_node_value(child)
-                        if urgency_val:
-                            urgency = urgency_val
-                    elif 'certainty' in tag_lower or tag_name.endswith(':certainty'):
-                        certainty_val = get_node_value(child)
-                        if certainty_val:
-                            certainty = certainty_val
-                    elif 'effective' in tag_lower or tag_name.endswith(':effective'):
-                        effective_val = get_node_value(child)
-                        if effective_val:
-                            effective = effective_val
-                    elif 'expires' in tag_lower or tag_name.endswith(':expires'):
-                        expires_val = get_node_value(child)
-                        if expires_val:
-                            expires = expires_val
-                    elif ('areadesc' in tag_lower or 'area' in tag_lower or
-                          tag_name.endswith(':areadesc') or tag_name.endswith(':area')):
-                        area_val = get_node_value(child)
-                        if area_val:
-                            area_desc = area_val
-
-            # Infer severity if not found
-            if severity == "Unknown":
-                if any(word in event.lower() for word in ['extreme', 'tornado', 'hurricane', 'blizzard']):
-                    severity = "Extreme"
-                elif any(word in event.lower() for word in ['severe', 'warning']):
-                    severity = "Severe"
-                elif any(word in event.lower() for word in ['advisory', 'moderate']):
-                    severity = "Moderate"
-                else:
-                    severity = "Minor"
-
-            # Infer urgency if not found
-            if urgency == "Unknown":
-                if event_type == "Warning":
-                    urgency = "Immediate"
-                elif event_type == "Watch":
-                    urgency = "Expected"
-                else:
-                    urgency = "Future"
-
+            summary = entry_summary(entry)
+            nws_headline = entry_nws_headline(entry)
             return {
                 'id': alert_id,
-                'title': title,
-                'summary': summary,
-                'nws_headline': nws_headline,
-                'event': event,
-                'event_type': event_type,
-                'severity': severity,
-                'urgency': urgency,
-                'certainty': certainty,
-                'effective': effective,
-                'expires': expires,
-                'area_desc': area_desc,
-                'office': office,
-                'link': link_url
+                **parse_alert_fields(entry, title, summary, nws_headline, SERVICE_SPECIAL_RULES),
+                'link': link_url,
             }
 
         except Exception as e:
