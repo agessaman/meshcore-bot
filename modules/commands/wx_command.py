@@ -1744,80 +1744,30 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
         Returns:
             Updated period string with additional details if space allows
         """
-        result = period_str
-        current_weather_length + self._count_display_width(result)
-
-        # Extract additional details - prefer observation data if available (more accurate)
-        if observation_data:
-            humidity = observation_data.get('humidity')
-            dew_point = observation_data.get('dew_point')
-            visibility = observation_data.get('visibility')
-            wind_gusts = observation_data.get('wind_gusts')
-            pressure = observation_data.get('pressure')
-        else:
-            humidity = None
-            dew_point = None
-            visibility = None
-            wind_gusts = None
-            pressure = None
-
-        # Fall back to parsing from detailed forecast if observation data not available
-        if not humidity:
-            humidity = self.extract_humidity(detailed_forecast)
-        if not dew_point:
-            dew_point = self.extract_dew_point(detailed_forecast)
-        if not visibility:
-            visibility = self.extract_visibility(detailed_forecast)
-        if not wind_gusts:
-            wind_gusts = self.extract_wind_gusts(detailed_forecast)
-        if not pressure:
-            pressure = self.extract_pressure(detailed_forecast)
-
-        # Always try to get precip_prob from detailed forecast (not in observation data)
+        # Prefer the station observation (more accurate); fall back to parsing the forecast text.
+        observed = observation_data or {}
+        humidity = observed.get('humidity') or self.extract_humidity(detailed_forecast)
+        dew_point = observed.get('dew_point') or self.extract_dew_point(detailed_forecast)
+        visibility = observed.get('visibility') or self.extract_visibility(detailed_forecast)
+        wind_gusts = observed.get('wind_gusts') or self.extract_wind_gusts(detailed_forecast)
+        pressure = observed.get('pressure') or self.extract_pressure(detailed_forecast)
+        # Precipitation probability only comes from the forecast text.
         precip_prob = self.extract_precip_probability(detailed_forecast)
 
-        # Add humidity if available and space allows
-        # Try to add all available details, only skip if they would exceed max_length
-        if humidity:
-            humidity_str = f" {humidity}%RH"
-            if self._count_display_width(result + humidity_str) + current_weather_length <= max_length:
-                result += humidity_str
-                current_weather_length + self._count_display_width(result)
-
-        # Add dew point if available and space allows
-        if dew_point:
-            dew_str = f" 💧{dew_point}°"
-            if self._count_display_width(result + dew_str) + current_weather_length <= max_length:
-                result += dew_str
-                current_weather_length + self._count_display_width(result)
-
-        # Add visibility if available and space allows
-        if visibility:
-            vis_str = f" 👁️{visibility}mi"
-            if self._count_display_width(result + vis_str) + current_weather_length <= max_length:
-                result += vis_str
-                current_weather_length + self._count_display_width(result)
-
-        # Add precipitation probability if available and space allows
-        if precip_prob:
-            precip_str = f" 🌦️{precip_prob}%"
-            if self._count_display_width(result + precip_str) + current_weather_length <= max_length:
-                result += precip_str
-                current_weather_length + self._count_display_width(result)
-
-        # Add wind gusts if available and space allows
-        if wind_gusts:
-            gust_str = f" 💨{wind_gusts}"
-            if self._count_display_width(result + gust_str) + current_weather_length <= max_length:
-                result += gust_str
-                current_weather_length + self._count_display_width(result)
-
-        # Add pressure if available and space allows
-        if pressure:
-            pressure_str = f" 📊{pressure}hPa"
-            if self._count_display_width(result + pressure_str) + current_weather_length <= max_length:
-                result += pressure_str
-
+        # Add each available detail, in this order, as long as the total still fits.
+        result = period_str
+        for value, template in (
+            (humidity, " {}%RH"),
+            (dew_point, " 💧{}°"),
+            (visibility, " 👁️{}mi"),
+            (precip_prob, " 🌦️{}%"),
+            (wind_gusts, " 💨{}"),
+            (pressure, " 📊{}hPa"),
+        ):
+            if value:
+                piece = template.format(value)
+                if self._count_display_width(result + piece) + current_weather_length <= max_length:
+                    result += piece
         return result
 
     def get_weather_alerts_noaa(self, lat: float, lon: float, return_full_data: bool = False) -> tuple:
