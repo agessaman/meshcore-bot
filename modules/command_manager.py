@@ -6,6 +6,7 @@ Handles all bot commands, keyword matching, and response generation
 
 import asyncio
 import contextlib
+import inspect
 import random
 import re
 import time
@@ -62,6 +63,18 @@ _LINK_PATTERN = re.compile(
 from .plugin_loader import PluginLoader
 from .security_utils import sanitize_name, validate_safe_path
 from .utils import check_internet_connectivity_async, decode_escape_sequences, format_keyword_response_with_placeholders
+
+
+def _call_with_optional_user_id(method: Any, user_id: str | None) -> Any:
+    """Call a cooldown hook with ``user_id`` when it accepts one.
+
+    Bundled commands take ``user_id``; local plugin commands written against the
+    older zero-argument API (``get_remaining_cooldown()``,
+    ``_record_execution()``) are still supported.
+    """
+    if inspect.signature(method).parameters:
+        return method(user_id)
+    return method()
 
 
 @dataclass
@@ -2196,14 +2209,9 @@ class CommandManager:
                         await self.send_response(message, error_msg)
                         response_sent = True
                     elif hasattr(command, 'get_remaining_cooldown') and callable(command.get_remaining_cooldown):
-                        # Check if it's the per-user version (takes user_id parameter)
-                        import inspect
-                        sig = inspect.signature(command.get_remaining_cooldown)
-                        if len(sig.parameters) > 0:
-                            remaining = command.get_remaining_cooldown(message.sender_id)
-                        else:
-                            remaining = command.get_remaining_cooldown()
-
+                        remaining = _call_with_optional_user_id(
+                            command.get_remaining_cooldown, message.sender_id
+                        )
                         if remaining > 0:
                             error_msg = command.translate('errors.cooldown', command=command_name, seconds=remaining)
                             await self.send_response(message, error_msg)
@@ -2251,12 +2259,7 @@ class CommandManager:
                 try:
                     # Record execution time for cooldown tracking
                     if hasattr(command, '_record_execution') and callable(command._record_execution):
-                        import inspect
-                        sig = inspect.signature(command._record_execution)
-                        if len(sig.parameters) > 0:
-                            command._record_execution(message.sender_id)
-                        else:
-                            command._record_execution()
+                        _call_with_optional_user_id(command._record_execution, message.sender_id)
 
                     # Execute the command
                     success = await command.execute(message)

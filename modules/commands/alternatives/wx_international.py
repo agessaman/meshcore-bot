@@ -11,6 +11,12 @@ from typing import Any, Optional, Union
 
 import requests
 
+from ...clients.mqtt_weather import (
+    get_mqtt_weather_topic,
+    load_mqtt_weather_format_config,
+    mqtt_weather_display_for_topic,
+)
+from ...clients.wxsim_parser import WXSIMParser
 from ...models import MeshMessage
 from ...utils import (
     format_temperature_high_low,
@@ -20,20 +26,6 @@ from ...utils import (
     rate_limited_nominatim_reverse_sync,
 )
 from ..base_command import BaseCommand
-
-# Import WXSIM parser for custom weather sources
-try:
-    from ...clients.wxsim_parser import WXSIMParser
-    WXSIM_PARSER_AVAILABLE = True
-except ImportError:
-    WXSIM_PARSER_AVAILABLE = False
-    WXSIMParser = None
-
-from ...clients.mqtt_weather import (
-    get_mqtt_weather_topic,
-    load_mqtt_weather_format_config,
-    mqtt_weather_display_for_topic,
-)
 
 # Multiday: plain digits, 7day/7-day, or suffix form 7d/10d (min 2, max below). Open-Meteo allows up to 16 forecast days.
 GWX_MULTIDAY_MAX_DAYS = 16
@@ -79,11 +71,7 @@ class GlobalWxCommand(BaseCommand):
         super().__init__(bot)
         self.url_timeout = 10  # seconds
 
-        # Initialize WXSIM parser if available
-        if WXSIM_PARSER_AVAILABLE:
-            self.wxsim_parser = WXSIMParser()
-        else:
-            self.wxsim_parser = None
+        self.wxsim_parser = WXSIMParser()
 
         self.weather_model = self._load_weather_model()
 
@@ -275,8 +263,6 @@ class GlobalWxCommand(BaseCommand):
         Returns:
             Optional[str]: Source URL or None if not found
         """
-        if not self.wxsim_parser:
-            return None
 
         section = 'Weather'
         if not self.bot.config.has_section(section):
@@ -318,8 +304,6 @@ class GlobalWxCommand(BaseCommand):
         Returns:
             str: Formatted weather string
         """
-        if not self.wxsim_parser:
-            return self.translate('commands.gwx.error', error="WXSIM parser not available")
 
         # Fetch WXSIM data
         text = self.wxsim_parser.fetch_from_url(source_url, timeout=self.url_timeout)

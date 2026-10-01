@@ -2206,11 +2206,6 @@ long_jokes = false
             self.logger.info(f"Device name: '{current_name}', Config name: '{desired_name}'")
             self.logger.info("Updating device name to match config...")
 
-            # Check if set_name command is available
-            if not hasattr(self.meshcore, 'commands') or not hasattr(self.meshcore.commands, 'set_name'):
-                self.logger.warning("Device does not support set_name command")
-                return False
-
             # Set the device name
             result = await self.meshcore.commands.set_name(desired_name)
             if result.type == EventType.OK:
@@ -2241,24 +2236,8 @@ long_jokes = false
         except (OSError, AttributeError, ValueError) as e:
             self.logger.warning(f"Error manually loading contacts: {e}")
 
-        # Check if contacts are loaded (even if empty list)
-        if hasattr(self.meshcore, 'contacts'):
-            self.logger.info(f"Contacts loaded: {len(self.meshcore.contacts)} contacts")
-            return
-
-        # Wait up to 30 seconds for contacts to load
-        max_wait = 30
-        wait_time = 0
-        while wait_time < max_wait:
-            if hasattr(self.meshcore, 'contacts'):
-                self.logger.info(f"Contacts loaded: {len(self.meshcore.contacts)} contacts")
-                return
-
-            await asyncio.sleep(5)
-            wait_time += 5
-            self.logger.info(f"Still waiting for contacts... ({wait_time}s)")
-
-        self.logger.warning(f"Contacts not loaded after {max_wait} seconds, proceeding anyway")
+        # MeshCore.contacts is a property that always exists (possibly empty).
+        self.logger.info(f"Contacts loaded: {len(self.meshcore.contacts)} contacts")
 
     async def setup_message_handlers(self) -> None:
         """Setup event handlers for messages.
@@ -2434,8 +2413,7 @@ long_jokes = false
                 self.logger.error(f"Failed to start service '{service_name}': {e}")
 
         # Start command queue processor if needed
-        if hasattr(self.command_manager, '_start_queue_processor'):
-            self.command_manager._start_queue_processor()
+        self.command_manager._start_queue_processor()
 
         # Keep running
         self.logger.info("Bot is running. Press Ctrl+C to stop.")

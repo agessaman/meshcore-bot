@@ -16,6 +16,14 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from .. import alert_format
+from ..clients.mqtt_weather import (
+    get_mqtt_weather_topic,
+    load_mqtt_weather_format_config,
+    mqtt_weather_display_for_topic,
+)
+
+# First-party modules with only required dependencies; they always import.
+from ..clients.wxsim_parser import WXSIMParser
 from ..models import MeshMessage
 from ..utils import (
     format_temperature_high_low,
@@ -24,29 +32,8 @@ from ..utils import (
     get_nominatim_geocoder,
     normalize_us_state,
 )
+from .alternatives.wx_international import GlobalWxCommand
 from .base_command import BaseCommand
-
-# Import for delegation when using Open-Meteo provider
-try:
-    from .alternatives.wx_international import GlobalWxCommand
-    WX_INTERNATIONAL_AVAILABLE = True
-except ImportError:
-    WX_INTERNATIONAL_AVAILABLE = False
-    GlobalWxCommand = None
-
-# Import WXSIM parser for custom weather sources
-try:
-    from ..clients.wxsim_parser import WXSIMParser
-    WXSIM_PARSER_AVAILABLE = True
-except ImportError:
-    WXSIM_PARSER_AVAILABLE = False
-    WXSIMParser = None
-
-from ..clients.mqtt_weather import (
-    get_mqtt_weather_topic,
-    load_mqtt_weather_format_config,
-    mqtt_weather_display_for_topic,
-)
 from .rain_command import nws_http_means_no_coverage
 
 # Multiday: plain digits (e.g. 7), 7day/7-day, or suffix form 7d/10d (min 2, max below).
@@ -132,15 +119,11 @@ class WxCommand(BaseCommand):
         super().__init__(bot)
         self.wx_enabled = self.get_config_value('Wx_Command', 'enabled', fallback=True, value_type='bool')
 
-        # Initialize WXSIM parser if available
-        if WXSIM_PARSER_AVAILABLE:
-            self.wxsim_parser = WXSIMParser()
-        else:
-            self.wxsim_parser = None
+        self.wxsim_parser = WXSIMParser()
 
         # Check weather provider setting - delegate to international command if using Open-Meteo
         weather_provider = bot.config.get('Weather', 'weather_provider', fallback='noaa').lower()
-        if weather_provider == 'openmeteo' and WX_INTERNATIONAL_AVAILABLE:
+        if weather_provider == 'openmeteo':
             # Delegate to international weather command
             self.delegate_command = GlobalWxCommand(bot)
             # Use wx triggers plus any [Wx_Command] aliases loaded by BaseCommand.
@@ -353,9 +336,6 @@ class WxCommand(BaseCommand):
         Returns:
             Optional[str]: Source URL or None if not found
         """
-        if not self.wxsim_parser:
-            self.logger.debug("WXSIM parser not available")
-            return None
 
         section = 'Weather'
         if not self.bot.config.has_section(section):
@@ -438,8 +418,6 @@ class WxCommand(BaseCommand):
         Returns:
             str: Formatted weather string
         """
-        if not self.wxsim_parser:
-            return self.translate('commands.wx.error', error="WXSIM parser not available")
 
         # Fetch WXSIM data
         text = self.wxsim_parser.fetch_from_url(source_url, timeout=self.url_timeout)
