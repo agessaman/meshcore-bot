@@ -197,6 +197,7 @@ module = [
     "modules.service_plugins.packet_capture_service",
     "modules.service_plugins.weather_service",
     "modules.web_viewer.app",
+    "modules.web_viewer.tracking",  # moved from web_viewer.app with its existing type errors
     "modules.web_viewer.integration",
 ]
 ignore_errors = true
