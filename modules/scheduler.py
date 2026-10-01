@@ -23,7 +23,7 @@ from apscheduler.triggers.date import DateTrigger
 from meshcore.events import EventType
 
 from .flood_scope import scope_key_hex
-from .maintenance import MaintenanceRunner
+from .maintenance import MaintenanceRunner, read_smtp_settings, send_smtp_message
 from .models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, channel_body_limit, self_info_name
 from .scheduled_message_cron import (
     is_valid_legacy_hhmm,
@@ -1744,8 +1744,6 @@ class MessageScheduler:
         This method is intentionally synchronous so it can be run in a thread
         executor from the async event loop without blocking it.
         """
-        import smtplib
-        import ssl as _ssl
         from email.message import EmailMessage
 
         zombie_alert_enabled = self.bot.config.getboolean(
@@ -1770,12 +1768,7 @@ class MessageScheduler:
         if not zombie_alert_enabled:
             return
 
-        smtp_host     = self._get_notif('smtp_host')
-        smtp_security = self._get_notif('smtp_security') or 'starttls'
-        smtp_user     = self._get_notif('smtp_user')
-        smtp_password = self._get_notif('smtp_password')
-        from_name     = self._get_notif('from_name') or 'MeshCore Bot'
-        from_email    = self._get_notif('from_email')
+        smtp = read_smtp_settings(self._get_notif)
 
         # Alert recipients: dedicated config key, falls back to nightly recipients
         alert_email_cfg = zombie_alert_email_cfg or self.bot.config.get(
@@ -1788,26 +1781,20 @@ class MessageScheduler:
         else:
             recipients = [r.strip() for r in self._get_notif('recipients').split(',') if r.strip()]
 
-        if not smtp_host or not from_email or not recipients:
+        if not smtp.host or not smtp.from_email or not recipients:
             self.bot.logger.warning(
                 "Zombie alert email enabled but SMTP settings incomplete "
-                f"(host={smtp_host!r}, from={from_email!r}, recipients={recipients}) "
+                f"(host={smtp.host!r}, from={smtp.from_email!r}, recipients={recipients}) "
                 "— alert email not sent"
             )
             return
 
-        allow_local = self._get_notif('allow_local_smtp').lower() == 'true'
-        if not validate_external_url(f'http://{smtp_host}', allow_private=allow_local):
+        if not validate_external_url(f'http://{smtp.host}', allow_private=smtp.allow_local):
             self.bot.logger.error(
                 "Zombie alert email aborted: SMTP host %r resolves to a private or reserved address",
-                smtp_host,
+                smtp.host,
             )
             return
-
-        try:
-            smtp_port = int(self._get_notif('smtp_port') or (465 if smtp_security == 'ssl' else 587))
-        except ValueError:
-            smtp_port = 587
 
         now_utc         = datetime.datetime.now(datetime.timezone.utc)
         connection_type = self.bot.config.get('Connection', 'connection_type', fallback='unknown')
@@ -1850,27 +1837,11 @@ class MessageScheduler:
         try:
             msg = EmailMessage()
             msg['Subject'] = subject
-            msg['From']    = f'{from_name} <{from_email}>'
+            msg['From']    = smtp.from_header
             msg['To']      = ', '.join(recipients)
             msg.set_content(body)
 
-            context = _ssl.create_default_context()
-            _smtp_timeout = 30
-
-            if smtp_security == 'ssl':
-                with smtplib.SMTP_SSL(smtp_host, smtp_port, context=context, timeout=_smtp_timeout) as s:
-                    if smtp_user and smtp_password:
-                        s.login(smtp_user, smtp_password)
-                    s.send_message(msg)
-            else:
-                with smtplib.SMTP(smtp_host, smtp_port, timeout=_smtp_timeout) as s:
-                    if smtp_security == 'starttls':
-                        s.ehlo()
-                        s.starttls(context=context)
-                        s.ehlo()
-                    if smtp_user and smtp_password:
-                        s.login(smtp_user, smtp_password)
-                    s.send_message(msg)
+            send_smtp_message(smtp, msg)
 
             self.bot.logger.info(
                 f"Zombie radio alert email sent to {recipients}"
@@ -1903,8 +1874,6 @@ class MessageScheduler:
 
         Intentionally synchronous — intended to be run in a daemon thread.
         """
-        import smtplib
-        import ssl as _ssl
         from email.message import EmailMessage
 
         alert_enabled = self.bot.config.getboolean(
@@ -1915,12 +1884,7 @@ class MessageScheduler:
         if not alert_enabled:
             return
 
-        smtp_host     = self._get_notif('smtp_host')
-        smtp_security = self._get_notif('smtp_security') or 'starttls'
-        smtp_user     = self._get_notif('smtp_user')
-        smtp_password = self._get_notif('smtp_password')
-        from_name     = self._get_notif('from_name') or 'MeshCore Bot'
-        from_email    = self._get_notif('from_email')
+        smtp = read_smtp_settings(self._get_notif)
 
         alert_email_cfg = self.bot.config.get(
             'Connection',
@@ -1932,26 +1896,20 @@ class MessageScheduler:
         else:
             recipients = [r.strip() for r in self._get_notif('recipients').split(',') if r.strip()]
 
-        if not smtp_host or not from_email or not recipients:
+        if not smtp.host or not smtp.from_email or not recipients:
             self.bot.logger.warning(
                 "Radio-offline alert email enabled but SMTP settings incomplete "
-                f"(host={smtp_host!r}, from={from_email!r}, recipients={recipients}) "
+                f"(host={smtp.host!r}, from={smtp.from_email!r}, recipients={recipients}) "
                 "— alert email not sent"
             )
             return
 
-        allow_local = self._get_notif('allow_local_smtp').lower() == 'true'
-        if not validate_external_url(f'http://{smtp_host}', allow_private=allow_local):
+        if not validate_external_url(f'http://{smtp.host}', allow_private=smtp.allow_local):
             self.bot.logger.error(
                 "Radio-offline alert email aborted: SMTP host %r resolves to a private or reserved address",
-                smtp_host,
+                smtp.host,
             )
             return
-
-        try:
-            smtp_port = int(self._get_notif('smtp_port') or (465 if smtp_security == 'ssl' else 587))
-        except ValueError:
-            smtp_port = 587
 
         now_utc         = datetime.datetime.now(datetime.timezone.utc)
         connection_type = self.bot.config.get('Connection', 'connection_type', fallback='unknown')
@@ -1992,27 +1950,11 @@ class MessageScheduler:
         try:
             msg = EmailMessage()
             msg['Subject'] = subject
-            msg['From']    = f'{from_name} <{from_email}>'
+            msg['From']    = smtp.from_header
             msg['To']      = ', '.join(recipients)
             msg.set_content(body)
 
-            context = _ssl.create_default_context()
-            _smtp_timeout = 30
-
-            if smtp_security == 'ssl':
-                with smtplib.SMTP_SSL(smtp_host, smtp_port, context=context, timeout=_smtp_timeout) as s:
-                    if smtp_user and smtp_password:
-                        s.login(smtp_user, smtp_password)
-                    s.send_message(msg)
-            else:
-                with smtplib.SMTP(smtp_host, smtp_port, timeout=_smtp_timeout) as s:
-                    if smtp_security == 'starttls':
-                        s.ehlo()
-                        s.starttls(context=context)
-                        s.ehlo()
-                    if smtp_user and smtp_password:
-                        s.login(smtp_user, smtp_password)
-                    s.send_message(msg)
+            send_smtp_message(smtp, msg)
 
             self.bot.logger.info(f"Radio-offline alert email sent to {recipients}")
         except Exception as e:

@@ -8,6 +8,7 @@ import json
 import os
 import sqlite3
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -107,6 +108,67 @@ def _count_log_errors_last_24h(log_path: Path) -> tuple[int | str, int | str]:
         return err, crit
     except OSError:
         return 'n/a', 'n/a'
+
+
+
+@dataclass(frozen=True)
+class SmtpSettings:
+    """The [notif.*] SMTP settings shared by the nightly digest and the radio alerts."""
+
+    host: str
+    security: str
+    user: str
+    password: str
+    from_name: str
+    from_email: str
+    port: int
+    allow_local: bool
+
+    @property
+    def from_header(self) -> str:
+        return f'{self.from_name} <{self.from_email}>'
+
+
+def read_smtp_settings(get_notif: Callable[[str], str]) -> SmtpSettings:
+    """Read the SMTP settings; port defaults to 465 for ssl, else 587 (587 when unparseable)."""
+    security = get_notif('smtp_security') or 'starttls'
+    try:
+        port = int(get_notif('smtp_port') or (465 if security == 'ssl' else 587))
+    except ValueError:
+        port = 587
+    return SmtpSettings(
+        host=get_notif('smtp_host'),
+        security=security,
+        user=get_notif('smtp_user'),
+        password=get_notif('smtp_password'),
+        from_name=get_notif('from_name') or 'MeshCore Bot',
+        from_email=get_notif('from_email'),
+        port=port,
+        allow_local=get_notif('allow_local_smtp').lower() == 'true',
+    )
+
+
+def send_smtp_message(settings: SmtpSettings, msg: Any) -> None:
+    """Deliver *msg* over SSL, STARTTLS or plain SMTP per the settings; raises on failure."""
+    import smtplib
+    import ssl as _ssl
+
+    context = _ssl.create_default_context()
+    smtp_timeout = 30
+    if settings.security == 'ssl':
+        with smtplib.SMTP_SSL(settings.host, settings.port, context=context, timeout=smtp_timeout) as s:
+            if settings.user and settings.password:
+                s.login(settings.user, settings.password)
+            s.send_message(msg)
+    else:
+        with smtplib.SMTP(settings.host, settings.port, timeout=smtp_timeout) as s:
+            if settings.security == 'starttls':
+                s.ehlo()
+                s.starttls(context=context)
+                s.ehlo()
+            if settings.user and settings.password:
+                s.login(settings.user, settings.password)
+            s.send_message(msg)
 
 
 class MaintenanceRunner:
@@ -415,40 +477,27 @@ class MaintenanceRunner:
 
     def send_nightly_email(self) -> None:
         """Build and dispatch the nightly maintenance digest if enabled."""
-        import smtplib
-        import ssl as _ssl
         from email.message import EmailMessage
 
         if self.get_notif('nightly_enabled') != 'true':
             return
 
-        smtp_host = self.get_notif('smtp_host')
-        smtp_security = self.get_notif('smtp_security') or 'starttls'
-        smtp_user = self.get_notif('smtp_user')
-        smtp_password = self.get_notif('smtp_password')
-        from_name = self.get_notif('from_name') or 'MeshCore Bot'
-        from_email = self.get_notif('from_email')
+        smtp = read_smtp_settings(self.get_notif)
         recipients = [r.strip() for r in self.get_notif('recipients').split(',') if r.strip()]
 
-        if not smtp_host or not from_email or not recipients:
+        if not smtp.host or not smtp.from_email or not recipients:
             self.logger.warning(
                 "Nightly email enabled but SMTP settings incomplete "
-                f"(host={smtp_host!r}, from={from_email!r}, recipients={recipients})"
+                f"(host={smtp.host!r}, from={smtp.from_email!r}, recipients={recipients})"
             )
             return
 
-        allow_local = self.get_notif('allow_local_smtp').lower() == 'true'
-        if not validate_external_url(f'http://{smtp_host}', allow_private=allow_local):
+        if not validate_external_url(f'http://{smtp.host}', allow_private=smtp.allow_local):
             self.logger.error(
                 "Nightly email aborted: SMTP host %r resolves to a private or reserved address",
-                smtp_host,
+                smtp.host,
             )
             return
-
-        try:
-            smtp_port = int(self.get_notif('smtp_port') or (465 if smtp_security == 'ssl' else 587))
-        except ValueError:
-            smtp_port = 587
 
         now_utc = _utc_now()
         yesterday = now_utc - datetime.timedelta(days=1)
@@ -461,7 +510,7 @@ class MaintenanceRunner:
 
             msg = EmailMessage()
             msg['Subject'] = f'MeshCore Bot — Nightly Report {now_utc.strftime("%Y-%m-%d")}'
-            msg['From'] = f'{from_name} <{from_email}>'
+            msg['From'] = smtp.from_header
             msg['To'] = ', '.join(recipients)
             msg.set_content(body)
 
@@ -478,22 +527,7 @@ class MaintenanceRunner:
                         except Exception as attach_err:
                             self.logger.warning(f"Could not attach log file to nightly email: {attach_err}")
 
-            context = _ssl.create_default_context()
-            _smtp_timeout = 30
-            if smtp_security == 'ssl':
-                with smtplib.SMTP_SSL(smtp_host, smtp_port, context=context, timeout=_smtp_timeout) as s:
-                    if smtp_user and smtp_password:
-                        s.login(smtp_user, smtp_password)
-                    s.send_message(msg)
-            else:
-                with smtplib.SMTP(smtp_host, smtp_port, timeout=_smtp_timeout) as s:
-                    if smtp_security == 'starttls':
-                        s.ehlo()
-                        s.starttls(context=context)
-                        s.ehlo()
-                    if smtp_user and smtp_password:
-                        s.login(smtp_user, smtp_password)
-                    s.send_message(msg)
+            send_smtp_message(smtp, msg)
 
             self.logger.info(
                 f"Nightly maintenance email sent to {recipients} "
