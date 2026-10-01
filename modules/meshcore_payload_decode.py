@@ -252,6 +252,26 @@ def decode_group_text(payload: bytes, key_store: Optional[ChannelKeyStore]) -> d
     return result
 
 
+def verify_meshcore_advert_ed25519(mesh_payload: bytes) -> bool:
+    """Verify MeshCore ADVERT Ed25519 signature (layout from ``Mesh::createAdvert``).
+
+    Signed message is ``pub_key (32) + timestamp (4, LE) + app_data``; signature is
+    ``payload[36:100]`` (64 bytes); ``app_data`` starts at byte 100.
+    """
+    if len(mesh_payload) < 100:
+        return False
+    try:
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+        pub = mesh_payload[:32]
+        msg = mesh_payload[:36] + mesh_payload[100:]
+        sig = mesh_payload[36:100]
+        Ed25519PublicKey.from_public_bytes(pub).verify(sig, msg)
+        return True
+    except Exception:
+        return False
+
+
 def parse_advert(payload: bytes) -> dict[str, Any]:
     """Parse an ADVERT payload (port of meshcore-packet-capture parse_advert).
 
