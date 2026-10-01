@@ -6,7 +6,7 @@ MeshCore lets a client confine a channel message to one region of the mesh. The 
 
 A client with no region sends each channel message as an ordinary `FLOOD`, and every repeater that hears it rebroadcasts it.
 
-A client with a region set sends a `TC_FLOOD` instead: the same packet plus a 16-bit transport code. The code is an HMAC of the packet's own payload, keyed by a hash of the region name (`#home`, say). A repeater configured for that region computes the same HMAC, sees a match, and forwards the packet. A repeater that denies the region, or does not know it, drops it. That is what keeps a scoped message inside its region.
+A client with a region set sends a `TC_FLOOD` instead: the same packet plus a 16-bit transport code. The code is an HMAC of the packet's payload type and payload, keyed by a hash of the region name (`#home`, say). A repeater configured for that region computes the same HMAC, sees a match, and forwards the packet. A repeater that denies the region, or does not know it, drops it. That is what keeps a scoped message inside its region.
 
 Two consequences follow:
 
@@ -37,7 +37,7 @@ With that set, a command that arrives scoped to `#home` matches the `#home` entr
 | `#home` | answered, reply scoped to `#home` | ignored |
 | `*` | ignored | answered, reply is global `FLOOD` |
 
-Mirroring depends on RF correlation. The bot matches the code on the packet it actually heard for that message. When it cannot tie the message to a packet, it does not guess from some other recent packet: with a non-empty `flood_scopes` the message is ignored rather than answered at the wrong scope.
+Mirroring depends on RF correlation. The bot matches the code on the packet it actually heard for that message. When it cannot tie the message to a packet, it does not borrow the scope of some other recent packet. With `*` listed, such a message is still answered globally if no scoped packet was heard around it, since it was then almost certainly an ordinary `FLOOD`; if a scoped packet was heard, the scope is unknown and the message is ignored. Without `*`, an unmatched message is always ignored.
 
 ## Scoping the bot's own messages
 
@@ -58,7 +58,7 @@ outgoing_flood_scope_override = #home
 flood_scope.weather = #sea
 ```
 
-Any of these accepts `region` or `#region`; the `#` is added if missing. `*`, `0`, `None` or an empty value mean global flood.
+The config keys accept `region` or `#region`; the `#` is added if missing. The `[Scheduled_Messages]` form is the exception: its middle field must start with `#`, or it is read as part of the message. `*`, `0`, `None` or an empty value mean global flood.
 
 A regional send costs 10 bytes of message length, so scoped channel messages are split a little sooner.
 
@@ -66,7 +66,7 @@ A regional send costs 10 bytes of message length, so scoped channel messages are
 
 The web viewer's **Radio** page edits `flood_scopes` and `outgoing_flood_scope_override` in its **Region Scopes** card and reloads the bot, so you do not need to restart. Per-channel `flood_scope.<channel>` entries are listed there read-only; edit those in `config.ini`.
 
-The **Default Region Scope** card on the same page is a different setting: the radio's own default, stored in firmware. It does not decide what the bot sends or answers.
+The **Default Region Scope** card on the same page is a different setting: the radio's own default, stored in firmware. It plays no part in mirroring or in deciding which messages the bot answers, but a send the bot does not scope itself goes out under it, because the bot only sets a scope on the radio when it has one of its own.
 
 ## Checking it works
 
@@ -74,8 +74,8 @@ Send a command from a client with the region set, then look for these lines in t
 
 - `Flood scope allowlist active: ['#home'] (global/unscoped permitted: True)` at startup or reload confirms what `flood_scopes` was parsed to.
 - `Incoming TC_FLOOD matched scope '#home'` means the inbound code matched a listed name.
-- `Outbound channel flood scope: #home (... set_flood_scope)` means the reply went out scoped.
-- `Outbound channel flood scope: global` means it did not. When an override was configured but not applied, the line says so and names the scope that won.
+- `Outbound channel flood scope: #home (<source>; set_flood_scope)` means the bot set that scope for the send. `<source>` says where it came from: `explicit argument` for a mirrored reply or a per-send scope, `outgoing_flood_scope_override`, or `reply_scope or config`. If a warning follows saying the radio rejected `set_flood_scope` or the message will use the device default, the send went out at whatever scope the radio held instead.
+- `Outbound channel flood scope: global` means the bot set no scope. It is logged at DEBUG, so it only shows with `log_level = DEBUG`, except when `outgoing_flood_scope_override` is set and something else decided on global: that case is a WARNING saying the override was not applied.
 - `Ignoring TC_FLOOD: scope not in flood_scopes allowlist` means the message was scoped to a region you have not listed.
 
 On the air, a scoped reply is a `TC_FLOOD` (route type 0) with a nonzero first transport code; a global reply is a `FLOOD` (route type 1) with no transport codes.
