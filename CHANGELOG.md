@@ -30,7 +30,7 @@ semantic versioning.
 
 ### Fixed
 
-- Radio-offline state no longer latches until a restart. After `radio_offline_threshold` send timeouts the bot suppresses every outbound send, but the only thing that cleared the state was a successful send, so it never cleared. A health probe the radio answers, a reconnect, or the web viewer's "Clear Offline Flag" now clear it; the viewer runs in its own process, so its button only wrote the database, and the bot now picks that up.
+- Radio-offline state no longer latches until a restart. After `radio_offline_threshold` send timeouts the bot suppresses every outbound send, but the only thing that cleared the state was a successful send, so it never cleared. It now behaves like a circuit breaker: when a health probe gets an answer, sends are let through on trial, and the next measured send either clears the state or closes it again. The offline alert email goes out once per outage, not on every trial failure. The web viewer's "Clear Offline Flag" now works too; the viewer runs in its own process, so its button only wrote the database, and the bot now picks that up within 30 seconds.
 
 - The web viewer login no longer redirects off-site after sign-in. The `next`
   check let `///host` and `/\host` through, which browsers treat as another

@@ -974,23 +974,42 @@ class TestRadioOfflineRecovery:
         db_path = tmp_path / "bot.db"
         _write_config(config_file, db_path)
         bot = MeshCoreBot(config_file=str(config_file))
+        self.scheduler = MagicMock()
         for _ in range(3):
-            bot._record_send_failure()
+            bot._record_send_failure(scheduler=self.scheduler)
         assert bot.is_radio_offline is True
         assert bot.db_manager.get_metadata('bot.radio_offline') == 'true'
         return bot
 
-    def test_successful_health_probe_clears_offline(self, tmp_path):
+    def _probe_ok(self, bot):
         from meshcore import EventType
 
-        bot = self._offline_bot(tmp_path)
         bot.meshcore = MagicMock()
         bot.meshcore.is_connected = True
         bot.meshcore.commands.get_time = AsyncMock(return_value=MagicMock(type=EventType.CURRENT_TIME))
         assert asyncio.run(bot._probe_radio_health()) is True
+
+    def test_probe_opens_a_trial_and_a_good_send_clears(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        self._probe_ok(bot)
+        assert bot.is_radio_offline is False  # sends allowed on trial
+        assert bot.db_manager.get_metadata('bot.radio_offline') == 'true'  # not cleared yet
+        bot._record_send_success()
         assert bot.is_radio_offline is False
-        assert bot._send_consecutive_failures == 0
+        assert bot._radio_offline is False
         assert bot.db_manager.get_metadata('bot.radio_offline') == 'false'
+
+    def test_failed_trial_send_closes_again_without_a_second_alert(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        threads = []
+        with patch("threading.Thread") as thread_cls:
+            thread_cls.side_effect = lambda *a, **k: threads.append(k) or MagicMock()
+            for _ in range(3):
+                self._probe_ok(bot)
+                assert bot.is_radio_offline is False
+                bot._record_send_failure(scheduler=self.scheduler)
+                assert bot.is_radio_offline is True
+        assert threads == []  # the one alert was sent when the outage began
 
     def test_failed_probe_leaves_offline(self, tmp_path):
         from meshcore import EventType
@@ -1007,17 +1026,34 @@ class TestRadioOfflineRecovery:
         bot._sync_radio_offline_from_metadata()
         assert bot.is_radio_offline is True  # metadata still says offline
         bot.db_manager.set_metadata('bot.radio_offline', 'false')
+        bot._last_offline_metadata_check = 0.0
         bot._sync_radio_offline_from_metadata()
         assert bot.is_radio_offline is False
         assert bot._send_consecutive_failures == 0
 
-    def test_clear_is_a_no_op_when_online(self, tmp_path):
-        config_file = tmp_path / "config.ini"
-        _write_config(config_file, tmp_path / "bot.db")
-        bot = MeshCoreBot(config_file=str(config_file))
-        bot.logger = MagicMock()
-        bot._clear_radio_offline("test")
-        bot.logger.info.assert_not_called()
+    def test_viewer_clear_ignored_until_the_trip_is_persisted(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        bot._radio_offline_persisted = False  # e.g. the 'true' write failed or has not landed
+        bot.db_manager.set_metadata('bot.radio_offline', 'false')
+        bot._last_offline_metadata_check = 0.0
+        bot._sync_radio_offline_from_metadata()
+        assert bot.is_radio_offline is True
+
+    def test_viewer_check_is_throttled(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        bot.db_manager.get_metadata = MagicMock(return_value='true')
+        bot._last_offline_metadata_check = 0.0
+        bot._sync_radio_offline_from_metadata()
+        bot._sync_radio_offline_from_metadata()
+        assert bot.db_manager.get_metadata.call_count == 1
+
+    def test_new_outage_after_a_clear_alerts_again(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        bot._record_send_success()
+        with patch("threading.Thread") as thread_cls:
+            for _ in range(3):
+                bot._record_send_failure(scheduler=self.scheduler)
+            assert thread_cls.call_count == 1
 
 
 class TestSendStartupAdvertTimeout:

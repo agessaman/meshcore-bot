@@ -500,14 +500,24 @@ class MeshCoreBot:
 
     @property
     def is_radio_offline(self) -> bool:
-        """True when repeated outbound send timeouts have been detected.
+        """True while repeated outbound send timeouts are suppressing sends.
 
         Distinct from zombie state — the radio may still be forwarding received
-        packets but is not completing outbound sends.  Cleared automatically
-        when a send succeeds, when a health probe gets an answer, when the radio
-        reconnects, or when the web viewer's "Clear Offline Flag" is used.
+        packets but is not completing outbound sends. The state works like a
+        circuit breaker: after a health probe gets an answer, sends are let
+        through again on trial (this returns False) until the next measured
+        send either succeeds, which clears the state, or fails, which closes it
+        again without another alert. The web viewer's "Clear Offline Flag" also
+        clears it.
         """
-        return bool(getattr(self, '_radio_offline', False))
+        return bool(getattr(self, '_radio_offline', False)) and not getattr(self, '_radio_offline_trial', False)
+
+    def _offline_lock(self) -> threading.Lock:
+        """Guards the offline state, which the scheduler thread and the event loop both change."""
+        lock = getattr(self, '_radio_offline_lock', None)
+        if lock is None:
+            lock = self._radio_offline_lock = threading.Lock()
+        return lock
 
     def _record_send_failure(self, scheduler: "Any | None" = None) -> None:
         """Increment the consecutive-send-failure counter.
@@ -517,45 +527,64 @@ class MeshCoreBot:
         timeout fired).  After ``radio_offline_threshold`` consecutive
         failures the bot transitions to radio-offline state, persists it
         to the DB for the web viewer banner, and optionally sends an alert
-        email.
+        email (once per outage). A failure during a trial send after a
+        health probe closes the state again without a new alert.
         """
         import datetime as _dt
         import threading as _threading
 
-        self._send_consecutive_failures: int = (
-            getattr(self, '_send_consecutive_failures', 0) + 1
-        )
         threshold = self.config.getint(
             'Connection',
             'radio_offline_threshold',
             fallback=self.config.getint('Bot', 'radio_offline_threshold', fallback=3),
         )
-        if self._send_consecutive_failures >= threshold and not self.is_radio_offline:
-            self._radio_offline = True
-            since = _dt.datetime.now(_dt.timezone.utc).isoformat()
-            self.logger.critical(
-                "RADIO OFFLINE: %d consecutive send timeouts (threshold %d). "
-                "Bot will suppress further outbound sends until one succeeds. "
-                "Check radio power and connection.",
-                self._send_consecutive_failures,
-                threshold,
+        send_alert = False
+        with self._offline_lock():
+            self._send_consecutive_failures: int = (
+                getattr(self, '_send_consecutive_failures', 0) + 1
             )
-            try:
-                self.db_manager.set_metadata('bot.radio_offline', 'true')
-                self.db_manager.set_metadata('bot.radio_offline_since', since)
-            except Exception:
-                pass
-            if scheduler is not None:
-                _threading.Thread(
-                    target=scheduler.send_radio_offline_alert_email,
-                    args=(self._send_consecutive_failures, threshold),
-                    daemon=True,
-                ).start()
+            failures = self._send_consecutive_failures
+            if getattr(self, '_radio_offline', False):
+                if getattr(self, '_radio_offline_trial', False):
+                    self._radio_offline_trial = False
+                    self.logger.warning(
+                        "Trial send after a health probe failed; outbound sends suppressed again"
+                    )
+                return
+            if failures < threshold:
+                return
+            self._radio_offline = True
+            self._radio_offline_trial = False
+            self._radio_offline_persisted = False
+            send_alert = not getattr(self, '_radio_offline_alerted', False)
+            self._radio_offline_alerted = True
+        since = _dt.datetime.now(_dt.timezone.utc).isoformat()
+        self.logger.critical(
+            "RADIO OFFLINE: %d consecutive send timeouts (threshold %d). "
+            "Bot will suppress further outbound sends until one succeeds. "
+            "Check radio power and connection.",
+            failures,
+            threshold,
+        )
+        try:
+            self.db_manager.set_metadata('bot.radio_offline', 'true')
+            self.db_manager.set_metadata('bot.radio_offline_since', since)
+            # set_metadata swallows its own errors; read back before trusting it,
+            # since the viewer-clear check treats a stored 'false' as a request.
+            self._radio_offline_persisted = self.db_manager.get_metadata('bot.radio_offline') == 'true'
+        except Exception:
+            pass
+        if scheduler is not None and send_alert:
+            _threading.Thread(
+                target=scheduler.send_radio_offline_alert_email,
+                args=(failures, threshold),
+                daemon=True,
+            ).start()
 
     def _record_send_success(self) -> None:
         """Clear the consecutive-send-failure counter after a successful send."""
         failures = getattr(self, '_send_consecutive_failures', 0)
-        was_offline = self.is_radio_offline
+        was_offline = bool(getattr(self, '_radio_offline', False))
         if failures > 0 or was_offline:
             self.logger.info(
                 "Outbound send succeeded — clearing radio-offline state "
@@ -563,44 +592,53 @@ class MeshCoreBot:
                 was_offline,
                 failures,
             )
-        self._send_consecutive_failures = 0
+        with self._offline_lock():
+            self._send_consecutive_failures = 0
         if was_offline:
-            self._clear_radio_offline_flag()
+            self._clear_radio_offline_state()
 
-    def _clear_radio_offline(self, reason: str) -> None:
-        """Leave radio-offline state because the radio has shown it is reachable.
+    def _allow_offline_trial(self, reason: str) -> None:
+        """Let sends through on trial while offline; the next measured send decides."""
+        with self._offline_lock():
+            if not getattr(self, '_radio_offline', False) or getattr(self, '_radio_offline_trial', False):
+                return
+            self._radio_offline_trial = True
+        self.logger.info("Radio offline, but %s; allowing outbound sends on trial", reason)
 
-        Every outbound send is suppressed while offline, so a successful send can
-        never be what clears it; the health probe, a reconnect and the web
-        viewer's clear action call this instead.
-        """
-        if not self.is_radio_offline:
-            return
-        self.logger.info("Clearing radio-offline state: %s", reason)
-        self._send_consecutive_failures = 0
-        self._clear_radio_offline_flag()
-
-    def _sync_radio_offline_from_metadata(self) -> None:
-        """Honor the web viewer's "Clear Offline Flag".
-
-        The viewer runs in its own process and can only write bot_metadata, so
-        the health loop checks here whether the flag was cleared there.
-        """
-        if not self.is_radio_offline:
-            return
-        try:
-            if self.db_manager.get_metadata('bot.radio_offline') == 'false':
-                self._clear_radio_offline("cleared from the web viewer")
-        except Exception as e:
-            self.logger.debug(f"Could not read radio-offline metadata: {e}")
-
-    def _clear_radio_offline_flag(self) -> None:
-        self._radio_offline = False
+    def _clear_radio_offline_state(self) -> None:
+        """Leave radio-offline state entirely (counter, trial, alert latch, banner)."""
+        with self._offline_lock():
+            self._radio_offline = False
+            self._radio_offline_trial = False
+            self._radio_offline_alerted = False
+            self._radio_offline_persisted = False
+            self._send_consecutive_failures = 0
         try:
             self.db_manager.set_metadata('bot.radio_offline', 'false')
             self.db_manager.set_metadata('bot.radio_offline_since', '')
         except Exception:
             pass
+
+    def _sync_radio_offline_from_metadata(self) -> None:
+        """Honor the web viewer's "Clear Offline Flag".
+
+        The viewer runs in its own process and can only write bot_metadata, so
+        the health loop checks here (at most every 30 s) whether it stored
+        'false'. Only once this process has confirmed its own 'true' landed, so
+        a read that races the bot's own trip cannot cancel it.
+        """
+        if not getattr(self, '_radio_offline', False) or not getattr(self, '_radio_offline_persisted', False):
+            return
+        now = time.time()
+        if now - getattr(self, '_last_offline_metadata_check', 0.0) < 30:
+            return
+        self._last_offline_metadata_check = now
+        try:
+            if self.db_manager.get_metadata('bot.radio_offline') == 'false':
+                self.logger.info("Clearing radio-offline state: cleared from the web viewer")
+                self._clear_radio_offline_state()
+        except Exception as e:
+            self.logger.debug(f"Could not read radio-offline metadata: {e}")
 
     def load_config(self) -> None:
         """Load configuration from file.
@@ -1898,7 +1936,6 @@ long_jokes = false
                 self._radio_zombie_detected = False
                 self._radio_fail_count = 0
                 self._tcp_probe_fail_count = 0
-                self._clear_radio_offline("the radio reconnected")
                 try:
                     self.db_manager.set_metadata('bot.radio_zombie', 'false')
                     self.db_manager.set_metadata('bot.radio_zombie_since', '')
@@ -2147,7 +2184,7 @@ long_jokes = false
                 self.logger.info("Radio health probe recovered — resetting fail counter")
             self._radio_fail_count = 0
             self._tcp_probe_fail_count = 0
-            self._clear_radio_offline("the radio answered a health probe")
+            self._allow_offline_trial("the radio answered a health probe")
             return True
         except asyncio.TimeoutError:
             if is_tcp:
@@ -2493,6 +2530,9 @@ long_jokes = false
         self.logger.info("Bot is running. Press Ctrl+C to stop.")
         try:
             while self.keep_running:
+                # Before the transport check, so a viewer clear works while disconnected.
+                self._sync_radio_offline_from_metadata()
+
                 # Backup: meshcore transport dropped (DISCONNECTED event is primary)
                 if self.meshcore and not self.meshcore.is_connected:
                     await self._schedule_transport_reconnect('poll_detected')
@@ -2524,8 +2564,6 @@ long_jokes = false
                             self.web_viewer_integration.restart_viewer()
                         except (AttributeError, TypeError) as e:
                             print(f"Web viewer health check failed: {e}")
-
-                self._sync_radio_offline_from_metadata()
 
                 # Periodically probe radio responsiveness
                 # Skip entirely once a zombie is confirmed — only a power cycle
