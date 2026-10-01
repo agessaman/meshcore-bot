@@ -423,62 +423,73 @@ class FeedManager:
                     'published': rss_entry_published(entry),
                 })
 
-            # Apply sorting if configured (before filtering, so we can properly track the last item)
-            sort_config_str = feed.get('sort_config')
-            if sort_config_str:
-                try:
-                    sort_config = json.loads(sort_config_str) if isinstance(sort_config_str, str) else sort_config_str
-                    all_items = self._sort_items(all_items, sort_config)
-                except (json.JSONDecodeError, TypeError, Exception) as e:
-                    self.logger.warning(f"Error applying sort config for feed {feed['id']}: {e}")
-
-            # Reverse to get oldest first (if no sort config)
-            if not sort_config_str:
-                all_items.reverse()
-
-            # Now filter out items that have already been processed
-            # Check against both last_item_id and the feed_activity table for robust deduplication
-            items = []
-            processed_item_ids = set()
-
-            # Get all previously processed item IDs from feed_activity table
-            if last_item_id:
-                processed_item_ids.add(last_item_id)
-
-            # Query database for all processed item IDs for this feed
-            try:
-                with self.bot.db_manager.connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute('''
-                        SELECT item_id FROM feed_activity WHERE feed_id = ?
-                        UNION
-                        SELECT item_id FROM feed_message_queue
-                        WHERE feed_id = ? AND sent_at IS NULL
-                          AND item_id IS NOT NULL AND trim(item_id) <> ''
-                    ''', (feed['id'], feed['id']))
-                    for row in cursor.fetchall():
-                        processed_item_ids.add(row[0])
-            except Exception as e:
-                self.logger.warning(f"Error querying processed items for feed {feed['id']}: {e}")
-
-            # Filter out already processed items
-            for item in all_items:
-                if item['id'] not in processed_item_ids:
-                    items.append(item)
-                else:
-                    self.logger.debug(f"Skipping already processed item {item['id']} for feed {feed['id']}")
-
-            # Update last_item_id if we have new items (use the last item from the sorted list)
-            if items:
-                # Use the last item from the original sorted list (all_items), not the filtered list
-                # This ensures we track the most recent item even if it was already processed
-                self._update_feed_last_item_id(feed['id'], all_items[-1]['id'])
-
-            return items
+            return self._select_new_items(feed, all_items, last_item_id)
 
         except Exception as e:
             self.logger.error(f"Error processing RSS feed: {e}")
             raise
+
+    def _select_new_items(
+        self, feed: dict[str, Any], all_items: list[dict[str, Any]], last_item_id: Any
+    ) -> list[dict[str, Any]]:
+        """Order a feed's parsed items and keep those not yet posted or queued.
+
+        Applies the feed's sort config (else reverses to oldest first), drops
+        items already in feed_activity or still pending in the queue, and
+        records the newest item seen as the feed's last_item_id.
+        """
+        # Apply sorting if configured (before filtering, so we can properly track the last item)
+        sort_config_str = feed.get('sort_config')
+        if sort_config_str:
+            try:
+                sort_config = json.loads(sort_config_str) if isinstance(sort_config_str, str) else sort_config_str
+                all_items = self._sort_items(all_items, sort_config)
+            except (json.JSONDecodeError, TypeError, Exception) as e:
+                self.logger.warning(f"Error applying sort config for feed {feed['id']}: {e}")
+
+        # Reverse to get oldest first (if no sort config)
+        if not sort_config_str:
+            all_items.reverse()
+
+        # Now filter out items that have already been processed
+        # Check against both last_item_id and the feed_activity table for robust deduplication
+        items = []
+        processed_item_ids = set()
+
+        # Get all previously processed item IDs from feed_activity table
+        if last_item_id:
+            processed_item_ids.add(last_item_id)
+
+        # Query database for all processed item IDs for this feed
+        try:
+            with self.bot.db_manager.connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT item_id FROM feed_activity WHERE feed_id = ?
+                    UNION
+                    SELECT item_id FROM feed_message_queue
+                    WHERE feed_id = ? AND sent_at IS NULL
+                      AND item_id IS NOT NULL AND trim(item_id) <> ''
+                ''', (feed['id'], feed['id']))
+                for row in cursor.fetchall():
+                    processed_item_ids.add(row[0])
+        except Exception as e:
+            self.logger.warning(f"Error querying processed items for feed {feed['id']}: {e}")
+
+        # Filter out already processed items
+        for item in all_items:
+            if item['id'] not in processed_item_ids:
+                items.append(item)
+            else:
+                self.logger.debug(f"Skipping already processed item {item['id']} for feed {feed['id']}")
+
+        # Update last_item_id if we have new items (use the last item from the sorted list)
+        if items:
+            # Use the last item from the original sorted list (all_items), not the filtered list
+            # This ensures we track the most recent item even if it was already processed
+            self._update_feed_last_item_id(feed['id'], all_items[-1]['id'])
+
+        return items
 
     async def process_api_feed(self, feed: dict[str, Any]) -> list[dict[str, Any]]:
         """Process an API feed and return new items"""
@@ -552,58 +563,7 @@ class FeedManager:
 
                 all_items.append({'id': item_id, **api_item_fields(item_data, parser_config)})
 
-            # Apply sorting if configured (before filtering, so we can properly track the last item)
-            sort_config_str = feed.get('sort_config')
-            if sort_config_str:
-                try:
-                    sort_config = json.loads(sort_config_str) if isinstance(sort_config_str, str) else sort_config_str
-                    all_items = self._sort_items(all_items, sort_config)
-                except (json.JSONDecodeError, TypeError, Exception) as e:
-                    self.logger.warning(f"Error applying sort config for feed {feed['id']}: {e}")
-
-            # Reverse to get oldest first (if no sort config)
-            if not sort_config_str:
-                all_items.reverse()
-
-            # Now filter out items that have already been processed
-            # Check against both last_item_id and the feed_activity table for robust deduplication
-            items = []
-            processed_item_ids = set()
-
-            # Get all previously processed item IDs from feed_activity table
-            if last_item_id:
-                processed_item_ids.add(last_item_id)
-
-            # Query database for all processed item IDs for this feed
-            try:
-                with self.bot.db_manager.connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute('''
-                        SELECT item_id FROM feed_activity WHERE feed_id = ?
-                        UNION
-                        SELECT item_id FROM feed_message_queue
-                        WHERE feed_id = ? AND sent_at IS NULL
-                          AND item_id IS NOT NULL AND trim(item_id) <> ''
-                    ''', (feed['id'], feed['id']))
-                    for row in cursor.fetchall():
-                        processed_item_ids.add(row[0])
-            except Exception as e:
-                self.logger.warning(f"Error querying processed items for feed {feed['id']}: {e}")
-
-            # Filter out already processed items
-            for item in all_items:
-                if item['id'] not in processed_item_ids:
-                    items.append(item)
-                else:
-                    self.logger.debug(f"Skipping already processed item {item['id']} for feed {feed['id']}")
-
-            # Update last_item_id if we have new items (use the last item from the sorted list)
-            if items:
-                # Use the last item from the original sorted list (all_items), not the filtered list
-                # This ensures we track the most recent item even if it was already processed
-                self._update_feed_last_item_id(feed['id'], all_items[-1]['id'])
-
-            return items
+            return self._select_new_items(feed, all_items, last_item_id)
 
         except Exception as e:
             self.logger.error(f"Error processing API feed: {e}")
