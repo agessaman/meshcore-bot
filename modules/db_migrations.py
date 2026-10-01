@@ -58,6 +58,32 @@ def _column_exists(cursor: sqlite3.Cursor, table: str, column: str) -> bool:
     return any(row[1] == column for row in cursor.fetchall())
 
 
+def _execute_statements(cursor: sqlite3.Cursor, script: str) -> None:
+    """Run each statement of *script* with ``execute``, inside the caller's transaction.
+
+    ``executescript`` would be shorter, but it issues an implicit COMMIT first,
+    which ends the runner's ``BEGIN IMMEDIATE`` and makes everything before it
+    permanent even if a later migration fails. Statements are split on ``;``
+    only where ``sqlite3.complete_statement`` agrees, so semicolons inside
+    string literals or comments are left alone.
+    """
+    buffer = ""
+    for piece in script.split(";"):
+        buffer += piece + ";"
+        if sqlite3.complete_statement(buffer):
+            if _has_sql(buffer):
+                cursor.execute(buffer)
+            buffer = ""
+    remainder = buffer[:-1]  # drop the ';' re-added after the final piece
+    if _has_sql(remainder):
+        cursor.execute(remainder)
+
+
+def _has_sql(text: str) -> bool:
+    """True when *text* holds more than whitespace and ``--`` comments."""
+    return any(line.strip() and not line.strip().startswith("--") for line in text.splitlines())
+
+
 def _validate_col_definition(definition: str) -> None:
     """Ensure *definition* matches a safe SQLite column definition pattern."""
     if not _VALID_COL_DEF.match(definition.strip()):
@@ -82,7 +108,7 @@ def _add_column(
 
 def _m0001_initial_schema(cursor: sqlite3.Cursor) -> None:
     """Create all base tables.  No-op for tables that already exist."""
-    cursor.executescript("""
+    _execute_statements(cursor, """
         CREATE TABLE IF NOT EXISTS geocoding_cache (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             query TEXT UNIQUE NOT NULL,
@@ -343,7 +369,7 @@ def _m0009_repeater_optional_indexes(cursor: sqlite3.Cursor) -> None:
 
 def _m0010_create_repeater_and_graph_tables(cursor: sqlite3.Cursor) -> None:
     """Create repeater/graph tables used by the web viewer and repeater manager."""
-    cursor.executescript(
+    _execute_statements(cursor,
         """
         CREATE TABLE IF NOT EXISTS repeater_contacts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -452,7 +478,7 @@ def _m0010_create_repeater_and_graph_tables(cursor: sqlite3.Cursor) -> None:
 
 def _m0011_repeater_and_graph_indexes(cursor: sqlite3.Cursor) -> None:
     """Create indexes for repeater/graph tables (safe to run repeatedly)."""
-    cursor.executescript(
+    _execute_statements(cursor,
         """
         CREATE INDEX IF NOT EXISTS idx_public_key ON repeater_contacts(public_key);
         CREATE INDEX IF NOT EXISTS idx_device_type ON repeater_contacts(device_type);
@@ -499,7 +525,7 @@ def _m0013_observed_paths_advert_covering_index(cursor: sqlite3.Cursor) -> None:
     """
     if not _table_exists(cursor, "observed_paths"):
         return
-    cursor.executescript(
+    _execute_statements(cursor,
         """
         CREATE INDEX IF NOT EXISTS idx_observed_paths_advert_pk_seen
             ON observed_paths(public_key, last_seen DESC, path_hex, path_length,
@@ -520,7 +546,7 @@ def _m0014_observed_paths_multibyte_covering_index(cursor: sqlite3.Cursor) -> No
     """
     if not _table_exists(cursor, "observed_paths"):
         return
-    cursor.executescript(
+    _execute_statements(cursor,
         """
         CREATE INDEX IF NOT EXISTS idx_observed_paths_multibyte
             ON observed_paths(bytes_per_hop, last_seen, path_hex,
@@ -603,7 +629,7 @@ def _m0018_dashboard_rollup_tables(cursor: sqlite3.Cursor) -> None:
     together and never queried by field, so columnizing it would cost a
     migration per new tile for no query benefit.
     """
-    cursor.executescript(
+    _execute_statements(cursor,
         """
         CREATE TABLE IF NOT EXISTS daily_rollup (
             date                     TEXT PRIMARY KEY,
@@ -657,7 +683,7 @@ def _m0019_packet_stream_denorm_dims(cursor: sqlite3.Cursor) -> None:
     _add_column(cursor, "packet_stream", "payload_type_name", "TEXT")
     _add_column(cursor, "packet_stream", "path_len", "INTEGER")
     _add_column(cursor, "packet_stream", "bytes_per_hop", "INTEGER")
-    cursor.executescript(
+    _execute_statements(cursor,
         """
         CREATE INDEX IF NOT EXISTS idx_packet_stream_dims
             ON packet_stream(timestamp, bytes_per_hop, route_type_name, payload_type_name)
@@ -747,7 +773,7 @@ def _m0022_neighbor_tables(cursor: sqlite3.Cursor) -> None:
     Index names are database-global in SQLite (see the note on migration 20), so
     every name here is table-qualified.
     """
-    cursor.executescript(
+    _execute_statements(cursor,
         """
         CREATE TABLE IF NOT EXISTS neighbor_links (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -818,7 +844,7 @@ def _m0024_region_scope_tables(cursor: sqlite3.Cursor) -> None:
     from memory so they survive a restart, which is why dry-run rows are
     written too — a dry run has to consume the same budget it is previewing.
     """
-    cursor.executescript(
+    _execute_statements(cursor,
         """
         CREATE TABLE IF NOT EXISTS region_scope_daily (
             date          TEXT NOT NULL,

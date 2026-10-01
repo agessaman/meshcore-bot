@@ -484,3 +484,44 @@ class TestObservedPathsZeroHopSignal:
             "SELECT COUNT(*) FROM schema_version WHERE version = 23"
         ).fetchone()[0]
         assert applied == 1
+
+
+class TestMigrationAtomicity:
+    """A failing migration must roll back every migration in the same run."""
+
+    def test_failure_after_script_migrations_leaves_nothing_applied(self):
+        import sqlite3
+        from unittest.mock import Mock, patch
+
+        from modules import db_migrations
+
+        def _boom(cursor):
+            raise RuntimeError("migration exploded")
+
+        conn = sqlite3.connect(":memory:")
+        failing = list(db_migrations.MIGRATIONS) + [(9999, "always fails", _boom)]
+        with patch.object(db_migrations, "MIGRATIONS", failing):
+            with pytest.raises(RuntimeError, match="migration exploded"):
+                db_migrations.MigrationRunner(conn, Mock()).run()
+
+        assert conn.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0] == 0
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        assert tables <= {"schema_version"}, tables
+
+    def test_execute_statements_respects_literals_and_comments(self):
+        import sqlite3
+
+        from modules.db_migrations import _execute_statements
+
+        conn = sqlite3.connect(":memory:")
+        cur = conn.cursor()
+        _execute_statements(
+            cur,
+            """
+            CREATE TABLE t (v TEXT);
+            -- a comment; with a semicolon and an apostrophe's
+            INSERT INTO t VALUES ('a;b');
+            INSERT INTO t VALUES ('c')
+            """,
+        )
+        assert [r[0] for r in conn.execute("SELECT v FROM t ORDER BY v")] == ["a;b", "c"]
