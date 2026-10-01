@@ -421,7 +421,6 @@ class MeshCoreBot:
         self.last_advert_time = None
 
         # Clock sync tracking
-        self.last_clock_sync_time = None
 
         # Shutdown event for graceful shutdown
         self._shutdown_event = threading.Event()
@@ -1542,9 +1541,6 @@ long_jokes = false
         mode = 'json' if json_logging else ('colored' if colored_output else 'plain')
         self.logger.info(f"Logging configured - Bot: {logging.getLevelName(log_level)}, MeshCore: {logging.getLevelName(meshcore_log_level)}, format: {mode}")
 
-        # Setup routing info capture for web viewer
-        self._setup_routing_capture()
-
         # Setup signal handlers for graceful shutdown
         self._setup_signal_handlers()
 
@@ -1585,20 +1581,6 @@ long_jokes = false
                 if formatter:
                     h.setFormatter(formatter)
                 mc_logger.addHandler(h)
-
-    def _setup_routing_capture(self) -> None:
-        """Setup routing information capture for web viewer.
-
-        Initializes the mechanism to capture message routing information
-        if the web viewer integration is enabled.
-        """
-        # Web viewer doesn't need complex routing capture
-        # It uses direct database access instead of complex integration
-        if not (hasattr(self, 'web_viewer_integration') and
-                self.web_viewer_integration):
-            return
-
-        self.logger.info("Web viewer routing capture setup complete")
 
     def _setup_signal_handlers(self) -> None:
         """Setup signal handlers for graceful shutdown.
@@ -2161,7 +2143,6 @@ long_jokes = false
                 result = await self.meshcore.commands.set_time(current_time)
                 if result.type == EventType.OK:
                     self.logger.info(f"✓ Radio clock updated to: {current_time}")
-                    self.last_clock_sync_time = current_time
                     return True
                 else:
                     self.logger.warning(f"Failed to update radio clock: {result}")

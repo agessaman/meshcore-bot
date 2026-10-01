@@ -953,32 +953,6 @@ class GreeterCommand(BaseCommand):
             self.logger.error(f"Error cleaning up duplicate greetings: {e}")
             # Don't raise - allow initialization to continue even if cleanup fails
 
-    def get_recent_greeted_users(self, limit: int = 10) -> list[dict[str, Any]]:
-        """Get recent greeted users.
-
-        Args:
-            limit: Maximum number of users to return.
-
-        Returns:
-            List[Dict[str, Any]]: A list of dictionaries containing greeted user info.
-        """
-        try:
-            with self.bot.db_manager.connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    SELECT sender_id, channel, MIN(greeted_at) as greeted_at,
-                           MAX(rollout_marked) as rollout_marked
-                    FROM greeted_users
-                    GROUP BY sender_id, channel
-                    ORDER BY MIN(greeted_at) DESC
-                    LIMIT ?
-                ''', (limit,))
-                rows = cursor.fetchall()
-                return [dict(row) for row in rows]
-        except Exception as e:
-            self.logger.error(f"Error getting recent greeted users: {e}")
-            return []
-
     async def _get_mesh_info(self) -> dict[str, Any]:
         """Get mesh network information for greeting.
 

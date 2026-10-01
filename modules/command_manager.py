@@ -1734,60 +1734,6 @@ class CommandManager:
             list_str = ', '.join(primary_names)
         return f"{self._HELP_PREFIX}{list_str}{self._HELP_SUFFIX}"
 
-    def get_available_commands_list(self) -> str:
-        """Get a formatted list of available commands"""
-        commands_list = ""
-
-        # Group commands by category
-        basic_commands = ['test', 'ping', 'help', 'cmd']
-        custom_syntax = ['t_phrase']  # Use the actual command key
-        special_commands = ['advert']
-        weather_commands = ['wx', 'aqi']
-        solar_commands = ['sun', 'moon', 'solar', 'hfcond', 'satpass']
-        sports_commands = ['sports']
-
-        commands_list += "**Basic Commands:**\n"
-        for cmd in basic_commands:
-            if cmd in self.commands:
-                help_text = self.commands[cmd].get_help_text()
-                commands_list += f"• `{cmd}` - {help_text}\n"
-
-        commands_list += "\n**Custom Syntax:**\n"
-        for cmd in custom_syntax:
-            if cmd in self.commands:
-                help_text = self.commands[cmd].get_help_text()
-                # Add user-friendly aliases
-                if cmd == 't_phrase':
-                    commands_list += f"• `t phrase` - {help_text}\n"
-                else:
-                    commands_list += f"• `{cmd}` - {help_text}\n"
-
-        commands_list += "\n**Special Commands:**\n"
-        for cmd in special_commands:
-            if cmd in self.commands:
-                help_text = self.commands[cmd].get_help_text()
-                commands_list += f"• `{cmd}` - {help_text}\n"
-
-        commands_list += "\n**Weather Commands:**\n"
-        for cmd in weather_commands:
-            if cmd in self.commands:
-                help_text = self.commands[cmd].get_help_text()
-                commands_list += f"• `{cmd}` - {help_text}\n"
-
-        commands_list += "\n**Solar Commands:**\n"
-        for cmd in solar_commands:
-            if cmd in self.commands:
-                help_text = self.commands[cmd].get_help_text()
-                commands_list += f"• `{cmd}` - {help_text}\n"
-
-        commands_list += "\n**Sports Commands:**\n"
-        for cmd in sports_commands:
-            if cmd in self.commands:
-                help_text = self.commands[cmd].get_help_text()
-                commands_list += f"• `{cmd}` - {help_text}\n"
-
-        return commands_list
-
     async def send_response(
         self,
         message: MeshMessage,
@@ -2473,6 +2419,3 @@ class CommandManager:
         """Reload a specific plugin"""
         return self.plugin_loader.reload_plugin(plugin_name)
 
-    def get_plugin_metadata(self, plugin_name: str | None = None) -> dict[str, Any]:
-        """Get plugin metadata"""
-        return self.plugin_loader.get_plugin_metadata(plugin_name)

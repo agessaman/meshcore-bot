@@ -429,7 +429,7 @@ class BaseCommand(ABC):
             base_name = camel_case_map[self.name]
         else:
             # Use title() for regular names
-            base_name = self.name.title().replace('_', '_')
+            base_name = self.name.title()
 
         return f"{base_name}_Command"
 
@@ -828,15 +828,6 @@ class BaseCommand(ABC):
         except Exception as e:
             # Log the error for debugging
             self.logger.debug(f"Could not load translated keywords for {self.name}: {e}")
-
-    def _load_command_prefix(self) -> str:
-        """Load default command prefix from config (first configured prefix).
-
-        Returns:
-            str: The default command prefix, or empty string if not configured.
-        """
-        prefixes, _require = load_command_prefix_settings(self.bot.config)
-        return prefixes[0] if prefixes else ''
 
     def _get_bot_name(self) -> str:
         """Get bot name from device or config.

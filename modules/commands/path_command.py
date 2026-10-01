@@ -6,7 +6,6 @@ Decodes hex path data to show which repeaters were involved in message routing
 
 import asyncio
 import re
-import time
 from typing import Any, Callable, Optional
 
 from ..models import MeshMessage
@@ -838,23 +837,6 @@ class PathCommand(BaseCommand):
 
         return repeater_info
 
-    async def _get_api_cache_data(self) -> Optional[dict[str, dict[str, Any]]]:
-        """Get API cache data from the prefix command if available"""
-        try:
-            # Try to get the prefix command instance and its cache data
-            if hasattr(self.bot, 'command_manager'):
-                prefix_cmd = self.bot.command_manager.commands.get('prefix')
-                if prefix_cmd and hasattr(prefix_cmd, 'cache_data'):
-                    # Check if cache is valid
-                    current_time = time.time()
-                    if current_time - prefix_cmd.cache_timestamp > prefix_cmd.cache_duration:
-                        await prefix_cmd.refresh_cache()
-                    return prefix_cmd.cache_data
-        except Exception as e:
-            self.logger.warning(f"Could not get API cache data: {e}")
-        return None
-
-
     def _get_sender_location(
         self, message: Optional[MeshMessage] = None
     ) -> Optional[tuple[float, float]]:
@@ -892,60 +874,6 @@ class PathCommand(BaseCommand):
         except Exception as e:
             self.logger.debug(f"Error getting sender location: {e}")
             return None
-
-    def _filter_recent_repeaters(self, repeaters: list[dict[str, Any]], cutoff_hours: int = 24) -> list[dict[str, Any]]:
-        """Filter repeaters to only include those that have advertised recently"""
-        from datetime import datetime, timedelta
-
-        recent_repeaters = []
-        cutoff_time = datetime.now() - timedelta(hours=cutoff_hours)
-
-        for repeater in repeaters:
-            # Check recency using multiple timestamp fields
-            is_recent = False
-
-            # Check last_heard from complete_contact_tracking
-            last_heard = repeater.get('last_heard')
-            if last_heard:
-                try:
-                    if isinstance(last_heard, str):
-                        last_heard_dt = datetime.fromisoformat(last_heard.replace('Z', '+00:00'))
-                    else:
-                        last_heard_dt = last_heard
-                    is_recent = last_heard_dt > cutoff_time
-                except:
-                    pass
-
-            # Check last_advert_timestamp if last_heard check failed
-            if not is_recent:
-                last_advert = repeater.get('last_advert_timestamp')
-                if last_advert:
-                    try:
-                        if isinstance(last_advert, str):
-                            last_advert_dt = datetime.fromisoformat(last_advert.replace('Z', '+00:00'))
-                        else:
-                            last_advert_dt = last_advert
-                        is_recent = last_advert_dt > cutoff_time
-                    except:
-                        pass
-
-            # Check last_seen from complete_contact_tracking table
-            if not is_recent:
-                last_seen = repeater.get('last_seen')
-                if last_seen:
-                    try:
-                        if isinstance(last_seen, str):
-                            last_seen_dt = datetime.fromisoformat(last_seen.replace('Z', '+00:00'))
-                        else:
-                            last_seen_dt = last_seen
-                        is_recent = last_seen_dt > cutoff_time
-                    except:
-                        pass
-
-            if is_recent:
-                recent_repeaters.append(repeater)
-
-        return recent_repeaters
 
     def _select_repeater_by_graph(self, repeaters: list[dict[str, Any]], node_id: str,
                                   path_context: list[str],
