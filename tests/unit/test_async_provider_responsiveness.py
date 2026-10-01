@@ -482,16 +482,15 @@ def test_no_blocking_geocode_on_async_paths() -> None:
     paths = [p for root in ("modules/commands", "modules/service_plugins") for p in sorted((repo_root / root).rglob("*.py"))]
     paths.append(repo_root / "modules" / "repeater_manager.py")
     for path in paths:
-        if True:
-            try:
-                tree = ast.parse(path.read_text(encoding="utf-8"))
-            except (SyntaxError, UnicodeDecodeError):
-                continue
-            finder = _InlineBlockingCallFinder()
-            finder.visit(tree)
-            for lineno, name in finder.hits:
-                rel = path.relative_to(repo_root)
-                offenders.append(f"{rel}:{lineno} calls {name}() inline")
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        finder = _InlineBlockingCallFinder()
+        finder.visit(tree)
+        for lineno, name in finder.hits:
+            rel = path.relative_to(repo_root)
+            offenders.append(f"{rel}:{lineno} calls {name}() inline")
 
     assert offenders == [], (
         "blocking geocode/network work on an async path — wrap it in "

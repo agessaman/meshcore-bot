@@ -5,6 +5,7 @@ Manages a database of repeater contacts and provides purging functionality
 """
 
 import asyncio
+import contextlib
 import json
 import time
 from datetime import datetime, timedelta
@@ -157,6 +158,8 @@ class RepeaterManager:
 
         # Geocoding cache: packet_hash -> timestamp (to prevent duplicate geocoding within 1 minute)
         self.geocoding_cache = {}
+        # public_key -> [lock, holders]; serializes adverts per contact across the geocode await
+        self._advert_locks: dict[str, list] = {}
         self.geocoding_cache_window = 60  # 1 minute window
         # Prevent overlapping auto-purge runs and duplicate per-key purge attempts.
         self._auto_purge_lock = asyncio.Lock()
@@ -236,10 +239,32 @@ class RepeaterManager:
             (public_key, packet_hash)
         ))
 
+    @contextlib.asynccontextmanager
+    async def _advert_lock(self, public_key: str):
+        """Serialize adverts for one contact, so a burst cannot each geocode from the same stale row."""
+        entry = self._advert_locks.setdefault(public_key, [asyncio.Lock(), 0])
+        entry[1] += 1
+        try:
+            async with entry[0]:
+                yield
+        finally:
+            entry[1] -= 1
+            if entry[1] == 0:
+                del self._advert_locks[public_key]
+
     async def track_contact_advertisement(
         self, advert_data: dict, signal_info: Optional[dict] = None, packet_hash: Optional[str] = None
     ) -> TrackAdvertResult:
         """Track any contact advertisement in the complete tracking database."""
+        public_key = advert_data.get('public_key', '')
+        if not public_key:
+            return await self._track_contact_advertisement(advert_data, signal_info, packet_hash)
+        async with self._advert_lock(public_key):
+            return await self._track_contact_advertisement(advert_data, signal_info, packet_hash)
+
+    async def _track_contact_advertisement(
+        self, advert_data: dict, signal_info: Optional[dict], packet_hash: Optional[str]
+    ) -> TrackAdvertResult:
         try:
             # Extract basic information
             public_key = advert_data.get('public_key', '')
@@ -310,16 +335,9 @@ class RepeaterManager:
             with self.db_manager.connection() as conn:
                 # Check if this packet_hash was already processed for this contact
                 # This prevents duplicate writes of the same advert packet
-                if packet_hash and packet_hash != "0000000000000000":
-                    existing_packet = self.db_manager.execute_query_on_connection(
-                        conn,
-                        'SELECT id FROM unique_advert_packets WHERE public_key = ? AND packet_hash = ?',
-                        (public_key, packet_hash)
-                    )
-                    if existing_packet:
-                        # This packet_hash was already processed - skip contact update
-                        self.logger.debug(f"Skipping duplicate advert packet for {name}: {packet_hash[:8]}... (already processed)")
-                        return TrackAdvertResult(ok=True, duplicate_packet=True)
+                if self._is_duplicate_advert_packet(conn, public_key, packet_hash):
+                    self.logger.debug(f"Skipping duplicate advert packet for {name}: {(packet_hash or '')[:8]}... (already processed)")
+                    return TrackAdvertResult(ok=True, duplicate_packet=True)
 
                 # Check if this contact is already in our complete tracking
                 existing = self.db_manager.execute_query_on_connection(
@@ -1565,8 +1583,9 @@ class RepeaterManager:
         # Check packet hash cache first to prevent duplicate API calls
         if packet_hash and packet_hash != "0000000000000000":
             current_time = time.time()
-            if packet_hash in self.geocoding_cache:
-                cache_age = current_time - self.geocoding_cache[packet_hash]
+            cached_at = self.geocoding_cache.get(packet_hash)
+            if cached_at is not None:
+                cache_age = current_time - cached_at
                 if cache_age < self.geocoding_cache_window:
                     # Check database for state/country data
                     existing_data = self._get_existing_geocoded_data(latitude, longitude)
@@ -1608,8 +1627,9 @@ class RepeaterManager:
         # Check packet hash cache first to prevent duplicate API calls
         if packet_hash and packet_hash != "0000000000000000":
             current_time = time.time()
-            if packet_hash in self.geocoding_cache:
-                cache_age = current_time - self.geocoding_cache[packet_hash]
+            cached_at = self.geocoding_cache.get(packet_hash)
+            if cached_at is not None:
+                cache_age = current_time - cached_at
                 if cache_age < self.geocoding_cache_window:
                     # Check database for city data
                     existing_data = self._get_existing_geocoded_data(latitude, longitude)
@@ -1684,8 +1704,9 @@ class RepeaterManager:
             # Check packet hash cache first (before database check)
             if packet_hash and packet_hash != "0000000000000000":
                 current_time = time.time()
-                if packet_hash in self.geocoding_cache:
-                    cache_age = current_time - self.geocoding_cache[packet_hash]
+                cached_at = self.geocoding_cache.get(packet_hash)
+                if cached_at is not None:
+                    cache_age = current_time - cached_at
                     if cache_age < self.geocoding_cache_window:
                         self.logger.debug(f"📍 Skipping geocoding API call for packet_hash {packet_hash[:16]}... (geocoded {cache_age:.1f}s ago)")
                         # Still check database for location data
