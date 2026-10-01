@@ -6,6 +6,7 @@ Base service plugin class for background services
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -258,6 +259,19 @@ class BaseServicePlugin(ABC):
             except Exception as e:
                 self.logger.error("%s: %s", error_message, e)
                 await asyncio.sleep(error_delay)
+
+    @staticmethod
+    async def _cancel_tasks(*tasks: Optional[asyncio.Task[Any]]) -> None:
+        """Cancel each task (skipping None) and wait for it, in order.
+
+        A task that already finished with an error re-raises it here, as
+        awaiting it directly would.
+        """
+        for task in tasks:
+            if task:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
 
     def _subscribe(self, meshcore: Any, event_type: Any, handler: Any) -> Any:
         """Subscribe *handler* to a meshcore event and remember it for ``_unsubscribe_all``.

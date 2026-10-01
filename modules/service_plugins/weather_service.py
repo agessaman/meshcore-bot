@@ -5,7 +5,6 @@ Provides scheduled weather forecasts and alert monitoring
 """
 
 import asyncio
-import contextlib
 import json
 import math
 import re
@@ -377,30 +376,9 @@ class WeatherService(BaseServicePlugin):
         self.logger.info("Stopping weather service")
 
         # Cancel background tasks
-        if self._alerts_task:
-            self._alerts_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._alerts_task
-
-        if self._forecast_task:
-            self._forecast_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._forecast_task
-
-        if self._lightning_task:
-            self._lightning_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._lightning_task
-
-        if self._rain_task:
-            self._rain_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._rain_task
-
-        if self.mqtt_task:
-            self.mqtt_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self.mqtt_task
+        await self._cancel_tasks(
+            self._alerts_task, self._forecast_task, self._lightning_task, self._rain_task, self.mqtt_task
+        )
 
         if self.mqtt_client:
             try:

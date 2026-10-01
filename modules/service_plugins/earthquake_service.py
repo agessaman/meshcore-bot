@@ -5,7 +5,6 @@ Polls USGS Earthquake API and notifies a channel when earthquakes occur in a con
 """
 
 import asyncio
-import contextlib
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -152,11 +151,8 @@ class EarthquakeService(BaseServicePlugin):
     async def stop(self) -> None:
         self._running = False
         self.logger.info("Stopping earthquake service")
-        if self._poll_task:
-            self._poll_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._poll_task
-            self._poll_task = None
+        await self._cancel_tasks(self._poll_task)
+        self._poll_task = None
         self._session.close()
         self.logger.info("Earthquake service stopped")
 

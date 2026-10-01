@@ -79,3 +79,35 @@ def test_does_nothing_when_not_running():
 
     asyncio.run(service.run_periodic(work, lambda: 5.0, "Error in loop"))
     assert called == []
+
+
+def test_cancel_tasks_cancels_in_order_and_skips_none():
+    async def main():
+        started = asyncio.Event()
+
+        async def forever():
+            started.set()
+            await asyncio.sleep(3600)
+
+        task = asyncio.create_task(forever())
+        await started.wait()
+        await BaseServicePlugin._cancel_tasks(None, task)
+        return task
+
+    task = asyncio.run(main())
+    assert task.cancelled()
+
+
+def test_cancel_tasks_reraises_a_finished_tasks_error_like_awaiting_it():
+    import pytest
+
+    async def main():
+        async def boom():
+            raise ValueError("failed earlier")
+
+        task = asyncio.create_task(boom())
+        await asyncio.sleep(0)
+        with pytest.raises(ValueError):
+            await BaseServicePlugin._cancel_tasks(task)
+
+    asyncio.run(main())

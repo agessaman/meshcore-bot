@@ -383,10 +383,7 @@ class DiscordBridgeService(BaseServicePlugin):
                 self.bot.channel_sent_listeners.remove(self._on_mesh_channel_message)
 
         # Cancel background tasks
-        if self._queue_processor_task:
-            self._queue_processor_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._queue_processor_task
+        await self._cancel_tasks(self._queue_processor_task)
 
         # Close aiohttp session
         if self.http_session:

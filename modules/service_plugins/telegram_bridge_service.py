@@ -277,10 +277,7 @@ class TelegramBridgeService(BaseServicePlugin):
             with contextlib.suppress(ValueError):
                 self.bot.channel_sent_listeners.remove(self._on_mesh_channel_message)
 
-        if self._queue_processor_task:
-            self._queue_processor_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._queue_processor_task
+        await self._cancel_tasks(self._queue_processor_task)
         if self.http_session:
             await self.http_session.close()
             self.http_session = None
