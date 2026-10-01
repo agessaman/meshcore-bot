@@ -28,6 +28,7 @@ import colorlog
 import meshcore
 from meshcore import EventType
 
+from .admin_server import BotAdminServer
 from .channel_manager import ChannelManager
 from .command_manager import CommandManager
 from .db_manager import AsyncDBManager, DBManager
@@ -63,61 +64,6 @@ class _JsonFormatter(logging.Formatter):
         if record.stack_info:
             obj['stack_info'] = self.formatStack(record.stack_info)
         return json.dumps(obj, ensure_ascii=False)
-
-
-class _BotAdminServer(threading.Thread):
-    """Minimal Flask HTTP server exposing bot admin endpoints.
-
-    Runs in a daemon thread alongside the bot's asyncio loop.
-    Configured via ``[Admin]`` section in config.ini:
-
-        [Admin]
-        enabled = true
-        port    = 5001
-        token   = <secret>   ; required; requests without matching Bearer token are rejected
-    """
-
-    def __init__(self, bot: "MeshCoreBot", port: int, token: str) -> None:
-        super().__init__(daemon=True, name="BotAdminServer")
-        self._bot = bot
-        self._port = port
-        self._token = token
-
-    def run(self) -> None:
-        try:
-            from flask import Flask, Response, jsonify
-            from flask import request as flask_request
-
-            app = Flask("bot_admin")
-            # Suppress Flask startup banner and request logs
-            import logging as _logging
-            _logging.getLogger("werkzeug").setLevel(_logging.ERROR)
-
-            def _check_auth() -> "Response | None":
-                auth = flask_request.headers.get("Authorization", "")
-                if not auth.startswith("Bearer ") or auth[7:] != self._token:
-                    return jsonify({"error": "unauthorized"}), 401
-                return None
-
-            @app.post("/api/admin/reload")
-            def reload_config():  # type: ignore[no-untyped-def]
-                denied = _check_auth()
-                if denied is not None:
-                    return denied
-                success, msg = self._bot.reload_config()
-                status = 200 if success else 409
-                return jsonify({"success": success, "message": msg}), status
-
-            @app.get("/api/admin/health")
-            def health():  # type: ignore[no-untyped-def]
-                denied = _check_auth()
-                if denied is not None:
-                    return denied
-                return jsonify({"status": "ok"})
-
-            app.run(host="127.0.0.1", port=self._port, threaded=True)
-        except Exception as exc:  # noqa: BLE001
-            self._bot.logger.error("BotAdminServer failed to start: %s", exc)
 
 
 # True while the current task holds the radio through MeshCoreBot.radio_session(),
@@ -249,12 +195,12 @@ class MeshCoreBot:
             self.web_viewer_integration = None
 
         # Admin HTTP server (optional — [Admin] section)
-        self._admin_server: _BotAdminServer | None = None
+        self._admin_server: BotAdminServer | None = None
         if self.config.getboolean('Admin', 'enabled', fallback=False):
             admin_port = self.config.getint('Admin', 'port', fallback=5001)
             admin_token = self.config.get('Admin', 'token', fallback='')
             if admin_token:
-                self._admin_server = _BotAdminServer(self, admin_port, admin_token)
+                self._admin_server = BotAdminServer(self, admin_port, admin_token)
             else:
                 self.logger.warning("Admin server enabled but no token configured — skipping")
 
