@@ -31,6 +31,7 @@ semantic versioning.
 ### Fixed
 
 - A delivered DM is no longer reported as failed because its ACK came back after the bot stopped waiting (#290). Each attempt waited 1.2 times the radio's `suggested_timeout`, which the firmware derives from the packet's airtime and hop count with well under a second of fixed allowance, so on fast presets a zero-hop attempt gave up after about 1.3 seconds, before the recipient's ACK delay and the radio's TX queue had even played out. Webhook DMs then returned an error for messages the recipient had. New `[Bot] dm_min_ack_timeout` (default 8 seconds) sets a floor on each attempt's wait; an ACK still ends it at once, so successful sends are no slower, but a DM that is never acknowledged now takes at least 24 seconds to report failure with the default three attempts. Values are capped at 60 seconds. Set it to 0 for the old behavior.
+- A radio that rejects `set_flood_scope` is now reported. The check compared the reply's `EventType` to the string `"ERROR"`, which never matches, so a rejected regional scope (the message then goes out at whatever scope the radio holds) and a rejected restore to global flood (the radio stays pinned to the region for every later send) were both silent.
 
 - The web viewer login no longer redirects off-site after sign-in. The `next`
   check let `///host` and `/\host` through, which browsers treat as another
