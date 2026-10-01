@@ -2397,12 +2397,11 @@ long_jokes = false
         # link is actually ready, so it's safe to bind before we're connected.
         webhook_service = self.services.get('webhook')
         if webhook_service is not None and getattr(webhook_service, 'enabled', False):
-            try:
-                await webhook_service.start()
-                if not self._note_if_service_not_running('webhook', webhook_service):
-                    self.logger.info("Service 'webhook' started (early, before radio connect)")
-            except Exception as e:
-                self.logger.error(f"Failed to start service 'webhook' early: {e}")
+            await self._start_service_at_boot(
+                'webhook', webhook_service,
+                started="Service 'webhook' started (early, before radio connect)",
+                failed="Failed to start service 'webhook' early",
+            )
 
         # Connect to MeshCore node
         if not await self.connect():
@@ -2450,12 +2449,11 @@ long_jokes = false
         for service_name, service_instance in self.services.items():
             if service_name == 'webhook':
                 continue
-            try:
-                await service_instance.start()
-                if not self._note_if_service_not_running(service_name, service_instance):
-                    self.logger.info(f"Service '{service_name}' started")
-            except Exception as e:
-                self.logger.error(f"Failed to start service '{service_name}': {e}")
+            await self._start_service_at_boot(
+                service_name, service_instance,
+                started=f"Service '{service_name}' started",
+                failed=f"Failed to start service '{service_name}'",
+            )
 
         # Start command queue processor if needed
         if hasattr(self.command_manager, '_start_queue_processor'):
@@ -2532,14 +2530,7 @@ long_jokes = false
                     restart_backoff = self.config.getint(
                         'Bot', 'service_restart_backoff_seconds', fallback=300
                     )
-                    now = time.time()
-                    for name, service in self.services.items():
-                        if not self._service_restart_due(name, service, now, restart_backoff):
-                            continue
-                        self.logger.warning(
-                            f"Service '{name}' unhealthy, attempting restart..."
-                        )
-                        asyncio.create_task(self._restart_service(name, service))
+                    self._restart_unhealthy_services(time.time(), restart_backoff)
 
                 await asyncio.sleep(5)  # Check every 5 seconds
         except KeyboardInterrupt:
@@ -2636,6 +2627,25 @@ long_jokes = false
         finally:
             self._shutdown_complete = True
 
+    async def _start_service_at_boot(self, name: str, service: Any, *, started: str, failed: str) -> None:
+        """Start one service during startup; a failure or a declined start waits out the restart backoff."""
+        try:
+            await service.start()
+        except Exception as e:
+            self.logger.error(f"{failed}: {e}")
+            self._service_restart_failures[name] = time.time()
+            return
+        if not self._note_if_service_not_running(name, service):
+            self.logger.info(started)
+
+    def _restart_unhealthy_services(self, now: float, backoff: float) -> None:
+        """Health-loop step: start a restart task for each service that is due one."""
+        for name, service in self.services.items():
+            if not self._service_restart_due(name, service, now, backoff):
+                continue
+            self.logger.warning(f"Service '{name}' unhealthy, attempting restart...")
+            asyncio.create_task(self._restart_service(name, service))
+
     def _service_restart_due(self, name: str, service: Any, now: float, backoff: float) -> bool:
         """Whether the health loop should restart *service* now."""
         if not getattr(service, 'enabled', True):
@@ -2659,6 +2669,8 @@ long_jokes = false
         health tick cannot help; after the backoff the health loop tries again,
         which recovers the transient case.
         """
+        if not getattr(service_instance, 'enabled', True):
+            return False  # disabled on purpose; the health loop skips it anyway
         try:
             running = service_instance.is_running()
         except Exception:

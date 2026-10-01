@@ -171,3 +171,124 @@ def test_a_restart_that_leaves_the_service_unhealthy_backs_off(tmp_path):
     bot = _core_bot(tmp_path)
     assert asyncio.run(bot._restart_service("flaky", _StillUnhealthy())) is False
     assert "flaky" in bot._service_restart_failures
+
+
+def _plain_bot(sections):
+    import configparser
+
+    bot = MagicMock()
+    bot.config = configparser.ConfigParser()
+    bot.config.read_dict(sections)
+    bot.bot_root = Path("/tmp")
+    return bot
+
+
+def test_bridges_close_their_http_session_when_meshcore_is_missing():
+    from modules.service_plugins.discord_bridge_service import DiscordBridgeService
+    from modules.service_plugins.telegram_bridge_service import TelegramBridgeService
+
+    for cls, section, mapping in (
+        (DiscordBridgeService, "DiscordBridge", "channel_webhooks"),
+        (TelegramBridgeService, "TelegramBridge", "channel_chat_ids"),
+    ):
+        bot = _plain_bot({section: {"enabled": "true"}})
+        service = cls(bot)
+        service.enabled = True
+        setattr(service, mapping, {"general": ["target"]})
+        bot.meshcore = None
+
+        async def run(service=service):
+            await service.start()
+            return service.http_session
+
+        assert asyncio.run(run()) is None, cls.__name__
+        assert service.is_running() is False
+
+
+def test_map_uploader_restart_restores_its_file_log_and_clears_should_exit(tmp_path):
+    import logging
+    import logging as _logging
+
+    from modules.service_plugins.map_uploader_service import MapUploaderService
+
+    bot = _plain_bot({"MapUploader": {"enabled": "true"}, "Logging": {"log_file": str(tmp_path / "bot.log")}})
+    bot.logger = _logging.getLogger("test-bot")
+    bot.connected = False
+    service = MapUploaderService(bot)
+    service.enabled = True
+
+    def file_handlers():
+        return [h for h in service.logger.handlers if isinstance(h, logging.FileHandler)]
+
+    assert len(file_handlers()) == 1
+    asyncio.run(service.stop())
+    assert file_handlers() == [] and service.should_exit is True
+
+    async def no_wait(*args, **kwargs):
+        return None
+
+    from unittest.mock import patch
+
+    with patch("asyncio.sleep", no_wait):
+        asyncio.run(service.start())  # gives up waiting for the radio
+    assert len(file_handlers()) == 1
+    assert service.should_exit is False
+    for handler in file_handlers():
+        handler.close()
+        service.logger.removeHandler(handler)
+
+
+def test_health_step_restarts_only_services_that_are_due(tmp_path):
+    from unittest.mock import AsyncMock
+
+    bot = _core_bot(tmp_path)
+    due, backing_off = _Declining(), _Declining()
+    bot.services = {"due": due, "backing_off": backing_off}
+    bot._service_restart_failures["backing_off"] = 1000.0
+    bot._restart_service = AsyncMock(return_value=False)
+
+    async def step():
+        bot._restart_unhealthy_services(now=1010.0, backoff=300)
+        await asyncio.sleep(0)
+
+    asyncio.run(step())
+    bot._restart_service.assert_awaited_once_with("due", due)
+
+
+def test_boot_start_failures_and_disabled_services(tmp_path):
+    bot = _core_bot(tmp_path)
+
+    class Raises(_Declining):
+        async def start(self):
+            raise OSError("port in use")
+
+    asyncio.run(bot._start_service_at_boot("raises", Raises(), started="ok", failed="failed"))
+    assert "raises" in bot._service_restart_failures
+
+    disabled = _Declining()
+    disabled.enabled = False
+    asyncio.run(bot._start_service_at_boot("off", disabled, started="ok", failed="failed"))
+    assert "off" not in bot._service_restart_failures
+
+
+def test_darc_mowas_is_not_running_when_its_port_is_taken():
+    import socket
+
+    from modules.service_plugins.darc_mowas_service import DARC_MoWaS_Service
+
+    holder = socket.socket()
+    holder.bind(("127.0.0.1", 0))
+    holder.listen(1)
+    port = holder.getsockname()[1]
+    try:
+        bot = _plain_bot({"DARC_MoWaS_Service": {"enabled": "true", "host": "127.0.0.1", "port": str(port)}})
+        service = DARC_MoWaS_Service(bot)
+        service.host, service.port = "127.0.0.1", port
+        service._ensure_channels = lambda: asyncio.sleep(0)
+        import pytest
+
+        with pytest.raises(OSError):  # not SystemExit: a taken port must not stop the bot
+            asyncio.run(service.start())
+        assert service.is_healthy() is False
+    finally:
+        holder.close()

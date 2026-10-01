@@ -127,15 +127,8 @@ class MapUploaderService(BaseServicePlugin):
         self.logger.addHandler(console_handler)
 
         # Also add file handler to write to the same log file as the bot (skip if no [Logging] section)
-        log_file = (bot.config.get('Logging', 'log_file', fallback='meshcore_bot.log')
-                    if bot.config.has_section('Logging') else '')
-        if log_file:
-            # Resolve log file path (relative paths resolved from bot root, absolute paths used as-is)
-            log_file = resolve_path(log_file, bot.bot_root)
-
-            file_handler = logging.FileHandler(log_file)
-            file_handler.setFormatter(bot_formatter)
-            self.logger.addHandler(file_handler)
+        self._log_formatter = bot_formatter
+        self._add_file_handler()
 
         # Prevent propagation to root logger
         self.logger.propagate = False
@@ -221,8 +214,11 @@ class MapUploaderService(BaseServicePlugin):
             self.logger.info("Map uploader service is disabled")
             return
 
-        # stop() sets this; clear it so a restart's background work actually runs.
+        # stop() sets this and removes the file log handler; undo both so a
+        # restart's background work runs and still logs to the bot's file.
         self.should_exit = False
+        if not any(isinstance(h, logging.FileHandler) for h in self.logger.handlers):
+            self._add_file_handler()
 
         # Check dependencies
         if not AIOHTTP_AVAILABLE:
@@ -306,6 +302,19 @@ class MapUploaderService(BaseServicePlugin):
                 self.logger.removeHandler(handler)
 
         self.logger.info("Map uploader service stopped")
+
+    def _add_file_handler(self) -> None:
+        """Log to the bot's log file as well (nothing without a [Logging] section)."""
+        config = self.bot.config
+        log_file = (config.get('Logging', 'log_file', fallback='meshcore_bot.log')
+                    if config.has_section('Logging') else '')
+        if log_file:
+            # Resolve log file path (relative paths resolved from bot root, absolute paths used as-is)
+            log_file = resolve_path(log_file, self.bot.bot_root)
+
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setFormatter(self._log_formatter)
+            self.logger.addHandler(file_handler)
 
     async def _fetch_private_key(self) -> None:
         """Fetch private key from device if not already loaded.
