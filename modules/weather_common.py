@@ -9,6 +9,7 @@ command sets ``translation_ns`` to its own catalog namespace.
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import Any, Optional, Union
 
 from .clients.mqtt_weather import (
@@ -19,6 +20,25 @@ from .clients.mqtt_weather import (
 from .utils import format_temperature_high_low
 
 Number = Union[int, float]
+
+
+def load_open_meteo_model(config: Any, logger: Any) -> Optional[str]:
+    """[Weather] weather_model for Open-Meteo's ``models`` parameter.
+
+    Unset means ``best_match``; explicitly blank means None (omit the parameter
+    and let Open-Meteo choose). Anything outside ``[a-z0-9_,.-]`` falls back to
+    ``best_match`` with a warning.
+    """
+    if config.has_option('Weather', 'weather_model'):
+        model = config.get('Weather', 'weather_model', fallback='').strip().lower()
+        if not model:
+            return None
+    else:
+        model = 'best_match'
+    if not re.fullmatch(r'[a-z0-9_,.-]+', model):
+        logger.warning(f"Invalid weather_model '{model}', using 'best_match'")
+        return 'best_match'
+    return model
 
 
 class WeatherCommandMixin:

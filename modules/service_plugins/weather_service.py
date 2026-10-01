@@ -39,6 +39,7 @@ from ..commands.rain_command import (
 from ..http_retry import make_retry_session
 from ..url_shortener import shorten_url_sync
 from ..utils import format_temperature_high_low, get_config_timezone
+from ..weather_common import load_open_meteo_model
 from .base_service import BaseServicePlugin
 
 # Try to import MQTT client (use paho-mqtt like packet capture service)
@@ -258,20 +259,7 @@ class WeatherService(BaseServicePlugin):
         Returns:
             Optional[str]: Model string, or None to omit the models parameter.
         """
-        if self.bot.config.has_option('Weather', 'weather_model'):
-            model = self.bot.config.get('Weather', 'weather_model', fallback='').strip().lower()
-            if not model:
-                # Explicitly blank means "let Open-Meteo auto-select".
-                return None
-        else:
-            # Unset falls back to Open-Meteo's best_match model.
-            model = 'best_match'
-
-        if not re.fullmatch(r'[a-z0-9_,.-]+', model):
-            self.logger.warning(f"Invalid weather_model '{model}', using 'best_match'")
-            return 'best_match'
-
-        return model
+        return load_open_meteo_model(self.bot.config, self.logger)
 
     def _create_retry_session(self) -> requests.Session:
         """Create a requests session with retry logic for API calls."""

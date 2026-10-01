@@ -19,7 +19,7 @@ from ...utils import (
     geocode_zipcode_sync,
     rate_limited_nominatim_reverse_sync,
 )
-from ...weather_common import WeatherCommandMixin
+from ...weather_common import WeatherCommandMixin, load_open_meteo_model
 from ..base_command import BaseCommand
 
 # Multiday: plain digits, 7day/7-day, or suffix form 7d/10d (min 2, max below). Open-Meteo allows up to 16 forecast days.
@@ -112,20 +112,7 @@ class GlobalWxCommand(WeatherCommandMixin, BaseCommand):
         Returns:
             Optional[str]: Model string, or None to omit the models parameter.
         """
-        if self.bot.config.has_option('Weather', 'weather_model'):
-            model = self.bot.config.get('Weather', 'weather_model', fallback='').strip().lower()
-            if not model:
-                # Explicitly blank means "let Open-Meteo auto-select".
-                return None
-        else:
-            # Unset falls back to Open-Meteo's best_match model.
-            model = 'best_match'
-
-        if not re.fullmatch(r'[a-z0-9_,.-]+', model):
-            self.logger.warning(f"Invalid weather_model '{model}', using 'best_match'")
-            return 'best_match'
-
-        return model
+        return load_open_meteo_model(self.bot.config, self.logger)
 
     def get_help_text(self) -> str:
         """Get help text for the command.
