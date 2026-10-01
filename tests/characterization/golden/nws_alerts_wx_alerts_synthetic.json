@@ -2,7 +2,7 @@
  "compact": [
   "🔴Blizzard <common.alerts.event_types.Warning> <common.alerts.til> <common.alerts.time_12h[('hour', '1'), ('meridiem', '<common.alerts.pm>')]> <common.alerts.by> NWS CHEY",
   "🔴Blizzard <common.alerts.event_types.Warning>",
-  55
+  57
  ],
  "errors": [],
  "full": {
@@ -34,6 +34,20 @@
     "summary": "",
     "title": "Tornado Warning issued October 1 at 3:00PM CDT until October 1 at 4:00PM CDT by NWS Norman OK",
     "urgency": "Immediate"
+   },
+   {
+    "area_desc": "Nested Area",
+    "certainty": "Possible",
+    "effective": "October 1 at 3:00PM PDT",
+    "event": "Nested Event Warning",
+    "event_type": "Warning",
+    "expires": "October 1 at 9:00PM PDT",
+    "nws_headline": "",
+    "office": "NWS Seattle WA",
+    "severity": "Extreme",
+    "summary": "",
+    "title": "Warning issued October 1 at 3:00PM PDT until October 1 at 9:00PM PDT by NWS Seattle WA",
+    "urgency": "Past"
    },
    {
     "area_desc": "",
@@ -752,6 +766,20 @@
    {
     "area_desc": "",
     "certainty": "Unknown",
+    "effective": "2026-10-01T15:00:00-07:00",
+    "event": "Wind",
+    "event_type": "Advisory",
+    "expires": "2026-10-01T21:00:00-07:00",
+    "nws_headline": "",
+    "office": "NWS Seattle WA",
+    "severity": "Minor",
+    "summary": "",
+    "title": "Wind Advisory by NWS Seattle WA",
+    "urgency": "Future"
+   },
+   {
+    "area_desc": "",
+    "certainty": "Unknown",
     "effective": "",
     "event": "Wind",
     "event_type": "Advisory",
@@ -778,8 +806,36 @@
     "urgency": "Future"
    }
   ],
-  "count": 55,
+  "count": 57,
   "key_order": [
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
+   [
+    "title",
+    "summary",
+    "nws_headline",
+    "event",
+    "event_type",
+    "severity",
+    "urgency",
+    "certainty",
+    "effective",
+    "expires",
+    "area_desc",
+    "office"
+   ],
    [
     "title",
     "summary",
@@ -3458,6 +3514,76 @@
      "summary": "",
      "title": "Special Weather Statement issued October 1 at 3:00PM PDT by NWS Seattle WA",
      "urgency": "Immediate"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "Nested Area",
+     "certainty": "Possible",
+     "effective": "October 1 at 3:00PM PDT",
+     "event": "Nested Event Warning",
+     "event_type": "Warning",
+     "expires": "October 1 at 9:00PM PDT",
+     "nws_headline": "",
+     "office": "NWS Seattle WA",
+     "severity": "Extreme",
+     "summary": "",
+     "title": "Warning issued October 1 at 3:00PM PDT until October 1 at 9:00PM PDT by NWS Seattle WA",
+     "urgency": "Past"
+    }
+   ],
+   "count": 1,
+   "key_order": [
+    [
+     "title",
+     "summary",
+     "nws_headline",
+     "event",
+     "event_type",
+     "severity",
+     "urgency",
+     "certainty",
+     "effective",
+     "expires",
+     "area_desc",
+     "office"
+    ]
+   ]
+  },
+  {
+   "alerts": [
+    {
+     "area_desc": "",
+     "certainty": "Unknown",
+     "effective": "2026-10-01T15:00:00-07:00",
+     "event": "Wind",
+     "event_type": "Advisory",
+     "expires": "2026-10-01T21:00:00-07:00",
+     "nws_headline": "",
+     "office": "NWS Seattle WA",
+     "severity": "Minor",
+     "summary": "",
+     "title": "Wind Advisory by NWS Seattle WA",
+     "urgency": "Future"
     }
    ],
    "count": 1,

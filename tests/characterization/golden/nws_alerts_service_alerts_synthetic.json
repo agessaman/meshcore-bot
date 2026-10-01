@@ -1808,5 +1808,73 @@
    "office",
    "link"
   ]
+ },
+ {
+  "alert": {
+   "area_desc": "",
+   "certainty": "Unknown",
+   "effective": "October 1 at 3:00PM PDT",
+   "event": "",
+   "event_type": "Warning",
+   "expires": "October 1 at 9:00PM PDT",
+   "id": "id-55",
+   "link": "",
+   "nws_headline": "",
+   "office": "NWS Seattle WA",
+   "severity": "Minor",
+   "summary": "",
+   "title": "Warning issued October 1 at 3:00PM PDT until October 1 at 9:00PM PDT by NWS Seattle WA",
+   "urgency": "Immediate"
+  },
+  "key_order": [
+   "id",
+   "title",
+   "summary",
+   "nws_headline",
+   "event",
+   "event_type",
+   "severity",
+   "urgency",
+   "certainty",
+   "effective",
+   "expires",
+   "area_desc",
+   "office",
+   "link"
+  ]
+ },
+ {
+  "alert": {
+   "area_desc": "",
+   "certainty": "Unknown",
+   "effective": "",
+   "event": "Wind",
+   "event_type": "Advisory",
+   "expires": "",
+   "id": "id-56",
+   "link": "",
+   "nws_headline": "",
+   "office": "NWS Seattle WA",
+   "severity": "Minor",
+   "summary": "",
+   "title": "Wind Advisory by NWS Seattle WA",
+   "urgency": "Future"
+  },
+  "key_order": [
+   "id",
+   "title",
+   "summary",
+   "nws_headline",
+   "event",
+   "event_type",
+   "severity",
+   "urgency",
+   "certainty",
+   "effective",
+   "expires",
+   "area_desc",
+   "office",
+   "link"
+  ]
  }
 ]

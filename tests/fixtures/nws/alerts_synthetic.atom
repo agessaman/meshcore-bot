@@ -324,4 +324,25 @@
         <cap:effective>2026-10-01T15:00:00-07:00</cap:effective>
         <cap:expires>2026-10-01T20:00:00-07:00</cap:expires>
     </entry>
+    <entry>
+        <id>urn:oid:synthetic.nested.1</id>
+        <title>Warning issued October 1 at 3:00PM PDT until October 1 at 9:00PM PDT by NWS Seattle WA</title>
+        <cap:info>
+            <cap:event>Nested Event Warning</cap:event>
+            <cap:severity>Extreme</cap:severity>
+            <cap:urgency>Past</cap:urgency>
+            <cap:certainty>Possible</cap:certainty>
+            <cap:areaDesc>Nested Area</cap:areaDesc>
+        </cap:info>
+    </entry>
+    <entry>
+        <id>urn:oid:synthetic.nested.2</id>
+        <title>Wind Advisory by NWS Seattle WA</title>
+        <cap:severity>Minor</cap:severity>
+        <cap:info>
+            <cap:severity>Severe</cap:severity>
+            <cap:effective>2026-10-01T15:00:00-07:00</cap:effective>
+            <cap:expires>2026-10-01T21:00:00-07:00</cap:expires>
+        </cap:info>
+    </entry>
 </feed>
