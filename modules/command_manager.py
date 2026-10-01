@@ -1496,7 +1496,7 @@ class CommandManager:
                     try:
                         if scoped:
                             _scope_result = await self.bot.meshcore.commands.set_flood_scope(scope_to_use)
-                            if _scope_result is None or getattr(_scope_result, "type", None) == "ERROR":
+                            if _scope_result is None or getattr(_scope_result, "type", None) == EventType.ERROR:
                                 if _attempt == 0:
                                     self.logger.warning(
                                         "set_flood_scope(%s) failed (result=%s); "
@@ -1515,7 +1515,7 @@ class CommandManager:
                     finally:
                         if scoped:
                             _restore_result = await self.bot.meshcore.commands.set_flood_scope("*")
-                            if _restore_result is None or getattr(_restore_result, "type", None) == "ERROR":
+                            if _restore_result is None or getattr(_restore_result, "type", None) == EventType.ERROR:
                                 self.logger.warning(
                                     "set_flood_scope('*') restore failed (result=%s)", _restore_result
                                 )
