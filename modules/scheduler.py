@@ -24,7 +24,7 @@ from meshcore.events import EventType
 
 from .flood_scope import scope_key_hex
 from .maintenance import MaintenanceRunner
-from .models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, channel_body_limit
+from .models import CHANNEL_REGIONAL_FLOOD_SCOPE_BODY_OVERHEAD, channel_body_limit, self_info_name
 from .scheduled_message_cron import (
     is_valid_legacy_hhmm,
     parse_schedule_key,
@@ -615,10 +615,7 @@ class MessageScheduler:
         username = ""
         try:
             self_info = getattr(getattr(self.bot, "meshcore", None), "self_info", None)
-            if isinstance(self_info, dict):
-                username = self_info.get("name") or self_info.get("user_name") or ""
-            elif self_info is not None:
-                username = getattr(self_info, "name", "") or getattr(self_info, "user_name", "")
+            username = self_info_name(self_info, ("name", "user_name")) or ""
         except Exception:  # noqa: BLE001 - budget must never break a send
             username = ""
         if not isinstance(username, str) or not username:

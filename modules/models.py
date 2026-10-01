@@ -47,6 +47,29 @@ def channel_body_limit(username: Optional[str]) -> int:
     return max(CHANNEL_FRAME_TEXT_LIMIT - len(name.encode("utf-8")) - 2, CHANNEL_BODY_FLOOR)
 
 
+def self_info_name(self_info: Any, fields: tuple[str, ...], *, by_presence: bool = False) -> Any:
+    """The radio's own name from ``meshcore.self_info`` (a dict or an object).
+
+    Returns the first truthy value among ``fields``, or None. With
+    ``by_presence`` an *object* answers with the first field it has at all,
+    even when that value is empty, which is how BaseCommand has always read it;
+    dicts are always read by truthiness. Callers apply their own fallback.
+    """
+    if not self_info:
+        return None
+    if isinstance(self_info, dict):
+        return next((self_info.get(f) for f in fields if self_info.get(f)), None)
+    for field in fields:
+        if by_presence:
+            if hasattr(self_info, field):
+                return getattr(self_info, field)
+        else:
+            value = getattr(self_info, field, None)
+            if value:
+                return value
+    return None
+
+
 @dataclass
 class MeshMessage:
     """Simplified message structure for our bot"""

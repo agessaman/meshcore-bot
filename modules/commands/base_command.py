@@ -24,6 +24,7 @@ from ..models import (
     DM_BODY_LIMIT,
     MeshMessage,
     channel_body_limit,
+    self_info_name,
 )
 from ..security_utils import validate_pubkey_format
 from ..utils import (
@@ -702,15 +703,9 @@ class BaseCommand(ABC):
         username = None
         if hasattr(self.bot, 'meshcore') and self.bot.meshcore:
             try:
-                if hasattr(self.bot.meshcore, 'self_info') and self.bot.meshcore.self_info:
-                    self_info = self.bot.meshcore.self_info
-                    # Try to get name from self_info (could be dict or object)
-                    if isinstance(self_info, dict):
-                        username = self_info.get('name') or self_info.get('user_name')
-                    elif hasattr(self_info, 'name'):
-                        username = self_info.name
-                    elif hasattr(self_info, 'user_name'):
-                        username = self_info.user_name
+                username = self_info_name(
+                    getattr(self.bot.meshcore, 'self_info', None), ('name', 'user_name'), by_presence=True
+                )
             except Exception as e:
                 self.logger.debug(f"Could not get username from meshcore.self_info: {e}")
 
@@ -838,19 +833,11 @@ class BaseCommand(ABC):
         # Try to get name from device first (actual radio username)
         if hasattr(self.bot, 'meshcore') and self.bot.meshcore:
             try:
-                if hasattr(self.bot.meshcore, 'self_info') and self.bot.meshcore.self_info:
-                    self_info = self.bot.meshcore.self_info
-                    # Try to get name from self_info (could be dict or object)
-                    if isinstance(self_info, dict):
-                        device_name = self_info.get('name') or self_info.get('adv_name')
-                        if device_name:
-                            return device_name
-                    elif hasattr(self_info, 'name'):
-                        if self_info.name:
-                            return self_info.name
-                    elif hasattr(self_info, 'adv_name'):
-                        if self_info.adv_name:
-                            return self_info.adv_name
+                device_name = self_info_name(
+                    getattr(self.bot.meshcore, 'self_info', None), ('name', 'adv_name'), by_presence=True
+                )
+                if device_name:
+                    return device_name
             except Exception as e:
                 self.logger.debug(f"Could not get name from device: {e}")
 

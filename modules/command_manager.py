@@ -46,6 +46,7 @@ from .models import (
     DM_BODY_LIMIT,
     MeshMessage,
     channel_body_limit,
+    self_info_name,
 )
 
 # Links the bot puts on the air, for keeping them intact across a chunk boundary.
@@ -746,12 +747,9 @@ class CommandManager:
         username: str | None = None
         try:
             if hasattr(self.bot, 'meshcore') and self.bot.meshcore:
-                self_info = getattr(self.bot.meshcore, 'self_info', None)
-                if self_info:
-                    if isinstance(self_info, dict):
-                        username = self_info.get('name') or self_info.get('user_name')
-                    else:
-                        username = getattr(self_info, 'name', None) or getattr(self_info, 'user_name', None)
+                username = self_info_name(
+                    getattr(self.bot.meshcore, 'self_info', None), ('name', 'user_name')
+                )
         except Exception:
             pass
         if not username:
@@ -808,10 +806,7 @@ class CommandManager:
         username = ""
         try:
             self_info = getattr(getattr(self.bot, "meshcore", None), "self_info", None)
-            if isinstance(self_info, dict):
-                username = self_info.get("name") or self_info.get("user_name") or ""
-            elif self_info is not None:
-                username = getattr(self_info, "name", "") or getattr(self_info, "user_name", "")
+            username = self_info_name(self_info, ("name", "user_name")) or ""
         except Exception:  # noqa: BLE001 - budget must never break a send
             username = ""
         if not isinstance(username, str) or not username:
