@@ -2318,8 +2318,12 @@ class BotDataViewer:
                 self.db_manager.set_metadata('bot.radio_offline_since', '')
                 bot = getattr(self, 'bot', None)
                 if bot is not None:
-                    bot._radio_offline = False
-                    bot._send_consecutive_failures = 0
+                    clear = getattr(bot, '_clear_radio_offline_state', None)
+                    if callable(clear):
+                        clear()
+                    else:
+                        bot._radio_offline = False
+                        bot._send_consecutive_failures = 0
                 self.logger.info("Radio-offline state cleared via web UI action")
                 return jsonify({'success': True, 'message': 'Radio-offline flag cleared; sends will resume'})
             except Exception:

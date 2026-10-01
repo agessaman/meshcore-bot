@@ -2,7 +2,9 @@
 
 import asyncio
 import socket
+import sqlite3
 import struct
+import threading
 import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -941,10 +943,18 @@ class TestRadioOfflineState:
     def test_record_send_success_clears_offline_flag(self, tmp_path):
         bot = self._make_bot(tmp_path)
         bot._radio_offline = True
+        bot._radio_offline_trial = 'in_flight'
+        bot._radio_offline_trial_id = 1
         bot._send_consecutive_failures = 5
-        bot._record_send_success()
+        bot._record_send_success(1)
         assert bot.is_radio_offline is False
         assert bot._send_consecutive_failures == 0
+
+    def test_success_of_a_send_that_was_not_the_trial_leaves_the_outage(self, tmp_path):
+        bot = self._make_bot(tmp_path)
+        bot._radio_offline = True
+        bot._record_send_success()
+        assert bot.is_radio_offline is True
 
     def test_record_send_success_no_op_when_already_clean(self, tmp_path):
         bot = self._make_bot(tmp_path)
@@ -964,6 +974,484 @@ class TestRadioOfflineState:
         assert bot.is_radio_offline is False
         bot._record_send_failure()
         assert bot.is_radio_offline is True
+
+
+# Captured before any test patches threading.Thread.
+_RealThread = threading.Thread
+
+
+class TestRadioOfflineRecovery:
+    """Radio-offline state must be leavable while every send is suppressed."""
+
+    def _offline_bot(self, tmp_path: Path) -> "MeshCoreBot":
+        config_file = tmp_path / "config.ini"
+        db_path = tmp_path / "bot.db"
+        _write_config(config_file, db_path)
+        bot = MeshCoreBot(config_file=str(config_file))
+        self.scheduler = MagicMock()
+        self.alerts: list = []
+        self._thread_patch = patch("threading.Thread")
+        thread_cls = self._thread_patch.start()
+        # Count alert-email threads; let every other thread (e.g. asyncio.to_thread workers) run.
+        thread_cls.side_effect = lambda *a, **k: (
+            self.alerts.append(k) or MagicMock()
+            if k.get("target") == self.scheduler.send_radio_offline_alert_email
+            else _RealThread(*a, **k)
+        )
+        for _ in range(3):
+            bot._record_send_failure(scheduler=self.scheduler)
+        assert bot.is_radio_offline is True
+        assert bot.db_manager.get_metadata('bot.radio_offline') == 'true'
+        assert len(self.alerts) == 1
+        return bot
+
+    def teardown_method(self):
+        patcher = getattr(self, "_thread_patch", None)
+        if patcher is not None:
+            patcher.stop()
+            self._thread_patch = None
+
+    def _probe_ok(self, bot):
+        from meshcore import EventType
+
+        bot.meshcore = MagicMock()
+        bot.meshcore.is_connected = True
+        bot.meshcore.commands.get_time = AsyncMock(return_value=MagicMock(type=EventType.CURRENT_TIME))
+        assert asyncio.run(bot._probe_radio_health()) is True
+
+    def _clear_by_trial(self, bot):
+        self._probe_ok(bot)
+        _, trial = bot._admit_measured_send()
+        bot._record_send_success(trial)
+        assert bot._radio_offline is False
+
+    def _scheduled_send(self, bot, send_result):
+        """Run one scheduled message through the real scheduler on a live event loop."""
+        from modules.scheduler import MessageScheduler
+
+        seen = {}
+
+        async def fake_send(channel, message, **kwargs):
+            seen['offline_inside_send'] = bot.is_radio_offline
+            if isinstance(send_result, BaseException):
+                raise send_result
+            return send_result
+
+        bot.command_manager = MagicMock()
+        bot.command_manager.send_channel_message = fake_send
+        bot.config.set("Bot", "scheduled_message_max_stagger_seconds", "0")
+        loop = asyncio.new_event_loop()
+        runner = _RealThread(target=loop.run_forever, daemon=True)
+        runner.start()
+        bot.main_event_loop = loop
+        try:
+            with patch.object(MessageScheduler, "setup_scheduled_messages"):
+                scheduler = MessageScheduler(bot)
+            scheduler._effective_send_scope = lambda channel, scope: scope
+            scheduler._channel_body_budget = lambda scope: 1000
+            scheduler.send_scheduled_message("general", "hello")
+        finally:
+            loop.call_soon_threadsafe(loop.stop)
+            runner.join(timeout=5)
+            loop.close()
+        return seen
+
+    def test_probe_arms_one_trial_and_ordinary_sends_stay_suppressed(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        self._probe_ok(bot)
+        assert bot.is_radio_offline is True  # interactive sends still suppressed
+        assert bot._admit_measured_send() == (True, 1)
+        assert bot._admit_measured_send() == (False, False)  # the trial is taken once
+
+    def test_concurrent_admission_lets_exactly_one_trial_through(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        self._probe_ok(bot)
+        results = []
+        barrier = threading.Barrier(8)
+
+        def admit():
+            barrier.wait()
+            results.append(bot._admit_measured_send())
+
+        workers = []
+        for _ in range(8):
+            worker = _RealThread(target=admit)
+            workers.append(worker)
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join(timeout=5)
+        assert results.count((True, 1)) == 1
+        assert results.count((False, False)) == 7
+
+    def test_only_the_trial_send_sees_the_radio_online(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        self._probe_ok(bot)
+        _, trial = bot._admit_measured_send()
+
+        async def inside():
+            return bot.is_radio_offline
+
+        assert asyncio.run(bot._as_offline_trial(inside(), trial)) is False
+        assert bot.is_radio_offline is True
+
+    def test_successful_trial_send_clears_the_outage(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        self._probe_ok(bot)
+        seen = self._scheduled_send(bot, True)
+        assert seen['offline_inside_send'] is False
+        assert bot.is_radio_offline is False
+        assert bot._radio_offline is False
+        assert bot.db_manager.get_metadata('bot.radio_offline') == 'false'
+
+    def test_trial_send_reporting_failure_waits_for_the_next_probe(self, tmp_path):
+        # A False result can follow real radio attempts (exhausted retries), so it
+        # must not re-arm the trial without another answered probe.
+        bot = self._offline_bot(tmp_path)
+        self._probe_ok(bot)
+        self._scheduled_send(bot, False)
+        assert bot.is_radio_offline is True
+        assert bot._radio_offline_trial is None
+        assert bot.db_manager.get_metadata('bot.radio_offline') == 'true'
+        assert len(self.alerts) == 1
+
+    def test_cancelling_a_reply_does_not_strand_its_successful_trial(self, tmp_path):
+        import time as real_time
+        from concurrent.futures import ThreadPoolExecutor
+
+        bot = self._offline_bot(tmp_path)
+        self._probe_ok(bot)
+        _, trial = bot._admit_measured_send()
+
+        async def send():
+            return True
+
+        async def main():
+            loop = asyncio.get_running_loop()
+            # One busy worker, so the settlement is queued behind it when the caller is cancelled.
+            loop.set_default_executor(ThreadPoolExecutor(max_workers=1, thread_name_prefix="busy"))
+            busy = loop.run_in_executor(None, real_time.sleep, 0.2)
+            task = asyncio.create_task(bot._send_as_offline_trial(trial, send))
+            await asyncio.sleep(0.05)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            await busy
+            await asyncio.sleep(0.2)
+
+        asyncio.run(main())
+        assert bot.is_radio_offline is False
+
+    def test_timed_out_trial_waits_for_the_next_probe_without_a_second_alert(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        for _ in range(3):
+            self._probe_ok(bot)
+            self._scheduled_send(bot, asyncio.TimeoutError())
+            assert bot.is_radio_offline is True
+            assert bot._radio_offline_trial is None
+            assert bot._admit_measured_send() == (False, False)
+        assert len(self.alerts) == 1  # only the one sent when the outage began
+
+    def test_suppressed_scheduled_send_never_reaches_the_radio(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        seen = self._scheduled_send(bot, True)
+        assert seen == {}
+        assert bot.is_radio_offline is True
+
+    def test_failed_probe_leaves_offline(self, tmp_path):
+        from meshcore import EventType
+
+        bot = self._offline_bot(tmp_path)
+        bot.meshcore = MagicMock()
+        bot.meshcore.is_connected = True
+        bot.meshcore.commands.get_time = AsyncMock(return_value=MagicMock(type=EventType.ERROR))
+        asyncio.run(bot._probe_radio_health())
+        assert bot.is_radio_offline is True
+        assert bot._admit_measured_send() == (False, False)
+
+    def test_web_viewer_clear_is_picked_up(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        bot._sync_radio_offline_from_metadata()
+        assert bot.is_radio_offline is True  # metadata still says offline
+        bot.db_manager.set_metadata('bot.radio_offline', 'false')
+        bot._last_offline_metadata_check = 0.0
+        bot._sync_radio_offline_from_metadata()
+        assert bot.is_radio_offline is False
+        assert bot._send_consecutive_failures == 0
+
+    def test_unconfirmed_trip_is_retried_before_a_viewer_clear_is_trusted(self, tmp_path):
+        config_file = tmp_path / "config.ini"
+        db_path = tmp_path / "bot.db"
+        _write_config(config_file, db_path)
+        bot = MeshCoreBot(config_file=str(config_file))
+        real_get = bot.db_manager.get_metadata
+        bot.db_manager.get_metadata = MagicMock(side_effect=sqlite3.OperationalError("locked"))
+        with patch("threading.Thread"):
+            for _ in range(3):
+                bot._record_send_failure(scheduler=MagicMock())
+        bot.db_manager.get_metadata = real_get
+        assert bot.is_radio_offline is True
+        # A 'false' seen before the trip is confirmed is not trusted ...
+        bot.db_manager.set_metadata('bot.radio_offline', 'false')
+        bot._last_offline_metadata_check = 0.0
+        bot._sync_radio_offline_from_metadata()
+        assert bot.is_radio_offline is True
+        assert bot.db_manager.get_metadata('bot.radio_offline') == 'true'  # retried and confirmed
+        # ... but once confirmed, the viewer's clear works.
+        bot.db_manager.set_metadata('bot.radio_offline', 'false')
+        bot._last_offline_metadata_check = 0.0
+        bot._sync_radio_offline_from_metadata()
+        assert bot.is_radio_offline is False
+
+    def test_a_delayed_clear_write_cannot_erase_a_newer_outage(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        real_set = bot.db_manager.set_metadata
+        entered = threading.Event()
+        release = threading.Event()
+
+        def slow_set(key, value):
+            if key == 'bot.radio_offline' and value == 'false' and not entered.is_set():
+                entered.set()
+                release.wait(5)
+            return real_set(key, value)
+
+        bot.db_manager.set_metadata = slow_set
+        self._probe_ok(bot)
+        _, trial = bot._admit_measured_send()
+        clearer = _RealThread(target=lambda: bot._record_send_success(trial))
+        clearer.start()
+        assert entered.wait(5)
+        # The old outage is cleared in memory; a new one trips while that write is stalled.
+        tripper = _RealThread(
+            target=lambda: [bot._record_send_failure(scheduler=self.scheduler) for _ in range(3)]
+        )
+        tripper.start()
+        deadline = time.time() + 5
+        while not bot._radio_offline and time.time() < deadline:
+            time.sleep(0.01)
+        assert bot._radio_offline is True  # the newer outage has tripped in memory
+        release.set()
+        clearer.join(timeout=5)
+        tripper.join(timeout=5)
+        assert bot.is_radio_offline is True
+        assert bot.db_manager.get_metadata('bot.radio_offline') == 'true'
+        bot._last_offline_metadata_check = 0.0
+        bot._sync_radio_offline_from_metadata()
+        assert bot.is_radio_offline is True
+
+    def test_trial_is_settled_when_submission_to_the_loop_fails(self, tmp_path):
+        from modules.scheduler import MessageScheduler
+
+        bot = self._offline_bot(tmp_path)
+        self._probe_ok(bot)
+        bot.main_event_loop = MagicMock()
+        bot.main_event_loop.is_running.return_value = True
+
+        def closed_loop(coro, loop):
+            coro.close()
+            raise RuntimeError("Event loop is closed")
+
+        with patch.object(MessageScheduler, "setup_scheduled_messages"):
+            scheduler = MessageScheduler(bot)
+        with patch("asyncio.run_coroutine_threadsafe", side_effect=closed_loop):
+            scheduler.send_scheduled_message("general", "hello")
+            scheduler.send_interval_advert()
+        # The scheduled message's loss of the loop is inconclusive and re-arms;
+        # the advert treats it as a failure, ending the trial until the next probe.
+        assert bot._radio_offline_trial is None
+        assert bot.is_radio_offline is True
+
+    def test_fallback_trial_send_is_settled_by_its_outcome(self, tmp_path):
+        from modules.scheduler import MessageScheduler
+
+        bot = self._offline_bot(tmp_path)
+        self._probe_ok(bot)
+        seen = {}
+
+        async def fake_send(channel, message, **kwargs):
+            seen['offline_inside_send'] = bot.is_radio_offline
+            return True
+
+        bot.command_manager = MagicMock()
+        bot.command_manager.send_channel_message = fake_send
+        bot.config.set("Bot", "scheduled_message_max_stagger_seconds", "0")
+        bot.main_event_loop = None
+        with patch.object(MessageScheduler, "setup_scheduled_messages"):
+            scheduler = MessageScheduler(bot)
+        scheduler._effective_send_scope = lambda channel, scope: scope
+        scheduler._channel_body_budget = lambda scope: 1000
+        scheduler.send_scheduled_message("general", "hello")
+        assert seen['offline_inside_send'] is False
+        assert bot.is_radio_offline is False
+        assert bot._radio_offline is False
+
+    def test_trial_is_settled_even_when_preparing_the_send_raises(self, tmp_path):
+        from modules.scheduler import MessageScheduler
+
+        bot = self._offline_bot(tmp_path)
+        self._probe_ok(bot)
+        _, trial = bot._admit_measured_send()
+        with patch.object(MessageScheduler, "setup_scheduled_messages"):
+            scheduler = MessageScheduler(bot)
+
+        def broken():
+            raise ValueError("cannot build the send")
+
+        with pytest.raises(ValueError):
+            scheduler._run_measured_send(
+                broken, trial, error_label="x", loop_gone_label=None,
+                reports_outcome=False, run_fallback=scheduler._run_in_temporary_loop,
+            )
+        assert bot._radio_offline_trial == 'armed'
+
+    def test_an_older_trial_cannot_act_during_a_newer_one(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        self._probe_ok(bot)
+        _, first = bot._admit_measured_send()
+        bot._record_send_failure(scheduler=self.scheduler, trial=first)  # timed out
+        self._probe_ok(bot)
+        _, second = bot._admit_measured_send()
+        assert second != first
+
+        async def inside():
+            return bot.is_radio_offline
+
+        # The timed-out first send, still running, is not let through ...
+        assert asyncio.run(bot._as_offline_trial(inside(), first)) is True
+        assert asyncio.run(bot._as_offline_trial(inside(), second)) is False
+        # ... and its late settlement does not touch the newer trial.
+        bot._record_send_inconclusive(first)
+        assert bot._radio_offline_trial == 'in_flight'
+        bot._record_send_failure(scheduler=self.scheduler, trial=first)
+        assert bot._radio_offline_trial == 'in_flight'
+
+    def test_a_late_success_from_an_old_trial_cannot_clear_a_newer_outage(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        self._probe_ok(bot)
+        _, old_trial = bot._admit_measured_send()
+        # The old trial's send went out, but before it settles the viewer clears
+        # that outage and a new one trips and starts its own trial.
+        bot._clear_radio_offline_state(expected_generation=bot._radio_offline_generation)
+        for _ in range(3):
+            bot._record_send_failure(scheduler=self.scheduler)
+        self._probe_ok(bot)
+        _, new_trial = bot._admit_measured_send()
+        bot._record_send_success(old_trial)
+        assert bot.is_radio_offline is True
+        assert bot._radio_offline_trial == 'in_flight'
+        bot._record_send_success(new_trial)
+        assert bot.is_radio_offline is False
+
+    def test_a_timed_out_trial_send_is_cancelled(self, tmp_path):
+        from concurrent.futures import TimeoutError as FuturesTimeoutError
+
+        from modules.scheduler import MessageScheduler
+
+        bot = self._offline_bot(tmp_path)
+        self._probe_ok(bot)
+        bot.main_event_loop = MagicMock()
+        bot.main_event_loop.is_running.return_value = True
+        future = MagicMock()
+        future.result.side_effect = FuturesTimeoutError()
+
+        def submit(coro, loop):
+            asyncio.run(coro)
+            return future
+
+        with patch.object(MessageScheduler, "setup_scheduled_messages"):
+            scheduler = MessageScheduler(bot)
+        scheduler._send_scheduled_message_async = lambda *args, **kwargs: asyncio.sleep(0)
+        with patch("asyncio.run_coroutine_threadsafe", side_effect=submit):
+            scheduler.send_scheduled_message("general", "hello")
+        future.cancel.assert_called_once()
+        assert bot._radio_offline_trial is None
+
+    def test_trial_is_settled_when_the_wrapper_fails_before_sending(self, tmp_path):
+        from modules.scheduler import MessageScheduler
+
+        bot = self._offline_bot(tmp_path)
+        with patch.object(MessageScheduler, "setup_scheduled_messages"):
+            scheduler = MessageScheduler(bot)
+        scheduler.get_current_time = MagicMock(side_effect=RuntimeError("clock"))
+        for send in (lambda: scheduler.send_scheduled_message("general", "hello"), scheduler.send_interval_advert):
+            self._probe_ok(bot)
+            assert bot._radio_offline_trial == 'armed'
+            with pytest.raises(RuntimeError):
+                send()
+            assert bot._radio_offline_trial == 'armed'  # not stranded in flight
+
+    def test_a_reply_can_take_the_trial_and_clear_the_outage(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        self._probe_ok(bot)
+        _, trial = bot._admit_measured_send()
+        seen = {}
+
+        async def send():
+            seen['offline_inside_send'] = bot.is_radio_offline
+            return True
+
+        assert asyncio.run(bot._send_as_offline_trial(trial, send)) is True
+        assert seen['offline_inside_send'] is False
+        assert bot.is_radio_offline is False
+        assert bot.db_manager.get_metadata('bot.radio_offline') == 'false'
+
+    def test_a_failed_reply_trial_waits_for_the_next_probe(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        self._probe_ok(bot)
+        _, trial = bot._admit_measured_send()
+
+        async def send():
+            return False
+
+        assert asyncio.run(bot._send_as_offline_trial(trial, send)) is False
+        assert bot.is_radio_offline is True
+        assert bot._radio_offline_trial is None
+        assert len(self.alerts) == 1
+
+    def test_command_manager_send_claims_the_trial_and_settles_it(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        bot.connected = True
+        bot.meshcore = MagicMock()
+        refused = AsyncMock(return_value=(False, None))  # e.g. rate limited: the send returns False
+        with patch.object(type(bot.command_manager), "_check_rate_limits", refused):
+            # No armed trial: suppressed before reaching the rate limiter.
+            assert asyncio.run(bot.command_manager.send_channel_message("general", "hi")) is False
+            assert refused.await_count == 0
+            self._probe_ok(bot)
+            # Armed: this send takes the trial, passes the guard under it, and fails it.
+            assert asyncio.run(bot.command_manager.send_channel_message("general", "hi")) is False
+            assert refused.await_count == 1
+            assert bot._radio_offline_trial is None
+            # The next send is suppressed again until another probe.
+            assert asyncio.run(bot.command_manager.send_dm("someone", "hi")) is False
+            assert refused.await_count == 1
+        assert bot.is_radio_offline is True
+
+    def test_viewer_clear_of_an_old_outage_leaves_a_newer_one(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        old_generation = bot._radio_offline_generation
+        self._clear_by_trial(bot)
+        for _ in range(3):
+            bot._record_send_failure(scheduler=self.scheduler)
+        assert bot._clear_radio_offline_state(expected_generation=old_generation) is False
+        assert bot.is_radio_offline is True
+        assert bot._clear_radio_offline_state(expected_generation=bot._radio_offline_generation) is True
+        assert bot.is_radio_offline is False
+
+    def test_viewer_check_is_throttled(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        bot.db_manager.get_metadata = MagicMock(return_value='true')
+        bot._last_offline_metadata_check = 0.0
+        bot._sync_radio_offline_from_metadata()
+        bot._sync_radio_offline_from_metadata()
+        assert bot.db_manager.get_metadata.call_count == 1
+
+    def test_new_outage_after_a_clear_alerts_again(self, tmp_path):
+        bot = self._offline_bot(tmp_path)
+        self._clear_by_trial(bot)
+        for _ in range(3):
+            bot._record_send_failure(scheduler=self.scheduler)
+        assert len(self.alerts) == 2
 
 
 class TestSendStartupAdvertTimeout:
