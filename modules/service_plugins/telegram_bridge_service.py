@@ -235,7 +235,7 @@ class TelegramBridgeService(BaseServicePlugin):
             self.logger.debug("Using requests for HTTP (fallback)")
 
         if hasattr(self.bot, 'meshcore') and self.bot.meshcore:
-            self.bot.meshcore.subscribe(EventType.CHANNEL_MSG_RECV, self._on_mesh_channel_message)
+            self._subscribe(self.bot.meshcore, EventType.CHANNEL_MSG_RECV, self._on_mesh_channel_message)
             self.logger.info("Subscribed to CHANNEL_MSG_RECV events")
         else:
             self.logger.error("Cannot subscribe to events - meshcore not available")
@@ -260,12 +260,14 @@ class TelegramBridgeService(BaseServicePlugin):
         """Re-subscribe to channel messages on the new meshcore instance."""
         if not self._running or not getattr(self.bot, 'meshcore', None):
             return
-        self.bot.meshcore.subscribe(EventType.CHANNEL_MSG_RECV, self._on_mesh_channel_message)
+        self._unsubscribe_all()
+        self._subscribe(self.bot.meshcore, EventType.CHANNEL_MSG_RECV, self._on_mesh_channel_message)
         self.logger.info("Telegram bridge re-subscribed to CHANNEL_MSG_RECV after transport reconnect")
 
     async def stop(self) -> None:
         self.logger.info("Stopping Telegram bridge service...")
         self._running = False
+        self._unsubscribe_all()
 
         # Unregister bot channel-sent listener
         if getattr(self.bot, 'channel_sent_listeners', None) is not None:

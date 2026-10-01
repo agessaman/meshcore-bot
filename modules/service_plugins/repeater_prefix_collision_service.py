@@ -128,7 +128,7 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
             if self._handler_installed:
                 self._running = True
                 return
-            self.bot.meshcore.subscribe(EventType.NEW_CONTACT, self._on_new_contact)
+            self._subscribe(self.bot.meshcore, EventType.NEW_CONTACT, self._on_new_contact)
             self._handler_installed = True
             self._running = True
 
@@ -139,7 +139,8 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
         if not self._running or not getattr(self.bot, "meshcore", None):
             return
         async with self._handler_lock:
-            self.bot.meshcore.subscribe(EventType.NEW_CONTACT, self._on_new_contact)
+            self._unsubscribe_all()
+            self._subscribe(self.bot.meshcore, EventType.NEW_CONTACT, self._on_new_contact)
             self._handler_installed = True
         self.logger.info(
             "RepeaterPrefixCollision re-subscribed to NEW_CONTACT after transport reconnect"
@@ -147,8 +148,9 @@ class RepeaterPrefixCollisionService(BaseServicePlugin):
 
     async def stop(self) -> None:
         self._running = False
-        # meshcore currently does not expose a stable unsubscribe API in this codebase;
-        # we rely on _running checks to avoid work after stop.
+        async with self._handler_lock:
+            self._unsubscribe_all()
+            self._handler_installed = False
         self.logger.info("RepeaterPrefixCollision service stopped")
 
     async def _on_new_contact(self, event, metadata=None) -> None:

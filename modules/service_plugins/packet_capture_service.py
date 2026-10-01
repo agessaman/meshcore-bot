@@ -1045,10 +1045,10 @@ class PacketCaptureService(BaseServicePlugin):
     def cleanup_event_subscriptions(self) -> None:
         """Clean up event subscriptions.
 
-        Clears local subscription tracking list.
+        Unsubscribes the handlers (a restart would otherwise publish every
+        packet twice) and clears the local tracking list.
         """
-        # Note: meshcore library handles subscription cleanup automatically
-        # This is mainly for tracking/logging
+        self._unsubscribe_all()
         self.event_subscriptions = []
 
     async def setup_event_handlers(self) -> None:
@@ -1068,8 +1068,8 @@ class PacketCaptureService(BaseServicePlugin):
             await self.handle_raw_data(event, metadata)
 
         # Subscribe to events (meshcore supports multiple subscribers)
-        self.meshcore.subscribe(EventType.RX_LOG_DATA, on_rx_log_data)
-        self.meshcore.subscribe(EventType.RAW_DATA, on_raw_data)
+        self._subscribe(self.meshcore, EventType.RX_LOG_DATA, on_rx_log_data)
+        self._subscribe(self.meshcore, EventType.RAW_DATA, on_raw_data)
 
         self.event_subscriptions = [(EventType.RX_LOG_DATA, on_rx_log_data), (EventType.RAW_DATA, on_raw_data)]
 

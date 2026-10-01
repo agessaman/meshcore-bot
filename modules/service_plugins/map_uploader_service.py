@@ -418,7 +418,7 @@ class MapUploaderService(BaseServicePlugin):
             await self._handle_rx_log_data(event, metadata)
 
         # Subscribe to events
-        self.meshcore.subscribe(EventType.RX_LOG_DATA, on_rx_log_data)
+        self._subscribe(self.meshcore, EventType.RX_LOG_DATA, on_rx_log_data)
 
         self.event_subscriptions = [
             (EventType.RX_LOG_DATA, on_rx_log_data)
@@ -429,11 +429,10 @@ class MapUploaderService(BaseServicePlugin):
     def _cleanup_event_subscriptions(self) -> None:
         """Clean up event subscriptions.
 
-        Clears the list of tracked subscriptions. The actual unsubscription
-        is handled by the meshcore library when the client disconnects,
-        but this clears our local tracking.
+        Unsubscribes the handlers (a restart would otherwise deliver every
+        event twice) and clears the local tracking list.
         """
-        # Note: meshcore library handles subscription cleanup automatically
+        self._unsubscribe_all()
         self.event_subscriptions = []
 
     async def _cleanup_old_seen_adverts(self, current_timestamp: int) -> None:
