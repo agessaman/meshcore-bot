@@ -776,6 +776,20 @@ class MessageScheduler:
             if self.scheduler_thread.is_alive():
                 self.logger.debug("Scheduler thread did not finish within %s s", timeout)
 
+    def _submit_to_main_loop(self, coro: Any, error_message: str, *, log_traceback: bool = True) -> Any:
+        """Schedule *coro* on the bot's event loop from this thread, fire-and-forget.
+
+        A failure is logged as ``"<error_message>: <exception>"`` (with the
+        traceback unless ``log_traceback`` is False). Returns the future.
+        """
+        future = asyncio.run_coroutine_threadsafe(coro, self.bot.main_event_loop)
+        report = self.logger.exception if log_traceback else self.logger.error
+        future.add_done_callback(
+            lambda f: report(f"{error_message}: %s", f.exception())
+            if not f.cancelled() and f.exception() else None
+        )
+        return future
+
     def run_scheduler(self):
         """Run the scheduler in a separate thread"""
         self.logger.info("Scheduler thread started")
@@ -814,14 +828,7 @@ class MessageScheduler:
                     import asyncio
                     if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
                         # Schedule coroutine in the running main event loop
-                        future = asyncio.run_coroutine_threadsafe(
-                            self.bot.feed_manager.poll_all_feeds(),
-                            self.bot.main_event_loop
-                        )
-                        future.add_done_callback(
-                            lambda f: self.logger.error("Error in feed polling cycle: %s", f.exception())
-                            if not f.cancelled() and f.exception() else None
-                        )
+                        self._submit_to_main_loop(self.bot.feed_manager.poll_all_feeds(), "Error in feed polling cycle", log_traceback=False)
                     else:
                         # Fallback: create a temporary event loop and close it when done
                         loop = asyncio.new_event_loop()
@@ -844,14 +851,7 @@ class MessageScheduler:
                     import asyncio
                     if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
                         # Schedule coroutine in the running main event loop
-                        future = asyncio.run_coroutine_threadsafe(
-                            self._process_channel_operations(),
-                            self.bot.main_event_loop
-                        )
-                        future.add_done_callback(
-                            lambda f: self.logger.exception("Error processing channel operations: %s", f.exception())
-                            if not f.cancelled() and f.exception() else None
-                        )
+                        self._submit_to_main_loop(self._process_channel_operations(), "Error processing channel operations")
                     else:
                         # Fallback: create new event loop if main loop not available
                         try:
@@ -867,23 +867,9 @@ class MessageScheduler:
             if time.time() - self.last_radio_ops_check_time >= 5:
                 if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
                     import asyncio
-                    future = asyncio.run_coroutine_threadsafe(
-                        self._process_radio_operations(),
-                        self.bot.main_event_loop
-                    )
-                    future.add_done_callback(
-                        lambda f: self.logger.exception("Error processing radio operations: %s", f.exception())
-                        if not f.cancelled() and f.exception() else None
-                    )
+                    self._submit_to_main_loop(self._process_radio_operations(), "Error processing radio operations")
                     # Config-reload requests from the web viewer use the same table.
-                    config_future = asyncio.run_coroutine_threadsafe(
-                        self._process_config_operations(),
-                        self.bot.main_event_loop
-                    )
-                    config_future.add_done_callback(
-                        lambda f: self.logger.exception("Error processing config operations: %s", f.exception())
-                        if not f.cancelled() and f.exception() else None
-                    )
+                    self._submit_to_main_loop(self._process_config_operations(), "Error processing config operations")
                 self.last_radio_ops_check_time = time.time()
 
             # Process feed message queue (every 2 seconds, fire-and-forget)
@@ -894,14 +880,7 @@ class MessageScheduler:
                     hasattr(self.bot, 'connected') and self.bot.connected):
                     import asyncio
                     if hasattr(self.bot, 'main_event_loop') and self.bot.main_event_loop and self.bot.main_event_loop.is_running():
-                        future = asyncio.run_coroutine_threadsafe(
-                            self.bot.feed_manager.process_message_queue(),
-                            self.bot.main_event_loop
-                        )
-                        future.add_done_callback(
-                            lambda f: self.logger.exception("Error processing message queue: %s", f.exception())
-                            if not f.cancelled() and f.exception() else None
-                        )
+                        self._submit_to_main_loop(self.bot.feed_manager.process_message_queue(), "Error processing message queue")
                 self.last_message_queue_check_time = time.time()
 
             # Data retention: run daily (packet_stream, repeater tables, stats, caches, mesh_connections)
