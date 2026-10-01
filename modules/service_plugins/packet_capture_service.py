@@ -944,6 +944,9 @@ class PacketCaptureService(BaseServicePlugin):
             self.logger.info("Packet capture service is disabled")
             return
 
+        # stop() sets this; clear it so a restart's background loops actually run.
+        self.should_exit = False
+
         # Wait for bot to be connected (with timeout)
         max_wait = 30  # seconds
         wait_time: float = 0

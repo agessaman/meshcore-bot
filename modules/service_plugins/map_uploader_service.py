@@ -221,6 +221,9 @@ class MapUploaderService(BaseServicePlugin):
             self.logger.info("Map uploader service is disabled")
             return
 
+        # stop() sets this; clear it so a restart's background work actually runs.
+        self.should_exit = False
+
         # Check dependencies
         if not AIOHTTP_AVAILABLE:
             self.logger.error("aiohttp is required for map uploader service. Install with: pip install aiohttp")

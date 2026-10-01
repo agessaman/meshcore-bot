@@ -433,9 +433,6 @@ class MeshCoreBot:
         # Service plugin restart state (name -> timestamp of last failed restart)
         self._service_restart_failures: dict[str, float] = {}
         self._service_restarting: set = set()
-        # Services whose start() returned without running (missing config, nothing
-        # to do): restarting them cannot help, so the health loop leaves them alone.
-        self._services_inactive: set[str] = set()
 
         # Transport reconnect (serial/BLE/TCP) — lock created when event loop runs
         self._transport_reconnect_lock: asyncio.Lock | None = None
@@ -2402,7 +2399,7 @@ long_jokes = false
         if webhook_service is not None and getattr(webhook_service, 'enabled', False):
             try:
                 await webhook_service.start()
-                if not self._note_if_service_inactive('webhook', webhook_service):
+                if not self._note_if_service_not_running('webhook', webhook_service):
                     self.logger.info("Service 'webhook' started (early, before radio connect)")
             except Exception as e:
                 self.logger.error(f"Failed to start service 'webhook' early: {e}")
@@ -2455,7 +2452,7 @@ long_jokes = false
                 continue
             try:
                 await service_instance.start()
-                if not self._note_if_service_inactive(service_name, service_instance):
+                if not self._note_if_service_not_running(service_name, service_instance):
                     self.logger.info(f"Service '{service_name}' started")
             except Exception as e:
                 self.logger.error(f"Failed to start service '{service_name}': {e}")
@@ -2537,19 +2534,7 @@ long_jokes = false
                     )
                     now = time.time()
                     for name, service in self.services.items():
-                        if not getattr(service, 'enabled', True):
-                            continue
-                        try:
-                            healthy = service.is_healthy()
-                        except Exception:
-                            healthy = False
-                        if healthy:
-                            continue
-                        if name in self._service_restarting or name in self._services_inactive:
-                            continue
-                        if name in self._service_restart_failures and (
-                            now - self._service_restart_failures[name]
-                        ) < restart_backoff:
+                        if not self._service_restart_due(name, service, now, restart_backoff):
                             continue
                         self.logger.warning(
                             f"Service '{name}' unhealthy, attempting restart..."
@@ -2651,21 +2636,41 @@ long_jokes = false
         finally:
             self._shutdown_complete = True
 
-    def _note_if_service_inactive(self, service_name: str, service_instance: Any) -> bool:
-        """Record a service whose start() returned without running; True if so."""
+    def _service_restart_due(self, name: str, service: Any, now: float, backoff: float) -> bool:
+        """Whether the health loop should restart *service* now."""
+        if not getattr(service, 'enabled', True):
+            return False
+        try:
+            if service.is_healthy():
+                return False
+        except Exception:
+            pass
+        if name in self._service_restarting:
+            return False
+        last_failure = self._service_restart_failures.get(name)
+        return last_failure is None or now - last_failure >= backoff
+
+    def _note_if_service_not_running(self, service_name: str, service_instance: Any) -> bool:
+        """Back off a service whose start() returned without running; True if so.
+
+        That happens for missing configuration (Discord or Telegram with no
+        channels, the map uploader with no key) and for transient conditions
+        (the radio not connected yet). Either way, restarting it on every
+        health tick cannot help; after the backoff the health loop tries again,
+        which recovers the transient case.
+        """
         try:
             running = service_instance.is_running()
         except Exception:
             running = True
         if running:
-            self._services_inactive.discard(service_name)
             return False
-        if service_name not in self._services_inactive:
-            self.logger.info(
-                f"Service '{service_name}' did not start (check its configuration); "
-                "it will not be restarted automatically"
-            )
-        self._services_inactive.add(service_name)
+        backoff = self.config.getint('Bot', 'service_restart_backoff_seconds', fallback=300)
+        self.logger.info(
+            f"Service '{service_name}' did not start (check its configuration); "
+            f"next attempt in {backoff}s"
+        )
+        self._service_restart_failures[service_name] = time.time()
         return True
 
     async def _restart_service(self, service_name: str, service_instance: Any) -> bool:
@@ -2676,7 +2681,7 @@ long_jokes = false
         try:
             await service_instance.stop()
             await service_instance.start()
-            if self._note_if_service_inactive(service_name, service_instance):
+            if self._note_if_service_not_running(service_name, service_instance):
                 return False
             if not service_instance.is_healthy():
                 # Restarted but still unhealthy: wait out the backoff before the

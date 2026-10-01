@@ -338,6 +338,9 @@ class DiscordBridgeService(BaseServicePlugin):
             self.logger.info("Subscribed to CHANNEL_MSG_RECV events")
         else:
             self.logger.error("Cannot subscribe to events - meshcore not available")
+            if self.http_session is not None:
+                await self.http_session.close()
+                self.http_session = None
             return
 
         # Register for bot-sent channel messages so bot responses are bridged too

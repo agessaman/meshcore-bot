@@ -46,9 +46,35 @@ def test_base_unsubscribe_tolerates_errors():
     service = RepeaterPrefixCollisionService(bot)
     broken = MagicMock()
     broken.unsubscribe.side_effect = RuntimeError("gone")
-    service._meshcore_subscriptions = [broken]
+    meshcore = MagicMock()
+    meshcore.subscribe.return_value = broken
+    service._subscribe(meshcore, EventType.NEW_CONTACT, service._on_new_contact)
     service._unsubscribe_all()
+    broken.unsubscribe.assert_called_once()
     assert service._meshcore_subscriptions == []
+
+
+def test_packet_capture_restart_clears_should_exit():
+    import configparser
+
+    from modules.service_plugins.packet_capture_service import PacketCaptureService
+
+    bot = MagicMock()
+    bot.config = configparser.ConfigParser()
+    bot.config.read_dict({"PacketCapture": {"enabled": "true"}})
+    bot.connected = False
+    service = PacketCaptureService(bot)
+    service.enabled = True
+    service.should_exit = True  # as stop() leaves it
+
+    async def no_wait(*args, **kwargs):
+        return None
+
+    from unittest.mock import patch
+
+    with patch("asyncio.sleep", no_wait):
+        asyncio.run(service.start())  # gives up waiting for the radio, then returns
+    assert service.should_exit is False
 
 
 def _core_bot(tmp_path: Path):
@@ -86,16 +112,62 @@ class _StillUnhealthy(_Declining):
         return True
 
 
-def test_a_service_that_declines_to_start_is_not_restarted(tmp_path):
+class _Recovers(_Declining):
+    """Declines while the radio is down, then starts once it is back."""
+
+    def __init__(self):
+        super().__init__()
+        self.radio_up = False
+        self._running = False
+
+    async def start(self):
+        self.starts += 1
+        self._running = self.radio_up
+
+    def is_running(self):
+        return self._running
+
+    def is_healthy(self):
+        return self._running
+
+
+def test_a_service_that_declines_to_start_waits_out_the_backoff(tmp_path):
     bot = _core_bot(tmp_path)
     service = _Declining()
     assert asyncio.run(bot._restart_service("declining", service)) is False
-    assert "declining" in bot._services_inactive
-    assert "declining" not in bot._service_restart_failures
+    failed_at = bot._service_restart_failures["declining"]
+    backoff = 300
+    assert bot._service_restart_due("declining", service, failed_at + 5, backoff) is False
+    assert bot._service_restart_due("declining", service, failed_at + backoff, backoff) is True
+
+
+def test_a_transient_start_failure_recovers_after_the_backoff(tmp_path):
+    bot = _core_bot(tmp_path)
+    service = _Recovers()
+    assert asyncio.run(bot._restart_service("bridge", service)) is False  # radio still down
+    service.radio_up = True
+    later = bot._service_restart_failures["bridge"] + 300
+    assert bot._service_restart_due("bridge", service, later, 300) is True
+    assert asyncio.run(bot._restart_service("bridge", service)) is True
+    assert "bridge" not in bot._service_restart_failures
+    assert bot._service_restart_due("bridge", service, later + 5, 300) is False  # healthy now
+
+
+def test_restart_due_skips_disabled_healthy_and_in_progress_services(tmp_path):
+    bot = _core_bot(tmp_path)
+    unhealthy = _Declining()
+    assert bot._service_restart_due("a", unhealthy, 0.0, 300) is True
+    disabled = _Declining()
+    disabled.enabled = False
+    assert bot._service_restart_due("b", disabled, 0.0, 300) is False
+    healthy = _Recovers()
+    healthy._running = True
+    assert bot._service_restart_due("c", healthy, 0.0, 300) is False
+    bot._service_restarting.add("a")
+    assert bot._service_restart_due("a", unhealthy, 0.0, 300) is False
 
 
 def test_a_restart_that_leaves_the_service_unhealthy_backs_off(tmp_path):
     bot = _core_bot(tmp_path)
     assert asyncio.run(bot._restart_service("flaky", _StillUnhealthy())) is False
     assert "flaky" in bot._service_restart_failures
-    assert "flaky" not in bot._services_inactive
