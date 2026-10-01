@@ -428,9 +428,12 @@ class MessageScheduler:
                     self.bot._record_send_failure(scheduler=self, trial=trial)
                 else:
                     # False means the send reported failure (or nothing was sent)
-                    # without timing out: no evidence either way about the radio.
+                    # without the 60 s wait running out: it does not count toward
+                    # the outage threshold, but a trial that did not succeed ends.
                     if outcome or not reports_outcome:
                         self.bot._record_send_success(trial)
+                    elif trial:
+                        self.bot._end_offline_trial(trial)
                     else:
                         self.bot._record_send_inconclusive(trial)
                 settled = True
@@ -450,7 +453,7 @@ class MessageScheduler:
             if outcome or not reports_outcome:
                 self.bot._record_send_success(trial)
             else:
-                self.bot._record_send_inconclusive(trial)
+                self.bot._end_offline_trial(trial)
             settled = True
         finally:
             if trial and not settled:

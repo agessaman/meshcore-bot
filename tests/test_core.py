@@ -1104,13 +1104,44 @@ class TestRadioOfflineRecovery:
         assert bot._radio_offline is False
         assert bot.db_manager.get_metadata('bot.radio_offline') == 'false'
 
-    def test_trial_send_reporting_failure_rearms_the_trial(self, tmp_path):
+    def test_trial_send_reporting_failure_waits_for_the_next_probe(self, tmp_path):
+        # A False result can follow real radio attempts (exhausted retries), so it
+        # must not re-arm the trial without another answered probe.
         bot = self._offline_bot(tmp_path)
         self._probe_ok(bot)
         self._scheduled_send(bot, False)
         assert bot.is_radio_offline is True
-        assert bot._radio_offline_trial == 'armed'
+        assert bot._radio_offline_trial is None
         assert bot.db_manager.get_metadata('bot.radio_offline') == 'true'
+        assert len(self.alerts) == 1
+
+    def test_cancelling_a_reply_does_not_strand_its_successful_trial(self, tmp_path):
+        import time as real_time
+
+        from concurrent.futures import ThreadPoolExecutor
+
+        bot = self._offline_bot(tmp_path)
+        self._probe_ok(bot)
+        _, trial = bot._admit_measured_send()
+
+        async def send():
+            return True
+
+        async def main():
+            loop = asyncio.get_running_loop()
+            # One busy worker, so the settlement is queued behind it when the caller is cancelled.
+            loop.set_default_executor(ThreadPoolExecutor(max_workers=1, thread_name_prefix="busy"))
+            busy = loop.run_in_executor(None, real_time.sleep, 0.2)
+            task = asyncio.create_task(bot._send_as_offline_trial(trial, send))
+            await asyncio.sleep(0.05)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            await busy
+            await asyncio.sleep(0.2)
+
+        asyncio.run(main())
+        assert bot.is_radio_offline is False
 
     def test_timed_out_trial_waits_for_the_next_probe_without_a_second_alert(self, tmp_path):
         bot = self._offline_bot(tmp_path)

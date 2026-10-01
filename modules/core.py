@@ -571,23 +571,32 @@ class MeshCoreBot:
 
         Lets a bot with no scheduled messages or interval adverts recover too.
         The send's own result settles the trial: True clears the outage; False
-        or an exception fails the trial until the next answered health probe,
+        or an exception ends the trial until the next answered health probe,
         so a dead radio still gets at most one attempt per probe.
         """
         token = _OFFLINE_TRIAL_SEND.set(trial)
         try:
             ok = bool(await send())
         except BaseException:
-            self._record_send_failure(trial=trial)
+            self._end_offline_trial(trial)
             raise
         finally:
             _OFFLINE_TRIAL_SEND.reset(token)
-        # Either outcome can write bot_metadata; keep that off the event loop.
         if ok:
-            await asyncio.to_thread(self._record_send_success, trial)
+            # Clearing the outage writes bot_metadata, so it runs in a worker
+            # thread; shielded so a cancelled caller cannot strand the trial.
+            await asyncio.shield(asyncio.to_thread(self._record_send_success, trial))
         else:
-            await asyncio.to_thread(self._record_send_failure, None, trial)
+            self._end_offline_trial(trial)
         return ok
+
+    def _end_offline_trial(self, trial: int) -> None:
+        """Trial *trial* went out but did not succeed: suppress again until the next answered probe."""
+        with self._offline_lock():
+            if not self._holds_offline_trial(trial):
+                return
+            self._radio_offline_trial = None
+        self.logger.warning("Trial send after a health probe failed; outbound sends stay suppressed")
 
     def _record_send_failure(self, scheduler: "Any | None" = None, trial: int = 0) -> None:
         """Increment the consecutive-send-failure counter.
