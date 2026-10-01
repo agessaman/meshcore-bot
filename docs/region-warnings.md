@@ -128,6 +128,8 @@ Set `track_traffic = false` to stop writing tallies. Warnings still work; you ju
 
 ## Relationship to `flood_scopes`
 
+See [Region scopes](region-scopes.md) for how scoped replies and `flood_scopes` work.
+
 `[Channels] flood_scopes` decides which messages the bot will *reply* to. Region warnings observe every channel message regardless, and the observation runs before that allowlist — an unscoped message is exactly what a scoped allowlist drops, so measuring after the gate would blind the monitor to the traffic it exists to measure.
 
 If you have `flood_scopes` configured with region names and no `*`, unscoped messages get no command replies at all. Region warnings still see them, and can still tell the sender why the bot is ignoring them.
