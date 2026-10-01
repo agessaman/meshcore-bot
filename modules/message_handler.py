@@ -12,12 +12,13 @@ from collections.abc import Callable, Iterable
 from hashlib import sha256
 from typing import Any, TypedDict
 
-from . import scope_gate
-from .enums import AdvertFlags, DeviceRole, PayloadType, PayloadVersion, RouteType
+from . import packet_decode, scope_gate
+from .enums import AdvertFlags, DeviceRole, PayloadType, RouteType
 from .graph_trace_helper import update_mesh_graph_from_trace_data
 from .meshcore_payload_decode import channel_hash_for_key, decrypt_group_text
 from .models import MeshMessage
 from .neighbors_discovery import upsert_zero_hop_observed_path_via_manager
+from .packet_decode import split_path_hex
 from .rf_match import (  # noqa: F401 - re-exported for callers and tests
     RF_MATCH_CHANNEL_AUTHENTICATED,
     RF_MATCH_EXACT,
@@ -31,7 +32,6 @@ from .rf_match import (  # noqa: F401 - re-exported for callers and tests
 from .security_utils import sanitize_input, sanitize_name
 from .utils import (
     calculate_packet_hash,
-    decode_path_len_byte,
     encode_path_len_byte,
     format_elapsed_display,
 )
@@ -71,16 +71,6 @@ def _signal_value(
     return None
 
 
-def split_path_hex(path_hex: str, hex_chars: int) -> list[str]:
-    """Split a hex path into lowercase node IDs of ``hex_chars`` each.
-
-    When the path does not divide evenly (or yields nothing), fall back to
-    one-byte (two-character) nodes, the legacy path encoding.
-    """
-    nodes = [path_hex[i : i + hex_chars].lower() for i in range(0, len(path_hex), hex_chars)]
-    if (len(path_hex) % hex_chars) != 0 or not nodes:
-        nodes = [path_hex[i : i + 2].lower() for i in range(0, len(path_hex), 2)]
-    return nodes
 
 
 class MessageHandler:
@@ -1795,147 +1785,10 @@ class MessageHandler:
                 break
 
     def decode_meshcore_packet(self, raw_hex: str, payload_hex: str | None = None) -> dict | None:
-        """
-        Decode a MeshCore packet from raw hex data - matches Packet.cpp exactly
-
-        Args:
-            raw_hex: Raw packet data as hex string (may be RF data or direct MeshCore packet)
-            payload_hex: Optional extracted payload hex string (preferred over raw_hex)
-
-        Returns:
-            Decoded packet information or None if parsing fails
-        """
-        # Ensure these are always defined for error logging (BUG-028)
-        byte_data: bytes = b""
-        hex_data: str = ""
-        try:
-            # Use payload_hex if provided (this is the actual MeshCore packet)
-            if payload_hex:
-                self.logger.debug("Using provided payload_hex for decoding")
-                hex_data = payload_hex
-            elif raw_hex:
-                self.logger.debug("Using raw_hex for decoding")
-                hex_data = raw_hex
-            else:
-                self.logger.debug("No packet data provided for decoding")
-                return None
-
-            # Remove 0x prefix if present (like in your other project)
-            if hex_data.startswith("0x"):
-                hex_data = hex_data[2:]
-
-            byte_data = bytes.fromhex(hex_data)
-
-            # Validate minimum packet size
-            if len(byte_data) < 2:
-                self.logger.error(f"Packet too short: {len(byte_data)} bytes")
-                return None
-
-            header = byte_data[0]
-
-            # Extract route type
-            route_type = RouteType(header & 0x03)
-            has_transport = route_type in [RouteType.TRANSPORT_FLOOD, RouteType.TRANSPORT_DIRECT]
-
-            # Calculate path length offset based on presence of transport codes
-            offset = 1
-            if has_transport:
-                offset += 4
-
-            # Check if we have enough data for path_len
-            if len(byte_data) <= offset:
-                self.logger.error(f"Packet too short for path_len at offset {offset}: {len(byte_data)} bytes")
-                return None
-
-            path_len_byte = byte_data[offset]
-            offset += 1
-            # Decode per firmware: low 6 bits = hop count, high 2 bits = size code (bytes_per_hop = code+1)
-            path_parts = decode_path_len_byte(path_len_byte)
-            if path_parts is None:
-                self.logger.debug("decode_meshcore_packet: invalid path_len byte (firmware would reject)")
-                return None
-            path_byte_length, bytes_per_hop = path_parts
-
-            # Check if we have enough data for the full path
-            if len(byte_data) < offset + path_byte_length:
-                self.logger.error(
-                    f"Packet too short for path (need {offset + path_byte_length}, have {len(byte_data)})"
-                )
-                return None
-
-            # Extract path
-            path_bytes = byte_data[offset : offset + path_byte_length]
-            offset += path_byte_length
-
-            # Remaining data is payload
-            payload = byte_data[offset:]
-
-            # Extract payload version (bits 6-7)
-            payload_version = PayloadVersion((header >> 6) & 0x03)
-
-            # Only accept VER_1 (version 0)
-            if payload_version != PayloadVersion.VER_1:
-                self.logger.warning(
-                    f"Encountered an unknown packet version. Version: {payload_version.value} RAW: {hex_data}"
-                )
-                return None
-
-            # Extract payload type (bits 2-5)
-            payload_type = PayloadType((header >> 2) & 0x0F)
-
-            # Chunk path by bytes_per_hop from packet (1, 2, or 3)
-            path_hex, path_values = self._path_bytes_to_nodes(path_bytes, prefix_hex_chars=bytes_per_hop * 2)
-
-            # Process path based on packet type
-            path_info = self._process_packet_path(path_bytes, payload, route_type, payload_type)
-
-            # Extract transport codes if present (only for TRANSPORT_FLOOD and TRANSPORT_DIRECT)
-            transport_codes = None
-            if has_transport and len(byte_data) >= 5:  # header(1) + transport(4)
-                transport_bytes = byte_data[1:5]
-                transport_codes = {
-                    "code1": int.from_bytes(transport_bytes[0:2], byteorder="little"),
-                    "code2": int.from_bytes(transport_bytes[2:4], byteorder="little"),
-                    "hex": transport_bytes.hex(),
-                }
-
-            packet_info = {
-                "header": f"0x{header:02x}",
-                # Raw values for backward compatibility
-                "route_type": route_type.value,
-                "route_type_name": route_type.name,
-                "payload_type": payload_type.value,
-                "payload_type_name": payload_type.name,
-                "payload_version": payload_version.value,
-                # Enum objects for improved type safety
-                "route_type_enum": route_type,
-                "payload_type_enum": payload_type,
-                "payload_version_enum": payload_version,
-                # Transport and path information
-                "has_transport_codes": has_transport,
-                "transport_codes": transport_codes,
-                "transport_size": 4 if has_transport else 0,
-                "path_len": len(path_values),  # Hop count for display / routing_info
-                "path_len_byte": path_len_byte,  # Raw wire byte (same as firmware Packet path_len)
-                "path_byte_length": path_byte_length,  # Path bytes (for logs showing "X bytes")
-                "bytes_per_hop": bytes_per_hop,  # For multi-byte path storage/retrieval
-                "path_info": path_info,
-                "path": path_values,  # For backward compatibility
-                "path_hex": path_hex,
-                "payload_hex": payload.hex(),
-                "payload_bytes": len(payload),
-            }
-
-            self.logger.debug(
-                f"Successfully decoded: route={packet_info.get('route_type_name')}, type={packet_info.get('payload_type_name')}"
-            )
-            return packet_info
-
-        except Exception as e:
-            # Log as ERROR not DEBUG so we can see what's failing
-            self.logger.error(f"Error decoding packet (len={len(byte_data)}): {e}", exc_info=True)
-            self.logger.error(f"Failed packet hex: {hex_data}")
-            return None
+        """Decode a MeshCore packet; see :func:`modules.packet_decode.decode_meshcore_packet`."""
+        return packet_decode.decode_meshcore_packet(
+            raw_hex, payload_hex, prefix_hex_chars=self._prefix_hex_chars(), logger=self.logger
+        )
 
     def parse_advert(self, payload: bytes) -> dict[str, Any]:
         """Parse advert payload - matches C++ AdvertDataHelpers.h implementation"""
@@ -2033,21 +1886,14 @@ class MessageHandler:
             self.logger.warning(f"Error parsing ADVERT payload: {e}")
             return {}
 
+    def _prefix_hex_chars(self) -> int:
+        """Configured node-prefix width in hex chars (2 when the bot does not say)."""
+        return getattr(getattr(self, "bot", None), "prefix_hex_chars", 2)
+
     def _path_bytes_to_nodes(self, path_bytes: bytes, prefix_hex_chars: int | None = None) -> tuple:
-        """Chunk path bytes into hex node IDs using configured prefix length, with legacy 2-char fallback.
-
-        Args:
-            path_bytes: Raw path bytes from packet.
-            prefix_hex_chars: Hex chars per node (2 = 1 byte, 4 = 2 bytes). Default from bot.prefix_hex_chars.
-
-        Returns:
-            Tuple of (path_hex_str, path_nodes_list).
-        """
-        n = prefix_hex_chars if prefix_hex_chars is not None else getattr(self.bot, "prefix_hex_chars", 2)
-        if n <= 0:
-            n = 2
-        path_hex = path_bytes.hex()
-        return path_hex, [node.upper() for node in split_path_hex(path_hex, n)]
+        """Chunk path bytes into ``(hex, node IDs)``; width defaults to the configured prefix length."""
+        width = prefix_hex_chars if prefix_hex_chars is not None else self._prefix_hex_chars()
+        return packet_decode.path_bytes_to_nodes(path_bytes, width)
 
     def _path_hex_to_nodes(self, path_hex: str) -> list[str]:
         """Chunk path_hex string into node list using configured prefix length, with legacy 2-char fallback.
@@ -2056,7 +1902,7 @@ class MessageHandler:
         """
         if not path_hex or len(path_hex) < 2:
             return []
-        n = getattr(self.bot, "prefix_hex_chars", 2)
+        n = self._prefix_hex_chars()
         if n <= 0:
             n = 2
         return split_path_hex(path_hex, n)
@@ -2108,125 +1954,16 @@ class MessageHandler:
     def _process_packet_path(
         self, path_bytes: bytes, payload: bytes, route_type: RouteType, payload_type: PayloadType
     ) -> dict:
-        """
-        Process the path field based on packet and route type
-
-        Args:
-            path_bytes: Raw path bytes
-            payload: Payload bytes (needed for TRACE packets)
-            route_type: Route type from header
-            payload_type: Payload type from header
-
-        Returns:
-            dict: Processed path information
-        """
-        try:
-            # Chunk path bytes into node IDs using configured prefix length (with legacy fallback)
-            _, path_nodes = self._path_bytes_to_nodes(path_bytes)
-
-            # Special handling for TRACE packets
-            if payload_type == PayloadType.TRACE:
-                # RF path bytes are per-hop SNR×4 (int8), not node hashes. The commanded route is
-                # in the payload after tag(4)+auth(4)+flags(1); use path_info / parse_trace_payload_route_hashes for display.
-                # In TRACE packets, path field contains SNR data
-                # Real routing path is in the payload as pathHashes (after tag(4) + auth(4) + flags(1))
-                snr_values = []
-                for b in path_bytes:
-                    # Convert SNR byte to dB (signed value)
-                    snr_db = (b - 256) / 4 if b > 127 else b / 4
-                    snr_values.append(snr_db)
-
-                # Decode trace payload to extract pathHashes (routing path)
-                # path_hash_len from flags (bits 0-1): 1 << (flags & 3) = 1, 2, 4, or 8 bytes per hop
-                path_hashes = []
-                if len(payload) >= 9:  # Minimum: tag(4) + auth(4) + flags(1)
-                    try:
-                        path_hashes_bytes = payload[9:]
-                        flags = payload[8]
-                        path_hash_len = 1 << (flags & 3)  # 1, 2, 4, or 8 bytes per hop
-                        if path_hash_len <= 0:
-                            path_hash_len = 1
-                        if len(path_hashes_bytes) % path_hash_len == 0:
-                            path_hashes = [
-                                path_hashes_bytes[i : i + path_hash_len].hex().upper()
-                                for i in range(0, len(path_hashes_bytes), path_hash_len)
-                            ]
-                        else:
-                            # Fallback: 1 byte per hop (legacy)
-                            path_hashes = [f"{b:02x}".upper() for b in path_hashes_bytes]
-                    except Exception as e:
-                        self.logger.debug(f"Error extracting pathHashes from trace payload: {e}")
-                        path_hashes = [f"{b:02x}".upper() for b in payload[9:]]
-
-                return {
-                    "type": "trace",
-                    "snr_data": snr_values,
-                    "snr_path": path_nodes,  # SNR data as hex for reference
-                    "path": path_hashes,  # Actual routing path from payload pathHashes
-                    "path_hashes": path_hashes,  # Explicit field for pathHashes
-                    "description": f"TRACE packet with {len(snr_values)} SNR readings and {len(path_hashes)} path nodes",
-                }
-
-            # Regular packets - determine path type based on route type
-            is_direct = route_type in [RouteType.DIRECT, RouteType.TRANSPORT_DIRECT]
-
-            if is_direct:
-                # Direct routing: path contains routing instructions
-                # Bytes are stripped at each hop
-                return {
-                    "type": "routing_instructions",
-                    "path": path_nodes,
-                    "meaning": "bytes_stripped_at_each_hop",
-                    "description": f"Direct route via {','.join(path_nodes)} ({len(path_nodes)} hops)",
-                }
-            else:
-                # Flood routing: path contains historical route
-                # Bytes are added as packet floods through network
-                return {
-                    "type": "historical_route",
-                    "path": path_nodes,
-                    "meaning": "bytes_added_as_packet_floods",
-                    "description": f"Flooded through {','.join(path_nodes)} ({len(path_nodes)} hops)",
-                }
-
-        except Exception as e:
-            self.logger.error(f"Error processing packet path: {e}")
-            # Return basic path info as fallback (legacy 1-byte-per-hop)
-            _, path_nodes = self._path_bytes_to_nodes(path_bytes, prefix_hex_chars=2)
-            return {"type": "unknown", "path": path_nodes, "description": f"Path: {','.join(path_nodes)}"}
+        return packet_decode.process_packet_path(
+            path_bytes, payload, route_type, payload_type,
+            prefix_hex_chars=self._prefix_hex_chars(), logger=self.logger,
+        )
 
     def _get_route_type_name(self, route_type: int) -> str:
-        """Get human-readable name for route type"""
-        route_types = {
-            0x00: "ROUTE_TYPE_TRANSPORT_FLOOD",
-            0x01: "ROUTE_TYPE_FLOOD",
-            0x02: "ROUTE_TYPE_DIRECT",
-            0x03: "ROUTE_TYPE_TRANSPORT_DIRECT",
-        }
-        return route_types.get(route_type, f"UNKNOWN_ROUTE_{route_type:02x}")
+        return packet_decode.route_type_name(route_type)
 
     def get_payload_type_name(self, payload_type: int) -> str:
-        """Get human-readable name for payload type"""
-        payload_types = {
-            0x00: "REQ",
-            0x01: "RESPONSE",
-            0x02: "TXT_MSG",
-            0x03: "ACK",
-            0x04: "ADVERT",
-            0x05: "GRP_TXT",
-            0x06: "GRP_DATA",
-            0x07: "ANON_REQ",
-            0x08: "PATH",
-            0x09: "TRACE",
-            0x0A: "MULTIPART",
-            # Additional payload types found in meshcore library (may not be in official spec)
-            0x0B: "UNKNOWN_0b",  # Not defined in official spec
-            0x0C: "UNKNOWN_0c",  # Not defined in official spec
-            0x0D: "UNKNOWN_0d",  # Not defined in official spec
-            0x0E: "UNKNOWN_0e",  # Not defined in official spec
-            0x0F: "RAW_CUSTOM",
-        }
-        return payload_types.get(payload_type, f"UNKNOWN_{payload_type:02x}")
+        return packet_decode.payload_type_name(payload_type)
 
     async def handle_channel_message(self, event: Any, metadata: dict[str, Any] | None = None) -> None:
         """Handle incoming channel message"""
@@ -3288,43 +3025,7 @@ class MessageHandler:
             self.logger.error(f"Error in debug packet decoding: {e}")
 
     def _format_path_string(self, hex_path: str, bytes_per_hop: int | None = None) -> str:
-        """
-        Convert a hex path string to node prefix format.
-
-        Args:
-            hex_path: Hex string representing the path (e.g., "01025f7e" or "01025fab" for 2-byte hops).
-            bytes_per_hop: Optional bytes per hop (1, 2, or 3) for multi-byte paths; None = legacy 1 byte per node.
-
-        Returns:
-            str: Formatted path string (e.g., "01,02,5f,7e" or "0102,5fab")
-        """
-        try:
-            if not hex_path:
-                return "Direct"
-
-            if bytes_per_hop is not None and bytes_per_hop > 0:
-                hex_chars = bytes_per_hop * 2
-                path_nodes = split_path_hex(hex_path, hex_chars)
-                if path_nodes:
-                    return ",".join(path_nodes)
-                return "Direct"
-
-            # Legacy: one byte per node (two hex chars)
-            path_bytes = bytes.fromhex(hex_path)
-            path_nodes = []
-            for i in range(len(path_bytes)):
-                node_id = path_bytes[i]
-                path_nodes.append(f"{node_id:02x}")
-
-            if path_nodes:
-                return ",".join(path_nodes)
-            else:
-                return "Direct"
-
-        except Exception as e:
-            self.logger.debug(f"Error formatting path string: {e}")
-            truncated = hex_path[:16] if len(hex_path) > 16 else hex_path
-            return f"Raw: {truncated}{'...' if len(hex_path) > 16 else ''}"
+        return packet_decode.format_path_string(hex_path, bytes_per_hop, logger=self.logger)
 
     async def process_message(self, message: MeshMessage) -> None:
         """Process a received message"""

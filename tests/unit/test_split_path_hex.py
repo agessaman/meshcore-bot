@@ -2,7 +2,7 @@
 
 import pytest
 
-from modules.message_handler import split_path_hex
+from modules.packet_decode import split_path_hex
 
 
 @pytest.mark.parametrize(
