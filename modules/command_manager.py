@@ -1162,8 +1162,17 @@ class CommandManager:
             self.bot.logger.warning("send_dm suppressed — radio is in zombie state; power cycle required")
             return False
         if self.bot.is_radio_offline:
-            self.bot.logger.warning("send_dm suppressed — radio is offline (repeated send timeouts)")
-            return False
+            allowed, trial = self.bot._admit_measured_send()
+            if not allowed:
+                self.bot.logger.warning("send_dm suppressed — radio is offline (repeated send timeouts)")
+                return False
+            return await self.bot._send_as_offline_trial(
+                trial,
+                lambda: self.send_dm(
+                    recipient_id, content, command_id=command_id,
+                    skip_user_rate_limit=skip_user_rate_limit, rate_limit_key=rate_limit_key,
+                ),
+            )
 
         # Check all rate limits
         can_send, reason = await self._check_rate_limits(
@@ -1398,10 +1407,20 @@ class CommandManager:
             self.bot.logger.warning("send_channel_message suppressed — radio is in zombie state; power cycle required")
             return False
         if self.bot.is_radio_offline:
-            self.bot.logger.warning(
-                "send_channel_message suppressed — radio is offline (repeated send timeouts)"
+            allowed, trial = self.bot._admit_measured_send()
+            if not allowed:
+                self.bot.logger.warning(
+                    "send_channel_message suppressed — radio is offline (repeated send timeouts)"
+                )
+                return False
+            return await self.bot._send_as_offline_trial(
+                trial,
+                lambda: self.send_channel_message(
+                    channel, content, command_id=command_id,
+                    skip_user_rate_limit=skip_user_rate_limit, rate_limit_key=rate_limit_key,
+                    scope=scope, timestamp=timestamp, _skip_length_guard=_skip_length_guard,
+                ),
             )
-            return False
 
         # Central channel length guard, mirroring the DM guard in send_dm. The
         # firmware's MAX_TEXT_LEN is 160 and the body rides inside

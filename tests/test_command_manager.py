@@ -501,6 +501,7 @@ class TestSendChannelMessageListeners:
         """Interactive channel sends should suppress while radio-offline is active."""
         cm_bot.connected = True
         cm_bot.is_radio_offline = True
+        cm_bot._admit_measured_send = Mock(return_value=(False, 0))  # no trial armed
         cm_bot.meshcore = Mock()
         cm_bot.channel_manager = Mock()
         cm_bot.channel_manager.get_channel_number = Mock(return_value=3)
@@ -516,6 +517,7 @@ class TestSendChannelMessageListeners:
         """Interactive DM sends should suppress while radio-offline is active."""
         cm_bot.connected = True
         cm_bot.is_radio_offline = True
+        cm_bot._admit_measured_send = Mock(return_value=(False, 0))  # no trial armed
         cm_bot.meshcore = Mock()
         cm_bot.meshcore.get_contact_by_name = Mock(return_value={"name": "TestUser"})
         manager = make_manager(cm_bot)
