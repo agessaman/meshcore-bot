@@ -730,6 +730,31 @@ class BotDataViewer:
             self.logger.error(f"Failed to create database connection: {e}")
             raise
 
+    def _read_meta_settings(
+        self, prefix: str, fields: list[str], defaults: dict[str, str]
+    ) -> dict[str, str]:
+        """Read ``<prefix>.<field>`` values from bot_metadata, unset ones as ``''``.
+
+        A field that is unset or empty takes its value from ``defaults``.
+        """
+        settings: dict[str, str] = {}
+        for field in fields:
+            val = self.db_manager.get_metadata(f'{prefix}.{field}')
+            settings[field] = val if val is not None else ''
+        for field, default in defaults.items():
+            if not settings.get(field):
+                settings[field] = default
+        return settings
+
+    def _write_meta_settings(self, prefix: str, allowed: Any, data: dict[str, Any]) -> list[str]:
+        """Store each allowed field present in ``data`` as ``<prefix>.<field>``; return those saved."""
+        saved = []
+        for field in allowed:
+            if field in data:
+                self.db_manager.set_metadata(f'{prefix}.{field}', str(data[field]))
+                saved.append(field)
+        return saved
+
     def _queue_operation(self, operation_type: str, payload: Any = None) -> int | None:
         """Queue a bot-side operation in ``channel_operations`` and return its row id.
 
@@ -1787,25 +1812,17 @@ class BotDataViewer:
         @self.app.route('/api/config/notifications')
         def api_config_notifications_get():
             """Return current notification settings from bot_metadata."""
-            keys = [
-                'notif.smtp_host', 'notif.smtp_port', 'notif.smtp_security',
-                'notif.smtp_user', 'notif.smtp_password',
-                'notif.from_name', 'notif.from_email',
-                'notif.recipients', 'notif.nightly_enabled',
-                'notif.allow_local_smtp',
-            ]
-            settings = {}
-            for k in keys:
-                val = self.db_manager.get_metadata(k)
-                short = k.split('.', 1)[1]
-                settings[short] = val if val is not None else ''
-            # Provide safe defaults for unset fields
-            if not settings.get('smtp_port'):
-                settings['smtp_port'] = '587'
-            if not settings.get('smtp_security'):
-                settings['smtp_security'] = 'starttls'
-            if not settings.get('nightly_enabled'):
-                settings['nightly_enabled'] = 'false'
+            settings = self._read_meta_settings(
+                'notif',
+                [
+                    'smtp_host', 'smtp_port', 'smtp_security',
+                    'smtp_user', 'smtp_password',
+                    'from_name', 'from_email',
+                    'recipients', 'nightly_enabled',
+                    'allow_local_smtp',
+                ],
+                defaults={'smtp_port': '587', 'smtp_security': 'starttls', 'nightly_enabled': 'false'},
+            )
             return jsonify(settings)
 
         @self.app.route('/api/config/notifications', methods=['POST'])
@@ -1818,11 +1835,7 @@ class BotDataViewer:
                 'from_name', 'from_email',
                 'recipients', 'nightly_enabled', 'allow_local_smtp',
             }
-            saved = []
-            for field in allowed:
-                if field in data:
-                    self.db_manager.set_metadata(f'notif.{field}', str(data[field]))
-                    saved.append(field)
+            saved = self._write_meta_settings('notif', allowed, data)
             self.logger.info(f"Notification settings updated: {', '.join(saved)}")
             return jsonify({'success': True, 'saved': saved})
 
@@ -1899,16 +1912,11 @@ class BotDataViewer:
         @self.app.route('/api/config/logging')
         def api_config_logging_get():
             """Return log rotation settings from bot_metadata."""
-            keys = ['maint.log_max_bytes', 'maint.log_backup_count']
-            settings = {}
-            for k in keys:
-                short = k.split('.', 1)[1]
-                val = self.db_manager.get_metadata(k)
-                settings[short] = val if val is not None else ''
-            if not settings.get('log_max_bytes'):
-                settings['log_max_bytes'] = str(5 * 1024 * 1024)
-            if not settings.get('log_backup_count'):
-                settings['log_backup_count'] = '3'
+            settings = self._read_meta_settings(
+                'maint',
+                ['log_max_bytes', 'log_backup_count'],
+                defaults={'log_max_bytes': str(5 * 1024 * 1024), 'log_backup_count': '3'},
+            )
             return jsonify(settings)
 
         @self.app.route('/api/config/logging', methods=['POST'])
@@ -1916,11 +1924,7 @@ class BotDataViewer:
             """Save log rotation settings to bot_metadata."""
             data = request.get_json(silent=True) or {}
             allowed = {'log_max_bytes', 'log_backup_count'}
-            saved = []
-            for field in allowed:
-                if field in data:
-                    self.db_manager.set_metadata(f'maint.{field}', str(data[field]))
-                    saved.append(field)
+            saved = self._write_meta_settings('maint', allowed, data)
             self.logger.info(f"Log rotation config updated: {', '.join(saved)}")
             return jsonify({'success': True, 'saved': saved})
 
@@ -1929,29 +1933,22 @@ class BotDataViewer:
         @self.app.route('/api/config/maintenance')
         def api_config_maintenance_get():
             """Return DB backup and email hook settings from bot_metadata."""
-            keys = [
-                'maint.db_backup_enabled', 'maint.db_backup_schedule',
-                'maint.db_backup_time', 'maint.db_backup_retention_count',
-                'maint.db_backup_dir', 'maint.email_attach_log',
-            ]
-            settings = {}
-            for k in keys:
-                short = k.split('.', 1)[1]
-                val = self.db_manager.get_metadata(k)
-                settings[short] = val if val is not None else ''
-            # Defaults
-            if not settings.get('db_backup_enabled'):
-                settings['db_backup_enabled'] = 'false'
-            if not settings.get('db_backup_schedule'):
-                settings['db_backup_schedule'] = 'daily'
-            if not settings.get('db_backup_time'):
-                settings['db_backup_time'] = '02:00'
-            if not settings.get('db_backup_retention_count'):
-                settings['db_backup_retention_count'] = '7'
-            if not settings.get('db_backup_dir'):
-                settings['db_backup_dir'] = '/data/backups'
-            if not settings.get('email_attach_log'):
-                settings['email_attach_log'] = 'false'
+            settings = self._read_meta_settings(
+                'maint',
+                [
+                    'db_backup_enabled', 'db_backup_schedule',
+                    'db_backup_time', 'db_backup_retention_count',
+                    'db_backup_dir', 'email_attach_log',
+                ],
+                defaults={
+                    'db_backup_enabled': 'false',
+                    'db_backup_schedule': 'daily',
+                    'db_backup_time': '02:00',
+                    'db_backup_retention_count': '7',
+                    'db_backup_dir': '/data/backups',
+                    'email_attach_log': 'false',
+                },
+            )
             return jsonify(settings)
 
         @self.app.route('/api/config/maintenance', methods=['POST'])
@@ -1969,11 +1966,7 @@ class BotDataViewer:
                 'db_backup_enabled', 'db_backup_schedule', 'db_backup_time',
                 'db_backup_retention_count', 'db_backup_dir', 'email_attach_log',
             }
-            saved = []
-            for field in allowed:
-                if field in data:
-                    self.db_manager.set_metadata(f'maint.{field}', str(data[field]))
-                    saved.append(field)
+            saved = self._write_meta_settings('maint', allowed, data)
             self.logger.info(f"Maintenance config updated: {', '.join(saved)}")
             return jsonify({'success': True, 'saved': saved})
 
@@ -2023,11 +2016,7 @@ class BotDataViewer:
             """
             data = request.get_json(silent=True) or {}
             allowed = {'alert_enabled', 'alert_email'}
-            saved = []
-            for field in allowed:
-                if field in data:
-                    self.db_manager.set_metadata(f'zombie.{field}', str(data[field]))
-                    saved.append(field)
+            saved = self._write_meta_settings('zombie', allowed, data)
             self.logger.info("Zombie alert config updated (metadata): %s", ', '.join(saved))
 
             write_to_config = str(data.get('write_to_config', '')).lower() == 'true'
