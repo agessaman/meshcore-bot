@@ -730,6 +730,29 @@ class BotDataViewer:
             self.logger.error(f"Failed to create database connection: {e}")
             raise
 
+    def _queue_operation(self, operation_type: str, payload: Any = None) -> int | None:
+        """Queue a bot-side operation in ``channel_operations`` and return its row id.
+
+        The bot's scheduler polls this table; callers poll
+        /api/channel-operations/<id> for the result. ``payload`` is stored as JSON
+        in ``payload_data`` when given. Errors propagate to the caller.
+        """
+        with self.db_manager.connection() as conn:
+            cursor = conn.cursor()
+            if payload is None:
+                cursor.execute(
+                    "INSERT INTO channel_operations (operation_type, status) VALUES (?, 'pending')",
+                    (operation_type,),
+                )
+            else:
+                cursor.execute(
+                    "INSERT INTO channel_operations (operation_type, payload_data, status) "
+                    "VALUES (?, ?, 'pending')",
+                    (operation_type, json.dumps(payload)),
+                )
+            conn.commit()
+            return cursor.lastrowid
+
     @contextmanager
     def _with_db_connection(self):
         """Context manager that yields a configured connection and closes it on exit.
@@ -1718,13 +1741,7 @@ class BotDataViewer:
                 # scheduler polls this — same pattern as radio reconnect).
                 reload_queued = False
                 try:
-                    with self.db_manager.connection() as conn:
-                        cursor = conn.cursor()
-                        cursor.execute(
-                            "INSERT INTO channel_operations (operation_type, status) "
-                            "VALUES ('config_reload', 'pending')"
-                        )
-                        conn.commit()
+                    self._queue_operation('config_reload')
                     reload_queued = True
                 except Exception:
                     self.logger.exception("Failed to queue config reload")
@@ -2132,13 +2149,7 @@ class BotDataViewer:
 
                 op_id = None
                 if do_reconnect:
-                    with self.db_manager.connection() as conn:
-                        cursor = conn.cursor()
-                        cursor.execute(
-                            "INSERT INTO channel_operations (operation_type, status) VALUES ('radio_connect', 'pending')"
-                        )
-                        conn.commit()
-                        op_id = cursor.lastrowid
+                    op_id = self._queue_operation('radio_connect')
                     self.logger.info("Radio reconnect queued (op_id=%s) to apply radio_debug=%s", op_id, enabled)
 
                 return jsonify({'success': True, 'config_saved': config_saved, 'op_id': op_id})
@@ -4484,14 +4495,7 @@ class BotDataViewer:
             success because a row was inserted.
             """
             try:
-                with self.db_manager.connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "INSERT INTO channel_operations (operation_type, status) "
-                        "VALUES ('config_reload', 'pending')"
-                    )
-                    conn.commit()
-                    return cursor.lastrowid
+                return self._queue_operation('config_reload')
             except Exception:
                 self.logger.exception("Failed to queue config reload")
                 return None
@@ -5095,13 +5099,7 @@ class BotDataViewer:
         def api_radio_reboot():
             """Queue a radio reboot (disconnect + reconnect)."""
             try:
-                with self.db_manager.connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "INSERT INTO channel_operations (operation_type, status) VALUES ('radio_reboot', 'pending')"
-                    )
-                    conn.commit()
-                    op_id = cursor.lastrowid
+                op_id = self._queue_operation('radio_reboot')
                 return jsonify({'success': True, 'operation_id': op_id, 'message': 'Radio reboot queued'})
             except Exception as e:
                 self.logger.error(f"Error queuing radio reboot: {e}")
@@ -5116,14 +5114,7 @@ class BotDataViewer:
                 if action not in ('connect', 'disconnect'):
                     return jsonify({'error': "action must be 'connect' or 'disconnect'"}), 400
                 op_type = 'radio_connect' if action == 'connect' else 'radio_disconnect'
-                with self.db_manager.connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "INSERT INTO channel_operations (operation_type, status) VALUES (?, 'pending')",
-                        (op_type,)
-                    )
-                    conn.commit()
-                    op_id = cursor.lastrowid
+                op_id = self._queue_operation(op_type)
                 return jsonify({'success': True, 'pending': True, 'operation_id': op_id})
             except Exception as e:
                 self.logger.error(f"Error queuing radio connect/disconnect: {e}")
@@ -5133,13 +5124,7 @@ class BotDataViewer:
         def api_firmware_config_read():
             """Queue a firmware config read (path hash mode). Poll /api/channel-operations/<id>."""
             try:
-                with self.db_manager.connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "INSERT INTO channel_operations (operation_type, status) VALUES ('firmware_read', 'pending')"
-                    )
-                    conn.commit()
-                    op_id = cursor.lastrowid
+                op_id = self._queue_operation('firmware_read')
                 return jsonify({'success': True, 'operation_id': op_id})
             except Exception as e:
                 self.logger.error(f"Error queuing firmware read: {e}")
@@ -5177,14 +5162,7 @@ class BotDataViewer:
                     except ValueError as exc:
                         return jsonify({'error': str(exc)}), 400
                     payload['default_flood_scope'] = canonical
-                with self.db_manager.connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "INSERT INTO channel_operations (operation_type, payload_data, status) VALUES ('firmware_write', ?, 'pending')",
-                        (json.dumps(payload),)
-                    )
-                    conn.commit()
-                    op_id = cursor.lastrowid
+                op_id = self._queue_operation('firmware_write', payload)
                 return jsonify({'success': True, 'operation_id': op_id})
             except Exception as e:
                 self.logger.error(f"Error queuing firmware write: {e}")
@@ -5194,13 +5172,7 @@ class BotDataViewer:
         def api_radio_params_read():
             """Queue a radio parameter read (freq, bw, sf, cr, tx_power). Poll /api/channel-operations/<id>."""
             try:
-                with self.db_manager.connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "INSERT INTO channel_operations (operation_type, status) VALUES ('radio_params_read', 'pending')"
-                    )
-                    conn.commit()
-                    op_id = cursor.lastrowid
+                op_id = self._queue_operation('radio_params_read')
                 return jsonify({'success': True, 'operation_id': op_id})
             except Exception as e:
                 self.logger.error(f"Error queuing radio params read: {e}")
@@ -5300,14 +5272,7 @@ class BotDataViewer:
                 if radio_fields & set(payload) and not radio_fields <= set(payload):
                     return jsonify({'error': 'freq, bw, sf, and cr must all be provided together'}), 400
 
-                with self.db_manager.connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "INSERT INTO channel_operations (operation_type, payload_data, status) VALUES ('radio_params_write', ?, 'pending')",
-                        (json.dumps(payload),)
-                    )
-                    conn.commit()
-                    op_id = cursor.lastrowid
+                op_id = self._queue_operation('radio_params_write', payload)
                 return jsonify({'success': True, 'operation_id': op_id})
             except Exception as e:
                 self.logger.error(f"Error queuing radio params write: {e}")
@@ -5322,14 +5287,7 @@ class BotDataViewer:
                 flood = data.get('flood', False)
                 if not isinstance(flood, bool):
                     return jsonify({'error': 'flood must be true or false'}), 400
-                with self.db_manager.connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "INSERT INTO channel_operations (operation_type, payload_data, status) VALUES ('radio_advert', ?, 'pending')",
-                        (json.dumps({'flood': flood}),)
-                    )
-                    conn.commit()
-                    op_id = cursor.lastrowid
+                op_id = self._queue_operation('radio_advert', {'flood': flood})
                 return jsonify({'success': True, 'operation_id': op_id})
             except Exception as e:
                 self.logger.error(f"Error queuing radio advert: {e}")
