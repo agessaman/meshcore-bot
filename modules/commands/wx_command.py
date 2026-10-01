@@ -2846,3 +2846,92 @@ class WxCommand(WeatherCommandMixin, BaseCommand):
     async def get_weather_for_zipcode(self, zipcode: str) -> str:
         """Get weather data for a specific zipcode (legacy method)"""
         return await self.get_weather_for_location(zipcode, "zipcode")
+
+    def abbreviate_alert_title(self, title: str) -> str:
+        """Abbreviate alert title for brevity"""
+        # Common alert type abbreviations
+        replacements = {
+            "warning": "Warn",
+            "watch": "Watch",
+            "advisory": "Adv",
+            "statement": "Stmt",
+            "severe thunderstorm": "SvrT-Storm",
+            "tornado": "Tornado",
+            "flash flood": "FlashFlood",
+            "flood": "Flood",
+            "winter storm": "WinterStorm",
+            "blizzard": "Blizzard",
+            "ice storm": "IceStorm",
+            "freeze": "Freeze",
+            "frost": "Frost",
+            "heat": "Heat",
+            "excessive heat": "ExHeat",
+            "extreme heat": "ExtHeat",
+            "wind": "Wind",
+            "high wind": "HighWind",
+            "wind advisory": "WindAdv",
+            "fire weather": "FireWx",
+            "red flag": "RedFlag",
+            "dense fog": "DenseFog",
+            "issued": "iss",
+            "until": "til",
+            "effective": "eff",
+            "expires": "exp",
+            "dense smoke": "DenseSmoke",
+            "air quality": "AirQuality",
+            "coastal flood": "CoastalFlood",
+            "lakeshore flood": "LakeshoreFlood",
+            "rip current": "RipCurrent",
+            "high surf": "HighSurf",
+            "hurricane": "Hurricane",
+            "tropical storm": "TropStorm",
+            "tropical depression": "TropDep",
+            "storm surge": "StormSurge",
+            "tsunami": "Tsunami",
+            "earthquake": "Earthquake",
+            "volcano": "Volcano",
+            "avalanche": "Avalanche",
+            "landslide": "Landslide",
+            "debris flow": "DebrisFlow",
+            "dust storm": "DustStorm",
+            "sandstorm": "Sandstorm",
+            "blowing dust": "BlwDust",
+            "blowing sand": "BlwSand"
+        }
+
+        result = title
+        for key, value in replacements.items():
+            # Case insensitive replace
+            result = result.replace(key, value).replace(key.capitalize(), value).replace(key.upper(), value)
+
+        # Limit to reasonable length
+        if len(result) > 30:
+            result = result[:27] + "..."
+
+        return result
+
+    def get_current_conditions(self, points_data: dict) -> str:
+        """Get additional current conditions data from NOAA using existing points data (legacy method)"""
+        obs_data = self.get_observation_data(points_data)
+        if not obs_data:
+            return ""
+
+        conditions = []
+
+        # Build conditions list in priority order
+        if 'humidity' in obs_data:
+            conditions.append(f"{obs_data['humidity']}%RH")
+
+        if 'dew_point' in obs_data:
+            conditions.append(f"💧{obs_data['dew_point']}°")
+
+        if 'visibility' in obs_data:
+            conditions.append(f"👁️{obs_data['visibility']}mi")
+
+        if 'wind_gusts' in obs_data:
+            conditions.append(f"💨{obs_data['wind_gusts']}")
+
+        if 'pressure' in obs_data:
+            conditions.append(f"📊{obs_data['pressure']}hPa")
+
+        return " ".join(conditions[:3])  # Limit to 3 conditions to avoid overflow

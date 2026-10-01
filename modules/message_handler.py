@@ -3615,3 +3615,66 @@ class MessageHandler:
             import traceback
 
             self.logger.error(traceback.format_exc())
+
+    async def discover_message_path(self, sender_id: str, rf_data: dict) -> tuple[int, str]:
+        """
+        Discover the actual routing path for a message using CLI commands.
+        This is more reliable than trying to decode packet fragments.
+
+        Args:
+            sender_id: The name or ID of the sender
+            rf_data: The RF data containing pubkey information
+
+        Returns:
+            tuple[int, str]: (Number of hops, formatted path string)
+        """
+        try:
+            # First try to find the contact by name
+            if hasattr(self.bot.meshcore, "contacts") and self.bot.meshcore.contacts:
+                contact = None
+                pubkey_prefix = rf_data.get("pubkey_prefix", "")
+
+                # Look for contact by name first
+                for _contact_key, contact_data in self.bot.meshcore.contacts.items():
+                    if contact_data.get("adv_name") == sender_id:
+                        contact = contact_data
+                        break
+
+                # If not found by name, try by pubkey prefix
+                if not contact and pubkey_prefix:
+                    for _contact_key, contact_data in self.bot.meshcore.contacts.items():
+                        if contact_data.get("public_key", "").startswith(pubkey_prefix):
+                            contact = contact_data
+                            break
+
+                if contact:
+                    # Use the stored path information if available
+                    out_path = contact.get("out_path", "")
+                    out_path_len = contact.get("out_path_len", -1)
+
+                    if out_path_len == 0:
+                        self.logger.debug(f"Direct connection to {sender_id}")
+                        return 0, "Direct"
+                    elif out_path_len > 0:
+                        # Format the path string (use stored bytes_per_hop for multi-byte paths)
+                        bph = contact.get("out_bytes_per_hop")
+                        if bph is None and out_path_len > 0 and out_path:
+                            byte_len = len(out_path) // 2
+                            if byte_len > 0 and (byte_len % out_path_len) == 0:
+                                bph = byte_len // out_path_len
+                        path_string = self._format_path_string(out_path, bytes_per_hop=bph)
+                        self.logger.debug(f"Stored path to {sender_id}: {out_path_len} hops via {path_string}")
+                        return out_path_len, path_string
+                    else:
+                        # Path not set - use basic info
+                        self.logger.debug(f"No stored path for {sender_id}, using basic info")
+                        return 255, "No stored path"
+                else:
+                    self.logger.debug(f"Contact {sender_id} not found in contacts")
+                    return 255, "Unknown"  # Unknown path
+
+            return 255, "Unknown"  # Fallback to unknown
+
+        except Exception as e:
+            self.logger.error(f"Error discovering message path: {e}")
+            return 255, "Error"
