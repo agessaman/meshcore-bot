@@ -439,6 +439,17 @@ class MeshCoreBot:
         # Web-viewer reboot/reconnect ops in flight (a count, since they can overlap)
         self._radio_relinks_in_progress = 0
 
+        # Radio health. Zombie: the firmware stopped acting on commands and only a
+        # power cycle recovers it. Offline: repeated send timeouts. The probe
+        # timestamp starts on the first health-loop pass, hence None until then.
+        self._radio_zombie_detected = False
+        self._radio_fail_count = 0
+        self._tcp_probe_fail_count = 0
+        self._radio_offline = False
+        self._send_consecutive_failures = 0
+        self._last_radio_probe: float | None = None
+        self._last_health_update = 0.0
+
         # Serialize host->radio commands: one companion frame in flight at a
         # time, with a minimum inter-command gap so the firmware's single
         # serial loop can drain its RX buffer between frames. Prevents the
@@ -477,7 +488,7 @@ class MeshCoreBot:
         Only a physical power cycle can recover the radio; the flag is cleared
         automatically when connect() succeeds after a power cycle.
         """
-        return bool(getattr(self, '_radio_zombie_detected', False))
+        return bool(self._radio_zombie_detected)
 
     @property
     def keep_running(self) -> bool:
@@ -493,8 +504,8 @@ class MeshCoreBot:
             return False
         return bool(
             self.connected
-            or getattr(self, '_transport_reconnect_in_progress', False)
-            or getattr(self, '_radio_relinks_in_progress', 0)
+            or self._transport_reconnect_in_progress
+            or self._radio_relinks_in_progress
         )
 
     @property
@@ -505,7 +516,7 @@ class MeshCoreBot:
         packets but is not completing outbound sends.  Cleared automatically
         when a send succeeds, so no manual intervention is required.
         """
-        return bool(getattr(self, '_radio_offline', False))
+        return bool(self._radio_offline)
 
     def _record_send_failure(self, scheduler: "Any | None" = None) -> None:
         """Increment the consecutive-send-failure counter.
@@ -521,7 +532,7 @@ class MeshCoreBot:
         import threading as _threading
 
         self._send_consecutive_failures: int = (
-            getattr(self, '_send_consecutive_failures', 0) + 1
+            self._send_consecutive_failures + 1
         )
         threshold = self.config.getint(
             'Connection',
@@ -552,7 +563,7 @@ class MeshCoreBot:
 
     def _record_send_success(self) -> None:
         """Clear the consecutive-send-failure counter after a successful send."""
-        failures = getattr(self, '_send_consecutive_failures', 0)
+        failures = self._send_consecutive_failures
         was_offline = self.is_radio_offline
         if failures > 0 or was_offline:
             self.logger.info(
@@ -1687,7 +1698,7 @@ long_jokes = false
             return
         if reason == 'manual_disconnect':
             return
-        if getattr(self, '_transport_reconnect_in_progress', False):
+        if self._transport_reconnect_in_progress:
             return
         if not getattr(self, 'connected', False):
             return
@@ -2005,7 +2016,7 @@ long_jokes = false
         """Serial/BLE: failed get_time may indicate zombie firmware (no transport reconnect)."""
         import datetime as _dt
 
-        self._radio_fail_count = getattr(self, '_radio_fail_count', 0) + 1
+        self._radio_fail_count = self._radio_fail_count + 1
         self.logger.warning(
             "Radio health probe failed "
             "(%d/%d): no response to get_time",
@@ -2048,7 +2059,7 @@ long_jokes = false
         self, threshold: int, interval: int, detail: str
     ) -> bool:
         """TCP: repeated probe failures trigger transport reconnect, not zombie."""
-        self._tcp_probe_fail_count = getattr(self, '_tcp_probe_fail_count', 0) + 1
+        self._tcp_probe_fail_count = self._tcp_probe_fail_count + 1
         self.logger.warning(
             "TCP radio health probe failed (%d/%d): %s",
             self._tcp_probe_fail_count,
@@ -2071,7 +2082,7 @@ long_jokes = false
         Serial/BLE: repeated ERROR responses declare zombie firmware (no reconnect).
         TCP: repeated ERROR or timeout responses schedule transport reconnect.
         """
-        if getattr(self, '_radio_zombie_detected', False):
+        if self._radio_zombie_detected:
             return False
 
         if not self.meshcore or not self.meshcore.is_connected:
@@ -2093,7 +2104,7 @@ long_jokes = false
                     )
                 return self._handle_serial_probe_error(threshold, interval)
 
-            if getattr(self, '_radio_fail_count', 0) > 0:
+            if self._radio_fail_count > 0:
                 self.logger.info("Radio health probe recovered — resetting fail counter")
             self._radio_fail_count = 0
             self._tcp_probe_fail_count = 0
@@ -2454,8 +2465,8 @@ long_jokes = false
                 # Periodically probe radio responsiveness
                 # Skip entirely once a zombie is confirmed — only a power cycle
                 # can recover the firmware; probing just generates log noise.
-                if not getattr(self, '_radio_zombie_detected', False):
-                    if not hasattr(self, '_last_radio_probe'):
+                if not self._radio_zombie_detected:
+                    if self._last_radio_probe is None:
                         self._last_radio_probe = time.time()
                     probe_interval = max(
                         300,
@@ -2473,8 +2484,6 @@ long_jokes = false
                         asyncio.create_task(self._probe_radio_health())
 
                 # Periodically update system health in database (every 30 seconds)
-                if not hasattr(self, '_last_health_update'):
-                    self._last_health_update = 0
                 if time.time() - self._last_health_update >= 30:
                     try:
                         await self.get_system_health()  # This stores it in the database
