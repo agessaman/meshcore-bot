@@ -56,6 +56,13 @@ _P = ParamSpec("_P")
 _T = TypeVar("_T")
 
 
+_COMPASS_16 = (
+    "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+    "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW",
+)
+_ARROWS_8 = ("⬆️", "↗️", "➡️", "↘️", "⬇️", "↙️", "⬅️", "↖️")
+
+
 class WxCommand(BaseCommand):
     """Handles weather commands with zipcode support"""
 
@@ -2956,6 +2963,12 @@ class WxCommand(BaseCommand):
             return ""
 
         direction = direction.upper()
+        # NOAA sends 16-point abbreviations ("WNW"); keep them, with the nearest
+        # 8-point arrow. Before, they fell through to the 2-character fallback
+        # below, which turned "WNW" into "WN" and dropped the arrow.
+        if direction in _COMPASS_16:
+            arrow = _ARROWS_8[int(_COMPASS_16.index(direction) / 2 + 0.5) % 8]
+            return f"{arrow}{direction}"
         replacements = {
             "NORTHWEST": "↖️NW",
             "NORTHEAST": "↗️NE",
